@@ -10,5 +10,5 @@
 set -e
 
 cargo +nightly fmt --all -- --check
-cargo +stable clippy --all-features --all-targets -- -D warnings -A clippy::derive_partial_eq_without_eq
+cargo +stable clippy --all-features --all-targets -- -D warnings -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp -A clippy::uninlined_format_args
 cargo test

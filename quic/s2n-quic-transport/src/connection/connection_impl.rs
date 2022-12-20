@@ -415,12 +415,12 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     /// Since non-probing frames can only be sent on the active path, a separate
     /// transmission context with Mode::PathValidationOnly is used to send on
     /// other paths.
-    fn path_validation_only_transmission<'a, 'sub, Tx: tx::Queue<Handle = Config::PathHandle>>(
+    fn path_validation_only_transmission<'a, Tx: tx::Queue<Handle = Config::PathHandle>>(
         &mut self,
         queue: &mut Tx,
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
-        subscriber: &'sub mut Config::EventSubscriber,
+        subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &'a mut Config::PacketInterceptor,
     ) -> usize {
         let mut count = 0;

@@ -124,7 +124,7 @@ pub(crate) mod pkcs12_format {
     {
         if deserializer.is_human_readable() {
             let s = String::deserialize(deserializer)?;
-            let out = base64::decode(&s).map_err(serde::de::Error::custom)?;
+            let out = base64::decode(s).map_err(serde::de::Error::custom)?;
             Ok(out)
         } else {
             Vec::deserialize(deserializer)

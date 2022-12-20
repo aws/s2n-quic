@@ -54,11 +54,11 @@ pub trait Interceptor: 'static + Send {
     }
 
     #[inline(always)]
-    fn intercept_tx_datagram<'a>(
+    fn intercept_tx_datagram(
         &mut self,
         subject: &Subject,
         datagram: &Datagram,
-        payload: &mut EncoderBuffer<'a>,
+        payload: &mut EncoderBuffer,
     ) {
         let _ = subject;
         let _ = datagram;
@@ -66,11 +66,11 @@ pub trait Interceptor: 'static + Send {
     }
 
     #[inline(always)]
-    fn intercept_tx_payload<'a>(
+    fn intercept_tx_payload(
         &mut self,
         subject: &Subject,
         packet: &Packet,
-        payload: &mut EncoderBuffer<'a>,
+        payload: &mut EncoderBuffer,
     ) {
         let _ = subject;
         let _ = packet;
@@ -111,22 +111,22 @@ where
     }
 
     #[inline(always)]
-    fn intercept_tx_datagram<'a>(
+    fn intercept_tx_datagram(
         &mut self,
         subject: &Subject,
         datagram: &Datagram,
-        payload: &mut EncoderBuffer<'a>,
+        payload: &mut EncoderBuffer,
     ) {
         self.0.intercept_tx_datagram(subject, datagram, payload);
         self.1.intercept_tx_datagram(subject, datagram, payload);
     }
 
     #[inline(always)]
-    fn intercept_tx_payload<'a>(
+    fn intercept_tx_payload(
         &mut self,
         subject: &Subject,
         packet: &Packet,
-        payload: &mut EncoderBuffer<'a>,
+        payload: &mut EncoderBuffer,
     ) {
         self.0.intercept_tx_payload(subject, packet, payload);
         self.1.intercept_tx_payload(subject, packet, payload);
@@ -175,11 +175,11 @@ where
     }
 
     #[inline]
-    fn intercept_tx_payload<'a>(
+    fn intercept_tx_payload(
         &mut self,
         _subject: &Subject,
         _packet: &Packet,
-        payload: &mut EncoderBuffer<'a>,
+        payload: &mut EncoderBuffer,
     ) {
         self.tx.havoc(&mut self.random, payload);
     }

@@ -164,11 +164,11 @@ where
     }
 
     #[inline]
-    fn intercept_tx_datagram<'a>(
+    fn intercept_tx_datagram(
         &mut self,
         _subject: &crate::event::api::Subject,
         _datagram: &super::Datagram,
-        payload: &mut s2n_codec::EncoderBuffer<'a>,
+        payload: &mut s2n_codec::EncoderBuffer,
     ) {
         if !self.tx.should_pass(&mut self.random) {
             payload.set_position(0);

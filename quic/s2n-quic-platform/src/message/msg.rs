@@ -308,11 +308,13 @@ impl MessageTrait for msghdr {
         }
 
         // reset the control messages if it isn't set to the default value
-        if self.msg_controllen as usize != cmsg::MAX_LEN {
-            let cmsg = core::slice::from_raw_parts_mut(
-                self.msg_control as *mut u8,
-                self.msg_controllen as _,
-            );
+
+        // some platforms encode lengths as `u32` so we cast everything to be safe
+        #[allow(clippy::unnecessary_cast)]
+        let msg_controllen = self.msg_controllen as usize;
+
+        if msg_controllen != cmsg::MAX_LEN {
+            let cmsg = core::slice::from_raw_parts_mut(self.msg_control as *mut u8, msg_controllen);
 
             for byte in cmsg.iter_mut() {
                 *byte = 0;

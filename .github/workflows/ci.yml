@@ -92,7 +92,10 @@ jobs:
           command: clippy
           # deriving Eq may break API compatibility so we disable it
           # See https://github.com/rust-lang/rust-clippy/issues/9063
-          args: --all-features --all-targets -- -A clippy::derive_partial_eq_without_eq ${{ matrix.args }}
+
+          # manual_clamp will panic when min > max
+          # See https://github.com/rust-lang/rust-clippy/pull/10101
+          args: --all-features --all-targets -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp -A clippy::uninlined_format_args ${{ matrix.args }}
 
   udeps:
     runs-on: ubuntu-latest
