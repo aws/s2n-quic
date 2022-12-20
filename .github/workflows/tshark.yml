@@ -1,0 +1,59 @@
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/Dockerfile.tshark"
+      - ".github/workflows/tshark.yml"
+
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/Dockerfile.tshark"
+      - ".github/workflows/tshark.yml"
+
+  schedule:
+    # run every morning at 10am Pacific Time
+    # Running this every day makes sure the static dependencies are up to date
+    - cron: '0 17 * * *'
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'wireshark version'
+        required: true
+        default: '3.7.1'
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      WIRESHARK_VERSION: ${{ inputs.version || '3.7.1' }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - run: mkdir -p target/tshark/v$WIRESHARK_VERSION
+
+      - name: Build
+        working-directory: .github
+        run: |
+          docker build -f Dockerfile.tshark -t tshark-static --build-arg version=$WIRESHARK_VERSION .
+          docker run \
+            -v `pwd`/../target/tshark/v$WIRESHARK_VERSION:/host-dir \
+            tshark-static \
+            cp /usr/local/bin/tshark /usr/local/bin/editcap /host-dir/
+
+      - uses: aws-actions/configure-aws-credentials@v1.7.0
+        if: github.event_name == 'schedule' || github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        if: github.event_name == 'schedule' || github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        run: |
+          aws s3 sync target/tshark "s3://s2n-quic-ci-artifacts/tshark" --acl private --follow-symlinks
+
