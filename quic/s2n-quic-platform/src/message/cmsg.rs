@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(clippy::unnecessary_cast)] // some platforms encode lengths as `u32` so we cast everything to be safe
+
 use core::mem::{align_of, size_of};
 use s2n_quic_core::inet::{AncillaryData, ExplicitCongestionNotification};
 
