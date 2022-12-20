@@ -730,7 +730,7 @@ mod test {
                 let weight = 8;
 
                 // perform the unoptimized version
-                let expected = ((weight - 1) as u32 * a) / weight + b / weight;
+                let expected = ((weight - 1) * a) / weight + b / weight;
                 let actual = super::weighted_average(a, b, weight as _);
 
                 // assert that the unoptimized result matches the optimized to the nearest `weight` nanos

@@ -1056,7 +1056,7 @@ fn flow_control_window_update_is_only_sent_when_minimum_data_size_is_consumed() 
         test_env.stream.get_stream_interests()
     );
 
-    let expected_window = absolute_threshold as u64 - 1;
+    let expected_window = absolute_threshold - 1;
     assert_eq!(
         expected_window,
         Into::<u64>::into(
@@ -1156,7 +1156,7 @@ fn connection_flow_control_window_update_is_only_sent_when_minimum_data_size_is_
             .get_transmission_interest()
     );
 
-    let expected_window = absolute_threshold as u64 - 1;
+    let expected_window = absolute_threshold - 1;
     assert_eq!(
         expected_window,
         Into::<u64>::into(

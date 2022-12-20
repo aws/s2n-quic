@@ -50,7 +50,7 @@ impl MessageTrait for Message {
     }
 
     fn payload_len(&self) -> usize {
-        self.payload_len as usize
+        self.payload_len
     }
 
     unsafe fn set_payload_len(&mut self, len: usize) {

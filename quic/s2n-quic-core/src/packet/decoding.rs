@@ -46,9 +46,9 @@ impl<'a> HeaderDecoder<'a> {
         }
     }
 
-    pub fn decode_destination_connection_id<'b>(
+    pub fn decode_destination_connection_id(
         &mut self,
-        buffer: &DecoderBufferMut<'b>,
+        buffer: &DecoderBufferMut<'_>,
     ) -> Result<CheckedRange, DecoderError> {
         let destination_connection_id =
             self.decode_checked_range::<DestinationConnectionIdLen>(buffer)?;
@@ -56,9 +56,9 @@ impl<'a> HeaderDecoder<'a> {
         Ok(destination_connection_id)
     }
 
-    pub fn decode_short_destination_connection_id<'b, Validator: connection::id::Validator>(
+    pub fn decode_short_destination_connection_id<Validator: connection::id::Validator>(
         &mut self,
-        buffer: &DecoderBufferMut<'b>,
+        buffer: &DecoderBufferMut<'_>,
         connection_info: &ConnectionInfo,
         connection_id_validator: &Validator,
     ) -> Result<CheckedRange, DecoderError> {
@@ -78,18 +78,18 @@ impl<'a> HeaderDecoder<'a> {
         Ok(destination_connection_id)
     }
 
-    pub fn decode_source_connection_id<'b>(
+    pub fn decode_source_connection_id(
         &mut self,
-        buffer: &DecoderBufferMut<'b>,
+        buffer: &DecoderBufferMut<'_>,
     ) -> Result<CheckedRange, DecoderError> {
         let source_connection_id = self.decode_checked_range::<SourceConnectionIdLen>(buffer)?;
         validate_source_connection_id_range(&source_connection_id)?;
         Ok(source_connection_id)
     }
 
-    pub fn decode_checked_range<'b, Len: DecoderValue<'a> + TryInto<usize>>(
+    pub fn decode_checked_range<Len: DecoderValue<'a> + TryInto<usize>>(
         &mut self,
-        buffer: &DecoderBufferMut<'b>,
+        buffer: &DecoderBufferMut<'_>,
     ) -> Result<CheckedRange, DecoderError> {
         let (value, peek) = self.peek.skip_into_range_with_len_prefix::<Len>(buffer)?;
         self.peek = peek;

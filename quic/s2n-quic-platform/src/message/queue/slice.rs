@@ -341,6 +341,7 @@ impl<
     }
 
     #[inline]
+    #[allow(unknown_lints, clippy::misnamed_getters)] // this slice is made up of two halves and uses the primary for unfilled data
     fn capacity(&self) -> usize {
         self.primary.len
     }
