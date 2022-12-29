@@ -36,12 +36,6 @@ impl ConnectionInfo {
     }
 }
 
-impl Default for ConnectionInfo {
-    fn default() -> Self {
-        ConnectionInfo::new(0)
-    }
-}
-
 /// PreConnectionInfo will contain information needed to determine whether
 /// or not a provider will accept datagrams.
 #[non_exhaustive]
@@ -49,14 +43,9 @@ pub struct PreConnectionInfo(());
 
 impl PreConnectionInfo {
     #[doc(hidden)]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         PreConnectionInfo(())
-    }
-}
-
-impl Default for PreConnectionInfo {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
