@@ -6,7 +6,10 @@
 use s2n_quic_core::datagram::Disabled;
 pub use s2n_quic_core::datagram::{
     default,
-    traits::{ConnectionInfo, Endpoint, Packet, PreConnectionInfo, Receiver, Sender, WriteError},
+    traits::{
+        ConnectionInfo, Endpoint, Packet, PreConnectionInfo, ReceiveContext, Receiver, Sender,
+        WriteError,
+    },
 };
 
 pub trait Provider {
