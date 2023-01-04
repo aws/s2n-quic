@@ -1,4 +1,4 @@
-use super::generic::*;
+use super::*;
 use bolero::{check, generator::*};
 use std::collections::VecDeque;
 
@@ -10,14 +10,14 @@ enum Operation {
     DropRecv,
 }
 
-struct Model<T, B: Behavior> {
+struct Model<T> {
     oracle: VecDeque<T>,
-    send: Option<Sender<T, B>>,
-    recv: Option<Receiver<T, B>>,
+    send: Option<Sender<T>>,
+    recv: Option<Receiver<T>>,
     capacity: usize,
 }
 
-impl<T: Clone + PartialEq + core::fmt::Debug, B: Behavior> Model<T, B> {
+impl<T: Clone + PartialEq + core::fmt::Debug> Model<T> {
     fn new(capacity: usize) -> Self {
         let (send, recv) = channel(capacity);
         Self {
@@ -95,29 +95,20 @@ impl<T: Clone + PartialEq + core::fmt::Debug, B: Behavior> Model<T, B> {
 
 type Operations = Vec<Operation>;
 
-fn generic_model<B: Behavior>(capacity: usize, ops: &[Operation]) {
-    let mut model = Model::<_, B>::new(capacity);
-    let mut cursor = 0;
-    let generator = || {
-        let v = cursor;
-        cursor += 1;
-        Box::new(v)
-    };
-
-    model.apply_all(ops, generator);
-    model.finish();
-}
-
 #[test]
-fn ring() {
+fn model() {
     check!()
         .with_generator((1usize..64, gen::<Operations>()))
-        .for_each(|(capacity, ops)| generic_model::<Ring>(*capacity, ops))
-}
+        .for_each(|(capacity, ops)| {
+            let mut model = Model::new(*capacity);
+            let mut cursor = 0;
+            let generator = || {
+                let v = cursor;
+                cursor += 1;
+                Box::new(v)
+            };
 
-#[test]
-fn double_ring() {
-    check!()
-        .with_generator((1usize..64, gen::<Operations>()))
-        .for_each(|(capacity, ops)| generic_model::<DoubleRing>(*capacity, ops))
+            model.apply_all(ops, generator);
+            model.finish();
+        })
 }

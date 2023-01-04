@@ -27,42 +27,16 @@ mod state;
 use slice::*;
 use state::*;
 
-macro_rules! impl_channel {
-    ($name:ident) => {
-        pub use recv::$name::*;
-        pub use send::$name::*;
+pub use recv::{Receiver, RecvSlice};
+pub use send::{SendSlice, Sender};
 
-        #[inline]
-        pub fn channel<T>(capacity: usize) -> (send::$name::Sender<T>, recv::$name::Receiver<T>) {
-            let state = State::new(capacity);
-            let sender = send::$name(state.clone());
-            let receiver = recv::$name(state);
-            (sender, receiver)
-        }
-    };
+#[inline]
+pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
+    let state = State::new(capacity);
+    let sender = send::Sender(state.clone());
+    let receiver = recv::Receiver(state);
+    (sender, receiver)
 }
-
-pub mod contiguous {
-    use super::*;
-    impl_channel!(double_ring);
-}
-
-pub mod generic {
-    use super::*;
-    pub use recv::{Receiver, RecvSlice};
-    pub use send::{SendSlice, Sender};
-    pub use state::{Behavior, DoubleRing, Ring};
-
-    #[inline]
-    pub fn channel<T, B: Behavior>(capacity: usize) -> (Sender<T, B>, Receiver<T, B>) {
-        let state = State::new(capacity);
-        let sender = Sender(state.clone());
-        let receiver = Receiver(state);
-        (sender, receiver)
-    }
-}
-
-impl_channel!(ring);
 
 #[cfg(test)]
 mod tests;

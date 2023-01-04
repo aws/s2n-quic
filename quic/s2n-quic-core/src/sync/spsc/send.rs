@@ -1,63 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{Behavior, Cursor, DoubleRing, PushError, Result, Ring, State};
+use super::{Cursor, PushError, Result, State};
 use core::task::{Context, Poll};
 
-macro_rules! impl_send {
-    ($name:ident, $B:ty) => {
-        pub mod $name {
-            use super::*;
+pub struct Sender<T>(pub(super) State<T>);
 
-            pub struct Sender<T>(pub(super) super::Sender<T, $B>);
-
-            impl<T> Sender<T> {
-                #[inline]
-                pub fn poll_slice(&mut self, cx: &mut Context) -> Poll<Result<SendSlice<T>>> {
-                    match self.0.poll_slice(cx) {
-                        Poll::Ready(Ok(s)) => Poll::Ready(Ok(SendSlice(s))),
-                        Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-                        Poll::Pending => Poll::Pending,
-                    }
-                }
-
-                #[inline]
-                pub fn try_slice(&mut self) -> Result<Option<SendSlice<T>>> {
-                    match self.0.try_slice() {
-                        Ok(Some(s)) => Ok(Some(SendSlice(s))),
-                        Ok(None) => Ok(None),
-                        Err(e) => Err(e),
-                    }
-                }
-            }
-
-            pub struct SendSlice<'a, T>(super::SendSlice<'a, T, $B>);
-
-            impl<'a, T> SendSlice<'a, T> {
-                #[inline]
-                pub fn push(&mut self, value: T) -> Result<(), PushError<T>> {
-                    self.0.push(value)
-                }
-
-                #[inline]
-                pub fn capacity(&self) -> usize {
-                    self.0.capacity()
-                }
-            }
-        }
-
-        pub(super) fn $name<T>(state: State<T, $B>) -> $name::Sender<T> {
-            $name::Sender(Sender(state))
-        }
-    };
-}
-
-impl_send!(ring, Ring);
-impl_send!(double_ring, DoubleRing);
-
-pub struct Sender<T, B: Behavior>(pub(super) State<T, B>);
-
-impl<T, B: Behavior> Sender<T, B> {
+impl<T> Sender<T> {
     /*
     pub async fn slice(&mut self) -> Result<SendSlice<T>> {
         poll_fn(|cx| self.poll_slice(cx))
@@ -69,7 +18,7 @@ impl<T, B: Behavior> Sender<T, B> {
     */
 
     #[inline]
-    pub fn poll_slice(&mut self, cx: &mut Context) -> Poll<Result<SendSlice<T, B>>> {
+    pub fn poll_slice(&mut self, cx: &mut Context) -> Poll<Result<SendSlice<T>>> {
         macro_rules! acquire_capacity {
             () => {
                 match self.0.acquire_capacity() {
@@ -101,7 +50,7 @@ impl<T, B: Behavior> Sender<T, B> {
     }
 
     #[inline]
-    pub fn try_slice(&mut self) -> Result<Option<SendSlice<T, B>>> {
+    pub fn try_slice(&mut self) -> Result<Option<SendSlice<T>>> {
         Ok(if self.0.acquire_capacity()? {
             let cursor = self.0.cursor;
             Some(SendSlice(&mut self.0, cursor))
@@ -111,7 +60,7 @@ impl<T, B: Behavior> Sender<T, B> {
     }
 }
 
-impl<T, B: Behavior> Drop for Sender<T, B> {
+impl<T> Drop for Sender<T> {
     #[inline]
     fn drop(&mut self) {
         if self.0.try_close() {
@@ -120,9 +69,9 @@ impl<T, B: Behavior> Drop for Sender<T, B> {
     }
 }
 
-pub struct SendSlice<'a, T, B: Behavior>(&'a mut State<T, B>, Cursor);
+pub struct SendSlice<'a, T>(&'a mut State<T>, Cursor);
 
-impl<'a, T, B: Behavior> SendSlice<'a, T, B> {
+impl<'a, T> SendSlice<'a, T> {
     #[inline]
     pub fn push(&mut self, value: T) -> Result<(), PushError<T>> {
         if self.0.cursor.is_full() && !self.0.acquire_capacity()? {
@@ -146,7 +95,7 @@ impl<'a, T, B: Behavior> SendSlice<'a, T, B> {
     }
 }
 
-impl<'a, T, B: Behavior> Drop for SendSlice<'a, T, B> {
+impl<'a, T> Drop for SendSlice<'a, T> {
     #[inline]
     fn drop(&mut self) {
         self.0.persist_tail(self.1);

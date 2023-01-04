@@ -112,77 +112,27 @@ impl Cursor {
     }
 }
 
-pub struct Ring;
-
-impl Behavior for Ring {}
-
-pub struct DoubleRing;
-
-impl Behavior for DoubleRing {
-    #[inline]
-    fn header_capacity(capacity: usize) -> usize {
-        capacity * 2
-    }
-
-    #[inline]
-    fn replicate_tail<T>(prev: &Cursor, state: &State<T, Self>) {
-        let (front_filled, _) = state.as_pairs();
-        let back = unsafe {
-            let capacity = state.cursor.capacity;
-            let ptr = state.data_ptr().add(capacity);
-            core::slice::from_raw_parts(ptr, capacity)
-        };
-        let (back_filled, _) = state.data_to_pairs(back);
-
-        let mut skip = prev.recv_len();
-        let len = prev.distance(prev.tail, state.cursor.tail);
-
-        if len == state.cursor.capacity {
-            skip = 0;
-        }
-
-        unsafe {
-            front_filled.replicate_to(back_filled, skip, len);
-        }
-    }
-}
-
-pub trait Behavior: Sized {
-    #[inline]
-    fn header_capacity(capacity: usize) -> usize {
-        capacity
-    }
-
-    #[inline]
-    fn replicate_tail<T>(prev: &Cursor, state: &State<T, Self>) {
-        let _ = prev;
-        let _ = state;
-    }
-}
-
 #[derive(Debug)]
-pub struct State<T, B> {
+pub struct State<T> {
     header: NonNull<Header<T>>,
     pub cursor: Cursor,
-    behavior: PhantomData<B>,
 }
 
-unsafe impl<T: Send, B> Send for State<T, B> {}
-unsafe impl<T: Sync, B> Sync for State<T, B> {}
-impl<T: RefUnwindSafe, B> UnwindSafe for State<T, B> {}
+unsafe impl<T: Send> Send for State<T> {}
+unsafe impl<T: Sync> Sync for State<T> {}
+impl<T: RefUnwindSafe> UnwindSafe for State<T> {}
 
-impl<T, B> Clone for State<T, B> {
+impl<T> Clone for State<T> {
     #[inline]
     fn clone(&self) -> Self {
         Self {
             header: self.header,
             cursor: self.cursor,
-            behavior: PhantomData,
         }
     }
 }
 
-impl<T, B> Deref for State<T, B> {
+impl<T> Deref for State<T> {
     type Target = Header<T>;
 
     #[inline]
@@ -191,18 +141,12 @@ impl<T, B> Deref for State<T, B> {
     }
 }
 
-impl<T, B: Behavior> State<T, B> {
+impl<T> State<T> {
     #[inline]
     pub fn new(capacity: usize) -> Self {
-        // double the capacity of the header so we can return contiguous regions
-        let header_capacity = B::header_capacity(capacity);
-        let header = Header::alloc(header_capacity).expect("could not allocate channel");
+        let header = Header::alloc(capacity).expect("could not allocate channel");
         let cursor = Cursor::new(capacity);
-        Self {
-            header,
-            cursor,
-            behavior: PhantomData,
-        }
+        Self { header, cursor }
     }
 
     #[inline]
@@ -259,8 +203,6 @@ impl<T, B: Behavior> State<T, B> {
             return;
         }
 
-        B::replicate_tail(&prev, self);
-
         self.tail.store(self.cursor.tail, Ordering::Release);
     }
 
@@ -277,7 +219,7 @@ impl<T, B: Behavior> State<T, B> {
     #[inline]
     fn data_ptr(&self) -> *const Cell<T> {
         unsafe {
-            let capacity = B::header_capacity(self.cursor.capacity);
+            let capacity = self.cursor.capacity;
             let (_, offset) = Header::<T>::layout_unchecked(capacity);
 
             let ptr = self.header.as_ptr() as *const u8;
@@ -367,30 +309,9 @@ impl<T, B: Behavior> State<T, B> {
 
         // free the header
         let ptr = self.header.as_ptr() as *mut u8;
-        let capacity = B::header_capacity(self.cursor.capacity);
+        let capacity = self.cursor.capacity;
         let (layout, _offset) = Header::<T>::layout_unchecked(capacity);
         alloc::alloc::dealloc(ptr, layout)
-    }
-}
-
-impl<T> State<T, DoubleRing> {
-    #[inline]
-    pub fn as_slices(&self) -> (Slice<Cell<T>>, Slice<Cell<T>>) {
-        let data = self.data();
-
-        if self.cursor.is_full() {
-            let head = self.cursor.wrapped_head();
-            let filled = Slice(unsafe { data.get_unchecked(head..) });
-            let unfilled = Slice(&[]);
-            return (filled, unfilled);
-        }
-
-        let head = self.cursor.wrapped_head();
-        let tail = self.cursor.wrapped_tail();
-
-        let filled = Slice(unsafe { data.get_unchecked(head..tail) });
-        let unfilled = Slice(unsafe { data.get_unchecked(tail..) });
-        (filled, unfilled)
     }
 }
 

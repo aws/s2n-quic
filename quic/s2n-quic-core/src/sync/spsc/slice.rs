@@ -139,29 +139,6 @@ impl<'a, T> Pair<Slice<'a, Cell<T>>> {
     pub fn iter(&self) -> impl Iterator<Item = &Cell<T>> {
         self.head.0.iter().chain(self.tail.0)
     }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.head.0.len() + self.tail.0.len()
-    }
-
-    #[inline]
-    pub unsafe fn replicate_to(&self, other: Self, skip: usize, len: usize) {
-        unsafe_assert!(self.head.len() == other.head.len());
-        unsafe_assert!(self.tail.len() == other.tail.len());
-        unsafe_assert!(len > 0);
-        unsafe_assert!(
-            self.len() >= len + skip,
-            "self.len={}, len={}, skip={}",
-            self.len(),
-            len,
-            skip
-        );
-
-        for index in skip..skip + len {
-            self.cell(index).replicate_to(other.cell(index));
-        }
-    }
 }
 
 impl<'a, T> Pair<Slice<'a, UnsafeCell<T>>> {
