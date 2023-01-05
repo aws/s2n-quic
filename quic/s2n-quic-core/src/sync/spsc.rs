@@ -33,8 +33,8 @@ pub use send::{SendSlice, Sender};
 #[inline]
 pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
     let state = State::new(capacity);
-    let sender = send::Sender(state.clone());
-    let receiver = recv::Receiver(state);
+    let sender = Sender(state.clone());
+    let receiver = Receiver(state);
     (sender, receiver)
 }
 

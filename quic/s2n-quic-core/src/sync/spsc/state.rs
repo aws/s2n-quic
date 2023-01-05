@@ -4,7 +4,9 @@
 use super::{Cell, ClosedError, Result, Slice};
 use alloc::alloc::Layout;
 use atomic_waker::AtomicWaker;
+use cache_padded::CachePadded;
 use core::{
+    fmt,
     marker::PhantomData,
     ops::Deref,
     panic::{RefUnwindSafe, UnwindSafe},
@@ -14,11 +16,27 @@ use core::{
 
 type Pair<'a, T> = super::Pair<Slice<'a, Cell<T>>>;
 
-#[derive(Clone, Copy, Debug)]
+const MINIMUM_CAPACITY: usize = 2;
+
+#[derive(Clone, Copy)]
 pub struct Cursor {
     head: usize,
     tail: usize,
     capacity: usize,
+}
+
+impl fmt::Debug for Cursor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Cursor")
+            .field("head", &self.head)
+            .field("tail", &self.tail)
+            .field("len", &self.len())
+            .field("capacity", &self.capacity())
+            .field("is_empty", &self.is_empty())
+            .field("is_full", &self.is_full())
+            .field("is_contiguous", &self.is_contiguous())
+            .finish()
+    }
 }
 
 impl Cursor {
@@ -32,84 +50,109 @@ impl Cursor {
     }
 
     #[inline]
+    fn invariants(&self) {
+        unsafe {
+            unsafe_assert!(self.capacity >= MINIMUM_CAPACITY);
+            unsafe_assert!(self.head < self.capacity);
+            unsafe_assert!(self.tail < self.capacity);
+            let len = count(self.head, self.tail, self.capacity);
+            unsafe_assert!(len < self.capacity);
+        }
+    }
+
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.invariants();
+        self.capacity - 1
+    }
+
+    #[inline]
+    fn cap(&self) -> usize {
+        self.invariants();
+        self.capacity
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.invariants();
+        count(self.head, self.tail, self.cap())
+    }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
-        self.head == self.tail
+        self.invariants();
+        self.tail == self.head
     }
 
     #[inline]
     pub fn is_full(&self) -> bool {
-        self.recv_len() == self.capacity
+        self.invariants();
+        count(self.tail, self.head, self.cap()) == 1
     }
 
     #[inline]
     pub fn recv_len(&self) -> usize {
-        self.distance(self.head, self.tail)
+        self.invariants();
+        self.len()
     }
 
     #[inline]
     pub fn send_capacity(&self) -> usize {
-        self.capacity - self.recv_len()
+        self.invariants();
+        self.capacity() - self.recv_len()
     }
 
     #[inline]
-    pub fn increment_head(&mut self, len: usize) {
-        self.head = self.increment(self.head, len);
-    }
-
-    #[inline]
-    pub fn increment_tail(&mut self, len: usize) {
-        self.tail = self.increment(self.tail, len);
-    }
-
-    #[inline]
-    fn wrapped_head(&self) -> usize {
-        self.collapse_position(self.head)
-    }
-
-    #[inline]
-    fn wrapped_tail(&self) -> usize {
-        self.collapse_position(self.tail)
-    }
-
-    /// Returns the distance between two positions.
-    #[inline]
-    fn distance(&self, a: usize, b: usize) -> usize {
+    pub fn increment_head(&mut self, n: usize) {
+        self.invariants();
         unsafe {
-            unsafe_assert!(a == 0 || a < 2 * self.capacity);
-            unsafe_assert!(b == 0 || b < 2 * self.capacity);
+            unsafe_assert!(n <= self.capacity());
         }
-        if a <= b {
-            b - a
-        } else {
-            2 * self.capacity - a + b
-        }
+        self.head = self.wrap_add(self.head, n);
+        self.invariants();
     }
 
     #[inline]
-    fn increment(&self, pos: usize, n: usize) -> usize {
+    pub fn increment_tail(&mut self, n: usize) {
+        self.invariants();
         unsafe {
-            unsafe_assert!(pos == 0 || pos < 2 * self.capacity);
-            unsafe_assert!(n <= self.capacity);
+            unsafe_assert!(n <= self.capacity());
         }
-        let threshold = 2 * self.capacity - n;
-        if pos < threshold {
-            pos + n
-        } else {
-            pos - threshold
-        }
+        self.tail = self.wrap_add(self.tail, n);
+        self.invariants();
     }
 
     #[inline]
-    fn collapse_position(&self, pos: usize) -> usize {
-        unsafe {
-            unsafe_assert!(pos == 0 || pos < 2 * self.capacity);
-        }
-        if pos < self.capacity {
-            pos
-        } else {
-            pos - self.capacity
-        }
+    fn wrap_add(&self, idx: usize, addend: usize) -> usize {
+        wrap_index(idx.wrapping_add(addend), self.cap())
     }
+
+    #[inline]
+    fn is_contiguous(&self) -> bool {
+        self.tail >= self.head
+    }
+}
+
+/// Returns the index in the underlying buffer for a given logical element index.
+#[inline]
+fn wrap_index(index: usize, size: usize) -> usize {
+    // size is always a power of 2
+    unsafe {
+        unsafe_assert!(size.is_power_of_two());
+        unsafe_assert!(size >= MINIMUM_CAPACITY);
+    }
+    index & (size - 1)
+}
+
+/// Calculate the number of elements left to be read in the buffer
+#[inline]
+fn count(head: usize, tail: usize, size: usize) -> usize {
+    // size is always a power of 2
+    unsafe {
+        unsafe_assert!(size.is_power_of_two());
+        unsafe_assert!(size >= MINIMUM_CAPACITY);
+    }
+    (tail.wrapping_sub(head)) & (size - 1)
 }
 
 #[derive(Debug)]
@@ -144,6 +187,7 @@ impl<T> Deref for State<T> {
 impl<T> State<T> {
     #[inline]
     pub fn new(capacity: usize) -> Self {
+        let capacity = core::cmp::max(capacity + 1, MINIMUM_CAPACITY).next_power_of_two();
         let header = Header::alloc(capacity).expect("could not allocate channel");
         let cursor = Cursor::new(capacity);
         Self { header, cursor }
@@ -187,30 +231,33 @@ impl<T> State<T> {
     }
 
     #[inline]
-    pub fn persist_head(&self, prev: Cursor) {
+    pub fn persist_head(&self, prev: Cursor) -> bool {
         // nothing changed
         if prev.head == self.cursor.head {
-            return;
+            return false;
         }
 
         self.head.store(self.cursor.head, Ordering::Release);
+
+        true
     }
 
     #[inline]
-    pub fn persist_tail(&self, prev: Cursor) {
+    pub fn persist_tail(&self, prev: Cursor) -> bool {
         // nothing changed
         if prev.tail == self.cursor.tail {
-            return;
+            return false;
         }
 
         self.tail.store(self.cursor.tail, Ordering::Release);
+
+        true
     }
 
     #[inline]
     fn data(&self) -> &[Cell<T>] {
         unsafe {
             let ptr = self.data_ptr();
-            // we don't multiply the capacity here for simplicity
             let capacity = self.cursor.capacity;
             core::slice::from_raw_parts(ptr, capacity)
         }
@@ -247,27 +294,20 @@ impl<T> State<T> {
 
     #[inline]
     fn data_to_pairs<'a>(&self, data: &'a [Cell<T>]) -> (Pair<'a, T>, Pair<'a, T>) {
-        if self.cursor.is_full() {
-            let head = self.cursor.wrapped_head();
-            let (filled_tail, filled_head) = data.split_at(head);
-            let filled = Pair {
-                head: Slice(filled_head),
-                tail: Slice(filled_tail),
-            };
-            let unfilled = Pair {
-                head: Slice(&[]),
-                tail: Slice(&[]),
-            };
-            return (filled, unfilled);
-        }
+        self.cursor.invariants();
 
-        let head = self.cursor.wrapped_head();
-        let tail = self.cursor.wrapped_tail();
+        let head = self.cursor.head;
+        let tail = self.cursor.tail;
 
-        let is_contiguous = tail >= head;
-
-        if is_contiguous {
+        let (filled, unfilled) = if self.cursor.is_contiguous() {
+            unsafe {
+                unsafe_assert!(data.len() >= tail);
+            }
             let (data, unfilled_head) = data.split_at(tail);
+
+            unsafe {
+                unsafe_assert!(data.len() >= head);
+            }
             let (unfilled_tail, filled_head) = data.split_at(head);
 
             let filled = Pair {
@@ -280,7 +320,14 @@ impl<T> State<T> {
             };
             (filled, unfilled)
         } else {
+            unsafe {
+                unsafe_assert!(data.len() >= head);
+            }
             let (data, filled_head) = data.split_at(head);
+
+            unsafe {
+                unsafe_assert!(data.len() >= tail);
+            }
             let (filled_tail, unfilled_head) = data.split_at(tail);
 
             let filled = Pair {
@@ -292,7 +339,19 @@ impl<T> State<T> {
                 tail: Slice(&[]),
             };
             (filled, unfilled)
+        };
+
+        unsafe {
+            unsafe_assert!(
+                filled.len() == self.cursor.recv_len(),
+                "filled mismatch {} == {}\n{:?}",
+                filled.len(),
+                self.cursor.recv_len(),
+                self.cursor
+            );
         }
+
+        (filled, unfilled)
     }
 
     #[inline]
@@ -317,11 +376,11 @@ impl<T> State<T> {
 
 #[derive(Debug)]
 pub struct Header<T> {
-    head: AtomicUsize,
+    head: CachePadded<AtomicUsize>,
+    tail: CachePadded<AtomicUsize>,
+    open: CachePadded<AtomicBool>,
     pub receiver: AtomicWaker,
-    tail: AtomicUsize,
     pub sender: AtomicWaker,
-    open: AtomicBool,
     data: PhantomData<T>,
 }
 
@@ -342,11 +401,11 @@ impl<T> Header<T> {
     #[inline]
     const fn new() -> Self {
         Self {
-            head: AtomicUsize::new(0),
-            tail: AtomicUsize::new(0),
+            head: CachePadded::new(AtomicUsize::new(0)),
+            tail: CachePadded::new(AtomicUsize::new(0)),
             sender: AtomicWaker::new(),
             receiver: AtomicWaker::new(),
-            open: AtomicBool::new(true),
+            open: CachePadded::new(AtomicBool::new(true)),
             data: PhantomData,
         }
     }

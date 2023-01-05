@@ -17,6 +17,10 @@ impl<T> Sender<T> {
     }
     */
 
+    pub fn capacity(&self) -> usize {
+        self.0.cursor.capacity()
+    }
+
     #[inline]
     pub fn poll_slice(&mut self, cx: &mut Context) -> Poll<Result<SendSlice<T>>> {
         macro_rules! acquire_capacity {
@@ -89,6 +93,30 @@ impl<'a, T> SendSlice<'a, T> {
         Ok(())
     }
 
+    pub fn extend<I: Iterator<Item = T>>(&mut self, iter: &mut I) -> Result<()> {
+        if self.0.acquire_capacity()? {
+            let (_, pair) = self.0.as_pairs();
+
+            let mut idx = 0;
+            let capacity = self.capacity();
+
+            while idx < capacity {
+                if let Some(value) = iter.next() {
+                    unsafe {
+                        pair.write(idx, value);
+                    }
+                    idx += 1;
+                } else {
+                    break;
+                }
+            }
+
+            self.0.cursor.increment_tail(idx);
+        }
+
+        Ok(())
+    }
+
     #[inline]
     pub fn capacity(&self) -> usize {
         self.0.cursor.send_capacity()
@@ -98,6 +126,8 @@ impl<'a, T> SendSlice<'a, T> {
 impl<'a, T> Drop for SendSlice<'a, T> {
     #[inline]
     fn drop(&mut self) {
-        self.0.persist_tail(self.1);
+        if self.0.persist_tail(self.1) {
+            self.0.receiver.wake();
+        }
     }
 }

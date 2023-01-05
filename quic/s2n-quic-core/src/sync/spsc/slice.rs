@@ -139,6 +139,11 @@ impl<'a, T> Pair<Slice<'a, Cell<T>>> {
     pub fn iter(&self) -> impl Iterator<Item = &Cell<T>> {
         self.head.0.iter().chain(self.tail.0)
     }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.head.len() + self.tail.len()
+    }
 }
 
 impl<'a, T> Pair<Slice<'a, UnsafeCell<T>>> {

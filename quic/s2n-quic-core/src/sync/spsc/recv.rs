@@ -7,6 +7,10 @@ use core::task::{Context, Poll};
 pub struct Receiver<T>(pub(super) State<T>);
 
 impl<T> Receiver<T> {
+    pub fn capacity(&self) -> usize {
+        self.0.cursor.capacity()
+    }
+
     #[inline]
     pub fn poll_slice(&mut self, cx: &mut Context) -> Poll<Result<RecvSlice<T>>> {
         macro_rules! acquire_filled {
@@ -64,6 +68,7 @@ pub struct RecvSlice<'a, T>(&'a mut State<T>, Cursor);
 impl<'a, T> RecvSlice<'a, T> {
     #[inline]
     pub fn peek(&mut self) -> (&mut [T], &mut [T]) {
+        let _ = self.0.acquire_filled();
         let (slice, _) = self.0.as_pairs();
         unsafe { slice.assume_init().into_mut() }
     }
@@ -81,6 +86,24 @@ impl<'a, T> RecvSlice<'a, T> {
     }
 
     #[inline]
+    pub fn clear(&mut self) -> usize {
+        // don't update the cursor so the caller can observe any updates through peek
+
+        let (pair, _) = self.0.as_pairs();
+        let len = pair.len();
+
+        for entry in pair.iter() {
+            unsafe {
+                let _ = entry.take();
+            }
+        }
+
+        self.0.cursor.increment_head(len);
+
+        len
+    }
+
+    #[inline]
     pub fn len(&self) -> usize {
         self.0.cursor.recv_len()
     }
@@ -94,6 +117,8 @@ impl<'a, T> RecvSlice<'a, T> {
 impl<'a, T> Drop for RecvSlice<'a, T> {
     #[inline]
     fn drop(&mut self) {
-        self.0.persist_head(self.1);
+        if self.0.persist_head(self.1) {
+            self.0.sender.wake();
+        }
     }
 }
