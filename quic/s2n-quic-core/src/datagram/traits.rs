@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use core::task::Waker;
+
 use crate::connection;
 
 /// The datagram endpoint trait provides a way to implement custom unreliable datagram
@@ -17,28 +19,30 @@ pub trait Endpoint: 'static + Send {
     fn max_datagram_frame_size(&self, info: &PreConnectionInfo) -> u64;
 }
 
-/// ConnectionInfo contains the peer's limit on the size of datagrams
-/// they accept
-///
-/// Sending a datagram larger than this will result in an error
+/// Information about the accepted connection for which the Sender/Receiver are being created.
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct ConnectionInfo {
+    /// The peer's limit on the size of datagrams they will accept. Datagrams larger than this will
+    /// result in an error.
     pub max_datagram_payload: u64,
+
+    /// The `waker` associated with this connection. When woken, the connection will check the
+    /// interest in sending ([`Sender::has_transmission_interest`]), and send packets if necessary.
+    ///
+    /// This is useful for applications that wish to enqueue packets with `Sender` without calling
+    /// `datagram_mut`, perhaps because they don't have an available handle to the connection when
+    /// enqueuing packets, or wish to avoid incurring the lock/unlock required by `datagram_mut`.
+    pub waker: Waker,
 }
 
 impl ConnectionInfo {
     #[doc(hidden)]
-    pub fn new(max_datagram_payload: u64) -> Self {
+    pub fn new(max_datagram_payload: u64, waker: Waker) -> Self {
         ConnectionInfo {
             max_datagram_payload,
+            waker,
         }
-    }
-}
-
-impl Default for ConnectionInfo {
-    fn default() -> Self {
-        ConnectionInfo::new(0)
     }
 }
 
@@ -49,14 +53,9 @@ pub struct PreConnectionInfo(());
 
 impl PreConnectionInfo {
     #[doc(hidden)]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         PreConnectionInfo(())
-    }
-}
-
-impl Default for PreConnectionInfo {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

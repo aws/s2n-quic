@@ -554,12 +554,13 @@ mod tests {
     use super::*;
     use crate::datagram::WriteError;
     use core::task::{Context, Poll};
-    use futures_test::task::new_count_waker;
+    use futures_test::task::{new_count_waker, noop_waker};
 
     #[test]
     fn send_datagram_forced() {
         let conn_info = ConnectionInfo {
             max_datagram_payload: 100,
+            waker: noop_waker(),
         };
         // Create a default sender queue that only holds two elements
         let mut default_sender = Sender::builder()
@@ -598,6 +599,7 @@ mod tests {
     fn send_datagram() {
         let conn_info = ConnectionInfo {
             max_datagram_payload: 100,
+            waker: noop_waker(),
         };
         // Create a default sender queue that only holds two elements
         let mut default_sender = Sender::builder()
@@ -636,7 +638,7 @@ mod tests {
 
     #[test]
     fn poll_send_datagram() {
-        let conn_info = ConnectionInfo::new(100);
+        let conn_info = ConnectionInfo::new(100, noop_waker());
         let mut default_sender = Sender::builder()
             .with_capacity(2)
             .with_connection_info(&conn_info)
@@ -708,6 +710,7 @@ mod tests {
     fn retain_datagrams() {
         let conn_info = ConnectionInfo {
             max_datagram_payload: 100,
+            waker: noop_waker(),
         };
         let mut default_sender = Sender::builder()
             .with_capacity(3)
@@ -752,7 +755,7 @@ mod tests {
     // Check that our default on_transmit function doesn't continue to pop datagrams
     // off the send queue if the remaining packet space is too small to send datagrams.
     fn has_written_test() {
-        let conn_info = ConnectionInfo::new(100);
+        let conn_info = ConnectionInfo::new(100, noop_waker());
         let mut default_sender = Sender::builder()
             .with_connection_info(&conn_info)
             .build()

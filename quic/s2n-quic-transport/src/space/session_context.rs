@@ -399,7 +399,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.limits.max_keep_alive_period(),
         );
 
-        let conn_info = ConnectionInfo::new(datagram_limits.max_datagram_payload);
+        let conn_info =
+            ConnectionInfo::new(datagram_limits.max_datagram_payload, self.waker.clone());
         let (datagram_sender, datagram_receiver) = self.datagram.create_connection(&conn_info);
         let datagram_manager = datagram::Manager::new(
             datagram_sender,
