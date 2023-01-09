@@ -1,0 +1,17 @@
+[package]
+name = "rustls-mtls"
+version = "0.1.0"
+edition = "2021"
+authors = ["Rick Richardson <rick.richardson@gmail.com>"]
+
+[dependencies]
+# Remove the `provider-tls-default` feature and add `provider-tls-rustls`
+s2n-quic = { version = "1", path = "../../quic/s2n-quic", default-features = false, features = ["provider-address-token-default", "provider-tls-rustls"] }
+rustls-pemfile = "1"
+rustls = "0.20"
+s2n-quic-rustls = { version = "0.15", path = "../../quic/s2n-quic-rustls" }
+tokio = { version = "1", features = ["full"] }
+
+[workspace]
+members = ["."]
+
