@@ -1,12 +1,12 @@
 use rustls::{
-    cipher_suite as ciphers, quic, CipherSuite, ClientConfig, Error, RootCertStore, ServerConfig,
-    SupportedCipherSuite,
+    cipher_suite as ciphers, ClientConfig, Error, RootCertStore, ServerConfig, SupportedCipherSuite,
 };
 use s2n_quic::provider::tls;
 use s2n_quic_rustls::{Client, Server};
-use std::io::{BufReader, Cursor, Read};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{
+    io::{BufReader, Cursor, Read},
+    path::Path,
+};
 
 static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
 

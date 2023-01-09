@@ -4,7 +4,6 @@
 use rustls_mtls::MtlsProvider;
 use s2n_quic::{client::Connect, Client};
 use std::{error::Error, net::SocketAddr};
-use tokio;
 
 /// NOTE: this certificate is to be used for demonstration purposes only!
 pub static CACERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/ca.pem");
