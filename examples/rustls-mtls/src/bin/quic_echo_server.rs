@@ -12,7 +12,7 @@ pub static MY_KEY_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/server
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let provider = MtlsProvider::new(CACERT_PEM, MY_CERT_PEM, MY_KEY_PEM)?;
+    let provider = MtlsProvider::new(CACERT_PEM, MY_CERT_PEM, MY_KEY_PEM).await?;
     let mut server = Server::builder()
         .with_tls(provider)?
         .with_io("127.0.0.1:4433")?

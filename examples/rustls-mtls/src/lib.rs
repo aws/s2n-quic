@@ -1,19 +1,23 @@
 use rustls::{
-    cipher_suite as ciphers, ClientConfig, Error, RootCertStore, ServerConfig, SupportedCipherSuite,
+    cipher_suite, ClientConfig, Error, RootCertStore, ServerConfig, SupportedCipherSuite,
 };
 use s2n_quic::provider::tls;
-use s2n_quic_rustls::{Client, Server};
+use s2n_quic_rustls::{rustls, Client, Server};
 use std::{
-    io::{BufReader, Cursor, Read},
+    io::{BufReader, Cursor},
     path::Path,
+};
+use tokio::{
+    fs::File,
+    io::{AsyncRead, AsyncReadExt},
 };
 
 static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
 
 pub static DEFAULT_CIPHERSUITES: &[SupportedCipherSuite] = &[
-    ciphers::TLS13_AES_128_GCM_SHA256,
-    ciphers::TLS13_AES_256_GCM_SHA384,
-    ciphers::TLS13_CHACHA20_POLY1305_SHA256,
+    cipher_suite::TLS13_AES_128_GCM_SHA256,
+    cipher_suite::TLS13_AES_256_GCM_SHA384,
+    cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
 ];
 
 pub struct MtlsProvider {
@@ -57,14 +61,14 @@ impl tls::Provider for MtlsProvider {
 }
 
 impl MtlsProvider {
-    pub fn new<A: AsRef<Path>, B: AsRef<Path>, C: AsRef<Path>>(
+    pub async fn new<A: AsRef<Path>, B: AsRef<Path>, C: AsRef<Path>>(
         ca_cert_pem: A,
         my_cert_pem: B,
         my_key_pem: C,
     ) -> Result<Self, Error> {
-        let root_store = into_root_store(ca_cert_pem.as_ref())?;
-        let cert_chain = into_certificate(my_cert_pem.as_ref())?;
-        let private_key = into_private_key(my_key_pem.as_ref())?;
+        let root_store = into_root_store(ca_cert_pem.as_ref()).await?;
+        let cert_chain = into_certificate(my_cert_pem.as_ref()).await?;
+        let private_key = into_private_key(my_key_pem.as_ref()).await?;
         Ok(MtlsProvider {
             root_store,
             my_cert_chain: cert_chain.into_iter().map(rustls::Certificate).collect(),
@@ -73,29 +77,35 @@ impl MtlsProvider {
     }
 }
 
-fn into_certificate(path: &Path) -> Result<Vec<Vec<u8>>, Error> {
-    let mut rdr = BufReader::new(
-        std::fs::File::open(path)
-            .map_err(|e| Error::General(format!("Failed to load file: {}", e)))?,
-    );
-    let certs = rustls_pemfile::certs(&mut rdr)
+async fn into_certificate(path: &Path) -> Result<Vec<Vec<u8>>, Error> {
+    let mut f = File::open(path)
+        .await
+        .map_err(|e| Error::General(format!("Failed to load file: {}", e)))?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf)
+        .await
+        .map_err(|e| Error::General(format!("Failed to read file: {}", e)))?;
+    let mut cursor = Cursor::new(buf);
+    let certs = rustls_pemfile::certs(&mut cursor)
         .map(|certs| certs.into_iter().collect())
         .map_err(|_| Error::General("Could not read certificate".to_string()))?;
     Ok(certs)
 }
 
-fn into_root_store(path: &Path) -> Result<RootCertStore, Error> {
-    let ca_certs = into_certificate(path)?;
+async fn into_root_store(path: &Path) -> Result<RootCertStore, Error> {
+    let ca_certs = into_certificate(path).await?;
     let mut cert_store = RootCertStore::empty();
     cert_store.add_parsable_certificates(ca_certs.as_slice());
     Ok(cert_store)
 }
 
-fn into_private_key(path: &Path) -> Result<Vec<u8>, Error> {
-    let mut f = std::fs::File::open(path)
+async fn into_private_key(path: &Path) -> Result<Vec<u8>, Error> {
+    let mut f = File::open(path)
+        .await
         .map_err(|e| Error::General(format!("Failed to load file: {}", e)))?;
     let mut buf = Vec::new();
     f.read_to_end(&mut buf)
+        .await
         .map_err(|e| Error::General(format!("Failed to read file: {}", e)))?;
     let mut cursor = Cursor::new(buf);
 
