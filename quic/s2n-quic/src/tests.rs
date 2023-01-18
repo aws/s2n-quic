@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::provider::event::{events::PacketSent, ConnectionInfo, ConnectionMeta, Subscriber};
 use crate::{
     client::Connect,
     provider::{
@@ -10,11 +11,16 @@ use crate::{
     },
     Server,
 };
-use std::time::Duration;
+use std::net::SocketAddr;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 mod setup;
 use bytes::Bytes;
-use s2n_quic_platform::io::testing::primary;
+use s2n_quic_platform::io::testing::network::Packet;
+use s2n_quic_platform::io::testing::{primary, TxRecorder};
 use setup::*;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -290,4 +296,84 @@ fn local_stream_open_notify_test() {
         Ok(())
     })
     .unwrap();
+}
+
+pub struct PacketSentSubscriber {
+    pub packet_sent: Arc<Mutex<Vec<PacketSent>>>,
+}
+
+pub struct PacketSentContext {
+    packet_sent: Arc<Mutex<Vec<PacketSent>>>,
+}
+
+impl Subscriber for PacketSentSubscriber {
+    type ConnectionContext = PacketSentContext;
+
+    fn create_connection_context(
+        &mut self,
+        _meta: &ConnectionMeta,
+        _info: &ConnectionInfo,
+    ) -> Self::ConnectionContext {
+        PacketSentContext {
+            packet_sent: Arc::clone(&self.packet_sent),
+        }
+    }
+
+    fn on_packet_sent(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &ConnectionMeta,
+        event: &PacketSent,
+    ) {
+        let mut buffer = context.packet_sent.lock().unwrap();
+        buffer.push(event.clone());
+    }
+}
+
+#[test]
+fn packet_sent_event_test() {
+    let recorder = TxRecorder::default();
+    let network_packets = recorder.get_packets();
+    let subscriber = PacketSentSubscriber {
+        packet_sent: Arc::new(Mutex::new(Vec::new())),
+    };
+    let events = Arc::clone(&subscriber.packet_sent);
+    let mut server_socket = None;
+    test((recorder, Model::default()), |handle| {
+        let addr = server_with_subscriber(handle, subscriber)?;
+        server_socket = Some(addr.clone());
+        client(handle, addr)?;
+        Ok(addr)
+    })
+    .unwrap();
+
+    let server_socket = server_socket.unwrap();
+    let mut events = events.lock().unwrap();
+    let mut server_tx_network_packets: Vec<Packet> = network_packets
+        .lock()
+        .unwrap()
+        .iter()
+        .cloned()
+        .filter(|p| {
+            let local_socket: SocketAddr = p.path.local_address.0.into();
+            local_socket == server_socket
+        })
+        .collect();
+
+    // tranmitted quic packets may be coalesced into a single datagram (network packet)
+    // so it might be the case that network_packet[0] = quic_packet[0] + quic_packet[1]
+    let mut event_len_sum = 0;
+    while !server_tx_network_packets.is_empty() && !events.is_empty() {
+        let tx_packet_len = server_tx_network_packets.last().unwrap().payload.len();
+        let packet_sent_len =  events.last().unwrap().packet_len;
+        if tx_packet_len == packet_sent_len + event_len_sum
+        {
+            server_tx_network_packets.pop();
+            events.pop();
+            event_len_sum = 0;
+        } else {
+            event_len_sum += events.pop().unwrap().packet_len;
+        }
+    }
+    assert_eq!(event_len_sum, 0);
 }

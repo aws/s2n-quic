@@ -28,6 +28,15 @@ pub trait Network {
     fn execute(&mut self, buffers: &Buffers) -> usize;
 }
 
+impl<A: Network, B: Network> Network for (A, B) {
+    fn execute(&mut self, buffers: &Buffers) -> usize {
+        let mut result = 0;
+        result += self.0.execute(buffers);
+        result += self.1.execute(buffers);
+        result
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Buffers {
     inner: Arc<Mutex<State>>,
@@ -76,7 +85,16 @@ impl Buffers {
         }
     }
 
-    pub fn pending_transmissions<F: FnMut(Packet) -> Result<(), ()>>(&self, mut f: F) {
+    pub fn pending_transmission<F: FnMut(&Packet)>(&self, mut f: F) {
+        let lock = self.inner.lock().unwrap();
+        for (_addr, queue) in &lock.tx {
+            for packet in &queue.packets {
+                f(packet);
+            }
+        }
+    }
+
+    pub fn drain_pending_transmissions<F: FnMut(Packet) -> Result<(), ()>>(&self, mut f: F) {
         let mut lock = self.inner.lock().unwrap();
 
         let mut queues = vec![];

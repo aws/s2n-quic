@@ -10,7 +10,7 @@ use crate::{
     Client, Server,
 };
 use rand::{Rng, RngCore};
-use s2n_quic_core::{crypto::tls::testing::certificates, havoc, stream::testing::Data};
+use s2n_quic_core::{crypto::tls::testing::certificates, havoc, stream::testing::Data, event::Subscriber};
 use std::net::SocketAddr;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
@@ -69,6 +69,16 @@ pub fn server(handle: &Handle) -> Result<SocketAddr> {
             .with_io(io)?
             .with_tls(SERVER_CERTS)?
             .with_event(events())?
+            .start()?)
+    })
+}
+
+pub fn server_with_subscriber<S: Subscriber>(handle: &Handle, subscriber: S) -> Result<SocketAddr> {
+    server_with(handle, |io| {
+        Ok(Server::builder()
+            .with_io(io)?
+            .with_tls(SERVER_CERTS)?
+            .with_event(subscriber)?
             .start()?)
     })
 }
