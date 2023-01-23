@@ -359,7 +359,7 @@ fn packet_sent_event_test() {
         })
         .collect();
 
-    // tranmitted quic packets may be coalesced into a single datagram (network packet)
+    // transmitted quic packets may be coalesced into a single datagram (network packet)
     // so it might be the case that network_packet[0] = quic_packet[0] + quic_packet[1]
     while let Some(server_packet) = server_tx_network_packets.pop() {
         let expected_len = server_packet.payload.len();
