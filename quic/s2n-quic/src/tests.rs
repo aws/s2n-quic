@@ -1,26 +1,25 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::provider::event::{events::PacketSent, ConnectionInfo, ConnectionMeta, Subscriber};
 use crate::{
     client::Connect,
     provider::{
         self,
+        event::{events::PacketSent, ConnectionInfo, ConnectionMeta, Subscriber},
         io::testing::{rand, spawn, test, time::delay, Model},
         packet_interceptor::Loss,
     },
     Server,
 };
-use std::net::SocketAddr;
 use std::{
+    net::SocketAddr,
     sync::{Arc, Mutex},
     time::Duration,
 };
 
 mod setup;
 use bytes::Bytes;
-use s2n_quic_platform::io::testing::network::Packet;
-use s2n_quic_platform::io::testing::{primary, TxRecorder};
+use s2n_quic_platform::io::testing::{network::Packet, primary, TxRecorder};
 use setup::*;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -315,7 +314,7 @@ impl Subscriber for PacketSentSubscriber {
         _info: &ConnectionInfo,
     ) -> Self::ConnectionContext {
         PacketSentContext {
-            packet_sent: Arc::clone(&self.packet_sent),
+            packet_sent: self.packet_sent.clone(),
         }
     }
 
@@ -337,11 +336,11 @@ fn packet_sent_event_test() {
     let subscriber = PacketSentSubscriber {
         packet_sent: Arc::new(Mutex::new(Vec::new())),
     };
-    let events = Arc::clone(&subscriber.packet_sent);
+    let events = subscriber.packet_sent.clone();
     let mut server_socket = None;
     test((recorder, Model::default()), |handle| {
         let addr = server_with_subscriber(handle, subscriber)?;
-        server_socket = Some(addr.clone());
+        server_socket = Some(addr);
         client(handle, addr)?;
         Ok(addr)
     })
@@ -362,18 +361,15 @@ fn packet_sent_event_test() {
 
     // tranmitted quic packets may be coalesced into a single datagram (network packet)
     // so it might be the case that network_packet[0] = quic_packet[0] + quic_packet[1]
-    let mut event_len_sum = 0;
-    while !server_tx_network_packets.is_empty() && !events.is_empty() {
-        let tx_packet_len = server_tx_network_packets.last().unwrap().payload.len();
-        let packet_sent_len =  events.last().unwrap().packet_len;
-        if tx_packet_len == packet_sent_len + event_len_sum
-        {
-            server_tx_network_packets.pop();
-            events.pop();
-            event_len_sum = 0;
-        } else {
-            event_len_sum += events.pop().unwrap().packet_len;
+    while let Some(server_packet) = server_tx_network_packets.pop() {
+        let expected_len = server_packet.payload.len();
+
+        let mut event_len = 0;
+        while expected_len > event_len {
+            event_len += events.pop().unwrap().packet_len;
         }
+
+        assert_eq!(expected_len, event_len)
     }
-    assert_eq!(event_len_sum, 0);
+    assert!(events.is_empty());
 }

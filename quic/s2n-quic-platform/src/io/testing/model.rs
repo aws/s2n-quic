@@ -14,12 +14,12 @@ use std::{
 
 #[derive(Clone, Default)]
 pub struct TxRecorder {
-    packets: Arc<Mutex<Vec<Packet>>>
+    packets: Arc<Mutex<Vec<Packet>>>,
 }
 
 impl TxRecorder {
     pub fn get_packets(&self) -> Arc<Mutex<Vec<Packet>>> {
-        Arc::clone(&self.packets)
+        &self.packets.clone()
     }
 }
 

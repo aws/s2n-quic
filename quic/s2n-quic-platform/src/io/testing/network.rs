@@ -87,7 +87,7 @@ impl Buffers {
 
     pub fn pending_transmission<F: FnMut(&Packet)>(&self, mut f: F) {
         let lock = self.inner.lock().unwrap();
-        for (_addr, queue) in &lock.tx {
+        for queue in lock.tx.values() {
             for packet in &queue.packets {
                 f(packet);
             }

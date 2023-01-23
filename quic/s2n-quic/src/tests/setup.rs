@@ -10,7 +10,9 @@ use crate::{
     Client, Server,
 };
 use rand::{Rng, RngCore};
-use s2n_quic_core::{crypto::tls::testing::certificates, havoc, stream::testing::Data, event::Subscriber};
+use s2n_quic_core::{
+    crypto::tls::testing::certificates, event::Subscriber, havoc, stream::testing::Data,
+};
 use std::net::SocketAddr;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
