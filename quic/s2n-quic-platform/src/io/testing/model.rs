@@ -19,7 +19,7 @@ pub struct TxRecorder {
 
 impl TxRecorder {
     pub fn get_packets(&self) -> Arc<Mutex<Vec<Packet>>> {
-        &self.packets.clone()
+        self.packets.clone()
     }
 }
 
