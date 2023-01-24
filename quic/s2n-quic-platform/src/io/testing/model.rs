@@ -8,9 +8,30 @@ use std::{
     borrow::Cow,
     sync::{
         atomic::{AtomicU16, AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex,
     },
 };
+
+#[derive(Clone, Default)]
+pub struct TxRecorder {
+    packets: Arc<Mutex<Vec<Packet>>>,
+}
+
+impl TxRecorder {
+    pub fn get_packets(&self) -> Arc<Mutex<Vec<Packet>>> {
+        self.packets.clone()
+    }
+}
+
+impl Network for TxRecorder {
+    fn execute(&mut self, buffers: &Buffers) -> usize {
+        let mut packets = self.packets.lock().unwrap();
+        buffers.pending_transmission(|packet| {
+            packets.push(packet.clone());
+        });
+        0
+    }
+}
 
 #[derive(Clone, Default)]
 pub struct Model(Arc<State>);
@@ -298,7 +319,7 @@ impl Network for Model {
         };
 
         let mut transmission_count = 0;
-        buffers.pending_transmissions(|packet| {
+        buffers.drain_pending_transmissions(|packet| {
             // retransmit the packet until the rate fails or we retransmit 5
             //
             // We limit retransmissions to 5 just so we don't endlessly iterate when the

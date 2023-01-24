@@ -21,6 +21,7 @@ struct ServerNameInformation<'a> {
 /// Packet was sent by a connection
 struct PacketSent {
     packet_header: PacketHeader,
+    packet_len: usize,
 }
 
 #[event("transport:packet_received")]

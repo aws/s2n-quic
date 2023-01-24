@@ -563,6 +563,7 @@ pub mod api {
     #[doc = " Packet was sent by a connection"]
     pub struct PacketSent {
         pub packet_header: PacketHeader,
+        pub packet_len: usize,
     }
     impl Event for PacketSent {
         const NAME: &'static str = "transport:packet_sent";
@@ -1596,8 +1597,11 @@ pub mod tracing {
             event: &api::PacketSent,
         ) {
             let id = context.id();
-            let api::PacketSent { packet_header } = event;
-            tracing :: event ! (target : "packet_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+            let api::PacketSent {
+                packet_header,
+                packet_len,
+            } = event;
+            tracing :: event ! (target : "packet_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , packet_len = tracing :: field :: debug (packet_len));
         }
         #[inline]
         fn on_packet_received(
@@ -3262,13 +3266,18 @@ pub mod builder {
     #[doc = " Packet was sent by a connection"]
     pub struct PacketSent {
         pub packet_header: PacketHeader,
+        pub packet_len: usize,
     }
     impl IntoEvent<api::PacketSent> for PacketSent {
         #[inline]
         fn into_event(self) -> api::PacketSent {
-            let PacketSent { packet_header } = self;
+            let PacketSent {
+                packet_header,
+                packet_len,
+            } = self;
             api::PacketSent {
                 packet_header: packet_header.into_event(),
+                packet_len: packet_len.into_event(),
             }
         }
     }
