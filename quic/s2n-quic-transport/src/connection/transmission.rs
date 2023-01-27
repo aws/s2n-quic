@@ -88,7 +88,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
 
         // If a packet can be GSO'd it means it's limited to the previously written packet
         // size. We want to avoid sending several small packets and artificially clamping packets to
-        // less that a MTU.
+        // less than an MTU.
         segment_len >= self.context.path().mtu(self.context.transmission_mode)
     }
 
