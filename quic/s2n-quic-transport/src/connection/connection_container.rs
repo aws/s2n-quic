@@ -645,7 +645,7 @@ macro_rules! iterate_interruptible {
             }
 
             match result {
-                ConnectionContainerIterationResult::BreakAndInsertAtBack => {
+                ConnectionContainerIterationResult::BreakAndInsertAtFront => {
                     $sel.interest_lists
                         .$list_name
                         .front_mut()
@@ -1072,11 +1072,12 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
 /// The value instructs the iterator whether iteration will be continued.
 #[derive(Clone, Copy, Debug)]
 pub enum ConnectionContainerIterationResult {
-    /// Continue iteration over the list
+    /// Continue iteration over the list and insert the current connection
+    /// to the back
     Continue,
     /// Aborts the iteration over a list and add the remaining items at the
-    /// back of the list
-    BreakAndInsertAtBack,
+    /// front of the list
+    BreakAndInsertAtFront,
 }
 
 #[cfg(test)]
