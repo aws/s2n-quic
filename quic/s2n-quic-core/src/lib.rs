@@ -6,6 +6,30 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+/// Asserts that a boolean expression is true at runtime, only if debug_assertions are enabled.
+///
+/// Otherwise, the compiler is told to assume that the expression is always true and can perform
+/// additional optimizations.
+///
+/// # Safety
+///
+/// The caller _must_ ensure this condition is never possible, otherwise the compiler
+/// may optimize based on false assumptions and behave incorrectly.
+#[macro_export]
+macro_rules! assume {
+    ($cond:expr) => {
+        $crate::assume!($cond, "assumption failed: {}", stringify!($cond));
+    };
+    ($cond:expr $(, $fmtarg:expr)* $(,)?) => {
+        let v = $cond;
+
+        debug_assert!(v $(, $fmtarg)*);
+        if cfg!(not(debug_assertions)) && !v {
+            core::hint::unreachable_unchecked();
+        }
+    };
+}
+
 pub mod ack;
 pub mod application;
 #[cfg(feature = "alloc")]

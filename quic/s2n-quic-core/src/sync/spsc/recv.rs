@@ -7,8 +7,24 @@ use core::task::{Context, Poll};
 pub struct Receiver<T>(pub(super) State<T>);
 
 impl<T> Receiver<T> {
+    #[inline]
     pub fn capacity(&self) -> usize {
         self.0.cursor.capacity()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.cursor.recv_len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.cursor.is_empty()
+    }
+
+    #[inline]
+    pub fn is_full(&self) -> bool {
+        self.0.cursor.is_full()
     }
 
     #[inline]

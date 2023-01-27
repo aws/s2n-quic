@@ -4,7 +4,10 @@
 use crate::{aead::Aead, header_key::HeaderKey, iv};
 use ::ring::{aead, hkdf};
 use core::fmt;
-use s2n_quic_core::crypto::{label, CryptoError};
+use s2n_quic_core::{
+    assume,
+    crypto::{label, CryptoError},
+};
 use zeroize::{Zeroize, Zeroizing};
 
 mod negotiated;
@@ -141,7 +144,7 @@ macro_rules! impl_cipher_suite {
                         use core::convert::TryInto;
                         let res = (&tag[..]).try_into();
                         unsafe {
-                            unsafe_assert!(res.is_ok());
+                            assume!(res.is_ok());
                         }
                         res.unwrap()
                     };
@@ -170,7 +173,7 @@ macro_rules! impl_cipher_suite {
                         use core::convert::TryInto;
                         let res = tag.try_into();
                         unsafe {
-                            unsafe_assert!(res.is_ok());
+                            assume!(res.is_ok());
                         }
                         res.unwrap()
                     };

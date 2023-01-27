@@ -14,13 +14,7 @@ impl<T> Cell<T> {
 
     #[inline]
     pub unsafe fn take(&self) -> T {
-        self.0.assume_init_read().into_inner()
-    }
-
-    #[inline]
-    pub unsafe fn replicate_to(&self, dst: &Self) {
-        UnsafeCell::raw_get(self.0.as_ptr())
-            .copy_to_nonoverlapping(UnsafeCell::raw_get(dst.0.as_ptr()), 1)
+        self.0.assume_init_ref().get().read()
     }
 }
 
@@ -122,9 +116,9 @@ impl<'a, T> Pair<Slice<'a, Cell<T>>> {
         if let Some(cell) = self.head.0.get(index) {
             cell
         } else {
-            unsafe_assert!(index >= self.head.0.len());
+            assume!(index >= self.head.0.len());
             let index = index - self.head.0.len();
-            unsafe_assert!(
+            assume!(
                 self.tail.get(index).is_some(),
                 "head={}, tail={}, index={}",
                 self.head.0.len(),

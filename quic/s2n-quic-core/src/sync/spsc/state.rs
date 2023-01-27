@@ -52,11 +52,11 @@ impl Cursor {
     #[inline]
     fn invariants(&self) {
         unsafe {
-            unsafe_assert!(self.capacity >= MINIMUM_CAPACITY);
-            unsafe_assert!(self.head < self.capacity);
-            unsafe_assert!(self.tail < self.capacity);
+            assume!(self.capacity >= MINIMUM_CAPACITY);
+            assume!(self.head < self.capacity);
+            assume!(self.tail < self.capacity);
             let len = count(self.head, self.tail, self.capacity);
-            unsafe_assert!(len < self.capacity);
+            assume!(len < self.capacity);
         }
     }
 
@@ -106,7 +106,7 @@ impl Cursor {
     pub fn increment_head(&mut self, n: usize) {
         self.invariants();
         unsafe {
-            unsafe_assert!(n <= self.capacity());
+            assume!(n <= self.capacity());
         }
         self.head = self.wrap_add(self.head, n);
         self.invariants();
@@ -116,7 +116,7 @@ impl Cursor {
     pub fn increment_tail(&mut self, n: usize) {
         self.invariants();
         unsafe {
-            unsafe_assert!(n <= self.capacity());
+            assume!(n <= self.capacity());
         }
         self.tail = self.wrap_add(self.tail, n);
         self.invariants();
@@ -138,8 +138,8 @@ impl Cursor {
 fn wrap_index(index: usize, size: usize) -> usize {
     // size is always a power of 2
     unsafe {
-        unsafe_assert!(size.is_power_of_two());
-        unsafe_assert!(size >= MINIMUM_CAPACITY);
+        assume!(size.is_power_of_two());
+        assume!(size >= MINIMUM_CAPACITY);
     }
     index & (size - 1)
 }
@@ -149,8 +149,8 @@ fn wrap_index(index: usize, size: usize) -> usize {
 fn count(head: usize, tail: usize, size: usize) -> usize {
     // size is always a power of 2
     unsafe {
-        unsafe_assert!(size.is_power_of_two());
-        unsafe_assert!(size >= MINIMUM_CAPACITY);
+        assume!(size.is_power_of_two());
+        assume!(size >= MINIMUM_CAPACITY);
     }
     (tail.wrapping_sub(head)) & (size - 1)
 }
@@ -301,12 +301,12 @@ impl<T> State<T> {
 
         let (filled, unfilled) = if self.cursor.is_contiguous() {
             unsafe {
-                unsafe_assert!(data.len() >= tail);
+                assume!(data.len() >= tail);
             }
             let (data, unfilled_head) = data.split_at(tail);
 
             unsafe {
-                unsafe_assert!(data.len() >= head);
+                assume!(data.len() >= head);
             }
             let (unfilled_tail, filled_head) = data.split_at(head);
 
@@ -321,12 +321,12 @@ impl<T> State<T> {
             (filled, unfilled)
         } else {
             unsafe {
-                unsafe_assert!(data.len() >= head);
+                assume!(data.len() >= head);
             }
             let (data, filled_head) = data.split_at(head);
 
             unsafe {
-                unsafe_assert!(data.len() >= tail);
+                assume!(data.len() >= tail);
             }
             let (filled_tail, unfilled_head) = data.split_at(tail);
 
@@ -342,7 +342,7 @@ impl<T> State<T> {
         };
 
         unsafe {
-            unsafe_assert!(
+            assume!(
                 filled.len() == self.cursor.recv_len(),
                 "filled mismatch {} == {}\n{:?}",
                 filled.len(),

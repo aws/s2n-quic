@@ -7,16 +7,7 @@ use core::task::{Context, Poll};
 pub struct Sender<T>(pub(super) State<T>);
 
 impl<T> Sender<T> {
-    /*
-    pub async fn slice(&mut self) -> Result<SendSlice<T>> {
-        poll_fn(|cx| self.poll_slice(cx))
-    }
-
-    pub async fn push(&mut self, value: Value) -> Result<()> {
-        // TODO
-    }
-    */
-
+    #[inline]
     pub fn capacity(&self) -> usize {
         self.0.cursor.capacity()
     }
