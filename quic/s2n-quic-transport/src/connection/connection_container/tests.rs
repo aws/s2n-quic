@@ -517,7 +517,7 @@ fn container_test() {
                         assert!(conn.interests.transmission);
 
                         if count == 0 {
-                            ConnectionContainerIterationResult::BreakAndInsertAtBack
+                            ConnectionContainerIterationResult::BreakAndInsertAtFront
                         } else {
                             count -= 1;
                             ConnectionContainerIterationResult::Continue
@@ -530,7 +530,7 @@ fn container_test() {
                         assert!(conn.interests.new_connection_id);
 
                         if count == 0 {
-                            ConnectionContainerIterationResult::BreakAndInsertAtBack
+                            ConnectionContainerIterationResult::BreakAndInsertAtFront
                         } else {
                             count -= 1;
                             ConnectionContainerIterationResult::Continue

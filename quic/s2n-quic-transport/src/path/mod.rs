@@ -406,7 +406,7 @@ impl<Config: endpoint::Config> Path<Config> {
     }
 
     #[inline]
-    fn mtu(&self, transmission_mode: transmission::Mode) -> usize {
+    pub fn mtu(&self, transmission_mode: transmission::Mode) -> usize {
         match transmission_mode {
             // Use the minimum MTU for loss recovery probes to allow detection of packets
             // lost when the previously confirmed path MTU is no longer supported.

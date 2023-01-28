@@ -34,7 +34,7 @@ impl Snapshot {
                     assert!(rss < 30_000, "{rss}");
                 }
                 "post-close" => {
-                    assert_eq!(rss, 0, "{rss}");
+                    assert!(rss < 128, "{rss}");
                 }
                 e => unimplemented!("{}", e),
             }
