@@ -73,9 +73,8 @@ impl<T> Receiver<T> {
 impl<T> Drop for Receiver<T> {
     #[inline]
     fn drop(&mut self) {
-        if self.0.try_close() {
-            self.0.sender.wake();
-        }
+        self.0.try_close();
+        self.0.sender.wake();
     }
 }
 

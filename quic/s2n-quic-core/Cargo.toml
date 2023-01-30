@@ -42,7 +42,11 @@ once_cell = { version = "1", optional = true }
 bolero = "0.8"
 bolero-generator = { version = "0.8", default-features = false }
 insta = { version = "1", features = ["json"] }
+futures = "0.3"
 futures-test = "0.3"
 ip_network = "0.4"
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
+
+[target.'cfg(loom)'.dev-dependencies]
+loom = { version = "0.5", features = ["checkpoint", "futures"] }

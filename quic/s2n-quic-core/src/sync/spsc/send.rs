@@ -58,9 +58,8 @@ impl<T> Sender<T> {
 impl<T> Drop for Sender<T> {
     #[inline]
     fn drop(&mut self) {
-        if self.0.try_close() {
-            self.0.receiver.wake();
-        }
+        self.0.try_close();
+        self.0.receiver.wake();
     }
 }
 

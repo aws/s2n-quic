@@ -1,9 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{Cell, ClosedError, Result, Slice};
+use super::{
+    primitive::{AtomicBool, AtomicUsize, AtomicWaker, Ordering},
+    Cell, ClosedError, Result, Slice,
+};
 use alloc::alloc::Layout;
-use atomic_waker::AtomicWaker;
 use cache_padded::CachePadded;
 use core::{
     fmt,
@@ -11,7 +13,6 @@ use core::{
     ops::Deref,
     panic::{RefUnwindSafe, UnwindSafe},
     ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 type Pair<'a, T> = super::Pair<Slice<'a, Cell<T>>>;
@@ -366,6 +367,11 @@ impl<T> State<T> {
             drop(cell.take());
         }
 
+        // make sure we free any stored wakers
+        let header = self.header.as_mut();
+        drop(header.receiver.take());
+        drop(header.sender.take());
+
         // free the header
         let ptr = self.header.as_ptr() as *mut u8;
         let capacity = self.cursor.capacity;
@@ -399,7 +405,7 @@ impl<T> Header<T> {
     }
 
     #[inline]
-    const fn new() -> Self {
+    fn new() -> Self {
         Self {
             head: CachePadded::new(AtomicUsize::new(0)),
             tail: CachePadded::new(AtomicUsize::new(0)),

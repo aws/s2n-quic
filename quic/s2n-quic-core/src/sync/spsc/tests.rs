@@ -200,8 +200,12 @@ impl<T: Clone + PartialEq + core::fmt::Debug> Model<T> {
                 if let Some(recv) = self.recv.as_mut() {
                     match recv.try_slice() {
                         Ok(Some(mut slice)) => {
+                            // we need to pull in the latest values to clear everything
+                            while slice.clear() > 0 {
+                                did_pop = true;
+                                let _ = slice.peek();
+                            }
                             self.oracle.clear();
-                            did_pop = slice.clear() > 0;
                         }
                         Ok(None) => {
                             assert!(self.oracle.is_empty());
@@ -236,12 +240,19 @@ impl<T: Clone + PartialEq + core::fmt::Debug> Model<T> {
     }
 }
 
+#[cfg(any(kani, miri))]
+type Operations = crate::testing::InlineVec<Operation, 2>;
+#[cfg(not(any(kani, miri)))]
 type Operations = Vec<Operation>;
 
 #[test]
 fn model() {
+    let max_capacity = if cfg!(any(kani, miri)) { 2 } else { 64 };
+
+    let generator = (1usize..max_capacity, gen::<Operations>());
+
     check!()
-        .with_generator((1usize..64, gen::<Operations>()))
+        .with_generator(generator)
         .for_each(|(capacity, ops)| {
             let mut model = Model::new(*capacity);
             let mut cursor = 0;
@@ -254,4 +265,190 @@ fn model() {
             model.apply_all(ops, generator);
             model.finish();
         })
+}
+
+#[test]
+#[cfg_attr(kani, kani::proof, kani::unwind(3))]
+#[cfg(any(not(kani), kani_slow))]
+fn alloc_test() {
+    let capacity = if cfg!(any(kani, miri)) {
+        1usize..3
+    } else {
+        1usize..4096
+    };
+
+    check!()
+        .with_generator((capacity, gen::<u8>()))
+        .cloned()
+        .for_each(|(capacity, push_value)| {
+            let (mut send, mut recv) = channel(capacity);
+
+            // kani takes a very long time to check the push/pop functionality so bail for now
+            if cfg!(kani) {
+                return;
+            }
+
+            send.try_slice().unwrap().unwrap().push(push_value).unwrap();
+
+            let pop_value = recv.try_slice().unwrap().unwrap().pop().unwrap();
+            assert_eq!(pop_value, push_value);
+        })
+}
+
+#[cfg(not(loom))]
+mod loom {
+    pub use std::*;
+
+    pub mod future {
+        pub fn block_on<F>(f: F) {
+            let _ = f;
+            todo!()
+        }
+    }
+
+    pub fn model<F>(f: F) {
+        let _ = f;
+    }
+}
+
+#[test]
+#[cfg_attr(not(loom), ignore)]
+fn loom_spin_test() {
+    use loom::{hint, thread};
+
+    loom::model(|| {
+        let iterations = 4;
+
+        let (mut send, mut recv) = channel(iterations / 2);
+
+        thread::spawn(move || {
+            let mut value = 0u32;
+            let mut batch_size = 1;
+            for _ in 0..iterations {
+                loop {
+                    let mut remaining = batch_size;
+                    match send.try_slice() {
+                        Ok(Some(mut slice)) => {
+                            for _ in 0..remaining {
+                                if slice.push(value).is_err() {
+                                    hint::spin_loop();
+                                    continue;
+                                }
+                                value += 1;
+                                remaining -= 1;
+                            }
+                            batch_size += 1;
+                            break;
+                        }
+                        Ok(None) => hint::spin_loop(),
+                        Err(err) => {
+                            let _ = err;
+                            // TODO make sure the peer was dropped
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+
+        thread::spawn(move || {
+            let mut value = 0u32;
+            loop {
+                match recv.try_slice() {
+                    Ok(Some(mut slice)) => {
+                        while let Some(actual) = slice.pop() {
+                            assert_eq!(actual, value);
+                            value += 1;
+                        }
+                    }
+                    Ok(None) => hint::spin_loop(),
+                    Err(err) => {
+                        let _ = err;
+                        // TODO make sure the peer was dropped
+                        break;
+                    }
+                }
+            }
+        });
+    });
+}
+
+#[test]
+#[cfg_attr(not(loom), ignore)]
+fn loom_async_test() {
+    use futures::{future::poll_fn, ready};
+    use loom::{future, thread};
+
+    loom::model(|| {
+        let iterations = 4;
+
+        let (mut send, mut recv) = channel(iterations / 2);
+
+        thread::spawn(move || {
+            future::block_on(async move {
+                let mut value = 0u32;
+                let mut batch_size = 1;
+                for _ in 0..iterations {
+                    let mut remaining = batch_size;
+                    let result = poll_fn(|cx| loop {
+                        return match ready!(send.poll_slice(cx)) {
+                            Ok(mut slice) => {
+                                for _ in 0..remaining {
+                                    if slice.push(value).is_err() {
+                                        // try polling the slice capacity again
+                                        break;
+                                    }
+                                    value += 1;
+                                    remaining -= 1;
+                                }
+
+                                if remaining > 0 {
+                                    continue;
+                                }
+
+                                batch_size += 1;
+                                Ok(())
+                            }
+                            Err(err) => Err(err),
+                        }
+                        .into();
+                    })
+                    .await;
+
+                    if result.is_err() {
+                        return;
+                    }
+                }
+            });
+        });
+
+        thread::spawn(move || {
+            future::block_on(async move {
+                let mut value = 0u32;
+                loop {
+                    let result = poll_fn(|cx| {
+                        {
+                            match ready!(recv.poll_slice(cx)) {
+                                Ok(mut slice) => {
+                                    while let Some(actual) = slice.pop() {
+                                        assert_eq!(actual, value);
+                                        value += 1;
+                                    }
+
+                                    Ok(())
+                                }
+                                Err(err) => Err(err),
+                            }
+                        }
+                        .into()
+                    })
+                    .await;
+
+                    if result.is_err() {
+                        return;
+                    }
+                }
+            });
+        });
+    });
 }
