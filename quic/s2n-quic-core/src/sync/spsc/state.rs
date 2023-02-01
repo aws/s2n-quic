@@ -19,6 +19,12 @@ type Pair<'a, T> = super::Pair<Slice<'a, Cell<T>>>;
 
 const MINIMUM_CAPACITY: usize = 2;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Side {
+    Sender,
+    Receiver,
+}
+
 #[derive(Clone, Copy)]
 pub struct Cursor {
     head: usize,
@@ -156,10 +162,18 @@ fn count(head: usize, tail: usize, size: usize) -> usize {
     (tail.wrapping_sub(head)) & (size - 1)
 }
 
-#[derive(Debug)]
 pub struct State<T> {
     header: NonNull<Header<T>>,
     pub cursor: Cursor,
+}
+
+impl<T> fmt::Debug for State<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("State")
+            .field("header", self.deref())
+            .field("cursor", &self.cursor)
+            .finish()
+    }
 }
 
 unsafe impl<T: Send> Send for State<T> {}
@@ -225,6 +239,13 @@ impl<T> State<T> {
         }
 
         if !self.open.load(Ordering::Acquire) {
+            // make one more effort to load the remaining items
+            self.cursor.tail = self.tail.load(Ordering::Acquire);
+
+            if !self.cursor.is_empty() {
+                return Ok(true);
+            }
+
             return Err(ClosedError);
         }
 
@@ -232,27 +253,27 @@ impl<T> State<T> {
     }
 
     #[inline]
-    pub fn persist_head(&self, prev: Cursor) -> bool {
+    pub fn persist_head(&self, prev: Cursor) {
         // nothing changed
         if prev.head == self.cursor.head {
-            return false;
+            return;
         }
 
         self.head.store(self.cursor.head, Ordering::Release);
 
-        true
+        self.sender.wake();
     }
 
     #[inline]
-    pub fn persist_tail(&self, prev: Cursor) -> bool {
+    pub fn persist_tail(&self, prev: Cursor) {
         // nothing changed
         if prev.tail == self.cursor.tail {
-            return false;
+            return;
         }
 
         self.tail.store(self.cursor.tail, Ordering::Release);
 
-        true
+        self.receiver.wake();
     }
 
     #[inline]
@@ -277,14 +298,26 @@ impl<T> State<T> {
     }
 
     #[inline]
-    pub fn try_close(&mut self) -> bool {
-        let prev = self.open.swap(false, Ordering::Acquire);
-        if !prev {
+    pub fn try_close(&mut self, side: Side) {
+        // notify the other side that we've closed the channel
+        match side {
+            Side::Sender => self.receiver.wake(),
+            Side::Receiver => self.sender.wake(),
+        }
+
+        let was_open = self.open.swap(false, Ordering::SeqCst);
+
+        // make sure the peer is notified before fully dropping the contents
+        match side {
+            Side::Sender => self.receiver.wake(),
+            Side::Receiver => self.sender.wake(),
+        }
+
+        if !was_open {
             unsafe {
                 self.drop_contents();
             }
         }
-        prev
     }
 
     #[inline]
@@ -380,7 +413,6 @@ impl<T> State<T> {
     }
 }
 
-#[derive(Debug)]
 pub struct Header<T> {
     head: CachePadded<AtomicUsize>,
     tail: CachePadded<AtomicUsize>,
@@ -388,6 +420,18 @@ pub struct Header<T> {
     pub receiver: AtomicWaker,
     pub sender: AtomicWaker,
     data: PhantomData<T>,
+}
+
+impl<T> fmt::Debug for Header<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Header")
+            .field("head", &self.head.load(Ordering::Relaxed))
+            .field("tail", &self.tail.load(Ordering::Relaxed))
+            .field("open", &self.open.load(Ordering::Relaxed))
+            .field("receiver", &self.receiver)
+            .field("sender", &self.sender)
+            .finish()
+    }
 }
 
 impl<T> Header<T> {

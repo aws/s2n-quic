@@ -268,8 +268,8 @@ fn model() {
 }
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(3))]
-#[cfg(any(not(kani), kani_slow))]
+// TODO enable this once https://github.com/model-checking/kani/pull/2172 is merged and released
+// #[cfg_attr(kani, kani::proof, kani::unwind(3))]
 fn alloc_test() {
     let capacity = if cfg!(any(kani, miri)) {
         1usize..3
@@ -284,7 +284,7 @@ fn alloc_test() {
             let (mut send, mut recv) = channel(capacity);
 
             // kani takes a very long time to check the push/pop functionality so bail for now
-            if cfg!(kani) {
+            if cfg!(not(kani_slow)) {
                 return;
             }
 
@@ -300,155 +300,196 @@ mod loom {
     pub use std::*;
 
     pub mod future {
-        pub fn block_on<F>(f: F) {
-            let _ = f;
-            todo!()
-        }
+        pub use futures::executor::block_on;
     }
 
-    pub fn model<F>(f: F) {
-        let _ = f;
+    pub fn model<F: FnOnce() -> R, R>(f: F) -> R {
+        f()
     }
 }
 
+const CAPACITY: usize = if cfg!(loom) { 2 } else { 10 };
+const BATCH_COUNT: usize = if cfg!(loom) { 2 } else { 100 };
+const BATCH_SIZE: usize = if cfg!(loom) { 3 } else { 20 };
+const EXPECTED_COUNT: usize = BATCH_COUNT * BATCH_SIZE;
+
+// TODO The async rx loom tests seem to take an unbounded amount if time if the batch count/size is
+// anything bigger than 1. Ideally, these sizes would be bigger to test more permutations of
+// orderings so we should investigate what's causing loom to endless spin.
+const ASYNC_RX_BATCH_COUNT: usize = if cfg!(loom) { 1 } else { BATCH_COUNT };
+const ASYNC_RX_BATCH_SIZE: usize = if cfg!(loom) { 1 } else { BATCH_SIZE };
+const ASYNC_RX_EXPECTED_COUNT: usize = ASYNC_RX_BATCH_COUNT * ASYNC_RX_BATCH_SIZE;
+
 #[test]
-#[cfg_attr(not(loom), ignore)]
-fn loom_spin_test() {
-    use loom::{hint, thread};
+fn loom_spin_tx_spin_rx_test() {
+    loom_scenario(
+        CAPACITY,
+        |send| loom_spin_tx(send, BATCH_COUNT, BATCH_SIZE),
+        |recv| loom_spin_rx(recv, EXPECTED_COUNT),
+    )
+}
 
-    loom::model(|| {
-        let iterations = 4;
+#[test]
+fn loom_spin_tx_async_rx_test() {
+    loom_scenario(
+        CAPACITY,
+        |send| loom_spin_tx(send, ASYNC_RX_BATCH_COUNT, ASYNC_RX_BATCH_SIZE),
+        |recv| loom_async_rx(recv, ASYNC_RX_EXPECTED_COUNT),
+    )
+}
 
-        let (mut send, mut recv) = channel(iterations / 2);
+#[test]
+fn loom_async_tx_spin_rx_test() {
+    loom_scenario(
+        CAPACITY,
+        |send| loom_async_tx(send, BATCH_COUNT, BATCH_SIZE),
+        |recv| loom_spin_rx(recv, EXPECTED_COUNT),
+    )
+}
 
-        thread::spawn(move || {
-            let mut value = 0u32;
-            let mut batch_size = 1;
-            for _ in 0..iterations {
-                loop {
-                    let mut remaining = batch_size;
-                    match send.try_slice() {
-                        Ok(Some(mut slice)) => {
-                            for _ in 0..remaining {
-                                if slice.push(value).is_err() {
-                                    hint::spin_loop();
-                                    continue;
-                                }
-                                value += 1;
-                                remaining -= 1;
-                            }
-                            batch_size += 1;
-                            break;
-                        }
-                        Ok(None) => hint::spin_loop(),
-                        Err(err) => {
-                            let _ = err;
-                            // TODO make sure the peer was dropped
-                            return;
-                        }
-                    }
-                }
-            }
-        });
+#[test]
+fn loom_async_tx_async_rx_test() {
+    loom_scenario(
+        CAPACITY,
+        |send| loom_async_tx(send, ASYNC_RX_BATCH_COUNT, ASYNC_RX_BATCH_SIZE),
+        |recv| loom_async_rx(recv, ASYNC_RX_EXPECTED_COUNT),
+    )
+}
 
-        thread::spawn(move || {
-            let mut value = 0u32;
-            loop {
-                match recv.try_slice() {
-                    Ok(Some(mut slice)) => {
-                        while let Some(actual) = slice.pop() {
-                            assert_eq!(actual, value);
-                            value += 1;
-                        }
-                    }
-                    Ok(None) => hint::spin_loop(),
-                    Err(err) => {
-                        let _ = err;
-                        // TODO make sure the peer was dropped
-                        break;
-                    }
-                }
-            }
-        });
+fn loom_scenario(capacity: usize, sender: fn(Sender<u32>), receiver: fn(Receiver<u32>)) {
+    loom::model(move || {
+        let (send, recv) = channel(capacity);
+
+        let a = loom::thread::spawn(move || sender(send));
+
+        let b = loom::thread::spawn(move || receiver(recv));
+
+        // loom tests will still run after returning so we don't need to join
+        if cfg!(not(loom)) {
+            a.join().unwrap();
+            b.join().unwrap();
+        }
     });
 }
 
-#[test]
-#[cfg_attr(not(loom), ignore)]
-fn loom_async_test() {
+fn loom_spin_rx(mut recv: Receiver<u32>, expected: usize) {
+    use loom::hint;
+
+    let mut value = 0u32;
+    loop {
+        match recv.try_slice() {
+            Ok(Some(mut slice)) => {
+                while let Some(actual) = slice.pop() {
+                    assert_eq!(actual, value);
+                    value += 1;
+                }
+            }
+            Ok(None) => hint::spin_loop(),
+            Err(_) => {
+                assert_eq!(value as usize, expected);
+                return;
+            }
+        }
+    }
+}
+
+fn loom_async_rx(mut recv: Receiver<u32>, expected: usize) {
     use futures::{future::poll_fn, ready};
-    use loom::{future, thread};
 
-    loom::model(|| {
-        let iterations = 4;
-
-        let (mut send, mut recv) = channel(iterations / 2);
-
-        thread::spawn(move || {
-            future::block_on(async move {
-                let mut value = 0u32;
-                let mut batch_size = 1;
-                for _ in 0..iterations {
-                    let mut remaining = batch_size;
-                    let result = poll_fn(|cx| loop {
-                        return match ready!(send.poll_slice(cx)) {
-                            Ok(mut slice) => {
-                                for _ in 0..remaining {
-                                    if slice.push(value).is_err() {
-                                        // try polling the slice capacity again
-                                        break;
-                                    }
-                                    value += 1;
-                                    remaining -= 1;
-                                }
-
-                                if remaining > 0 {
-                                    continue;
-                                }
-
-                                batch_size += 1;
-                                Ok(())
-                            }
-                            Err(err) => Err(err),
-                        }
-                        .into();
-                    })
-                    .await;
-
-                    if result.is_err() {
-                        return;
+    loom::future::block_on(async move {
+        let mut value = 0u32;
+        poll_fn(|cx| loop {
+            match ready!(recv.poll_slice(cx)) {
+                Ok(mut slice) => {
+                    while let Some(actual) = slice.pop() {
+                        assert_eq!(actual, value);
+                        value += 1;
                     }
                 }
-            });
-        });
+                Err(_err) => return Poll::Ready(()),
+            }
+        })
+        .await;
 
-        thread::spawn(move || {
-            future::block_on(async move {
-                let mut value = 0u32;
-                loop {
-                    let result = poll_fn(|cx| {
-                        {
-                            match ready!(recv.poll_slice(cx)) {
-                                Ok(mut slice) => {
-                                    while let Some(actual) = slice.pop() {
-                                        assert_eq!(actual, value);
-                                        value += 1;
-                                    }
+        assert_eq!(value as usize, expected);
+    });
+}
 
-                                    Ok(())
-                                }
-                                Err(err) => Err(err),
-                            }
+fn loom_spin_tx(mut send: Sender<u32>, batch_count: usize, batch_size: usize) {
+    use loom::hint;
+
+    let max_value = (batch_count * batch_size) as u32;
+    let mut value = 0u32;
+
+    'done: while max_value > value {
+        let mut remaining = batch_size;
+        while remaining > 0 {
+            match send.try_slice() {
+                Ok(Some(mut slice)) => {
+                    let num_items = remaining;
+                    for _ in 0..num_items {
+                        if slice.push(value).is_err() {
+                            hint::spin_loop();
+                            continue;
                         }
-                        .into()
-                    })
-                    .await;
-
-                    if result.is_err() {
-                        return;
+                        value += 1;
+                        remaining -= 1;
                     }
                 }
-            });
-        });
+                Ok(None) => {
+                    // we don't have capacity to send so yield the thread
+                    hint::spin_loop();
+                }
+                Err(_) => {
+                    // The peer dropped the channel so bail
+                    break 'done;
+                }
+            }
+        }
+    }
+
+    assert_eq!(value, max_value);
+}
+
+fn loom_async_tx(mut send: Sender<u32>, batch_count: usize, batch_size: usize) {
+    use futures::{future::poll_fn, ready};
+
+    loom::future::block_on(async move {
+        let max_value = (batch_count * batch_size) as u32;
+        let mut value = 0u32;
+
+        while max_value > value {
+            let mut remaining = batch_size;
+            let result = poll_fn(|cx| loop {
+                return match ready!(send.poll_slice(cx)) {
+                    Ok(mut slice) => {
+                        let num_items = remaining;
+                        for _ in 0..num_items {
+                            if slice.push(value).is_err() {
+                                // try polling the slice capacity again
+                                break;
+                            }
+                            value += 1;
+                            remaining -= 1;
+                        }
+
+                        if remaining > 0 {
+                            continue;
+                        }
+
+                        Ok(())
+                    }
+                    Err(err) => Err(err),
+                }
+                .into();
+            })
+            .await;
+
+            if result.is_err() {
+                return;
+            }
+        }
+
+        assert_eq!(value, max_value);
     });
 }

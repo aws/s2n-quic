@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{Cursor, PushError, Result, State};
+use super::{state::Side, Cursor, PushError, Result, State};
 use core::task::{Context, Poll};
 
 pub struct Sender<T>(pub(super) State<T>);
@@ -58,8 +58,7 @@ impl<T> Sender<T> {
 impl<T> Drop for Sender<T> {
     #[inline]
     fn drop(&mut self) {
-        self.0.try_close();
-        self.0.receiver.wake();
+        self.0.try_close(Side::Sender);
     }
 }
 
@@ -116,8 +115,6 @@ impl<'a, T> SendSlice<'a, T> {
 impl<'a, T> Drop for SendSlice<'a, T> {
     #[inline]
     fn drop(&mut self) {
-        if self.0.persist_tail(self.1) {
-            self.0.receiver.wake();
-        }
+        self.0.persist_tail(self.1);
     }
 }

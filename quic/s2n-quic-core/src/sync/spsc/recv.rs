@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{Cursor, Result, State};
+use super::{state::Side, Cursor, Result, State};
 use core::task::{Context, Poll};
 
 pub struct Receiver<T>(pub(super) State<T>);
@@ -73,8 +73,7 @@ impl<T> Receiver<T> {
 impl<T> Drop for Receiver<T> {
     #[inline]
     fn drop(&mut self) {
-        self.0.try_close();
-        self.0.sender.wake();
+        self.0.try_close(Side::Receiver);
     }
 }
 
@@ -132,8 +131,6 @@ impl<'a, T> RecvSlice<'a, T> {
 impl<'a, T> Drop for RecvSlice<'a, T> {
     #[inline]
     fn drop(&mut self) {
-        if self.0.persist_head(self.1) {
-            self.0.sender.wake();
-        }
+        self.0.persist_head(self.1);
     }
 }
