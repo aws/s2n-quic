@@ -698,6 +698,7 @@ jobs:
         with:
           toolchain: stable
           profile: minimal
+          override: true
 
       - uses: camshaft/rust-cache@v1
         with:
@@ -707,4 +708,4 @@ jobs:
         # run the tests with release mode since some of the loom models can be expensive
         run: cd ${{ matrix.crate }} && cargo test --release loom
         env:
-          RUSTFLAGS: --cfg loom
+          RUSTFLAGS: --cfg loom -Cdebug-assertions
