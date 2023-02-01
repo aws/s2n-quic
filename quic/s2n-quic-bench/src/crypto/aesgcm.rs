@@ -38,7 +38,7 @@ pub fn benchmarks(c: &mut Criterion) {
     let aad = black_box([123u8; 20]);
 
     for (group, impls) in impls.iter() {
-        let mut encrypt = c.benchmark_group(format!("crypto/aesgcm/{}/encrypt", group));
+        let mut encrypt = c.benchmark_group(format!("crypto/aesgcm/{group}/encrypt"));
         for imp in impls.iter() {
             for block in testing::BLOCK_SIZES.iter() {
                 encrypt.throughput(Throughput::Bytes(block.len() as _));
@@ -63,7 +63,7 @@ pub fn benchmarks(c: &mut Criterion) {
         }
         encrypt.finish();
 
-        let mut decrypt = c.benchmark_group(format!("crypto/aesgcm/{}/decrypt", group));
+        let mut decrypt = c.benchmark_group(format!("crypto/aesgcm/{group}/decrypt"));
         for imp in impls.iter() {
             for block in testing::BLOCK_SIZES.iter() {
                 decrypt.throughput(Throughput::Bytes(block.len() as _));

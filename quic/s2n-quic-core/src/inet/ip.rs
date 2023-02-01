@@ -158,8 +158,8 @@ impl Default for SocketAddress {
 impl fmt::Display for SocketAddress {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            SocketAddress::IpV4(addr) => write!(fmt, "{}", addr),
-            SocketAddress::IpV6(addr) => write!(fmt, "{}", addr),
+            SocketAddress::IpV4(addr) => write!(fmt, "{addr}"),
+            SocketAddress::IpV6(addr) => write!(fmt, "{addr}"),
         }
     }
 }

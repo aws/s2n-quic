@@ -47,7 +47,7 @@ fn create_cert(domain: &str, name: String, alg: &'static SignatureAlgorithm) -> 
         KeyUsagePurpose,
     };
 
-    let mut params = CertificateParams::new(vec![domain.to_string(), format!("*.{}", domain)]);
+    let mut params = CertificateParams::new(vec![domain.to_string(), format!("*.{domain}")]);
     params.alg = alg;
     params.use_authority_key_identifier_extension = true;
     params.distinguished_name = DistinguishedName::new();
@@ -73,11 +73,11 @@ impl Certificate {
         let mut ias = HashMap::new();
         let mut out = vec![];
 
-        let domain = format!("{}.net", id);
+        let domain = format!("{id}.net");
         for (cert_idx, cert) in certs.into_iter().enumerate() {
             match cert {
                 Self::Authority { alg } => {
-                    let cert = create_ca(&domain, format!("netbench CA {}", cert_idx), alg);
+                    let cert = create_ca(&domain, format!("netbench CA {cert_idx}"), alg);
                     let pem = cert.serialize_pem().unwrap();
 
                     out.push(Arc::new(scenario::Certificate {
@@ -95,7 +95,7 @@ impl Certificate {
                     // create any IAs we need
                     for (idx, alg) in intermediates.iter().copied().enumerate() {
                         ias.entry((authority, idx, alg)).or_insert_with(|| {
-                            create_ca(&domain, format!("netbench IA {} {}", authority, idx), alg)
+                            create_ca(&domain, format!("netbench IA {authority} {idx}"), alg)
                         });
                     }
 
@@ -108,7 +108,7 @@ impl Certificate {
                         .map(|(idx, alg)| ias.get(&(authority, idx, alg)).unwrap())
                         .chain(Some(ca));
 
-                    let cert = create_cert(&domain, format!("netbench Leaf {}", cert_idx), alg);
+                    let cert = create_cert(&domain, format!("netbench Leaf {cert_idx}"), alg);
                     let mut chain = String::new();
                     let private_key = cert.serialize_private_key_pem();
 

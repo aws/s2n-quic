@@ -561,7 +561,7 @@ mod tests {
 
             match (c, s) {
                 (Poll::Ready(Ok(())), Poll::Ready(Ok(()))) => break,
-                (Poll::Ready(Err(e)), _) | (_, Poll::Ready(Err(e))) => panic!("{}", e),
+                (Poll::Ready(Err(e)), _) | (_, Poll::Ready(Err(e))) => panic!("{e}"),
                 _ => {
                     let current_count = count.get();
                     if current_count > prev_count {
@@ -573,10 +573,10 @@ mod tests {
                         eprintln!("the timer did not advance!");
                         eprintln!("server trace:");
                         eprintln!("{}", server_trace.as_str().unwrap());
-                        eprintln!("{:#?}", server);
+                        eprintln!("{server:#?}");
                         eprintln!("client trace:");
                         eprintln!("{}", client_trace.as_str().unwrap());
-                        eprintln!("{:#?}", client);
+                        eprintln!("{client:#?}");
                         panic!("test is deadlocked");
                     }
                 }

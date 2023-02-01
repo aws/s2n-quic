@@ -396,8 +396,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         debug_assert!(
             result.is_ok(),
-            "Initial ID {:?} was already in the map",
-            original_destination_connection_id
+            "Initial ID {original_destination_connection_id:?} was already in the map"
         );
 
         // Only persist the connection if everything is good.

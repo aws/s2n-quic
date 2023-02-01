@@ -69,7 +69,7 @@ impl Report {
 
             scenario_names.insert(scenario_name.to_string());
 
-            pids.push(format!("!indata('data$hidden', 'name', {:?})", name));
+            pids.push(format!("!indata('data$hidden', 'name', {name:?})"));
             names.push(name);
 
             let input = serde_json::de::IoRead::new(input);
@@ -298,7 +298,7 @@ impl Report {
         signals.push(json!({
             "name": "sig$view",
             "value": "0",
-            "update": format!("indexof({:?},ui$view)", view_names),
+            "update": format!("indexof({view_names:?},ui$view)"),
         }));
 
         signals.push(json!({
@@ -315,7 +315,7 @@ impl Report {
         let mut stream_count_expr = "0".to_string();
         for (id, count) in stream_counts.iter().enumerate() {
             use core::fmt::Write;
-            let _ = write!(stream_count_expr, "+(pids[{}]?{}:0)", id, count);
+            let _ = write!(stream_count_expr, "+(pids[{id}]?{count}:0)");
         }
 
         signals.push(json!({

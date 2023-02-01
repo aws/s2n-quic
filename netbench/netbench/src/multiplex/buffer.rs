@@ -59,7 +59,7 @@ impl ReadBuffer {
             for chunk in self.head.iter() {
                 actual_len += chunk.len();
             }
-            assert_eq!(actual_len, self.remaining(), "{:?}", self);
+            assert_eq!(actual_len, self.remaining(), "{self:?}");
         }
     }
 }

@@ -34,7 +34,7 @@ pub fn main<C: Configs>() -> Result<()> {
 
     let mut has_error = false;
     for error in overrides.errors() {
-        eprintln!("{}", error);
+        eprintln!("{error}");
         has_error = true;
     }
 

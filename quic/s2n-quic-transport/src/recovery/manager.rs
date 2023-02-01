@@ -854,10 +854,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 self.loss_timer.set(packet_lost_time);
                 debug_assert!(
                     !self.loss_timer.is_expired(now),
-                    "loss timer was not armed in the future; now: {}, threshold: {:?}\nmanager: {:#?}",
-                    now,
-                    time_threshold,
-                    self
+                    "loss timer was not armed in the future; now: {now}, threshold: {time_threshold:?}\nmanager: {self:#?}"
                 );
 
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1

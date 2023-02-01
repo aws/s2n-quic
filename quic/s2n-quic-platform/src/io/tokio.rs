@@ -274,11 +274,11 @@ impl Io {
 
         let task = handle.spawn(async move {
             if let Err(err) = instance.event_loop().await {
-                let debug = format!("A fatal IO error occurred ({:?}): {}", err.kind(), err);
+                let debug = format!("A fatal IO error occurred ({:?}): {err}", err.kind());
                 if cfg!(test) {
-                    panic!("{}", debug);
+                    panic!("{debug}");
                 } else {
-                    eprintln!("{}", debug);
+                    eprintln!("{debug}");
                 }
             }
         });
@@ -424,7 +424,7 @@ impl Builder {
     pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
         self.max_mtu = max_mtu
             .try_into()
-            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{}", err)))?;
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
         Ok(self)
     }
 

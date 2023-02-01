@@ -73,7 +73,7 @@ impl Plan {
         reports: &mut Vec<(String, PathBuf)>,
     ) -> Result {
         let name = self.name.as_ref().unwrap();
-        eprintln!("     Running {}", name);
+        eprintln!("     Running {name}");
         let out = out.join(name);
         fs::create_dir_all(&out)?;
 
@@ -136,7 +136,7 @@ struct Report {
 impl Report {
     fn run(&self, out: &Path, command: &str, db: &Path, name: &str) -> Result<(String, PathBuf)> {
         let title = self.title.as_deref().unwrap_or(name).to_owned();
-        let output = out.join(format!("{}.json", name));
+        let output = out.join(format!("{name}.json"));
 
         let mut cmd = Command::new(command);
 

@@ -31,12 +31,12 @@ impl fmt::Display for Connect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() {
             if let Some(hostname) = self.server_name.as_deref() {
-                write!(f, "{} at {}", hostname, &*self.remote_address)
+                write!(f, "{hostname} at {}", &*self.remote_address)
             } else {
                 write!(f, "{}", &*self.remote_address)
             }
         } else if let Some(hostname) = self.server_name.as_deref() {
-            write!(f, "{}", hostname)
+            write!(f, "{hostname}")
         } else {
             write!(f, "{}", &*self.remote_address)
         }

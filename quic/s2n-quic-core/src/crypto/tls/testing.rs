@@ -511,18 +511,12 @@ fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
     sealer
         .encrypt(packet_number, header, &mut encrypted_payload)
         .unwrap_or_else(|err| {
-            panic!(
-                "encryption error; opener={}, sealer={} - {:?}",
-                opener_name, sealer_name, err
-            )
+            panic!("encryption error; opener={opener_name}, sealer={sealer_name} - {err:?}")
         });
     opener
         .decrypt(packet_number, header, &mut encrypted_payload)
         .unwrap_or_else(|err| {
-            panic!(
-                "decryption error; opener={}, sealer={} - {:?}",
-                opener_name, sealer_name, err
-            )
+            panic!("decryption error; opener={opener_name}, sealer={sealer_name} - {err:?}")
         });
 
     assert_eq!(
@@ -548,8 +542,7 @@ fn protect_unprotect<P: HeaderKey, U: HeaderKey>(protect: &P, unprotect: &U, tag
 
     assert_eq!(
         &protected_mask, &unprotected_mask,
-        "{} -> {}",
-        protect_name, unprotect_name
+        "{protect_name} -> {unprotect_name}"
     );
 }
 
