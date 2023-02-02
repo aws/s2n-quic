@@ -22,16 +22,30 @@ impl<T> Cell<T> {
 pub struct Slice<'a, T>(pub(super) &'a [T]);
 
 impl<'a, T> Slice<'a, Cell<T>> {
+    /// Assumes that the slice of [`Cell`]s is initialized and converts it to a slice of
+    /// [`UnsafeCell`]s.
+    ///
+    /// See [`core::mem::MaybeUninit::assume_init`]
     #[inline]
     pub unsafe fn assume_init(self) -> Slice<'a, UnsafeCell<T>> {
         Slice(&*(self.0 as *const [Cell<T>] as *const [UnsafeCell<T>]))
     }
 
+    /// Writes a value into a cell at the provided index
+    ///
+    /// # Safety
+    ///
+    /// The cell at `index` must be uninitialized and the caller must have synchronized access.
     #[inline]
     pub unsafe fn write(&self, index: usize, value: T) {
         self.0.get_unchecked(index).write(value)
     }
 
+    /// Reads and takes the memory at a cell at the provided index
+    ///
+    /// # Safety
+    ///
+    /// The cell at `index` must be initialized and the caller must have synchronized access.
     #[inline]
     pub unsafe fn take(&self, index: usize) -> T {
         self.0.get_unchecked(index).take()
@@ -39,6 +53,11 @@ impl<'a, T> Slice<'a, Cell<T>> {
 }
 
 impl<'a, T> Slice<'a, UnsafeCell<T>> {
+    /// Converts the slice of [`UnsafeCell`]s into a mutable slice
+    ///
+    /// # Safety
+    ///
+    /// The slice must be exclusively owned, otherwise data races may occur.
     #[inline]
     pub unsafe fn into_mut(self) -> &'a mut [T] {
         let ptr = self.0.as_ptr() as *mut T;
@@ -116,11 +135,15 @@ impl<'a, T> Pair<Slice<'a, Cell<T>>> {
         if let Some(cell) = self.head.0.get(index) {
             cell
         } else {
-            assume!(index >= self.head.0.len());
+            assume!(
+                index >= self.head.0.len(),
+                "index must always be equal or greater than the `head` len"
+            );
             let index = index - self.head.0.len();
+
             assume!(
                 self.tail.get(index).is_some(),
-                "head={}, tail={}, index={}",
+                "index must be in-bounds for the `tail` slice: head={}, tail={}, index={}",
                 self.head.0.len(),
                 self.tail.0.len(),
                 index

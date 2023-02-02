@@ -268,6 +268,23 @@ fn model() {
 }
 
 #[test]
+fn model_zst() {
+    let max_capacity = if cfg!(any(kani, miri)) { 2 } else { 64 };
+
+    let generator = (1usize..max_capacity, gen::<Operations>());
+
+    check!()
+        .with_generator(generator)
+        .for_each(|(capacity, ops)| {
+            let mut model = Model::new(*capacity);
+            let generator = || ();
+
+            model.apply_all(ops, generator);
+            model.finish();
+        })
+}
+
+#[test]
 // TODO enable this once https://github.com/model-checking/kani/pull/2172 is merged and released
 // #[cfg_attr(kani, kani::proof, kani::unwind(3))]
 fn alloc_test() {

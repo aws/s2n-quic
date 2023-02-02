@@ -73,7 +73,7 @@ impl<T> Receiver<T> {
 impl<T> Drop for Receiver<T> {
     #[inline]
     fn drop(&mut self) {
-        self.0.try_close(Side::Receiver);
+        self.0.close(Side::Receiver);
     }
 }
 
@@ -84,7 +84,10 @@ impl<'a, T> RecvSlice<'a, T> {
     pub fn peek(&mut self) -> (&mut [T], &mut [T]) {
         let _ = self.0.acquire_filled();
         let (slice, _) = self.0.as_pairs();
-        unsafe { slice.assume_init().into_mut() }
+        unsafe {
+            // Safety: the first pair of returned slices is the `initialized` half
+            slice.assume_init().into_mut()
+        }
     }
 
     #[inline]
@@ -94,20 +97,24 @@ impl<'a, T> RecvSlice<'a, T> {
         }
 
         let (pair, _) = self.0.as_pairs();
-        let value = unsafe { pair.take(0) };
+        let value = unsafe {
+            // Safety: the state's cursor indicates that the first slot contains initialized data
+            pair.take(0)
+        };
         self.0.cursor.increment_head(1);
         Some(value)
     }
 
     #[inline]
     pub fn clear(&mut self) -> usize {
-        // don't update the cursor so the caller can observe any updates through peek
+        // don't try to `acquire_filled` so the caller can observe any updates through peek/pop
 
         let (pair, _) = self.0.as_pairs();
         let len = pair.len();
 
         for entry in pair.iter() {
             unsafe {
+                // Safety: the state's cursor indicates that each slot in the `iter` contains data
                 let _ = entry.take();
             }
         }

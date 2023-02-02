@@ -58,7 +58,7 @@ impl<T> Sender<T> {
 impl<T> Drop for Sender<T> {
     #[inline]
     fn drop(&mut self) {
-        self.0.try_close(Side::Sender);
+        self.0.close(Side::Sender);
     }
 }
 
@@ -74,6 +74,8 @@ impl<'a, T> SendSlice<'a, T> {
         let (_, pair) = self.0.as_pairs();
 
         unsafe {
+            // Safety: the second pair of slices contains uninitialized memory and the cursor
+            // indicates we have capacity to write at least one value
             pair.write(0, value);
         }
 
@@ -92,6 +94,7 @@ impl<'a, T> SendSlice<'a, T> {
             while idx < capacity {
                 if let Some(value) = iter.next() {
                     unsafe {
+                        // Safety: the second pair of slices contains uninitialized memory
                         pair.write(idx, value);
                     }
                     idx += 1;

@@ -40,3 +40,14 @@ mod core {
 
 #[cfg(not(all(loom, test)))]
 pub use self::core::*;
+
+/// Indicates if the type is a zero-sized type
+///
+/// This can be used to optimize the code to avoid needless calculations.
+pub trait IsZst {
+    const IS_ZST: bool;
+}
+
+impl<T> IsZst for T {
+    const IS_ZST: bool = ::core::mem::size_of::<T>() == 0;
+}

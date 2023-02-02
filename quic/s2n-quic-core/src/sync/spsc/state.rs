@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    primitive::{AtomicBool, AtomicUsize, AtomicWaker, Ordering},
+    primitive::{AtomicBool, AtomicUsize, AtomicWaker, IsZst, Ordering},
     Cell, ClosedError, Result, Slice,
 };
 use alloc::alloc::Layout;
@@ -59,17 +59,31 @@ impl Cursor {
     #[inline]
     fn invariants(&self) {
         unsafe {
-            assume!(self.capacity >= MINIMUM_CAPACITY);
-            assume!(self.head < self.capacity);
-            assume!(self.tail < self.capacity);
+            assume!(
+                self.capacity >= MINIMUM_CAPACITY,
+                "the capacity must be at least the MINIMUM_CAPACITY value"
+            );
+            assume!(
+                self.head < self.capacity,
+                "the `head` pointer should be strictly less than the capacity"
+            );
+            assume!(
+                self.tail < self.capacity,
+                "the `tail` pointer should be strictly less than the capacity"
+            );
             let len = count(self.head, self.tail, self.capacity);
-            assume!(len < self.capacity);
+            assume!(
+                len < self.capacity,
+                "the computed `len` should be strictly less than the capacity"
+            );
         }
     }
 
     #[inline]
     pub fn capacity(&self) -> usize {
         self.invariants();
+        // To make cursor management easier, we never allow the callers to hit the total capacity.
+        // We also account for this when allocating the state by adding 1 to the request capacity.
         self.capacity - 1
     }
 
@@ -113,7 +127,10 @@ impl Cursor {
     pub fn increment_head(&mut self, n: usize) {
         self.invariants();
         unsafe {
-            assume!(n <= self.capacity());
+            assume!(
+                n <= self.capacity(),
+                "n should never exceed the total capacity"
+            );
         }
         self.head = self.wrap_add(self.head, n);
         self.invariants();
@@ -123,7 +140,10 @@ impl Cursor {
     pub fn increment_tail(&mut self, n: usize) {
         self.invariants();
         unsafe {
-            assume!(n <= self.capacity());
+            assume!(
+                n <= self.capacity(),
+                "n should never exceed the total capacity"
+            );
         }
         self.tail = self.wrap_add(self.tail, n);
         self.invariants();
@@ -145,8 +165,15 @@ impl Cursor {
 fn wrap_index(index: usize, size: usize) -> usize {
     // size is always a power of 2
     unsafe {
-        assume!(size.is_power_of_two());
-        assume!(size >= MINIMUM_CAPACITY);
+        assume!(
+            size.is_power_of_two(),
+            "The calculations in the lengths rely on the capacity being a power of 2"
+        );
+        assume!(
+            size >= MINIMUM_CAPACITY,
+            "The calculations in the lengths rely on the capacity being at least {}",
+            MINIMUM_CAPACITY
+        );
     }
     index & (size - 1)
 }
@@ -156,12 +183,22 @@ fn wrap_index(index: usize, size: usize) -> usize {
 fn count(head: usize, tail: usize, size: usize) -> usize {
     // size is always a power of 2
     unsafe {
-        assume!(size.is_power_of_two());
-        assume!(size >= MINIMUM_CAPACITY);
+        assume!(
+            size.is_power_of_two(),
+            "The calculations in the lengths rely on the capacity being a power of 2"
+        );
+        assume!(
+            size >= MINIMUM_CAPACITY,
+            "The calculations in the lengths rely on the capacity being at least {}",
+            MINIMUM_CAPACITY
+        );
     }
     (tail.wrapping_sub(head)) & (size - 1)
 }
 
+/// The synchronized state between two peers
+///
+/// The internal design of the cursor management is based on [`alloc::collections::VecDeque`].
 pub struct State<T> {
     header: NonNull<Header<T>>,
     pub cursor: Cursor,
@@ -176,8 +213,13 @@ impl<T> fmt::Debug for State<T> {
     }
 }
 
+/// Safety: synchronization of state is managed through atomic values
 unsafe impl<T: Send> Send for State<T> {}
+
+/// Safety: synchronization of state is managed through atomic values
 unsafe impl<T: Sync> Sync for State<T> {}
+
+/// The data behind the header pointer itself is unwind safe
 impl<T: RefUnwindSafe> UnwindSafe for State<T> {}
 
 impl<T> Clone for State<T> {
@@ -202,12 +244,24 @@ impl<T> Deref for State<T> {
 impl<T> State<T> {
     #[inline]
     pub fn new(capacity: usize) -> Self {
-        let capacity = core::cmp::max(capacity + 1, MINIMUM_CAPACITY).next_power_of_two();
+        // If we're sending a zero-sized type, set the capacity to the maximum value, since we're
+        // not sending any data and just coordinating cursors at this point
+        let capacity = if T::IS_ZST {
+            // The total capacity must be a power of two
+            usize::MAX / 2 + 1
+        } else {
+            // Add 1 to the requested capacity so it's easier to manage cursor wrapping
+            core::cmp::max(capacity + 1, MINIMUM_CAPACITY).next_power_of_two()
+        };
         let header = Header::alloc(capacity).expect("could not allocate channel");
         let cursor = Cursor::new(capacity);
         Self { header, cursor }
     }
 
+    /// Tries to acquire more unfilled slots on the channel
+    ///
+    /// If the channel is closed, an error is returned. If the channel has at least one slot of
+    /// capacity, `true` is returned. Otherwise `false` is returned.
     #[inline]
     pub fn acquire_capacity(&mut self) -> Result<bool> {
         if !self.open.load(Ordering::Acquire) {
@@ -226,6 +280,10 @@ impl<T> State<T> {
         Ok(!is_full)
     }
 
+    /// Tries to acquire more filled slots on the channel
+    ///
+    /// If the channel is closed, an error is returned. If the channel has at least one slot of
+    /// capacity, `true` is returned. Otherwise `false` is returned.
     #[inline]
     pub fn acquire_filled(&mut self) -> Result<bool> {
         if !self.cursor.is_empty() {
@@ -252,6 +310,7 @@ impl<T> State<T> {
         Ok(false)
     }
 
+    /// Notifies the peer of `head` updates for the given cursor
     #[inline]
     pub fn persist_head(&self, prev: Cursor) {
         // nothing changed
@@ -264,6 +323,7 @@ impl<T> State<T> {
         self.sender.wake();
     }
 
+    /// Notifies the peer of `tail` updates for the given cursor
     #[inline]
     pub fn persist_tail(&self, prev: Cursor) {
         // nothing changed
@@ -279,6 +339,7 @@ impl<T> State<T> {
     #[inline]
     fn data(&self) -> &[Cell<T>] {
         unsafe {
+            // Safety: the state must still be allocated and the cursor inbounds
             let ptr = self.data_ptr();
             let capacity = self.cursor.capacity;
             core::slice::from_raw_parts(ptr, capacity)
@@ -288,6 +349,12 @@ impl<T> State<T> {
     #[inline]
     fn data_ptr(&self) -> *const Cell<T> {
         unsafe {
+            // If the type is zero-sized, no need to calculate offsets
+            if T::IS_ZST {
+                return NonNull::<Cell<T>>::dangling().as_ptr();
+            }
+
+            // Safety: the state must still be allocated and the cursor inbounds
             let capacity = self.cursor.capacity;
             let (_, offset) = Header::<T>::layout_unchecked(capacity);
 
@@ -297,8 +364,9 @@ impl<T> State<T> {
         }
     }
 
+    /// Closes one side of the channel and notifies the peer of the event
     #[inline]
-    pub fn try_close(&mut self, side: Side) {
+    pub fn close(&mut self, side: Side) {
         // notify the other side that we've closed the channel
         match side {
             Side::Sender => self.receiver.wake(),
@@ -315,11 +383,14 @@ impl<T> State<T> {
 
         if !was_open {
             unsafe {
+                // Safety: we synchronization closing between the two peers through atomic
+                // variables. At this point both sides have agreed on its final state.
                 self.drop_contents();
             }
         }
     }
 
+    /// Returns the channel slots as two pairs of filled and unfilled slices
     #[inline]
     pub fn as_pairs(&self) -> (Pair<T>, Pair<T>) {
         let data = self.data();
@@ -335,12 +406,12 @@ impl<T> State<T> {
 
         let (filled, unfilled) = if self.cursor.is_contiguous() {
             unsafe {
-                assume!(data.len() >= tail);
+                assume!(data.len() >= tail, "data must span the tail length");
             }
             let (data, unfilled_head) = data.split_at(tail);
 
             unsafe {
-                assume!(data.len() >= head);
+                assume!(data.len() >= head, "data must span the head length");
             }
             let (unfilled_tail, filled_head) = data.split_at(head);
 
@@ -355,12 +426,12 @@ impl<T> State<T> {
             (filled, unfilled)
         } else {
             unsafe {
-                assume!(data.len() >= head);
+                assume!(data.len() >= head, "data must span the head length");
             }
             let (data, filled_head) = data.split_at(head);
 
             unsafe {
-                assume!(data.len() >= tail);
+                assume!(data.len() >= tail, "data must span the tail length");
             }
             let (filled_tail, unfilled_head) = data.split_at(tail);
 
@@ -378,7 +449,7 @@ impl<T> State<T> {
         unsafe {
             assume!(
                 filled.len() == self.cursor.recv_len(),
-                "filled mismatch {} == {}\n{:?}",
+                "filled len should agree with the cursor len {} == {}\n{:?}",
                 filled.len(),
                 self.cursor.recv_len(),
                 self.cursor
@@ -388,6 +459,11 @@ impl<T> State<T> {
         (filled, unfilled)
     }
 
+    /// Frees the contents of the channel
+    ///
+    /// # Safety
+    ///
+    /// Each side must have synchronized and agreed on the final state before calling this
     #[inline]
     unsafe fn drop_contents(&mut self) {
         // refresh the cursor from the shared state
@@ -396,8 +472,10 @@ impl<T> State<T> {
 
         // release all of the filled data
         let (filled, _unfilled) = self.as_pairs();
-        for cell in filled.iter() {
-            drop(cell.take());
+        if !T::IS_ZST {
+            for cell in filled.iter() {
+                drop(cell.take());
+            }
         }
 
         // make sure we free any stored wakers
@@ -435,8 +513,10 @@ impl<T> fmt::Debug for Header<T> {
 }
 
 impl<T> Header<T> {
+    /// Allocates a header and data slice for the given capacity
     fn alloc(capacity: usize) -> Option<NonNull<Self>> {
         unsafe {
+            // Safety: we assume that `alloc` gives us a valid pointer to write to
             let (layout, _offset) = Self::layout(capacity).ok()?;
             let state = alloc::alloc::alloc(layout);
             let state = state as *mut Self;
@@ -460,14 +540,21 @@ impl<T> Header<T> {
         }
     }
 
+    /// Computes the checked layout for the header
     #[inline]
     fn layout(capacity: usize) -> Result<(Layout, usize), alloc::alloc::LayoutError> {
         let header_layout = Layout::new::<Self>();
+        // A slice of cells is allocated in the same region as the header
         let data_layout = Layout::array::<Cell<T>>(capacity)?;
         let (layout, offset) = header_layout.extend(data_layout)?;
         Ok((layout, offset))
     }
 
+    /// Computes the memory layout of the header without checking of its validatity
+    ///
+    /// # Safety
+    ///
+    /// The layout must have been previously checked before calling this.
     #[inline]
     unsafe fn layout_unchecked(capacity: usize) -> (Layout, usize) {
         if let Ok(v) = Self::layout(capacity) {
