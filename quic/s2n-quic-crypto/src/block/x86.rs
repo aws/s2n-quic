@@ -6,6 +6,7 @@ use crate::{
     block::{Batch, BatchMut, Block, Zeroed},
 };
 use core::mem::size_of;
+use s2n_quic_core::assume;
 
 pub const LEN: usize = size_of::<__m128i>();
 
@@ -126,7 +127,7 @@ impl M128iExt for __m128i {
     fn into_slice(self, bytes: &mut [u8]) {
         unsafe {
             debug_assert!(Avx2::is_supported());
-            unsafe_assert!(bytes.len() <= LEN);
+            assume!(bytes.len() <= LEN);
             copy_128(
                 &self as *const _ as *const u8,
                 bytes.as_mut_ptr(),
@@ -139,7 +140,7 @@ impl M128iExt for __m128i {
     fn mask(self, len: usize) -> Self {
         unsafe {
             debug_assert!(Avx2::is_supported());
-            unsafe_assert!(0 < len && len < LEN);
+            assume!(0 < len && len < LEN);
 
             // compute a mask that can be shifted to only include a `len` of bytes
             const MASK: [u8; 31] = {

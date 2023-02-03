@@ -10,6 +10,7 @@ use crate::{
         KEY_LEN,
     },
 };
+use s2n_quic_core::assume;
 use zeroize::{DefaultIsZeroes, Zeroize};
 
 impl<P: Powers> ghash::GHash for P {
@@ -76,7 +77,7 @@ impl<H: HKey> Powers for Allocated<H> {
     #[inline(always)]
     fn power(&self, index: usize) -> &H {
         unsafe {
-            unsafe_assert!(index < self.state.len());
+            assume!(index < self.state.len());
             self.state.get_unchecked(index)
         }
     }
@@ -125,7 +126,7 @@ impl<H: HKey, const N: usize> Powers for Array<H, N> {
     #[inline(always)]
     fn power(&self, index: usize) -> &H {
         unsafe {
-            unsafe_assert!(index < self.state.len());
+            assume!(index < self.state.len());
             self.state.get_unchecked(index)
         }
     }
@@ -169,7 +170,7 @@ impl State {
     fn update<P: Powers>(&self, powers: &P, b: &__m128i) -> Self {
         unsafe {
             debug_assert!(Avx2::is_supported());
-            unsafe_assert!(
+            assume!(
                 self.power != 0,
                 "update called more than requested capacity"
             );
@@ -208,7 +209,7 @@ impl State {
 
         unsafe {
             debug_assert!(Avx2::is_supported());
-            unsafe_assert!(
+            assume!(
                 power == 0,
                 "ghash update count incorrect: remaining {}",
                 power

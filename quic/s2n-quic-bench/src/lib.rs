@@ -7,6 +7,7 @@ mod buffer;
 mod crypto;
 mod frame;
 mod packet;
+mod sync;
 mod varint;
 
 pub fn benchmarks(c: &mut Criterion) {
@@ -14,5 +15,6 @@ pub fn benchmarks(c: &mut Criterion) {
     crypto::benchmarks(c);
     frame::benchmarks(c);
     packet::benchmarks(c);
+    sync::benchmarks(c);
     varint::benchmarks(c);
 }
