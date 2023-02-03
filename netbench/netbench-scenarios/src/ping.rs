@@ -35,8 +35,8 @@ pub fn scenario(config: Config) -> Scenario {
 
         scenario.create_client(|client| {
             for size in sizes.iter().copied() {
-                let ping = format!("ping {}", size);
-                let pong = format!("pong {}", size);
+                let ping = format!("ping {size}");
+                let pong = format!("pong {size}");
                 client.scope(|client| {
                     for _ in 0..connections {
                         client.spawn(|client| {

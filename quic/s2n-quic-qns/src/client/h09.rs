@@ -20,7 +20,7 @@ pub(crate) async fn create_connection<'a, R: IntoIterator<Item = &'a Url>>(
     download_dir: Arc<Option<PathBuf>>,
     keep_alive: Option<Duration>,
 ) -> Result<()> {
-    eprintln!("connecting to {:#}", connect);
+    eprintln!("connecting to {connect:#}");
     let mut connection = client.connect(connect).await?;
 
     if keep_alive.is_some() {
@@ -56,15 +56,15 @@ async fn create_stream(
     request: String,
     download_dir: Arc<Option<PathBuf>>,
 ) -> Result<()> {
-    eprintln!("GET {}", request);
+    eprintln!("GET {request}");
 
     match create_stream_inner(connection, &request, download_dir).await {
         Ok(()) => {
-            eprintln!("Request {} completed successfully", request);
+            eprintln!("Request {request} completed successfully");
             Ok(())
         }
         Err(error) => {
-            eprintln!("Request {} failed: {:?}", request, error);
+            eprintln!("Request {request} failed: {error:?}");
             Err(error)
         }
     }

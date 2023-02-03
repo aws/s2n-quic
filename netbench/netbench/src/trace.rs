@@ -399,17 +399,17 @@ pub trait Output {
     ) {
         let _ = self.write(|out| {
             use std::io::Write;
-            write!(out, "{} ", now)?;
+            write!(out, "{now} ")?;
 
-            write!(out, "[{}", id)?;
+            write!(out, "[{id}")?;
             if verbose {
                 for (scope, thread) in scope.iter() {
-                    write!(out, ":{}.{}", scope, thread)?;
+                    write!(out, ":{scope}.{thread}")?;
                 }
             }
             write!(out, "] ")?;
 
-            writeln!(out, "{}", v)?;
+            writeln!(out, "{v}")?;
             Ok(())
         });
     }
@@ -458,14 +458,14 @@ impl<O: Output> Trace for Logger<O> {
     #[inline(always)]
     fn exec(&mut self, now: Timestamp, op: &op::Connection) {
         if self.verbose {
-            self.log(now, format_args!("exec: {:?}", op));
+            self.log(now, format_args!("exec: {op:?}"));
         }
     }
 
     #[inline(always)]
     fn exec_client(&mut self, now: Timestamp, op: &op::Client) {
         if self.verbose {
-            self.log(now, format_args!("exec: {:?}", op));
+            self.log(now, format_args!("exec: {op:?}"));
         }
     }
 
@@ -481,32 +481,32 @@ impl<O: Output> Trace for Logger<O> {
 
     #[inline(always)]
     fn send(&mut self, now: Timestamp, stream_id: u64, len: u64) {
-        self.log(now, format_args!("send[{}]={}", stream_id, len));
+        self.log(now, format_args!("send[{stream_id}]={len}"));
     }
 
     #[inline(always)]
     fn send_finish(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("sfin[{}]", stream_id));
+        self.log(now, format_args!("sfin[{stream_id}]"));
     }
 
     #[inline(always)]
     fn receive(&mut self, now: Timestamp, stream_id: u64, len: u64) {
-        self.log(now, format_args!("recv[{}]={}", stream_id, len));
+        self.log(now, format_args!("recv[{stream_id}]={len}"));
     }
 
     #[inline(always)]
     fn receive_finish(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("rfin[{}]", stream_id));
+        self.log(now, format_args!("rfin[{stream_id}]"));
     }
 
     #[inline(always)]
     fn accept(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("acpt[{}]", stream_id));
+        self.log(now, format_args!("acpt[{stream_id}]"));
     }
 
     #[inline(always)]
     fn open(&mut self, now: Timestamp, stream_id: u64) {
-        self.log(now, format_args!("open[{}]", stream_id));
+        self.log(now, format_args!("open[{stream_id}]"));
     }
 
     #[inline(always)]
@@ -516,9 +516,9 @@ impl<O: Output> Trace for Logger<O> {
             let scope = &self.scope;
             let verbose = self.verbose;
             self.output
-                .log(id, scope, verbose, now, format_args!("trce[{}]", msg));
+                .log(id, scope, verbose, now, format_args!("trce[{msg}]"));
         } else {
-            self.log(now, format_args!("trce[{}]", id));
+            self.log(now, format_args!("trce[{id}]"));
         }
     }
 
@@ -533,27 +533,27 @@ impl<O: Output> Trace for Logger<O> {
                 scope,
                 verbose,
                 now,
-                format_args!("prof[{}]={:?}", msg, time),
+                format_args!("prof[{msg}]={time:?}"),
             );
         } else {
-            self.log(now, format_args!("prof[{}]={:?}", id, time));
+            self.log(now, format_args!("prof[{id}]={time:?}"));
         }
     }
 
     #[inline(always)]
     fn park(&mut self, now: Timestamp, id: u64) {
-        self.log(now, format_args!("park[{}]", id));
+        self.log(now, format_args!("park[{id}]"));
     }
 
     #[inline(always)]
     fn unpark(&mut self, now: Timestamp, id: u64) {
-        self.log(now, format_args!("uprk[{}]", id));
+        self.log(now, format_args!("uprk[{id}]"));
     }
 
     fn connect(&mut self, now: Timestamp, connection_id: u64, time: Duration) {
         self.log(
             now,
-            format_args!("conn[{}]={:?}us", connection_id, time.as_micros()),
+            format_args!("conn[{connection_id}]={:?}us", time.as_micros()),
         );
     }
 }
@@ -584,7 +584,7 @@ impl Throughput {
         let elapsed = now - prev;
         let ts = unsafe { Timestamp::from_duration(now - start) };
         let v = self.0.results.take();
-        eprintln!("{} {}", ts, v / elapsed);
+        eprintln!("{ts} {}", v / elapsed);
         now
     }
 }

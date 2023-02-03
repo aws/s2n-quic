@@ -204,7 +204,7 @@ impl IpV4Address {
 
 impl fmt::Debug for IpV4Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "IPv4Address({})", self)
+        write!(fmt, "IPv4Address({self})")
     }
 }
 
@@ -272,7 +272,7 @@ impl SocketAddressV4 {
 
 impl fmt::Debug for SocketAddressV4 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "SocketAddressV4({})", self)
+        write!(fmt, "SocketAddressV4({self})")
     }
 }
 

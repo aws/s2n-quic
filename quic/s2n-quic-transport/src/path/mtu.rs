@@ -136,8 +136,7 @@ impl Controller {
         let max_udp_payload = u16::from(max_mtu) - UDP_HEADER_LEN - min_ip_header_len;
         debug_assert!(
             max_udp_payload >= BASE_PLPMTU,
-            "max_udp_payload must be at least {}",
-            BASE_PLPMTU
+            "max_udp_payload must be at least {BASE_PLPMTU}"
         );
 
         // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus

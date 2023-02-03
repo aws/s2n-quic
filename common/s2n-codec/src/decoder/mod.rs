@@ -430,13 +430,13 @@ impl fmt::Display for DecoderError {
         }
 
         match self {
-            Self::UnexpectedEof(len) => write!(f, "unexpected eof: {}", len),
-            Self::UnexpectedBytes(len) => write!(f, "unexpected bytes: {}", len),
+            Self::UnexpectedEof(len) => write!(f, "unexpected eof: {len}"),
+            Self::UnexpectedBytes(len) => write!(f, "unexpected bytes: {len}"),
             Self::LengthCapacityExceeded => write!(
                 f,
                 "length could not be represented in platform's usize type"
             ),
-            Self::InvariantViolation(msg) => write!(f, "{}", msg),
+            Self::InvariantViolation(msg) => write!(f, "{msg}"),
         }
     }
 }

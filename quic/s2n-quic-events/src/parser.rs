@@ -140,15 +140,13 @@ impl Struct {
 
             let ident_str = ident.to_string();
             let snake = ident_str.to_snake_case();
-            let function = format!("on_{}", snake);
+            let function = format!("on_{snake}");
             let counter = Ident::new(&snake, Span::call_site());
             let function = Ident::new(&function, Span::call_site());
 
-            let subscriber_doc = format!("Called when the `{}` event is triggered", ident_str);
-            let publisher_doc = format!(
-                "Publishes a `{}` event to the publisher's subscriber",
-                ident_str
-            );
+            let subscriber_doc = format!("Called when the `{ident_str}` event is triggered");
+            let publisher_doc =
+                format!("Publishes a `{ident_str}` event to the publisher's subscriber");
 
             // add a counter for testing structs
             output.testing_fields.extend(quote!(
@@ -216,7 +214,7 @@ impl Struct {
                         #allow_deprecated
                         fn #function(&mut self, meta: &api::EndpointMeta, event: &api::#ident) {
                             self.#counter += 1;
-                            self.output.push(format!("{:?} {:?}", meta, event));
+                            self.output.push(format!("{meta:?} {event:?}"));
                         }
                     ));
 
@@ -225,7 +223,7 @@ impl Struct {
                         fn #function(&mut self, event: builder::#ident) {
                             self.#counter += 1;
                             let event = event.into_event();
-                            self.output.push(format!("{:?}", event));
+                            self.output.push(format!("{event:?}"));
                         }
                     ));
                 }
@@ -282,7 +280,7 @@ impl Struct {
                         fn #function(&mut self, _context: &mut Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
                             self.#counter += 1;
                             if self.location.is_some() {
-                                self.output.push(format!("{:?} {:?}", meta, event));
+                                self.output.push(format!("{meta:?} {event:?}"));
                             }
                         }
                     ));
@@ -293,7 +291,7 @@ impl Struct {
                             self.#counter += 1;
                             let event = event.into_event();
                             if self.location.is_some() {
-                                self.output.push(format!("{:?}", event));
+                                self.output.push(format!("{event:?}"));
                             }
                         }
                     ));
@@ -466,10 +464,7 @@ impl Parse for Subject {
             "endpoint" => Ok(Self::Endpoint),
             name => Err(syn::parse::Error::new(
                 input.span(),
-                format!(
-                    "invalid event subject: {}, expected connection or endpoint",
-                    name
-                ),
+                format!("invalid event subject: {name}, expected connection or endpoint"),
             )),
         }
     }

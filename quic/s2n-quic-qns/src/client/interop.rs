@@ -188,7 +188,7 @@ impl Interop {
                                     .await?
                                     .next()
                                     .unwrap_or_else(|| {
-                                        panic!("host {:?} did not resolve to any addresses", domain)
+                                        panic!("host {domain:?} did not resolve to any addresses")
                                     })
                                     .ip()
                             };

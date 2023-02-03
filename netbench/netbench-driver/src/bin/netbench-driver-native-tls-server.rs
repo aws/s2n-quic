@@ -59,7 +59,7 @@ impl Server {
                     handle_connection(acceptor, connection, id, scenario, trace, config, buffer)
                         .await
                 {
-                    eprintln!("error: {}", err);
+                    eprintln!("error: {err}");
                 }
             });
         }

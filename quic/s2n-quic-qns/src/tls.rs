@@ -48,7 +48,7 @@ impl FromStr for TlsProviders {
             _ => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    format!("Unsupported tls provider: {}", s),
+                    format!("Unsupported tls provider: {s}"),
                 )
                 .into())
             }

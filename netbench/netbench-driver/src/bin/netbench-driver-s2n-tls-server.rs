@@ -61,7 +61,7 @@ impl Server {
                 if let Err(err) =
                     handle_connection(acceptor, connection, id, scenario, trace, config).await
                 {
-                    eprintln!("error: {}", err);
+                    eprintln!("error: {err}");
                 }
             });
         }

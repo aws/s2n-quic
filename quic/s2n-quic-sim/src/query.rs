@@ -144,15 +144,15 @@ fn emit<
     let mut has_written = false;
 
     if let Some((seed, id)) = seed {
-        write!(o, "{}\t{}", seed, id)?;
+        write!(o, "{seed}\t{id}")?;
         has_written = true;
     }
 
     for value in i {
         if has_written {
-            write!(o, "\t{}", value)?;
+            write!(o, "\t{value}")?;
         } else {
-            write!(o, "{}", value)?;
+            write!(o, "{value}")?;
         }
         has_written = true;
     }

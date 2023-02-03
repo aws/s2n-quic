@@ -189,8 +189,7 @@ impl<Config: endpoint::Config> Path<Config> {
         debug_assert_ne!(
             self.clamp_mtu(bytes, transmission::Mode::Normal),
             0,
-            "path should not transmit when amplification limited; tried to transmit {}",
-            bytes
+            "path should not transmit when amplification limited; tried to transmit {bytes}"
         );
 
         if let State::AmplificationLimited { tx_allowance, .. } = &mut self.state {

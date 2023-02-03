@@ -168,18 +168,18 @@ struct Resolver;
 impl Resolver {
     fn get(&self, key: String) -> Result<String> {
         let host =
-            std::env::var(&key).map_err(|_| format!("missing {} environment variable", key))?;
+            std::env::var(&key).map_err(|_| format!("missing {key} environment variable"))?;
         Ok(host)
     }
 }
 
 impl client::Resolver for Resolver {
     fn server(&mut self, id: u64) -> Result<String> {
-        self.get(format!("SERVER_{}", id))
+        self.get(format!("SERVER_{id}"))
     }
 
     fn router(&mut self, router_id: u64, server_id: u64) -> Result<String> {
-        self.get(format!("ROUTER_{}_SERVER_{}", router_id, server_id))
+        self.get(format!("ROUTER_{router_id}_SERVER_{server_id}"))
     }
 }
 

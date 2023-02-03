@@ -814,8 +814,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 .with_reason(Self::INVALID_FRAME_ERROR)
                 .with_frame_type(frame.tag().into()));
         }
-        // TODO
-        eprintln!("UNIMPLEMENTED APPLICATION FRAME {:?}", frame);
+        // TODO add support for NEW_TOKEN_FRAMEs on the client
         Ok(())
     }
 

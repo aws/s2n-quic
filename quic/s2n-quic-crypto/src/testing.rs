@@ -26,7 +26,7 @@ pub struct Block(usize);
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let b = self.0;
-        write!(f, "blocks_{:0>2}", b)
+        write!(f, "blocks_{b:0>2}")
     }
 }
 

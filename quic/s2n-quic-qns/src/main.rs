@@ -38,18 +38,18 @@ async fn main() {
     match Arguments::from_args_safe() {
         Ok(args) => {
             if let Err(error) = args.run().await {
-                eprintln!("Error: {:?}", error);
+                eprintln!("Error: {error:?}");
             }
         }
         Err(error) => {
             if error.use_stderr() {
-                eprintln!("{}", error);
+                eprintln!("{error}");
 
                 // https://github.com/marten-seemann/quic-interop-runner/blob/cd223804bf3f102c3567758ea100577febe486ff/interop.py#L102
                 // The interop runner wants us to exit with code 127 when an invalid argument is passed
                 std::process::exit(127);
             } else {
-                println!("{}", error);
+                println!("{error}");
             }
         }
     };

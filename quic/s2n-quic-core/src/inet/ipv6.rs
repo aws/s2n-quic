@@ -223,7 +223,7 @@ impl IpV6Address {
 
 impl fmt::Debug for IpV6Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "IPv6Address({})", self)
+        write!(fmt, "IPv6Address({self})")
     }
 }
 
@@ -252,11 +252,9 @@ impl fmt::Display for IpV6Address {
                 h as u8
             ),
             // TODO better formatting
-            [a, b, c, d, e, f, g, h] => write!(
-                fmt,
-                "{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
-                a, b, c, d, e, f, g, h
-            ),
+            [a, b, c, d, e, f, g, h] => {
+                write!(fmt, "{a:x}:{b:x}:{c:x}:{d:x}:{e:x}:{f:x}:{g:x}:{h:x}")
+            }
         }
     }
 }
@@ -316,7 +314,7 @@ impl SocketAddressV6 {
 
 impl fmt::Debug for SocketAddressV6 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "SocketAddressV6({})", self)
+        write!(fmt, "SocketAddressV6({self})")
     }
 }
 
