@@ -109,7 +109,7 @@ impl<B: Buffer> Queue<B> {
                     Err(err) => {
                         entries.finish(count);
 
-                        publisher.on_platform_rx_error(event::builder::PlatformRxError {
+                        publisher.on_platform_tx_error(event::builder::PlatformTxError {
                             errno: errno().0,
                         });
 
