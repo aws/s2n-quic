@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
-    #[cfg_attr(kani, kani::proof, kani::unwind(10))]
+    #[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(kissat))]
     fn gen_range_biased_test() {
         bolero::check!()
             .with_type()

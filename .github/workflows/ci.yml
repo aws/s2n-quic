@@ -621,7 +621,7 @@ jobs:
           submodules: true
 
       - name: Kani run
-        uses: model-checking/kani-github-action@v0.20
+        uses: model-checking/kani-github-action@v0.21
         with:
           working-directory: quic/s2n-quic-core
           args: --tests

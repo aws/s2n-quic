@@ -285,8 +285,7 @@ fn model_zst() {
 }
 
 #[test]
-// TODO enable this once https://github.com/model-checking/kani/pull/2172 is merged and released
-// #[cfg_attr(kani, kani::proof, kani::unwind(3))]
+#[cfg_attr(kani, kani::proof, kani::unwind(3), kani::solver(kissat))]
 fn alloc_test() {
     let capacity = if cfg!(any(kani, miri)) {
         1usize..3
@@ -299,11 +298,6 @@ fn alloc_test() {
         .cloned()
         .for_each(|(capacity, push_value)| {
             let (mut send, mut recv) = channel(capacity);
-
-            // kani takes a very long time to check the push/pop functionality so bail for now
-            if cfg!(not(kani_slow)) {
-                return;
-            }
 
             send.try_slice().unwrap().unwrap().push(push_value).unwrap();
 
