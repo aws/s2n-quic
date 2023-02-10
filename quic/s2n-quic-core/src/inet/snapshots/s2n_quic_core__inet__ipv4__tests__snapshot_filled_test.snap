@@ -1,0 +1,23 @@
+---
+source: quic/s2n-quic-core/src/inet/ipv4.rs
+expression: header
+---
+ipv4::Header {
+    version: 15,
+    header_len: 15,
+    dscp: 63,
+    ecn: Ce,
+    total_len: 65535,
+    id: 0xffff,
+    flags (reserved): true,
+    flags (don't fragment): true,
+    flags (more fragments): true,
+    fragment_offset: 8191,
+    ttl: 255,
+    protocol: ip::Protocol(
+        [unknown 0xff],
+    ),
+    checksum: 0xffff,
+    source: IPv4Address(255.255.255.255),
+    destination: IPv4Address(255.255.255.255),
+}

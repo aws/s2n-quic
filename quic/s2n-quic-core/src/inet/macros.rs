@@ -24,7 +24,6 @@ macro_rules! define_inet_type {
         impl PartialEq for $name {
             #[inline]
             fn eq(&self, other: &Self) -> bool {
-                use zerocopy::AsBytes;
                 self.as_bytes().eq(other.as_bytes())
             }
         }
@@ -39,7 +38,6 @@ macro_rules! define_inet_type {
         impl Ord for $name {
             #[inline]
             fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-                use zerocopy::AsBytes;
                 self.as_bytes().cmp(other.as_bytes())
             }
         }
@@ -47,7 +45,6 @@ macro_rules! define_inet_type {
         impl core::hash::Hash for $name {
             #[inline]
             fn hash<H: core::hash::Hasher>(&self, hasher: &mut H) {
-                use zerocopy::AsBytes;
                 self.as_bytes().hash(hasher);
             }
         }
@@ -61,6 +58,16 @@ macro_rules! define_inet_type {
                         $field: $field.into()
                     ),*
                 }
+            }
+
+            #[inline]
+            pub fn as_bytes(&self) -> &[u8] {
+                zerocopy::AsBytes::as_bytes(self)
+            }
+
+            #[inline]
+            pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+                zerocopy::AsBytes::as_bytes_mut(self)
             }
         }
 

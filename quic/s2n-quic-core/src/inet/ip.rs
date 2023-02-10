@@ -281,6 +281,62 @@ mod std_conversion {
     }
 }
 
+define_inet_type!(
+    pub struct Protocol {
+        id: u8,
+    }
+);
+
+impl Protocol {
+    // https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+    // NOTE: these variants were added as the ones we think we'll need. feel free to add more as
+    //       needed.
+    pub const ICMP: Self = Self { id: 0x01 };
+    pub const IPV4_ENCAPSULATION: Self = Self { id: 0x04 };
+    pub const TCP: Self = Self { id: 0x06 };
+    pub const UDP: Self = Self { id: 0x11 };
+    pub const IPV6_ENCAPSULATION: Self = Self { id: 0x29 };
+}
+
+impl fmt::Debug for Protocol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("ip::Protocol")
+            .field(&format_args!("{self}"))
+            .finish()
+    }
+}
+
+impl fmt::Display for Protocol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            v if v == Self::ICMP => "ICMP",
+            v if v == Self::IPV4_ENCAPSULATION => "IPv4 Encapsulation",
+            v if v == Self::TCP => "TCP",
+            v if v == Self::UDP => "UDP",
+            v if v == Self::IPV6_ENCAPSULATION => "IPv6 Encapsulation",
+            Self { id } => return write!(f, "[unknown 0x{id:02x}]"),
+        }
+        .fmt(f)
+    }
+}
+
+macro_rules! impl_is {
+    ($fun:ident, $cap:ident) => {
+        #[inline]
+        pub const fn $fun(self) -> bool {
+            self.id == Self::$cap.id
+        }
+    };
+}
+
+impl Protocol {
+    impl_is!(is_icmp, ICMP);
+    impl_is!(is_ipv4_encapsulation, IPV4_ENCAPSULATION);
+    impl_is!(is_tcp, TCP);
+    impl_is!(is_udp, UDP);
+    impl_is!(is_ipv6_encapsulation, IPV6_ENCAPSULATION);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

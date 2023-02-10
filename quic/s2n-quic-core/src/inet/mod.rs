@@ -8,9 +8,11 @@ mod macros;
 
 pub mod datagram;
 pub mod ecn;
+pub mod ethernet;
 pub mod ip;
 pub mod ipv4;
 pub mod ipv6;
+pub mod udp;
 pub mod unspecified;
 
 pub use datagram::*;

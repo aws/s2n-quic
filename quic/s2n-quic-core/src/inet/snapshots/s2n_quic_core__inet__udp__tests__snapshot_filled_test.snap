@@ -1,0 +1,10 @@
+---
+source: quic/s2n-quic-core/src/inet/udp.rs
+expression: header
+---
+udp::Header {
+    source: 65535,
+    destination: 65535,
+    len: 65535,
+    checksum: 0xffff,
+}

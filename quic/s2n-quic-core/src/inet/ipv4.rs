@@ -5,6 +5,7 @@ use crate::inet::{
     ip,
     ipv6::{IpV6Address, SocketAddressV6},
     unspecified::Unspecified,
+    ExplicitCongestionNotification,
 };
 use core::{fmt, mem::size_of};
 use s2n_codec::zerocopy::U16;
@@ -200,6 +201,14 @@ impl IpV4Address {
         addr[15] = d;
         IpV6Address { octets: addr }
     }
+
+    #[inline]
+    pub fn with_port(self, port: u16) -> SocketAddressV4 {
+        SocketAddressV4 {
+            ip: self,
+            port: port.into(),
+        }
+    }
 }
 
 impl fmt::Debug for IpV4Address {
@@ -305,6 +314,330 @@ impl From<IpV4Address> for [u8; IPV4_LEN] {
     }
 }
 
+//= https://www.rfc-editor.org/rfc/rfc791.html#section-3.1
+//#  A summary of the contents of the internet header follows:
+//#
+//#
+//#    0                   1                   2                   3
+//#    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |Version|  IHL  |Type of Service|          Total Length         |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |         Identification        |Flags|      Fragment Offset    |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |  Time to Live |    Protocol   |         Header Checksum       |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |                       Source Address                          |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |                    Destination Address                        |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |                    Options                    |    Padding    |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+define_inet_type!(
+    pub struct Header {
+        vihl: Vihl,
+        tos: Tos,
+        total_len: U16,
+        id: U16,
+        flag_fragment: FlagFragment,
+        ttl: u8,
+        protocol: ip::Protocol,
+        checksum: U16,
+        source: IpV4Address,
+        destination: IpV4Address,
+    }
+);
+
+impl fmt::Debug for Header {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ipv4::Header")
+            .field("version", &self.vihl.version())
+            .field("header_len", &self.vihl.header_len())
+            .field("dscp", &self.tos.dscp())
+            .field("ecn", &self.tos.ecn())
+            .field("total_len", &self.total_len)
+            .field("id", &format_args!("0x{:04x}", self.id.get()))
+            .field("flags (reserved)", &self.flag_fragment.reserved())
+            .field(
+                "flags (don't fragment)",
+                &self.flag_fragment.dont_fragment(),
+            )
+            .field(
+                "flags (more fragments)",
+                &self.flag_fragment.more_fragments(),
+            )
+            .field("fragment_offset", &self.flag_fragment.fragment_offset())
+            .field("ttl", &self.ttl)
+            .field("protocol", &self.protocol)
+            .field("checksum", &format_args!("0x{:04x}", self.checksum.get()))
+            .field("source", &self.source)
+            .field("destination", &self.destination)
+            .finish()
+    }
+}
+
+impl Header {
+    /// Swaps the direction of the header
+    #[inline]
+    pub fn swap(&mut self) {
+        core::mem::swap(&mut self.source, &mut self.destination)
+    }
+
+    #[inline]
+    pub const fn vihl(&self) -> &Vihl {
+        &self.vihl
+    }
+
+    #[inline]
+    pub fn vihl_mut(&mut self) -> &mut Vihl {
+        &mut self.vihl
+    }
+
+    #[inline]
+    pub const fn tos(&self) -> &Tos {
+        &self.tos
+    }
+
+    #[inline]
+    pub fn tos_mut(&mut self) -> &mut Tos {
+        &mut self.tos
+    }
+
+    #[inline]
+    pub const fn total_len(&self) -> &U16 {
+        &self.total_len
+    }
+
+    #[inline]
+    pub fn total_len_mut(&mut self) -> &mut U16 {
+        &mut self.total_len
+    }
+
+    #[inline]
+    pub const fn id(&self) -> &U16 {
+        &self.id
+    }
+
+    #[inline]
+    pub fn id_mut(&mut self) -> &mut U16 {
+        &mut self.id
+    }
+
+    #[inline]
+    pub const fn flag_fragment(&self) -> &FlagFragment {
+        &self.flag_fragment
+    }
+
+    #[inline]
+    pub fn flag_fragment_mut(&mut self) -> &mut FlagFragment {
+        &mut self.flag_fragment
+    }
+
+    #[inline]
+    pub const fn ttl(&self) -> &u8 {
+        &self.ttl
+    }
+
+    #[inline]
+    pub fn ttl_mut(&mut self) -> &mut u8 {
+        &mut self.ttl
+    }
+
+    #[inline]
+    pub const fn protocol(&self) -> &ip::Protocol {
+        &self.protocol
+    }
+
+    #[inline]
+    pub fn protocol_mut(&mut self) -> &mut ip::Protocol {
+        &mut self.protocol
+    }
+
+    #[inline]
+    pub const fn checksum(&self) -> &U16 {
+        &self.checksum
+    }
+
+    #[inline]
+    pub fn checksum_mut(&mut self) -> &mut U16 {
+        &mut self.checksum
+    }
+
+    #[inline]
+    pub const fn source(&self) -> &IpV4Address {
+        &self.source
+    }
+
+    #[inline]
+    pub fn source_mut(&mut self) -> &mut IpV4Address {
+        &mut self.source
+    }
+
+    #[inline]
+    pub const fn destination(&self) -> &IpV4Address {
+        &self.destination
+    }
+
+    #[inline]
+    pub fn destination_mut(&mut self) -> &mut IpV4Address {
+        &mut self.destination
+    }
+}
+
+define_inet_type!(
+    pub struct Vihl {
+        value: u8,
+    }
+);
+
+impl fmt::Debug for Vihl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Vihl")
+            .field("version", &self.version())
+            .field("header_len", &self.header_len())
+            .finish()
+    }
+}
+
+impl Vihl {
+    #[inline]
+    pub fn version(&self) -> u8 {
+        self.value >> 4
+    }
+
+    #[inline]
+    pub fn set_version(&mut self, value: u8) -> &mut Self {
+        self.value = value << 4 | (self.value & 0x0F);
+        self
+    }
+
+    #[inline]
+    pub fn header_len(&self) -> u8 {
+        self.value & 0x0F
+    }
+
+    #[inline]
+    pub fn set_header_len(&mut self, value: u8) -> &mut Self {
+        self.value = (self.value & 0xF0) | (value & 0x0F);
+        self
+    }
+}
+
+define_inet_type!(
+    pub struct Tos {
+        value: u8,
+    }
+);
+
+impl Tos {
+    /// Differentiated Services Code Point
+    #[inline]
+    pub fn dscp(&self) -> u8 {
+        self.value >> 2
+    }
+
+    #[inline]
+    pub fn set_dscp(&mut self, value: u8) -> &mut Self {
+        self.value = (value << 2) | (self.value & 0b11);
+        self
+    }
+
+    #[inline]
+    pub fn ecn(&self) -> ExplicitCongestionNotification {
+        ExplicitCongestionNotification::new(self.value & 0b11)
+    }
+
+    #[inline]
+    pub fn set_ecn(&mut self, ecn: ExplicitCongestionNotification) -> &mut Self {
+        self.value = (self.value & !0b11) | ecn as u8;
+        self
+    }
+}
+
+impl fmt::Debug for Tos {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ipv4::Tos")
+            .field("dscp", &self.dscp())
+            .field("ecn", &self.ecn())
+            .finish()
+    }
+}
+
+define_inet_type!(
+    pub struct FlagFragment {
+        value: U16,
+    }
+);
+
+impl FlagFragment {
+    const FRAGMENT_MASK: u16 = 0b0001_1111_1111_1111;
+
+    #[inline]
+    pub fn reserved(&self) -> bool {
+        self.get(1 << 15)
+    }
+
+    pub fn set_reserved(&mut self, enabled: bool) -> &mut Self {
+        self.set(1 << 15, enabled)
+    }
+
+    #[inline]
+    pub fn dont_fragment(&self) -> bool {
+        self.get(1 << 14)
+    }
+
+    #[inline]
+    pub fn set_dont_fragment(&mut self, enabled: bool) -> &mut Self {
+        self.set(1 << 14, enabled)
+    }
+
+    #[inline]
+    pub fn more_fragments(&self) -> bool {
+        self.get(1 << 13)
+    }
+
+    #[inline]
+    pub fn set_more_fragments(&mut self, enabled: bool) -> &mut Self {
+        self.set(1 << 13, enabled)
+    }
+
+    #[inline]
+    pub fn fragment_offset(&self) -> u16 {
+        self.value.get() & Self::FRAGMENT_MASK
+    }
+
+    pub fn set_fragment_offset(&mut self, offset: u16) -> &mut Self {
+        self.value
+            .set(self.value.get() & !Self::FRAGMENT_MASK | offset & Self::FRAGMENT_MASK);
+        self
+    }
+
+    #[inline]
+    fn get(&self, mask: u16) -> bool {
+        self.value.get() & mask == mask
+    }
+
+    #[inline]
+    fn set(&mut self, mask: u16, enabled: bool) -> &mut Self {
+        let value = self.value.get();
+        let value = if enabled { value | mask } else { value & !mask };
+        self.value.set(value);
+        self
+    }
+}
+
+impl fmt::Debug for FlagFragment {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ipv4::FlagFragment")
+            .field("reserved", &self.reserved())
+            .field("dont_fragment", &self.dont_fragment())
+            .field("more_fragments", &self.more_fragments())
+            .field("fragment_offset", &self.fragment_offset())
+            .finish()
+    }
+}
+
 #[cfg(any(test, feature = "std"))]
 mod std_conversion {
     use super::*;
@@ -388,6 +721,7 @@ mod std_conversion {
 mod tests {
     use super::*;
     use bolero::{check, generator::*};
+    use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 
     /// Asserts the Scope returned matches a known implementation
     #[test]
@@ -437,5 +771,97 @@ mod tests {
                 }
             }
         })
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn snapshot_test() {
+        let mut buffer = vec![0u8; core::mem::size_of::<Header>()];
+        for (idx, byte) in buffer.iter_mut().enumerate() {
+            *byte = idx as u8;
+        }
+        let decoder = DecoderBuffer::new(&buffer);
+        let (header, _) = decoder.decode::<&Header>().unwrap();
+        insta::assert_debug_snapshot!("snapshot_test", header);
+
+        for byte in &mut buffer {
+            *byte = 255;
+        }
+        let decoder = DecoderBuffer::new(&buffer);
+        let (header, _) = decoder.decode::<&Header>().unwrap();
+        insta::assert_debug_snapshot!("snapshot_filled_test", header);
+    }
+
+    #[test]
+    fn header_getter_setter_test() {
+        check!().with_type::<Header>().for_each(|expected| {
+            let mut buffer = [255u8; core::mem::size_of::<Header>()];
+            let decoder = DecoderBufferMut::new(&mut buffer);
+            let (header, _) = decoder.decode::<&mut Header>().unwrap();
+            {
+                // use all of the getters and setters to copy over each field
+                header
+                    .vihl_mut()
+                    .set_version(expected.vihl().version())
+                    .set_header_len(expected.vihl().header_len());
+                header
+                    .tos_mut()
+                    .set_dscp(expected.tos().dscp())
+                    .set_ecn(expected.tos().ecn());
+                header.id_mut().set(expected.id().get());
+                header.total_len_mut().set(expected.total_len().get());
+                header
+                    .flag_fragment_mut()
+                    .set_reserved(expected.flag_fragment().reserved())
+                    .set_dont_fragment(expected.flag_fragment().dont_fragment())
+                    .set_more_fragments(expected.flag_fragment().more_fragments())
+                    .set_fragment_offset(expected.flag_fragment().fragment_offset());
+                *header.ttl_mut() = *expected.ttl();
+                *header.protocol_mut() = *expected.protocol();
+                header.checksum_mut().set(expected.checksum().get());
+                *header.source_mut() = *expected.source();
+                *header.destination_mut() = *expected.destination();
+            }
+
+            let decoder = DecoderBuffer::new(&buffer);
+            let (actual, _) = decoder.decode::<&Header>().unwrap();
+            {
+                // make sure all of the values match
+                assert_eq!(expected, actual);
+                assert_eq!(expected.vihl(), actual.vihl());
+                assert_eq!(expected.vihl().version(), actual.vihl().version());
+                assert_eq!(expected.vihl().header_len(), actual.vihl().header_len());
+                assert_eq!(expected.tos(), actual.tos());
+                assert_eq!(expected.tos().dscp(), actual.tos().dscp());
+                assert_eq!(expected.tos().ecn(), actual.tos().ecn());
+                assert_eq!(expected.id(), actual.id());
+                assert_eq!(expected.total_len(), actual.total_len());
+                assert_eq!(expected.flag_fragment(), actual.flag_fragment());
+                assert_eq!(
+                    expected.flag_fragment().reserved(),
+                    actual.flag_fragment().reserved()
+                );
+                assert_eq!(
+                    expected.flag_fragment().dont_fragment(),
+                    actual.flag_fragment().dont_fragment()
+                );
+                assert_eq!(
+                    expected.flag_fragment().more_fragments(),
+                    actual.flag_fragment().more_fragments()
+                );
+                assert_eq!(expected.ttl(), actual.ttl());
+                assert_eq!(expected.protocol(), actual.protocol());
+                assert_eq!(expected.checksum(), actual.checksum());
+                assert_eq!(expected.source(), actual.source());
+                assert_eq!(expected.destination(), actual.destination());
+            }
+        })
+    }
+
+    #[test]
+    fn header_round_trip_test() {
+        check!().for_each(|buffer| {
+            s2n_codec::assert_codec_round_trip_bytes!(Header, buffer);
+        });
     }
 }
