@@ -494,6 +494,8 @@ impl CongestionController for CubicCongestionController {
 }
 
 impl CubicCongestionController {
+    // max_datagram_size is the current max_datagram_size, and is
+    // expected to be 1200 when the congestion controller is created.
     pub fn new(max_datagram_size: u16) -> Self {
         Self {
             cubic: Cubic::new(max_datagram_size),

@@ -19,7 +19,9 @@ use std::{
 
 mod setup;
 use bytes::Bytes;
+use s2n_quic_core::{event::api::{MtuUpdated, MtuUpdatedCause}, path::MaxMtu, stream::testing::Data};
 use s2n_quic_platform::io::testing::{network::Packet, primary, TxRecorder};
+use s2n_quic_tls::ConnectionContext;
 use setup::*;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -75,16 +77,15 @@ fn blackhole_failure_test() {
 fn intercept_loss(loss: Loss<Random>) {
     let model = Model::default();
     test(model, |handle| {
-        let server = server_with(handle, |io| {
-            Ok(Server::builder()
-                .with_io(io)?
-                .with_tls(SERVER_CERTS)?
-                .with_event(events())?
-                .with_packet_interceptor(loss)?
-                .start()?)
-        })?;
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event(events())?
+            .with_packet_interceptor(loss)?
+            .start()?;
+        let server_address = start_server(server)?;
 
-        client(handle, server)
+        client(handle, server_address)
     })
     .unwrap();
 }
@@ -297,49 +298,83 @@ fn local_stream_open_notify_test() {
     .unwrap();
 }
 
-pub struct PacketSentSubscriber {
-    pub packet_sent: Arc<Mutex<Vec<PacketSent>>>,
-}
-
-pub struct PacketSentContext {
-    packet_sent: Arc<Mutex<Vec<PacketSent>>>,
-}
-
-impl Subscriber for PacketSentSubscriber {
-    type ConnectionContext = PacketSentContext;
-
-    fn create_connection_context(
-        &mut self,
-        _meta: &ConnectionMeta,
-        _info: &ConnectionInfo,
-    ) -> Self::ConnectionContext {
-        PacketSentContext {
-            packet_sent: self.packet_sent.clone(),
+macro_rules! event_recorder {
+    ($sub:ident, $con:ident, $event:ty, $method:ident) => {
+        struct $sub {
+            events: Arc<Mutex<Vec<$event>>>,
         }
-    }
 
-    fn on_packet_sent(
-        &mut self,
-        context: &mut Self::ConnectionContext,
-        _meta: &ConnectionMeta,
-        event: &PacketSent,
-    ) {
-        let mut buffer = context.packet_sent.lock().unwrap();
-        buffer.push(event.clone());
-    }
+        impl $sub {
+            fn new() -> Self {
+                $sub {
+                    events: Arc::new(Mutex::new(Vec::new())),
+                }
+            }
+
+            fn events(&self) -> Arc<Mutex<Vec<$event>>> {
+                self.events.clone()
+            }
+        }
+
+        struct $con {
+            events: Arc<Mutex<Vec<$event>>>,
+        }
+
+        impl Subscriber for $sub {
+            type ConnectionContext = $con;
+
+            fn create_connection_context(
+                &mut self,
+                _meta: &ConnectionMeta,
+                _info: &ConnectionInfo,
+            ) -> Self::ConnectionContext {
+                $con {
+                    events: self.events.clone(),
+                }
+            }
+
+            fn $method(
+                &mut self,
+                context: &mut Self::ConnectionContext,
+                _meta: &ConnectionMeta,
+                event: &$event,
+            ) {
+                let mut buffer = context.events.lock().unwrap();
+                buffer.push(event.clone());
+            }
+        }
+    };
 }
+
+event_recorder!(
+    PacketSentRecorder,
+    PacketSentRecorderContext,
+    PacketSent,
+    on_packet_sent
+);
+event_recorder!(
+    MtuUpdatedRecorder,
+    MtuUpdatedRecorderContext,
+    MtuUpdated,
+    on_mtu_updated
+);
 
 #[test]
 fn packet_sent_event_test() {
     let recorder = TxRecorder::default();
     let network_packets = recorder.get_packets();
-    let subscriber = PacketSentSubscriber {
-        packet_sent: Arc::new(Mutex::new(Vec::new())),
-    };
-    let events = subscriber.packet_sent.clone();
+    let subscriber = PacketSentRecorder::new();
+    let events = subscriber.events();
     let mut server_socket = None;
     test((recorder, Model::default()), |handle| {
-        let addr = server_with_subscriber(handle, subscriber)?;
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event(subscriber)?
+            .start()?;
+        let addr = start_server(server)?;
+        // store addr in exterior scope so we can use it to filter packets
+        // after the test ends
         server_socket = Some(addr);
         client(handle, addr)?;
         Ok(addr)
@@ -372,4 +407,68 @@ fn packet_sent_event_test() {
         assert_eq!(expected_len, event_len)
     }
     assert!(events.is_empty());
+}
+
+#[test]
+fn mtu_negotiate_jumbo_frame() {
+    let model = Model::default();
+    model.set_max_udp_payload(9_001);
+
+    let subscriber = MtuUpdatedRecorder::new();
+    let events = subscriber.events();
+
+    test(model, |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().with_max_mtu(9001).build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event(subscriber)?
+            .start()?;
+        let addr = start_server(server)?;
+        // we need a large payload to allow for multiple rounds of MTU probing
+        client_with_data(handle, addr, Data::new(10_000_000))?;
+        Ok(addr)
+    })
+    .unwrap();
+
+    // handshake is padded to 1200, so we should immediate have an mtu of 1200
+    // since the handshake successfully completes
+    let handshake_mtu = events.lock().unwrap().get(0).unwrap().clone();
+    assert_eq!(handshake_mtu.mtu, 1200);
+    assert!(matches!(handshake_mtu.cause, MtuUpdatedCause::NewPath{..}));
+
+    // we should then successfully probe for 1500 (minus headers = 1472)
+    let first_probe = events.lock().unwrap().get(1).unwrap().clone();
+    assert_eq!(first_probe.mtu, 1472);
+
+    // we binary search upwards 9001
+    // this isn't the maximum mtu we'd find in practice, just the maximum mtu we
+    // find with a payload of 10_000_000 bytes.
+    let last_probe = events.lock().unwrap().pop().unwrap();
+    assert_eq!(last_probe.mtu, 8943);
+}
+
+#[test]
+fn mtu_try_jumbo_frame_unsupported_network() {
+    let model = Model::default();
+    assert_eq!(model.max_udp_payload(), 1_500);
+
+    let subscriber = MtuUpdatedRecorder::new();
+    let events = subscriber.events();
+
+    test(model, |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event(subscriber)?
+            .start()?;
+        let addr = start_server(server)?;
+        client_with_data(handle, addr, Data::new(10_000_000))?;
+        Ok(addr)
+    })
+    .unwrap();
+
+    let last_mtu = events.lock().unwrap().pop().unwrap();
+
+    // ETHERNET_MTU - UDP_HEADER_LEN - IPV4_HEADER_LEN
+    assert_eq!(last_mtu.mtu, 1472);
 }

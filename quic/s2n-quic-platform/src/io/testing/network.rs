@@ -22,6 +22,11 @@ use std::{
     },
 };
 
+// This constant is used to size the buffer for packet payloads
+// we use 10_000 since there are unit tests for jumbo frames, which
+// have MTU's up to 9_216
+const MAX_TESTED_MTU: u16 = 10_000;
+
 pub type PathHandle = Tuple;
 
 pub trait Network {
@@ -246,7 +251,7 @@ pub struct Queue {
 
 impl Queue {
     fn new(addr: SocketAddress) -> Self {
-        let mtu = MaxMtu::default().into();
+        let mtu = MAX_TESTED_MTU;
         let local_address = addr.into();
         Self {
             capacity: 1024,

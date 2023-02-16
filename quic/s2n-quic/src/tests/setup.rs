@@ -40,11 +40,7 @@ pub fn events() -> event::tracing::Provider {
     event::tracing::Provider::default()
 }
 
-pub fn server_with<F: FnOnce(Io) -> Result<Server>>(
-    handle: &Handle,
-    build: F,
-) -> Result<SocketAddr> {
-    let mut server = build(handle.builder().build().unwrap())?;
+pub fn start_server(mut server: Server) -> Result<SocketAddr> {
     let server_addr = server.local_addr()?;
 
     // accept connections and echo back
@@ -66,23 +62,8 @@ pub fn server_with<F: FnOnce(Io) -> Result<Server>>(
 }
 
 pub fn server(handle: &Handle) -> Result<SocketAddr> {
-    server_with(handle, |io| {
-        Ok(Server::builder()
-            .with_io(io)?
-            .with_tls(SERVER_CERTS)?
-            .with_event(events())?
-            .start()?)
-    })
-}
-
-pub fn server_with_subscriber<S: Subscriber>(handle: &Handle, subscriber: S) -> Result<SocketAddr> {
-    server_with(handle, |io| {
-        Ok(Server::builder()
-            .with_io(io)?
-            .with_tls(SERVER_CERTS)?
-            .with_event(subscriber)?
-            .start()?)
-    })
+    let server = build_server(handle)?;
+    start_server(server)
 }
 
 pub fn build_server(handle: &Handle) -> Result<Server> {
@@ -94,6 +75,10 @@ pub fn build_server(handle: &Handle) -> Result<Server> {
 }
 
 pub fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
+    client_with_data(handle, server_addr, Data::new(10_000))
+}
+
+pub fn client_with_data(handle: &Handle, server_addr: SocketAddr, data: Data) -> Result {
     let client = build_client(handle)?;
 
     primary::spawn(async move {
@@ -103,9 +88,9 @@ pub fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
         let stream = connection.open_bidirectional_stream().await.unwrap();
         let (mut recv, mut send) = stream.split();
 
-        let mut send_data = Data::new(10_000);
+        let mut send_data = data;
+        let mut recv_data = data;
 
-        let mut recv_data = send_data;
         primary::spawn(async move {
             while let Some(chunk) = recv.receive().await.unwrap() {
                 recv_data.receive(&[chunk]);

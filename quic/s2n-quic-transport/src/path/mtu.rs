@@ -128,6 +128,8 @@ impl Controller {
     ///
     /// The UDP header length and IP header length will be subtracted from `max_mtu` to
     /// determine the max_udp_payload used for limiting the payload length of probe packets.
+    /// max_mtu is the maximum allowed mtu, e.g. for jumbo frames this value is expected to
+    /// be over 9000.
     pub fn new(max_mtu: MaxMtu, peer_socket_address: &SocketAddress) -> Self {
         let min_ip_header_len = match peer_socket_address {
             SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
@@ -356,7 +358,7 @@ impl Controller {
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.3.2
         //# Implementations SHOULD select the set of probe packet sizes to
         //# maximize the gain in PLPMTU from each search step.
-        self.probed_size = self.plpmtu + ((self.max_probe_size - self.plpmtu) / 2)
+        self.probed_size = self.plpmtu + ((self.max_probe_size - self.plpmtu) / 2);
     }
 
     /// Requests a new search to be initiated
