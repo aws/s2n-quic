@@ -32,6 +32,10 @@ impl VecBuffer {
 
         Self { region, mtu }
     }
+
+    pub fn new_with_mtu(mtu: usize) -> Self {
+        Self::new(*DEFAULT_MESSAGE_COUNT, mtu)
+    }
 }
 
 impl Default for VecBuffer {
