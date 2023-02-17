@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 # Remove the `provider-tls-default` feature and add `provider-tls-rustls`
-s2n-quic = { version = "1", path = "../../quic/s2n-quic", default-features = false, features = ["provider-address-token-default", "provider-tls-rustls", "provider-event-tracing"] }
+s2n-quic = { version = "1", path = "../../quic/s2n-quic" }
 tokio = { version = "1", features = ["full"] }
 
 [workspace]
