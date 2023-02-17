@@ -5,13 +5,13 @@ use crate::{
     client::Connect,
     provider::{
         event,
-        io::testing::{primary, spawn, Handle, Io, Result},
+        io::testing::{primary, spawn, Handle, Result},
     },
     Client, Server,
 };
 use rand::{Rng, RngCore};
 use s2n_quic_core::{
-    crypto::tls::testing::certificates, event::Subscriber, havoc, stream::testing::Data,
+    crypto::tls::testing::certificates, havoc, stream::testing::Data,
 };
 use std::net::SocketAddr;
 

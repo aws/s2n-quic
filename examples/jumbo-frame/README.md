@@ -1,37 +1,24 @@
 # Jumbo Frame Support
-The standard ethernet Maximum Transmission Unit - MTU - is 1500 bytes. Jumbo frames
-are ethernet frames that support more than 1500 bytes. Jumbo frames will often support
-approximately 9000 bytes, although this is an implementation specific detail and you
-should check to see what your network supports.
+The standard ethernet Maximum Transmission Unit - MTU - is 1500 bytes. Jumbo frames are ethernet frames that support more than 1500 bytes. Jumbo frames will often support approximately 9000 bytes, although this is an implementation specific detail and you should check to see what your network supports.
 
 ## why use jumbo frames
-There are a number of overheads that occur per-packet. For example, udp packet
-headers are included on each packet. If you can use larger datagrams, then the
-communication is more efficient because the useable payload is larger relative
-to the overhead.
+There are a number of overheads that occur per-packet. For example, udp packet headers are included on each packet. If you can use larger datagrams, then the communication is more efficient because the useable payload is larger relative to the overhead.
 
 There are also CPU utilization savings for jumbo frames as well
 
 ## how to use jumbo frames
-You can only use jumbo frames if there are supported on the network that you are
-communicating over. As an example, AWS supports jumbo frames in the specific
-circumstances listed [here](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/network_mtu.html)
+You can only use jumbo frames if there are supported on the network that you are communicating over. As an example, AWS supports jumbo frames in the specific circumstances listed [here](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/network_mtu.html)
 
-For this example, we can use the `tracepath` utility to make sure jumbo frames
-are supported on our local machine.
+For this example, we can use the `tracepath` utility to make sure jumbo frames are supported on our local machine.
 
 ```console
 [ec2-user@ip-1-1-1-1 jumbo-frame]$ tracepath localhost
  1:  localhost                                             0.035ms reached
      Resume: pmtu 65535 hops 1 back 1
 ```
-The tracepath tool says something about `pmtu 65535`, which means that the
-Path Maximum Transmission Unit is 65,535 bytes. So 9,001 bytes should be no
-problem!
+The tracepath tool says something about `pmtu 65535`, which means that the Path Maximum Transmission Unit is 65,535 bytes. So 9,001 bytes should be no problem!
 
-Then we just need to configure the io provider that we pass into our quic
-endpoint and we are good to go. The full code is in the folder, but the most
-relevant snippet is reproduced below.
+Then we just need to configure the io provider that we pass into our quic endpoint and we are good to go. The full code is in the folder, but the most relevant snippet is reproduced below.
 ```rust
     let address: SocketAddr = "127.0.0.1:4433".parse()?;
     let io = s2n_quic::provider::io::Default::builder()

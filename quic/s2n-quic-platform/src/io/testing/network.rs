@@ -12,7 +12,7 @@ use s2n_quic_core::{
         self,
         tx::{Entry as _, Queue as _},
     },
-    path::{LocalAddress, MaxMtu, Tuple},
+    path::{LocalAddress, Tuple},
 };
 use std::{
     collections::{HashMap, VecDeque},
@@ -24,7 +24,7 @@ use std::{
 
 // This constant is used to size the buffer for packet payloads
 // we use 10_000 since there are unit tests for jumbo frames, which
-// have MTU's up to 9_216
+// have MTU's up to approximately 9_001
 const MAX_TESTED_MTU: u16 = 10_000;
 
 pub type PathHandle = Tuple;

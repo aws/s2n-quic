@@ -19,9 +19,12 @@ use std::{
 
 mod setup;
 use bytes::Bytes;
-use s2n_quic_core::{event::api::{MtuUpdated, MtuUpdatedCause}, path::MaxMtu, stream::testing::Data};
+use s2n_quic_core::{
+    event::api::{MtuUpdated, MtuUpdatedCause},
+    stream::testing::Data,
+};
 use s2n_quic_platform::io::testing::{network::Packet, primary, TxRecorder};
-use s2n_quic_tls::ConnectionContext;
+
 use setup::*;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -409,8 +412,10 @@ fn packet_sent_event_test() {
     assert!(events.is_empty());
 }
 
+// if we specify jumbo frames on the endpoint and the network supports them,
+// then jumbo frames should be negotiated.
 #[test]
-fn mtu_negotiate_jumbo_frame() {
+fn mtu_probe_jumbo_frame_test() {
     let model = Model::default();
     model.set_max_udp_payload(9_001);
 
@@ -434,7 +439,10 @@ fn mtu_negotiate_jumbo_frame() {
     // since the handshake successfully completes
     let handshake_mtu = events.lock().unwrap().get(0).unwrap().clone();
     assert_eq!(handshake_mtu.mtu, 1200);
-    assert!(matches!(handshake_mtu.cause, MtuUpdatedCause::NewPath{..}));
+    assert!(matches!(
+        handshake_mtu.cause,
+        MtuUpdatedCause::NewPath { .. }
+    ));
 
     // we should then successfully probe for 1500 (minus headers = 1472)
     let first_probe = events.lock().unwrap().get(1).unwrap().clone();
@@ -447,8 +455,10 @@ fn mtu_negotiate_jumbo_frame() {
     assert_eq!(last_probe.mtu, 8943);
 }
 
+// if we specify jumbo frames on the endpoint and the network does not support
+// them, the connection should gracefully complete with a smaller mtu
 #[test]
-fn mtu_try_jumbo_frame_unsupported_network() {
+fn mtu_probe_jumbo_frame_unsupported_test() {
     let model = Model::default();
     assert_eq!(model.max_udp_payload(), 1_500);
 

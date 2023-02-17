@@ -5,7 +5,6 @@ authors = ["AWS s2n"]
 edition = "2021"
 
 [dependencies]
-# Remove the `provider-tls-default` feature and add `provider-tls-rustls`
 s2n-quic = { version = "1", path = "../../quic/s2n-quic" }
 tokio = { version = "1", features = ["full"] }
 

@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut server = Server::builder()
         .with_tls((CERT_PEM, KEY_PEM))?
         .with_io(io)?
-        .with_event(MtuEventInformer{})?
+        .with_event(MtuEventInformer {})?
         .start()?;
 
     eprintln!("Listening for a connection");
