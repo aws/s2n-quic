@@ -54,6 +54,11 @@ impl<'a> Request<'a> {
         self
     }
 
+    pub fn reset_on_loss(&mut self) -> &mut Self {
+        self.tx_mut().reset_on_loss = true;
+        self
+    }
+
     /// Flushes any pending tx data to be ACKed before unblocking
     pub fn flush(&mut self) -> &mut Self {
         self.tx_mut().flush = true;
@@ -186,6 +191,10 @@ pub mod tx {
 
         /// Optionally reset the stream with an error
         pub reset: Option<application::Error>,
+
+        /// Request that the stream is internally reset if any loss occurs, rather than
+        /// re-transmitting.
+        pub reset_on_loss: bool,
 
         /// Waits for an ACK on resets and finishes
         pub flush: bool,
@@ -499,6 +508,7 @@ mod tests {
             .finish()
             .flush()
             .reset(application::Error::new(1).unwrap())
+            .reset_on_loss()
             .receive(&mut receive_chunks)
             .with_watermark(5, 10)
             .stop_sending(application::Error::new(2).unwrap());
@@ -512,6 +522,7 @@ mod tests {
                     flush: true,
                     reset: Some(reset),
                     detached: false,
+                    reset_on_loss: true,
                 }),
                 rx: Some(rx::Request {
                     chunks: Some(rx_chunks),

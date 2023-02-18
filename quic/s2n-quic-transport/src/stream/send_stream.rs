@@ -287,6 +287,7 @@ impl StreamFlowController {
 
     /// This method is called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        // FIXME: Should we still do this?
         self.stream_data_blocked_sync.on_packet_loss(ack_set);
     }
 
@@ -457,6 +458,8 @@ pub struct SendStream {
     final_state_observed: bool,
     /// Marks the stream as detached from the application
     detached: bool,
+    /// Marks the stream for reset if packet loss is detected while sending.
+    reset_on_loss: bool,
 }
 
 impl SendStream {
@@ -485,6 +488,7 @@ impl SendStream {
             write_waiter: None,
             final_state_observed: is_closed,
             detached: is_closed,
+            reset_on_loss: false,
         };
 
         if is_closed {
@@ -639,6 +643,13 @@ impl SendStream {
 
     /// This method gets called when a packet loss is reported
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+        if self.reset_on_loss {
+            // FIXME: actual stream error
+            //
+            // We don't care about whether this actually sent a reset or not, just stopping here.
+            let _ = self.init_reset(ResetSource::InternalReset, StreamError::non_writable());
+        }
+
         self.data_sender.on_packet_loss(ack_set);
         self.data_sender
             .flow_controller_mut()
@@ -796,6 +807,10 @@ impl SendStream {
             }
 
             return Ok(response);
+        }
+
+        if request.reset_on_loss {
+            self.reset_on_loss = true;
         }
 
         // Do some state checks here. Only write data when the client is still

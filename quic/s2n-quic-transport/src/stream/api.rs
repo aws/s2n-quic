@@ -490,6 +490,11 @@ macro_rules! tx_request_apis {
             self
         }
 
+        pub fn reset_on_loss(&mut self) -> &mut Self {
+            self.request.reset_on_loss();
+            self
+        }
+
         pub fn flush(&mut self) -> &mut Self {
             self.request.flush();
             self

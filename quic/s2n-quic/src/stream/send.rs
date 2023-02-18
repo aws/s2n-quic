@@ -577,6 +577,22 @@ impl SendStream {
         self.0.id().into()
     }
 
+    /// Set this stream to immediately terminate on any detected loss.
+    ///
+    /// This creates a stream that acts similar to an unreliable datagram, but is allowed to be
+    /// of arbitrary size. That means that s2n-quic will transparently handle the current MTU
+    /// to "fragment" the payload of this stream (like with any other stream), but if loss is
+    /// detected the stream is abandoned and will be immediately closed.
+    #[inline]
+    pub fn reset_on_loss(&mut self) {
+        self.0
+            .tx_request()
+            .unwrap()
+            .reset_on_loss()
+            .poll(None)
+            .unwrap();
+    }
+
     impl_connection_api!(|stream| crate::connection::Handle(stream.0.connection().clone()));
 
     impl_send_stream_api!(|stream, dispatch| dispatch!(stream.0));
