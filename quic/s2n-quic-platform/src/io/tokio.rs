@@ -252,8 +252,12 @@ impl Io {
                 let mut rx = socket::Queue::<buffer::Buffer>::new(rx_buffer, max_segments.into());
                 let tx = socket::Queue::<buffer::Buffer>::new(tx_buffer, max_segments.into());
             } else {
-                let mut rx = socket::Queue::new(rx_buffer, crate::features::get().gso.default_max_segments());
-                let tx = socket::Queue::new(tx_buffer, crate::features::get().gso.default_max_segments());
+                // If you are using an LSP to jump into this code, it will
+                // probably take you to the wrong implementation. socket.rs does
+                // compile time swaps of socket implementations. This queue is
+                // actually in socket/std.rs, not socket/mmsg.rs
+                let mut rx = socket::Queue::new(rx_buffer);
+                let tx = socket::Queue::new(tx_buffer);
             }
         }
 

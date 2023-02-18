@@ -77,14 +77,14 @@ MtuUpdated { path_id: 0, mtu: 8943, cause: ProbeAcknowledged }
 information that you see in the console. You can use this event to verify that jumbo frames are being used. Alternatey, you could use a tool like `tcpdump` along with a packet analysis tool like `wireshark` to confirm that jumbo packets are being sent.
 
 ## a note on probing strategy
-Quic implements Datagram Packetization Layer Path Maximum Transmission Unit Discovery, or DPLPMTUD for short. This is decribed in [RFC8899](https://www.rfc-editor.org/info/rfc8899). The basic idea is that to determine if an `X` byte MTU is supported we can send a packet of `X` bytes.
+Quic implements Datagram Packetization Layer Path Maximum Transmission Unit Discovery, or DPLPMTUD for short. This is described in [RFC8899](https://www.rfc-editor.org/info/rfc8899). The basic idea is that to determine if an `X` byte MTU is supported we can send a packet of `X` bytes.
 - if it is acked -> supported
 - if it is lost  -> not supported
 
 In the console output, you might have noticed that we don't immediately probe for the 9001 byte mtu, and indeed it takes us several probes to get close to it. What gives?
 
 The MTU updates happen in this process
-1. 1200 byte mtu - the handshake frames are padded to 1200 bytes. So if we successfuly complete a handshake then we know that the connection supports a minimum of a 1200 byte MTU. From the quic RFC, this is the minimum mtu that quic can operate on.
+1. 1200 byte mtu - the handshake frames are padded to 1200 bytes. So if we successfully complete a handshake then we know that the connection supports a minimum of a 1200 byte MTU. From the quic RFC, this is the minimum mtu that quic can operate on.
 2. 1472 byte mtu - the quic endpoint will send the first probe at `min(1500 - overhead, max_mtu - overhead)`. In this case the 1472 byte probe represents `1500 - UDP_HEADER - IPV4_HEADER`. We start with this value because it is the most likely.
 3. binary search towards `max_mtu` until we're within some reasonable threshold of `max_mtu`.
 
