@@ -22,7 +22,7 @@ pub struct Timestamp(NonZeroU64);
 
 impl fmt::Debug for Timestamp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Timestamp({})", self)
+        write!(f, "Timestamp({self})")
     }
 }
 
@@ -34,9 +34,9 @@ impl fmt::Display for Timestamp {
         let mins = duration.as_secs() / 60 % 60;
         let hours = duration.as_secs() / 60 / 60;
         if micros != 0 {
-            write!(f, "{}:{:02}:{:02}.{:06}", hours, mins, secs, micros)
+            write!(f, "{hours}:{mins:02}:{secs:02}.{micros:06}")
         } else {
-            write!(f, "{}:{:02}:{:02}", hours, mins, secs)
+            write!(f, "{hours}:{mins:02}:{secs:02}")
         }
     }
 }

@@ -143,7 +143,7 @@ impl Report {
             return;
         }
 
-        eprintln!("> {}", line);
+        eprintln!("> {line}");
     }
 
     fn dump(&mut self) {

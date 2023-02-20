@@ -147,7 +147,7 @@ impl FromStr for Testcase {
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("Unsupported test case: {}", s),
+                    format!("Unsupported test case: {s}"),
                 )
                 .into())
             }

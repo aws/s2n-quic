@@ -69,7 +69,7 @@ mod rand {
     // that will reseed from the OS after RESEED_THRESHOLD is exceeded
     fn build_rng() -> ReseedingRng<ChaChaCore, OsRng> {
         let prng = ChaChaCore::from_rng(OsRng::default())
-            .unwrap_or_else(|err| panic!("could not initialize random generator: {}", err));
+            .unwrap_or_else(|err| panic!("could not initialize random generator: {err}"));
         ReseedingRng::new(prng, RESEED_THRESHOLD, OsRng::default())
     }
 

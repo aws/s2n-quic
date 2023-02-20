@@ -65,7 +65,7 @@ impl Perf {
 
             try_join_all(connections).await?;
 
-            println!("closing server after {} connections", limit);
+            println!("closing server after {limit} connections");
 
             if did_panic {
                 return Err(crate::CRASH_ERROR_MESSAGE.into());

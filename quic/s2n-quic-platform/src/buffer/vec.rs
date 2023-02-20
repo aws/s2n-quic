@@ -6,10 +6,18 @@ use core::{
     fmt,
     ops::{Deref, DerefMut},
 };
+use lazy_static::lazy_static;
 use s2n_quic_core::path::DEFAULT_MAX_MTU;
 
 // TODO decide on better defaults
-const DEFAULT_MESSAGE_COUNT: usize = 1024;
+lazy_static! {
+    static ref DEFAULT_MESSAGE_COUNT: usize = {
+        std::env::var("S2N_UNSTABLE_DEFAULT_MESSAGE_COUNT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1024 * 2)
+    };
+}
 
 pub struct VecBuffer {
     region: alloc::vec::Vec<u8>,
@@ -33,7 +41,7 @@ impl Default for VecBuffer {
         if cfg!(test) {
             Self::new(64, 1200)
         } else {
-            Self::new(DEFAULT_MESSAGE_COUNT, DEFAULT_MAX_MTU.into())
+            Self::new(*DEFAULT_MESSAGE_COUNT, DEFAULT_MAX_MTU.into())
         }
     }
 }

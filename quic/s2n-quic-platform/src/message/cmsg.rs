@@ -176,10 +176,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                 }
                 (level, ty, len) if cfg!(test) => {
                     // if we're getting an unexpected cmsg we should know about it in testing
-                    panic!(
-                        "unexpected cmsghdr {{ level: {}, type: {}, len: {} }}",
-                        level, ty, len
-                    );
+                    panic!("unexpected cmsghdr {{ level: {level}, type: {ty}, len: {len} }}");
                 }
                 _ => {}
             }

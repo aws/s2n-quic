@@ -132,7 +132,7 @@ impl core::str::FromStr for Byte {
             "Gi" | "gi" => 1.gibibytes(),
             "T" | "t" => 1.terabytes(),
             "Ti" | "ti" => 1.tebibytes(),
-            _ => return Err(format!("invalid bytes: {:?}", s).into()),
+            _ => return Err(format!("invalid bytes: {s:?}").into()),
         };
 
         if is_bits {

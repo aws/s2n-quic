@@ -131,28 +131,35 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     {
         self.on_timeout(clock.get_time());
 
+        // the queue doesn't have the capacity for transmissions so don't try to push
+        if !queue.has_capacity() {
+            return;
+        }
+
         // Iterate over all connections which want to transmit data
-        let mut transmit_result = Ok(());
         let endpoint_context = self.config.context();
 
         let timestamp = clock.get_time();
 
         self.connections.iterate_transmission_list(|connection| {
-            transmit_result = connection.on_transmit(
+            // if we no longer have capacity, then put the connection at the front of the queue for
+            // next time
+            if !queue.has_capacity() {
+                return ConnectionContainerIterationResult::BreakAndInsertAtFront;
+            }
+
+            // ignore the transmission error and just query the queue capacity instead
+            let _ = connection.on_transmit(
                 queue,
                 timestamp,
                 endpoint_context.event_subscriber,
                 endpoint_context.packet_interceptor,
             );
-            if transmit_result.is_err() {
-                // If one connection fails, return
-                ConnectionContainerIterationResult::BreakAndInsertAtBack
-            } else {
-                ConnectionContainerIterationResult::Continue
-            }
+
+            ConnectionContainerIterationResult::Continue
         });
 
-        if transmit_result.is_ok() {
+        if queue.has_capacity() {
             let mut publisher = event::EndpointPublisherSubscriber::new(
                 event::builder::EndpointMeta {
                     endpoint_type: Cfg::ENDPOINT_TYPE,

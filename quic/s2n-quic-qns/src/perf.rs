@@ -279,17 +279,7 @@ impl Counters {
         let duration = Duration::from_nanos(duration);
         let pto_count = self.pto_count.swap(0, Ordering::Relaxed);
         eprintln!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{:?}\t{:?}\t{:?}\t{}",
-            send_rate,
-            receive_rate,
-            max_cwnd,
-            max_bytes_in_flight,
-            lost_packets,
-            wakeups,
-            duration,
-            max_rtt,
-            max_smoothed_rtt,
-            pto_count,
+            "{send_rate}\t{receive_rate}\t{max_cwnd}\t{max_bytes_in_flight}\t{lost_packets}\t{wakeups}\t{duration:?}\t{max_rtt:?}\t{max_smoothed_rtt:?}\t{pto_count}",
         );
     }
 }
@@ -307,9 +297,9 @@ fn rate(bytes: u64, duration: Duration) -> String {
     let value = value.trim_end_matches('B');
 
     if duration == Duration::from_secs(1) {
-        format!("{}bps", value)
+        format!("{value}bps")
     } else {
-        format!("{}/{:?}", value, duration)
+        format!("{value}/{duration:?}")
     }
 }
 

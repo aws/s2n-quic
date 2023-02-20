@@ -24,7 +24,7 @@ impl fmt::Display for Rate {
             let factor = 1.0 / self.period.as_secs_f64();
             let bytes = (*self.bytes as f64 * factor) as u64;
             let bytes = bytes.bytes();
-            return write!(f, "{}ps", bytes);
+            return write!(f, "{bytes}ps");
         }
 
         write!(f, "{}/{:?}", self.bytes, self.period)
@@ -48,7 +48,7 @@ impl core::str::FromStr for Rate {
                 period: *humantime::Duration::from_str(period.trim())?,
             })
         } else {
-            Err(format!("invalid rate: {}", s).into())
+            Err(format!("invalid rate: {s}").into())
         }
     }
 }

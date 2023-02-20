@@ -18,7 +18,7 @@ fn round_trip_bytes_test() {
 }
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(10))]
+#[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(kissat))]
 fn round_trip_values_test() {
     check!().with_type().cloned().for_each(|v| {
         if let Ok(v) = VarInt::new(v) {
@@ -91,7 +91,7 @@ sequence_test!(one_byte_sequence_example([0x25], 37));
 // # +------+--------+-------------+-----------------------+
 #[test]
 #[cfg_attr(miri, ignore)]
-#[cfg_attr(kani, kani::proof, kani::unwind(3))]
+#[cfg_attr(kani, kani::proof, kani::unwind(3), kani::solver(kissat))]
 fn one_byte_sequence_test() {
     bolero::check!()
         .with_type()
@@ -107,7 +107,7 @@ fn one_byte_sequence_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
-#[cfg_attr(kani, kani::proof, kani::unwind(4))]
+#[cfg_attr(kani, kani::proof, kani::unwind(4), kani::solver(kissat))]
 fn two_byte_sequence_test() {
     // the s2n-quic implementation always chooses the smallest encoding possible.
     // this means if we wish to test two-byte sequences, we need to encode a number
@@ -130,7 +130,7 @@ fn two_byte_sequence_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
-#[cfg_attr(kani, kani::proof, kani::unwind(10))]
+#[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(kissat))]
 fn four_byte_sequence_test() {
     // The s2n-quic implementation always chooses the smallest encoding possible.
     // This means if we wish to test the four-byte sequences, we need to encode a number
@@ -153,7 +153,7 @@ fn four_byte_sequence_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
-#[cfg_attr(kani, kani::proof, kani::unwind(10))]
+#[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(kissat))]
 fn eight_byte_sequence_test() {
     // The s2n-quic implementation always chooses the smallest encoding possible.
     // This means if we wish to test eight-byte sequences, we need to encode a number
@@ -223,7 +223,7 @@ fn encode_updated_invalid_test() {
 }
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+#[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
 fn table_differential_test() {
     //= https://www.rfc-editor.org/rfc/rfc9000#section-16
     //= type=test
@@ -268,7 +268,7 @@ fn table_differential_test() {
 }
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+#[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
 fn checked_ops_test() {
     check!().with_type().cloned().for_each(|(a, b)| {
         if let (Ok(a_v), Ok(b_v)) = (VarInt::new(a), VarInt::new(b)) {

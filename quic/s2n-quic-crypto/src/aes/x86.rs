@@ -6,6 +6,7 @@ use crate::{
     arch::*,
     block::{BatchMut, Block, Zeroed},
 };
+use s2n_quic_core::assume;
 use zeroize::Zeroize;
 
 #[cfg(any(test, feature = "testing"))]
@@ -67,7 +68,7 @@ impl<const N: usize> super::aes128::EncryptionKey for EncryptionKey<N> {
     #[inline(always)]
     fn keyround(&self, index: usize) -> &Self::KeyRound {
         unsafe {
-            unsafe_assert!(index < N);
+            assume!(index < N);
             self.0.get_unchecked(index)
         }
     }
@@ -80,7 +81,7 @@ impl<const N: usize> super::aes256::EncryptionKey for EncryptionKey<N> {
     #[inline(always)]
     fn keyround(&self, index: usize) -> &Self::KeyRound {
         unsafe {
-            unsafe_assert!(index < N);
+            assume!(index < N);
             self.0.get_unchecked(index)
         }
     }
@@ -96,7 +97,7 @@ impl<const N: usize> super::aes128::DecryptionKey for DecryptionKey<N> {
     #[inline(always)]
     fn keyround(&self, index: usize) -> &Self::KeyRound {
         unsafe {
-            unsafe_assert!(index < N);
+            assume!(index < N);
             self.0.get_unchecked(index)
         }
     }
@@ -109,7 +110,7 @@ impl<const N: usize> super::aes256::DecryptionKey for DecryptionKey<N> {
     #[inline(always)]
     fn keyround(&self, index: usize) -> &Self::KeyRound {
         unsafe {
-            unsafe_assert!(index < N);
+            assume!(index < N);
             self.0.get_unchecked(index)
         }
     }

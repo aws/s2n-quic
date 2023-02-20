@@ -91,7 +91,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bolero::{check, generator::*};
+    use crate::testing::InlineVec;
+    use bolero::check;
 
     fn assert_eq_slices<A, B, T>(a: &[A], b: &[B])
     where
@@ -128,33 +129,10 @@ mod tests {
         }
     }
 
-    #[derive(Clone, Copy, Debug, TypeGenerator)]
-    struct InlineVec<T, const LEN: usize> {
-        values: [T; LEN],
-
-        #[generator(_code = "0..LEN")]
-        len: usize,
-    }
-
-    impl<T, const LEN: usize> core::ops::Deref for InlineVec<T, LEN> {
-        type Target = [T];
-
-        fn deref(&self) -> &Self::Target {
-            &self.values[..self.len]
-        }
-    }
-
-    impl<T, const LEN: usize> core::ops::DerefMut for InlineVec<T, LEN> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            &mut self.values[..self.len]
-        }
-    }
-
     const LEN: usize = if cfg!(kani) { 2 } else { 32 };
 
     #[test]
-    #[cfg(any(not(kani), kani_slow))]
-    #[cfg_attr(kani, kani::proof, kani::unwind(5))]
+    #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
     #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
     fn vectored_copy_fuzz_test() {
         check!()

@@ -37,7 +37,7 @@ impl Server {
             let trace = trace.clone();
             spawn(async move {
                 if let Err(error) = handle_connection(connection, scenario, trace).await {
-                    eprintln!("error: {:#}", error);
+                    eprintln!("error: {error:#}");
                 }
             });
         }

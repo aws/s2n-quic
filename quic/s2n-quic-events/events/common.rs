@@ -113,7 +113,7 @@ impl<'a> core::fmt::Debug for ConnectionId<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "0x")?;
         for byte in self.bytes {
-            write!(f, "{:02x}", byte)?;
+            write!(f, "{byte:02x}")?;
         }
         Ok(())
     }
@@ -149,11 +149,11 @@ impl<'a> core::fmt::Debug for SocketAddress<'a> {
         match self {
             Self::IpV4 { ip, port } => {
                 let addr = crate::inet::SocketAddressV4::new(**ip, *port);
-                write!(f, "{}", addr)?;
+                write!(f, "{addr}")?;
             }
             Self::IpV6 { ip, port } => {
                 let addr = crate::inet::SocketAddressV6::new(**ip, *port);
-                write!(f, "{}", addr)?;
+                write!(f, "{addr}")?;
             }
         }
         Ok(())

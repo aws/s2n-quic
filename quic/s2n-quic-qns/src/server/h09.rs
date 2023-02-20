@@ -28,7 +28,7 @@ pub(crate) async fn handle_connection(mut connection: Connection, www_dir: Arc<P
                 // spawn a task per stream
                 tokio::spawn(async move {
                     if let Err(err) = handle_stream(stream, www_dir).await {
-                        eprintln!("Stream error: {:?}", err)
+                        eprintln!("Stream error: {err:?}")
                     }
                 });
             }
@@ -37,15 +37,15 @@ pub(crate) async fn handle_connection(mut connection: Connection, www_dir: Arc<P
                 let context = connection
                     .query_event_context(|context: &MyConnectionContext| *context)
                     .expect("query should execute");
-                debug!("Final stats: {:?}", context);
+                debug!("Final stats: {context:?}");
                 return;
             }
             Err(err) => {
-                eprintln!("error while accepting stream: {}", err);
+                eprintln!("error while accepting stream: {err}");
                 let context = connection
                     .query_event_context(|context: &MyConnectionContext| *context)
                     .expect("query should execute");
-                debug!("Final stats: {:?}", context);
+                debug!("Final stats: {context:?}");
                 return;
             }
         }
@@ -75,7 +75,7 @@ async fn handle_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Resul
                 debug!("{:?} bytes sent on Stream({:?})", len, tx_stream.id());
             }
             Ok(Some(Err(err))) => {
-                eprintln!("error opening {:?}", abs_path);
+                eprintln!("error opening {abs_path:?}");
                 tx_stream.reset(1u32.try_into()?)?;
                 return Err(err.into());
             }
@@ -84,7 +84,7 @@ async fn handle_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Resul
                 return Ok(());
             }
             Err(_) => {
-                eprintln!("timeout opening {:?}", abs_path);
+                eprintln!("timeout opening {abs_path:?}");
             }
         }
     }

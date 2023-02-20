@@ -353,7 +353,7 @@ impl ReceiveBuffer {
             let mut prev_end = self.start_offset;
 
             for slot in &self.slots {
-                assert!(slot.start() >= prev_end, "{:#?}", self);
+                assert!(slot.start() >= prev_end, "{self:#?}");
                 prev_end = slot.end_allocated();
             }
         }

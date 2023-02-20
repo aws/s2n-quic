@@ -41,7 +41,7 @@ fn main() -> Result<(), Error> {
 }
 
 fn supports(name: &str) {
-    println!("cargo:rustc-cfg=s2n_quic_platform_{}", name);
+    println!("cargo:rustc-cfg=s2n_quic_platform_{name}");
 }
 
 struct Env {
@@ -94,7 +94,7 @@ impl Env {
 }
 
 fn env(name: &str) -> String {
-    println!("cargo:rerun-if-env-changed={}", name);
+    println!("cargo:rerun-if-env-changed={name}");
     std::env::var(name)
-        .unwrap_or_else(|_| panic!("build script missing {:?} environment variable", name))
+        .unwrap_or_else(|_| panic!("build script missing {name:?} environment variable"))
 }

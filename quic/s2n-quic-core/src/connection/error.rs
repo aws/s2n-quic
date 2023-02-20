@@ -102,8 +102,7 @@ impl fmt::Display for Error {
         match self {
             Self::Closed { initiator, .. } => write!(
                 f,
-                "The connection was closed without an error by {}",
-                initiator
+                "The connection was closed without an error by {initiator}"
             ),
             Self::Transport { code, frame_type, reason, initiator, .. } => {
                 let error = transport::Error {
@@ -113,14 +112,12 @@ impl fmt::Display for Error {
                 };
                 write!(
                     f,
-                    "The connection was closed on the transport level with error {} by {}",
-                    error, initiator
+                    "The connection was closed on the transport level with error {error} by {initiator}"
                 )
             },
             Self::Application { error, initiator, .. } => write!(
                 f,
-                "The connection was closed on the application level with error {:?} by {}",
-                error, initiator
+                "The connection was closed on the application level with error {error:?} by {initiator}"
             ),
             Self::StatelessReset { .. } => write!(
                 f,
@@ -143,11 +140,11 @@ impl fmt::Display for Error {
             Self::MaxHandshakeDurationExceeded { max_handshake_duration, .. } => write!(
               f,
                 "The connection was closed because the handshake took longer than the max handshake \
-                duration of {:?}", max_handshake_duration
+                duration of {max_handshake_duration:?}"
             ),
             Self::ImmediateClose { reason, .. } => write!(
                 f,
-                "The connection was closed due to: {}", reason
+                "The connection was closed due to: {reason}"
             ),
             Self::EndpointClosing { .. } => {
                 write!(f, "The connection attempt was rejected because the endpoint is closing")

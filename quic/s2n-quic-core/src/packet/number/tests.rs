@@ -10,7 +10,7 @@ use bolero::{check, generator::*};
 use s2n_codec::{testing::encode, DecoderBuffer};
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+#[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
 fn round_trip() {
     check!()
         .with_generator(
@@ -160,7 +160,7 @@ fn rfc_decoder(largest_pn: u64, truncated_pn: u64, pn_nbits: usize) -> u64 {
 }
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+#[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
 fn truncate_expand_test() {
     check!()
         .with_type()
@@ -175,7 +175,7 @@ fn truncate_expand_test() {
 }
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+#[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
 fn rfc_differential_test() {
     check!()
         .with_type()
@@ -207,7 +207,7 @@ fn rfc_differential_test() {
 }
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+#[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
 fn example_test() {
     macro_rules! example {
         ($largest:expr, $truncated:expr, $expected:expr) => {{

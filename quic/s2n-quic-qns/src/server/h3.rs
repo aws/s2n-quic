@@ -28,7 +28,7 @@ pub async fn handle_connection(connection: Connection, www_dir: Arc<Path>) {
         {
             tokio::spawn(async move {
                 if let Err(err) = handle_perf_stream(amount, stream).await {
-                    eprintln!("Stream error: {:?}", err);
+                    eprintln!("Stream error: {err:?}");
                 }
             });
             continue;
@@ -37,7 +37,7 @@ pub async fn handle_connection(connection: Connection, www_dir: Arc<Path>) {
         let www_dir = www_dir.clone();
         tokio::spawn(async {
             if let Err(err) = handle_stream(req, stream, www_dir).await {
-                eprintln!("Stream error: {:?}", err)
+                eprintln!("Stream error: {err:?}")
             }
         });
     }
@@ -63,7 +63,7 @@ where
                 stream.send_data(chunk).await?;
             }
             Ok(Some(Err(err))) => {
-                eprintln!("error opening {:?}", abs_path);
+                eprintln!("error opening {abs_path:?}");
                 stream
                     .send_response(
                         http::Response::builder()
@@ -78,7 +78,7 @@ where
                 return Ok(());
             }
             Err(_) => {
-                eprintln!("timeout opening {:?}", abs_path);
+                eprintln!("timeout opening {abs_path:?}");
             }
         }
     }

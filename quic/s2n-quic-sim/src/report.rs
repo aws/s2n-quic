@@ -469,12 +469,12 @@ impl Report {
                         {
                             "type": "formula",
                             "as": "x",
-                            "expr": format!("floor(datum.index % {})", x_width),
+                            "expr": format!("floor(datum.index % {x_width})"),
                         },
                         {
                             "type": "formula",
                             "as": "y",
-                            "expr": format!("{} - floor(datum.index / {})", y_width, y_width),
+                            "expr": format!("{y_width} - floor(datum.index / {y_width})"),
                         },
                     ],
                 },
@@ -542,7 +542,7 @@ impl Report {
                         {
                             "type": "formula",
                             "as": "y",
-                            "expr": format!("{} - datum.index", y_width),
+                            "expr": format!("{y_width} - datum.index"),
                         },
                         {
                             "type": "extent",
@@ -575,7 +575,7 @@ impl Report {
             ],
         });
 
-        println!("{}", vega);
+        println!("{vega}");
 
         Ok(())
     }

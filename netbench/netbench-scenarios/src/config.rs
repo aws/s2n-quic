@@ -73,7 +73,7 @@ impl Overrides {
     pub fn errors(&self) -> impl Iterator<Item = String> + '_ {
         self.errors
             .iter()
-            .map(|(name, error)| format!("{}: {}\n", name, error))
+            .map(|(name, error)| format!("{name}: {error}\n"))
     }
 }
 
@@ -122,7 +122,7 @@ impl TryFromValue for bool {
             Override::String(v) => match v.as_str() {
                 "true" | "TRUE" | "1" | "yes" | "YES" => Ok(true),
                 "false" | "FALSE" | "0" | "no" | "NO" => Ok(false),
-                _ => Err(format!("invalid bool: {:?}", v).into()),
+                _ => Err(format!("invalid bool: {v:?}").into()),
             },
         }
     }
@@ -164,7 +164,7 @@ impl TryFromValue for Duration {
         if *self == Self::ZERO {
             return "0s".to_owned();
         }
-        format!("{:?}", self)
+        format!("{self:?}")
     }
 }
 

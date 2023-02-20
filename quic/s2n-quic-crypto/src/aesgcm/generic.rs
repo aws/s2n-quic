@@ -16,6 +16,7 @@ use core::{
     marker::PhantomData,
     sync::atomic::{compiler_fence, Ordering},
 };
+use s2n_quic_core::assume;
 use zeroize::Zeroize;
 
 pub struct AesGcm<Aes, GHash, Ctr, const N: usize> {
@@ -135,7 +136,7 @@ where
                 // then fill the last index with the ek0 block
                 if can_interleave_ek0 && payload_block_count < N {
                     unsafe {
-                        unsafe_assert!(cipher_blocks.len() > N - 1);
+                        assume!(cipher_blocks.len() > N - 1);
                         *cipher_blocks.get_unchecked_mut(N - 1) = ek0;
                         did_interleave_ek0 = true;
                     }
@@ -151,7 +152,7 @@ where
                         }
 
                         let block = unsafe {
-                            unsafe_assert!(idx < ghash_blocks.len());
+                            assume!(idx < ghash_blocks.len());
                             ghash_blocks.get_unchecked(idx)
                         };
                         self.ghash.update(&mut ghash_state, block);
@@ -183,14 +184,14 @@ where
                 |idx, block| {
                     // XOR the cipher blocks into the payload
                     let ghash_block = unsafe {
-                        unsafe_assert!(payload.len() >= BLOCK_LEN);
+                        assume!(payload.len() >= BLOCK_LEN);
                         let payload_block = payload.read_block();
                         payload.xor_block(payload_block, *block)
                     };
 
                     // move the cipher blocks to be hashed on the next batch
                     unsafe {
-                        unsafe_assert!(idx < ghash_blocks.len());
+                        assume!(idx < ghash_blocks.len());
                         *ghash_blocks.get_unchecked_mut(idx) = ghash_block;
                     }
                 },
@@ -201,7 +202,7 @@ where
         }
 
         unsafe {
-            unsafe_assert!(
+            assume!(
                 partial_blocks <= N,
                 "only a single batch should be left to process"
             );
@@ -219,13 +220,13 @@ where
                     // XOR the cipher blocks into the payload
                     let ghash_block = if idx == last_block_idx {
                         unsafe {
-                            unsafe_assert!(0 < payload.len() && payload.len() < BLOCK_LEN);
+                            assume!(0 < payload.len() && payload.len() < BLOCK_LEN);
                             let payload_block = payload.read_last_block(payload_rem);
                             payload.xor_last_block(payload_block, *cipher_block, payload_rem)
                         }
                     } else {
                         unsafe {
-                            unsafe_assert!(payload.len() >= BLOCK_LEN);
+                            assume!(payload.len() >= BLOCK_LEN);
                             let payload_block = payload.read_block();
                             payload.xor_block(payload_block, *cipher_block)
                         }
@@ -244,7 +245,7 @@ where
         );
         if can_interleave_ek0 {
             ek0 = unsafe {
-                unsafe_assert!(cipher_blocks.len() > N - 1);
+                assume!(cipher_blocks.len() > N - 1);
                 *cipher_blocks.get_unchecked(N - 1)
             };
         } else {
@@ -332,7 +333,7 @@ where
     unsafe {
         // since QUIC short packets only contain small AAD values, we can limit the
         // amount of work to a single batch size.
-        unsafe_assert!(
+        assume!(
             len <= N * BLOCK_LEN,
             "aad cannot exceed {} bytes; got {}",
             N * BLOCK_LEN,
