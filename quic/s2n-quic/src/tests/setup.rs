@@ -73,12 +73,11 @@ pub fn build_server(handle: &Handle) -> Result<Server> {
 }
 
 pub fn client(handle: &Handle, server_addr: SocketAddr) -> Result {
-    client_with_data(handle, server_addr, Data::new(10_000))
+    let client = build_client(handle)?;
+    start_client(client, server_addr, Data::new(10_000))
 }
 
-pub fn client_with_data(handle: &Handle, server_addr: SocketAddr, data: Data) -> Result {
-    let client = build_client(handle)?;
-
+pub fn start_client(client: Client, server_addr: SocketAddr, data: Data) -> Result {
     primary::spawn(async move {
         let connect = Connect::new(server_addr).with_server_name("localhost");
         let mut connection = client.connect(connect).await.unwrap();

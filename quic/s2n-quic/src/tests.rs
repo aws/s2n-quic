@@ -9,7 +9,7 @@ use crate::{
         io::testing::{rand, spawn, test, time::delay, Model},
         packet_interceptor::Loss,
     },
-    Server,
+    Client, Server,
 };
 use std::{
     net::SocketAddr,
@@ -20,6 +20,7 @@ use std::{
 mod setup;
 use bytes::Bytes;
 use s2n_quic_core::{
+    crypto::tls::testing::certificates,
     event::api::{MtuUpdated, MtuUpdatedCause},
     stream::testing::Data,
 };
@@ -412,32 +413,53 @@ fn packet_sent_event_test() {
     assert!(events.is_empty());
 }
 
-// if we specify jumbo frames on the endpoint and the network supports them,
-// then jumbo frames should be negotiated.
-#[test]
-fn mtu_probe_jumbo_frame_test() {
+// Construct a simulation where a client sends some data, which
+// the server echos back.
+// The MtuUpdated events that the server experiences are recorded
+// and returns at the end of the simulation.
+fn mtu_updates(max_mtu: u16) -> Vec<MtuUpdated> {
     let model = Model::default();
-    model.set_max_udp_payload(9_001);
+    model.set_max_udp_payload(max_mtu);
 
     let subscriber = MtuUpdatedRecorder::new();
     let events = subscriber.events();
 
     test(model, |handle| {
         let server = Server::builder()
-            .with_io(handle.builder().with_max_mtu(9001).build()?)?
+            .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
             .with_tls(SERVER_CERTS)?
             .with_event(subscriber)?
             .start()?;
+        let client = Client::builder()
+            .with_io(
+                handle
+                    .builder()
+                    .with_max_mtu(max_mtu)
+                    .build()
+                    .unwrap(),
+            )?
+            .with_tls(certificates::CERT_PEM)?
+            .start()?;
         let addr = start_server(server)?;
         // we need a large payload to allow for multiple rounds of MTU probing
-        client_with_data(handle, addr, Data::new(10_000_000))?;
+        start_client(client, addr, Data::new(10_000_000))?;
         Ok(addr)
     })
     .unwrap();
 
+    let events_handle = events.lock().unwrap();
+    events_handle.clone()
+}
+
+// if we specify jumbo frames on the endpoint and the network supports them,
+// then jumbo frames should be negotiated.
+#[test]
+fn mtu_probe_jumbo_frame_test() {
+    let events = mtu_updates(9_001);
+
     // handshake is padded to 1200, so we should immediate have an mtu of 1200
     // since the handshake successfully completes
-    let handshake_mtu = events.lock().unwrap().get(0).unwrap().clone();
+    let handshake_mtu = events[0].clone();
     assert_eq!(handshake_mtu.mtu, 1200);
     assert!(matches!(
         handshake_mtu.cause,
@@ -445,13 +467,13 @@ fn mtu_probe_jumbo_frame_test() {
     ));
 
     // we should then successfully probe for 1500 (minus headers = 1472)
-    let first_probe = events.lock().unwrap().get(1).unwrap().clone();
+    let first_probe = events[1].clone();
     assert_eq!(first_probe.mtu, 1472);
 
     // we binary search upwards 9001
     // this isn't the maximum mtu we'd find in practice, just the maximum mtu we
     // find with a payload of 10_000_000 bytes.
-    let last_probe = events.lock().unwrap().pop().unwrap();
+    let last_probe = events.last().unwrap();
     assert_eq!(last_probe.mtu, 8943);
 }
 
@@ -459,26 +481,8 @@ fn mtu_probe_jumbo_frame_test() {
 // them, the connection should gracefully complete with a smaller mtu
 #[test]
 fn mtu_probe_jumbo_frame_unsupported_test() {
-    let model = Model::default();
-    assert_eq!(model.max_udp_payload(), 1_500);
-
-    let subscriber = MtuUpdatedRecorder::new();
-    let events = subscriber.events();
-
-    test(model, |handle| {
-        let server = Server::builder()
-            .with_io(handle.builder().build()?)?
-            .with_tls(SERVER_CERTS)?
-            .with_event(subscriber)?
-            .start()?;
-        let addr = start_server(server)?;
-        client_with_data(handle, addr, Data::new(10_000_000))?;
-        Ok(addr)
-    })
-    .unwrap();
-
-    let last_mtu = events.lock().unwrap().pop().unwrap();
-
+    let events = mtu_updates(9_001);
+    let last_mtu = events.last().unwrap();
     // ETHERNET_MTU - UDP_HEADER_LEN - IPV4_HEADER_LEN
     assert_eq!(last_mtu.mtu, 1472);
 }

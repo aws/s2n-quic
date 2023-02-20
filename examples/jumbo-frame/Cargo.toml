@@ -1,5 +1,5 @@
 [package]
-name = "rustls-provider"
+name = "jumbo-frame"
 version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2021"
