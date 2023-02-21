@@ -65,9 +65,9 @@ MtuUpdated { path_id: 0, mtu: 8914, cause: ProbeAcknowledged }
 MtuUpdated { path_id: 0, mtu: 8943, cause: ProbeAcknowledged }
 ```
 
-The output confirms that larged MTU's (jumbo frames) have been probed.
+The output confirms that large MTU's (jumbo frames) have been probed.
 
-Note that both endpoints, client and server, must enable jumbo frames for either side to use them. If a client with `max_mtu=9001` tries to probe a server with `max_mtu=1500`, then the server will drop the probes larger than 1500 bytes, and the client will continue to use the 1472 byte mtu that it initially negotiated.
+Note that both endpoints, client and server, must enable jumbo frames for either side to use them. If a client with `max_mtu=9001` tries to probe a server with `max_mtu=1500`, then the server will drop the probes larger than 1500 bytes, and the client will continue to use the 1472 byte MTU that it initially negotiated.
 
 ## ensure jumbo frames are being used
 The s2n-quic events system has an event for MTU updates. The subscriber defined in `lib.rs` captures this event to output messages like those below.
@@ -78,7 +78,7 @@ MtuUpdated { path_id: 0, mtu: 8943, cause: ProbeAcknowledged }
 This event can be used to verify that jumbo frames are being used. Alternatey, tools like `tcpdump` with a packet analysis tool like `wireshark` can confirm that jumbo packets are being sent and received.
 
 ## probing strategy
-Quic implements Datagram Packetization Layer Path Maximum Transmission Unit Discovery, or DPLPMTUD for short. This is described in [RFC8899](https://www.rfc-editor.org/info/rfc8899). The strategy is as follows. To determine if an `X` byte MTU is supported, send a packet of `X` bytes.
+s2n-quic implements Datagram Packetization Layer Path Maximum Transmission Unit Discovery, or DPLPMTUD for short. This is described in [RFC8899](https://www.rfc-editor.org/info/rfc8899). The strategy is as follows. To determine if an `X` byte MTU is supported, send a packet of `X` bytes.
 - if it is acked -> supported
 - if it is lost  -> not supported
 
