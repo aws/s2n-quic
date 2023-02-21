@@ -536,6 +536,8 @@ impl CongestionController for BbrCongestionController {
 
 impl BbrCongestionController {
     /// Constructs a new `BbrCongestionController`
+    /// max_datagram_size is the current max_datagram_size, and is
+    /// expected to be 1200 when the congestion controller is created.
     pub fn new(max_datagram_size: u16) -> Self {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.1
         //# BBROnInit():

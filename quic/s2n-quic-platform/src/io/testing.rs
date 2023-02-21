@@ -8,6 +8,7 @@ use s2n_quic_core::{
     endpoint::Endpoint,
     event::{self, EndpointPublisher as _},
     inet::SocketAddress,
+    path::MaxMtu,
 };
 
 type Error = std::io::Error;
@@ -222,6 +223,7 @@ impl Handle {
         Builder {
             handle: self.clone(),
             address: None,
+            max_mtu: MaxMtu::default(),
         }
     }
 }
@@ -229,11 +231,17 @@ impl Handle {
 pub struct Builder {
     handle: Handle,
     address: Option<SocketAddress>,
+    max_mtu: MaxMtu,
 }
 
 impl Builder {
     pub fn build(self) -> Result<Io> {
         Ok(Io { builder: self })
+    }
+
+    pub fn with_max_mtu(mut self, max_mtu: u16) -> Self {
+        self.max_mtu = max_mtu.try_into().unwrap();
+        self
     }
 }
 
@@ -244,12 +252,14 @@ pub struct Io {
 impl Io {
     pub fn start<E: Endpoint<PathHandle = network::PathHandle>>(
         self,
-        endpoint: E,
+        mut endpoint: E,
     ) -> Result<(executor::JoinHandle<()>, SocketAddress)> {
         let Builder {
             handle: Handle { executor, buffers },
             address,
+            max_mtu,
         } = self.builder;
+        endpoint.set_max_mtu(max_mtu);
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());
 

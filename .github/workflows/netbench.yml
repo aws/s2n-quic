@@ -80,7 +80,7 @@ jobs:
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: 1.60.0
+          toolchain: 1.62.0
           override: true
 
       - uses: camshaft/rust-cache@v1
@@ -112,7 +112,7 @@ jobs:
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: 1.60.0
+          toolchain: 1.62.0
           override: true
 
       - uses: camshaft/rust-cache@v1
