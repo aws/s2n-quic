@@ -16,7 +16,7 @@ The `tracepath` utility can be used to check if jumbo frames are supported on a 
  1:  localhost                                             0.035ms reached
      Resume: pmtu 65535 hops 1 back 1
 ```
-The `pmtu 65535` indicates that `localhost` has a maximum transmission unit of 65,535 bytes. Networks are unlikely to support an mtu this large, but this confirms that our demo with a 9,001 byte mtu will work properly.
+The `pmtu 65535` indicates that `localhost` has a maximum transmission unit of 65,535 bytes. Networks are unlikely to support an MTU this large, but this confirms that our demo with a 9,001 byte MTU will work properly.
 
 The MTU is a property of the IO provider. This can be configured as shown below.
 ```rust
@@ -24,7 +24,7 @@ The MTU is a property of the IO provider. This can be configured as shown below.
     let io = s2n_quic::provider::io::Default::builder()
         .with_receive_address(address)?
         // Specify that the endpoint should try to use frames up to 9001 bytes.
-        // This is the maximum mtu that most ec2 instances will support.
+        // This is the maximum MTU that most ec2 instances will support.
         // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/network_mtu.html
         .with_max_mtu(9001)?
         // high throughput jumbo frame scenarios often benefit from larger socket
@@ -83,13 +83,13 @@ s2n-quic implements Datagram Packetization Layer Path Maximum Transmission Unit 
 - if it is lost  -> not supported
 
 The MTU updates happen in this process
-1. 1200 byte mtu - the handshake frames are padded to 1200 bytes. A successful handshake implies at least a 1200 byte MTU. From the quic RFC, this is the minimum mtu that quic supports.
-2. 1472 byte mtu - the quic endpoint will send the first probe at `min(1500 - overhead, max_mtu - overhead)`. The 1472 byte probe represents `1500 - UDP_HEADER - IPV4_HEADER`. This value is probed first because it commonly supported.
+1. 1200 byte MTU - the handshake frames are padded to 1200 bytes. A successful handshake implies at least a 1200 byte MTU. From the quic RFC, this is the minimum MTU that quic supports.
+2. 1472 byte MTU - the quic endpoint will send the first probe at `min(1500 - overhead, max_mtu - overhead)`. The 1472 byte probe represents `1500 - UDP_HEADER - IPV4_HEADER`. This value is probed first because it commonly supported.
 3. binary search towards `max_mtu` until within a reasonable threshold of `max_mtu`.
 
 The endpoint does not immediately start probing at large values because of poor efficiency in the following scenario.
-- a large (approximately 9000) max mtu is specified at the endpoint
-- the network only supports a small mtu (approximately 1500)
+- a large (approximately 9000) maximum MTU is specified at the endpoint
+- the network only supports a small MTU (approximately 1500)
 - the connection exchanges a small amount of data
 
 Sending 9000 bytes of application data entails
