@@ -2,7 +2,7 @@
 The standard ethernet Maximum Transmission Unit - MTU - is 1500 bytes. Jumbo frames are ethernet frames that support more than 1500 bytes. Jumbo frames will often support approximately 9000 bytes, although this is an implementation specific detail and you should check to see what your network supports.
 
 ## why use jumbo frames
-Some overheads occur per-packet. For example, udp packet headers are included on each packet. Using jumbo frames decreases the overhead / payload ratio, so communication is more efficienct.
+Some overheads occur per-packet. For example, udp packet headers are included on each packet. Using jumbo frames decreases the overhead / payload ratio, so communication is more efficient.
 
 CPU utilization also benefits from jumbo frame usage.
 
@@ -16,7 +16,7 @@ The `tracepath` utility can be used to check if jumbo frames are supported on a 
  1:  localhost                                             0.035ms reached
      Resume: pmtu 65535 hops 1 back 1
 ```
-The `pmtu 65535` indicates that `localhost` has a maximum tranmission unit of 65,535 bytes. Networks are unlikely to support an mtu this large, but this confirms that our demo with a 9,001 byte mtu will work properly.
+The `pmtu 65535` indicates that `localhost` has a maximum transmission unit of 65,535 bytes. Networks are unlikely to support an mtu this large, but this confirms that our demo with a 9,001 byte mtu will work properly.
 
 The MTU is a property of the IO provider. This can be configured as shown below.
 ```rust
@@ -75,7 +75,7 @@ The s2n-quic events system has an event for MTU updates. The subscriber defined 
 MtuUpdated { path_id: 0, mtu: 8943, cause: ProbeAcknowledged }
 ```
 
-This event can be used to verify that jumbo frames are being used. Alternatey, tools like `tcpdump` with a packet analysis tool like `wireshark` can confirm that jumbo packets are being sent and recieved.
+This event can be used to verify that jumbo frames are being used. Alternatey, tools like `tcpdump` with a packet analysis tool like `wireshark` can confirm that jumbo packets are being sent and received.
 
 ## probing strategy
 Quic implements Datagram Packetization Layer Path Maximum Transmission Unit Discovery, or DPLPMTUD for short. This is described in [RFC8899](https://www.rfc-editor.org/info/rfc8899). The strategy is as follows. To determine if an `X` byte MTU is supported, send a packet of `X` bytes.
