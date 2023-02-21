@@ -7439,6 +7439,9 @@ pub mod testing {
             }
         }
         fn snapshot(&self, output: &[String]) {
+            if cfg!(miri) {
+                return;
+            }
             use std::path::{Component, Path};
             let value = output.join("\n");
             let thread = std::thread::current();
