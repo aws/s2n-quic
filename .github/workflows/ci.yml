@@ -269,6 +269,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
           override: true
+          components: rust-src
 
       - uses: camshaft/rust-cache@v1
 
