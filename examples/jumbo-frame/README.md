@@ -75,7 +75,7 @@ The s2n-quic events system has an event for MTU updates. The subscriber defined 
 MtuUpdated { path_id: 0, mtu: 8943, cause: ProbeAcknowledged }
 ```
 
-This event can be used to verify that jumbo frames are being used. Alternatey, tools like `tcpdump` with a packet analysis tool like `wireshark` can confirm that jumbo packets are being sent and received.
+This event can be used to verify that jumbo frames are being used. Alternately, tools like `tcpdump` with a packet analysis tool like `wireshark` can confirm that jumbo packets are being sent and received.
 
 ## probing strategy
 s2n-quic implements Datagram Packetization Layer Path Maximum Transmission Unit Discovery, or DPLPMTUD for short. This is described in [RFC8899](https://www.rfc-editor.org/info/rfc8899). The strategy is as follows. To determine if an `X` byte MTU is supported, send a packet of `X` bytes.
