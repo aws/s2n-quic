@@ -5,6 +5,7 @@ mod error;
 mod id;
 pub mod iter;
 pub mod limits;
+#[cfg(feature = "alloc")]
 pub mod ops;
 mod type_;
 

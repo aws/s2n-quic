@@ -1,14 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{application::ServerName, crypto::CryptoSuite, transport};
+#[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
-use core::{
-    convert::TryFrom,
-    fmt::Debug,
-    task::{Poll, Waker},
-};
-use s2n_codec::EncoderValue;
+use core::{convert::TryFrom, fmt::Debug};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
 #[cfg(any(test, feature = "testing"))]
@@ -27,44 +22,44 @@ pub struct ApplicationParameters<'a> {
 //# To avoid excessive buffering at multiple layers, QUIC implementations
 //# SHOULD provide an interface for the cryptographic protocol
 //# implementation to communicate its buffering limits.
-
-pub trait Context<Crypto: CryptoSuite> {
+#[cfg(feature = "alloc")]
+pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     fn on_handshake_keys(
         &mut self,
         key: Crypto::HandshakeKey,
         header_key: Crypto::HandshakeHeaderKey,
-    ) -> Result<(), transport::Error>;
+    ) -> Result<(), crate::transport::Error>;
 
     fn on_zero_rtt_keys(
         &mut self,
         key: Crypto::ZeroRttKey,
         header_key: Crypto::ZeroRttHeaderKey,
         application_parameters: ApplicationParameters,
-    ) -> Result<(), transport::Error>;
+    ) -> Result<(), crate::transport::Error>;
 
     fn on_one_rtt_keys(
         &mut self,
         key: Crypto::OneRttKey,
         header_key: Crypto::OneRttHeaderKey,
         application_parameters: ApplicationParameters,
-    ) -> Result<(), transport::Error>;
+    ) -> Result<(), crate::transport::Error>;
 
     fn on_server_name(
         &mut self,
         server_name: crate::application::ServerName,
-    ) -> Result<(), transport::Error>;
+    ) -> Result<(), crate::transport::Error>;
 
     fn on_application_protocol(
         &mut self,
         application_protocol: Bytes,
-    ) -> Result<(), transport::Error>;
+    ) -> Result<(), crate::transport::Error>;
 
     //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.1
     //# The TLS handshake is considered complete when the
     //# TLS stack has reported that the handshake is complete.  This happens
     //# when the TLS stack has both sent a Finished message and verified the
     //# peer's Finished message.
-    fn on_handshake_complete(&mut self) -> Result<(), transport::Error>;
+    fn on_handshake_complete(&mut self) -> Result<(), crate::transport::Error>;
 
     /// Receives data from the initial packet space
     ///
@@ -93,29 +88,34 @@ pub trait Context<Crypto: CryptoSuite> {
     fn can_send_application(&self) -> bool;
     fn send_application(&mut self, transmission: Bytes);
 
-    fn waker(&self) -> &Waker;
+    fn waker(&self) -> &core::task::Waker;
 }
 
+#[cfg(feature = "alloc")]
 pub trait Endpoint: 'static + Sized + Send {
     type Session: Session;
 
-    fn new_server_session<Params: EncoderValue>(
+    fn new_server_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
     ) -> Self::Session;
 
-    fn new_client_session<Params: EncoderValue>(
+    fn new_client_session<Params: s2n_codec::EncoderValue>(
         &mut self,
         transport_parameters: &Params,
-        server_name: ServerName,
+        server_name: crate::application::ServerName,
     ) -> Self::Session;
 
     /// The maximum length of a tag for any algorithm that may be negotiated
     fn max_tag_length(&self) -> usize;
 }
 
-pub trait Session: CryptoSuite + Sized + Send + Debug {
-    fn poll<C: Context<Self>>(&mut self, context: &mut C) -> Poll<Result<(), transport::Error>>;
+#[cfg(feature = "alloc")]
+pub trait Session: crate::crypto::CryptoSuite + Sized + Send + Debug {
+    fn poll<C: Context<Self>>(
+        &mut self,
+        context: &mut C,
+    ) -> core::task::Poll<Result<(), crate::transport::Error>>;
 }
 
 #[derive(Copy, Clone, Debug)]
