@@ -413,10 +413,9 @@ fn packet_sent_event_test() {
     assert!(events.is_empty());
 }
 
-// Construct a simulation where a client sends some data, which
-// the server echos back.
-// The MtuUpdated events that the server experiences are recorded
-// and returns at the end of the simulation.
+// Construct a simulation where a client sends some data, which the server echos
+// back. The MtuUpdated events that the server experiences are recorded and
+// returns at the end of the simulation.
 fn mtu_updates(max_mtu: u16) -> Vec<MtuUpdated> {
     let model = Model::default();
     model.set_max_udp_payload(max_mtu);
@@ -431,13 +430,7 @@ fn mtu_updates(max_mtu: u16) -> Vec<MtuUpdated> {
             .with_event(subscriber)?
             .start()?;
         let client = Client::builder()
-            .with_io(
-                handle
-                    .builder()
-                    .with_max_mtu(max_mtu)
-                    .build()
-                    .unwrap(),
-            )?
+            .with_io(handle.builder().with_max_mtu(max_mtu).build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
             .start()?;
         let addr = start_server(server)?;
@@ -481,7 +474,7 @@ fn mtu_probe_jumbo_frame_test() {
 // them, the connection should gracefully complete with a smaller mtu
 #[test]
 fn mtu_probe_jumbo_frame_unsupported_test() {
-    let events = mtu_updates(9_001);
+    let events = mtu_updates(1_500);
     let last_mtu = events.last().unwrap();
     // ETHERNET_MTU - UDP_HEADER_LEN - IPV4_HEADER_LEN
     assert_eq!(last_mtu.mtu, 1472);
