@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    certificate::{IntoCertificate, IntoPrivateKey},
+    certificate::{Format, IntoCertificate, IntoPrivateKey},
     keylog::KeyLogHandle,
     params::Params,
     session::Session,
@@ -12,6 +12,8 @@ use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
 use s2n_tls::callbacks::ClientHelloCallback;
+#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_private_key")))]
+use s2n_tls::callbacks::PrivateKeyCallback;
 use s2n_tls::{
     callbacks::VerifyHostNameCallback,
     config::{self, Config},
@@ -101,6 +103,15 @@ impl Builder {
         Ok(self)
     }
 
+    #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_private_key")))]
+    pub fn with_private_key_handler<T: 'static + PrivateKeyCallback>(
+        mut self,
+        handler: T,
+    ) -> Result<Self, Error> {
+        self.config.set_private_key_callback(handler)?;
+        Ok(self)
+    }
+
     pub fn with_application_protocols<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,
@@ -114,18 +125,16 @@ impl Builder {
         certificate: C,
         private_key: PK,
     ) -> Result<Self, Error> {
-        let certificate = certificate.into_certificate()?;
-        let private_key = private_key.into_private_key()?;
-        self.config.load_pem(
-            certificate
-                .0
-                .as_pem()
-                .expect("pem is currently the only certificate format supported"),
-            private_key
-                .0
-                .as_pem()
-                .expect("pem is currently the only certificate format supported"),
-        )?;
+        let private_key = private_key.into_private_key()?.0;
+        let certificate = certificate.into_certificate()?.0;
+        let certificate = certificate
+            .as_pem()
+            .expect("pem is currently the only certificate format supported");
+        match private_key {
+            Format::Pem(bytes) => self.config.load_pem(certificate, bytes.as_ref())?,
+            Format::None => self.config.load_public_pem(certificate)?,
+            Format::Der(_) => panic!("der private keys not supported"),
+        };
         Ok(self)
     }
 
