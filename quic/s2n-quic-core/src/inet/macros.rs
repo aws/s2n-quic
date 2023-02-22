@@ -12,34 +12,13 @@ macro_rules! define_inet_type {
         #[cfg(any(test, feature = "generator"))]
         use bolero_generator::*;
 
-        #[derive(Clone, Copy, Default, Eq, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
+        #[derive(Clone, Copy, Default, Eq, PartialEq, PartialOrd, Ord, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
         #[cfg_attr(any(test, feature = "generator"), derive(bolero_generator::TypeGenerator))]
         #[repr(C)]
         $($vis)? struct $name {
             $(
                 pub(crate) $field: $field_ty,
             )*
-        }
-
-        impl PartialEq for $name {
-            #[inline]
-            fn eq(&self, other: &Self) -> bool {
-                self.as_bytes().eq(other.as_bytes())
-            }
-        }
-
-        impl PartialOrd for $name {
-            #[inline]
-            fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-                Some(self.cmp(other))
-            }
-        }
-
-        impl Ord for $name {
-            #[inline]
-            fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-                self.as_bytes().cmp(other.as_bytes())
-            }
         }
 
         impl core::hash::Hash for $name {

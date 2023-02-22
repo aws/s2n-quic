@@ -287,17 +287,6 @@ define_inet_type!(
     }
 );
 
-impl Protocol {
-    // https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
-    // NOTE: these variants were added as the ones we think we'll need. feel free to add more as
-    //       needed.
-    pub const ICMP: Self = Self { id: 0x01 };
-    pub const IPV4_ENCAPSULATION: Self = Self { id: 0x04 };
-    pub const TCP: Self = Self { id: 0x06 };
-    pub const UDP: Self = Self { id: 0x11 };
-    pub const IPV6_ENCAPSULATION: Self = Self { id: 0x29 };
-}
-
 impl fmt::Debug for Protocol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_tuple("ip::Protocol")
@@ -309,32 +298,49 @@ impl fmt::Debug for Protocol {
 impl fmt::Display for Protocol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            v if v == Self::ICMP => "ICMP",
-            v if v == Self::IPV4_ENCAPSULATION => "IPv4 Encapsulation",
-            v if v == Self::TCP => "TCP",
-            v if v == Self::UDP => "UDP",
-            v if v == Self::IPV6_ENCAPSULATION => "IPv6 Encapsulation",
+            Self::HOPOPT => "IPv6 Hop-by-Hop Option",
+            Self::ICMP => "Internet Control Message",
+            Self::IPV4 => "IPv4 Encapsulation",
+            Self::TCP => "Transmission Control",
+            Self::UDP => "User Datagram",
+            Self::IPV6 => "IPv6 Encapsulation",
+            Self::IPV6_ROUTE => "Routing Header for IPv6",
+            Self::IPV6_FRAG => "Fragment Header for IPv6",
+            Self::IPV6_ICMP => "ICMP for IPv6",
+            Self::IPV6_NO_NXT => "No Next Header for IPv6",
+            Self::IPV6_OPTS => "Destination Options for IPv6",
             Self { id } => return write!(f, "[unknown 0x{id:02x}]"),
         }
         .fmt(f)
     }
 }
 
-macro_rules! impl_is {
-    ($fun:ident, $cap:ident) => {
+macro_rules! impl_p {
+    ($fun:ident, $cap:ident, $val:literal) => {
+        pub const $cap: Self = Self { id: $val };
+
         #[inline]
         pub const fn $fun(self) -> bool {
-            self.id == Self::$cap.id
+            self.id == $val
         }
     };
 }
 
 impl Protocol {
-    impl_is!(is_icmp, ICMP);
-    impl_is!(is_ipv4_encapsulation, IPV4_ENCAPSULATION);
-    impl_is!(is_tcp, TCP);
-    impl_is!(is_udp, UDP);
-    impl_is!(is_ipv6_encapsulation, IPV6_ENCAPSULATION);
+    // https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+    // NOTE: these variants were added as the ones we think we'll need. feel free to add more as
+    //       needed.
+    impl_p!(is_hop_by_hop, HOPOPT, 0);
+    impl_p!(is_icmp, ICMP, 1);
+    impl_p!(is_ipv4, IPV4, 4);
+    impl_p!(is_tcp, TCP, 6);
+    impl_p!(is_udp, UDP, 17);
+    impl_p!(is_ipv6, IPV6, 41);
+    impl_p!(is_ipv6_route, IPV6_ROUTE, 43);
+    impl_p!(is_ipv6_fragment, IPV6_FRAG, 44);
+    impl_p!(is_ipv6_icmp, IPV6_ICMP, 58);
+    impl_p!(is_ipv6_no_next, IPV6_NO_NXT, 59);
+    impl_p!(is_ipv6_options, IPV6_OPTS, 60);
 }
 
 #[cfg(test)]

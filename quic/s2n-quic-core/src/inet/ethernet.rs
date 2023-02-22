@@ -40,17 +40,6 @@ define_inet_type!(
     }
 );
 
-impl EtherType {
-    // https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml#ieee-802-numbers-1
-    // NOTE: these variants were added as the ones we think we'll need. feel free to add more as
-    //       needed.
-    pub const IPV4: Self = Self { id: [0x08, 0x00] };
-    pub const ARP: Self = Self { id: [0x08, 0x06] };
-    pub const IPV6: Self = Self { id: [0x86, 0xDD] };
-    pub const VLAN: Self = Self { id: [0x81, 0x00] };
-    pub const PPP: Self = Self { id: [0x88, 0xA8] };
-}
-
 impl fmt::Debug for EtherType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_tuple("EtherType")
@@ -62,37 +51,37 @@ impl fmt::Debug for EtherType {
 impl fmt::Display for EtherType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            v if v == Self::IPV4 => "IPv4",
-            v if v == Self::ARP => "ARP",
-            v if v == Self::IPV6 => "IPv6",
-            v if v == Self::VLAN => "VLAN",
-            v if v == Self::PPP => "PPP",
+            Self::IPV4 => "IPv4",
+            Self::ARP => "ARP",
+            Self::IPV6 => "IPv6",
+            Self::VLAN => "VLAN",
+            Self::PPP => "PPP",
             Self { id: [a, b] } => return write!(f, "[unknown 0x{a:02x}{b:02x}]"),
         }
         .fmt(f)
     }
 }
 
-macro_rules! impl_is {
-    ($fun:ident, $cap:ident) => {
+macro_rules! impl_type {
+    ($fun:ident, $cap:ident, $val:expr) => {
+        pub const $cap: Self = Self { id: $val };
+
         #[inline]
         pub const fn $fun(self) -> bool {
-            Self::const_cmp(self, Self::$cap)
+            matches!(self, Self::$cap)
         }
     };
 }
 
 impl EtherType {
-    impl_is!(is_ipv4, IPV4);
-    impl_is!(is_arp, ARP);
-    impl_is!(is_ipv6, IPV6);
-    impl_is!(is_vlan, VLAN);
-    impl_is!(is_ppp, PPP);
-
-    #[inline]
-    const fn const_cmp(a: Self, b: Self) -> bool {
-        a.id[0] == b.id[0] && a.id[1] == b.id[1]
-    }
+    // https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml#ieee-802-numbers-1
+    // NOTE: these variants were added as the ones we think we'll need. feel free to add more as
+    //       needed.
+    impl_type!(is_ipv4, IPV4, [0x08, 0x00]);
+    impl_type!(is_arp, ARP, [0x08, 0x06]);
+    impl_type!(is_ipv6, IPV6, [0x86, 0xDD]);
+    impl_type!(is_ppp, PPP, [0x88, 0x0B]);
+    impl_type!(is_vlan, VLAN, [0x88, 0xA8]);
 }
 
 // NOTE: duvet doesn't know how to parse this RFC since it doesn't follow more modern formatting

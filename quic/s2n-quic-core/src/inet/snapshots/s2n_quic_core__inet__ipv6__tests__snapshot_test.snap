@@ -9,7 +9,7 @@ ipv6::Header {
     flow_label: 0x10203,
     payload_len: 1029,
     next_header: ip::Protocol(
-        TCP,
+        Transmission Control,
     ),
     hop_limit: 7,
     source: IPv6Address(809:a0b:c0d:e0f:1011:1213:1415:1617),
