@@ -21,6 +21,12 @@ macro_rules! define_inet_type {
             )*
         }
 
+        // By letting the compiler derive PartialEq, we can do structural matching on these
+        // structs. But we also want hashing to be on the byte level, since we know the struct
+        // has no allocations and has a simple layout.
+        //
+        // See: https://godbolt.org/z/czohnrWxK
+        #[allow(clippy::derive_hash_xor_eq)]
         impl core::hash::Hash for $name {
             #[inline]
             fn hash<H: core::hash::Hasher>(&self, hasher: &mut H) {
