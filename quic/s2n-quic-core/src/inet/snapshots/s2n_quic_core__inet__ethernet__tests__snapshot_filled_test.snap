@@ -1,0 +1,15 @@
+---
+source: quic/s2n-quic-core/src/inet/ethernet.rs
+expression: header
+---
+ethernet::Header {
+    destination: MacAddress(
+        ff:ff:ff:ff:ff:ff,
+    ),
+    source: MacAddress(
+        ff:ff:ff:ff:ff:ff,
+    ),
+    ethertype: EtherType(
+        [unknown 0xffff],
+    ),
+}

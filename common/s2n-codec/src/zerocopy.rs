@@ -133,10 +133,17 @@ macro_rules! zerocopy_network_integer {
         impl $name {
             pub const ZERO: Self = Self(::zerocopy::byteorder::$name::ZERO);
 
+            #[inline]
             pub fn new(value: $native) -> Self {
                 value.into()
             }
 
+            #[inline]
+            pub fn get(&self) -> $native {
+                self.0.get()
+            }
+
+            #[inline]
             pub fn set(&mut self, value: $native) {
                 self.0.set(value);
             }

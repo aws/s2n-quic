@@ -12,7 +12,7 @@ macro_rules! define_inet_type {
         #[cfg(any(test, feature = "generator"))]
         use bolero_generator::*;
 
-        #[derive(Clone, Copy, Default, Eq, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
+        #[derive(Clone, Copy, Default, Eq, PartialEq, PartialOrd, Ord, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
         #[cfg_attr(any(test, feature = "generator"), derive(bolero_generator::TypeGenerator))]
         #[repr(C)]
         $($vis)? struct $name {
@@ -21,33 +21,15 @@ macro_rules! define_inet_type {
             )*
         }
 
-        impl PartialEq for $name {
-            #[inline]
-            fn eq(&self, other: &Self) -> bool {
-                use zerocopy::AsBytes;
-                self.as_bytes().eq(other.as_bytes())
-            }
-        }
-
-        impl PartialOrd for $name {
-            #[inline]
-            fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-                Some(self.cmp(other))
-            }
-        }
-
-        impl Ord for $name {
-            #[inline]
-            fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-                use zerocopy::AsBytes;
-                self.as_bytes().cmp(other.as_bytes())
-            }
-        }
-
+        // By letting the compiler derive PartialEq, we can do structural matching on these
+        // structs. But we also want hashing to be on the byte level, since we know the struct
+        // has no allocations and has a simple layout.
+        //
+        // See: https://godbolt.org/z/czohnrWxK
+        #[allow(clippy::derive_hash_xor_eq)]
         impl core::hash::Hash for $name {
             #[inline]
             fn hash<H: core::hash::Hasher>(&self, hasher: &mut H) {
-                use zerocopy::AsBytes;
                 self.as_bytes().hash(hasher);
             }
         }
@@ -61,6 +43,16 @@ macro_rules! define_inet_type {
                         $field: $field.into()
                     ),*
                 }
+            }
+
+            #[inline]
+            pub fn as_bytes(&self) -> &[u8] {
+                zerocopy::AsBytes::as_bytes(self)
+            }
+
+            #[inline]
+            pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+                zerocopy::AsBytes::as_bytes_mut(self)
             }
         }
 

@@ -1,0 +1,17 @@
+---
+source: quic/s2n-quic-core/src/inet/ipv6.rs
+expression: header
+---
+ipv6::Header {
+    version: 0,
+    dscp: 0,
+    ecn: NotEct,
+    flow_label: 0x10203,
+    payload_len: 1029,
+    next_header: ip::Protocol(
+        Transmission Control,
+    ),
+    hop_limit: 7,
+    source: IPv6Address(809:a0b:c0d:e0f:1011:1213:1415:1617),
+    destination: IPv6Address(1819:1a1b:1c1d:1e1f:2021:2223:2425:2627),
+}

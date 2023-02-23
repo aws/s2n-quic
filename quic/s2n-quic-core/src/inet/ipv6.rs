@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::inet::{
-    ip, ipv4::IpV4Address, unspecified::Unspecified, IpAddress, SocketAddress, SocketAddressV4,
+    ip, ipv4::IpV4Address, unspecified::Unspecified, ExplicitCongestionNotification, IpAddress,
+    SocketAddress, SocketAddressV4,
 };
 use core::fmt;
 use s2n_codec::zerocopy::U16;
@@ -219,6 +220,14 @@ impl IpV6Address {
             _ => Some(Global),
         }
     }
+
+    #[inline]
+    pub fn with_port(self, port: u16) -> SocketAddressV6 {
+        SocketAddressV6 {
+            ip: self,
+            port: port.into(),
+        }
+    }
 }
 
 impl fmt::Debug for IpV6Address {
@@ -377,6 +386,200 @@ impl From<IpV6Address> for [u16; IPV6_LEN / 2] {
     }
 }
 
+//= https://www.rfc-editor.org/rfc/rfc8200#section-3
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |Version| Traffic Class |           Flow Label                  |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |         Payload Length        |  Next Header  |   Hop Limit   |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |                                                               |
+//#   +                                                               +
+//#   |                                                               |
+//#   +                         Source Address                        +
+//#   |                                                               |
+//#   +                                                               +
+//#   |                                                               |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//#   |                                                               |
+//#   +                                                               +
+//#   |                                                               |
+//#   +                      Destination Address                      +
+//#   |                                                               |
+//#   +                                                               +
+//#   |                                                               |
+//#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+define_inet_type!(
+    pub struct Header {
+        vtcfl: Vtcfl,
+        payload_len: U16,
+        next_header: ip::Protocol,
+        hop_limit: u8,
+        source: IpV6Address,
+        destination: IpV6Address,
+    }
+);
+
+impl fmt::Debug for Header {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ipv6::Header")
+            .field("version", &self.vtcfl.version())
+            .field("dscp", &self.vtcfl.dscp())
+            .field("ecn", &self.vtcfl.ecn())
+            .field(
+                "flow_label",
+                &format_args!("0x{:05x}", self.vtcfl.flow_label()),
+            )
+            .field("payload_len", &self.payload_len)
+            .field("next_header", &self.next_header)
+            .field("hop_limit", &self.hop_limit)
+            .field("source", &self.source)
+            .field("destination", &self.destination)
+            .finish()
+    }
+}
+
+impl Header {
+    /// Swaps the direction of the header
+    #[inline]
+    pub fn swap(&mut self) {
+        core::mem::swap(&mut self.source, &mut self.destination)
+    }
+
+    #[inline]
+    pub const fn vtcfl(&self) -> &Vtcfl {
+        &self.vtcfl
+    }
+
+    #[inline]
+    pub fn vtf_mut(&mut self) -> &mut Vtcfl {
+        &mut self.vtcfl
+    }
+
+    #[inline]
+    pub const fn payload_len(&self) -> &U16 {
+        &self.payload_len
+    }
+
+    #[inline]
+    pub fn payload_len_mut(&mut self) -> &mut U16 {
+        &mut self.payload_len
+    }
+
+    #[inline]
+    pub const fn next_header(&self) -> &ip::Protocol {
+        &self.next_header
+    }
+
+    #[inline]
+    pub fn next_header_mut(&mut self) -> &mut ip::Protocol {
+        &mut self.next_header
+    }
+
+    #[inline]
+    pub const fn hop_limit(&self) -> &u8 {
+        &self.hop_limit
+    }
+
+    #[inline]
+    pub fn hop_limit_mut(&mut self) -> &mut u8 {
+        &mut self.hop_limit
+    }
+
+    #[inline]
+    pub const fn source(&self) -> &IpV6Address {
+        &self.source
+    }
+
+    #[inline]
+    pub fn source_mut(&mut self) -> &mut IpV6Address {
+        &mut self.source
+    }
+
+    #[inline]
+    pub const fn destination(&self) -> &IpV6Address {
+        &self.destination
+    }
+
+    #[inline]
+    pub fn destination_mut(&mut self) -> &mut IpV6Address {
+        &mut self.destination
+    }
+}
+
+// This struct covers the bits for Version, Traffic Class, and Flow Label.
+//
+// Rust doesn't have the ability to do arbitrary bit sized values so we have to round up to the
+// nearest byte.
+define_inet_type!(
+    pub struct Vtcfl {
+        octets: [u8; 4],
+    }
+);
+
+impl fmt::Debug for Vtcfl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ipv6::Vtf")
+            .field("version", &self.version())
+            .field("dscp", &self.dscp())
+            .field("ecn", &self.ecn())
+            .field("flow_label", &format_args!("0x{:05x}", self.flow_label()))
+            .finish()
+    }
+}
+
+impl Vtcfl {
+    #[inline]
+    pub const fn version(&self) -> u8 {
+        self.octets[0] >> 4
+    }
+
+    #[inline]
+    pub fn set_version(&mut self, version: u8) -> &mut Self {
+        self.octets[0] = version << 4 | self.octets[0] & 0x0F;
+        self
+    }
+
+    #[inline]
+    pub fn dscp(&self) -> u8 {
+        let value = self.octets[0] << 4 | self.octets[1] >> 4;
+        value >> 2
+    }
+
+    #[inline]
+    pub fn set_dscp(&mut self, value: u8) -> &mut Self {
+        let value = value << 2;
+        self.octets[0] = self.octets[0] & 0xF0 | (value >> 4);
+        self.octets[1] = (value << 4) | self.octets[1] & 0b11_1111;
+        self
+    }
+
+    #[inline]
+    pub fn ecn(&self) -> ExplicitCongestionNotification {
+        ExplicitCongestionNotification::new(self.octets[1] >> 4 & 0b11)
+    }
+
+    #[inline]
+    pub fn set_ecn(&mut self, ecn: ExplicitCongestionNotification) -> &mut Self {
+        self.octets[1] = (self.octets[1] & !(0b11 << 4)) | (ecn as u8) << 4;
+        self
+    }
+
+    #[inline]
+    pub const fn flow_label(&self) -> u32 {
+        u32::from_be_bytes([0, self.octets[1] & 0x0F, self.octets[2], self.octets[3]])
+    }
+
+    #[inline]
+    pub fn set_flow_label(&mut self, flow_label: u32) -> &mut Self {
+        let bytes = flow_label.to_be_bytes();
+        self.octets[1] = self.octets[1] & 0xF0 | bytes[1] & 0x0F;
+        self.octets[2] = bytes[2];
+        self.octets[3] = bytes[3];
+        self
+    }
+}
+
 #[cfg(any(test, feature = "std"))]
 mod std_conversion {
     use super::*;
@@ -460,6 +663,7 @@ mod std_conversion {
 mod tests {
     use super::*;
     use bolero::{check, generator::*};
+    use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 
     /// Asserts the UnicastScope returned matches a known implementation
     #[test]
@@ -506,5 +710,83 @@ mod tests {
                 }
             }
         })
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn snapshot_test() {
+        let mut buffer = vec![0u8; core::mem::size_of::<Header>()];
+        for (idx, byte) in buffer.iter_mut().enumerate() {
+            *byte = idx as u8;
+        }
+        let decoder = DecoderBuffer::new(&buffer);
+        let (header, _) = decoder.decode::<&Header>().unwrap();
+        insta::assert_debug_snapshot!("snapshot_test", header);
+
+        for byte in &mut buffer {
+            *byte = 255;
+        }
+        let decoder = DecoderBuffer::new(&buffer);
+        let (header, _) = decoder.decode::<&Header>().unwrap();
+        insta::assert_debug_snapshot!("snapshot_filled_test", header);
+    }
+
+    #[test]
+    fn header_getter_setter_test() {
+        check!().with_type::<Header>().for_each(|expected| {
+            let mut buffer = [255u8; core::mem::size_of::<Header>()];
+            let decoder = DecoderBufferMut::new(&mut buffer);
+            let (header, _) = decoder.decode::<&mut Header>().unwrap();
+            {
+                // use all of the getters and setters to copy over each field
+                header
+                    .vtf_mut()
+                    .set_version(expected.vtcfl().version())
+                    .set_dscp(expected.vtcfl().dscp())
+                    .set_ecn(expected.vtcfl().ecn())
+                    .set_flow_label(expected.vtcfl().flow_label());
+                *header.hop_limit_mut() = *expected.hop_limit();
+                *header.next_header_mut() = *expected.next_header();
+                header.payload_len_mut().set(expected.payload_len().get());
+                *header.source_mut() = *expected.source();
+                *header.destination_mut() = *expected.destination();
+            }
+
+            let decoder = DecoderBuffer::new(&buffer);
+            let (actual, _) = decoder.decode::<&Header>().unwrap();
+            {
+                // make sure all of the values match
+                assert_eq!(expected.vtcfl().version(), expected.vtcfl().version());
+                assert_eq!(expected.vtcfl().dscp(), expected.vtcfl().dscp());
+                assert_eq!(expected.vtcfl().ecn(), expected.vtcfl().ecn());
+                assert_eq!(expected.vtcfl().flow_label(), expected.vtcfl().flow_label());
+                assert_eq!(
+                    expected.vtcfl(),
+                    actual.vtcfl(),
+                    "\nexpected: {:?}\n  actual: {:?}",
+                    expected.as_bytes(),
+                    actual.as_bytes()
+                );
+                assert_eq!(expected.hop_limit(), actual.hop_limit());
+                assert_eq!(expected.next_header(), actual.next_header());
+                assert_eq!(expected.payload_len(), actual.payload_len());
+                assert_eq!(expected.source(), actual.source());
+                assert_eq!(expected.destination(), actual.destination());
+                assert_eq!(
+                    expected,
+                    actual,
+                    "\nexpected: {:?}\n  actual: {:?}",
+                    expected.as_bytes(),
+                    actual.as_bytes()
+                );
+            }
+        })
+    }
+
+    #[test]
+    fn header_round_trip_test() {
+        check!().for_each(|buffer| {
+            s2n_codec::assert_codec_round_trip_bytes!(Header, buffer);
+        });
     }
 }
