@@ -334,6 +334,8 @@ impl From<IpV4Address> for [u8; IPV4_LEN] {
 //#   |                    Options                    |    Padding    |
 //#   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
+// Note that Options and Padding are variable length depending on the IHL field
+// so they can't be included directly in the fixed-sized struct.
 define_inet_type!(
     pub struct Header {
         vihl: Vihl,
@@ -485,6 +487,10 @@ impl Header {
     }
 }
 
+// This struct covers the bits for version and IHL (header len).
+//
+// Rust doesn't have the ability to do arbitrary bit sized values so we have to round up to the
+// nearest byte.
 define_inet_type!(
     pub struct Vihl {
         value: u8,
@@ -524,6 +530,10 @@ impl Vihl {
     }
 }
 
+// This struct covers the bits for DSCP and ECN.
+//
+// Rust doesn't have the ability to do arbitrary bit sized values so we have to round up to the
+// nearest byte.
 define_inet_type!(
     pub struct Tos {
         value: u8,
@@ -564,6 +574,10 @@ impl fmt::Debug for Tos {
     }
 }
 
+// This struct covers the bits for Flags and Fragment Offset.
+//
+// Rust doesn't have the ability to do arbitrary bit sized values so we have to round up to the
+// nearest byte.
 define_inet_type!(
     pub struct FlagFragment {
         value: U16,
@@ -607,6 +621,7 @@ impl FlagFragment {
         self.value.get() & Self::FRAGMENT_MASK
     }
 
+    #[inline]
     pub fn set_fragment_offset(&mut self, offset: u16) -> &mut Self {
         self.value
             .set(self.value.get() & !Self::FRAGMENT_MASK | offset & Self::FRAGMENT_MASK);

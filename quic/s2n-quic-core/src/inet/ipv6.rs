@@ -411,7 +411,7 @@ impl From<IpV6Address> for [u16; IPV6_LEN / 2] {
 
 define_inet_type!(
     pub struct Header {
-        vtf: Vtf,
+        vtcfl: Vtcfl,
         payload_len: U16,
         next_header: ip::Protocol,
         hop_limit: u8,
@@ -423,12 +423,12 @@ define_inet_type!(
 impl fmt::Debug for Header {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ipv6::Header")
-            .field("version", &self.vtf.version())
-            .field("dscp", &self.vtf.dscp())
-            .field("ecn", &self.vtf.ecn())
+            .field("version", &self.vtcfl.version())
+            .field("dscp", &self.vtcfl.dscp())
+            .field("ecn", &self.vtcfl.ecn())
             .field(
                 "flow_label",
-                &format_args!("0x{:05x}", self.vtf.flow_label()),
+                &format_args!("0x{:05x}", self.vtcfl.flow_label()),
             )
             .field("payload_len", &self.payload_len)
             .field("next_header", &self.next_header)
@@ -447,13 +447,13 @@ impl Header {
     }
 
     #[inline]
-    pub const fn vtf(&self) -> &Vtf {
-        &self.vtf
+    pub const fn vtcfl(&self) -> &Vtcfl {
+        &self.vtcfl
     }
 
     #[inline]
-    pub fn vtf_mut(&mut self) -> &mut Vtf {
-        &mut self.vtf
+    pub fn vtf_mut(&mut self) -> &mut Vtcfl {
+        &mut self.vtcfl
     }
 
     #[inline]
@@ -507,13 +507,17 @@ impl Header {
     }
 }
 
+// This struct covers the bits for Version, Traffic Class, and Flow Label.
+//
+// Rust doesn't have the ability to do arbitrary bit sized values so we have to round up to the
+// nearest byte.
 define_inet_type!(
-    pub struct Vtf {
+    pub struct Vtcfl {
         octets: [u8; 4],
     }
 );
 
-impl fmt::Debug for Vtf {
+impl fmt::Debug for Vtcfl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ipv6::Vtf")
             .field("version", &self.version())
@@ -524,7 +528,7 @@ impl fmt::Debug for Vtf {
     }
 }
 
-impl Vtf {
+impl Vtcfl {
     #[inline]
     pub const fn version(&self) -> u8 {
         self.octets[0] >> 4
@@ -737,10 +741,10 @@ mod tests {
                 // use all of the getters and setters to copy over each field
                 header
                     .vtf_mut()
-                    .set_version(expected.vtf().version())
-                    .set_dscp(expected.vtf().dscp())
-                    .set_ecn(expected.vtf().ecn())
-                    .set_flow_label(expected.vtf.flow_label());
+                    .set_version(expected.vtcfl().version())
+                    .set_dscp(expected.vtcfl().dscp())
+                    .set_ecn(expected.vtcfl().ecn())
+                    .set_flow_label(expected.vtcfl().flow_label());
                 *header.hop_limit_mut() = *expected.hop_limit();
                 *header.next_header_mut() = *expected.next_header();
                 header.payload_len_mut().set(expected.payload_len().get());
@@ -752,13 +756,13 @@ mod tests {
             let (actual, _) = decoder.decode::<&Header>().unwrap();
             {
                 // make sure all of the values match
-                assert_eq!(expected.vtf().version(), expected.vtf().version());
-                assert_eq!(expected.vtf().dscp(), expected.vtf().dscp());
-                assert_eq!(expected.vtf().ecn(), expected.vtf().ecn());
-                assert_eq!(expected.vtf().flow_label(), expected.vtf().flow_label());
+                assert_eq!(expected.vtcfl().version(), expected.vtcfl().version());
+                assert_eq!(expected.vtcfl().dscp(), expected.vtcfl().dscp());
+                assert_eq!(expected.vtcfl().ecn(), expected.vtcfl().ecn());
+                assert_eq!(expected.vtcfl().flow_label(), expected.vtcfl().flow_label());
                 assert_eq!(
-                    expected.vtf(),
-                    actual.vtf(),
+                    expected.vtcfl(),
+                    actual.vtcfl(),
                     "\nexpected: {:?}\n  actual: {:?}",
                     expected.as_bytes(),
                     actual.as_bytes()

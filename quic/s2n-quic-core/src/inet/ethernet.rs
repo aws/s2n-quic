@@ -4,6 +4,19 @@
 use crate::inet::Unspecified;
 use core::fmt;
 
+// NOTE: duvet doesn't know how to parse this RFC since it doesn't follow more modern formatting
+//# https://www.rfc-editor.org/rfc/rfc826
+//# Packet format:
+//# --------------
+//#
+//# To communicate mappings from <protocol, address> pairs to 48.bit
+//# Ethernet addresses, a packet format that embodies the Address
+//# Resolution protocol is needed.  The format of the packet follows.
+//#
+//#    Ethernet transmission layer (not necessarily accessible to
+//#         the user):
+//#        48.bit: Ethernet address of destination
+//#        48.bit: Ethernet address of sender
 const MAC_LEN: usize = 48 / 8;
 
 define_inet_type!(
