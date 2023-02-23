@@ -12,7 +12,7 @@ exclude = ["corpus.tar.gz"]
 
 [features]
 default = ["alloc", "std"]
-alloc = ["atomic-waker", "cache-padded"]
+alloc = ["atomic-waker", "bytes", "cache-padded"]
 std = ["alloc", "once_cell"]
 testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta", "futures-test"]
 generator = ["bolero-generator"]
@@ -23,7 +23,7 @@ event-tracing = ["tracing"]
 atomic-waker = { version = "1", optional = true }
 bolero-generator = { version = "0.8", default-features = false, optional = true }
 byteorder = { version = "1", default-features = false }
-bytes = { version = "1", default-features = false }
+bytes = { version = "1", optional = true, default-features = false }
 cache-padded = { version = "1", optional = true }
 hex-literal = "0.3"
 # used for event snapshot testing - needs an internal API so we require a minimum version

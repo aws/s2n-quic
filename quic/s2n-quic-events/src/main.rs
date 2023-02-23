@@ -627,6 +627,11 @@ impl ToTokens for Output {
                     }
 
                     fn snapshot(&self, output: &[String]) {
+                        // miri doesn't support the syscalls that insta uses
+                        if cfg!(miri) {
+                            return;
+                        }
+
                         use std::path::{Path, Component};
                         let value = output.join("\n");
 

@@ -332,6 +332,7 @@ const ASYNC_RX_BATCH_SIZE: usize = if cfg!(loom) { 1 } else { BATCH_SIZE };
 const ASYNC_RX_EXPECTED_COUNT: usize = ASYNC_RX_BATCH_COUNT * ASYNC_RX_BATCH_SIZE;
 
 #[test]
+#[cfg_attr(miri, ignore)] // TODO https://github.com/aws/s2n-quic/issues/1635
 fn loom_spin_tx_spin_rx_test() {
     loom_scenario(
         CAPACITY,
@@ -341,6 +342,7 @@ fn loom_spin_tx_spin_rx_test() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // TODO https://github.com/aws/s2n-quic/issues/1635
 fn loom_spin_tx_async_rx_test() {
     loom_scenario(
         CAPACITY,
@@ -350,6 +352,7 @@ fn loom_spin_tx_async_rx_test() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // TODO https://github.com/aws/s2n-quic/issues/1635
 fn loom_async_tx_spin_rx_test() {
     loom_scenario(
         CAPACITY,
@@ -359,6 +362,7 @@ fn loom_async_tx_spin_rx_test() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // TODO https://github.com/aws/s2n-quic/issues/1635
 fn loom_async_tx_async_rx_test() {
     loom_scenario(
         CAPACITY,
