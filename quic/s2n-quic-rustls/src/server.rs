@@ -7,6 +7,7 @@ use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct Server {
     config: Arc<ServerConfig>,
 }
@@ -34,6 +35,12 @@ impl Default for Server {
 impl From<ServerConfig> for Server {
     fn from(config: ServerConfig) -> Self {
         Self::new(config)
+    }
+}
+
+impl From<Arc<ServerConfig>> for Server {
+    fn from(config: Arc<ServerConfig>) -> Self {
+        Self { config }
     }
 }
 
