@@ -346,6 +346,7 @@ mod tests {
     macro_rules! binop_test {
         ($op:ident, $checked_op:ident) => {
             #[test]
+            #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
             fn $op() {
                 check!()
                     .with_type::<(u8, u8)>()
@@ -371,6 +372,7 @@ mod tests {
     macro_rules! cmp_test {
         ($op:ident, $core_op:ident) => {
             #[test]
+            #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
             fn $op() {
                 check!()
                     .with_type::<(u8, u8)>()

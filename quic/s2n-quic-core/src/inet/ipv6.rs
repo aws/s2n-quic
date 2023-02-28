@@ -667,6 +667,7 @@ mod tests {
 
     /// Asserts the UnicastScope returned matches a known implementation
     #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(2), kani::solver(kissat))]
     fn scope_test() {
         let g = gen::<[u8; 16]>().map_gen(IpV6Address::from);
         check!().with_generator(g).cloned().for_each(|subject| {
@@ -732,6 +733,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(17), kani::solver(kissat))]
     fn header_getter_setter_test() {
         check!().with_type::<Header>().for_each(|expected| {
             let mut buffer = [255u8; core::mem::size_of::<Header>()];
