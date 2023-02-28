@@ -52,7 +52,7 @@ impl<'a> EncoderBuffer<'a> {
     /// Returns the written bytes as a mutable slice
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        &mut self.bytes[..self.position]
+        unsafe { self.bytes.get_unchecked_mut(..self.position) }
     }
 
     #[inline]
@@ -71,29 +71,44 @@ impl<'a> Encoder for EncoderBuffer<'a> {
     fn write_sized<F: FnOnce(&mut [u8])>(&mut self, len: usize, write: F) {
         self.assert_capacity(len);
         let end = self.position + len;
-        write(&mut self.bytes[self.position..end]);
+        let bytes = unsafe {
+            // Safety: bounds already checked
+            self.bytes.get_unchecked_mut(self.position..end)
+        };
+        write(bytes);
         self.position = end;
     }
 
     #[inline]
     fn write_slice(&mut self, slice: &[u8]) {
-        self.assert_capacity(slice.len());
-        let position = self.position;
-        let len = slice.len();
-        let end = position + len;
-        self.bytes[position..end].copy_from_slice(slice);
-        self.position = end;
+        self.write_sized(slice.len(), |dest| dest.copy_from_slice(slice));
     }
 
     #[inline]
     fn write_repeated(&mut self, count: usize, value: u8) {
-        self.assert_capacity(count);
-        let start = self.position;
-        let end = start + count;
-        for byte in &mut self.bytes[start..end] {
-            *byte = value;
-        }
-        self.position = end;
+        self.write_sized(count, |dest| {
+            for byte in dest {
+                *byte = value;
+            }
+        })
+    }
+
+    #[inline]
+    fn write_zerocopy<
+        T: zerocopy::AsBytes + zerocopy::FromBytes + zerocopy::Unaligned,
+        F: FnOnce(&mut T),
+    >(
+        &mut self,
+        write: F,
+    ) {
+        let len = core::mem::size_of::<T>();
+        self.write_sized(len, |bytes| {
+            let value = unsafe {
+                // The `zerocopy` markers ensure this is a safe operation
+                &mut *(bytes as *mut _ as *mut T)
+            };
+            write(value)
+        })
     }
 
     #[inline]

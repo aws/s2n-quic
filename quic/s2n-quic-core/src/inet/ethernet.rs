@@ -40,6 +40,12 @@ impl fmt::Display for MacAddress {
     }
 }
 
+impl MacAddress {
+    pub const UNSPECIFIED: Self = Self {
+        octets: [0; MAC_LEN],
+    };
+}
+
 impl Unspecified for MacAddress {
     #[inline]
     fn is_unspecified(&self) -> bool {
