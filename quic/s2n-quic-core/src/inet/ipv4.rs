@@ -740,6 +740,7 @@ mod tests {
 
     /// Asserts the Scope returned matches a known implementation
     #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
     fn scope_test() {
         let g = gen::<[u8; 4]>().map_gen(IpV4Address::from);
         check!().with_generator(g).cloned().for_each(|subject| {
@@ -808,6 +809,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
     fn header_getter_setter_test() {
         check!().with_type::<Header>().for_each(|expected| {
             let mut buffer = [255u8; core::mem::size_of::<Header>()];
