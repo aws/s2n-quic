@@ -73,7 +73,7 @@ fn write_sized_generic<'a, const LEN: usize>(
 
 /// Returns the most optimized function implementation for the current platform
 #[inline]
-#[cfg(feature = "once_cell")]
+#[cfg(all(feature = "once_cell", not(any(kani, miri))))]
 fn probe_write_large() -> LargeWriteFn {
     static LARGE_WRITE_FN: once_cell::sync::Lazy<LargeWriteFn> = once_cell::sync::Lazy::new(|| {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -90,7 +90,7 @@ fn probe_write_large() -> LargeWriteFn {
 }
 
 #[inline]
-#[cfg(not(feature = "once_cell"))]
+#[cfg(not(all(feature = "once_cell", not(any(kani, miri)))))]
 fn probe_write_large() -> LargeWriteFn {
     write_sized_generic::<8>
 }
