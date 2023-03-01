@@ -87,8 +87,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
         Frame: EncoderValue + FrameTrait,
         for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
-        self.check_frame_constraint(frame);
-        let res = self.write_frame_forced(frame);
+        let res = self.write_frame(frame);
         if res.is_some() {
             for range in ack_ranges.ack_ranges() {
                 self.publisher.on_ack_range_sent(event::builder::AckRangeSent {
