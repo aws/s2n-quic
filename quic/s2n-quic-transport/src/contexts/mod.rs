@@ -9,7 +9,7 @@ use s2n_codec::encoder::EncoderValue;
 use s2n_quic_core::{
     endpoint,
     event::{self, IntoEvent},
-    frame::{ack_elicitation::AckElicitation, ack::AckRanges as AckRangesTrait, FrameTrait},
+    frame::{ack::AckRanges as AckRangesTrait, ack_elicitation::AckElicitation, FrameTrait},
     packet::number::PacketNumber,
     time::Timestamp,
 };
@@ -32,10 +32,14 @@ pub trait WriteContext {
     ///
     /// If this was successful the number of the packet
     /// that will be used to send the frame will be returned.
-    fn write_ack_frame<Frame, AckRanges: AckRangesTrait>(&mut self, frame: &Frame, ack_ranges: AckRanges) -> Option<PacketNumber>
+    fn write_ack_frame<Frame, AckRanges: AckRangesTrait>(
+        &mut self,
+        frame: &Frame,
+        ack_ranges: AckRanges,
+    ) -> Option<PacketNumber>
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame> 
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
     {
         let _ = ack_ranges;
         self.write_frame(frame)

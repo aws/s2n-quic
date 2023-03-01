@@ -110,14 +110,14 @@ impl AckManager {
         //# Even if an endpoint does not set an ECT field on packets it sends,
         //# the endpoint MUST provide feedback about ECN markings it receives, if
         //# these are accessible.
-       context
+        context
             .write_ack_frame(
                 &Ack {
                     ack_delay,
                     ack_ranges: &self.ack_ranges,
                     ecn_counts: self.ecn_counts.as_option(),
                 },
-                &self.ack_ranges
+                &self.ack_ranges,
             )
             .is_some()
     }
