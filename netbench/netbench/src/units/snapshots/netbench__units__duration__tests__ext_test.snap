@@ -2,14 +2,13 @@
 source: netbench/src/units/duration.rs
 assertion_line: 62
 expression: "[42.millis(), 42.seconds(), 42.minutes(), 42.minutes() + 42.seconds(),\n        4.2.millis(), 4.2.seconds(), 4.2.minutes(),\n        4.2.minutes() + 4.2.seconds()]"
-
 ---
 [
     42ms,
     42s,
     2520s,
     2562s,
-    4.199999ms,
+    4.2ms,
     4.199999809s,
     251.99998854s,
     256.199988349s,
