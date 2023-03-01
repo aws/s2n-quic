@@ -131,7 +131,7 @@ impl Sum {
     unsafe fn add(&mut self, rhs: __m128i) {
         // Reads pairs of bytes into a 32-bit value
         //
-        // Since we have 16 bytes as input, we need to outputs since we're doubling the bit-width
+        // Since we have 16 bytes as input, we need two outputs since we're doubling the bit-width
         let mask_a = _mm_setr_epi8(
             0x0, 0x1, -1, -1, 0x2, 0x3, -1, -1, 0x4, 0x5, -1, -1, 0x6, 0x7, -1, -1,
         );
