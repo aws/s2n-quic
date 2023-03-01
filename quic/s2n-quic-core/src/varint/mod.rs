@@ -11,6 +11,8 @@ use s2n_codec::{decoder_value, Encoder, EncoderValue};
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
+use crate::event::IntoEvent;
+
 #[cfg(test)]
 mod tests;
 
@@ -300,6 +302,13 @@ impl EncoderValue for VarInt {
     #[inline]
     fn encoding_size_for_encoder<E: Encoder>(&self, _encoder: &E) -> usize {
         encoding_size(self.0)
+    }
+}
+
+impl IntoEvent<u64> for VarInt {
+    #[inline]
+    fn into_event(self) -> u64 {
+        self.as_u64()
     }
 }
 
