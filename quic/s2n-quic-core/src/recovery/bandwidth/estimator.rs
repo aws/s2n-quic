@@ -150,6 +150,7 @@ impl core::ops::Div<Bandwidth> for u64 {
     type Output = Duration;
 
     fn div(self, rhs: Bandwidth) -> Self::Output {
+        #[allow(clippy::suspicious_arithmetic_impl)]
         Duration::from_nanos(rhs.nanos_per_kibibyte.saturating_mul(self) >> KIBIBYTE_SHIFT)
     }
 }
