@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     event::{self, ConnectionPublisher as _, IntoEvent},
-    frame::{ack::AckRanges as AckRangesTrait, ack_elicitation::AckElicitation, FrameTrait},
+    frame::{ack::AckRanges as AckRangesTrait, ack_elicitation::AckElicitation, Ack, FrameTrait},
     packet::number::PacketNumber,
     time::Timestamp,
 };
@@ -82,18 +82,13 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
     }
 
     #[inline]
-    fn write_ack_frame<Frame, AckRanges: AckRangesTrait>(
+    fn write_ack_frame<AckRanges: AckRangesTrait>(
         &mut self,
-        frame: &Frame,
-        ack_ranges: AckRanges,
-    ) -> Option<PacketNumber>
-    where
-        Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
-    {
-        let res = self.write_frame(frame);
+        ack_frame: &Ack<AckRanges>,
+    ) -> Option<PacketNumber> {
+        let res = self.write_frame(ack_frame);
         if res.is_some() {
-            for range in ack_ranges.ack_ranges() {
+            for range in ack_frame.ack_ranges.ack_ranges() {
                 self.publisher
                     .on_ack_range_sent(event::builder::AckRangeSent {
                         packet_header: event::builder::PacketHeader::new(
@@ -231,16 +226,11 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
     }
 
     #[inline]
-    fn write_ack_frame<Frame, AckRanges: AckRangesTrait>(
+    fn write_ack_frame<AckRanges: AckRangesTrait>(
         &mut self,
-        frame: &Frame,
-        ack_ranges: AckRanges,
-    ) -> Option<PacketNumber>
-    where
-        Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
-    {
-        self.context.write_ack_frame(frame, ack_ranges)
+        ack_frame: &Ack<AckRanges>,
+    ) -> Option<PacketNumber> {
+        self.context.write_ack_frame(ack_frame)
     }
 
     #[inline]
