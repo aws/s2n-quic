@@ -35,30 +35,36 @@ pub struct PacketInfo {
 /// While bandwidth is typically thought of as an amount of data over a fixed
 /// amount of time (bytes per second, for example), in this case we internally
 /// represent bandwidth as the inverse: an amount of time to send a fixed amount
-/// of data (nanoseconds per byte, in this case). This allows for some of the  
-/// math operations needed on `Bandwidth` to avoid division, while reducing the
-/// likelihood of panicking due to overflow.
+/// of data (nanoseconds per kibibyte or 1024 bytes, in this case). This allows for
+/// some of the math operations needed on `Bandwidth` to avoid division, while
+/// reducing the likelihood of panicking due to overflow.
 ///
-/// The maximum (non-infinite) value that can be represented is 1 GB/second.
+/// The maximum (non-infinite) value that can be represented is ~1 TB/second.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Bandwidth {
-    nanos_per_byte: u64,
+    nanos_per_kibibyte: u64,
 }
+
+// 2^10 = 1024 bytes in kibibyte
+const KIBIBYTE_SHIFT: u8 = 10;
 
 impl Bandwidth {
     pub const ZERO: Bandwidth = Bandwidth {
-        nanos_per_byte: u64::MAX,
+        nanos_per_kibibyte: u64::MAX,
     };
 
-    pub const INFINITY: Bandwidth = Bandwidth { nanos_per_byte: 0 };
+    pub const INFINITY: Bandwidth = Bandwidth {
+        nanos_per_kibibyte: 0,
+    };
 
     /// Constructs a new `Bandwidth` with the given bytes per interval
     pub const fn new(bytes: u64, interval: Duration) -> Self {
-        if interval.is_zero() || bytes == 0 {
+        let interval = (interval.as_nanos() as u64) << KIBIBYTE_SHIFT;
+        if interval == 0 || bytes == 0 {
             Bandwidth::ZERO
         } else {
             Self {
-                nanos_per_byte: interval.as_nanos() as u64 / bytes,
+                nanos_per_kibibyte: interval / bytes,
             }
         }
     }
@@ -71,7 +77,7 @@ impl Bandwidth {
             return u64::MAX;
         }
 
-        ONE_SECOND_IN_NANOS / self.nanos_per_byte
+        (ONE_SECOND_IN_NANOS << KIBIBYTE_SHIFT) / self.nanos_per_kibibyte
     }
 }
 
@@ -89,9 +95,11 @@ impl core::cmp::PartialOrd for Bandwidth {
 
 impl core::cmp::Ord for Bandwidth {
     fn cmp(&self, other: &Self) -> Ordering {
-        // The higher the nano_per_byte, the lower the bandwidth,
+        // The higher the nanos_per_kibibyte, the lower the bandwidth,
         // so reverse the ordering when comparing
-        self.nanos_per_byte.cmp(&other.nanos_per_byte).reverse()
+        self.nanos_per_kibibyte
+            .cmp(&other.nanos_per_kibibyte)
+            .reverse()
     }
 }
 
@@ -105,9 +113,9 @@ impl core::ops::Mul<Ratio<u64>> for Bandwidth {
 
         Bandwidth {
             // Since `Bandwidth` is represented as time/byte and not bytes/time, we should divide
-            // by the given ratio to result in a higher nanos_per_byte value (lower bandwidth).
+            // by the given ratio to result in a higher nanos_per_kibibyte value (lower bandwidth).
             // To avoid division, we can multiply by the inverse of the ratio instead
-            nanos_per_byte: (rhs.inv() * self.nanos_per_byte).to_integer(),
+            nanos_per_kibibyte: (rhs.inv() * self.nanos_per_kibibyte).to_integer(),
         }
     }
 }
@@ -118,8 +126,17 @@ impl core::ops::Mul<Duration> for Bandwidth {
     fn mul(self, rhs: Duration) -> Self::Output {
         if self == Bandwidth::INFINITY {
             return u64::MAX;
+        } else if rhs.is_zero() {
+            return 0;
         }
-        rhs.as_nanos() as u64 / self.nanos_per_byte
+
+        let interval = (rhs.as_nanos() as u64) << KIBIBYTE_SHIFT;
+
+        if interval == 0 {
+            return u64::MAX;
+        }
+
+        interval / self.nanos_per_kibibyte
     }
 }
 
@@ -133,7 +150,7 @@ impl core::ops::Div<Bandwidth> for u64 {
     type Output = Duration;
 
     fn div(self, rhs: Bandwidth) -> Self::Output {
-        Duration::from_nanos(rhs.nanos_per_byte.saturating_mul(self))
+        Duration::from_nanos(rhs.nanos_per_kibibyte.saturating_mul(self) >> KIBIBYTE_SHIFT)
     }
 }
 

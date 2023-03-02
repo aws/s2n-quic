@@ -4,4 +4,4 @@ expression: ""
 ---
 BbrStateChanged { path_id: 0, state: Drain }
 BbrStateChanged { path_id: 0, state: ProbeBwDown }
-PacingRateUpdated { path_id: 0, bytes_per_second: 100000000, burst_size: 12000, pacing_gain: 1.0 }
+PacingRateUpdated { path_id: 0, bytes_per_second: 99004157, burst_size: 12000, pacing_gain: 1.0 }

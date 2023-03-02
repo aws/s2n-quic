@@ -13,7 +13,8 @@ fn bandwidth() {
     let result = Bandwidth::new(1000, Duration::from_secs(10));
 
     // 10 seconds = 10^10 nanoseconds, nanos_per_byte = 10^10 / 1000 = 10_000_000
-    assert_eq!(10_000_000, result.nanos_per_byte);
+    // nanos_per_kibibyte = 10_000_000 * 1024 =
+    assert_eq!(10_240_000_000, result.nanos_per_kibibyte);
 }
 
 #[test]
@@ -29,12 +30,27 @@ fn bandwidth_zero_interval() {
 
     assert_eq!(Bandwidth::ZERO, result);
 }
+/// Test that the maximum supported interval (~104 days) does not panic
+#[test]
+fn bandwidth_max_interval() {
+    let result = Bandwidth::new(1, Duration::from_nanos(1 << 53));
+
+    assert!(result > Bandwidth::ZERO);
+}
+
+/// Test that a value larger than the maximum supported interval does not panic
+#[test]
+fn bandwidth_interval_too_long() {
+    let result = Bandwidth::new(1, Duration::from_nanos(1 << 54));
+
+    assert_eq!(Bandwidth::ZERO, result);
+}
 
 #[test]
 fn bandwidth_mul_ratio() {
-    let bandwidth = Bandwidth::new(7000, Duration::from_secs(1));
+    let bandwidth = Bandwidth::new(4000, Duration::from_secs(1));
 
-    let result = bandwidth * Ratio::new(3, 7);
+    let result = bandwidth * Ratio::new(3, 4);
 
     assert_eq!(result, Bandwidth::new(3000, Duration::from_secs(1)));
 }
@@ -51,6 +67,19 @@ fn bandwidth_mul_duration() {
     let result = bandwidth * Duration::from_secs(10);
 
     assert_eq!(result, 35000);
+}
+
+#[test]
+fn bandwidth_mul_duration_too_long() {
+    let bandwidth = Bandwidth::new(1, Duration::from_nanos(1));
+
+    let result = bandwidth * Duration::from_nanos(1 << 53);
+
+    assert!(result < u64::MAX);
+
+    let result = bandwidth * Duration::from_nanos(1 << 54);
+
+    assert_eq!(result, u64::MAX);
 }
 
 #[test]
