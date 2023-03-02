@@ -1,8 +1,12 @@
 # netbench-scenarios
 
-### Executable
+The executable includes three default scenarios
+- [`request response`](https://github.com/aws/s2n-quic/blob/main/netbench/netbench-scenarios/src/request_response.rs) sends `N` number of bytes to the server, which responds with `M` number of bytes.
+- [`ping`](https://github.com/aws/s2n-quic/blob/main/netbench/netbench-scenarios/src/ping.rs) will "ping-pong" a data payload from client to the server and back
+- [`connect`](https://github.com/aws/s2n-quic/blob/main/netbench/netbench-scenarios/src/connect.rs) will open a number of connections and then exchange a single byte. This is useful for evaluting connection setup times.
 
-The executable includes a single default scenario: [`request_response`](https://github.com/aws/s2n-quic/blob/main/netbench/netbench-scenarios/src/request_response.rs). This sends `N` number of bytes to the server, which responds with `M` number of bytes. Several options are available for configuration:
+
+Several options are available for configuration:
 
 ```shell
 $ cargo run --bin netbench-scenarios -- --help
@@ -22,13 +26,30 @@ FLAGS:
     -V, --version
             Prints version information
 
-
 OPTIONS:
+        --connect.connections <COUNT>
+            The number of separate connections to create [default: 1000]
+
+        --ping.connections <COUNT>
+            The number of concurrent connections to create [default: 1]
+
+        --ping.size <BYTES>
+            The amount of data to send in each ping [default: 1KB,10KB,100KB,1MB]
+
+        --ping.streams <COUNT>
+            The number of concurrent streams to ping on [default: 1]
+
+        --ping.time <TIME>
+            The amount of time to spend pinging for each size [default: 15s]
+
         --request_response.client_receive_rate <RATE>
             The rate at which the client receives data [default: NONE]
 
         --request_response.client_send_rate <RATE>
             The rate at which the client sends data [default: NONE]
+
+        --request_response.connections <COUNT>
+            The number of separate connections to create [default: 1]
 
         --request_response.count <COUNT>
             The number of requests to make [default: 1]
@@ -41,6 +62,9 @@ OPTIONS:
 
         --request_response.response_size <BYTES>
             The size of the server's response to the client [default: 10MB]
+
+        --request_response.response_unblock <BYTES>
+            The number of bytes that must be received before the next request [default: 0B]
 
         --request_response.server_receive_rate <RATE>
             The rate at which the server receives data [default: NONE]
