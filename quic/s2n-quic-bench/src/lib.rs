@@ -6,6 +6,7 @@ use criterion::Criterion;
 mod buffer;
 mod crypto;
 mod frame;
+mod inet;
 mod packet;
 mod sync;
 mod varint;
@@ -14,6 +15,7 @@ pub fn benchmarks(c: &mut Criterion) {
     buffer::benchmarks(c);
     crypto::benchmarks(c);
     frame::benchmarks(c);
+    inet::benchmarks(c);
     packet::benchmarks(c);
     sync::benchmarks(c);
     varint::benchmarks(c);
