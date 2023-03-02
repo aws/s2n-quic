@@ -1,0 +1,38 @@
+[package]
+name = "ebpf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# These crates are not published so use a git dependency for now. See https://github.com/aya-rs/aya/issues/464
+aya-bpf = { git = "https://github.com/aya-rs/aya", ref = "7e4454d0613145fe5bf04ca6276f1ff46703c902" }
+aya-log-ebpf = { git = "https://github.com/aya-rs/aya", ref = "7e4454d0613145fe5bf04ca6276f1ff46703c902" }
+s2n-quic-core = { path = "../../../quic/s2n-quic-core", default-features = false }
+
+[features]
+default = []
+trace = []
+
+[[bin]]
+name = "s2n-quic-xdp"
+path = "src/main.rs"
+
+# everything needs to be optimized so we don't get any unsupported output in the BPF program
+[profile.dev]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = true
+panic = "abort"
+incremental = false
+codegen-units = 1
+rpath = false
+
+[profile.release]
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[workspace]
+members = []

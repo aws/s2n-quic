@@ -735,3 +735,28 @@ jobs:
         run: cd ${{ matrix.crate }} && cargo test --release loom
         env:
           RUSTFLAGS: --cfg loom -Cdebug-assertions
+
+  xdp-bpf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          lfs: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: ${{ env.NIGHTLY_TOOLCHAIN }}
+          components: rust-src
+
+      - uses: camshaft/install@v1
+        with:
+          crate: bpf-linker
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Build ebpf
+        working-directory: tools/xdp
+        env:
+          RUST_LOG: trace
+        run: cargo xtask ci
