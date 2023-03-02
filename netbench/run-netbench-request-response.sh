@@ -10,7 +10,7 @@ cargo build --manifest-path netbench-scenarios/Cargo.toml
 
 # generate the scenario files. This will generate .json files that can be found
 # in the netbench/target/netbench directory. Specify that there should be 1000
-# request-response occurences
+# request-response occurrences
 cargo run --manifest-path netbench-scenarios/Cargo.toml -- --request_response.count 1000
 
 # build the drivers

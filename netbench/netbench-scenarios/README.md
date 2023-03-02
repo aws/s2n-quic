@@ -3,7 +3,7 @@
 The executable includes three default scenarios
 - [`request response`](https://github.com/aws/s2n-quic/blob/main/netbench/netbench-scenarios/src/request_response.rs) sends `N` number of bytes to the server, which responds with `M` number of bytes.
 - [`ping`](https://github.com/aws/s2n-quic/blob/main/netbench/netbench-scenarios/src/ping.rs) will "ping-pong" a data payload from client to the server and back
-- [`connect`](https://github.com/aws/s2n-quic/blob/main/netbench/netbench-scenarios/src/connect.rs) will open a number of connections and then exchange a single byte. This is useful for evaluting connection setup times.
+- [`connect`](https://github.com/aws/s2n-quic/blob/main/netbench/netbench-scenarios/src/connect.rs) will open a number of connections and then exchange a single byte. This is useful for evaluating connection setup times.
 
 
 Several options are available for configuration:

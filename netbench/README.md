@@ -33,7 +33,7 @@ A basic use of netbench is demonstrated in the `run-netbench-request-response.sh
 cd report
 python3 -m http.server 9000
 ```
-Then navigate to `localhost:9000` in a brower to view the netbench results.
+Then navigate to `localhost:9000` in a browser to view the netbench results.
 
 ## How it works
 
@@ -92,7 +92,7 @@ Netbench drivers are responsible for executing netbench scenarios. Each transpor
 * `s2n-tls`
 
 ### netbench-collector
-Driver metrics are collected with the [`netbench-collector`](./netbench-collector/) utility. There are two implementation of this available - a generic utility and a bpftrace utility. The generic utility uses the `proc fs` to gather information about the process, while the `bpftrace` implementation is able to collect a wider varity of statistics through ebpf probes.
+Driver metrics are collected with the [`netbench-collector`](./netbench-collector/) utility. There are two implementation of this available - a generic utility and a bpftrace utility. The generic utility uses the `proc fs` to gather information about the process, while the `bpftrace` implementation is able to collect a wider variety of statistics through ebpf probes.
 
 The collector binary takes a `netbench-driver` as an argument. The driver binary is spawned as a child process. The collector will continuously gather metrics from the driver and emit those metrics to `stdout`.
 
