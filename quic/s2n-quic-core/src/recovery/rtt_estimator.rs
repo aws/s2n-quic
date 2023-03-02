@@ -174,7 +174,7 @@ impl RttEstimator {
         is_handshake_confirmed: bool,
         space: PacketNumberSpace,
     ) {
-        self.latest_rtt = rtt_sample.max(Duration::from_millis(1));
+        self.latest_rtt = rtt_sample.max(Duration::from_micros(1));
 
         if self.first_rtt_sample.is_none() {
             self.first_rtt_sample = Some(timestamp);
@@ -362,7 +362,7 @@ mod test {
         );
     }
 
-    /// Test a zero RTT value is treated as 1 ms
+    /// Test a zero RTT value is treated as 1 µs
     #[test]
     fn zero_rtt_sample() {
         let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
@@ -374,12 +374,12 @@ mod test {
             false,
             PacketNumberSpace::ApplicationData,
         );
-        assert_eq!(rtt_estimator.min_rtt, Duration::from_millis(1));
-        assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(1));
+        assert_eq!(rtt_estimator.min_rtt, Duration::from_micros(1));
+        assert_eq!(rtt_estimator.latest_rtt(), Duration::from_micros(1));
         assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
         assert_eq!(
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::Initial),
-            Duration::from_millis(3)
+            Duration::from_millis(1)
         );
     }
 
