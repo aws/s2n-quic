@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     event::{self, ConnectionPublisher as _, IntoEvent},
-    frame::{ack_elicitation::AckElicitation, FrameTrait},
+    frame::{ack::AckRanges as AckRangesTrait, ack_elicitation::AckElicitation, Ack, FrameTrait},
     packet::number::PacketNumber,
     time::Timestamp,
 };
@@ -79,6 +79,28 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 's
     #[inline]
     fn remaining_capacity(&self) -> usize {
         self.buffer.remaining_capacity()
+    }
+
+    #[inline]
+    fn write_ack_frame<AckRanges: AckRangesTrait>(
+        &mut self,
+        ack_frame: &Ack<AckRanges>,
+    ) -> Option<PacketNumber> {
+        let res = self.write_frame(ack_frame);
+        if res.is_some() {
+            for range in ack_frame.ack_ranges.ack_ranges() {
+                self.publisher
+                    .on_ack_range_sent(event::builder::AckRangeSent {
+                        packet_header: event::builder::PacketHeader::new(
+                            self.packet_number,
+                            self.publisher.quic_version(),
+                        ),
+                        path_id: self.path_id.into_event(),
+                        ack_range: range.start().into_event()..=range.end().into_event(),
+                    });
+            }
+        }
+        res
     }
 
     #[inline]
@@ -201,6 +223,14 @@ impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
     #[inline]
     fn remaining_capacity(&self) -> usize {
         self.context.remaining_capacity()
+    }
+
+    #[inline]
+    fn write_ack_frame<AckRanges: AckRangesTrait>(
+        &mut self,
+        ack_frame: &Ack<AckRanges>,
+    ) -> Option<PacketNumber> {
+        self.context.write_ack_frame(ack_frame)
     }
 
     #[inline]

@@ -707,6 +707,17 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " ACK range was sent"]
+    pub struct AckRangeSent {
+        pub packet_header: PacketHeader,
+        pub path_id: u64,
+        pub ack_range: RangeInclusive<u64>,
+    }
+    impl Event for AckRangeSent {
+        const NAME: &'static str = "recovery:ack_range_sent";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Packet was dropped with the given reason"]
     pub struct PacketDropped<'a> {
         pub reason: PacketDropReason<'a>,
@@ -1757,6 +1768,21 @@ pub mod tracing {
                 ack_range,
             } = event;
             tracing :: event ! (target : "ack_range_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , ack_range = tracing :: field :: debug (ack_range));
+        }
+        #[inline]
+        fn on_ack_range_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::AckRangeSent,
+        ) {
+            let id = context.id();
+            let api::AckRangeSent {
+                packet_header,
+                path_id,
+                ack_range,
+            } = event;
+            tracing :: event ! (target : "ack_range_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path_id = tracing :: field :: debug (path_id) , ack_range = tracing :: field :: debug (ack_range));
         }
         #[inline]
         fn on_packet_dropped(
@@ -3530,6 +3556,28 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " ACK range was sent"]
+    pub struct AckRangeSent {
+        pub packet_header: PacketHeader,
+        pub path_id: u64,
+        pub ack_range: RangeInclusive<u64>,
+    }
+    impl IntoEvent<api::AckRangeSent> for AckRangeSent {
+        #[inline]
+        fn into_event(self) -> api::AckRangeSent {
+            let AckRangeSent {
+                packet_header,
+                path_id,
+                ack_range,
+            } = self;
+            api::AckRangeSent {
+                packet_header: packet_header.into_event(),
+                path_id: path_id.into_event(),
+                ack_range: ack_range.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Packet was dropped with the given reason"]
     pub struct PacketDropped<'a> {
         pub reason: PacketDropReason<'a>,
@@ -4564,6 +4612,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `AckRangeSent` event is triggered"]
+        #[inline]
+        fn on_ack_range_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &AckRangeSent,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PacketDropped` event is triggered"]
         #[inline]
         fn on_packet_dropped(
@@ -5216,6 +5276,16 @@ mod traits {
             (self.1).on_ack_range_received(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_ack_range_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &AckRangeSent,
+        ) {
+            (self.0).on_ack_range_sent(&mut context.0, meta, event);
+            (self.1).on_ack_range_sent(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_packet_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -5794,6 +5864,8 @@ mod traits {
         fn on_rx_ack_range_dropped(&mut self, event: builder::RxAckRangeDropped);
         #[doc = "Publishes a `AckRangeReceived` event to the publisher's subscriber"]
         fn on_ack_range_received(&mut self, event: builder::AckRangeReceived);
+        #[doc = "Publishes a `AckRangeSent` event to the publisher's subscriber"]
+        fn on_ack_range_sent(&mut self, event: builder::AckRangeSent);
         #[doc = "Publishes a `PacketDropped` event to the publisher's subscriber"]
         fn on_packet_dropped(&mut self, event: builder::PacketDropped);
         #[doc = "Publishes a `KeyUpdate` event to the publisher's subscriber"]
@@ -6006,6 +6078,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_ack_range_received(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_ack_range_sent(&mut self, event: builder::AckRangeSent) {
+            let event = event.into_event();
+            self.subscriber
+                .on_ack_range_sent(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -6269,6 +6350,7 @@ pub mod testing {
         pub ack_processed: u32,
         pub rx_ack_range_dropped: u32,
         pub ack_range_received: u32,
+        pub ack_range_sent: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
         pub key_space_discarded: u32,
@@ -6346,6 +6428,7 @@ pub mod testing {
                 ack_processed: 0,
                 rx_ack_range_dropped: 0,
                 ack_range_received: 0,
+                ack_range_sent: 0,
                 packet_dropped: 0,
                 key_update: 0,
                 key_space_discarded: 0,
@@ -6547,6 +6630,17 @@ pub mod testing {
             event: &api::AckRangeReceived,
         ) {
             self.ack_range_received += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+        }
+        fn on_ack_range_sent(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::AckRangeSent,
+        ) {
+            self.ack_range_sent += 1;
             if self.location.is_some() {
                 self.output.push(format!("{meta:?} {event:?}"));
             }
@@ -6941,6 +7035,7 @@ pub mod testing {
         pub ack_processed: u32,
         pub rx_ack_range_dropped: u32,
         pub ack_range_received: u32,
+        pub ack_range_sent: u32,
         pub packet_dropped: u32,
         pub key_update: u32,
         pub key_space_discarded: u32,
@@ -7008,6 +7103,7 @@ pub mod testing {
                 ack_processed: 0,
                 rx_ack_range_dropped: 0,
                 ack_range_received: 0,
+                ack_range_sent: 0,
                 packet_dropped: 0,
                 key_update: 0,
                 key_space_discarded: 0,
@@ -7226,6 +7322,13 @@ pub mod testing {
         }
         fn on_ack_range_received(&mut self, event: builder::AckRangeReceived) {
             self.ack_range_received += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{event:?}"));
+            }
+        }
+        fn on_ack_range_sent(&mut self, event: builder::AckRangeSent) {
+            self.ack_range_sent += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{event:?}"));

@@ -9,7 +9,7 @@ use s2n_codec::encoder::EncoderValue;
 use s2n_quic_core::{
     endpoint,
     event::{self, IntoEvent},
-    frame::{ack_elicitation::AckElicitation, FrameTrait},
+    frame::{ack::AckRanges as AckRangesTrait, ack_elicitation::AckElicitation, Ack, FrameTrait},
     packet::number::PacketNumber,
     time::Timestamp,
 };
@@ -27,6 +27,17 @@ pub trait WriteContext {
 
     /// Returns the number of available bytes remaining in the current payload
     fn remaining_capacity(&self) -> usize;
+
+    /// Attempt to write an ack frame.
+    ///
+    /// If this was successful the number of the packet
+    /// that will be used to send the frame will be returned.
+    fn write_ack_frame<AckRanges: AckRangesTrait>(
+        &mut self,
+        ack_frame: &Ack<AckRanges>,
+    ) -> Option<PacketNumber> {
+        self.write_frame(ack_frame)
+    }
 
     /// Attempt to write a frame.
     ///

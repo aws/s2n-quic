@@ -139,6 +139,14 @@ struct AckRangeReceived<'a> {
     ack_range: RangeInclusive<u64>,
 }
 
+#[event("recovery:ack_range_sent")]
+/// ACK range was sent
+struct AckRangeSent {
+    packet_header: PacketHeader,
+    path_id: u64,
+    ack_range: RangeInclusive<u64>,
+}
+
 #[event("transport:packet_dropped")]
 /// Packet was dropped with the given reason
 struct PacketDropped<'a> {
