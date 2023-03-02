@@ -1,7 +1,13 @@
-# check that we are in the netbench directory
+#!/usr/bin/env bash
+
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
 
 # build the scenario generation tool
 cargo build --manifest-path netbench-scenarios/Cargo.toml
+
 # generate the scenario files. This will generate .json files that can be found
 # in the netbench/target/netbench directory. Specify that there should be 1000
 # request-response occurences
