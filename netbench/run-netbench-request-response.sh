@@ -19,16 +19,19 @@ cargo build --manifest-path netbench-cli/Cargo.toml --release
 # make a directory to hold the collected statistics
 mkdir -p results/request_response/s2n-quic/
 
-# run the server while collecting metrics.
+# run the server while collecting metrics. Generic Segmenetation Offload (GSO)
+# is disabled, because it results in production-disssimilar behaviors when
+# running over the loopback interface. Specifically, packets larger than the
+# max supported MTU can be observed.
 echo "running the server"
-./target/release/netbench-collector ./target/release/netbench-driver-s2n-quic-server --scenario ./target/netbench/request_response.json > results/request_response/s2n-quic/server.json &
+DISABLE_GSO=true ./target/release/netbench-collector ./target/release/netbench-driver-s2n-quic-server --scenario ./target/netbench/request_response.json > results/request_response/s2n-quic/server.json &
 # store the server process' PID. "$!" is the more recently spawns child pid
 SERVER_PID=$!
 
 # run the client. Port 4433 is the default for the server.
 echo "running the client"
 echo "the scenario should take about 15 seconds to run"
-SERVER_0=localhost:4433 ./target/release/netbench-collector ./target/release/netbench-driver-s2n-quic-client --scenario ./target/netbench/request_response.json > results/request_response/s2n-quic/client.json
+DISABLE_GSO=true SERVER_0=localhost:4433 ./target/release/netbench-collector ./target/release/netbench-driver-s2n-quic-client --scenario ./target/netbench/request_response.json > results/request_response/s2n-quic/client.json
 
 # cleanup server processes. The collector PID (which is the parent) is stored in
 # SERVER_PID. The collector forks the driver process. The following incantation
