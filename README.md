@@ -40,10 +40,13 @@ The following implements a basic echo server and client. The client connects to 
 use s2n_quic::Server;
 use std::error::Error;
 
+const CERT_PEM: &str = include_str!("./path/to/cert.pem");
+const KEY_PEM: &str =  include_str!("./path/to/key.pem");
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut server = Server::builder()
-        .with_tls(("./path/to/cert.pem", "./path/to/key.pem"))?
+        .with_tls((CERT_PEM, KEY_PEM))?
         .with_io("127.0.0.1:4433")?
         .start()?;
 
@@ -72,6 +75,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 // src/bin/client.rs
 use s2n_quic::{client::Connect, Client};
 use std::{error::Error, net::SocketAddr};
+
+const CERT_PEM: &str = include_str!("./path/to/cert.pem");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
