@@ -21,16 +21,18 @@ Here are a few examples of questions that netbench aims to answer:
 * Is implementation "X" interoperable with implementation "Y" of "Z" protocol?
 
 ## Quickstart
-A basic use of netbench is demonstrated in the `run-netbench-request-response.sh` script. This script will
+A basic use of netbench is demonstrated in the `netbench-run.sh` script. This script will
 - compile all necessary netbench utilities
 - generate scenario files
-- execute the `request-response.json` scenario file using `s2n-quic` drivers
+- execute the `request-response.json` scenario using `s2n-quic` and `s2n-tls` drivers
+- execute the `connect.json` scenario using `s2n-quic` and `s2n-tls` drivers
 - collect statistics from the drivers using `netbench-collector`
-- generate a report in the `./report` directory
+- generate a report in the `./target/netbench/report` directory
 
+From the main `netbench` folder, run the following commands
 ```
-./run-netbench-request-response.sh
-cd report
+./scripts/netbench-run
+cd target/netbench/report
 python3 -m http.server 9000
 ```
 Then navigate to `localhost:9000` in a browser to view the netbench results.
@@ -97,9 +99,9 @@ Driver metrics are collected with the [`netbench-collector`](./netbench-collecto
 The collector binary takes a `netbench-driver` as an argument. The driver binary is spawned as a child process. The collector will continuously gather metrics from the driver and emit those metrics to `stdout`.
 
 ### netbench-cli
-`netbench-cli` has two commands.
+`netbench-cli` is used to visualize the results of the scenarios. This reports use [vega](https://vega.github.io/) which is "a declarative format for creating, saving, and sharing visualization designs".
 
-`report` is used to generate individual `.json` reports, and is not expected to be useful in isolation.
+`report` is used to generate individual `.json` reports. These can be visualized by pasting them into the [vega editor](https://vega.github.io/editor/).
 
 `report-tree` is used to to generate a human-readable `.html` report. Given a directory structure like the following
 ```
