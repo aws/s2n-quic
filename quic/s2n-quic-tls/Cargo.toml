@@ -12,6 +12,7 @@ exclude = ["corpus.tar.gz"]
 
 [features]
 unstable_client_hello = []
+unstable_private_key = []
 
 [dependencies]
 bytes = { version = "1", default-features = false }
@@ -20,13 +21,15 @@ libc = "0.2"
 s2n-codec = { version = "=0.3.0", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.17.0", path = "../s2n-quic-core", default-features = false }
 s2n-quic-crypto = { version = "=0.17.0", path = "../s2n-quic-crypto", default-features = false }
-s2n-tls = { version = "=0.0.21", features = ["quic"] }
+s2n-tls = { version = "=0.0.26", features = ["quic"] }
 
 [target.'cfg(all(s2n_quic_unstable, s2n_quic_enable_pq_tls))'.dependencies]
-s2n-tls = { version = "=0.0.21", features = ["quic", "pq"] }
+s2n-tls = { version = "=0.0.26", features = ["quic", "pq"] }
 
 [dev-dependencies]
 checkers = "0.6"
+pin-project = { version = "1" }
+openssl = { version = "0.10" }
 # Build the vendored version to make it easy to test in dev
 #
 # NOTE: The version of the `openssl-sys` crate is not the same as OpenSSL itself.

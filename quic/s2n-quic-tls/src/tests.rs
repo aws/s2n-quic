@@ -1,11 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{client, server};
+use crate::{certificate, client, server};
 use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     task::Poll,
 };
+use openssl::{ec::EcKey, ecdsa::EcdsaSig};
+use pin_project::pin_project;
 use s2n_quic_core::{
     crypto::tls::{
         self,
@@ -15,21 +17,24 @@ use s2n_quic_core::{
     transport,
 };
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
-use s2n_tls::{callbacks::ClientHelloCallback, connection::Connection};
+use s2n_tls::callbacks::ClientHelloCallback;
+#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+use s2n_tls::callbacks::{PrivateKeyCallback, PrivateKeyOperation};
 use s2n_tls::{
     callbacks::{ConnectionFuture, VerifyHostNameCallback},
+    connection::Connection,
     error::Error,
 };
 use std::sync::Arc;
 
-pub struct MyClientHelloHandler {
+pub struct MyCallbackHandler {
     done: Arc<AtomicBool>,
     wait_counter: Arc<AtomicU8>,
 }
 
-impl MyClientHelloHandler {
+impl MyCallbackHandler {
     fn new(wait_counter: u8) -> Self {
-        MyClientHelloHandler {
+        MyCallbackHandler {
             done: Arc::new(AtomicBool::new(false)),
             wait_counter: Arc::new(AtomicU8::new(wait_counter)),
         }
@@ -37,7 +42,7 @@ impl MyClientHelloHandler {
 }
 
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
-impl ClientHelloCallback for MyClientHelloHandler {
+impl ClientHelloCallback for MyCallbackHandler {
     fn on_client_hello(
         &self,
         _connection: &mut Connection,
@@ -67,6 +72,57 @@ impl ConnectionFuture for MyConnectionFuture {
         }
 
         Poll::Pending
+    }
+}
+
+#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_private_key")))]
+impl PrivateKeyCallback for MyCallbackHandler {
+    fn handle_operation(
+        &self,
+        _connection: &mut Connection,
+        op: PrivateKeyOperation,
+    ) -> Result<Option<std::pin::Pin<Box<dyn s2n_tls::callbacks::ConnectionFuture>>>, Error> {
+        let future = MyConnectionFuture {
+            done: self.done.clone(),
+            wait_counter: self.wait_counter.clone(),
+        };
+        let op = Some(op);
+        let pkey_future = MyPrivateKeyFuture { future, op };
+        Ok(Some(Box::pin(pkey_future)))
+    }
+}
+
+#[pin_project]
+struct MyPrivateKeyFuture {
+    #[pin]
+    future: MyConnectionFuture,
+    #[pin]
+    op: Option<PrivateKeyOperation>,
+}
+
+impl ConnectionFuture for MyPrivateKeyFuture {
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        conn: &mut Connection,
+        ctx: &mut core::task::Context,
+    ) -> Poll<Result<(), Error>> {
+        let mut this = self.project();
+        if this.future.poll(conn, ctx).is_pending() {
+            return Poll::Pending;
+        }
+
+        let op = this.op.take().expect("Missing pkey operation");
+        let in_buf_size = op.input_size()?;
+        let mut in_buf = vec![0; in_buf_size];
+        op.input(&mut in_buf)?;
+
+        let key = EcKey::private_key_from_pem(KEY_PEM.as_bytes())
+            .expect("Failed to create EcKey from pem");
+        let sig = EcdsaSig::sign(&in_buf, &key).expect("Failed to sign input");
+        let out = sig.to_der().expect("Failed to convert signature to der");
+
+        op.set_output(conn, &out)?;
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -159,12 +215,26 @@ fn s2n_server_with_client_auth_verifier_rejects_client_certs() -> Result<server:
 
 #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
 fn s2n_server_with_client_hello_callback(wait_counter: u8) -> (server::Server, Arc<AtomicBool>) {
-    let handle = MyClientHelloHandler::new(wait_counter);
+    let handle = MyCallbackHandler::new(wait_counter);
     let done = handle.done.clone();
     let tls = server::Builder::default()
         .with_certificate(CERT_PEM, KEY_PEM)
         .unwrap()
         .with_client_hello_handler(handle)
+        .unwrap()
+        .build()
+        .unwrap();
+    (tls, done)
+}
+
+#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_private_key")))]
+fn s2n_server_with_private_key_callback(wait_counter: u8) -> (server::Server, Arc<AtomicBool>) {
+    let handle = MyCallbackHandler::new(wait_counter);
+    let done = handle.done.clone();
+    let tls = server::Builder::default()
+        .with_certificate(CERT_PEM, certificate::OFFLOAD_PRIVATE_KEY)
+        .unwrap()
+        .with_private_key_handler(handle)
         .unwrap()
         .build()
         .unwrap();
@@ -193,6 +263,17 @@ fn s2n_client_s2n_server_ch_callback_test() {
     for wait_counter in 0..=10 {
         let mut client_endpoint = s2n_client();
         let (mut server_endpoint, done) = s2n_server_with_client_hello_callback(wait_counter);
+
+        run(&mut server_endpoint, &mut client_endpoint, Some(done));
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_s2n_server_pkey_callback_test() {
+    for wait_counter in 0..=10 {
+        let mut client_endpoint = s2n_client();
+        let (mut server_endpoint, done) = s2n_server_with_private_key_callback(wait_counter);
 
         run(&mut server_endpoint, &mut client_endpoint, Some(done));
     }
