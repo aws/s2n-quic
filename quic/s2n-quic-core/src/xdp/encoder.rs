@@ -75,7 +75,7 @@ pub fn encode_packet<M: Message<Handle = path::Tuple>>(
         assume!(
             buffer.remaining_capacity()
                 > size_of::<ethernet::Header>()
-                    + size_of::<ipv6::Header>()
+                    + size_of::<ipv6::Header>().max(size_of::<ipv4::Header>())
                     + size_of::<udp::Header>(),
             "buffer too small"
         );
