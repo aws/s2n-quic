@@ -4,6 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+# immediately exit if an error occurs.
+set -e
+
 ARTIFACT_FOLDER="target/release"
 NETBENCH_ARTIFACT_FOLDER="target/netbench"
 

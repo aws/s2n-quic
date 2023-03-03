@@ -37,6 +37,9 @@ python3 -m http.server 9000
 ```
 Then navigate to `localhost:9000` in a browser to view the netbench results.
 
+Note that this script does not support bpftrace, as it runs without any of the
+elevated permissions required for bpf programs.
+
 ## How it works
 
 ### netbench-scenarios
