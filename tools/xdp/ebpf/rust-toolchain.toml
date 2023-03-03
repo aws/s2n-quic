@@ -3,4 +3,4 @@
 channel = "nightly-2023-02-20"
 # The source code of rustc, provided by the rust-src component, is needed for
 # building eBPF programs.
-components = [ "rustc", "rust-std", "cargo", "rust-docs", "rustfmt", "clippy", "rust-src" ]
+components = [ "rustc", "cargo", "rust-src" ]

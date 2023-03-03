@@ -56,6 +56,21 @@ impl<'a> DecoderBufferMut<'a> {
         let buffer = Self::new_checked(buffer, end)?;
         Ok((slice, buffer))
     }
+
+    #[inline]
+    pub fn into_less_safe_slice(self) -> &'a mut [u8] {
+        self.buffer.into_less_safe_slice()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
 }
 
 /// A generic interface over a decoder buffer

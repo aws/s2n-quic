@@ -7,14 +7,21 @@
 use aya_bpf::{
     bindings::xdp_action,
     macros::{map, xdp},
+    maps::HashMap,
     programs::XdpContext,
 };
-use s2n_quic_core::xdp::{bpf::DecoderBufferMut, decoder::decode_packet};
+use s2n_quic_core::xdp::{
+    bpf::DecoderBufferMut,
+    decoder::{decode_packet_validator, Validator},
+};
 
 mod xskmap;
 
-#[map(name = "S2N_QUIC_XDP_TARGETS")]
-static TARGETS: xskmap::XskMap = xskmap::XskMap::with_max_entries(1024, 0);
+#[map(name = "S2N_QUIC_XDP_SOCKETS")]
+static SOCKETS: xskmap::XskMap = xskmap::XskMap::with_max_entries(1024, 0);
+
+#[map(name = "S2N_QUIC_XDP_PORTS")]
+static PORTS: HashMap<u16, u8> = HashMap::with_max_entries(1024, 0);
 
 #[xdp(name = "s2n_quic_xdp")]
 pub fn s2n_quic_xdp(ctx: XdpContext) -> u32 {
@@ -43,17 +50,30 @@ fn handle_packet(ctx: &XdpContext) -> u32 {
         // Safety: start and end come from the caller and have been validated
         DecoderBufferMut::new(start, end)
     };
-    match decode_packet(buffer) {
-        Ok(Some((_tuple, _payload))) => {
-            // TODO add a port map to only listen on a range of ports
+    match decode_packet_validator(buffer, &PortValidator) {
+        Ok(Some((_tuple, payload))) => {
+            // if the payload is empty there isn't much we can do with it
+            if payload.is_empty() {
+                return xdp_action::XDP_DROP;
+            }
 
             // if the packet is valid forward it on to the associated AF_XDP socket
             let queue_id = unsafe { (*ctx.ctx).rx_queue_index };
             let not_found_action = xdp_action::XDP_PASS as _;
-            TARGETS.redirect(queue_id, not_found_action)
+            SOCKETS.redirect(queue_id, not_found_action)
         }
         Ok(None) => xdp_action::XDP_PASS,
         Err(_) => xdp_action::XDP_ABORTED,
+    }
+}
+
+struct PortValidator;
+
+impl Validator for PortValidator {
+    #[inline(always)]
+    fn validate_local_port(&self, port: u16) -> bool {
+        // The destination isn't in the port map so forward it to the OS
+        PORTS.get_ptr(&port).is_some()
     }
 }
 
