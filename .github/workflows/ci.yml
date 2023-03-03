@@ -743,12 +743,6 @@ jobs:
         with:
           lfs: true
 
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: ${{ env.NIGHTLY_TOOLCHAIN }}
-          components: rust-src
-
       - uses: camshaft/install@v1
         with:
           crate: bpf-linker
