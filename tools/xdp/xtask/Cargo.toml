@@ -5,13 +5,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-aya = { version = ">=0.11", features = ["async_tokio"] }
-aya-log = "0.1"
 clap = { version = "4.1", features = ["derive"] }
 elf = "0.7"
 env_logger = "0.10"
-log = "0.4"
 rbpf = "0.1"
 similar = "2"
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "signal"] }
-
