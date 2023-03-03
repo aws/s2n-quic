@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 #
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -22,7 +21,10 @@ run_trial() {
 
     # run the server while collecting metrics.
     echo "  running the server"
-    ./$ARTIFACT_FOLDER/netbench-collector ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-server --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/server.json &
+    ./$ARTIFACT_FOLDER/netbench-collector \
+    ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-server \
+    --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json \
+    > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/server.json &
     # store the server process PID. $! is the most recently spawned child pid
     SERVER_PID=$!
 
@@ -32,7 +34,10 @@ run_trial() {
 
     # run the client. Port 4433 is the default for the server.
     echo "  running the client"
-    SERVER_0=localhost:4433 ./$ARTIFACT_FOLDER/netbench-collector ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-client --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/client.json
+    SERVER_0=localhost:4433 ./$ARTIFACT_FOLDER/netbench-collector \
+     ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-client \
+     --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json \
+     > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/client.json
 
     # cleanup server processes. The collector PID (which is the parent) is stored in
     # SERVER_PID. The collector forks the driver process. The following incantation
