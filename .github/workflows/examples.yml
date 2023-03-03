@@ -1,0 +1,56 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+name: examples
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: 1
+
+jobs:
+  # use a single action because sharing matrices across jobs is not ergonomic
+  example_check:
+    strategy:
+      matrix:
+        example: [
+          async_client_hello_callback,
+          dos_mitigation,
+          echo,
+          event-framework,
+          jumbo-frame,
+          post-quantum,
+          rustls-mtls,
+          rustls-provider,
+          unreliable-datagram,
+        ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: fmt
+          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml --all -- --check
+
+      - name: Run cargo clippy
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: clippy
+          # deriving Eq may break API compatibility so we disable it
+          # See https://github.com/rust-lang/rust-clippy/issues/9063
+          # also fail on warnings
+          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml --all-features --all-targets -- -D warnings
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: build
+          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml --release

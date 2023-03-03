@@ -1,5 +1,5 @@
 [package]
-name = "async_client_hello_callback"
+name = "async-client-hello-callback"
 version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2021"
