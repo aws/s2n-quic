@@ -20,8 +20,29 @@ Here are a few examples of questions that netbench aims to answer:
 * How does certificate chain length affect handshake throughput?
 * Is implementation "X" interoperable with implementation "Y" of "Z" protocol?
 
+## Quickstart
+A basic use of netbench is demonstrated in the `netbench-run.sh` script. This script will
+- compile all necessary netbench utilities
+- generate scenario files
+- execute the `request-response.json` scenario using `s2n-quic` and `s2n-tls` drivers
+- execute the `connect.json` scenario using `s2n-quic` and `s2n-tls` drivers
+- collect statistics from the drivers using `netbench-collector`
+- generate a report in the `./target/netbench/report` directory
+
+From the main `netbench` folder, run the following commands
+```
+./scripts/netbench-run
+cd target/netbench/report
+python3 -m http.server 9000
+```
+Then navigate to `localhost:9000` in a browser to view the netbench results.
+
+Note that this script does not support bpftrace, as it runs without any of the
+elevated permissions required for bpf programs.
+
 ## How it works
 
+### netbench-scenarios
 `netbench` provides tools to write [scenarios](./netbench-scenarios/) that describe application workloads. An example of a scenario is a simple request/response pattern between a client and server:
 
 ```rust
@@ -62,7 +83,10 @@ pub fn scenario(config: Config) -> Scenario {
 }
 ```
 
-This scenario generates a json file of instructions. These instructions are protocol and language independent, which means they can easily be executed by a ["netbench driver"](./netbench-driver/), written in any language or runtime. Implemented drivers include:
+This scenario generates a json file of instructions. These instructions are protocol and language independent, which means they can easily be executed by a ["netbench driver"](./netbench-driver/), written in any language or runtime.
+
+### netbench-driver
+Netbench drivers are responsible for executing netbench scenarios. Each transport protocol has a `client` and `server` implementation. Each of these implementations is a self-container binary that consumes a `scenario.json` file. Implemented drivers include:
 
 * `TCP`
 * [`native-tls`](https://crates.io/crates/native-tls)
@@ -70,8 +94,39 @@ This scenario generates a json file of instructions. These instructions are prot
     * Secure Transport on macOS
     * SChannel on Windows
 * `s2n-quic`
-* `s2n-tls` (coming soon)
+* `s2n-tls`
 
-Driver metrics are collected with the [`netbench-collector`](./netbench-collector/) utility. Reports are then generated for the collected metrics with the [`cli`](./netbench-cli/).
+### netbench-collector
+Driver metrics are collected with the [`netbench-collector`](./netbench-collector/) utility. There are two implementation of this available - a generic utility and a bpftrace utility. The generic utility uses the `proc fs` to gather information about the process, while the `bpftrace` implementation is able to collect a wider variety of statistics through ebpf probes.
+
+The collector binary takes a `netbench-driver` as an argument. The driver binary is spawned as a child process. The collector will continuously gather metrics from the driver and emit those metrics to `stdout`.
+
+### netbench-cli
+`netbench-cli` is used to visualize the results of the scenarios. This reports use [vega](https://vega.github.io/) which is "a declarative format for creating, saving, and sharing visualization designs".
+
+`report` is used to generate individual `.json` reports. These can be visualized by pasting them into the [vega editor](https://vega.github.io/editor/).
+
+`report-tree` is used to to generate a human-readable `.html` report. Given a directory structure like the following
+```
+request-response/ # scenario
+├─ tls/ # driver
+│  ├─ client.json
+│  ├─ server.json
+├─ quic/
+   ├─ client.json
+   ├─ server.json
+```
+`report-tree` will generate the individual `reports` and package them into a human readable `index.html` file that can be used to view graphs of the results.
 
 A [sample report can be found here](https://dnglbrstg7yg.cloudfront.net/8e1890f04727ef7d3acdcb521c5b3cda257778f0/netbench/index.html#request_response/clients.json).
+
+Note that you will not be able to open the report directly since the report relies on the jsdelivr cdn. This request will fail when the URL is a local file scheme with a [CORS request not HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSRequestNotHttp) error.
+
+To get around this, use a local server.
+```
+# assuming the report is in ./report
+cd report
+# start a local server on port 9000
+python3 -m http.server 9000
+```
+In a browser, navigate to `localhost:9000` to view the netbench report.
