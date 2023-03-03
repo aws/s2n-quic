@@ -45,6 +45,15 @@ pub trait Encoder: Sized {
         self.write_slice(&bytes)
     }
 
+    /// Writes a zerocopy value to the buffer
+    fn write_zerocopy<
+        T: zerocopy::AsBytes + zerocopy::FromBytes + zerocopy::Unaligned,
+        F: FnOnce(&mut T),
+    >(
+        &mut self,
+        write: F,
+    );
+
     /// Repeatedly write a byte `value` for a given `count`
     ///
     /// ```

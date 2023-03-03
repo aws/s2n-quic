@@ -144,13 +144,30 @@ impl Checksum {
         self.state = state;
     }
 
+    /// Writes bytes to the checksum and ensures any single byte remainders are padded
+    #[inline]
+    pub fn write_padded(&mut self, bytes: &[u8]) {
+        self.write(bytes);
+
+        // write a null byte if `bytes` wasn't 16-bit aligned
+        if core::mem::take(&mut self.partial_write) {
+            self.write_byte(0, cfg!(target_endian = "little"));
+        }
+    }
+
     /// Computes the final checksum
     #[inline]
-    fn finish(mut self) -> u16 {
+    pub fn finish(mut self) -> u16 {
         self.carry();
 
         let value = self.state.0 as u16;
         let value = !value;
+
+        // if value is 0, we need to set it to the max value to indicate the checksum was actually
+        // computed
+        if value == 0 {
+            return 0xffff;
+        }
 
         value.to_be()
     }
@@ -312,7 +329,13 @@ mod tests {
                 let mut cs = Checksum::default();
                 cs.write(a);
                 cs.write(b);
-                assert_eq!(rfc_c_port(bytes).to_be_bytes(), cs.finish().to_be_bytes());
+
+                let mut rfc_value = rfc_c_port(bytes);
+                if rfc_value == 0 {
+                    rfc_value = 0xffff;
+                }
+
+                assert_eq!(rfc_value.to_be_bytes(), cs.finish().to_be_bytes());
             });
     }
 }

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[cfg(feature = "generator")]
+#[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
 //= https://www.rfc-editor.org/rfc/rfc3168#section-5
@@ -50,7 +50,7 @@ use bolero_generator::*;
 /// Explicit Congestion Notification
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
-#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub enum ExplicitCongestionNotification {
     /// The not-ECT codepoint '00' indicates a packet that is not using ECN.
     NotEct = 0b00,

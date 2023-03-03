@@ -34,6 +34,25 @@ impl IpAddress {
             Self::Ipv6(addr) => addr.unmap(),
         }
     }
+
+    /// Converts the IP address into IPv6 if it is IPv4, otherwise the address is unchanged
+    #[inline]
+    #[must_use]
+    pub fn to_ipv6_mapped(self) -> IpV6Address {
+        match self {
+            Self::Ipv4(addr) => addr.to_ipv6_mapped(),
+            Self::Ipv6(addr) => addr,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn with_port(self, port: u16) -> SocketAddress {
+        match self {
+            Self::Ipv4(addr) => addr.with_port(port).into(),
+            Self::Ipv6(addr) => addr.with_port(port).into(),
+        }
+    }
 }
 
 impl From<IpV4Address> for IpAddress {
