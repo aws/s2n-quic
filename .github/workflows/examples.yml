@@ -34,6 +34,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: rustfmt, clippy
+
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1.0.3
         with:
