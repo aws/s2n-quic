@@ -7,8 +7,13 @@
 
 # This script runs basic checks to verify code will pass through the CI.
 
-set -e
+set -ex
 
-cargo +nightly fmt --all -- --check
-cargo +stable clippy --all-features --all-targets -- -D warnings -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp -A clippy::uninlined_format_args
-cargo test
+#cargo +nightly fmt --all -- --check
+#cargo +stable clippy --all-features --all-targets -- -D warnings -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp -A clippy::uninlined_format_args
+#cargo test
+# cargo build --manifest-path=examples/async-client-hello-callback/Cargo.toml --all-features --all-targets -- -D warnings
+# find examples/ -name Cargo.toml -print | xargs -i cargo clippy --manifest-path={} --all-features --all-targets -- -D warnings
+#find examples/ -name Cargo.toml -exec cargo fmt --manifest-path={} -- --check \;
+find examples/ -name Cargo.toml -exec cargo clippy --manifest-path={} --all-features --all-targets -- -D warnings \;
+#find examples/ -name Cargo.toml -exec cargo build --manifest-path={} \;

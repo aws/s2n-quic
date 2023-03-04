@@ -27,9 +27,13 @@ jobs:
     outputs:
       rust-versions: ${{ steps.definitions.outputs.versions }}
       msrv: ${{ steps.definitions.outputs.msrv }}
+      examples: ${{ steps.definitions.outputs.examples }}
     steps:
       - uses: actions/checkout@v3
-
+      # examples is populated by
+      # find all child folders in the examples directory
+      # jq -R - raw content is passed in (not json, just strings)
+      # jq -s - slurp the content into a single object
       - name: Evaluate definitions
         id: definitions
         run: |
@@ -38,6 +42,9 @@ jobs:
           export RAW_VERSIONS="stable beta $RUST_NIGHTLY_TOOLCHAIN $MSRV"
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
           echo "::set-output name=versions::$VERSIONS"
+          export EXAMPLES=$(find examples/ -maxdepth 1 -mindepth 1 -type d | jq -R | jq -s)
+          echo "::set-ouput name=examples::$EXAMPLES"
+
 
   rustfmt:
     runs-on: ubuntu-latest
@@ -346,16 +353,11 @@ jobs:
           url: "${{ steps.s3.outputs.URL }}"
 
   examples:
+    needs: env
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        example:
-          - examples/dos-mitigation
-          - examples/echo
-          - examples/event-framework
-          - examples/post-quantum
-          - examples/rustls-provider
-          - examples/unreliable-datagram
+        example: ${{ fromJson(needs.env.outputs.examples) }}
 
     steps:
       - uses: actions/checkout@v3

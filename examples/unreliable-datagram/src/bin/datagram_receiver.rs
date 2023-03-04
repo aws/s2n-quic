@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let addr: SocketAddr = "127.0.0.1:4433".parse()?;
     let connect = Connect::new(addr).with_server_name("localhost");
-    let mut connection = client.connect(connect).await?;
+    let connection = client.connect(connect).await?;
 
     loop {
         let recv_result = futures::future::poll_fn(|cx| {
@@ -48,11 +48,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             match connection.datagram_mut(|recv: &mut Receiver| recv.poll_recv_datagram(cx)) {
                 // If the function is successfully called on the provider, it will return Poll<Bytes>.
                 // Here we send an Ok() to wrap around the Bytes so the poll_fn doesn't complain.
-                Ok(poll_value) => poll_value.map(|x| Ok(x)),
+                Ok(poll_value) => poll_value.map(Ok),
                 // The datagram_mut function may return a query error if it can't find the type
                 // referenced in the closure. Here we wrap the error in a Poll::Ready enum so the
                 // poll_fn doesn't complain.
-                Err(query_err) => return Poll::Ready(Err(query_err)),
+                Err(query_err) => Poll::Ready(Err(query_err)),
             }
         })
         .await;
