@@ -20,8 +20,8 @@ jobs:
     strategy:
       matrix:
         example: [
-          async_client_hello_callback,
-          dos_mitigation,
+          async-client-hello-callback,
+          dos-mitigation,
           echo,
           event-framework,
           jumbo-frame,
