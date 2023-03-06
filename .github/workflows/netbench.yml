@@ -130,7 +130,7 @@ jobs:
             --request_response.response_size=8GiB
 
           SCENARIOS=$(find target/netbench -type f -exec basename -s .json {} \; | jq -Rcs 'rtrimstr("\n") | split("\n")')
-          echo "::set-output name=scenarios::$SCENARIOS"
+          echo "scenarios=$SCENARIOS" >> $GITHUB_OUTPUT
 
       - name: Prepare artifact
         run: |
@@ -228,7 +228,7 @@ jobs:
           TARGET="${{ github.sha }}/netbench"
           aws s3 sync reports "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name

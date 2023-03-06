@@ -33,7 +33,8 @@ jobs:
       # examples is populated by
       # find all child folders in the examples directory
       # jq -R - raw content is passed in (not json, just strings)
-      # jq -s - slurp the content into a single object
+      # jq -sc - slurp the content into a single object, -c enabled compact
+      # output onto a single line, github will fail to parse the multi line.
       - name: Evaluate definitions
         id: definitions
         run: |
@@ -167,7 +168,7 @@ jobs:
           TARGET="${{ github.sha }}/doc"
           aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/s2n_quic/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -345,7 +346,7 @@ jobs:
           TARGET="${{ github.sha }}/coverage"
           aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -415,7 +416,7 @@ jobs:
           TARGET="${{ github.sha }}/recovery-simulations"
           aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -464,7 +465,7 @@ jobs:
           TARGET="${{ github.sha }}/sim"
           aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -583,7 +584,7 @@ jobs:
           TARGET="${{ github.sha }}/timing/index.html"
           aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -678,7 +679,7 @@ jobs:
           TARGET="${{ github.sha }}/dhat"
           aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/dhat/dh_view.html?url=/$TARGET/dhat-heap.json"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
