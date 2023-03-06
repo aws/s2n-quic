@@ -38,13 +38,15 @@ jobs:
         id: definitions
         run: |
           export MSRV=$(cat rust-toolchain | awk '{$1=$1};1')
+          echo "msrv=$MSRV"
           echo "msrv=$MSRV" >> $GITHUB_OUTPUT
           export RAW_VERSIONS="stable beta $RUST_NIGHTLY_TOOLCHAIN $MSRV"
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
+          echo "versions=$VERSIONS"
           echo "versions=$VERSIONS" >> $GITHUB_OUTPUT
           export EXAMPLES=$(find examples/ -maxdepth 1 -mindepth 1 -type d | jq -R | jq -s)
+          echo "examples=$EXAMPLES"
           echo "examples=$EXAMPLES" >> $GITHUB_OUTPUT
-
 
   rustfmt:
     runs-on: ubuntu-latest
