@@ -374,6 +374,7 @@ jobs:
         id: nightly-toolchain
         with:
           toolchain: nightly
+          components: rustfmt
 
       - uses: actions-rs/toolchain@v1.0.7
         id: stable-toolchain
