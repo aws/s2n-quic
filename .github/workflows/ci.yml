@@ -369,6 +369,12 @@ jobs:
         with:
           submodules: true
 
+      # nightly features are used for formatting
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: nightly
+
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
@@ -381,7 +387,7 @@ jobs:
 
       - name: ${{ matrix.example }}-fmt
         working-directory: ${{ matrix.example }}
-        run: cargo fmt --all -- --check
+        run: cargo +nightly fmt --all -- --check
 
       - name: ${{ matrix.example }}-lint
         working-directory: ${{ matrix.example }}
