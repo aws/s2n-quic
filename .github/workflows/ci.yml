@@ -385,7 +385,7 @@ jobs:
 
       - name: ${{ matrix.example }}-lint
         working-directory: ${{ matrix.example }}
-        run: cargo --all-features --all-targets -- -A clippy::manual_clamp -A clippy::uninlined_format_args -D warnings
+        run: cargo clippy --all-features --all-targets -- -A clippy::manual_clamp -A clippy::uninlined_format_args -D warnings
 
       # not all examples will build with the --manifest-path argument, since the
       # manifest-path argument will pull configuration from the current directory
