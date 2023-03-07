@@ -387,18 +387,18 @@ jobs:
         with:
           key: ${{ matrix.example }}
 
-      - name: ${{ matrix.example }}-fmt
+      - name: format
         working-directory: ${{ matrix.example }}
         run: cargo +nightly fmt --all -- --check
 
-      - name: ${{ matrix.example }}-lint
+      - name: lint
         working-directory: ${{ matrix.example }}
         run: cargo clippy --all-features --all-targets -- -A clippy::manual_clamp -A clippy::uninlined_format_args -D warnings
 
       # not all examples will build with the --manifest-path argument, since the
       # manifest-path argument will pull configuration from the current directory
       # instead of the directory with the Cargo.toml file
-      - name: ${{ matrix.example }}-build
+      - name: build
         working-directory: ${{ matrix.example }}
         # TODO make sure the example actually runs as well
         run: cargo build
