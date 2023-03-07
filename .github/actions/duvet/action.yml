@@ -72,7 +72,7 @@ runs:
         fi
         URL="$PREFIX/$TARGET"
 
-        echo "URL=$URL" >> $GITHUB_OUTPUT
+        echo "::set-output name=URL::$URL"
       shell: bash
 
     - uses: ouzi-dev/commit-status-updater@v1.1.2

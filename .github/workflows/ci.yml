@@ -35,6 +35,8 @@ jobs:
       # jq -R - raw content is passed in (not json, just strings)
       # jq -sc - slurp the content into a single object, -c enabled compact
       # output onto a single line, github will fail to parse the multi line.
+      #
+      # the output is echo'd to make debugging easier
       - name: Evaluate definitions
         id: definitions
         run: |
@@ -377,7 +379,18 @@ jobs:
         with:
           key: ${{ matrix.example }}
 
-      - name: ${{ matrix.example }}
+      - name: ${{ matrix.example }}-fmt
+        working-directory: ${{ matrix.example }}
+        run: cargo fmt --all -- --check
+
+      - name: ${{ matrix.example }}-lint
+        working-directory: ${{ matrix.example }}
+        run: cargo --all-features --all-targets -- -A clippy::manual_clamp -A clippy::uninlined_format_args -D warnings
+
+      # not all examples will build with the --manifest-path argument, since the
+      # manifest-path argument will pull configuration from the current directory
+      # instead of the directory with the Cargo.toml file
+      - name: ${{ matrix.example }}-build
         working-directory: ${{ matrix.example }}
         # TODO make sure the example actually runs as well
         run: cargo build
