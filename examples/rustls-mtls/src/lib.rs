@@ -4,7 +4,7 @@
 use rustls::{
     cipher_suite, ClientConfig, Error, RootCertStore, ServerConfig, SupportedCipherSuite,
 };
-use s2n_quic::provider::tls;
+use s2n_quic::provider::{tls, tls::rustls::rustls};
 use std::{io::Cursor, path::Path};
 use tokio::{fs::File, io::AsyncReadExt};
 
