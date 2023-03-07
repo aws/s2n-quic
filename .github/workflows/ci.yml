@@ -371,12 +371,12 @@ jobs:
 
       # nightly features are used for formatting
       - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
+        id: nightly-toolchain
         with:
           toolchain: nightly
 
       - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
+        id: stable-toolchain
         with:
           toolchain: stable
           override: true
