@@ -361,6 +361,7 @@ jobs:
     needs: env
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         example: ${{ fromJson(needs.env.outputs.examples) }}
 

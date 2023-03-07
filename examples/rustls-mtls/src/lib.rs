@@ -6,14 +6,8 @@ use rustls::{
 };
 use s2n_quic::provider::tls;
 use s2n_quic_rustls::{rustls, Client, Server};
-use std::{
-    io::Cursor,
-    path::Path,
-};
-use tokio::{
-    fs::File,
-    io::AsyncReadExt,
-};
+use std::{io::Cursor, path::Path};
+use tokio::{fs::File, io::AsyncReadExt};
 
 static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
 
