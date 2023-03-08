@@ -45,7 +45,7 @@ jobs:
             tshark-static \
             cp /usr/local/bin/tshark /usr/local/bin/editcap /host-dir/
 
-      - uses: aws-actions/configure-aws-credentials@v1.7.0
+      - uses: aws-actions/configure-aws-credentials@v2.0.0
         if: github.event_name == 'schedule' || github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
