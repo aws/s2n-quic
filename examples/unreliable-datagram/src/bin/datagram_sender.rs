@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_datagram(datagram_provider)?
         .start()?;
 
-    while let Some(mut connection) = server.accept().await {
+    while let Some(connection) = server.accept().await {
         // spawn a new task for the connection
         tokio::spawn(async move {
             eprintln!("Connection accepted from {:?}", connection.remote_addr());

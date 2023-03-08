@@ -4,16 +4,9 @@
 use rustls::{
     cipher_suite, ClientConfig, Error, RootCertStore, ServerConfig, SupportedCipherSuite,
 };
-use s2n_quic::provider::tls;
-use s2n_quic_rustls::{rustls, Client, Server};
-use std::{
-    io::{BufReader, Cursor},
-    path::Path,
-};
-use tokio::{
-    fs::File,
-    io::{AsyncRead, AsyncReadExt},
-};
+use s2n_quic::provider::{tls, tls::rustls::rustls};
+use std::{io::Cursor, path::Path};
+use tokio::{fs::File, io::AsyncReadExt};
 
 static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
 
@@ -30,8 +23,8 @@ pub struct MtlsProvider {
 }
 
 impl tls::Provider for MtlsProvider {
-    type Server = Server;
-    type Client = Client;
+    type Server = tls::rustls::Server;
+    type Client = tls::rustls::Client;
     type Error = rustls::Error;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
