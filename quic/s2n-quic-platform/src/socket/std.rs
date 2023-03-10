@@ -45,6 +45,7 @@ pub trait Error {
     fn would_block(&self) -> bool;
     fn was_interrupted(&self) -> bool;
     fn permission_denied(&self) -> bool;
+    fn connection_reset(&self) -> bool;
 }
 
 #[cfg(feature = "std")]
@@ -59,6 +60,10 @@ impl Error for std::io::Error {
 
     fn permission_denied(&self) -> bool {
         self.kind() == std::io::ErrorKind::PermissionDenied
+    }
+
+    fn connection_reset(&self) -> bool {
+        self.kind() == std::io::ErrorKind::ConnectionReset
     }
 }
 
@@ -156,6 +161,9 @@ impl<B: Buffer> Queue<B> {
                 }
                 Err(err) if err.was_interrupted() => {
                     break;
+                }
+                Err(err) if err.connection_reset() => {
+                    count += 1;
                 }
                 Err(err) => {
                     entries.finish(count);
