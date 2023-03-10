@@ -127,7 +127,7 @@ jobs:
 
       - name: Cache quinn
         id: cache
-        uses: actions/cache@v3.2.6
+        uses: actions/cache@v3.3.0
         continue-on-error: true
         with:
           path: |
