@@ -80,6 +80,7 @@ mod tests;
             feature = "unstable_client_hello",
             feature = "unstable-provider-datagram",
             feature = "unstable-provider-io-testing",
+            feature = "unstable-provider-io-turmoil",
             feature = "unstable-provider-packet-interceptor",
             feature = "unstable-provider-random",
             feature = "unstable-provider-congestion-controller",

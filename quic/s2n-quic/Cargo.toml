@@ -38,6 +38,8 @@ unstable_private_key = ["s2n-quic-tls/unstable_private_key"]
 unstable-provider-datagram = []
 # This feature enables the testing IO provider
 unstable-provider-io-testing = ["s2n-quic-platform/io-testing"]
+# This feature enables the turmoil IO provider
+unstable-provider-io-turmoil = ["s2n-quic-platform/turmoil"]
 # This feature enables the packet interceptor provider, which is invoked on each cleartext packet
 unstable-provider-packet-interceptor = []
 # This feature enables the random provider

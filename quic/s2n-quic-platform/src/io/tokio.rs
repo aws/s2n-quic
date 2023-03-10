@@ -17,7 +17,7 @@ use tokio::{net::UdpSocket, runtime::Handle};
 pub type PathHandle = socket::Handle;
 
 mod clock;
-use clock::Clock;
+pub(crate) use clock::Clock;
 
 impl crate::socket::std::Socket for UdpSocket {
     type Error = io::Error;

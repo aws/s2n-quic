@@ -19,6 +19,9 @@ pub trait Provider: 'static {
 #[cfg(any(test, feature = "unstable-provider-io-testing"))]
 pub mod testing;
 
+#[cfg(feature = "unstable-provider-io-turmoil")]
+pub mod turmoil;
+
 pub mod tokio;
 
 pub use self::tokio as default;
