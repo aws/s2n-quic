@@ -269,13 +269,22 @@ impl Display for MaxMtuError {
     }
 }
 
-//= https://tools.ietf.org/id/draft-ietf-quic-applicability-16#8.1
-//# Some UDP protocols are vulnerable to reflection attacks, where an attacker
-//# is able to direct traffic to a third party as a denial of service. For example,
-//# these source ports are associated with applications known to be vulnerable to
-//# reflection attacks, often due to server misconfiguration:
-//#    *  port 53 - DNS [RFC1034]
-//#    *  port 123 - NTP [RFC5905]
+//= https://www.rfc-editor.org/rfc/rfc9308#section-8.1
+//# Some UDP protocols are vulnerable to reflection attacks, where an
+//# attacker is able to direct traffic to a third party as a denial of
+//# service.  For example, these source ports are associated with
+//# applications known to be vulnerable to reflection attacks, often due
+//# to server misconfiguration:
+//#
+//# *  port 53 - DNS [RFC1034]
+//#
+//# *  port 123 - NTP [RFC5905]
+//#
+//# *  port 1900 - SSDP [SSDP]
+//#
+//# *  port 5353 - mDNS [RFC6762]
+//#
+//# *  port 11211 - memcache
 
 /// List of ports to refuse connections from. This list must be sorted.
 ///
@@ -319,9 +328,11 @@ pub fn remote_port_blocked(port: u16) -> bool {
 /// List of ports to throttle connections from. This list must be sorted.
 ///
 /// Based on https://quiche.googlesource.com/quiche/+/bac04054bccb2a249d4705ecc94a646404d41c1b/quiche/quic/core/quic_dispatcher.cc#498
-const THROTTLED_PORTS: [u16; 3] = [
+const THROTTLED_PORTS: [u16; 5] = [
     1900,  // SSDP, vulnerable to reflection attacks.
+    3702,  // WS-Discovery, vulnerable to reflection attacks.
     5353,  // mDNS, vulnerable to reflection attacks.
+    5355,  // LLMNR, vulnerable to reflection attacks.
     11211, // memcache, vulnerable to reflection attacks.
 ];
 const MAX_THROTTLED_PORT: u16 = THROTTLED_PORTS[THROTTLED_PORTS.len() - 1];
