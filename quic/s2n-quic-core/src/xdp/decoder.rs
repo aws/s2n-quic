@@ -10,14 +10,45 @@ use s2n_codec::DecoderError;
 
 type Result<Addr, D> = core::result::Result<Option<(Addr, D)>, DecoderError>;
 
+pub trait Validator {
+    #[inline(always)]
+    fn validate_local_port(&self, port: u16) -> bool {
+        let _ = port;
+        true
+    }
+
+    #[inline(always)]
+    fn validate_local_ipv4(&self, ip: &ipv4::IpV4Address) -> bool {
+        let _ = ip;
+        true
+    }
+
+    #[inline(always)]
+    fn validate_local_ipv6(&self, ip: &ipv6::IpV6Address) -> bool {
+        let _ = ip;
+        true
+    }
+}
+
+impl Validator for () {}
+
 /// Decodes a path tuple and payload from a raw packet
 #[inline(always)]
 pub fn decode_packet<'a, D: Decoder<'a>>(buffer: D) -> Result<path::Tuple, D> {
+    decode_packet_validator(buffer, &())
+}
+
+/// Decodes a path tuple and payload from a raw packet
+#[inline(always)]
+pub fn decode_packet_validator<'a, D: Decoder<'a>, V: Validator>(
+    buffer: D,
+    validator: &V,
+) -> Result<path::Tuple, D> {
     let (header, buffer) = buffer.decode::<&ethernet::Header>()?;
 
     let result = match *header.ethertype() {
-        EtherType::IPV4 => decode_ipv4(buffer),
-        EtherType::IPV6 => decode_ipv6(buffer),
+        EtherType::IPV4 => decode_ipv4(buffer, validator),
+        EtherType::IPV6 => decode_ipv6(buffer, validator),
         // pass the packet on to the OS network stack if we don't understand it
         _ => return Ok(None),
     }?;
@@ -42,8 +73,16 @@ pub fn decode_packet<'a, D: Decoder<'a>>(buffer: D) -> Result<path::Tuple, D> {
 }
 
 #[inline(always)]
-fn decode_ipv4<'a, D: Decoder<'a>>(buffer: D) -> Result<Tuple<SocketAddress>, D> {
+fn decode_ipv4<'a, D: Decoder<'a>, V: Validator>(
+    buffer: D,
+    validator: &V,
+) -> Result<Tuple<SocketAddress>, D> {
     let (header, buffer) = buffer.decode::<&ipv4::Header>()?;
+
+    if !validator.validate_local_ipv4(header.destination()) {
+        return Ok(None);
+    }
+
     let protocol = header.protocol();
 
     //= https://www.rfc-editor.org/rfc/rfc791#section-3.1
@@ -64,49 +103,62 @@ fn decode_ipv4<'a, D: Decoder<'a>>(buffer: D) -> Result<Tuple<SocketAddress>, D>
     let options_len = count_without_header as usize * (32 / 8);
     let (_options, buffer) = buffer.decode_slice(options_len)?;
 
-    Ok(parse_ip_protocol(protocol, buffer)?.map(|(ports, buffer)| {
-        let source = header.source().with_port(ports.source).into();
-        let destination = header.destination().with_port(ports.destination).into();
-        let tuple = Tuple {
-            source,
-            destination,
-        };
-        (tuple, buffer)
-    }))
+    Ok(
+        parse_ip_protocol(protocol, buffer, validator)?.map(|(ports, buffer)| {
+            let source = header.source().with_port(ports.source).into();
+            let destination = header.destination().with_port(ports.destination).into();
+            let tuple = Tuple {
+                source,
+                destination,
+            };
+            (tuple, buffer)
+        }),
+    )
 }
 
 #[inline(always)]
-fn decode_ipv6<'a, D: Decoder<'a>>(buffer: D) -> Result<Tuple<SocketAddress>, D> {
+fn decode_ipv6<'a, D: Decoder<'a>, V: Validator>(
+    buffer: D,
+    validator: &V,
+) -> Result<Tuple<SocketAddress>, D> {
     let (header, buffer) = buffer.decode::<&ipv6::Header>()?;
+
+    if !validator.validate_local_ipv6(header.destination()) {
+        return Ok(None);
+    }
+
     let protocol = header.next_header();
 
     // TODO parse Hop-by-hop/Options headers, for now we'll just forward the packet on to the OS
 
-    Ok(parse_ip_protocol(protocol, buffer)?.map(|(ports, buffer)| {
-        let source = header.source().with_port(ports.source).into();
-        let destination = header.destination().with_port(ports.destination).into();
-        let tuple = Tuple {
-            source,
-            destination,
-        };
-        (tuple, buffer)
-    }))
+    Ok(
+        parse_ip_protocol(protocol, buffer, validator)?.map(|(ports, buffer)| {
+            let source = header.source().with_port(ports.source).into();
+            let destination = header.destination().with_port(ports.destination).into();
+            let tuple = Tuple {
+                source,
+                destination,
+            };
+            (tuple, buffer)
+        }),
+    )
 }
 
 #[inline]
-fn parse_ip_protocol<'a, D: Decoder<'a>>(
+fn parse_ip_protocol<'a, D: Decoder<'a>, V: Validator>(
     protocol: &ip::Protocol,
     buffer: D,
+    validator: &V,
 ) -> Result<Tuple<u16>, D> {
     match *protocol {
-        ip::Protocol::UDP => parse_udp(buffer),
+        ip::Protocol::UDP => parse_udp(buffer, validator),
         // pass the packet on to the OS network stack if we don't understand it
         _ => Ok(None),
     }
 }
 
 #[inline(always)]
-fn parse_udp<'a, D: Decoder<'a>>(buffer: D) -> Result<Tuple<u16>, D> {
+fn parse_udp<'a, D: Decoder<'a>, V: Validator>(buffer: D, validator: &V) -> Result<Tuple<u16>, D> {
     let (header, buffer) = buffer.decode::<&udp::Header>()?;
 
     // NOTE: duvet doesn't know how to parse this RFC since it doesn't follow more modern formatting
@@ -122,6 +174,10 @@ fn parse_udp<'a, D: Decoder<'a>>(buffer: D) -> Result<Tuple<u16>, D> {
 
     let source = header.source().get();
     let destination = header.destination().get();
+
+    if !validator.validate_local_port(destination) {
+        return Ok(None);
+    }
 
     let tuple = Tuple {
         source,
