@@ -9,9 +9,7 @@ use s2n_quic::{
     Client, Server,
 };
 use std::net::SocketAddr;
-use turmoil::{lookup, Builder};
-
-type Result<T = (), E = Box<dyn std::error::Error>> = core::result::Result<T, E>;
+use turmoil::{lookup, Builder, Result};
 
 /// NOTE: this certificate is to be used for demonstration purposes only!
 pub static CERT_PEM: &str = include_str!(concat!(
