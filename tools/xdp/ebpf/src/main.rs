@@ -72,11 +72,15 @@ struct PortValidator;
 impl Validator for PortValidator {
     #[inline(always)]
     fn validate_local_port(&self, port: u16) -> bool {
-        // The destination isn't in the port map so forward it to the OS
+        // Make sure the port is in the port map. Otherwise, forward the packet to the OS.
         PORTS.get_ptr(&port).is_some()
     }
 }
 
+/// Define a no-op panic handler
+///
+/// The implementation shouldn't panic at all. But we do need to define one in
+/// `#[no_std]` builds.
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }

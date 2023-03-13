@@ -23,5 +23,10 @@ cargo xtask disasm
 ## Run the kernel verifier
 
 ```bash
-RUST_LOG=trace cargo xtask run -- -i lo --trace
+RUST_LOG=trace cargo xtask run -- --interface lo --trace
 ```
+
+### Arguments
+
+* `--interface`: The network adapter target for the BPF program
+* `--trace`: Logs verbose messages to aid in debugging the BPF program
