@@ -190,6 +190,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(1), kani::solver(kissat))]
     fn try_fit_test() {
         check!()
             .with_type()

@@ -77,6 +77,7 @@ mod fuzz_target {
 
     #[test]
     #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
+    #[cfg_attr(kani, kani::proof, kani::unwind(1), kani::solver(kissat))]
     fn fuzz_builder() {
         bolero::check!()
             .with_type::<(StreamId, StreamId)>()
