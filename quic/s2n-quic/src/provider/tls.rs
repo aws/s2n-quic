@@ -278,7 +278,7 @@ pub mod s2n_tls {
     //! Provides the [s2n-tls](https://github.com/aws/s2n-tls) implementation of TLS
     pub use s2n_quic_tls::*;
 
-    impl super::Provider for Server {
+    impl<L: ConfigLoader> super::Provider for Server<L> {
         type Server = Self;
         type Client = Client;
         type Error = core::convert::Infallible;
@@ -292,7 +292,7 @@ pub mod s2n_tls {
         }
     }
 
-    impl super::Provider for Client {
+    impl<L: ConfigLoader> super::Provider for Client<L> {
         type Server = Server;
         type Client = Self;
         type Error = core::convert::Infallible;
