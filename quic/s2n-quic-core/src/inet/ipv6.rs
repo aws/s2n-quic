@@ -452,7 +452,7 @@ impl Header {
     }
 
     #[inline]
-    pub fn vtf_mut(&mut self) -> &mut Vtcfl {
+    pub fn vtcfl_mut(&mut self) -> &mut Vtcfl {
         &mut self.vtcfl
     }
 
@@ -742,7 +742,7 @@ mod tests {
             {
                 // use all of the getters and setters to copy over each field
                 header
-                    .vtf_mut()
+                    .vtcfl_mut()
                     .set_version(expected.vtcfl().version())
                     .set_dscp(expected.vtcfl().dscp())
                     .set_ecn(expected.vtcfl().ecn())

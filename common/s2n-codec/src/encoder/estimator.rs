@@ -41,6 +41,14 @@ impl Encoder for EncoderLenEstimator {
     }
 
     #[inline]
+    fn write_zerocopy<T: zerocopy::FromBytes + zerocopy::Unaligned, F: FnOnce(&mut T)>(
+        &mut self,
+        _write: F,
+    ) {
+        self.len += core::mem::size_of::<T>();
+    }
+
+    #[inline]
     fn capacity(&self) -> usize {
         self.capacity
     }

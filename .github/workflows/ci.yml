@@ -27,17 +27,29 @@ jobs:
     outputs:
       rust-versions: ${{ steps.definitions.outputs.versions }}
       msrv: ${{ steps.definitions.outputs.msrv }}
+      examples: ${{ steps.definitions.outputs.examples }}
     steps:
       - uses: actions/checkout@v3
-
+      # examples is populated by
+      # find all child folders in the examples directory
+      # jq -R - raw content is passed in (not json, just strings)
+      # jq -sc - slurp the content into a single object, -c enabled compact
+      # output onto a single line, github will fail to parse the multi line.
+      #
+      # the output is echo'd to make debugging easier
       - name: Evaluate definitions
         id: definitions
         run: |
           export MSRV=$(cat rust-toolchain | awk '{$1=$1};1')
-          echo "::set-output name=msrv::$MSRV"
+          echo "msrv=$MSRV"
+          echo "msrv=$MSRV" >> $GITHUB_OUTPUT
           export RAW_VERSIONS="stable beta $RUST_NIGHTLY_TOOLCHAIN $MSRV"
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
-          echo "::set-output name=versions::$VERSIONS"
+          echo "versions=$VERSIONS"
+          echo "versions=$VERSIONS" >> $GITHUB_OUTPUT
+          export EXAMPLES=$(find examples/ -maxdepth 1 -mindepth 1 -type d | jq -R | jq -sc)
+          echo "examples=$EXAMPLES"
+          echo "examples=$EXAMPLES" >> $GITHUB_OUTPUT
 
   rustfmt:
     runs-on: ubuntu-latest
@@ -144,7 +156,7 @@ jobs:
           command: doc
           args: --all-features --no-deps --workspace --exclude s2n-quic-qns
 
-      - uses: aws-actions/configure-aws-credentials@v1.7.0
+      - uses: aws-actions/configure-aws-credentials@v2.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -158,7 +170,7 @@ jobs:
           TARGET="${{ github.sha }}/doc"
           aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/s2n_quic/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -322,7 +334,7 @@ jobs:
           command: llvm-cov
           args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
 
-      - uses: aws-actions/configure-aws-credentials@v1.7.0
+      - uses: aws-actions/configure-aws-credentials@v2.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -336,7 +348,7 @@ jobs:
           TARGET="${{ github.sha }}/coverage"
           aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -346,24 +358,27 @@ jobs:
           url: "${{ steps.s3.outputs.URL }}"
 
   examples:
+    needs: env
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        example:
-          - examples/dos-mitigation
-          - examples/echo
-          - examples/event-framework
-          - examples/post-quantum
-          - examples/rustls-provider
-          - examples/unreliable-datagram
+        example: ${{ fromJson(needs.env.outputs.examples) }}
 
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: true
 
+      # nightly features are used for formatting
       - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
+        id: nightly-toolchain
+        with:
+          toolchain: nightly
+          components: rustfmt
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: stable-toolchain
         with:
           toolchain: stable
           override: true
@@ -372,7 +387,18 @@ jobs:
         with:
           key: ${{ matrix.example }}
 
-      - name: ${{ matrix.example }}
+      - name: format
+        working-directory: ${{ matrix.example }}
+        run: cargo +nightly fmt --all -- --check
+
+      - name: lint
+        working-directory: ${{ matrix.example }}
+        run: cargo clippy --all-features --all-targets -- -A clippy::manual_clamp -A clippy::uninlined_format_args -D warnings
+
+      # not all examples will build with the --manifest-path argument, since the
+      # manifest-path argument will pull configuration from the current directory
+      # instead of the directory with the Cargo.toml file
+      - name: build
         working-directory: ${{ matrix.example }}
         # TODO make sure the example actually runs as well
         run: cargo build
@@ -397,7 +423,7 @@ jobs:
         run: |
           ./scripts/recovery-sim
 
-      - uses: aws-actions/configure-aws-credentials@v1.7.0
+      - uses: aws-actions/configure-aws-credentials@v2.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -411,7 +437,7 @@ jobs:
           TARGET="${{ github.sha }}/recovery-simulations"
           aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -446,7 +472,7 @@ jobs:
         run: |
           ./scripts/sim
 
-      - uses: aws-actions/configure-aws-credentials@v1.7.0
+      - uses: aws-actions/configure-aws-credentials@v2.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -460,7 +486,7 @@ jobs:
           TARGET="${{ github.sha }}/sim"
           aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -565,7 +591,7 @@ jobs:
           cd examples/echo
           cargo build --timings --release
 
-      - uses: aws-actions/configure-aws-credentials@v1.7.0
+      - uses: aws-actions/configure-aws-credentials@v2.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -579,7 +605,7 @@ jobs:
           TARGET="${{ github.sha }}/timing/index.html"
           aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -621,7 +647,7 @@ jobs:
           submodules: true
 
       - name: Kani run
-        uses: model-checking/kani-github-action@v0.22
+        uses: model-checking/kani-github-action@0.23
         with:
           working-directory: quic/s2n-quic-core
           args: --tests
@@ -659,7 +685,7 @@ jobs:
           mv report.tsv target/report/
           mv dhat-heap.json target/report/
 
-      - uses: aws-actions/configure-aws-credentials@v1.7.0
+      - uses: aws-actions/configure-aws-credentials@v2.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -674,7 +700,7 @@ jobs:
           TARGET="${{ github.sha }}/dhat"
           aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/dhat/dh_view.html?url=/$TARGET/dhat-heap.json"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -709,3 +735,22 @@ jobs:
         run: cd ${{ matrix.crate }} && cargo test --release loom
         env:
           RUSTFLAGS: --cfg loom -Cdebug-assertions
+
+  xdp-bpf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          lfs: true
+
+      - uses: camshaft/install@v1
+        with:
+          crate: bpf-linker
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Build ebpf
+        working-directory: tools/xdp
+        env:
+          RUST_LOG: trace
+        run: cargo xtask ci

@@ -10,6 +10,7 @@ mod inet;
 mod packet;
 mod sync;
 mod varint;
+mod xdp;
 
 pub fn benchmarks(c: &mut Criterion) {
     buffer::benchmarks(c);
@@ -19,4 +20,5 @@ pub fn benchmarks(c: &mut Criterion) {
     packet::benchmarks(c);
     sync::benchmarks(c);
     varint::benchmarks(c);
+    xdp::benchmarks(c);
 }

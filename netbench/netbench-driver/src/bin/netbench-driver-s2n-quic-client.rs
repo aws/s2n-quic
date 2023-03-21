@@ -20,6 +20,9 @@ pub struct Client {
     #[structopt(flatten)]
     opts: netbench_driver::Client,
 
+    #[structopt(long, default_value = "9001", env = "MAX_MTU")]
+    max_mtu: u16,
+
     #[structopt(long, env = "DISABLE_GSO")]
     disable_gso: bool,
 }
@@ -56,8 +59,9 @@ impl Client {
 
         let tls = tls.build()?;
 
-        let mut io_builder =
-            io::Default::builder().with_receive_address((self.opts.local_ip, 0u16).into())?;
+        let mut io_builder = io::Default::builder()
+            .with_max_mtu(self.max_mtu)?
+            .with_receive_address((self.opts.local_ip, 0u16).into())?;
 
         if self.disable_gso {
             io_builder = io_builder.with_gso_disabled()?;

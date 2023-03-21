@@ -63,6 +63,7 @@ pub mod token;
 pub mod transmission;
 pub mod transport;
 pub mod varint;
+pub mod xdp;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

@@ -21,6 +21,9 @@ pub struct Server {
     #[structopt(flatten)]
     opts: netbench_driver::Server,
 
+    #[structopt(long, default_value = "9001", env = "MAX_MTU")]
+    max_mtu: u16,
+
     #[structopt(long, env = "DISABLE_GSO")]
     disable_gso: bool,
 }
@@ -76,8 +79,9 @@ impl Server {
             .with_key_logging()?
             .build()?;
 
-        let mut io_builder =
-            io::Default::builder().with_receive_address((self.opts.ip, self.opts.port).into())?;
+        let mut io_builder = io::Default::builder()
+            .with_max_mtu(self.max_mtu)?
+            .with_receive_address((self.opts.ip, self.opts.port).into())?;
 
         if self.disable_gso {
             io_builder = io_builder.with_gso_disabled()?;

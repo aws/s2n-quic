@@ -209,13 +209,13 @@ mod tests {
     //     BBR.pacing_rate =  BBRStartupPacingGain * nominal_bandwidth
     #[test]
     fn new() {
-        // nominal_bandwidth = 12_000 / 1ms = ~83nanos/byte
-        // pacing_rate = 2.77 * 83nanos/byte = ~29nanos/byte
+        // nominal_bandwidth = 12_000 / 1ms = ~83.3333nanos/byte
+        // pacing_rate = 2.77 * 83.333nanos/byte * 99% = ~30.388nanos/byte
 
         let pacer = Pacer::new(MINIMUM_MTU);
 
         assert_eq!(
-            Bandwidth::new(1, Duration::from_nanos(29)),
+            Bandwidth::new(1000, Duration::from_nanos(30388)),
             pacer.pacing_rate
         );
     }
