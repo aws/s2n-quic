@@ -18,7 +18,7 @@ pub const LEN: usize = 128 / 8;
 // The implemented PartialEq will have the same results as
 // a derived version, except it is constant-time. Therefore
 // Hash can still be derived.
-#[allow(clippy::derived_hash_with_manual_eq)]
+#[allow(unknown_lints, clippy::derive_hash_xor_eq, clippy::derived_hash_with_manual_eq)]
 #[derive(Copy, Clone, Debug, Eq, Hash)]
 pub struct Token([u8; LEN]);
 
