@@ -78,14 +78,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - toolchain: 1.63
-            # fail on MSRV warnings
+          - toolchain: stable
+            # fail on stable warnings
             args: "-D warnings"
           - toolchain: beta
-            # manual_clamp will panic when min > max
-            # See https://github.com/rust-lang/rust-clippy/pull/10101
-            # pass as argument since it wasn't released until 1.66
-            args: "-A clippy::manual_clamp"
     steps:
       - uses: actions/checkout@v3
         with:
@@ -108,7 +104,10 @@ jobs:
           command: clippy
           # deriving Eq may break API compatibility so we disable it
           # See https://github.com/rust-lang/rust-clippy/issues/9063
-          args: --all-features --all-targets -- -A clippy::derive_partial_eq_without_eq ${{ matrix.args }}
+
+          # manual_clamp will panic when min > max
+          # See https://github.com/rust-lang/rust-clippy/pull/10101
+          args: --all-features --all-targets -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
 
   udeps:
     runs-on: ubuntu-latest

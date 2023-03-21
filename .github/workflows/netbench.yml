@@ -44,8 +44,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - toolchain: 1.63
-            # fail on MSRV warnings
+          - toolchain: stable
+            # fail on stable warnings
             args: "-D warnings"
           - toolchain: beta
     steps:
