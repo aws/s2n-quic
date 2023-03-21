@@ -38,9 +38,10 @@ pub type Flag = flag::Flag<HandshakeDoneWriter>;
 /// the handshake.
 ///
 /// Note: s2n-quic does not implement the optional 1-rtt acked requirement.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum HandshakeStatus {
     /// Awaiting handshake completion
+    #[default]
     InProgress,
 
     /// Client handshake Complete
@@ -55,12 +56,6 @@ pub enum HandshakeStatus {
 
     /// Terminal state requiring no further action
     Confirmed,
-}
-
-impl Default for HandshakeStatus {
-    fn default() -> Self {
-        HandshakeStatus::InProgress
-    }
 }
 
 impl HandshakeStatus {
