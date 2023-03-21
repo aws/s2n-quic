@@ -26,7 +26,7 @@ macro_rules! define_inet_type {
         // has no allocations and has a simple layout.
         //
         // See: https://godbolt.org/z/czohnrWxK
-        #[allow(unknown_lints, clippy::derive_hash_xor_eq, clippy::derived_hash_with_manual_eq)]
+        #[allow(clippy::derived_hash_with_manual_eq)]
         impl core::hash::Hash for $name {
             #[inline]
             fn hash<H: core::hash::Hasher>(&self, hasher: &mut H) {
