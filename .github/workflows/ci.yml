@@ -553,14 +553,6 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      - name: Remove api snapshots
-        run: |
-          rm quic/*/api.snap
-          git config --global user.email "ci@example.com"
-          git config --global user.name "CI"
-          git add .
-          git commit -m 'remove api.snap'
-
       - name: Run cargo insta test
         run: |
           cargo insta test --delete-unreferenced-snapshots

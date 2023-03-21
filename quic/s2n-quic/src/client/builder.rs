@@ -245,10 +245,7 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ClientProviders
     );
 
-    #[cfg(any(
-        test,
-        all(not(docdiff), feature = "unstable-provider-packet-interceptor")
-    ))]
+    #[cfg(any(test, feature = "unstable-provider-packet-interceptor"))]
     impl_provider_method!(
         /// Sets the packet interceptor provider for the [`Client`]
         with_packet_interceptor,
@@ -256,7 +253,7 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ClientProviders
     );
 
-    #[cfg(any(test, all(not(docdiff), feature = "unstable-provider-random")))]
+    #[cfg(any(test, feature = "unstable-provider-random"))]
     impl_provider_method!(
         /// Sets the random provider for the [`Client`]
         with_random,
@@ -264,7 +261,7 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ClientProviders
     );
 
-    #[cfg(all(not(docdiff), feature = "unstable-provider-datagram"))]
+    #[cfg(feature = "unstable-provider-datagram")]
     impl_provider_method!(
         /// Sets the datagram provider for the [`Client`]
         with_datagram,
@@ -272,10 +269,7 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ClientProviders
     );
 
-    #[cfg(any(
-        test,
-        all(not(docdiff), feature = "unstable-provider-congestion-controller")
-    ))]
+    #[cfg(any(test, feature = "unstable-provider-congestion-controller"))]
     impl_provider_method!(
         /// Sets the congestion controller provider for the [`Client`]
         with_congestion_controller,
