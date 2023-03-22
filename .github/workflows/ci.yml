@@ -16,6 +16,7 @@ env:
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
   RUST_NIGHTLY_TOOLCHAIN: nightly-2023-02-20
+  MSRV: 1.63
   CDN: https://dnglbrstg7yg.cloudfront.net
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
@@ -28,6 +29,7 @@ jobs:
       rust-versions: ${{ steps.definitions.outputs.versions }}
       msrv: ${{ steps.definitions.outputs.msrv }}
       examples: ${{ steps.definitions.outputs.examples }}
+      crates: ${{ steps.definitions.outputs.crates }}
     steps:
       - uses: actions/checkout@v3
       # examples is populated by
@@ -50,6 +52,9 @@ jobs:
           export EXAMPLES=$(find examples/ -maxdepth 1 -mindepth 1 -type d | jq -R | jq -sc)
           echo "examples=$EXAMPLES"
           echo "examples=$EXAMPLES" >> $GITHUB_OUTPUT
+          export CRATES=$(find find quic common -name *Cargo.toml | jq -R | jq -sc)
+          echo "crates=$CRATES"
+          echo "crates=$CRATES" >> $GITHUB_OUTPUT
 
   rustfmt:
     runs-on: ubuntu-latest
@@ -356,6 +361,35 @@ jobs:
           name: "coverage / report"
           status: "success"
           url: "${{ steps.s3.outputs.URL }}"
+
+  # This CI step will directly build each crate in common/ and quic/ which is
+  # useful because it sidesteps the feature resolution that normally occurs in a
+  # workspace build. We make sure that the crates build with default features,
+  # otherwise release to crates.io will be blocked
+  crates:
+    needs: env
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJson(needs.env.outputs.crates) }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: ${{ env.MSRV }}
+          profile: minimal
+          override: true
+
+      - name: build
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: build
+          args: --manifest-path ${{ matrix.crate }}
 
   examples:
     needs: env
