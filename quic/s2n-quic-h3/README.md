@@ -1,6 +1,6 @@
 # s2n-quic-h3
 
-This is an internal crate used by [s2n-quic](https://github.com/aws/s2n-quic). The API is not currently stable and should not be used directly.
+This is an internal crate used by [s2n-quic](https://github.com/aws/s2n-quic) written as a proof of concept for implementing HTTP3 on top of s2n-quic. The API is not currently stable and should not be used directly.
 
 ## License
 

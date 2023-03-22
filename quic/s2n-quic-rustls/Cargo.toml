@@ -15,7 +15,7 @@ bytes = { version = "1", default-features = false }
 rustls = { version = "0.20", features = ["quic"] }
 rustls-pemfile = "1"
 s2n-codec = { version = "=0.4.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.18.0", path = "../s2n-quic-core", default-features = false }
+s2n-quic-core = { version = "=0.18.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
 s2n-quic-crypto = { version = "=0.18.0", path = "../s2n-quic-crypto", default-features = false }
 
 [dev-dependencies]
