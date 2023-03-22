@@ -16,7 +16,6 @@ env:
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
   RUST_NIGHTLY_TOOLCHAIN: nightly-2023-02-20
-  MSRV: 1.63
   CDN: https://dnglbrstg7yg.cloudfront.net
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
@@ -381,7 +380,7 @@ jobs:
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: ${{ env.MSRV }}
+          toolchain: ${{ needs.env.outputs.msrv }}
           profile: minimal
           override: true
 
