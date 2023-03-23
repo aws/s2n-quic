@@ -390,6 +390,30 @@ jobs:
           command: build
           args: --manifest-path ${{ matrix.crate }}
 
+  semver:
+    name: semver
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: ${{ needs.env.outputs.msrv }}
+          profile: minimal
+          override: true
+
+      - uses: taiki-e/install-action@v2
+        name: Install cargo-semver-checks
+        with:
+          tool: cargo-semver-checks
+
+      - name: Check semver compatibility
+        run: |
+          cargo semver-checks check-release --release-type minor
+
   examples:
     needs: env
     runs-on: ubuntu-latest
