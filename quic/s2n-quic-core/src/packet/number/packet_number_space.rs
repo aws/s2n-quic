@@ -10,20 +10,15 @@ use crate::{
 use bolero_generator::*;
 
 /// Contains all of the available packet spaces for QUIC packets
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 #[repr(u8)]
 pub enum PacketNumberSpace {
     // This MUST start with 1 to enable optimized memory layout
+    #[default]
     Initial = 1,
     Handshake = 2,
     ApplicationData = 3,
-}
-
-impl Default for PacketNumberSpace {
-    fn default() -> Self {
-        PacketNumberSpace::Initial
-    }
 }
 
 impl PacketNumberSpace {
