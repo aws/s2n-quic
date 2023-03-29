@@ -421,22 +421,23 @@ impl ContainerAttrs {
         };
 
         for attr in attrs {
-            if attr.path.is_ident("event") {
+            let path = attr.path();
+            if path.is_ident("event") {
                 v.event_name = Some(attr.parse_args().unwrap());
-            } else if attr.path.is_ident("deprecated") {
+            } else if path.is_ident("deprecated") {
                 attr.to_tokens(&mut v.deprecated);
 
                 if v.allow_deprecated.is_empty() {
                     v.allow_deprecated = quote!(#[allow(deprecated)]);
                 }
-            } else if attr.path.is_ident("subject") {
+            } else if path.is_ident("subject") {
                 v.subject = attr.parse_args().unwrap();
-            } else if attr.path.is_ident("exhaustive") {
+            } else if path.is_ident("exhaustive") {
                 v.exhaustive = true;
-            } else if attr.path.is_ident("derive") {
+            } else if path.is_ident("derive") {
                 v.derive = false;
                 attr.to_tokens(&mut v.derive_attrs);
-            } else if attr.path.is_ident("builder_derive") {
+            } else if path.is_ident("builder_derive") {
                 v.builder_derive = true;
                 if let Meta::List(list) = attr.parse_args().unwrap() {
                     list.to_tokens(&mut v.builder_derive_attrs);
@@ -570,7 +571,7 @@ impl FieldAttrs {
         };
 
         for attr in attrs {
-            if attr.path.is_ident("builder") {
+            if attr.path().is_ident("builder") {
                 v.builder = Some(attr.parse_args().unwrap());
             } else {
                 attr.to_tokens(&mut v.extra)
