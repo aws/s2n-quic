@@ -110,7 +110,7 @@ fn interceptor_failure_test() {
     intercept_loss(
         Loss::builder(Random::with_seed(123))
             .with_rx_loss(0..20)
-            .with_rx_pass(1..4)
+            .with_rx_pass(1..2)
             .build(),
     )
 }
