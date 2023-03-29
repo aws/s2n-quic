@@ -241,6 +241,7 @@ impl Controller {
     //# robust in the case where probe packets are lost due to other
     //# reasons (including link transmission error, congestion).
     /// This method gets called when a packet loss is reported
+    #[allow(clippy::too_many_arguments)]
     pub fn on_packet_loss<CC: CongestionController, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,
