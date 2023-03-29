@@ -69,7 +69,7 @@ const PROBE_THRESHOLD: u16 = 20;
 
 /// When the black_hole_counter exceeds this threshold, on_black_hole_detected will be
 /// called to reduce the MTU to the BASE_PLPMTU. The black_hole_counter is incremented when
-/// a packet is lost that is:
+/// a burst of consecutive packets is lost that starts with a packet that is:
 ///      1) not an MTU probe
 ///      2) larger than the BASE_PLPMTU
 ///      3) sent after the largest MTU-sized acknowledged packet number
@@ -245,6 +245,7 @@ impl Controller {
         &mut self,
         packet_number: PacketNumber,
         lost_bytes: u16,
+        new_loss_burst: bool,
         now: Timestamp,
         congestion_controller: &mut CC,
         path_id: path::Id,
@@ -275,6 +276,7 @@ impl Controller {
                     && self
                         .largest_acked_mtu_sized_packet
                         .map_or(true, |pn| packet_number > pn)
+                    && new_loss_burst
                 {
                     // A non-probe packet larger than the BASE_PLPMTU that was sent after the last
                     // acknowledged MTU-sized packet has been lost
@@ -792,6 +794,7 @@ mod test {
         controller.on_packet_loss(
             pn,
             controller.probed_size,
+            false,
             now,
             &mut cc,
             path::Id::test_id(),
@@ -819,6 +822,7 @@ mod test {
         controller.on_packet_loss(
             pn,
             controller.probed_size,
+            false,
             now,
             &mut cc,
             path::Id::test_id(),
@@ -850,6 +854,7 @@ mod test {
             controller.on_packet_loss(
                 pn,
                 BASE_PLPMTU,
+                true,
                 now,
                 &mut cc,
                 path::Id::test_id(),
@@ -861,6 +866,19 @@ mod test {
             controller.on_packet_loss(
                 pn,
                 controller.plpmtu + 1,
+                true,
+                now,
+                &mut cc,
+                path::Id::test_id(),
+                &mut publisher,
+            );
+            assert_eq!(controller.black_hole_counter, i);
+
+            // Losing a packet that does not start a new loss burst should not increase the black_hole_counter
+            controller.on_packet_loss(
+                pn,
+                BASE_PLPMTU + 1,
+                false,
                 now,
                 &mut cc,
                 path::Id::test_id(),
@@ -871,6 +889,7 @@ mod test {
             controller.on_packet_loss(
                 pn,
                 BASE_PLPMTU + 1,
+                true,
                 now,
                 &mut cc,
                 path::Id::test_id(),
@@ -905,6 +924,7 @@ mod test {
             controller.on_packet_loss(
                 pn,
                 BASE_PLPMTU + 1,
+                false,
                 now,
                 &mut cc,
                 path::Id::test_id(),
@@ -938,6 +958,7 @@ mod test {
                 controller.on_packet_loss(
                     pn,
                     BASE_PLPMTU + 1,
+                    false,
                     now(),
                     &mut cc,
                     path::Id::test_id(),

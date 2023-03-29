@@ -951,6 +951,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             path.mtu_controller.on_packet_loss(
                 packet_number,
                 sent_info.sent_bytes,
+                new_loss_burst,
                 now,
                 &mut path.congestion_controller,
                 sent_info.path_id,
