@@ -91,8 +91,6 @@ mod tests;
             doctest,
             // we're compiling docs for docs.rs
             docsrs,
-            // we're running docdiff
-            docdiff,
             // we're developing s2n-quic
             s2n_internal_dev,
             // the application has explicitly opted into unstable features

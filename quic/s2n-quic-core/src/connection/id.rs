@@ -353,18 +353,13 @@ pub trait Generator {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Interest {
     /// No new connection Ids are required
+    #[default]
     None,
     /// The specified number of new connection Ids are required
     New(u8),
-}
-
-impl Default for Interest {
-    fn default() -> Self {
-        Interest::None
-    }
 }
 
 #[cfg(test)]

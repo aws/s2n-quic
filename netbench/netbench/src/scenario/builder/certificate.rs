@@ -124,7 +124,9 @@ impl Certificate {
                         let key = openssl::pkey::PKey::private_key_from_pem(private_key.as_bytes())
                             .unwrap();
                         openssl::pkcs12::Pkcs12::builder()
-                            .build("", "", &key, &public)
+                            .pkey(&key)
+                            .cert(&public)
+                            .build2("")
                             .unwrap()
                             .to_der()
                             .unwrap()

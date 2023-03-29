@@ -3,9 +3,10 @@
 
 use crate::{ack::ack_ranges::AckRanges, transmission};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub enum AckTransmissionState {
     /// No ACK frames will be transmitted
+    #[default]
     Disabled,
 
     /// An ACK frame may be transmitted, but isn't required. While in this
@@ -22,12 +23,6 @@ pub enum AckTransmissionState {
         /// The number of remaining tranmissions for the current ack ranges
         retransmissions: usize,
     },
-}
-
-impl Default for AckTransmissionState {
-    fn default() -> Self {
-        AckTransmissionState::Disabled
-    }
 }
 
 impl AckTransmissionState {
