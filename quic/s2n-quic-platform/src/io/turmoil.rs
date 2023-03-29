@@ -251,11 +251,11 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
                 application_wakeup,
             });
 
-            if let Some(_) = tx_result {
+            if tx_result.is_some() {
                 tx.tx(&socket, &mut publisher)?;
             }
 
-            if let Some(_) = rx_result {
+            if rx_result.is_some() {
                 rx.rx(&socket, &mut publisher)?;
                 endpoint.receive(&mut rx.rx_queue(), &clock);
             }
