@@ -768,6 +768,13 @@ jobs:
         with:
           lfs: true
 
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
       - uses: camshaft/install@v1
         with:
           crate: bpf-linker
