@@ -120,9 +120,7 @@
     "picoquic": [
       "client"
     ],
-    "quic-go": [
-      "client"
-    ],
+    "quic-go": [],
     "quiche": [],
     "xquic": []
   },
