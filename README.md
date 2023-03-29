@@ -38,12 +38,12 @@ The following implements a basic echo server and client. The client connects to 
 ```rust
 // src/bin/server.rs
 use s2n_quic::Server;
-use std::error::Error;
+use std::{error::Error, path::Path};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut server = Server::builder()
-        .with_tls(("./path/to/cert.pem", "./path/to/key.pem"))?
+        .with_tls((Path::new("cert.pem"), Path::new("key.pem")))?
         .with_io("127.0.0.1:4433")?
         .start()?;
 
@@ -71,12 +71,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 ```rust
 // src/bin/client.rs
 use s2n_quic::{client::Connect, Client};
-use std::{error::Error, net::SocketAddr};
+use std::{error::Error, path::Path, net::SocketAddr};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::builder()
-        .with_tls(CERT_PEM)?
+        .with_tls(Path::new("cert.pem"))?
         .with_io("0.0.0.0:0")?
         .start()?;
 
