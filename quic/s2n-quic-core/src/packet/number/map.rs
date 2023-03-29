@@ -769,4 +769,21 @@ mod tests {
             .with_type::<Vec<Operation>>()
             .for_each(|ops| model(ops))
     }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(9), kani::solver(kissat))]
+    fn insert_value() {
+        // Confirm that a value is inserted
+        check!().with_type().cloned().for_each(|pn| {
+            let space = PacketNumberSpace::ApplicationData;
+            let mut map = Map::default();
+            assert!(map.is_empty());
+            let pn = space.new_packet_number(pn);
+
+            map.insert(pn, ());
+
+            assert!(map.get(pn).is_some());
+            assert!(!map.is_empty());
+        });
+    }
 }
