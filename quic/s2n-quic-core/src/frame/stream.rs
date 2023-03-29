@@ -160,13 +160,20 @@ impl<Data: EncoderValue> Stream<Data> {
 
         self.is_last_frame = false;
 
+        // Compute the maximum length prefix size we would need
         let len_prefix_size = VarInt::try_from(max_data_len)
             .map_err(|_| FitError)?
             .encoding_size();
 
+        // Subtract the maximum length prefix size from the remaining capacity
+        //
+        // NOTE: It's possible that this result isn't completely optimal in every case. However,
+        //       instead of spending extra cycles fitting a couple of bytes into the frame, it's
+        //       good enough in most cases.
         let prefixed_data_len = remaining_capacity
             .checked_sub(len_prefix_size)
             .ok_or(FitError)?;
+
         let data_len = prefixed_data_len.min(data_len);
 
         Ok(data_len)
@@ -317,12 +324,20 @@ mod tests {
             );
 
             if new_length < length {
-                // the payload was trimmed so we should be at full capacity
-                assert_eq!(
+                let mut min = capacity;
+
+                // allow the payload to be smaller by the encoding size of the length prefix
+                if !frame.is_last_frame {
+                    min -= VarInt::try_from(new_length).unwrap().encoding_size();
+                }
+
+                // the payload was trimmed so we should be at capacity
+                let max = capacity;
+
+                assert!(
+                    (min..=max).contains(&frame.encoding_size()),
+                    "encoding_size ({}) should match capacity ({capacity}) {frame:#?}",
                     frame.encoding_size(),
-                    capacity,
-                    "should match capacity {:#?}",
-                    frame
                 );
             }
 
@@ -345,6 +360,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(1), kani::solver(kissat))]
     fn try_fit_test() {
         check!()
             .with_type()
