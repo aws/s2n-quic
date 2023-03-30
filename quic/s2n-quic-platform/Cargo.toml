@@ -27,7 +27,7 @@ futures = { version = "0.3", default-features = false, features = ["async-await"
 lazy_static = { version = "1", optional = true }
 pin-project = { version = "1", optional = true }
 s2n-quic-core = { version = "=0.18.1", path = "../s2n-quic-core", default-features = false }
-socket2 = { version = "0.4", features = ["all"], optional = true }
+socket2 = { version = "0.5", features = ["all"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
 turmoil = { version = "0.5.2", optional = true }
 zeroize = { version = "1", default-features = false }
