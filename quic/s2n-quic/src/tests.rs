@@ -110,7 +110,7 @@ fn interceptor_failure_test() {
     intercept_loss(
         Loss::builder(Random::with_seed(123))
             .with_rx_loss(0..20)
-            .with_rx_pass(1..4)
+            .with_rx_pass(1..2)
             .build(),
     )
 }
@@ -478,4 +478,96 @@ fn mtu_probe_jumbo_frame_unsupported_test() {
     let last_mtu = events.last().unwrap();
     // ETHERNET_MTU - UDP_HEADER_LEN - IPV4_HEADER_LEN
     assert_eq!(last_mtu.mtu, 1472);
+}
+
+// if we lose every packet during a round trip and then allow packets through,
+// this is not determined to be an MTU black hole
+#[test]
+fn mtu_loss_no_blackhole() {
+    let model = Model::default();
+    let rtt = Duration::from_millis(100);
+    let max_mtu = 9001;
+    let subscriber = MtuUpdatedRecorder::new();
+    let events = subscriber.events();
+
+    model.set_delay(rtt / 2);
+    model.set_max_udp_payload(max_mtu);
+
+    test(model.clone(), |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event(subscriber)?
+            .start()?;
+        let client = Client::builder()
+            .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .start()?;
+        let addr = start_server(server)?;
+        // we need a large payload to allow for multiple rounds of MTU probing
+        start_client(client, addr, Data::new(10_000_000))?;
+
+        spawn(async move {
+            // let all packets go through for 10 RTTs - this will reach the end of MTU probing
+            model.set_drop_rate(0.0);
+            delay(rtt * 10).await;
+
+            // drop all packets for a single round trip
+            model.set_drop_rate(1.0);
+            delay(rtt * 1).await;
+
+            // now let the rest of the packets through
+            model.set_drop_rate(0.0);
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    // MTU remained jumbo despite the packet loss
+    assert_eq!(8943, events.lock().unwrap().last().unwrap().mtu);
+}
+
+// if the MTU is decreased after an MTU probe previously raised the MTU for the path,
+// we detect an MTU black hole and decrease the MTU to the minimum
+#[test]
+fn mtu_blackhole() {
+    let model = Model::default();
+    let rtt = Duration::from_millis(100);
+    let max_mtu = 9001;
+    let subscriber = MtuUpdatedRecorder::new();
+    let events = subscriber.events();
+
+    model.set_delay(rtt / 2);
+    model.set_max_udp_payload(max_mtu);
+
+    test(model.clone(), |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event(subscriber)?
+            .start()?;
+        let client = Client::builder()
+            .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .start()?;
+        let addr = start_server(server)?;
+        // we need a large payload to allow for multiple rounds of MTU probing
+        start_client(client, addr, Data::new(10_000_000))?;
+
+        spawn(async move {
+            // let all packets go through for 10 RTTs - this will reach the end of MTU probing
+            model.set_drop_rate(0.0);
+            delay(rtt * 10).await;
+
+            // decrease the MTU to trigger a blackhole
+            model.set_max_udp_payload(1200);
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    // MTU dropped to the minimum
+    assert_eq!(1200, events.lock().unwrap().last().unwrap().mtu);
 }
