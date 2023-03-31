@@ -59,9 +59,9 @@ ring = { version = "0.16", optional = true, default-features = false }
 s2n-codec = { version = "=0.4.1", path = "../../common/s2n-codec" }
 s2n-quic-core = { version = "=0.18.2", path = "../s2n-quic-core" }
 s2n-quic-platform = { version = "=0.18.2", path = "../s2n-quic-platform", features = ["tokio-runtime"] }
-s2n-quic-rustls = { version = "=0.18.1", path = "../s2n-quic-rustls", optional = true }
+s2n-quic-rustls = { version = "=0.18.2", path = "../s2n-quic-rustls", optional = true }
 s2n-quic-tls = { version = "=0.18.2", path = "../s2n-quic-tls", optional = true }
-s2n-quic-tls-default = { version = "=0.18.1", path = "../s2n-quic-tls-default", optional = true }
+s2n-quic-tls-default = { version = "=0.18.2", path = "../s2n-quic-tls-default", optional = true }
 s2n-quic-transport = { version = "=0.18.2", path = "../s2n-quic-transport" }
 tokio = { version = "1", default-features = false }
 zerocopy = { version = "0.6", optional = true }
