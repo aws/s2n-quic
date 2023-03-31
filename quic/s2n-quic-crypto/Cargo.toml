@@ -28,7 +28,7 @@ zeroize_derive = { version = "<1.4" }
 [dev-dependencies]
 aes = "0.8"
 aes-gcm = "0.10"
-bolero = "0.8"
+bolero = "0.9"
 ghash = "0.5"
 hex-literal = "0.3"
 insta = { version = "1", features = ["json"] }

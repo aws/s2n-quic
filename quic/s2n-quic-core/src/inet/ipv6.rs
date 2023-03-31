@@ -667,7 +667,7 @@ mod tests {
 
     /// Asserts the UnicastScope returned matches a known implementation
     #[test]
-    #[cfg_attr(kani, kani::proof, kani::unwind(2), kani::solver(kissat))]
+    #[cfg_attr(kani, kani::proof, kani::unwind(17), kani::solver(kissat))]
     fn scope_test() {
         let g = gen::<[u8; 16]>().map_gen(IpV6Address::from);
         check!().with_generator(g).cloned().for_each(|subject| {
