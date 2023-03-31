@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::block::BatchMut;
+use zeroize::Zeroize;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
@@ -74,7 +75,7 @@ pub mod aes128 {
     // mov	\$9,$bits			# 10 rounds for 128-bit key
     pub const ROUNDS: usize = 10;
 
-    #[derive(zeroize::Zeroize)]
+    #[derive(Zeroize)]
     pub struct Key<T>(pub T);
 
     impl<Blk, T> Encrypt for Key<T>
@@ -196,7 +197,7 @@ pub mod aes256 {
     // mov	\$13,$bits			# 14 rounds for 256
     pub const ROUNDS: usize = 14;
 
-    #[derive(zeroize::Zeroize)]
+    #[derive(Zeroize)]
     pub struct Key<T>(pub T);
 
     impl<Blk, T> Encrypt for Key<T>
