@@ -225,7 +225,14 @@ impl<S: StreamTrait> StreamManagerState<S> {
         // limits for the various combinations of unidirectional/bidirectional
         // Streams. Those would bloat up the config, and essentially just
         // duplicate the transport parameters.
-        debug_assert!(
+
+        // We limit the initial data limit to u32::MAX (4GB), which far
+        // exceeds the reasonable amount of data a connection is
+        // initially allowed to send.
+        //
+        // By representing the flow control value as a u32, we save space
+        // on the connection state.
+        assert!(
             initial_receive_window <= VarInt::from_u32(core::u32::MAX),
             "Receive window must not exceed 32bit range"
         );
@@ -426,7 +433,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         initial_local_limits: InitialFlowControlLimits,
         initial_peer_limits: InitialFlowControlLimits,
     ) -> Self {
-        debug_assert!(
+        // We limit the initial data limit to u32::MAX (4GB), which far
+        // exceeds the reasonable amount of data a connection is
+        // initially allowed to send.
+        //
+        // By representing the flow control value as a u32, we save space
+        // on the connection state.
+        assert!(
             initial_local_limits.max_data <= VarInt::from_u32(core::u32::MAX),
             "Receive window must not exceed 32bit range"
         );

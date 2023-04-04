@@ -13,6 +13,7 @@ use crate::{
     },
 };
 use core::{convert::TryInto, time::Duration};
+use s2n_codec::decoder_invariant;
 
 pub use crate::transport::parameters::ValidationError;
 
@@ -73,8 +74,12 @@ impl Default for Limits {
 }
 
 macro_rules! setter {
-    ($name:ident, $field:ident, $inner:ty) => {
+    ($name:ident, $field:ident, $inner:ty $(, $validate_value:ident, $validaiton:tt)?) => {
         pub fn $name(mut self, value: $inner) -> Result<Self, ValidationError> {
+            $(
+                let $validate_value = value;
+                $validaiton
+            )?
             self.$field = value.try_into()?;
             Ok(self)
         }
@@ -105,23 +110,56 @@ impl Limits {
         }
     }
 
-    setter!(with_max_idle_timeout, max_idle_timeout, Duration);
-    setter!(with_data_window, data_window, u64);
+    // We limit the initial data limit to u32::MAX (4GB), which far
+    // exceeds the reasonable amount of data a connection is
+    // initially allowed to send.
+    //
+    // By representing the flow control value as a u32, we save space
+    // on the connection state.
+    setter!(with_data_window, data_window, u64, validate_value, {
+        decoder_invariant!(
+            validate_value <= u32::MAX.into(),
+            "data_window must be less than u32::MAX"
+        );
+    });
     setter!(
         with_bidirectional_local_data_window,
         bidirectional_local_data_window,
-        u64
+        u64,
+        validate_value,
+        {
+            decoder_invariant!(
+                validate_value <= u32::MAX.into(),
+                "bidirectional_local_data_window must be less than u32::MAX"
+            );
+        }
     );
     setter!(
         with_bidirectional_remote_data_window,
         bidirectional_remote_data_window,
-        u64
+        u64,
+        validate_value,
+        {
+            decoder_invariant!(
+                validate_value <= u32::MAX.into(),
+                "bidirectional_remote_data_window must be less than u32::MAX"
+            );
+        }
     );
     setter!(
         with_unidirectional_data_window,
         unidirectional_data_window,
-        u64
+        u64,
+        validate_value,
+        {
+            decoder_invariant!(
+                validate_value <= u32::MAX.into(),
+                "unidirectional_data_window must be less than u32::MAX"
+            );
+        }
     );
+
+    setter!(with_max_idle_timeout, max_idle_timeout, Duration);
 
     /// Sets both the max local and remote limits for bidirectional streams.
     #[deprecated(
