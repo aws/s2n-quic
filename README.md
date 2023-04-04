@@ -2,6 +2,7 @@
 
 `s2n-quic` is a Rust implementation of the [IETF QUIC protocol](https://quicwg.org/), featuring:
 
+
 - a simple, easy-to-use API. See [an example](https://github.com/aws/s2n-quic/blob/main/examples/echo/src/bin/quic_echo_server.rs) of an s2n-quic echo server built with just a few API calls
 - high configurability using [providers](https://docs.rs/s2n-quic/latest/s2n_quic/provider/index.html) for granular control of functionality
 - extensive automated testing, including fuzz testing, integration testing, unit testing, snapshot testing, efficiency testing, performance benchmarking, interoperability testing and [more](https://github.com/aws/s2n-quic/blob/main/docs/ci.md)
