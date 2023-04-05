@@ -147,6 +147,11 @@ impl Model {
         //#   BBR.bw = min(BBR.max_bw, BBR.bw_lo, BBR.bw_hi)
         self.bw = self.max_bw().min(self.bw_lo()).min(self.bw_hi())
     }
+
+    #[cfg(test)]
+    pub fn cycle_count(&self) -> u8 {
+        self.cycle_count.0
+    }
 }
 
 #[cfg(test)]
