@@ -110,23 +110,22 @@ pub struct Limits {
 
 impl Limits {
     pub fn limits(&self) -> s2n_quic::provider::limits::Limits {
-        let buffer_size = self.buffer_size();
-        let max_limit = u32::MAX as u64;
+        let data_window = self.data_window();
 
         s2n_quic::provider::limits::Limits::default()
-            .with_data_window(max_limit)
+            .with_data_window(data_window)
             .unwrap()
-            .with_max_send_buffer_size(buffer_size.min(u32::MAX as _) as _)
+            .with_max_send_buffer_size(data_window.min(u32::MAX as _) as _)
             .unwrap()
-            .with_bidirectional_local_data_window(max_limit)
+            .with_bidirectional_local_data_window(data_window)
             .unwrap()
-            .with_bidirectional_remote_data_window(max_limit)
+            .with_bidirectional_remote_data_window(data_window)
             .unwrap()
-            .with_unidirectional_data_window(max_limit)
+            .with_unidirectional_data_window(data_window)
             .unwrap()
     }
 
-    fn buffer_size(&self) -> u64 {
+    fn data_window(&self) -> u64 {
         s2n_quic_core::transport::parameters::compute_data_window(
             self.max_throughput,
             core::time::Duration::from_millis(self.expected_rtt),
