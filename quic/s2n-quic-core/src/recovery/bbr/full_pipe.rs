@@ -101,7 +101,7 @@ impl Estimator {
         //# the delivery rate actually result in little increase (less than 25 percent),
         //# then it estimates that it has reached BBR.max_bw, sets BBR.filled_pipe to true,
         //# exits Startup and enters Drain.
-        const DELIVERY_RATE_INCREASE: Ratio<u64> = Ratio::new_raw(4, 3); // 1.25
+        const DELIVERY_RATE_INCREASE: Ratio<u64> = Ratio::new_raw(5, 4); // 1.25
         const BANDWIDTH_PLATEAU_ROUND_COUNT: u8 = 3;
 
         if rate_sample.is_app_limited {
@@ -221,7 +221,7 @@ mod tests {
         fp_estimator.on_round_start(rate_sample, max_bw, false);
 
         // Grow at 25% over 3 rounds
-        max_bw = max_bw * Ratio::new(4, 3); // 4/3 = 125%
+        max_bw = max_bw * Ratio::new(5, 4); // 5/4 = 125%
         for _ in 0..3 {
             fp_estimator.on_round_start(rate_sample, max_bw, false);
         }
