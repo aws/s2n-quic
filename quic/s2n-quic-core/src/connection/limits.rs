@@ -74,7 +74,7 @@ impl Default for Limits {
 }
 
 macro_rules! setter {
-    ($name:ident, $field:ident, $inner:ty $(, $validate_value:ident, $validaiton:tt)?) => {
+    ($name:ident, $field:ident, $inner:ty $(, |$validate_value:ident| $validaiton:block)?) => {
         pub fn $name(mut self, value: $inner) -> Result<Self, ValidationError> {
             $(
                 let $validate_value = value;
@@ -116,21 +116,20 @@ impl Limits {
     //
     // By representing the flow control value as a u32, we save space
     // on the connection state.
-    setter!(with_data_window, data_window, u64, validate_value, {
+    setter!(with_data_window, data_window, u64, |validate_value| {
         decoder_invariant!(
             validate_value <= u32::MAX.into(),
-            "data_window must be less than u32::MAX"
+            "data_window must be <= u32::MAX"
         );
     });
     setter!(
         with_bidirectional_local_data_window,
         bidirectional_local_data_window,
         u64,
-        validate_value,
-        {
+        |validate_value| {
             decoder_invariant!(
                 validate_value <= u32::MAX.into(),
-                "bidirectional_local_data_window must be less than u32::MAX"
+                "bidirectional_local_data_window must be <= u32::MAX"
             );
         }
     );
@@ -138,11 +137,10 @@ impl Limits {
         with_bidirectional_remote_data_window,
         bidirectional_remote_data_window,
         u64,
-        validate_value,
-        {
+        |validate_value| {
             decoder_invariant!(
                 validate_value <= u32::MAX.into(),
-                "bidirectional_remote_data_window must be less than u32::MAX"
+                "bidirectional_remote_data_window must be <= u32::MAX"
             );
         }
     );
@@ -150,11 +148,10 @@ impl Limits {
         with_unidirectional_data_window,
         unidirectional_data_window,
         u64,
-        validate_value,
-        {
+        |validate_value| {
             decoder_invariant!(
                 validate_value <= u32::MAX.into(),
-                "unidirectional_data_window must be less than u32::MAX"
+                "unidirectional_data_window must be <= u32::MAX"
             );
         }
     );
