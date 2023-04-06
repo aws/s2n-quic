@@ -142,10 +142,12 @@ impl AckPhase {
                             || *self == AckPhase::ProbeFeedback
                     )
                 }
-                AckPhase::Refilling => assert_eq!(*self, AckPhase::ProbeStopping),
+                AckPhase::Refilling => {
+                    assert!(*self == AckPhase::Init || *self == AckPhase::ProbeStopping)
+                }
                 AckPhase::ProbeStarting => assert_eq!(*self, AckPhase::Refilling),
                 AckPhase::ProbeFeedback => assert_eq!(*self, AckPhase::ProbeStarting),
-                AckPhase::Init => unreachable!("cannot transition to AckPhase::Init"),
+                AckPhase::Init => assert_eq!(*self, AckPhase::ProbeStopping),
             }
         }
 
@@ -709,6 +711,7 @@ impl BbrCongestionController {
                 AckPhase::ProbeStopping => {
                     // end of samples from bw probing phase
                     self.bw_probe_samples = false;
+                    probe_bw_state.ack_phase.transition_to(AckPhase::Init);
                     if !rate_sample.is_app_limited {
                         self.data_rate_model.advance_max_bw_filter();
                     }
@@ -1102,6 +1105,10 @@ mod tests {
         assert_eq!(ack_phase, AckPhase::ProbeStarting);
         ack_phase.transition_to(AckPhase::ProbeStopping);
         assert_eq!(ack_phase, AckPhase::ProbeStopping);
+        ack_phase.transition_to(AckPhase::Init);
+        assert_eq!(ack_phase, AckPhase::Init);
+        ack_phase.transition_to(AckPhase::Refilling);
+        assert_eq!(ack_phase, AckPhase::Refilling);
     }
 
     #[test]
@@ -1127,5 +1134,71 @@ mod tests {
         bbr.state = bbr::State::Drain;
         bbr.enter_probe_bw(true, &mut rng, now, &mut publisher);
         assert!(bbr.state.is_probing_bw_cruise());
+    }
+
+    #[test]
+    fn update_ack_phase() {
+        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut rng = random::testing::Generator::default();
+        let mut publisher = event::testing::Publisher::snapshot();
+        let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+        let now = NoopClock.get_time();
+        bbr.state = bbr::State::Drain;
+
+        // cruise_immediately = false
+        bbr.enter_probe_bw(false, &mut rng, now, &mut publisher);
+
+        // Start a new round
+        let packet_info = PacketInfo {
+            delivered_bytes: 0,
+            delivered_time: now,
+            lost_bytes: 0,
+            ecn_ce_count: 0,
+            first_sent_time: now,
+            bytes_in_flight: 3000,
+            is_app_limited: false,
+        };
+        bbr.round_counter.on_ack(packet_info, 5000);
+
+        bbr.bw_probe_samples = true;
+
+        assert!(bbr.state.is_probing_bw());
+        if let bbr::State::ProbeBw(ref mut probe_bw_state) = bbr.state {
+            assert_eq!(probe_bw_state.ack_phase, AckPhase::ProbeStopping);
+            assert_eq!(bbr.data_rate_model.cycle_count(), 0);
+        }
+
+        let rate_sample = RateSample {
+            is_app_limited: false,
+            ..Default::default()
+        };
+        bbr.update_ack_phase(rate_sample);
+
+        // Moving from ProbeStopping to Init increments the cycle count
+        if let bbr::State::ProbeBw(ref mut probe_bw_state) = bbr.state {
+            assert_eq!(probe_bw_state.ack_phase, AckPhase::Init);
+            assert_eq!(bbr.data_rate_model.cycle_count(), 1);
+            assert!(!bbr.bw_probe_samples);
+        }
+
+        bbr.update_ack_phase(rate_sample);
+
+        // Updating the ack phase again does not increment the cycle count
+        if let bbr::State::ProbeBw(ref mut probe_bw_state) = bbr.state {
+            assert_eq!(probe_bw_state.ack_phase, AckPhase::Init);
+            assert_eq!(bbr.data_rate_model.cycle_count(), 1);
+
+            // set ack phase for the next test
+            probe_bw_state.ack_phase = AckPhase::ProbeStarting;
+        }
+
+        bbr.bw_probe_samples = true;
+        bbr.update_ack_phase(rate_sample);
+
+        if let bbr::State::ProbeBw(ref mut probe_bw_state) = bbr.state {
+            assert_eq!(probe_bw_state.ack_phase, AckPhase::ProbeFeedback);
+            assert_eq!(bbr.data_rate_model.cycle_count(), 1);
+            assert!(bbr.bw_probe_samples);
+        }
     }
 }
