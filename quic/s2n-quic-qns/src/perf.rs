@@ -243,6 +243,31 @@ impl s2n_quic::provider::event::Subscriber for Subscriber {
             Ordering::Relaxed,
         );
     }
+
+    #[inline]
+    fn on_pacing_rate_updated(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &event::events::ConnectionMeta,
+        event: &event::events::PacingRateUpdated,
+    ) {
+        self.counters
+            .max_pacing_rate
+            .fetch_max(event.bytes_per_second, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn on_delivery_rate_sampled(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &event::events::ConnectionMeta,
+        event: &event::events::DeliveryRateSampled,
+    ) {
+        self.counters.max_delivery_rate.fetch_max(
+            event.rate_sample.delivery_rate_bytes_per_second,
+            Ordering::Relaxed,
+        );
+    }
 }
 
 #[derive(Debug, Default)]
@@ -257,6 +282,8 @@ pub struct Counters {
     event_loop_wakeup: AtomicU64,
     timeout: AtomicU64,
     pto_count: AtomicU64,
+    max_pacing_rate: AtomicU64,
+    max_delivery_rate: AtomicU64,
 }
 
 impl Counters {
@@ -278,8 +305,12 @@ impl Counters {
         let duration = self.timeout.swap(0, Ordering::Relaxed);
         let duration = Duration::from_nanos(duration);
         let pto_count = self.pto_count.swap(0, Ordering::Relaxed);
+        let max_pacing_rate = self.max_pacing_rate.swap(0, Ordering::Relaxed);
+        let max_pacing_rate = rate(max_pacing_rate, Duration::from_secs(1));
+        let max_delivery_rate = self.max_delivery_rate.swap(0, Ordering::Relaxed);
+        let max_delivery_rate = rate(max_delivery_rate, Duration::from_secs(1));
         eprintln!(
-            "{send_rate}\t{receive_rate}\t{max_cwnd}\t{max_bytes_in_flight}\t{lost_packets}\t{wakeups}\t{duration:?}\t{max_rtt:?}\t{max_smoothed_rtt:?}\t{pto_count}",
+            "{send_rate}\t{receive_rate}\t{max_cwnd}\t{max_bytes_in_flight}\t{lost_packets}\t{wakeups}\t{duration:?}\t{max_rtt:?}\t{max_smoothed_rtt:?}\t{pto_count}\t{max_pacing_rate}\t{max_delivery_rate}",
         );
     }
 }
