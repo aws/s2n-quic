@@ -143,6 +143,7 @@ pub struct Subscriber {
 impl Subscriber {
     pub fn spawn(&self, frequency: Duration) {
         let counters = self.counters.clone();
+        counters.print_header();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(frequency).await;
@@ -287,53 +288,68 @@ pub struct Counters {
 }
 
 impl Counters {
+    pub fn print_header(&self) {
+        eprintln!(
+            "Tx Rate\t\
+            Rx Rate\t\
+            Max Cwnd\t\
+            Max Inflight\t\
+            Lost Packets\t\
+            Wakeups\t\
+            Duration\t\
+            Max RTT\t\
+            Max SRTT\t\
+            PTO Count\t\
+            Max Pacing Rate\t\
+            Max Delivery Rate");
+    }
+
     pub fn print(&self, duration: Duration) {
+        // The goodput of data transmitted to the peer
         let send_progress = self.send_progress.swap(0, Ordering::Relaxed);
         let send_rate = rate(send_progress, duration);
+        // The goodput of data received from the peer
         let receive_progress = self.receive_progress.swap(0, Ordering::Relaxed);
         let receive_rate = rate(receive_progress, duration);
+        // The maximum congestion window observed during the interval
         let max_cwnd = self.max_cwnd.swap(0, Ordering::Relaxed);
         let max_cwnd = bytes(max_cwnd);
+        // The maximum amount of unacknowledged data in flight during the interval
         let max_bytes_in_flight = self.max_bytes_in_flight.swap(0, Ordering::Relaxed);
         let max_bytes_in_flight = bytes(max_bytes_in_flight);
+        // The maximum round trip time observed during the interval
         let max_rtt = self.max_rtt.swap(0, Ordering::Relaxed);
         let max_rtt = Duration::from_nanos(max_rtt);
+        // The maximum smoothed (weighted average) round trip time observed during the interval
         let max_smoothed_rtt = self.max_smoothed_rtt.swap(0, Ordering::Relaxed);
         let max_smoothed_rtt = Duration::from_nanos(max_smoothed_rtt);
+        // The number of packets recorded lost during the interval
         let lost_packets = self.lost_packets.swap(0, Ordering::Relaxed);
+        // The number of event loop wakeups recorded during the interval
         let wakeups = self.event_loop_wakeup.swap(0, Ordering::Relaxed);
+        // The duration of the latest event loop wakeup
         let duration = self.timeout.swap(0, Ordering::Relaxed);
         let duration = Duration::from_nanos(duration);
+        // The number of packet time out events observed during the interval
         let pto_count = self.pto_count.swap(0, Ordering::Relaxed);
+        // The maximum rate at which packets are paced out observed during the interval
         let max_pacing_rate = self.max_pacing_rate.swap(0, Ordering::Relaxed);
         let max_pacing_rate = rate(max_pacing_rate, Duration::from_secs(1));
+        // The maximum estimate of bandwidth observed during the interval. Only output for BBRv2
         let max_delivery_rate = self.max_delivery_rate.swap(0, Ordering::Relaxed);
         let max_delivery_rate = rate(max_delivery_rate, Duration::from_secs(1));
         eprintln!(
-            "\
-            // The goodput of data transmitted to the peer
-            {send_rate}\t\
-            // The goodput of data received from the peer
+            "{send_rate}\t\
             {receive_rate}\t\
-            // The maximum congestion window observed during the interval
             {max_cwnd}\t\
-            // The maximum amount of unacknowledged data in flight during the interval
             {max_bytes_in_flight}\t\
-            // The number of packets recorded lost during the interval
             {lost_packets}\t\
-            // The number of event loop wakeups recorded during the interval
             {wakeups}\t\
-            // The duration of the latest event loop wakeup
             {duration:?}\t\
-            // The maximum round trip time observed during the interval
             {max_rtt:?}\t\
-            // The maximum smoothed (weighted average) round trip time observed during the interval
             {max_smoothed_rtt:?}\t\
-            // The number of packet time out events observed during the interval
             {pto_count}\t\
-            // The maximum rate at which packets are paced out observed during the interval
             {max_pacing_rate}\t\
-            // The maximum estimate of bandwidth observed during the interval. Only output for BBRv2
             {max_delivery_rate}",
         );
     }
