@@ -301,7 +301,8 @@ impl Counters {
             Max SRTT\t\
             PTO Count\t\
             Max Pacing Rate\t\
-            Max Delivery Rate");
+            Max Delivery Rate"
+        );
     }
 
     pub fn print(&self, duration: Duration) {
