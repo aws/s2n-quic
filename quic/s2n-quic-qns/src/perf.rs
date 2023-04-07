@@ -310,7 +310,31 @@ impl Counters {
         let max_delivery_rate = self.max_delivery_rate.swap(0, Ordering::Relaxed);
         let max_delivery_rate = rate(max_delivery_rate, Duration::from_secs(1));
         eprintln!(
-            "{send_rate}\t{receive_rate}\t{max_cwnd}\t{max_bytes_in_flight}\t{lost_packets}\t{wakeups}\t{duration:?}\t{max_rtt:?}\t{max_smoothed_rtt:?}\t{pto_count}\t{max_pacing_rate}\t{max_delivery_rate}",
+            "\
+            // The goodput of data transmitted to the peer
+            {send_rate}\t\
+            // The goodput of data received from the peer
+            {receive_rate}\t\
+            // The maximum congestion window observed during the interval
+            {max_cwnd}\t\
+            // The maximum amount of unacknowledged data in flight during the interval
+            {max_bytes_in_flight}\t\
+            // The number of packets recorded lost during the interval
+            {lost_packets}\t\
+            // The number of event loop wakeups recorded during the interval
+            {wakeups}\t\
+            // The duration of the latest event loop wakeup
+            {duration:?}\t\
+            // The maximum round trip time observed during the interval
+            {max_rtt:?}\t\
+            // The maximum smoothed (weighted average) round trip time observed during the interval
+            {max_smoothed_rtt:?}\t\
+            // The number of packet time out events observed during the interval
+            {pto_count}\t\
+            // The maximum rate at which packets are paced out observed during the interval
+            {max_pacing_rate}\t\
+            // The maximum estimate of bandwidth observed during the interval. Only output for BBRv2
+            {max_delivery_rate}",
         );
     }
 }
