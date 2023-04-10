@@ -21,10 +21,10 @@ libc = "0.2"
 s2n-codec = { version = "=0.4.1", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.18.2", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
 s2n-quic-crypto = { version = "=0.18.2", path = "../s2n-quic-crypto", default-features = false }
-s2n-tls = { version = "=0.0.26", features = ["quic"] }
+s2n-tls = { version = "=0.0.29", features = ["quic"] }
 
 [target.'cfg(all(s2n_quic_unstable, s2n_quic_enable_pq_tls))'.dependencies]
-s2n-tls = { version = "=0.0.26", features = ["quic", "pq"] }
+s2n-tls = { version = "=0.0.29", features = ["quic", "pq"] }
 
 [dev-dependencies]
 checkers = "0.6"
