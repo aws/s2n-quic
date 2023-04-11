@@ -10,7 +10,10 @@ use core::{ffi::CStr, mem::size_of};
 bitflags!(
     /// Options for the `flags` field in [`Address`]
     ///
-    /// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L16-L27
+    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L16-L27)
+    ///
+    /// Note that the size of the value is specified in the [sxdp_flags field](
+    /// https://github.com/torvalds/linux/blob/0d3eb744aed40ffce820cded61d7eac515199165/include/uapi/linux/if_xdp.h#L34).
     #[derive(Copy, Clone, Debug, Default)]
     #[repr(transparent)]
     pub struct XdpFlags: u16 {
@@ -33,7 +36,10 @@ bitflags!(
 bitflags!(
     /// Flags for the umem config
     ///
-    /// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L30
+    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L30>)
+    ///
+    /// Note that in `if_xdp.h`, the size is left unspecified. However, when it's used in libxdp,
+    /// the size is set to `u32`: [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L203).
     #[derive(Copy, Clone, Debug, Default)]
     #[repr(transparent)]
     pub struct UmemFlags: u32 {
@@ -43,7 +49,7 @@ bitflags!(
 
 /// A structure for representing the address of an AF_XDP socket
 ///
-/// https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L32-L38
+/// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L32-L38)
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Address {
@@ -92,7 +98,11 @@ impl Address {
 bitflags!(
     /// Flags set on a particular ring state `flags` field
     ///
-    /// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L41
+    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L41)
+    ///
+    /// Note that in `if_xdp.h`, the size is left unspecified. However, when it's used in libxdp,
+    /// the size is set to `u32`: [xsk.h](
+    /// https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L42)
     #[derive(Default)]
     #[repr(transparent)]
     pub struct RingFlags: u32 {
@@ -104,7 +114,7 @@ bitflags!(
 ///
 /// Note that the `flags` field was added in kernel 5.4.
 ///
-/// See https://github.com/torvalds/linux/blob/9116e5e2b1fff71dce501d971e86a3695acc3dba/include/uapi/linux/if_xdp.h#L28-L32
+/// See [if_xdp.h](https://github.com/torvalds/linux/blob/9116e5e2b1fff71dce501d971e86a3695acc3dba/include/uapi/linux/if_xdp.h#L28-L32)
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct RingOffsetV1 {
@@ -115,7 +125,7 @@ pub struct RingOffsetV1 {
 
 /// A structure to communicate the offsets for an individual ring for an AF_XDP socket
 ///
-/// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L43
+/// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L43)
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct RingOffsetV2 {
@@ -139,7 +149,7 @@ impl RingOffsetV2 {
 
 /// A structure to communicate the offsets of each of the 4 rings for an AF_XDP socket
 ///
-/// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L50
+/// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L50)
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct MmapOffsets<O = RingOffsetV2> {
@@ -150,13 +160,13 @@ pub struct MmapOffsets<O = RingOffsetV2> {
 }
 
 impl MmapOffsets {
-    /// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L92
+    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L92)
     pub const RX_RING: usize = 0;
-    /// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L93
+    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L93)
     pub const TX_RING: usize = 0x8000_0000;
-    /// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L94
+    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L94)
     pub const FILL_RING: usize = 0x1_0000_0000;
-    /// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L95
+    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L95)
     pub const COMPLETION_RING: usize = 0x1_8000_0000;
 
     #[inline]
@@ -176,9 +186,12 @@ impl MmapOffsets {
     }
 }
 
-/// Socket option ids passed to an AF_XDP socket with the `setsockopt` syscall.
+/// Socket option ids passed to an AF_XDP socket with the sockopt syscalls.
 ///
-/// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L58-L65
+/// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L58-L65)
+///
+/// Note that in `if_xdp.h`, the size is left unspecified. However, it is used in the `name`
+/// argument for [`libc::setsockopt`] and [`libc::getsockopt`], which is a [`libc::c_int`] (i32).
 #[derive(Clone, Copy, Debug)]
 #[repr(i32)]
 pub enum SocketOptions {
@@ -192,7 +205,12 @@ pub enum SocketOptions {
     Options = 8,
 }
 
-/// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L67-L73
+/// Umem configuration on an AF_XDP socket
+///
+/// This struct is used with the [`libc::setsockopt`] call with the `name` parameter set to
+/// [`SocketOptions::UmemReg`].
+///
+/// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L67-L73).
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct UmemReg {
@@ -203,11 +221,16 @@ pub struct UmemReg {
     pub chunk_size: u32,
     /// The length reserved before packets
     pub headroom: u32,
-    /// The offset of the flag value for the Umem
-    pub flags: u32,
+    /// The flag value for the Umem
+    pub flags: UmemFlags,
 }
 
-/// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L75-L82
+/// Statistics returned from an AF_XDP socket
+///
+/// This struct is used with the [`libc::getsockopt`] call with the `name` parameter set to
+/// [`SocketOptions::Statistics`].
+///
+/// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L75-L82)
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct Statistics {
@@ -216,7 +239,7 @@ pub struct Statistics {
     /// Dropped due to invalid descriptor
     pub rx_invalid_descriptors: u64,
     /// Dropped due to invalid descriptor
-    pub tx_invalid_descriptors: u32,
+    pub tx_invalid_descriptors: u64,
     /// Dropped due to rx ring being full
     pub rx_ring_full: u64,
     /// Failed to retrieve item from fill ring
@@ -226,7 +249,12 @@ pub struct Statistics {
 }
 
 bitflags!(
-    /// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L89
+    /// Options returned from an AF_XDP socket
+    ///
+    /// This struct is used with the [`libc::getsockopt`] call with the `name` parameter set to
+    /// [`SocketOptions::Options`].
+    ///
+    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L89)
     #[derive(Clone, Copy, Debug, Default)]
     #[repr(transparent)]
     pub struct XdpOptions: u32 {
@@ -236,13 +264,13 @@ bitflags!(
 
 /// Masks for unaligned chunks mode
 ///
-/// See https://github.com/torvalds/linux/blob/0d3eb744aed40ffce820cded61d7eac515199165/include/uapi/linux/if_xdp.h#L97-L100
+/// See [if_xdp](https://github.com/torvalds/linux/blob/0d3eb744aed40ffce820cded61d7eac515199165/include/uapi/linux/if_xdp.h#L97-L100).
 pub const XSK_UNALIGNED_BUF_ADDR_MASK: u64 = (1 << XSK_UNALIGNED_BUF_OFFSET_SHIFT) - 1;
 pub const XSK_UNALIGNED_BUF_OFFSET_SHIFT: u64 = 48;
 
 /// Rx/Tx descriptor
 ///
-/// See https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L103-L107
+/// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L103-L107)
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct RxTxDescriptor {
@@ -256,7 +284,7 @@ pub struct RxTxDescriptor {
 
 /// Umem Descriptor
 ///
-/// https://github.com/torvalds/linux/blob/0d3eb744aed40ffce820cded61d7eac515199165/include/uapi/linux/if_xdp.h#L109
+/// See [if_xdp.h](https://github.com/torvalds/linux/blob/0d3eb744aed40ffce820cded61d7eac515199165/include/uapi/linux/if_xdp.h#L109).
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct UmemDescriptor {
