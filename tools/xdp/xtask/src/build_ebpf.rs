@@ -14,7 +14,7 @@ pub fn run() -> Result<(), anyhow::Error> {
             let mut command = Command::new("cargo");
 
             let dir = PathBuf::from("ebpf");
-            command.current_dir(&dir).args(&[
+            command.current_dir(&dir).args([
                 "build",
                 "--target",
                 target,

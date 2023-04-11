@@ -1,0 +1,12 @@
+[package]
+name = "s2n-quic-xdp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitflags = "2"
+libc = "0.2"
+s2n-quic-core = { path = "../../../quic/s2n-quic-core", version = "0.18" }
+
+[dev-dependencies]
+bolero = "0.8"

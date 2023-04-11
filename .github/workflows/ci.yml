@@ -761,7 +761,7 @@ jobs:
         env:
           RUSTFLAGS: --cfg loom -Cdebug-assertions
 
-  xdp-bpf:
+  xdp:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -771,9 +771,10 @@ jobs:
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: stable
+          toolchain: 1.66.0
           profile: minimal
           override: true
+          components: clippy,rustfmt
 
       - uses: camshaft/install@v1
         with:
@@ -781,8 +782,16 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
+      - name: Run clippy
+        working-directory: tools/xdp
+        run: cargo clippy
+
       - name: Build ebpf
         working-directory: tools/xdp
         env:
           RUST_LOG: trace
         run: cargo xtask ci
+
+      - name: Run tests
+        working-directory: tools/xdp
+        run: cargo test
