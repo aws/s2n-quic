@@ -7,3 +7,7 @@ type Result<T = (), E = std::io::Error> = core::result::Result<T, E>;
 
 /// Primitive types for AF-XDP kernel APIs
 mod if_xdp;
+/// Helpers for creating mmap'd regions
+mod mmap;
+/// Helpers for making API calls to AF-XDP sockets
+mod syscall;

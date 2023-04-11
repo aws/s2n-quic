@@ -3,7 +3,7 @@
 
 use crate::{build_ebpf, disasm, run};
 use anyhow::anyhow;
-use std::io;
+use std::{io, path::Path, process::Command};
 
 pub fn run() -> Result<(), anyhow::Error> {
     let before = dump()?;
@@ -28,6 +28,12 @@ pub fn run() -> Result<(), anyhow::Error> {
     opts.run_args.push("--trace".into());
     run::run(opts)?;
 
+    // run the normal tests first
+    test()?;
+
+    // run the CAP_NET_RAW tests after
+    cap_net_raw_tests()?;
+
     Ok(())
 }
 
@@ -38,4 +44,45 @@ fn dump() -> Result<String, anyhow::Error> {
     }
     let output = String::from_utf8(output)?;
     Ok(output)
+}
+
+fn test() -> Result<(), anyhow::Error> {
+    let status = Command::new("cargo")
+        .arg("test")
+        .status()
+        .expect("failed to run tests");
+    assert!(status.success());
+    Ok(())
+}
+
+fn cap_net_raw_tests() -> Result<(), anyhow::Error> {
+    let mut at_least_one = false;
+
+    for file in std::fs::read_dir("target/debug/deps")?.flatten() {
+        let path = file.path();
+
+        if path.extension().is_some()
+            || !path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map_or(false, |name| name.starts_with("s2n_quic_xdp"))
+        {
+            continue;
+        }
+
+        let status = Command::new("sudo")
+            .arg(Path::new("../").join(path))
+            .arg("--nocapture")
+            .current_dir("s2n-quic-xdp")
+            .env("CAP_NET_RAW_ENABLED", "1")
+            .status()
+            .expect("failed to run test case");
+        assert!(status.success());
+
+        at_least_one = true;
+    }
+
+    assert!(at_least_one);
+
+    Ok(())
 }
