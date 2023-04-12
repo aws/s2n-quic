@@ -159,16 +159,19 @@ impl StateTracker {
     fn new(location: String, other_location: String) -> Self {
         Self { current_state: Arc::new(AtomicU8::new(State::NotReady.into())), other_location, location }
     }
-    async fn get_state(from_location: String, assume_on_no_response: State) -> io::Result<State> {
-        let mut stream = TcpStream::connect(from_location.as_str()).await?;
-        Ok(stream.read_u8().await.ok().and_then(|n| n.try_into().ok()).unwrap_or(assume_on_no_response))
+    async fn get_state(from_location: String, assume_on_no_response: State) -> State {
+        let mut stream = match TcpStream::connect(from_location.as_str()).await {
+            Ok(stream) => stream,
+            Err(_) => return assume_on_no_response,
+        };
+        stream.read_u8().await.ok().and_then(|n| n.try_into().ok()).unwrap_or(assume_on_no_response)
     }
     fn poll(&self, wait_for: State, assume_on_no_response: State, initial_delay: Duration, poll_delay: Duration) -> JoinHandle<io::Result<()>> {
         let other_location = self.other_location.clone();
         tokio::spawn(async move {
             sleep(initial_delay).await; // Initial Delay
             loop {
-                let new_state = Self::get_state(other_location.clone(), assume_on_no_response).await?;
+                let new_state = dbg!(Self::get_state(other_location.clone(), assume_on_no_response).await);
                 if new_state == wait_for { break; }
                 sleep(poll_delay).await;
             }
