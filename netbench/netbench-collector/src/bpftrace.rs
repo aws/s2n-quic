@@ -11,9 +11,11 @@ use std::{
     collections::HashMap,
     io,
     io::BufRead,
-    process::{Command, Stdio},
+    process::{Command, Child, Stdio},
     time::Duration,
+    thread::JoinHandle
 };
+use crate::RunHandle;
 
 static PROGRAM: &str = include_str!("./netbench.bt");
 
@@ -294,7 +296,25 @@ fn parse_hist_bound(s: &str) -> Option<u64> {
     Some(v as u64)
 }
 
-pub fn try_run(args: &crate::Args) -> Result<Option<()>> {
+pub struct BpftraceHandle {
+    proc: Child,
+    handle: JoinHandle<()>
+}
+
+impl RunHandle for BpftraceHandle {
+    fn wait(mut self) -> Result<()> {
+        self.proc.wait()?;
+        let _ = self.handle.join();
+         Ok(())
+    }
+    fn kill(mut self) -> Result<()> {
+        self.proc.kill()?;
+        let _ = self.handle.join();
+        Ok(())
+    }
+}
+
+pub fn try_run(args: &crate::Args) -> Result<Option<BpftraceHandle>> {
     let mut command = if let Ok(bpftrace) = find_bpftrace() {
         eprintln!("collecting stats with bpftrace");
         Command::new(bpftrace)
@@ -354,11 +374,12 @@ pub fn try_run(args: &crate::Args) -> Result<Option<()>> {
         report.dump();
     });
 
-    proc.wait()?;
-
-    let _ = handle.join();
-
-    Ok(Some(()))
+    Ok(Some(
+        BpftraceHandle {
+            proc,
+            handle
+        }
+    ))
 }
 
 fn find_bpftrace() -> Result<String> {
