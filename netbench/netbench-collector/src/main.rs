@@ -153,6 +153,7 @@ struct StateTracker {
 
 impl StateTracker {
     fn store(&mut self, value: State) {
+        println!("New State: {:#?}", value);
         self.current_state.store(value.into(), Ordering::Relaxed)
     }
     fn new(location: String, other_location: String) -> Self {

@@ -43,7 +43,7 @@ cargo build --release
 # through this binary.
 # ./$ARTIFACT_FOLDER/netbench-scenarios --request_response.response_size=8GiB --connect.connections 42
 
-run_trial request_response s2n-quic $SERVER_0
+run_client request_response s2n-quic $SERVER_0
 
 echo "generating the report"
 ./$ARTIFACT_FOLDER/netbench-cli report-tree $NETBENCH_ARTIFACT_FOLDER/results $NETBENCH_ARTIFACT_FOLDER/report
