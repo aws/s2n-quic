@@ -7,8 +7,6 @@
 # immediately exit if an error occurs.
 set -e
 
-SERVER_0=
-
 ARTIFACT_FOLDER="target/release"
 NETBENCH_ARTIFACT_FOLDER="target/netbench"
 
@@ -29,7 +27,7 @@ run_client() {
     SERVER_0=$SERVER_0 ./$ARTIFACT_FOLDER/netbench-collector \
      --coordinate \
      --server-location $SERVER_0 \
-     --client-location "localhost:8080" \
+     --client-location "0.0.0.0:8080" \
      ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-client \
      --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json \
      > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/client.json

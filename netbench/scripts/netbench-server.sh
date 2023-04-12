@@ -7,8 +7,6 @@
 # immediately exit if an error occurs.
 set -e
 
-CLIENT_0=
-
 ARTIFACT_FOLDER="target/release"
 NETBENCH_ARTIFACT_FOLDER="target/netbench"
 
@@ -27,11 +25,11 @@ run_server() {
     echo "  running the server"
     ./$ARTIFACT_FOLDER/netbench-collector \
     --coordinate --as-server \
-    --server-location "localhost:8080" \
+    --server-location "0.0.0.0:8080" \
     --client-location $CLIENT_0 \
     ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-server \
     --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json \
-    > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/server.json &
+    > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/server.json
 }
 
 # build all tools in the netbench workspace
