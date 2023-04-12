@@ -51,8 +51,8 @@ pub struct Args {
     #[structopt(long, required_if("coordinate", "true"))]
     pub client_location: Option<String>,
 
-    #[structopt(long, required_if("coordinate", "true"))]
-    pub is_server: Option<bool>,
+    #[structopt(long)]
+    pub as_server: bool,
 }
 
 impl Args {
@@ -60,14 +60,14 @@ impl Args {
         Scenario::open(std::path::Path::new(&self.scenario))
     }
     pub fn location(&self) -> Option<String> {
-        if self.is_server.unwrap_or(false) {
+        if self.as_server {
             self.server_location.clone()
         } else {
             self.client_location.clone()
         }
     }
     pub fn other_location(&self) -> Option<String> {
-        if self.is_server.unwrap_or(false) {
+        if self.as_server {
             self.client_location.clone()
         } else {
             self.server_location.clone()
@@ -228,7 +228,7 @@ async fn main() -> Result<()> {
     if args.coordinate {
         let state_tracker = StateTracker::new(args.location().unwrap(), args.other_location().unwrap());
         let state_server = state_tracker.serve().await?;
-        let state_machine = if args.is_server.unwrap() {
+        let state_machine = if args.as_server {
             server_state_machine(args, state_tracker)
         } else {
             client_state_machine(args, state_tracker)
