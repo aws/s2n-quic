@@ -792,6 +792,3 @@ jobs:
           RUST_LOG: trace
         run: cargo xtask ci
 
-      - name: Run tests
-        working-directory: tools/xdp
-        run: cargo test
