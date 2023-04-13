@@ -17,16 +17,17 @@ run_client() {
     SCENARIO=$1
     # e.g. s2n-quic
     DRIVER=$2
-    SERVER_0=$3
+    COORD_SERVER_0=$3
+    SERVER_0=$4
     echo "running the $SCENARIO scenario with $DRIVER"
 
     mkdir -p $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER
 
     # run the client. Port 4433 is the default for the server.
     echo "  running the client"
-    SERVER_0=$SERVER_0 ./$ARTIFACT_FOLDER/netbench-collector \
+    SERVER_0=$SERVER_0 COORD_SERVER_0=$COORD_SERVER_0 ./$ARTIFACT_FOLDER/netbench-collector \
      --coordinate \
-     --server-location $SERVER_0 \
+     --server-location $COORD_SERVER_0 \
      --client-location "0.0.0.0:8080" \
      ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-client \
      --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json \
@@ -38,7 +39,7 @@ run_client() {
 # through this binary.
 # ./$ARTIFACT_FOLDER/netbench-scenarios --request_response.response_size=8GiB --connect.connections 42
 
-run_client request_response s2n-quic $SERVER_0
+run_client request_response s2n-quic $COORD_SERVER_0 $SERVER_0
 
 echo "generating the report"
 ./$ARTIFACT_FOLDER/netbench-cli report-tree $NETBENCH_ARTIFACT_FOLDER/results $NETBENCH_ARTIFACT_FOLDER/report

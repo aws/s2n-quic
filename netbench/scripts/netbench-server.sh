@@ -15,8 +15,8 @@ run_server() {
     SCENARIO=$1
     # e.g. s2n-quic
     DRIVER=$2
-    CLIENT_0=$3
-    echo "running the $SCENARIO scenario with $DRIVER at localhost:8080 against $CLIENT_0"
+    COORD_CLIENT_0=$3
+    echo "running the $SCENARIO scenario with $DRIVER at localhost:8080 against $COORD_CLIENT_0"
 
     # make a directory to hold the collected statistics
     mkdir -p $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER
@@ -26,7 +26,7 @@ run_server() {
     ./$ARTIFACT_FOLDER/netbench-collector \
     --coordinate --as-server \
     --server-location "0.0.0.0:8080" \
-    --client-location $CLIENT_0 \
+    --client-location $COORD_CLIENT_0 \
     ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-server \
     --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json \
     > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/server.json
@@ -37,7 +37,7 @@ run_server() {
 # through this binary.
 # ./$ARTIFACT_FOLDER/netbench-scenarios --request_response.response_size=8GiB --connect.connections 42
 
-run_server request_response s2n-quic $CLIENT_0
+run_server request_response s2n-quic $COORD_CLIENT_0
 
 echo "generating the report"
 ./$ARTIFACT_FOLDER/netbench-cli report-tree $NETBENCH_ARTIFACT_FOLDER/results $NETBENCH_ARTIFACT_FOLDER/report
