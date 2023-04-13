@@ -39,5 +39,5 @@ run_server() {
 
 run_server request_response s2n-quic $COORD_CLIENT_0
 
-echo "generating the report"
-./$ARTIFACT_FOLDER/netbench-cli report-tree $NETBENCH_ARTIFACT_FOLDER/results $NETBENCH_ARTIFACT_FOLDER/report
+#echo "generating the report"
+#./$ARTIFACT_FOLDER/netbench-cli report-tree $NETBENCH_ARTIFACT_FOLDER/results $NETBENCH_ARTIFACT_FOLDER/report-server
