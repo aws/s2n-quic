@@ -32,9 +32,6 @@ run_server() {
     > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/server.json
 }
 
-# build all tools in the netbench workspace
-cargo build --release
-
 # generate the scenario files. This will generate .json files that can be found
 # in the netbench/target/netbench directory. Config for all scenarios is done
 # through this binary.
