@@ -153,7 +153,6 @@ struct StateTracker {
 
 impl StateTracker {
     fn store(&mut self, value: State) {
-        println!("New State: {:#?}", value);
         self.current_state.store(value.into(), Ordering::Relaxed)
     }
     fn new(location: String, other_location: String) -> Self {
@@ -171,7 +170,7 @@ impl StateTracker {
         tokio::spawn(async move {
             sleep(initial_delay).await; // Initial Delay
             loop {
-                let new_state = dbg!(Self::get_state(other_location.clone(), assume_on_no_response).await);
+                let new_state = Self::get_state(other_location.clone(), assume_on_no_response).await;
                 if new_state == wait_for { break; }
                 sleep(poll_delay).await;
             }
