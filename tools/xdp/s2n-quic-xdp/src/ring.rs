@@ -33,15 +33,25 @@ macro_rules! impl_producer {
             syscall::$syscall(&socket, size)?;
             let offsets = &offsets.$field;
 
-            let len = offsets.desc as usize + size as usize * size_of::<$T>();
+            // start with the descriptor offset as the total length
+            let mut len = offsets.desc as usize;
+            // extend the length by the `size` multiplied the entry size
+            len += size as usize * size_of::<$T>();
+
+            // Use the hard-coded offset of the ring type
             let offset = MmapOffsets::$offset;
 
             let area = Mmap::new(len, offset, Some(socket.as_raw_fd()))?;
 
-            let mut cursor = unsafe { Cursor::new(&area, offsets, size) };
+            let mut cursor = unsafe {
+                // Safety: `area` lives as long as `cursor`
+                Cursor::new(&area, offsets, size)
+            };
 
-            // initialize the cached producer cursor
-            cursor.acquire_producer(u32::MAX);
+            unsafe {
+                // Safety: this is only called by a producer
+                cursor.init_producer();
+            }
 
             Ok(Self(Ring {
                 cursor,
@@ -95,12 +105,20 @@ macro_rules! impl_consumer {
             syscall::$syscall(&socket, size)?;
             let offsets = &offsets.$field;
 
-            let len = offsets.desc as usize + size as usize * size_of::<$T>();
+            // start with the descriptor offset as the total length
+            let mut len = offsets.desc as usize;
+            // extend the length by the `size` multiplied the entry size
+            len += size as usize * size_of::<$T>();
+
+            // Use the hard-coded offset of the ring type
             let offset = MmapOffsets::$offset;
 
             let area = Mmap::new(len, offset, Some(socket.as_raw_fd()))?;
 
-            let cursor = unsafe { Cursor::new(&area, offsets, size) };
+            let cursor = unsafe {
+                // Safety: `area` lives as long as `cursor`
+                Cursor::new(&area, offsets, size)
+            };
 
             Ok(Self(Ring {
                 cursor,

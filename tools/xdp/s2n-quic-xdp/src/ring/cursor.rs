@@ -27,6 +27,7 @@ pub struct Cursor<T: Copy + fmt::Debug> {
     ///
     /// This is stored locally to avoid atomic synchronization, if possible
     cached_consumer: Wrapping<u32>,
+    cached_len: u32,
     /// The number of entries in the ring
     ///
     /// This value MUST be a power of two
@@ -78,6 +79,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         Self {
             cached_consumer: Wrapping(0),
             cached_producer: Wrapping(0),
+            cached_len: 0,
             size,
             mask,
             producer,
@@ -86,6 +88,22 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
             desc,
             entry: PhantomData,
         }
+    }
+
+    /// Initializes a producer cursor
+    ///
+    /// # Safety
+    ///
+    /// This should only be called by a producer
+    #[inline]
+    pub unsafe fn init_producer(&mut self) {
+        // increment the consumer cursor by the total size to avoid doing an addition inside
+        // `cached_producer`
+        //
+        // See
+        // https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L99-L104
+        self.cached_consumer += self.size;
+        self.cached_len = self.cached_producer_len()
     }
 
     /// Returns a reference to the producer atomic cursor
@@ -108,23 +126,29 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L92).
     #[inline]
     pub fn acquire_producer(&mut self, watermark: u32) -> u32 {
-        let free = self.cached_producer_len();
+        let free = self.cached_len;
 
         // if we have enough space, then return the cached value
         if free >= watermark {
             return free;
         }
 
-        self.cached_consumer.0 = self.consumer().load(Ordering::Acquire);
+        let new_value = self.consumer().load(Ordering::Acquire);
 
-        // increment the consumer cursor by the total size to avoid doing an addition inside
-        // `cached_producer`
-        //
-        // See
-        // https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L99-L104
-        self.cached_consumer += self.size;
+        if self.cached_consumer.0 == new_value {
+            return free;
+        }
 
-        self.cached_producer_len()
+        self.cached_consumer.0 = new_value;
+
+        unsafe {
+            // Safety: this is called on the producer side
+            self.init_producer();
+        }
+
+        self.cached_len = self.cached_producer_len();
+
+        self.cached_len
     }
 
     /// Returns the cached producer cursor which is also maxed by the cursor mask
@@ -161,6 +185,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
             );
         }
         self.cached_producer += len;
+        self.cached_len -= len;
         self.producer().fetch_add(len, Ordering::Release);
     }
 
@@ -172,15 +197,23 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L112).
     #[inline]
     pub fn acquire_consumer(&mut self, watermark: u32) -> u32 {
-        let filled = self.cached_consumer_len();
+        let filled = self.cached_len;
 
         if filled >= watermark {
             return filled;
         }
 
-        self.cached_producer.0 = self.producer().load(Ordering::Acquire);
+        let new_value = self.producer().load(Ordering::Acquire);
 
-        self.cached_consumer_len()
+        if self.cached_producer.0 == new_value {
+            return filled;
+        }
+
+        self.cached_producer.0 = new_value;
+
+        self.cached_len = self.cached_consumer_len();
+
+        self.cached_len
     }
 
     /// Returns the cached consumer cursor which is also maxed by the cursor mask
@@ -217,6 +250,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
             );
         }
         self.cached_consumer += len;
+        self.cached_len -= len;
         self.consumer().fetch_add(len, Ordering::Release);
     }
 
@@ -242,7 +276,9 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     #[inline]
     pub unsafe fn consumer_data(&mut self) -> (&mut [T], &mut [T]) {
         let idx = self.cached_consumer();
-        let len = self.cached_consumer_len();
+        let len = self.cached_len;
+
+        debug_assert_eq!(len, self.cached_consumer_len());
 
         self.mut_slices(idx as _, len as _)
     }
@@ -255,7 +291,9 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     #[inline]
     pub unsafe fn producer_data(&mut self) -> (&mut [T], &mut [T]) {
         let idx = self.cached_producer();
-        let len = self.cached_producer_len();
+        let len = self.cached_len;
+
+        debug_assert_eq!(len, self.cached_producer_len());
 
         self.mut_slices(idx as _, len as _)
     }
@@ -380,6 +418,7 @@ mod tests {
         let mut producer: Cursor<u32> = Cursor {
             cached_consumer: Wrapping(0),
             cached_producer: Wrapping(0),
+            cached_len: 0,
             size,
             producer: NonNull::new(producer_v).unwrap(),
             consumer: NonNull::new(consumer_v).unwrap(),
@@ -389,11 +428,14 @@ mod tests {
             entry: PhantomData,
         };
 
-        assert_eq!(producer.acquire_producer(u32::MAX), size);
+        unsafe {
+            producer.init_producer();
+        }
 
         let mut consumer: Cursor<u32> = Cursor {
             cached_consumer: Wrapping(0),
             cached_producer: Wrapping(0),
+            cached_len: 0,
             size,
             producer: NonNull::new(producer_v).unwrap(),
             consumer: NonNull::new(consumer_v).unwrap(),
