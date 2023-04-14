@@ -27,23 +27,28 @@ pub struct Cursor<T: Copy + fmt::Debug> {
     ///
     /// This is stored locally to avoid atomic synchronization, if possible
     cached_consumer: Wrapping<u32>,
-    cached_len: u32,
-    /// The number of entries in the ring
-    ///
-    /// This value MUST be a power of two
-    size: u32,
     /// A mask value to ensure validity of cursor indexes
     ///
     /// This value assumes that the size of the ring is a power of two
     mask: u32,
+    /// The number of entries in the ring
+    ///
+    /// This value MUST be a power of two
+    size: u32,
     /// Points to the producer cursor index
     producer: NonNull<AtomicU32>,
     /// Points to the consumer cursor index
     consumer: NonNull<AtomicU32>,
+    /// Points to the descriptor values in the ring
+    descriptors: NonNull<c_void>,
     /// Points to the shared flags for the ring
     flags: NonNull<RingFlags>,
-    /// Points to the descriptor values in the ring
-    desc: NonNull<c_void>,
+    /// A cached value of the computed number of entries for the owner of the `Cursor`
+    ///
+    /// Since the `acquire` paths are critical to efficiency, we store a derived length to avoid
+    /// performing the math over and over again. As such this value needs to be kept in sync with
+    /// the `cached_consumer` and `cached_producer`.
+    cached_len: u32,
     /// Holds the type of the entries in the ring
     entry: PhantomData<T>,
 }
@@ -73,8 +78,8 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         let flags = area.addr().as_ptr().add(offsets.flags as _);
         let flags = NonNull::new_unchecked(flags as *mut RingFlags);
 
-        let desc = area.addr().as_ptr().add(offsets.desc as _);
-        let desc = NonNull::new_unchecked(desc);
+        let descriptors = area.addr().as_ptr().add(offsets.desc as _);
+        let descriptors = NonNull::new_unchecked(descriptors);
 
         Self {
             cached_consumer: Wrapping(0),
@@ -85,7 +90,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
             producer,
             consumer,
             flags,
-            desc,
+            descriptors,
             entry: PhantomData,
         }
     }
@@ -156,6 +161,9 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L60).
     #[inline]
     pub fn cached_producer(&self) -> u32 {
+        // Wrap the cursor around the size of the ring
+        //
+        // Masking with a `2^N - 1` value is the same as a mod operation, just more efficient
         self.cached_producer.0 & self.mask
     }
 
@@ -221,6 +229,9 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L68).
     #[inline]
     pub fn cached_consumer(&self) -> u32 {
+        // Wrap the cursor around the size of the ring
+        //
+        // Masking with a `2^N - 1` value is the same as a mod operation, just more efficient
         self.cached_consumer.0 & self.mask
     }
 
@@ -305,7 +316,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
             return (&mut [][..], &mut [][..]);
         }
 
-        let ptr = self.desc.as_ptr() as *mut T;
+        let ptr = self.descriptors.as_ptr() as *mut T;
 
         if let Some(tail_len) = (idx + len).checked_sub(self.size as _) {
             let head_len = self.size as u64 - idx;
@@ -422,7 +433,7 @@ mod tests {
             size,
             producer: NonNull::new(producer_v).unwrap(),
             consumer: NonNull::new(consumer_v).unwrap(),
-            desc: NonNull::new(desc).unwrap(),
+            descriptors: NonNull::new(desc).unwrap(),
             flags: NonNull::dangling(),
             mask,
             entry: PhantomData,
@@ -439,7 +450,7 @@ mod tests {
             size,
             producer: NonNull::new(producer_v).unwrap(),
             consumer: NonNull::new(consumer_v).unwrap(),
-            desc: NonNull::new(desc).unwrap(),
+            descriptors: NonNull::new(desc).unwrap(),
             flags: NonNull::dangling(),
             mask,
             entry: PhantomData,
