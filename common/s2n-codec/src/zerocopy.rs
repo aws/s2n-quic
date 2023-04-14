@@ -17,26 +17,38 @@ use bolero_generator::*;
 #[macro_export]
 macro_rules! zerocopy_value_codec {
     ($name:ident) => {
-        impl<'a> $crate::DecoderValue<'a> for $name {
+        impl<'a> $crate::DecoderValue<'a> for $name
+        where
+            $name: $crate::zerocopy::FromBytes,
+        {
+            #[inline]
             fn decode(buffer: $crate::DecoderBuffer<'a>) -> $crate::DecoderBufferResult<Self> {
                 let (value, buffer) = <&'a $name as $crate::DecoderValue>::decode(buffer)?;
                 Ok((*value, buffer))
             }
         }
 
-        impl<'a> $crate::DecoderValue<'a> for &'a $name {
+        impl<'a> $crate::DecoderValue<'a> for &'a $name
+        where
+            $name: $crate::zerocopy::FromBytes,
+        {
+            #[inline]
             fn decode(buffer: $crate::DecoderBuffer<'a>) -> $crate::DecoderBufferResult<Self> {
-                let (value, buffer) =
-                    $crate::zerocopy::LayoutVerified::<_, $name>::new_unaligned_from_prefix(
-                        buffer.into_less_safe_slice(),
-                    )
-                    .ok_or_else(|| $crate::DecoderError::InvariantViolation("invalid payload"))?;
-
-                Ok((value.into_ref(), buffer.into()))
+                let (value, buffer) = buffer.decode_slice(core::mem::size_of::<$name>())?;
+                let value = value.into_less_safe_slice();
+                let value = unsafe {
+                    // Safety: the type implements FromBytes
+                    &*(value as *const _ as *const $name)
+                };
+                Ok((value, buffer.into()))
             }
         }
 
-        impl<'a> $crate::DecoderValueMut<'a> for $name {
+        impl<'a> $crate::DecoderValueMut<'a> for $name
+        where
+            $name: $crate::zerocopy::FromBytes,
+        {
+            #[inline]
             fn decode_mut(
                 buffer: $crate::DecoderBufferMut<'a>,
             ) -> $crate::DecoderBufferMutResult<Self> {
@@ -45,7 +57,11 @@ macro_rules! zerocopy_value_codec {
             }
         }
 
-        impl<'a> $crate::DecoderValueMut<'a> for &'a $name {
+        impl<'a> $crate::DecoderValueMut<'a> for &'a $name
+        where
+            $name: $crate::zerocopy::FromBytes,
+        {
+            #[inline]
             fn decode_mut(
                 buffer: $crate::DecoderBufferMut<'a>,
             ) -> $crate::DecoderBufferMutResult<'a, Self> {
@@ -55,59 +71,103 @@ macro_rules! zerocopy_value_codec {
             }
         }
 
-        impl<'a> $crate::DecoderValueMut<'a> for &'a mut $name {
+        impl<'a> $crate::DecoderValueMut<'a> for &'a mut $name
+        where
+            $name: $crate::zerocopy::FromBytes,
+        {
+            #[inline]
             fn decode_mut(
                 buffer: $crate::DecoderBufferMut<'a>,
             ) -> $crate::DecoderBufferMutResult<'a, Self> {
-                let (value, buffer) =
-                    $crate::zerocopy::LayoutVerified::<_, $name>::new_unaligned_from_prefix(
-                        buffer.into_less_safe_slice(),
+                let (value, buffer) = buffer.decode_slice(core::mem::size_of::<$name>())?;
+                let value = value.into_less_safe_slice();
+                let value = unsafe {
+                    // Safety: the type implements FromBytes
+                    &mut *(value as *mut _ as *mut $name)
+                };
+
+                Ok((value, buffer.into()))
+            }
+        }
+
+        impl $crate::EncoderValue for $name
+        where
+            $name: $crate::zerocopy::AsBytes,
+        {
+            #[inline]
+            fn encoding_size(&self) -> usize {
+                core::mem::size_of::<$name>()
+            }
+
+            #[inline]
+            fn encoding_size_for_encoder<E: $crate::Encoder>(&self, _encoder: &E) -> usize {
+                core::mem::size_of::<$name>()
+            }
+
+            #[inline]
+            fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {
+                let bytes = unsafe {
+                    // Safety: the type implements AsBytes
+                    core::slice::from_raw_parts(
+                        self as *const $name as *const u8,
+                        core::mem::size_of::<$name>(),
                     )
-                    .ok_or_else(|| $crate::DecoderError::InvariantViolation("invalid payload"))?;
-
-                Ok((value.into_mut(), buffer.into()))
+                };
+                encoder.write_slice(bytes);
             }
         }
 
-        impl $crate::EncoderValue for $name {
+        impl<'a> $crate::EncoderValue for &'a $name
+        where
+            $name: $crate::zerocopy::AsBytes,
+        {
+            #[inline]
             fn encoding_size(&self) -> usize {
                 core::mem::size_of::<$name>()
             }
 
-            fn encoding_size_for_encoder<E: $crate::Encoder>(&self, _encoder: &E) -> usize {
-                core::mem::size_of::<$name>()
-            }
-
-            fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {
-                encoder.write_slice($crate::zerocopy::AsBytes::as_bytes(self));
-            }
-        }
-
-        impl<'a> $crate::EncoderValue for &'a $name {
-            fn encoding_size(&self) -> usize {
-                core::mem::size_of::<$name>()
-            }
-
+            #[inline]
             fn encoding_size_for_encoder<E: $crate::Encoder>(&self, _encoder: &E) -> usize {
                 ::core::mem::size_of::<$name>()
             }
 
+            #[inline]
             fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {
-                encoder.write_slice($crate::zerocopy::AsBytes::as_bytes(*self));
+                let bytes = unsafe {
+                    // Safety: the type implements AsBytes
+                    core::slice::from_raw_parts(
+                        *self as *const $name as *const u8,
+                        core::mem::size_of::<$name>(),
+                    )
+                };
+                encoder.write_slice(bytes);
             }
         }
 
-        impl<'a> $crate::EncoderValue for &'a mut $name {
+        impl<'a> $crate::EncoderValue for &'a mut $name
+        where
+            $name: $crate::zerocopy::AsBytes,
+        {
+            #[inline]
             fn encoding_size(&self) -> usize {
                 core::mem::size_of::<$name>()
             }
 
+            #[inline]
             fn encoding_size_for_encoder<E: $crate::Encoder>(&self, _encoder: &E) -> usize {
                 ::core::mem::size_of::<$name>()
             }
 
+            #[inline]
             fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {
-                encoder.write_slice($crate::zerocopy::AsBytes::as_bytes(*self));
+                let bytes = unsafe {
+                    // Safety: the type implements AsBytes
+                    core::slice::from_raw_parts(
+                        *self as *const $name as *const u8,
+                        core::mem::size_of::<$name>(),
+                    )
+                };
+                encoder.write_slice(bytes);
             }
         }
     };
@@ -150,30 +210,35 @@ macro_rules! zerocopy_network_integer {
         }
 
         impl PartialEq for $name {
+            #[inline]
             fn eq(&self, other: &Self) -> bool {
                 self.cmp(other) == Ordering::Equal
             }
         }
 
         impl PartialEq<$native> for $name {
+            #[inline]
             fn eq(&self, other: &$native) -> bool {
                 self.partial_cmp(other) == Some(Ordering::Equal)
             }
         }
 
         impl PartialOrd for $name {
+            #[inline]
             fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
                 Some(self.cmp(other))
             }
         }
 
         impl PartialOrd<$native> for $name {
+            #[inline]
             fn partial_cmp(&self, other: &$native) -> Option<Ordering> {
                 Some(self.0.get().cmp(other))
             }
         }
 
         impl Ord for $name {
+            #[inline]
             fn cmp(&self, other: &Self) -> Ordering {
                 self.0.get().cmp(&other.0.get())
             }
@@ -198,12 +263,14 @@ macro_rules! zerocopy_network_integer {
         }
 
         impl From<$native> for $name {
+            #[inline]
             fn from(value: $native) -> Self {
                 Self(::zerocopy::byteorder::$name::new(value))
             }
         }
 
         impl From<$name> for $native {
+            #[inline]
             fn from(v: $name) -> $native {
                 v.0.get()
             }
