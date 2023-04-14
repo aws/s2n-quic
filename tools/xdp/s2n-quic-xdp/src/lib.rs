@@ -11,3 +11,5 @@ mod if_xdp;
 mod mmap;
 /// Helpers for making API calls to AF-XDP sockets
 mod syscall;
+/// A shared region of memory for holding frame (packet) data
+mod umem;
