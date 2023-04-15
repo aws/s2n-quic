@@ -9,6 +9,10 @@ type Result<T = (), E = std::io::Error> = core::result::Result<T, E>;
 mod if_xdp;
 /// Helpers for creating mmap'd regions
 mod mmap;
+/// Structures for tracking ring cursors and synchronizing with the kernel
+mod ring;
+/// Structure for opening and reference counting an AF-XDP socket
+mod socket;
 /// Helpers for making API calls to AF-XDP sockets
 mod syscall;
 /// A shared region of memory for holding frame (packet) data
