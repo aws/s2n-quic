@@ -10,7 +10,7 @@ use core::{
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
-use std::os::fd::RawFd;
+use std::os::unix::io::RawFd;
 
 /// A mmap'd region in memory
 #[derive(Debug)]
@@ -18,6 +18,12 @@ pub struct Mmap {
     addr: NonNull<c_void>,
     len: usize,
 }
+
+/// Safety: Mmap pointer can be sent between threads
+unsafe impl Send for Mmap {}
+
+/// Safety: Mmap pointer can be shared between threads
+unsafe impl Sync for Mmap {}
 
 impl Mmap {
     /// Creates a new mmap'd region, with an optional file descriptor.

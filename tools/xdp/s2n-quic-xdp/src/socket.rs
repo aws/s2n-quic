@@ -4,7 +4,7 @@
 use crate::{syscall, Result};
 use core::fmt;
 use std::{
-    os::fd::{AsRawFd, RawFd},
+    os::unix::io::{AsRawFd, RawFd},
     sync::Arc,
 };
 

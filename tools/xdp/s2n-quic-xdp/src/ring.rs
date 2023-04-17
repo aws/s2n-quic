@@ -7,7 +7,7 @@ use crate::{
     socket, syscall,
 };
 use core::{fmt, mem::size_of};
-use std::{io, os::fd::AsRawFd};
+use std::{io, os::unix::io::AsRawFd};
 
 mod cursor;
 

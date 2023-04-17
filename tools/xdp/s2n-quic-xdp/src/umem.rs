@@ -7,7 +7,7 @@ use crate::{
     syscall, Result,
 };
 use core::ptr::NonNull;
-use std::{os::fd::AsRawFd, sync::Arc};
+use std::{os::unix::io::AsRawFd, sync::Arc};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Builder {
@@ -64,6 +64,13 @@ pub struct Umem {
     frame_headroom: u32,
     flags: UmemFlags,
 }
+
+/// Safety: The umem mmap region can be sent to other threads
+unsafe impl Send for Umem {}
+
+/// Safety: The umem mmap region is synchronized by Rings and the data getters are marked as
+/// `unsafe`.
+unsafe impl Sync for Umem {}
 
 impl Umem {
     /// Creates a Umem builder with defaults
