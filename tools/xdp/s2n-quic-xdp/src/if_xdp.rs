@@ -5,7 +5,8 @@
 
 use crate::Result;
 use bitflags::bitflags;
-use core::{ffi::CStr, mem::size_of};
+use core::mem::size_of;
+use std::ffi::CStr;
 
 bitflags!(
     /// Options for the `flags` field in [`Address`]

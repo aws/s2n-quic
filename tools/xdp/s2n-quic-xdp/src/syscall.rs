@@ -9,13 +9,13 @@ use core::{mem::size_of, ptr::NonNull};
 use libc::{c_void, AF_XDP, SOCK_RAW, SOL_XDP};
 use std::{
     io,
-    os::fd::{AsRawFd, RawFd},
+    os::unix::io::{AsRawFd, RawFd},
 };
 
 /// Calls the given libc function and wraps the result in an `io::Result`.
 macro_rules! libc {
     ($fn: ident ( $($arg: expr),* $(,)* ) ) => {{
-        let res = unsafe { libc::$fn($($arg, )*) };
+        let res = libc::$fn($($arg, )*);
         if res < 0 {
             Err(std::io::Error::last_os_error())
         } else {
@@ -30,7 +30,7 @@ macro_rules! libc {
 ///
 /// See [xsk.c](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L327).
 pub fn open() -> io::Result<RawFd> {
-    libc!(socket(AF_XDP, SOCK_RAW, 0))
+    unsafe { libc!(socket(AF_XDP, SOCK_RAW, 0)) }
 }
 
 /// Returns all of the [`MmapOffsets`] configured for the AF_XDP socket
@@ -144,11 +144,13 @@ pub fn set_umem<Fd: AsRawFd>(fd: &Fd, reg: &UmemReg) -> Result<()> {
 /// Binds the provided AF_XDP socket to an address
 #[inline]
 pub fn bind<Fd: AsRawFd>(fd: &Fd, addr: &mut Address) -> Result<()> {
-    libc!(bind(
-        fd.as_raw_fd(),
-        addr as *mut _ as _,
-        size_of::<Address>() as _
-    ))?;
+    unsafe {
+        libc!(bind(
+            fd.as_raw_fd(),
+            addr as *mut _ as _,
+            size_of::<Address>() as _
+        ))?;
+    }
     Ok(())
 }
 
@@ -157,14 +159,16 @@ pub fn bind<Fd: AsRawFd>(fd: &Fd, addr: &mut Address) -> Result<()> {
 /// This should be called after checking if the TX ring needs a wake up.
 #[inline]
 pub fn wake_tx<Fd: AsRawFd>(fd: &Fd) -> Result<()> {
-    libc!(sendto(
-        fd.as_raw_fd(),
-        core::ptr::null_mut(),
-        0,
-        libc::MSG_DONTWAIT,
-        core::ptr::null_mut(),
-        0,
-    ))?;
+    unsafe {
+        libc!(sendto(
+            fd.as_raw_fd(),
+            core::ptr::null_mut(),
+            0,
+            libc::MSG_DONTWAIT,
+            core::ptr::null_mut(),
+            0,
+        ))?;
+    }
     Ok(())
 }
 
@@ -178,7 +182,7 @@ pub fn busy_poll<Fd: AsRawFd>(fd: &Fd) -> Result<u32> {
         // Safety: msghdr is zeroable
         core::mem::zeroed()
     };
-    let count = libc!(recvmsg(fd.as_raw_fd(), &mut msg, libc::MSG_DONTWAIT,))?;
+    let count = unsafe { libc!(recvmsg(fd.as_raw_fd(), &mut msg, libc::MSG_DONTWAIT,))? };
     Ok(count as u32)
 }
 
@@ -187,36 +191,36 @@ pub fn busy_poll<Fd: AsRawFd>(fd: &Fd) -> Result<u32> {
 /// See [xsk.c](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L273).
 #[inline]
 pub fn mmap(len: usize, offset: usize, fd: Option<RawFd>) -> Result<NonNull<c_void>> {
-    unsafe {
-        let flags = if fd.is_some() {
-            libc::MAP_SHARED | libc::MAP_POPULATE
-        } else {
-            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS
-        };
+    let flags = if fd.is_some() {
+        libc::MAP_SHARED | libc::MAP_POPULATE
+    } else {
+        libc::MAP_PRIVATE | libc::MAP_ANONYMOUS
+    };
 
-        // See:
-        // * Fill https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L273
-        // * Completion https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L287
-        // * RX https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L1111
-        // * TX https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L1132
-        let addr = libc::mmap(
+    // See:
+    // * Fill https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L273
+    // * Completion https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L287
+    // * RX https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L1111
+    // * TX https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L1132
+    let addr = unsafe {
+        libc::mmap(
             core::ptr::null_mut(),
             len as _,
             libc::PROT_READ | libc::PROT_WRITE,
             flags,
             fd.unwrap_or(-1),
             offset as _,
-        );
+        )
+    };
 
-        if addr == libc::MAP_FAILED {
-            return Err(io::Error::last_os_error());
-        }
-
-        let addr = NonNull::new(addr)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "mmap returned null pointer"))?;
-
-        Ok(addr)
+    if addr == libc::MAP_FAILED {
+        return Err(io::Error::last_os_error());
     }
+
+    let addr = NonNull::new(addr)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "mmap returned null pointer"))?;
+
+    Ok(addr)
 }
 
 /// Unmaps a mmap region
@@ -236,13 +240,15 @@ pub unsafe fn munmap(addr: NonNull<c_void>, len: usize) -> Result<()> {
 fn xdp_option<Fd: AsRawFd, T: Sized>(fd: &Fd, opt: SocketOptions, value: &mut T) -> Result<usize> {
     let mut optlen = size_of::<T>() as libc::socklen_t;
 
-    libc!(getsockopt(
-        fd.as_raw_fd(),
-        SOL_XDP,
-        opt as _,
-        value as *mut _ as _,
-        &mut optlen,
-    ))?;
+    unsafe {
+        libc!(getsockopt(
+            fd.as_raw_fd(),
+            SOL_XDP,
+            opt as _,
+            value as *mut _ as _,
+            &mut optlen,
+        ))?;
+    }
 
     Ok(optlen as usize)
 }
@@ -251,13 +257,15 @@ fn xdp_option<Fd: AsRawFd, T: Sized>(fd: &Fd, opt: SocketOptions, value: &mut T)
 fn set_xdp_option<Fd: AsRawFd, T: Sized>(fd: &Fd, opt: SocketOptions, value: &T) -> Result<()> {
     let optlen = size_of::<T>() as libc::socklen_t;
 
-    libc!(setsockopt(
-        fd.as_raw_fd(),
-        SOL_XDP,
-        opt as _,
-        value as *const _ as _,
-        optlen,
-    ))?;
+    unsafe {
+        libc!(setsockopt(
+            fd.as_raw_fd(),
+            SOL_XDP,
+            opt as _,
+            value as *const _ as _,
+            optlen,
+        ))?;
+    }
 
     Ok(())
 }
@@ -337,6 +345,8 @@ mod tests {
             }
         }
 
-        let _ = libc!(close(fd));
+        unsafe {
+            let _ = libc!(close(fd));
+        }
     }
 }
