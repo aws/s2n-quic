@@ -4,6 +4,12 @@ members = [
     "quic/s2n-*",
 ]
 resolver = "2"
+# don't include any workspaces outside of the main project
+exclude = [
+    "examples",
+    "netbench",
+    "tools",
+]
 
 [profile.release]
 lto = true
