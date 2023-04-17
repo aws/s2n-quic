@@ -304,3 +304,25 @@ impl Limiter for Limits {
         *self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Local max data limits should be <= u32::MAX
+    #[test]
+    fn limit_validation() {
+        let mut data = u32::MAX as u64 + 1;
+        let limits = Limits::default();
+        assert!(limits.with_data_window(data).is_err());
+        assert!(limits.with_bidirectional_local_data_window(data).is_err());
+        assert!(limits.with_bidirectional_remote_data_window(data).is_err());
+        assert!(limits.with_unidirectional_data_window(data).is_err());
+
+        data = u32::MAX as u64;
+        assert!(limits.with_data_window(data).is_ok());
+        assert!(limits.with_bidirectional_local_data_window(data).is_ok());
+        assert!(limits.with_bidirectional_remote_data_window(data).is_ok());
+        assert!(limits.with_unidirectional_data_window(data).is_ok());
+    }
+}

@@ -107,4 +107,12 @@ impl Handle for Tuple {
     fn strict_eq(&self, other: &Self) -> bool {
         PartialEq::eq(self, other)
     }
+
+    #[inline]
+    fn maybe_update(&mut self, other: &Self) {
+        // once we discover our path, update the address full address
+        if self.local_address.port == 0 {
+            *self = *other;
+        }
+    }
 }

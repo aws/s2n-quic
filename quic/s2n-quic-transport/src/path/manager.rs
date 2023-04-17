@@ -258,6 +258,9 @@ impl<Config: endpoint::Config> Manager<Config> {
                 return Err(DatagramDropReason::InvalidSourceConnectionId);
             }
 
+            // update the address if it was resolved
+            path.handle.maybe_update(path_handle);
+
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
         }
