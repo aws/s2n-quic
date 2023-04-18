@@ -2,7 +2,7 @@
 This example shows two features of s2n-quic
 
 ### mTLS
-mTLS stands for "mutual TLS", and is a TLS session where both the client and the server are authenticated. This examples demonstrates a quic connection with mTLS.
+mTLS stands for "mutual TLS", and is a TLS session where both the client and the server are authenticated. This examples demonstrates a QUIC connection with mTLS.
 
 ### Event Logging
 This examples also includes an example usage of a `tracing_subscriber` which dumps all events to a log file. Note that this exact implementation is unlikely to be suitable for production use since it is
