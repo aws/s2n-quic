@@ -15,6 +15,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde_json;
+
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     join,
@@ -134,6 +136,21 @@ enum State {
     Finished,
 }
 
+#[derive(Serialize, Deserialize)]
+struct StateMessage {
+    version: String,
+    state: State,
+}
+
+impl From<State> for StateMessage {
+    fn from(value: State) -> StateMessage {
+        Self {
+            version: "18-04-2023".to_string(),
+            state: value,
+        }
+    }
+}
+
 impl TryFrom<u8> for State {
     type Error = ();
     fn try_from(value: u8) -> Result<Self, Self::Error> {
@@ -206,7 +223,9 @@ impl StateTracker {
             Ok(stream) => stream,
             Err(_) => return assume_on_no_response,
         };
-        let option_other_state = stream.read_u8().await.ok().and_then(|n| n.try_into().ok());
+        let mut buffer = Vec::new();
+        stream.read_to_end(&mut buffer).await.expect("Failed to read from peer?");
+        let option_other_state = serde_json::from_slice(&buffer).ok().map(|sm: StateMessage| sm.state);
         if let Some(other_state) = option_other_state {
             log_polling!(
                 verbose,
@@ -280,7 +299,7 @@ impl StateTracker {
                     .load(Ordering::Relaxed)
                     .try_into()
                     .expect("An invalid atomic u8 got constructed.");
-                socket.write_all(&[served_state.into()]).await?;
+                socket.write_all(serde_json::to_vec(StateMessage::new(served_state)).unwrap()).await?;
                 log_serving!(verbose, "Told peer we are in state {:?}", served_state);
             }
         }))
