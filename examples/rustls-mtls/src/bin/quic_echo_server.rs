@@ -1,19 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use rustls_mtls::MtlsProvider;
+use rustls_mtls::{MtlsProvider, initialize_logger};
 use s2n_quic::Server;
 use std::error::Error;
 
 /// NOTE: this certificate is to be used for demonstration purposes only!
-pub static CACERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/ca.pem");
-pub static MY_CERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/server.pem");
+pub static CACERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/ca-cert.pem");
+pub static MY_CERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/server-cert.pem");
 pub static MY_KEY_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/server-key.pem");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    initialize_logger("server");
     let provider = MtlsProvider::new(CACERT_PEM, MY_CERT_PEM, MY_KEY_PEM).await?;
     let mut server = Server::builder()
+        .with_event(s2n_quic::provider::event::tracing::Subscriber::default())?
         .with_tls(provider)?
         .with_io("127.0.0.1:4433")?
         .start()?;
