@@ -114,6 +114,14 @@ impl path::Handle for Handle {
     fn strict_eq(&self, other: &Self) -> bool {
         PartialEq::eq(self, other)
     }
+
+    #[inline]
+    fn maybe_update(&mut self, other: &Self) {
+        // once we discover our path, update the address local address
+        if self.local_address.port() == 0 {
+            self.local_address = other.local_address;
+        }
+    }
 }
 
 impl_message_delegate!(Message, 0, msghdr);

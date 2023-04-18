@@ -100,6 +100,18 @@ pub trait Handle: 'static + Copy + Send + fmt::Debug {
     /// Returns `true` if the two handles are strictly equal to each other, i.e.
     /// byte-for-byte.
     fn strict_eq(&self, other: &Self) -> bool;
+
+    /// Depending on the current value of `self`, fields from `other` may be copied to increase the
+    /// fidelity of the value.
+    ///
+    /// This is especially useful for clients that initiate a connection only based on the remote
+    /// IP and port. They likely wouldn't know the IP address of the local socket. Once a response
+    /// is received from the server, the IP information will be known at this point and the handle
+    /// can be updated with the new information.
+    ///
+    /// Implementations should try to limit the cost of updating by checking the current value to
+    /// see if it needs updating.
+    fn maybe_update(&mut self, other: &Self);
 }
 
 macro_rules! impl_addr {
@@ -174,6 +186,11 @@ impl Handle for RemoteAddress {
     fn strict_eq(&self, other: &Self) -> bool {
         PartialEq::eq(self, other)
     }
+
+    #[inline]
+    fn maybe_update(&mut self, _other: &Self) {
+        // nothing to update
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq)]
@@ -220,6 +237,14 @@ impl Handle for Tuple {
     #[inline]
     fn strict_eq(&self, other: &Self) -> bool {
         PartialEq::eq(self, other)
+    }
+
+    #[inline]
+    fn maybe_update(&mut self, other: &Self) {
+        // once we discover our path, update the address local address
+        if self.local_address.port() == 0 {
+            self.local_address = other.local_address;
+        }
     }
 }
 

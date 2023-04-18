@@ -5,30 +5,27 @@ use crate::{
     client::Connect,
     provider::{
         self,
-        event::{events::PacketSent, ConnectionInfo, ConnectionMeta, Subscriber},
+        event::{
+            events::{MtuUpdated, MtuUpdatedCause, PacketSent, RecoveryMetrics},
+            ConnectionInfo, ConnectionMeta, Subscriber,
+        },
         io::testing::{rand, spawn, test, time::delay, Model},
-        limits::Limits,
         packet_interceptor::Loss,
     },
     Client, Server,
 };
+use bytes::Bytes;
+use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
+use s2n_quic_platform::io::testing::{network::Packet, primary, TxRecorder};
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
     time::Duration,
 };
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 mod setup;
-use bytes::Bytes;
-use s2n_quic_core::{
-    crypto::tls::testing::certificates,
-    event::api::{MtuUpdated, MtuUpdatedCause},
-    stream::testing::Data,
-};
-use s2n_quic_platform::io::testing::{network::Packet, primary, TxRecorder};
-
 use setup::*;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[test]
 fn client_server_test() {
@@ -304,38 +301,36 @@ fn local_stream_open_notify_test() {
 }
 
 macro_rules! event_recorder {
-    ($sub:ident, $con:ident, $event:ty, $method:ident) => {
+    ($sub:ident, $event:ty, $method:ident) => {
+        event_recorder!($sub, $event, $method, $event, {
+            |event: &$event, storage: &mut Vec<$event>| storage.push(event.clone())
+        });
+    };
+    ($sub:ident, $event:ty, $method:ident, $storage:ty, $store:expr) => {
+        #[derive(Clone, Default)]
         struct $sub {
-            events: Arc<Mutex<Vec<$event>>>,
+            events: Arc<Mutex<Vec<$storage>>>,
         }
 
         impl $sub {
             fn new() -> Self {
-                $sub {
-                    events: Arc::new(Mutex::new(Vec::new())),
-                }
+                Self::default()
             }
 
-            fn events(&self) -> Arc<Mutex<Vec<$event>>> {
+            fn events(&self) -> Arc<Mutex<Vec<$storage>>> {
                 self.events.clone()
             }
         }
 
-        struct $con {
-            events: Arc<Mutex<Vec<$event>>>,
-        }
-
         impl Subscriber for $sub {
-            type ConnectionContext = $con;
+            type ConnectionContext = $sub;
 
             fn create_connection_context(
                 &mut self,
                 _meta: &ConnectionMeta,
                 _info: &ConnectionInfo,
             ) -> Self::ConnectionContext {
-                $con {
-                    events: self.events.clone(),
-                }
+                self.clone()
             }
 
             fn $method(
@@ -344,24 +339,27 @@ macro_rules! event_recorder {
                 _meta: &ConnectionMeta,
                 event: &$event,
             ) {
+                let store = $store;
                 let mut buffer = context.events.lock().unwrap();
-                buffer.push(event.clone());
+                store(event, &mut buffer);
             }
         }
     };
 }
 
+event_recorder!(PacketSentRecorder, PacketSent, on_packet_sent);
+event_recorder!(MtuUpdatedRecorder, MtuUpdated, on_mtu_updated);
 event_recorder!(
-    PacketSentRecorder,
-    PacketSentRecorderContext,
-    PacketSent,
-    on_packet_sent
-);
-event_recorder!(
-    MtuUpdatedRecorder,
-    MtuUpdatedRecorderContext,
-    MtuUpdated,
-    on_mtu_updated
+    PathUpdatedRecorder,
+    RecoveryMetrics,
+    on_recovery_metrics,
+    SocketAddr,
+    |event: &RecoveryMetrics, storage: &mut Vec<SocketAddr>| {
+        let addr: SocketAddr = event.path.local_addr.to_string().parse().unwrap();
+        if storage.last().map_or(true, |prev| *prev != addr) {
+            storage.push(addr);
+        }
+    }
 );
 
 #[test]
@@ -573,19 +571,39 @@ fn mtu_blackhole() {
     assert_eq!(1200, events.lock().unwrap().last().unwrap().mtu);
 }
 
-// Local max data limits should be <= u32::MAX
+/// Ensures that the client's local path handle is updated after it receives a packet from the
+/// server
+///
+/// See https://github.com/aws/s2n-quic/issues/954
 #[test]
-fn limit_validation() {
-    let mut data = u32::MAX as u64 + 1;
-    let limits = Limits::default();
-    assert!(limits.with_data_window(data).is_err());
-    assert!(limits.with_bidirectional_local_data_window(data).is_err());
-    assert!(limits.with_bidirectional_remote_data_window(data).is_err());
-    assert!(limits.with_unidirectional_data_window(data).is_err());
+fn client_path_handle_update() {
+    let model = Model::default();
 
-    data = u32::MAX as u64;
-    assert!(limits.with_data_window(data).is_ok());
-    assert!(limits.with_bidirectional_local_data_window(data).is_ok());
-    assert!(limits.with_bidirectional_remote_data_window(data).is_ok());
-    assert!(limits.with_unidirectional_data_window(data).is_ok());
+    let subscriber = PathUpdatedRecorder::new();
+    let events = subscriber.events();
+
+    test(model, |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .start()?;
+        let client = Client::builder()
+            .with_io(handle.builder().build().unwrap())?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(subscriber)?
+            .start()?;
+        let addr = start_server(server)?;
+        start_client(client, addr, Data::new(1000))?;
+        Ok(addr)
+    })
+    .unwrap();
+
+    let events_handle = events.lock().unwrap();
+
+    // initially, the client address should be unknown
+    assert_eq!(events_handle[0], "0.0.0.0:0".parse().unwrap());
+    // after receiving a packet, the client port should be the first available ephemeral port
+    assert_eq!(events_handle[1], "1.0.0.1:49153".parse().unwrap());
+    // there should only be a single update to the path handle
+    assert_eq!(events_handle.len(), 2);
 }
