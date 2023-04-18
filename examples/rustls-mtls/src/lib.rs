@@ -5,9 +5,9 @@ use rustls::{
     cipher_suite, ClientConfig, Error, RootCertStore, ServerConfig, SupportedCipherSuite,
 };
 use s2n_quic::provider::{tls, tls::rustls::rustls};
-use tracing::Level;
 use std::{io::Cursor, path::Path};
 use tokio::{fs::File, io::AsyncReadExt};
+use tracing::Level;
 
 static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
 
