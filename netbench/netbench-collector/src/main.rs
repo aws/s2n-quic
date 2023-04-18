@@ -1,16 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-#![allow(unused_imports)]
-
 use netbench::{scenario::Scenario, units::parse_duration, Result};
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
-use std::error::Error;
-use std::fs::File;
 use std::io::ErrorKind;
-use std::marker::PhantomData;
-use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,7 +15,6 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     join,
     net::{TcpListener, TcpStream},
-    spawn,
     task::JoinHandle,
     time::{sleep, timeout},
     try_join,
@@ -299,7 +292,7 @@ impl StateTracker {
                     .load(Ordering::Relaxed)
                     .try_into()
                     .expect("An invalid atomic u8 got constructed.");
-                socket.write_all(serde_json::to_vec(StateMessage::new(served_state)).unwrap()).await?;
+                socket.write_all(&serde_json::to_vec(&StateMessage::from(served_state)).unwrap()).await?;
                 log_serving!(verbose, "Told peer we are in state {:?}", served_state);
             }
         }))
