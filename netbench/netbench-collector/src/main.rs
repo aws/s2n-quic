@@ -214,7 +214,7 @@ fn server_state_machine(args: Args, mut state_tracker: StateTracker) -> JoinHand
         join!(state_tracker.poll(State::Ready, State::NotReady, Duration::from_secs(5), Duration::from_secs(5))).0.unwrap().unwrap();
         state_tracker.store(State::Running);
         let (poll, child) = try_join!(
-            state_tracker.poll(State::Finished, State::Finished, Duration::from_secs(20), Duration::from_secs(5)),
+            state_tracker.poll(State::Finished, State::Finished, Duration::from_secs(1), Duration::from_secs(5)),
             run(args)
         )?;
         poll?;
