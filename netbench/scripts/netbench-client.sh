@@ -23,7 +23,7 @@ run_client() {
 
     mkdir -p $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER
 
-    # run the client. Port 4433 is the default for the server.
+    # run the client but wait on the server to be up before starting
     echo "  running the client"
     SERVER_0=$SERVER_0 COORD_SERVER_0=$COORD_SERVER_0 ./$ARTIFACT_FOLDER/netbench-collector \
      --coordinate --run-as client \
