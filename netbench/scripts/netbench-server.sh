@@ -24,7 +24,7 @@ run_server() {
     # run the server while collecting metrics.
     echo "  running the server"
     ./$ARTIFACT_FOLDER/netbench-collector \
-    --coordinate --as-server \
+    --coordinate --run-as server \
     --server-location "0.0.0.0:8080" \
     --client-location $COORD_CLIENT_0 \
     ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-server \
@@ -32,12 +32,4 @@ run_server() {
     > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/server.json
 }
 
-# generate the scenario files. This will generate .json files that can be found
-# in the netbench/target/netbench directory. Config for all scenarios is done
-# through this binary.
-# ./$ARTIFACT_FOLDER/netbench-scenarios --request_response.response_size=8GiB --connect.connections 42
-
 run_server request_response s2n-quic $COORD_CLIENT_0
-
-#echo "generating the report"
-#./$ARTIFACT_FOLDER/netbench-cli report-tree $NETBENCH_ARTIFACT_FOLDER/results $NETBENCH_ARTIFACT_FOLDER/report-server

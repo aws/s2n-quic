@@ -51,26 +51,37 @@ pub struct Args {
     #[structopt(long, required_if("coordinate", "true"))]
     pub client_location: Option<String>,
 
-    #[structopt(long)]
-    pub as_server: bool,
+    #[structopt(long, required_if("coordinate", "true"))]
+    pub run_as: Option<String>,
 }
 
 impl Args {
     pub fn scenario(&self) -> Result<Scenario> {
         Scenario::open(std::path::Path::new(&self.scenario))
     }
+    pub fn as_server(&self) -> Option<bool> {
+        self.run_as.as_ref().map(|s| s.eq("server".into()))
+    }
+    pub fn as_client(&self) -> Option<bool> {
+        self.run_as.as_ref().map(|s| s.eq("client".into()))
+    }
+
     pub fn location(&self) -> Option<String> {
-        if self.as_server {
+        if self.as_server()? {
             self.server_location.clone()
-        } else {
+        } else if self.as_client()? {
             self.client_location.clone()
+        } else {
+            unimplemented!("Only --run-as server and --run-as client are supported options");
         }
     }
     pub fn other_location(&self) -> Option<String> {
-        if self.as_server {
+        if self.as_server()? {
             self.client_location.clone()
-        } else {
+        } else if self.as_client()? {
             self.server_location.clone()
+        } else {
+            unimplemented!("Only --run-as server and --run-as client are supported options");
         }
     }
 }
@@ -190,7 +201,7 @@ impl StateTracker {
                     Ok(Ok(o)) => o,
                     _ => continue,
                 };
-                socket.write_all(&[current_state.load(Ordering::Relaxed).try_into().expect("An invalid atomic us got constructed.")]).await?;
+                socket.write_all(&[current_state.load(Ordering::Relaxed).try_into().expect("An invalid atomic u8 got constructed.")]).await?;
             }
         }))
     }
@@ -231,10 +242,12 @@ async fn main() -> Result<()> {
     if args.coordinate {
         let state_tracker = StateTracker::new(args.location().unwrap(), args.other_location().unwrap());
         let state_server = state_tracker.serve().await?;
-        let state_machine = if args.as_server {
+        let state_machine = if let Some(true) = args.as_server() {
             server_state_machine(args, state_tracker)
-        } else {
+        } else if let Some(true) = args.as_client() {
             client_state_machine(args, state_tracker)
+        } else {
+            unimplemented!("Only --run-as client and --run-as server are supported.")
         };
         let (_, _) = try_join!(state_server, state_machine)?;
         Ok(())

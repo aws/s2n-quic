@@ -26,7 +26,7 @@ run_client() {
     # run the client. Port 4433 is the default for the server.
     echo "  running the client"
     SERVER_0=$SERVER_0 COORD_SERVER_0=$COORD_SERVER_0 ./$ARTIFACT_FOLDER/netbench-collector \
-     --coordinate \
+     --coordinate --run-as client \
      --server-location $COORD_SERVER_0 \
      --client-location "0.0.0.0:8080" \
      ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-client \
@@ -34,12 +34,5 @@ run_client() {
      > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/client.json
 }
 
-# generate the scenario files. This will generate .json files that can be found
-# in the netbench/target/netbench directory. Config for all scenarios is done
-# through this binary.
-# ./$ARTIFACT_FOLDER/netbench-scenarios --request_response.response_size=8GiB --connect.connections 42
-
 run_client request_response s2n-quic $COORD_SERVER_0 $SERVER_0
 
-#echo "generating the report"
-#./$ARTIFACT_FOLDER/netbench-cli report-tree $NETBENCH_ARTIFACT_FOLDER/results $NETBENCH_ARTIFACT_FOLDER/report-client
