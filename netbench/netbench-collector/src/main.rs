@@ -3,17 +3,17 @@
 #![allow(unused_imports)]
 
 use netbench::{scenario::Scenario, units::parse_duration, Result};
-use structopt::StructOpt;
 use serde::{Deserialize, Serialize};
+use structopt::StructOpt;
 
-use std::time::Duration;
-use std::io::ErrorKind;
+use std::error::Error;
 use std::fs::File;
-use std::process::{Stdio, Child, Command};
+use std::io::ErrorKind;
+use std::marker::PhantomData;
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
-use std::error::Error;
-use std::marker::PhantomData;
+use std::time::Duration;
 
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
@@ -29,8 +29,8 @@ mod bpftrace;
 mod generic;
 mod procinfo;
 
-use crate::generic::GenericHandle;
 use crate::bpftrace::BpftraceHandle;
+use crate::generic::GenericHandle;
 
 #[derive(Debug, StructOpt)]
 pub struct Args {
@@ -53,6 +53,9 @@ pub struct Args {
 
     #[structopt(long, required_if("coordinate", "true"))]
     pub run_as: Option<String>,
+
+    #[structopt(long, short)]
+    pub verbose: bool,
 }
 
 impl Args {
@@ -150,7 +153,7 @@ impl From<State> for u8 {
             State::NotReady => 0,
             State::Ready => 1,
             State::Running => 2,
-            State::Finished => 3
+            State::Finished => 3,
         }
     }
 }
@@ -160,29 +163,91 @@ struct StateTracker {
     current_state: Arc<AtomicU8>,
     location: String,
     other_location: String,
+    verbose: bool,
+}
+
+macro_rules! log_polling {
+    ($verbose:ident, $($arg:tt)*) => {
+        if $verbose {
+            println!("[POLLING] {}", format!($($arg)*));
+        }
+    }
+}
+
+macro_rules! log_serving {
+    ($verbose:ident, $($arg:tt)*) => {
+        if $verbose {
+            println!("[SERVING] {}", format!($($arg)*));
+        }
+    }
 }
 
 impl StateTracker {
     fn store(&mut self, value: State) {
+        if self.verbose {
+            println!("[LOCAL STATE] Updating local state to {:?}", value);
+        }
         self.current_state.store(value.into(), Ordering::Relaxed)
     }
-    fn new(location: String, other_location: String) -> Self {
-        Self { current_state: Arc::new(AtomicU8::new(State::NotReady.into())), other_location, location }
+    fn new(location: String, other_location: String, verbose: bool) -> Self {
+        Self {
+            current_state: Arc::new(AtomicU8::new(State::NotReady.into())),
+            other_location,
+            location,
+            verbose,
+        }
     }
-    async fn get_state(from_location: String, assume_on_no_response: State) -> State {
+    async fn get_state(
+        from_location: String,
+        assume_on_no_response: State,
+        verbose: bool,
+    ) -> State {
         let mut stream = match TcpStream::connect(from_location.as_str()).await {
             Ok(stream) => stream,
             Err(_) => return assume_on_no_response,
         };
-        stream.read_u8().await.ok().and_then(|n| n.try_into().ok()).unwrap_or(assume_on_no_response)
+        let option_other_state = stream.read_u8().await.ok().and_then(|n| n.try_into().ok());
+        if let Some(other_state) = option_other_state {
+            log_polling!(
+                verbose,
+                "{} reports state: {:?}",
+                from_location,
+                other_state
+            );
+            other_state
+        } else {
+            log_polling!(
+                verbose,
+                "{} unavailable, assuming state: {:?}",
+                from_location,
+                assume_on_no_response
+            );
+            assume_on_no_response
+        }
     }
-    fn poll(&self, wait_for: State, assume_on_no_response: State, initial_delay: Duration, poll_delay: Duration) -> JoinHandle<io::Result<()>> {
+    fn poll(
+        &self,
+        wait_for: State,
+        assume_on_no_response: State,
+        initial_delay: Duration,
+        poll_delay: Duration,
+    ) -> JoinHandle<io::Result<()>> {
         let other_location = self.other_location.clone();
+        let verbose = self.verbose;
         tokio::spawn(async move {
+            log_polling!(
+                verbose,
+                "Initial Delay Sleeping for {} seconds",
+                initial_delay.as_secs()
+            );
             sleep(initial_delay).await; // Initial Delay
             loop {
-                let new_state = Self::get_state(other_location.clone(), assume_on_no_response).await;
-                if new_state == wait_for { break; }
+                let new_state =
+                    Self::get_state(other_location.clone(), assume_on_no_response, verbose).await;
+                if new_state == wait_for {
+                    break;
+                }
+                log_polling!(verbose, "Delaying for {} seconds", poll_delay.as_secs());
                 sleep(poll_delay).await;
             }
             Ok(())
@@ -191,46 +256,104 @@ impl StateTracker {
     async fn serve(&self) -> Result<JoinHandle<io::Result<()>>> {
         let listener = TcpListener::bind(self.location.as_str()).await?;
         let current_state = self.current_state.clone();
+        let verbose = self.verbose;
         Ok(tokio::spawn(async move {
             loop {
-                let state: State = current_state.clone().load(Ordering::Relaxed).try_into().expect("An invalid atomic u8 got constructed.");
+                let state: State = current_state
+                    .clone()
+                    .load(Ordering::Relaxed)
+                    .try_into()
+                    .expect("An invalid atomic u8 got constructed.");
                 if state == State::Finished {
+                    log_serving!(verbose, "We are done; stop serving state");
                     break Err(io::Error::new(ErrorKind::Other, "Finished"));
                 }
-                let (mut socket, _) = match timeout(Duration::from_secs(5), listener.accept()).await {
+                let (mut socket, _) = match timeout(Duration::from_secs(5), listener.accept()).await
+                {
                     Ok(Ok(o)) => o,
-                    _ => continue,
+                    _ => {
+                        log_serving!(verbose, "No peers made connection in the last 5 seconds; checking for finished status");
+                        continue;
+                    }
                 };
-                socket.write_all(&[current_state.load(Ordering::Relaxed).try_into().expect("An invalid atomic u8 got constructed.")]).await?;
+                let served_state: State = current_state
+                    .load(Ordering::Relaxed)
+                    .try_into()
+                    .expect("An invalid atomic u8 got constructed.");
+                socket.write_all(&[served_state.into()]).await?;
+                log_serving!(verbose, "Told peer we are in state {:?}", served_state);
             }
         }))
     }
 }
 
-fn server_state_machine(args: Args, mut state_tracker: StateTracker) -> JoinHandle<io::Result<()>>
-{
+macro_rules! log_server {
+    ($verbose:ident, $($arg:tt)*) => {
+        if $verbose {
+            println!("[SERVER] {}", format!($($arg)*));
+        }
+    }
+}
+
+macro_rules! log_client {
+    ($verbose:ident, $($arg:tt)*) => {
+        if $verbose {
+            println!("[CLIENT] {}", format!($($arg)*));
+        }
+    }
+}
+
+fn server_state_machine(args: Args, mut state_tracker: StateTracker) -> JoinHandle<io::Result<()>> {
+    let verbose = state_tracker.verbose;
     tokio::spawn(async move {
         state_tracker.store(State::Ready);
-        join!(state_tracker.poll(State::Ready, State::NotReady, Duration::from_secs(5), Duration::from_secs(5))).0.unwrap().unwrap();
+        log_server!(verbose, "Ready to go; waiting to Client to report Ready.");
+        join!(state_tracker.poll(
+            State::Ready,
+            State::NotReady,
+            Duration::from_secs(5),
+            Duration::from_secs(5)
+        ))
+        .0
+        .unwrap()
+        .unwrap();
+        log_server!(verbose, "Client is ready; Starting Server");
         state_tracker.store(State::Running);
         let (poll, child) = try_join!(
-            state_tracker.poll(State::Finished, State::Finished, Duration::from_secs(1), Duration::from_secs(5)),
+            state_tracker.poll(
+                State::Finished,
+                State::Finished,
+                Duration::from_secs(1),
+                Duration::from_secs(5)
+            ),
             run(args)
         )?;
         poll?;
+        log_server!(verbose, "Client is Finished; We need to kill the server.");
         child.kill().expect("Failed to kill child?");
+        log_server!(verbose, "Finished");
         state_tracker.store(State::Finished);
         Err(io::Error::new(ErrorKind::Other, String::from("Finished")))
     })
 }
 
 fn client_state_machine(args: Args, mut state_tracker: StateTracker) -> JoinHandle<io::Result<()>> {
+    let verbose = state_tracker.verbose;
     tokio::spawn(async move {
         state_tracker.store(State::Ready);
-        join!(state_tracker.poll(State::Running, State::NotReady, Duration::from_secs(5), Duration::from_secs(5))).0??;
+        log_client!(verbose, "Ready to go; waiting for Server to start running.");
+        join!(state_tracker.poll(
+            State::Running,
+            State::NotReady,
+            Duration::from_secs(5),
+            Duration::from_secs(5)
+        ))
+        .0??;
+        log_client!(verbose, "Server is running; Starting Client.");
         state_tracker.store(State::Running);
         let handle = join!(run(args)).0?;
         handle.wait().unwrap();
+        log_client!(verbose, "Finished.");
         state_tracker.store(State::Finished);
         Err(io::Error::new(ErrorKind::Other, "Finished"))
     })
@@ -240,7 +363,11 @@ fn client_state_machine(args: Args, mut state_tracker: StateTracker) -> JoinHand
 async fn main() -> Result<()> {
     let args = Args::from_args();
     if args.coordinate {
-        let state_tracker = StateTracker::new(args.location().unwrap(), args.other_location().unwrap());
+        let state_tracker = StateTracker::new(
+            args.location().unwrap(),
+            args.other_location().unwrap(),
+            args.verbose,
+        );
         let state_server = state_tracker.serve().await?;
         let state_machine = if let Some(true) = args.as_server() {
             server_state_machine(args, state_tracker)
@@ -257,4 +384,3 @@ async fn main() -> Result<()> {
         Ok(())
     }
 }
-

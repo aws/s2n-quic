@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::RunHandle;
 use crate::{procinfo::Proc, Result};
 use netbench::{
     stats::{Bucket, Histogram, Initialize, Print, Stat, Stats, StreamId},
@@ -11,11 +12,10 @@ use std::{
     collections::HashMap,
     io,
     io::BufRead,
-    process::{Command, Child, Stdio},
+    process::{Child, Command, Stdio},
+    thread::JoinHandle,
     time::Duration,
-    thread::JoinHandle
 };
-use crate::RunHandle;
 
 static PROGRAM: &str = include_str!("./netbench.bt");
 
@@ -298,14 +298,14 @@ fn parse_hist_bound(s: &str) -> Option<u64> {
 
 pub struct BpftraceHandle {
     proc: Child,
-    handle: JoinHandle<()>
+    handle: JoinHandle<()>,
 }
 
 impl RunHandle for BpftraceHandle {
     fn wait(mut self) -> Result<()> {
         self.proc.wait()?;
         let _ = self.handle.join();
-         Ok(())
+        Ok(())
     }
     fn kill(mut self) -> Result<()> {
         self.proc.kill()?;
@@ -374,12 +374,7 @@ pub fn try_run(args: &crate::Args) -> Result<Option<BpftraceHandle>> {
         report.dump();
     });
 
-    Ok(Some(
-        BpftraceHandle {
-            proc,
-            handle
-        }
-    ))
+    Ok(Some(BpftraceHandle { proc, handle }))
 }
 
 fn find_bpftrace() -> Result<String> {

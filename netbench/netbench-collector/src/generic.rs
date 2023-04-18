@@ -1,23 +1,23 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::RunHandle;
 use crate::{procinfo::Proc, Args, Result};
 use netbench::stats::{Initialize, Print, Stats};
 use std::{
-    process::{Command, Child},
+    process::{Child, Command},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    thread::JoinHandle,
     time::Duration,
-    thread::JoinHandle
 };
-use crate::RunHandle;
 
 pub struct GenericHandle {
     is_open: Arc<AtomicBool>,
     proc: Child,
-    handle: JoinHandle<()>
+    handle: JoinHandle<()>,
 }
 
 impl RunHandle for GenericHandle {
@@ -71,7 +71,7 @@ pub fn run(args: &Args) -> Result<GenericHandle> {
     Ok(GenericHandle {
         proc,
         handle,
-        is_open
+        is_open,
     })
 }
 
