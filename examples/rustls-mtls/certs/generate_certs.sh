@@ -18,6 +18,10 @@ openssl x509 -days 65536 -req -in server.csr -CA ca-cert.pem -CAkey ca-key.pem -
 echo "generating client certificate and signing it"
 openssl x509 -days 65536 -req -in client.csr -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial -out client-cert.pem -extensions req_ext -extfile config/client.cnf
 
+echo "verifying generated certificates"
+openssl verify -CAfile ca-cert.pem server-cert.pem
+openssl verify -CAfile ca-cert.pem client-cert.pem
+
 echo "cleaning up temporary files"
 rm server.csr
 rm client.csr
