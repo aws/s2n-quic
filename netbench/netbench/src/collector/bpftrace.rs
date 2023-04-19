@@ -1,9 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::RunHandle;
-use crate::{procinfo::Proc, Result};
-use netbench::{
+use crate::{
+    collector::{procinfo::Proc, Args, Result, RunHandle},
     stats::{Bucket, Histogram, Initialize, Print, Stat, Stats, StreamId},
     units::ByteExt as _,
 };
@@ -314,7 +313,7 @@ impl RunHandle for BpftraceHandle {
     }
 }
 
-pub fn try_run(args: &crate::Args) -> Result<Option<BpftraceHandle>> {
+pub fn try_run(args: &Args) -> Result<Option<BpftraceHandle>> {
     let mut command = if let Ok(bpftrace) = find_bpftrace() {
         eprintln!("collecting stats with bpftrace");
         Command::new(bpftrace)

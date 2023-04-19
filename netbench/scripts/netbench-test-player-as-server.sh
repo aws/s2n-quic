@@ -21,10 +21,9 @@ run_server() {
 
     # run the server while collecting metrics; but wait on the client to start and stop the test
     echo "  running the server"
-    ./$ARTIFACT_FOLDER/netbench-collector \
-    --coordinate --run-as server \
-    --server-location "0.0.0.0:8080" \
-    --client-location $COORD_CLIENT_0 \
+    ./$ARTIFACT_FOLDER/netbench-test-player \
+    --run-as server \
+    --remote-status-server $COORD_CLIENT_0 \
     ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-server \
     --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json \
     > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/server.json

@@ -1,9 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::RunHandle;
-use crate::{procinfo::Proc, Args, Result};
-use netbench::stats::{Initialize, Print, Stats};
+use crate::{
+    collector::{procinfo::Proc, Args, Result, RunHandle},
+    stats::{Initialize, Print, Stats},
+};
 use std::{
     process::{Child, Command},
     sync::{

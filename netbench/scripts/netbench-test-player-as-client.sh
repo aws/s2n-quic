@@ -25,10 +25,9 @@ run_client() {
 
     # run the client but wait on the server to be up before starting
     echo "  running the client"
-    SERVER_0=$SERVER_0 COORD_SERVER_0=$COORD_SERVER_0 ./$ARTIFACT_FOLDER/netbench-collector \
-     --coordinate --run-as client \
-     --server-location $COORD_SERVER_0 \
-     --client-location "0.0.0.0:8080" \
+    SERVER_0=$SERVER_0 ./$ARTIFACT_FOLDER/netbench-test-player \
+     --run-as client \
+     --remote-status-server $COORD_SERVER_0 \
      ./$ARTIFACT_FOLDER/netbench-driver-$DRIVER-client \
      --scenario ./$NETBENCH_ARTIFACT_FOLDER/$SCENARIO.json \
      > $NETBENCH_ARTIFACT_FOLDER/results/$SCENARIO/$DRIVER/client.json

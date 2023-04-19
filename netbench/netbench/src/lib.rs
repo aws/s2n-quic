@@ -11,6 +11,7 @@ mod driver;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
+pub mod collector;
 pub mod duplex;
 pub mod helper;
 pub mod multiplex;

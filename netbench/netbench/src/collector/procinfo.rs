@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use netbench::stats::Stats;
+use crate::stats::Stats;
 use sysinfo::{CpuRefreshKind, Pid, ProcessExt, RefreshKind, System, SystemExt};
 
 #[derive(Debug)]
