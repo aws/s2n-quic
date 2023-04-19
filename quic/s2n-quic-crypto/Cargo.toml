@@ -27,7 +27,7 @@ aes = "0.8"
 aes-gcm = "0.10"
 bolero = "0.9"
 ghash = "0.5"
-hex-literal = "0.3"
+hex-literal = "0.4"
 insta = { version = "1", features = ["json"] }
 pretty-hex = "0.3"
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
