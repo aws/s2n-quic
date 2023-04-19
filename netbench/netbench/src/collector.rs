@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{scenario::Scenario, units::parse_duration, Result};
 use enum_dispatch::enum_dispatch;
 use std::time::Duration;
