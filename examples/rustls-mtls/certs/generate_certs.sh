@@ -4,13 +4,14 @@ set -e
 echo "generating CA private key and certificate"
 openssl req -nodes -new -x509 -keyout ca-key.pem -out ca-cert.pem -days 65536 -config config/ca.cnf
 
-# use rsa because it lets us have one fewer config file
-# https://www.openssl.org/docs/man1.0.2/man1/openssl-req.html
+# secp384r1 is an arbitrarily chosen curve that is supported by the default
+# security policy in s2n-tls.
+# https://github.com/aws/s2n-tls/blob/main/docs/USAGE-GUIDE.md#chart-security-policy-version-to-supported-curvesgroups
 echo "generating server private key and CSR"
-openssl req -sha256 -nodes -newkey rsa:2048 -keyout server-key.pem -out server.csr -config config/server.cnf
+openssl req  -new -nodes -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -keyout server-key.pem -out server.csr -config config/server.cnf
 
 echo "generating client private key and CSR"
-openssl req -sha256 -nodes -newkey rsa:2048 -keyout client-key.pem -out client.csr -config config/client.cnf
+openssl req  -new -nodes -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -keyout client-key.pem -out client.csr -config config/client.cnf
 
 echo "generating server certificate and signing it"
 openssl x509 -days 65536 -req -in server.csr -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial -out server-cert.pem -extensions req_ext -extfile config/server.cnf
