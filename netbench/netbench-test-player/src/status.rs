@@ -11,8 +11,6 @@ use std::{
     time::Duration,
 };
 
-use serde_json;
-
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use tokio::{
@@ -84,7 +82,6 @@ impl StatusTracker {
         stream
             .read_to_end(&mut buffer)
             .await
-            .ok()
             .expect("Failed to read from socket");
         serde_json::from_slice(&buffer).expect("Failed to parse peer's status")
     }
@@ -123,7 +120,7 @@ impl StatusTracker {
             // Don't request status updates for the first 10 seconds
             Duration::from_secs(10),
             // Then request one every 5 seconds till the end of the test
-            Duration::from_secs(5)
+            Duration::from_secs(5),
         )
     }
 
@@ -135,7 +132,7 @@ impl StatusTracker {
             Status::NotReady,
             // Just ask again every 5 seconds
             Duration::from_secs(5),
-            Duration::from_secs(5)
+            Duration::from_secs(5),
         )
     }
 

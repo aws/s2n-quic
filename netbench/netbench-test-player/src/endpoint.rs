@@ -50,10 +50,8 @@ pub fn server_state_machine(
 
         state_tracker.store(Status::Running);
         // Run until the server reports it is Finished
-        let (_finished_waiting, child) = try_join!(
-            state_tracker.wait_for_peer_finished(),
-            run(args)
-        )?;
+        let (_finished_waiting, child) =
+            try_join!(state_tracker.wait_for_peer_finished(), run(args))?;
         child.kill().expect("Failed to kill child?");
 
         // We are done
