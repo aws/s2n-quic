@@ -7,6 +7,7 @@ use rustls::{
 use s2n_quic::provider::{tls, tls::rustls::rustls};
 use std::{io::Cursor, path::Path};
 use tokio::{fs::File, io::AsyncReadExt};
+use tracing::Level;
 
 static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
 
@@ -15,6 +16,28 @@ pub static DEFAULT_CIPHERSUITES: &[SupportedCipherSuite] = &[
     cipher_suite::TLS13_AES_256_GCM_SHA384,
     cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
 ];
+
+pub fn initialize_logger(endpoint: &str) {
+    use std::sync::Once;
+
+    static TRACING: Once = Once::new();
+
+    // make sure this only gets initialized once (per process)
+    TRACING.call_once(|| {
+        // always write to the same file, and don't rotate it. This would be a
+        // bad idea for a long running process, but is useful to make sure that
+        // all the logs of our program end up in the same file.
+        let file_appender = tracing_appender::rolling::never("logs", format!("{endpoint}.txt"));
+
+        tracing_subscriber::fmt()
+            .with_max_level(Level::DEBUG)
+            // don't color the output, otherwise the text logs will have odd
+            // characters
+            .with_ansi(false)
+            .with_writer(file_appender)
+            .init();
+    });
+}
 
 pub struct MtlsProvider {
     root_store: rustls::RootCertStore,
