@@ -11,7 +11,7 @@ use structopt::StructOpt;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use tokio::try_join;
+use futures::try_join;
 
 #[derive(Debug, StructOpt)]
 pub struct Args {
@@ -33,7 +33,7 @@ pub struct Args {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), ()> {
     let args = Args::from_args();
 
     let state_tracker = StatusTracker::new(

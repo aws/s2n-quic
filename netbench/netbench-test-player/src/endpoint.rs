@@ -3,14 +3,7 @@
 use crate::status::{Status, StatusTracker};
 use netbench::collector::{run, Args, RunHandle};
 
-use std::{io::ErrorKind, time::Duration};
-
 use strum_macros::EnumString;
-
-use tokio::{
-    io::{self},
-    try_join,
-};
 
 /// For the purposes of coordination, what is the kind of endpoint we are?
 #[derive(Debug, PartialEq, Clone, Copy, EnumString, Hash)]
@@ -34,26 +27,24 @@ pub enum EndpointKind {
 ///
 /// Return an error when finished to end a try_join!() this task may be
 /// a part of.
-pub async fn server_state_machine(args: Args, mut state_tracker: StatusTracker) -> io::Result<()> {
+pub async fn server_state_machine(args: Args, mut state_tracker: StatusTracker) -> Result<(), ()> {
     state_tracker.store(Status::Ready);
 
     // Wait till our peer reports it is Ready
-    try_join!(state_tracker.wait_for_peer(
-        Status::Ready,
-        Status::NotReady,
-        Duration::from_secs(5),
-        Duration::from_secs(5)
-    ))?;
+    state_tracker.wait_for_peer_ready().await;
 
+    // Run the collector in the background
+    let child_handle = run(args).await;
     state_tracker.store(Status::Running);
-    // Run until the server reports it is Finished
-    let (_finished_waiting, child) = try_join!(state_tracker.wait_for_peer_finished(), run(args))?;
-    child.kill().expect("Failed to kill child?");
 
+    // Run until the client reports it is Finished
+    state_tracker.wait_for_peer_finished().await;
+
+    child_handle.kill().expect("Failed to kill child?");
     // We are done
     state_tracker.store(Status::Finished);
 
-    Err(io::Error::new(ErrorKind::Other, String::from("Finished")))
+    Err(())
 }
 
 /// The main implementation for --run-as client.
@@ -63,18 +54,18 @@ pub async fn server_state_machine(args: Args, mut state_tracker: StatusTracker) 
 ///
 /// Return an error when finished to end a try_join!() this task may be
 /// a part of.
-pub async fn client_state_machine(args: Args, mut state_tracker: StatusTracker) -> io::Result<()> {
+pub async fn client_state_machine(args: Args, mut state_tracker: StatusTracker) -> Result<(), ()> {
     state_tracker.store(Status::Ready);
 
     // Wait for the server to be running
-    try_join!(state_tracker.wait_for_peer_ready())?;
+    state_tracker.wait_for_peer_running().await;
 
     // Run until finished
+    let handle = run(args).await;
     state_tracker.store(Status::Running);
-    let (handle,) = try_join!(run(args))?;
     handle.wait().unwrap();
 
     // Finished
     state_tracker.store(Status::Finished);
-    Err(io::Error::new(ErrorKind::Other, "Finished"))
+    Err(())
 }

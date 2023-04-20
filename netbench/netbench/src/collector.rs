@@ -5,7 +5,6 @@ use crate::{scenario::Scenario, units::parse_duration, Result};
 use enum_dispatch::enum_dispatch;
 use std::time::Duration;
 use structopt::StructOpt;
-use tokio::task::JoinHandle;
 
 mod bpftrace;
 mod generic;
@@ -51,14 +50,12 @@ pub trait RunHandle {
 /// Await the returned JoinHandle to begin the execution. The result
 /// of awaiting will be a handle to the running process that can either
 /// be killed or waited on.
-pub fn run(args: Args) -> JoinHandle<Handle> {
-    tokio::spawn(async move {
-        // try to use bpftrace
-        if let Some(trace_handle) = bpftrace::try_run(&args).unwrap() {
-            return trace_handle.into();
-        }
+pub async fn run(args: Args) -> Handle {
+    // try to use bpftrace
+    if let Some(trace_handle) = bpftrace::try_run(&args).unwrap() {
+        return trace_handle.into();
+    }
 
-        // fall back to the generic collector
-        generic::run(&args).unwrap().into()
-    })
+    // fall back to the generic collector
+    generic::run(&args).unwrap().into()
 }

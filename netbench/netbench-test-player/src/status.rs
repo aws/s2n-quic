@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 
 use std::{
-    io::ErrorKind,
     net::SocketAddr,
     sync::{
         atomic::{AtomicU8, Ordering},
@@ -15,9 +14,8 @@ use std::{
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use tokio::{
-    io::{self, AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    task::JoinHandle,
     time::{sleep, timeout},
 };
 
@@ -86,31 +84,29 @@ impl StatusTracker {
 
     /// A Task that waits for peer to be in a particular state
     #[instrument]
-    pub fn wait_for_peer(
+    pub async fn wait_for_peer(
         &self,
         wait_for_status: Status,
         assume_on_no_response: Status,
         initial_delay: Duration,
         poll_delay: Duration,
-    ) -> JoinHandle<()> {
+    ) {
         let remote_status_server = self.remote_status_server;
-        tokio::spawn(async move {
-            sleep(initial_delay).await;
-            loop {
-                match Self::get_status(remote_status_server, assume_on_no_response).await {
-                    s if s == wait_for_status => break,
-                    peer_reported_status => {
-                        info!(?peer_reported_status);
-                        sleep(poll_delay).await
-                    }
+        sleep(initial_delay).await;
+        loop {
+            match Self::get_status(remote_status_server, assume_on_no_response).await {
+                s if s == wait_for_status => break,
+                peer_reported_status => {
+                    info!(?peer_reported_status);
+                    sleep(poll_delay).await
                 }
-                info!(?wait_for_status)
             }
-        })
+            info!(?wait_for_status)
+        }
     }
 
     /// A Task that waits for the peer to report a finished status
-    pub fn wait_for_peer_finished(&self) -> JoinHandle<()> {
+    pub async fn wait_for_peer_finished(&self) {
         self.wait_for_peer(
             Status::Finished,
             // If we don't hear from the peer, assume it is finished
@@ -119,11 +115,11 @@ impl StatusTracker {
             Duration::from_secs(10),
             // Then request one every 5 seconds till the end of the test
             Duration::from_secs(5),
-        )
+        ).await;
     }
 
     /// A task that wait until the peer reports it is ready
-    pub fn wait_for_peer_ready(&self) -> JoinHandle<()> {
+    pub async fn wait_for_peer_running(&self) {
         self.wait_for_peer(
             Status::Running,
             // Assume peer isn't ready, unless we hear from it
@@ -131,18 +127,30 @@ impl StatusTracker {
             // Just ask again every 5 seconds
             Duration::from_secs(5),
             Duration::from_secs(5),
-        )
+        ).await;
+    }
+
+    /// A task that wait until the peer reports it is ready
+    pub async fn wait_for_peer_ready(&self) {
+        self.wait_for_peer(
+            Status::Ready,
+            // Assume peer isn't ready, unless we hear from it
+            Status::NotReady,
+            // Just ask again every 5 seconds
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+        ).await;
     }
 
     /// A Task that serves our state, when the peer asks for it
     #[instrument]
-    pub async fn state_server(&self) -> io::Result<()> {
-        let listener = TcpListener::bind(self.local_status_server).await?;
+    pub async fn state_server(&self) -> Result<(), ()> {
+        let listener = TcpListener::bind(self.local_status_server).await.expect("Error binding to socket.");
         let current_state = self.current_state.clone();
         let mut served_state = Status::NotReady;
         loop {
             if served_state == Status::Finished {
-                break Err(io::Error::new(ErrorKind::Other, "Finished"));
+                break Err(());
             }
             let (mut socket, _) = match timeout(Duration::from_secs(5), listener.accept()).await {
                 Ok(Ok(o)) => o,
@@ -157,7 +165,7 @@ impl StatusTracker {
                 .write_all(
                     &serde_json::to_vec(&served_state).expect("State couldn't be serialized?"),
                 )
-                .await?;
+                .await.expect("Error writing to socket.");
             info!(?served_state);
         }
     }
