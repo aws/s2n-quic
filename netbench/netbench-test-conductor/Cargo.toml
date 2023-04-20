@@ -1,0 +1,23 @@
+[package]
+name = "netbench-test-conductor"
+version = "0.1.0"
+authors = ["AWS s2n"]
+edition = "2021"
+rust-version = "1.63"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+handlebars = "4"
+netbench = { version = "0.1", path = "../netbench" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+structopt = "0.3"
+sysinfo = "0.26"
+strum = "0.24"
+strum_macros = "0.24"
+tokio =  { version = "1", features = ["io-util", "net", "time"] }
+enum_dispatch = "0.3"
+num_enum = "0.6"
+tracing = "0.1"
+futures = "0.3"
