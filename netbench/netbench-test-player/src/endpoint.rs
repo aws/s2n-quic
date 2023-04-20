@@ -9,7 +9,6 @@ use strum_macros::EnumString;
 
 use tokio::{
     io::{self},
-    task::JoinHandle,
     try_join,
 };
 
@@ -35,32 +34,26 @@ pub enum EndpointKind {
 ///
 /// Return an error when finished to end a try_join!() this task may be
 /// a part of.
-pub fn server_state_machine(
-    args: Args,
-    mut state_tracker: StatusTracker,
-) -> JoinHandle<io::Result<()>> {
-    tokio::spawn(async move {
-        state_tracker.store(Status::Ready);
+pub async fn server_state_machine(args: Args, mut state_tracker: StatusTracker) -> io::Result<()> {
+    state_tracker.store(Status::Ready);
 
-        // Wait till our peer reports it is Ready
-        try_join!(state_tracker.wait_for_peer(
-            Status::Ready,
-            Status::NotReady,
-            Duration::from_secs(5),
-            Duration::from_secs(5)
-        ))?;
+    // Wait till our peer reports it is Ready
+    try_join!(state_tracker.wait_for_peer(
+        Status::Ready,
+        Status::NotReady,
+        Duration::from_secs(5),
+        Duration::from_secs(5)
+    ))?;
 
-        state_tracker.store(Status::Running);
-        // Run until the server reports it is Finished
-        let (_finished_waiting, child) =
-            try_join!(state_tracker.wait_for_peer_finished(), run(args))?;
-        child.kill().expect("Failed to kill child?");
+    state_tracker.store(Status::Running);
+    // Run until the server reports it is Finished
+    let (_finished_waiting, child) = try_join!(state_tracker.wait_for_peer_finished(), run(args))?;
+    child.kill().expect("Failed to kill child?");
 
-        // We are done
-        state_tracker.store(Status::Finished);
+    // We are done
+    state_tracker.store(Status::Finished);
 
-        Err(io::Error::new(ErrorKind::Other, String::from("Finished")))
-    })
+    Err(io::Error::new(ErrorKind::Other, String::from("Finished")))
 }
 
 /// The main implementation for --run-as client.
@@ -70,23 +63,18 @@ pub fn server_state_machine(
 ///
 /// Return an error when finished to end a try_join!() this task may be
 /// a part of.
-pub fn client_state_machine(
-    args: Args,
-    mut state_tracker: StatusTracker,
-) -> JoinHandle<io::Result<()>> {
-    tokio::spawn(async move {
-        state_tracker.store(Status::Ready);
+pub async fn client_state_machine(args: Args, mut state_tracker: StatusTracker) -> io::Result<()> {
+    state_tracker.store(Status::Ready);
 
-        // Wait for the server to be running
-        try_join!(state_tracker.wait_for_peer_ready())?;
+    // Wait for the server to be running
+    try_join!(state_tracker.wait_for_peer_ready())?;
 
-        // Run until finished
-        state_tracker.store(Status::Running);
-        let (handle,) = try_join!(run(args))?;
-        handle.wait().unwrap();
+    // Run until finished
+    state_tracker.store(Status::Running);
+    let (handle,) = try_join!(run(args))?;
+    handle.wait().unwrap();
 
-        // Finished
-        state_tracker.store(Status::Finished);
-        Err(io::Error::new(ErrorKind::Other, "Finished"))
-    })
+    // Finished
+    state_tracker.store(Status::Finished);
+    Err(io::Error::new(ErrorKind::Other, "Finished"))
 }

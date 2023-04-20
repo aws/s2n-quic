@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-use netbench::Result;
 use serde::{Deserialize, Serialize};
 
 use std::{
@@ -140,32 +139,29 @@ impl StatusTracker {
 
     /// A Task that serves our state, when the peer asks for it
     #[instrument]
-    pub async fn state_server(&self) -> Result<JoinHandle<io::Result<()>>> {
+    pub async fn state_server(&self) -> io::Result<()> {
         let listener = TcpListener::bind(self.local_status_server).await?;
         let current_state = self.current_state.clone();
-        Ok(tokio::spawn(async move {
-            let mut served_state = Status::NotReady;
-            loop {
-                if served_state == Status::Finished {
-                    break Err(io::Error::new(ErrorKind::Other, "Finished"));
-                }
-                let (mut socket, _) = match timeout(Duration::from_secs(5), listener.accept()).await
-                {
-                    Ok(Ok(o)) => o,
-                    _ => continue,
-                };
-                served_state = current_state
-                    .clone()
-                    .load(Ordering::Relaxed)
-                    .try_into()
-                    .expect("An invalid atomic u8 got constructed.");
-                socket
-                    .write_all(
-                        &serde_json::to_vec(&served_state).expect("State couldn't be serialized?"),
-                    )
-                    .await?;
-                info!(?served_state);
+        let mut served_state = Status::NotReady;
+        loop {
+            if served_state == Status::Finished {
+                break Err(io::Error::new(ErrorKind::Other, "Finished"));
             }
-        }))
+            let (mut socket, _) = match timeout(Duration::from_secs(5), listener.accept()).await {
+                Ok(Ok(o)) => o,
+                _ => continue,
+            };
+            served_state = current_state
+                .clone()
+                .load(Ordering::Relaxed)
+                .try_into()
+                .expect("An invalid atomic u8 got constructed.");
+            socket
+                .write_all(
+                    &serde_json::to_vec(&served_state).expect("State couldn't be serialized?"),
+                )
+                .await?;
+            info!(?served_state);
+        }
     }
 }

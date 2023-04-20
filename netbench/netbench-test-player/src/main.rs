@@ -48,12 +48,21 @@ async fn main() -> Result<()> {
         ),
         args.verbose,
     );
-    let state_server = state_tracker.state_server().await?;
-    let state_machine = match args.run_as {
-        EndpointKind::Server => server_state_machine(args.collector_args, state_tracker),
-        EndpointKind::Client => client_state_machine(args.collector_args, state_tracker),
+    let state_tracker_clone = state_tracker.clone();
+    match args.run_as {
+        EndpointKind::Server => {
+            try_join!(
+                state_tracker.state_server(),
+                server_state_machine(args.collector_args, state_tracker_clone)
+            )?;
+        }
+        EndpointKind::Client => {
+            try_join!(
+                state_tracker.state_server(),
+                client_state_machine(args.collector_args, state_tracker_clone)
+            )?;
+        }
         _ => unimplemented!("Only --run-as client and --run-as server are supported."),
     };
-    let (_, _) = try_join!(state_server, state_machine)?;
     Ok(())
 }
