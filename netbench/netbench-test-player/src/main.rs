@@ -27,7 +27,7 @@ pub struct Args {
     #[structopt(long, default_value = "8080")]
     pub local_status_port: u16,
 
-    /// Are we a server, client or router?
+    /// Do we run as a "server" or a "client".
     #[structopt(long)]
     pub run_as: EndpointKind,
 }

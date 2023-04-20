@@ -10,7 +10,7 @@ use structopt::StructOpt;
 async fn main() -> Result<()> {
     let args = Args::from_args();
 
-    let run_handle = run(args).await?;
+    let run_handle = run(args).await;
 
     // Let the driver run till it decides to quit on it's own
     run_handle.wait()
