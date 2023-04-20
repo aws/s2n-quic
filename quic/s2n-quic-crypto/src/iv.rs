@@ -1,11 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use ::ring::hkdf;
+use crate::hkdf;
 use s2n_codec::{Encoder, EncoderBuffer};
 use zeroize::Zeroize;
 
-pub use ring::aead::NONCE_LEN;
+pub use crate::ring_aead::NONCE_LEN;
 
 pub struct Iv([u8; NONCE_LEN]);
 

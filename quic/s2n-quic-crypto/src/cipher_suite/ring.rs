@@ -5,7 +5,7 @@ macro_rules! key {
     ($name:ident, $ring_cipher:path, $key_size:expr, $tag_len:expr) => {
         pub mod $name {
             use super::super::$name::{KEY_LEN, NONCE_LEN, TAG_LEN};
-            use ::ring::aead::{self, LessSafeKey, UnboundKey};
+            use crate::ring_aead::{self as aead, LessSafeKey, UnboundKey};
             use zeroize::Zeroize;
 
             pub struct Key {

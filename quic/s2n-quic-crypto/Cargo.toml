@@ -17,10 +17,25 @@ testing = []
 [dependencies]
 cfg-if = "1"
 lazy_static = "1"
-ring = { version = "0.16", default-features = false }
 s2n-codec = { version = "=0.4.1", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.18.2", path = "../s2n-quic-core", default-features = false }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
+
+# aws-lc-sys has pre-generated bindings for the following platforms:
+# * macos/x86_64
+# * linux/x86
+# * linux/x86_64
+# * linux/aarch64
+[target.'cfg(any(all(target_os = "macos", target_arch = "x86_64"), all(target_os = "linux", target_arch = "x86"), all(target_os = "linux", target_arch = "x86_64"), all(target_os = "linux", target_arch = "aarch64")))'.dependencies]
+aws-lc-rs = { version = "1.0.0", default-features = false, features = ["aws-lc-sys"] }
+
+# aws-lc-sys can generate bindings for other unix-y platforms when the "bindgen" feature is used.
+[target.'cfg(all(unix, not(any(all(target_os = "macos", target_arch = "x86_64"), all(target_os = "linux", target_arch = "x86"), all(target_os = "linux", target_arch = "x86_64"), all(target_os = "linux", target_arch = "aarch64")))))'.dependencies]
+aws-lc-rs = { version = "1.0.0", default-features = false, features = ["bindgen", "aws-lc-sys"] }
+
+[target.'cfg(not(unix))'.dependencies]
+ring = { version = "0.16.20", default-features = false }
+
 
 [dev-dependencies]
 aes = "0.8"
