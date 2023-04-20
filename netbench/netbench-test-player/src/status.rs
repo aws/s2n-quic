@@ -67,16 +67,19 @@ impl StatusTracker {
     /// Query peer for state; If connection fails return `assume_on_no_response`
     #[instrument]
     async fn get_status(remote_status_server: SocketAddr, assume_on_no_response: Status) -> Status {
-        let mut stream = match TcpStream::connect(remote_status_server).await {
-            Ok(stream) => stream,
-            Err(_) => return assume_on_no_response,
-        };
-        let mut buffer = Vec::new();
-        stream
-            .read_to_end(&mut buffer)
-            .await
-            .expect("Failed to read from socket");
-        serde_json::from_slice(&buffer).expect("Failed to parse peer's status")
+        loop {
+            let mut stream = match TcpStream::connect(remote_status_server).await {
+                Ok(stream) => stream,
+                Err(_) => return assume_on_no_response,
+            };
+            let mut buffer = Vec::new();
+            match stream
+                .read_to_end(&mut buffer)
+                .await {
+                Ok(_) => return serde_json::from_slice(&buffer).expect("Failed to parse peer's status"),
+                Err(_) => continue,
+            }
+        }
     }
 
     /// A Task that waits for peer to be in a particular state
@@ -157,7 +160,7 @@ impl StatusTracker {
                 break Err(());
             }
 
-            let (mut socket, _) = match timeout(Duration::from_secs(5), listener.accept()).await {
+            let (mut socket, _) = match timeout(Duration::from_secs(30), listener.accept()).await {
                 Ok(Ok(o)) => o,
                 _ => continue,
             };
