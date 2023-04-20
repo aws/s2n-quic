@@ -5,13 +5,15 @@ mod endpoint;
 mod status;
 
 use endpoint::{client_state_machine, server_state_machine, EndpointKind};
+use futures::FutureExt;
 use netbench::{collector, Result};
 use status::StatusTracker;
 use structopt::StructOpt;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use futures::try_join;
+use futures::select;
+use tokio;
 
 #[derive(Debug, StructOpt)]
 pub struct Args {
@@ -33,7 +35,7 @@ pub struct Args {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), ()> {
+async fn main() -> Result<(), &'static str> {
     let args = Args::from_args();
 
     let state_tracker = StatusTracker::new(
@@ -43,21 +45,17 @@ async fn main() -> Result<(), ()> {
             args.local_status_port,
         ),
     );
-    let state_tracker_clone = state_tracker.clone();
+    let state_tracker_machine = state_tracker.clone();
+
     match args.run_as {
-        EndpointKind::Server => {
-            try_join!(
-                state_tracker.state_server(),
-                server_state_machine(args.collector_args, state_tracker_clone)
-            )?;
-        }
-        EndpointKind::Client => {
-            try_join!(
-                state_tracker.state_server(),
-                client_state_machine(args.collector_args, state_tracker_clone)
-            )?;
-        }
+        EndpointKind::Server => select!(
+            _ = Box::pin(state_tracker.state_server().fuse()) => Err("The status server had and internal error."),
+            _ = Box::pin(server_state_machine(args.collector_args, state_tracker_machine).fuse()) => Ok(()),
+        ),
+        EndpointKind::Client => select!(
+            _ = Box::pin(state_tracker.state_server().fuse()) => Err("The status server had an internal error."),
+            _ = Box::pin(client_state_machine(args.collector_args, state_tracker_machine).fuse()) => Ok(()),
+        ),
         _ => unimplemented!("Only --run-as client and --run-as server are supported."),
-    };
-    Ok(())
+    }
 }

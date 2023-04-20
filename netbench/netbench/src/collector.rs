@@ -13,7 +13,7 @@ mod procinfo;
 use bpftrace::BpftraceHandle;
 use generic::GenericHandle;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, StructOpt, Clone)]
 pub struct Args {
     pub driver: String,
 

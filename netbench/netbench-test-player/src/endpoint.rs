@@ -24,10 +24,7 @@ pub enum EndpointKind {
 ///
 /// This steps through the states of the server, waiting on the client when
 /// necessary.
-///
-/// Return an error when finished to end a try_join!() this task may be
-/// a part of.
-pub async fn server_state_machine(args: Args, mut state_tracker: StatusTracker) -> Result<(), ()> {
+pub async fn server_state_machine(args: Args, mut state_tracker: StatusTracker) {
     state_tracker.store(Status::Ready);
 
     // Wait till our peer reports it is Ready
@@ -43,18 +40,13 @@ pub async fn server_state_machine(args: Args, mut state_tracker: StatusTracker) 
     child_handle.kill().expect("Failed to kill child?");
     // We are done
     state_tracker.store(Status::Finished);
-
-    Err(())
 }
 
 /// The main implementation for --run-as client.
 ///
 /// This steps through the states of the client, waiting on the server when
 /// necessary.
-///
-/// Return an error when finished to end a try_join!() this task may be
-/// a part of.
-pub async fn client_state_machine(args: Args, mut state_tracker: StatusTracker) -> Result<(), ()> {
+pub async fn client_state_machine(args: Args, mut state_tracker: StatusTracker) {
     state_tracker.store(Status::Ready);
 
     // Wait for the server to be running
@@ -63,9 +55,8 @@ pub async fn client_state_machine(args: Args, mut state_tracker: StatusTracker) 
     // Run until finished
     let handle = run(args).await;
     state_tracker.store(Status::Running);
-    handle.wait().unwrap();
+    handle.wait().expect("Waiting on child failed?");
 
     // Finished
     state_tracker.store(Status::Finished);
-    Err(())
 }

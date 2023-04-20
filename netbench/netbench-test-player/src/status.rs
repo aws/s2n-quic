@@ -67,19 +67,17 @@ impl StatusTracker {
     /// Query peer for state; If connection fails return `assume_on_no_response`
     #[instrument]
     async fn get_status(remote_status_server: SocketAddr, assume_on_no_response: Status) -> Status {
-        loop {
-            let mut stream = match TcpStream::connect(remote_status_server).await {
-                Ok(stream) => stream,
-                Err(_) => return assume_on_no_response,
-            };
-            let mut buffer = Vec::new();
-            match stream
-                .read_to_end(&mut buffer)
-                .await {
-                Ok(_) => return serde_json::from_slice(&buffer).expect("Failed to parse peer's status"),
-                Err(_) => continue,
-            }
-        }
+        let mut stream = match TcpStream::connect(remote_status_server).await {
+            Ok(stream) => stream,
+            Err(_) => return assume_on_no_response,
+        };
+        let mut buffer = Vec::new();
+        let peer_status = match stream.read_to_end(&mut buffer).await {
+            Ok(_) => serde_json::from_slice(&buffer).expect("Failed to parse peer's status"),
+            Err(_) => assume_on_no_response,
+        };
+        drop(stream);
+        peer_status
     }
 
     /// A Task that waits for peer to be in a particular state
@@ -95,7 +93,10 @@ impl StatusTracker {
         sleep(initial_delay).await;
         loop {
             match Self::get_status(remote_status_server, assume_on_no_response).await {
-                s if s == wait_for_status => break,
+                s if s == wait_for_status => {
+                    sleep(Duration::from_secs(5)).await;
+                    break;
+                }
                 peer_reported_status => {
                     info!(?peer_reported_status);
                     sleep(poll_delay).await
@@ -114,7 +115,7 @@ impl StatusTracker {
             // Don't request status updates for the first 10 seconds
             Duration::from_secs(10),
             // Then request one every 5 seconds till the end of the test
-            Duration::from_secs(5),
+            Duration::from_secs(30),
         )
         .await;
     }
@@ -147,7 +148,7 @@ impl StatusTracker {
 
     /// A Task that serves our state, when the peer asks for it
     #[instrument]
-    pub async fn state_server(&self) -> Result<(), ()> {
+    pub async fn state_server(&self) {
         let listener = TcpListener::bind(self.local_status_server)
             .await
             .expect("Error binding to socket.");
@@ -157,10 +158,9 @@ impl StatusTracker {
         let mut served_state = Status::NotReady;
         loop {
             if served_state == Status::Finished {
-                break Err(());
+                return;
             }
-
-            let (mut socket, _) = match timeout(Duration::from_secs(30), listener.accept()).await {
+            let (mut socket, _) = match timeout(Duration::from_secs(10), listener.accept()).await {
                 Ok(Ok(o)) => o,
                 _ => continue,
             };
