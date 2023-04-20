@@ -76,7 +76,6 @@ impl StatusTracker {
             Ok(_) => serde_json::from_slice(&buffer).expect("Failed to parse peer's status"),
             Err(_) => assume_on_no_response,
         };
-        drop(stream);
         peer_status
     }
 

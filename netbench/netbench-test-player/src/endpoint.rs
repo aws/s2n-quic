@@ -3,11 +3,11 @@
 use crate::status::{Status, StatusTracker};
 use netbench::collector::{run, Args, RunHandle};
 
-use strum_macros::EnumString;
+use strum_macros::{EnumString, Display};
 
 /// For the purposes of coordination, what is the kind of endpoint we are?
-#[derive(Debug, PartialEq, Clone, Copy, EnumString, Hash)]
-#[strum(ascii_case_insensitive)]
+#[derive(Debug, PartialEq, Clone, Copy, EnumString, Hash, Display)]
+#[strum(serialize_all = "lowercase")]
 pub enum EndpointKind {
     /// A Router comes up first and goes down last. Routers should not stop
     /// running unless explicitly instructed to by the test framework.
