@@ -17,8 +17,6 @@ sysinfo = "0.26"
 strum = "0.24"
 strum_macros = "0.24"
 tokio =  { version = "1", features = ["io-util", "net", "time"] }
-tokio-trace = "0.1"
-enumx = "0.4"
 enum_dispatch = "0.3"
 num_enum = "0.6"
 tracing = "0.1"

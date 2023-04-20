@@ -34,10 +34,6 @@ tokio = { version = "1", features = ["net", "time", "io-util"] }
 sysinfo = "0.26"
 structopt = "0.3"
 enum_dispatch = "0.3"
-num_enum = "0.6"
-strum = "0.24"
-strum_macros = "0.24"
-tracing = "0.1"
 handlebars = "4"
 
 [dev-dependencies]
