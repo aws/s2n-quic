@@ -50,10 +50,7 @@ pub struct StatusTracker {
 }
 
 impl StatusTracker {
-    pub fn new(
-        remote_status_server: SocketAddr,
-        local_status_server: SocketAddr,
-    ) -> Self {
+    pub fn new(remote_status_server: SocketAddr, local_status_server: SocketAddr) -> Self {
         Self {
             current_state: Arc::new(AtomicU8::new(Status::NotReady.into())),
             local_status_server,
@@ -115,7 +112,8 @@ impl StatusTracker {
             Duration::from_secs(10),
             // Then request one every 5 seconds till the end of the test
             Duration::from_secs(5),
-        ).await;
+        )
+        .await;
     }
 
     /// A task that wait until the peer reports it is ready
@@ -127,7 +125,8 @@ impl StatusTracker {
             // Just ask again every 5 seconds
             Duration::from_secs(5),
             Duration::from_secs(5),
-        ).await;
+        )
+        .await;
     }
 
     /// A task that wait until the peer reports it is ready
@@ -139,33 +138,43 @@ impl StatusTracker {
             // Just ask again every 5 seconds
             Duration::from_secs(5),
             Duration::from_secs(5),
-        ).await;
+        )
+        .await;
     }
 
     /// A Task that serves our state, when the peer asks for it
     #[instrument]
     pub async fn state_server(&self) -> Result<(), ()> {
-        let listener = TcpListener::bind(self.local_status_server).await.expect("Error binding to socket.");
+        let listener = TcpListener::bind(self.local_status_server)
+            .await
+            .expect("Error binding to socket.");
+
         let current_state = self.current_state.clone();
+
         let mut served_state = Status::NotReady;
         loop {
             if served_state == Status::Finished {
                 break Err(());
             }
+
             let (mut socket, _) = match timeout(Duration::from_secs(5), listener.accept()).await {
                 Ok(Ok(o)) => o,
                 _ => continue,
             };
+
             served_state = current_state
                 .clone()
                 .load(Ordering::Relaxed)
                 .try_into()
                 .expect("An invalid atomic u8 got constructed.");
+
             socket
                 .write_all(
                     &serde_json::to_vec(&served_state).expect("State couldn't be serialized?"),
                 )
-                .await.expect("Error writing to socket.");
+                .await
+                .expect("Error writing to socket.");
+
             info!(?served_state);
         }
     }
