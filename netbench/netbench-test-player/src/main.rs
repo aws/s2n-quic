@@ -30,10 +30,6 @@ pub struct Args {
     /// Are we a server, client or router?
     #[structopt(long)]
     pub run_as: EndpointKind,
-
-    // Should we output to the log?
-    #[structopt(long, short)]
-    pub verbose: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -46,7 +42,6 @@ async fn main() -> Result<()> {
             IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
             args.local_status_port,
         ),
-        args.verbose,
     );
     let state_tracker_clone = state_tracker.clone();
     match args.run_as {

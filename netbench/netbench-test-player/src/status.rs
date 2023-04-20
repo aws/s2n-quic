@@ -49,20 +49,17 @@ pub struct StatusTracker {
     pub current_state: Arc<AtomicU8>,
     pub remote_status_server: SocketAddr,
     pub local_status_server: SocketAddr,
-    pub verbose: bool,
 }
 
 impl StatusTracker {
     pub fn new(
         remote_status_server: SocketAddr,
         local_status_server: SocketAddr,
-        verbose: bool,
     ) -> Self {
         Self {
             current_state: Arc::new(AtomicU8::new(Status::NotReady.into())),
             local_status_server,
             remote_status_server,
-            verbose,
         }
     }
 
