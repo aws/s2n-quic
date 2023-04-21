@@ -33,15 +33,22 @@ pub struct Args {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     let args = Args::from_args();
 
     match args.run_as {
-        EndpointKind::Server => server_state_machine(args.collector_args, SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-            args.local_status_port,
-        )).await?,
-        EndpointKind::Client => client_state_machine(args.collector_args, args.remote_status_server).await?,
+        EndpointKind::Server => {
+            server_state_machine(
+                args.collector_args,
+                SocketAddr::new(
+                    IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                    args.local_status_port,
+                ),
+            )
+            .await?
+        }
+        EndpointKind::Client => {
+            client_state_machine(args.collector_args, args.remote_status_server).await?
+        }
     };
     Ok(())
 }

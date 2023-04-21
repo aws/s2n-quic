@@ -5,16 +5,16 @@ use std::time::Duration;
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
+use std::fmt::Debug;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, Result},
     net::{TcpListener, TcpStream, ToSocketAddrs},
     time::{sleep, timeout},
 };
-use std::fmt::Debug;
 
 /// TIMEOUT after an hour. If the SSM commands haven't made it to all
 /// the machines in that time; abort the test.
-const TIMEOUT: Duration = Duration::from_secs(60*60);
+const TIMEOUT: Duration = Duration::from_secs(60 * 60);
 
 use tracing::instrument;
 
@@ -45,13 +45,24 @@ impl StatusTracker {
                     Err(_) => sleep(Duration::from_secs(10)).await,
                 }
             }
-        }).await.unwrap()
+        })
+        .await
+        .unwrap()
     }
 
     /// Allow a single client to connect. Once a StatusTracker exists the client
     /// is connected.
     pub async fn new_as_server<A: ToSocketAddrs>(local_status_server: A) -> StatusTracker {
-        let (peer_connection, _addr) = timeout(TIMEOUT, TcpListener::bind(local_status_server).await.unwrap().accept()).await.unwrap().unwrap();
+        let (peer_connection, _addr) = timeout(
+            TIMEOUT,
+            TcpListener::bind(local_status_server)
+                .await
+                .unwrap()
+                .accept(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
         StatusTracker { peer_connection }
     }
 
@@ -61,7 +72,12 @@ impl StatusTracker {
     #[instrument]
     pub async fn wait_for_peer(&mut self, wait_for: Status) -> Result<()> {
         loop {
-            let status: Status = self.peer_connection.read_u8().await?.try_into().expect("Bad status received");
+            let status: Status = self
+                .peer_connection
+                .read_u8()
+                .await?
+                .try_into()
+                .expect("Bad status received");
             if wait_for == status {
                 return Ok(());
             }

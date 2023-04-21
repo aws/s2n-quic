@@ -3,11 +3,11 @@
 use crate::status::{Status, StatusTracker};
 use netbench::collector::{run, Args, RunHandle};
 
-use strum_macros::{EnumString, Display};
-use tokio::net::ToSocketAddrs;
-use tokio::io::Result;
-use tokio::time::sleep;
 use std::time::Duration;
+use strum_macros::{Display, EnumString};
+use tokio::io::Result;
+use tokio::net::ToSocketAddrs;
+use tokio::time::sleep;
 
 /// For the purposes of coordination, what is the kind of endpoint we are?
 #[derive(Debug, PartialEq, Clone, Copy, EnumString, Hash, Display)]
@@ -25,7 +25,10 @@ pub enum EndpointKind {
 ///
 /// This steps through the states of the server, waiting on the client when
 /// necessary.
-pub async fn server_state_machine<A : ToSocketAddrs>(args: Args, local_status_server: A) -> Result<()> {
+pub async fn server_state_machine<A: ToSocketAddrs>(
+    args: Args,
+    local_status_server: A,
+) -> Result<()> {
     // Wait for client to be up; and establish connection.
     let mut status_tracker = StatusTracker::new_as_server(local_status_server).await;
 
@@ -50,7 +53,10 @@ pub async fn server_state_machine<A : ToSocketAddrs>(args: Args, local_status_se
 ///
 /// This steps through the states of the client, waiting on the server when
 /// necessary.
-pub async fn client_state_machine<A: ToSocketAddrs + Copy>(args: Args, state_server_address: A) -> Result<()> {
+pub async fn client_state_machine<A: ToSocketAddrs + Copy>(
+    args: Args,
+    state_server_address: A,
+) -> Result<()> {
     // Wait for the server to be up and establish connection.
     let mut status_tracker = StatusTracker::new_as_client(state_server_address).await;
 
