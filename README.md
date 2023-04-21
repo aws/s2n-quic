@@ -29,7 +29,9 @@ s2n-quic = "1"
 
 **NOTE**: On unix-like systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider,
 and [`aws-lc-rs`](https://github.com/awslabs/aws-lc-rs) will be used for cryptographic operations. A C compiler and
-CMake are required on these systems for installation.
+CMake are required on these systems for installation. For platforms that lack [pregenerated bindings](https://github.com/awslabs/aws-lc-rs/blob/main/aws-lc-sys/README.md#pregenerated-bindings-availability)
+for `aws-lc-rs`, `libclang` is also needed for [`bindgen`](https://github.com/rust-lang/rust-bindgen#environment-variables)
+to generate bindings.
 
 ## Example
 
