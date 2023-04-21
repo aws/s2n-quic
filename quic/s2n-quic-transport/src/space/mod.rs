@@ -115,8 +115,10 @@ macro_rules! packet_space_api {
                 //# detection timers MUST be reset, because discarding keys indicates
                 //# forward progress and the loss detection timer might have been set for
                 //# a now discarded packet number space.
-                path.reset_pto_backoff();
                 if let Some(mut space) = self.$field.take() {
+                    // reset the PTO backoff value as part of resetting the PTO timer.
+                    path.reset_pto_backoff();
+
                     space.on_discard(path, path_id, publisher);
                 }
 
