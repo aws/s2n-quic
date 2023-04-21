@@ -29,7 +29,7 @@ pub fn events() -> event::tracing::Provider {
             .compact(); // Use a less verbose output format.
 
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::new("debug"))
+            .with_max_level(tracing_subscriber::filter::LevelFilter::DEBUG)
             .event_format(format)
             .with_test_writer()
             .init();
