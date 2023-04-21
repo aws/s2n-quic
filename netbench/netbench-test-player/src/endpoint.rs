@@ -4,14 +4,15 @@ use crate::status::{Status, StatusTracker};
 use netbench::collector::{run, Args, RunHandle};
 
 use strum_macros::{EnumString, Display};
+use tokio::net::ToSocketAddrs;
+use tokio::io::Result;
+use tokio::time::sleep;
+use std::time::Duration;
 
 /// For the purposes of coordination, what is the kind of endpoint we are?
 #[derive(Debug, PartialEq, Clone, Copy, EnumString, Hash, Display)]
 #[strum(serialize_all = "lowercase")]
 pub enum EndpointKind {
-    /// A Router comes up first and goes down last. Routers should not stop
-    /// running unless explicitly instructed to by the test framework.
-    Router,
     /// Servers should start after routers are online. They should stop after
     /// clients report they are finished.
     Server,
@@ -24,39 +25,42 @@ pub enum EndpointKind {
 ///
 /// This steps through the states of the server, waiting on the client when
 /// necessary.
-pub async fn server_state_machine(args: Args, mut state_tracker: StatusTracker) {
-    state_tracker.store(Status::Ready);
+pub async fn server_state_machine<A : ToSocketAddrs>(args: Args, local_status_server: A) -> Result<()> {
+    // Wait for client to be up; and establish connection.
+    let mut status_tracker = StatusTracker::new_as_server(local_status_server).await;
 
-    // Wait till our peer reports it is Ready
-    state_tracker.wait_for_peer_ready().await;
+    // Run the collector in the background.
+    let collector = run(args).await;
 
-    // Run the collector in the background
-    let child_handle = run(args).await;
-    state_tracker.store(Status::Running);
+    // Signal Client we are running after waiting to collect server startup data.
+    sleep(Duration::from_secs(10)).await;
+    status_tracker.signal_status(Status::Running).await?;
 
-    // Run until the client reports it is Finished
-    state_tracker.wait_for_peer_finished().await;
+    // Run until the client reports it is finished.
+    status_tracker.wait_for_peer(Status::Finished).await?;
 
-    child_handle.kill().expect("Failed to kill child?");
-    // We are done
-    state_tracker.store(Status::Finished);
+    // Kill the collector after waiting to collect server spin down data.
+    sleep(Duration::from_secs(10)).await;
+    collector.kill().expect("Failed to kill child?");
+
+    Ok(())
 }
 
 /// The main implementation for --run-as client.
 ///
 /// This steps through the states of the client, waiting on the server when
 /// necessary.
-pub async fn client_state_machine(args: Args, mut state_tracker: StatusTracker) {
-    state_tracker.store(Status::Ready);
+pub async fn client_state_machine<A: ToSocketAddrs + Copy>(args: Args, state_server_address: A) -> Result<()> {
+    // Wait for the server to be up and establish connection.
+    let mut status_tracker = StatusTracker::new_as_client(state_server_address).await;
 
-    // Wait for the server to be running
-    state_tracker.wait_for_peer_running().await;
+    // Wait for the server to signal it is running.
+    status_tracker.wait_for_peer(Status::Running).await?;
 
-    // Run until finished
-    let handle = run(args).await;
-    state_tracker.store(Status::Running);
-    handle.wait().expect("Waiting on child failed?");
+    // Run the client till finished.
+    run(args).await.wait().expect("Waiting on child failed?");
 
-    // Finished
-    state_tracker.store(Status::Finished);
+    // Signal Server to finish.
+    status_tracker.signal_status(Status::Finished).await?;
+    Ok(())
 }
