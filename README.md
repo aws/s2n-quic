@@ -27,7 +27,9 @@ See the [API documentation](https://docs.rs/s2n-quic) and [examples](https://git
 s2n-quic = "1"
 ```
 
-**NOTE**: On unix-like systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider and requires a C compiler to be installed.
+**NOTE**: On unix-like systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider,
+and [`aws-lc-rs`](https://github.com/awslabs/aws-lc-rs) will be used for cryptographic operations. A C compiler and
+CMake are required on these systems for installation.
 
 ## Example
 
