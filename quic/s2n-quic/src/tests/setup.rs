@@ -24,9 +24,21 @@ pub fn events() -> event::tracing::Provider {
     TRACING.call_once(|| {
         let format = tracing_subscriber::fmt::format()
             .with_level(false) // don't include levels in formatted output
-            .with_timer(tracing_subscriber::fmt::time::uptime())
+            .with_timer(Uptime)
             .with_ansi(false)
             .compact(); // Use a less verbose output format.
+
+        struct Uptime;
+
+        // Generate the timestamp from the testing IO provider rather than wall clock.
+        impl tracing_subscriber::fmt::time::FormatTime for Uptime {
+            fn format_time(
+                &self,
+                w: &mut tracing_subscriber::fmt::format::Writer<'_>,
+            ) -> std::fmt::Result {
+                write!(w, "{}", crate::provider::io::testing::now())
+            }
+        }
 
         tracing_subscriber::fmt()
             .with_max_level(tracing_subscriber::filter::LevelFilter::DEBUG)
