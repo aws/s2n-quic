@@ -118,7 +118,7 @@ impl RttEstimator {
     //# an acknowledgement of a sent packet.
     #[inline]
     pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
-        // Since K_GRANULARITY is 1ms, we operate on microseconds rather than `Duration` to improve efficiency.
+        // We operate on microseconds rather than `Duration` to improve efficiency.
         // See https://godbolt.org/z/4o71WPods
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
