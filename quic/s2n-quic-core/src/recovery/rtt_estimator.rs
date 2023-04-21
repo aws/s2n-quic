@@ -118,7 +118,7 @@ impl RttEstimator {
     //# an acknowledgement of a sent packet.
     #[inline]
     pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
-        // Since K_GRANULARITY is 1ms, we operate on milliseconds rather than `Duration` to improve efficiency.
+        // Since K_GRANULARITY is 1ms, we operate on microseconds rather than `Duration` to improve efficiency.
         // See https://godbolt.org/z/4o71WPods
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
@@ -126,14 +126,14 @@ impl RttEstimator {
         //# timer for the PTO period as follows:
         //#
         //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
-        let mut pto_period = self.smoothed_rtt().as_millis() as u64;
+        let mut pto_period = self.smoothed_rtt().as_micros() as u64;
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period MUST be at least kGranularity, to avoid the timer
         //# expiring immediately.
         pto_period += max(
-            self.rttvar_4x().as_millis() as u64,
-            K_GRANULARITY.as_millis() as u64,
+            self.rttvar_4x().as_micros() as u64,
+            K_GRANULARITY.as_micros() as u64,
         );
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
@@ -142,7 +142,7 @@ impl RttEstimator {
         //# the peer is expected to not delay these packets intentionally; see
         //# Section 13.2.1 of [QUIC-TRANSPORT].
         if space.is_application_data() {
-            pto_period += self.max_ack_delay.as_millis() as u64;
+            pto_period += self.max_ack_delay.as_micros() as u64;
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
@@ -156,7 +156,7 @@ impl RttEstimator {
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period is the amount of time that a sender ought to wait for
         //# an acknowledgement of a sent packet.
-        Duration::from_millis(pto_period)
+        Duration::from_micros(pto_period)
     }
 
     /// Sets the `max_ack_delay` value from the peer `MaxAckDelay` transport parameter
@@ -379,7 +379,7 @@ mod test {
         assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
         assert_eq!(
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::Initial),
-            Duration::from_millis(1)
+            Duration::from_micros(1001)
         );
     }
 
@@ -522,7 +522,7 @@ mod test {
         assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
         assert_eq!(
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::ApplicationData),
-            Duration::from_millis(1551)
+            Duration::from_micros(1551246)
         );
     }
 
@@ -716,6 +716,9 @@ mod test {
 
         let pto_period = rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, space);
         assert!(pto_period >= K_GRANULARITY);
+
+        // pto_period should have microsecond precision
+        assert_eq!(pto_period, Duration::from_micros(1001))
     }
 
     #[test]
