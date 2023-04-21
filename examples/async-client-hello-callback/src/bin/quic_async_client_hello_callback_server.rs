@@ -75,7 +75,7 @@ impl ClientHelloCallback for ConfigCache {
         // simulate failure 75% of times and success 25% of the times
         let choices = [true, false];
         let weights = [3, 1];
-        let dist = WeightedIndex::new(&weights).unwrap();
+        let dist = WeightedIndex::new(weights).unwrap();
         let mut rng = thread_rng();
 
         let fut = async move {
