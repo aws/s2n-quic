@@ -119,7 +119,7 @@ impl RttEstimator {
     #[inline]
     pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
         // We operate on microseconds rather than `Duration` to improve efficiency.
-        // See https://godbolt.org/z/4o71WPods
+        // See https://godbolt.org/z/osEd9rj9a
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
