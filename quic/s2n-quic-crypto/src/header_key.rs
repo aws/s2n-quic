@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::{hkdf, ring_aead as aead};
 use core::fmt;
-use ring::{aead, hkdf};
 use s2n_quic_core::crypto::{self, HeaderProtectionMask};
 
 pub struct HeaderKey(pub(crate) aead::quic::HeaderProtectionKey);

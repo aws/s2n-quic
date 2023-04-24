@@ -17,10 +17,16 @@ testing = []
 [dependencies]
 cfg-if = "1"
 lazy_static = "1"
-ring = { version = "0.16", default-features = false }
 s2n-codec = { version = "=0.5.0", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.19.0", path = "../s2n-quic-core", default-features = false }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+aws-lc-rs = { version = "1.0.0", default-features = false, features = ["aws-lc-sys"] }
+
+[target.'cfg(not(all(target_os = "linux", target_arch = "aarch64")))'.dependencies]
+ring = { version = "0.16.20", default-features = false }
+
 
 [dev-dependencies]
 aes = "0.8"

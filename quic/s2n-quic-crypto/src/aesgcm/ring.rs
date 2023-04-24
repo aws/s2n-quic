@@ -4,8 +4,8 @@
 use crate::{
     aead,
     aesgcm::{NONCE_LEN, TAG_LEN},
+    ring_aead::{Aad, LessSafeKey, Nonce},
 };
-use ::ring::aead::{Aad, LessSafeKey, Nonce};
 
 impl aead::Aead for LessSafeKey {
     type Nonce = [u8; NONCE_LEN];
@@ -62,8 +62,10 @@ macro_rules! impl_aesgcm {
     ($name:ident, $lower:ident) => {
         #[cfg(any(test, feature = "testing"))]
         pub mod $lower {
-            use crate::aesgcm::testing::$lower::Implementation;
-            use ::ring::aead::{$name, LessSafeKey, UnboundKey};
+            use crate::{
+                aesgcm::testing::$lower::Implementation,
+                ring_aead::{$name, LessSafeKey, UnboundKey},
+            };
 
             pub fn implementations(impls: &mut Vec<Implementation>) {
                 impls.push(Implementation {

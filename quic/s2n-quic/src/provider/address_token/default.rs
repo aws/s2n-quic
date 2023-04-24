@@ -10,11 +10,11 @@
 
 use core::{mem::size_of, time::Duration};
 use hash_hasher::HashHasher;
-use ring::{digest, hmac};
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
 use s2n_quic_core::{
     connection, event::api::SocketAddress, random, time::Timestamp, token::Source,
 };
+use s2n_quic_crypto::{constant_time, digest, hmac};
 use std::hash::{Hash, Hasher};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 use zeroize::Zeroizing;
@@ -208,7 +208,7 @@ impl Format {
 
         let tag = self.tag_retry_token(token, context)?;
 
-        if ring::constant_time::verify_slices_are_equal(&token.hmac, tag.as_ref()).is_ok() {
+        if constant_time::verify_slices_are_equal(&token.hmac, tag.as_ref()).is_ok() {
             // Only add the token once it has been validated. This will prevent the filter from
             // being filled with garbage tokens.
 
