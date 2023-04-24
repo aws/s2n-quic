@@ -636,7 +636,7 @@ fn increasing_pto_count_under_loss() {
 
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_tls((certificates::CERT_PEM, certificates::KEY_PEM))?
+            .with_tls(SERVER_CERTS)?
             .start()?;
 
         let addr = server.local_addr()?;
@@ -690,4 +690,80 @@ fn increasing_pto_count_under_loss() {
         delay_time,
         pto_count
     );
+}
+
+#[test]
+fn mtls() {
+    use crate::provider::tls::default as s2n_tls;
+
+    // Ensure connection is successful under different network conditions
+    for delay_time in (500..=10_000).step_by(1000) {
+        for drop_percent in (0..=90).step_by(10) {
+            let delay_time = Duration::from_micros(delay_time);
+
+            let model = Model::default();
+            model.set_delay(delay_time);
+
+            test(model.clone(), |handle| {
+                spawn(async move {
+                    // allow for 1 RTT worth of data before impairing the connection.
+                    // Both the Client and Server have received initial packets at
+                    // this point.
+                    model.set_delay(delay_time * 2);
+
+                    // simulate network impairment
+                    let drop_rate = (drop_percent / 100).into();
+                    model.set_drop_rate(drop_rate);
+                    model.set_corrupt_rate(drop_rate);
+                });
+
+                let server_tls = s2n_tls::Server::builder()
+                    .with_certificate(
+                        certificates::MTLS_SERVER_CERT,
+                        certificates::MTLS_SERVER_KEY,
+                    )?
+                    .with_client_authentication()?
+                    .with_trusted_certificate(certificates::MTLS_CA_CERT)?
+                    .build()?;
+
+                let mut server = Server::builder()
+                    .with_io(handle.builder().build()?)?
+                    .with_event(events())?
+                    .with_tls(server_tls)?
+                    .start()?;
+
+                let addr = server.local_addr()?;
+                spawn(async move {
+                    if let Some(conn) = server.accept().await {
+                        delay(Duration::from_secs(10)).await;
+                        let _ = conn;
+                    }
+                });
+
+                let client_tls = s2n_tls::Client::builder()
+                    .with_certificate(certificates::MTLS_CA_CERT)?
+                    .with_client_identity(
+                        certificates::MTLS_CLIENT_CERT,
+                        certificates::MTLS_CLIENT_KEY,
+                    )?
+                    .build()?;
+                let client = Client::builder()
+                    .with_io(handle.builder().build().unwrap())?
+                    .with_event(events())?
+                    .with_tls(client_tls)?
+                    .start()?;
+
+                primary::spawn(async move {
+                    let connect = Connect::new(addr).with_server_name("localhost");
+                    let conn = client.connect(connect).await.unwrap();
+
+                    delay(Duration::from_secs(10)).await;
+                    let _ = conn;
+                });
+
+                Ok(addr)
+            })
+            .unwrap();
+        }
+    }
 }

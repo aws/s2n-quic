@@ -40,6 +40,16 @@ pub mod certificates {
     der!(CERT_DER, "cert.der");
     pem!(UNTRUSTED_CERT_PEM, "untrusted_cert.pem");
     pem!(UNTRUSTED_KEY_PEM, "untrusted_key.pem");
+
+    // Certificates and Keys used specifically for testing the mTLS (mutual TLS) feature.
+    //
+    // The MTLS_CA_CERT is the root CA cert and used to sign both MTLS_SERVER_CERT and
+    // MTLS_CLIENT_CERT.
+    pem!(MTLS_CA_CERT, "mtls/ca-cert.pem");
+    pem!(MTLS_SERVER_CERT, "mtls/server-cert.pem");
+    pem!(MTLS_SERVER_KEY, "mtls/server-key.pem");
+    pem!(MTLS_CLIENT_CERT, "mtls/client-cert.pem");
+    pem!(MTLS_CLIENT_KEY, "mtls/client-key.pem");
 }
 
 #[derive(Debug)]
