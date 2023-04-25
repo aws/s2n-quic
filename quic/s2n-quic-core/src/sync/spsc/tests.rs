@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use crate::testing::loom;
 use bolero::{check, generator::*};
 use core::task::{Context, Poll, Waker};
 use futures_test::task::{new_count_waker, AwokenCount};
@@ -304,19 +305,6 @@ fn alloc_test() {
             let pop_value = recv.try_slice().unwrap().unwrap().pop().unwrap();
             assert_eq!(pop_value, push_value);
         })
-}
-
-#[cfg(not(loom))]
-mod loom {
-    pub use std::*;
-
-    pub mod future {
-        pub use futures::executor::block_on;
-    }
-
-    pub fn model<F: FnOnce() -> R, R>(f: F) -> R {
-        f()
-    }
 }
 
 const CAPACITY: usize = if cfg!(loom) { 2 } else { 10 };

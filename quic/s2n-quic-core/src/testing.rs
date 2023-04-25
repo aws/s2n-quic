@@ -24,3 +24,19 @@ impl<T, const LEN: usize> core::ops::DerefMut for InlineVec<T, LEN> {
         &mut self.values[..self.len]
     }
 }
+
+#[cfg(all(test, not(loom)))]
+pub mod loom {
+    pub use std::*;
+
+    pub mod future {
+        pub use futures::executor::block_on;
+    }
+
+    pub fn model<F: 'static + FnOnce() -> R, R>(f: F) -> R {
+        f()
+    }
+}
+
+#[cfg(all(test, loom))]
+pub use loom;
