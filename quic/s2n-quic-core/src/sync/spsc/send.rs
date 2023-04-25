@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{state::Side, Cursor, PushError, Result, State};
-use core::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use core::task::{Context, Poll};
 
 pub struct Sender<T>(pub(super) State<T>);
 
@@ -14,21 +10,6 @@ impl<T> Sender<T> {
     #[inline]
     pub fn capacity(&self) -> usize {
         self.0.cursor.capacity()
-    }
-
-    /// Returns the currently acquired slice of entries for the sender
-    ///
-    /// Callers should call [`Self::acquire`] or [`Self::poll_slice`] before calling this method.
-    #[inline]
-    pub fn slice(&mut self) -> SendSlice<T> {
-        let cursor = self.0.cursor;
-        SendSlice(&mut self.0, cursor)
-    }
-
-    /// Blocks until at least one entry is available for sending
-    #[inline]
-    pub async fn acquire(&mut self) -> Result<()> {
-        Acquire { sender: self }.await
     }
 
     #[inline]
@@ -138,21 +119,5 @@ impl<'a, T> Drop for SendSlice<'a, T> {
     #[inline]
     fn drop(&mut self) {
         self.0.persist_tail(self.1);
-    }
-}
-
-struct Acquire<'a, T> {
-    sender: &'a mut Sender<T>,
-}
-
-impl<'a, T> Future for Acquire<'a, T> {
-    type Output = Result<()>;
-
-    #[inline]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        match self.sender.poll_slice(cx) {
-            Poll::Ready(v) => Poll::Ready(v.map(|_| ())),
-            Poll::Pending => Poll::Pending,
-        }
     }
 }

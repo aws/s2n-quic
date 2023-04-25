@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{state::Side, Cursor, Result, State};
-use core::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use core::task::{Context, Poll};
 
 pub struct Receiver<T>(pub(super) State<T>);
 
@@ -29,21 +25,6 @@ impl<T> Receiver<T> {
     #[inline]
     pub fn is_full(&self) -> bool {
         self.0.cursor.is_full()
-    }
-
-    /// Returns the currently acquired slice of entries for the receiver
-    ///
-    /// Callers should call [`Self::acquire`] or [`Self::poll_slice`] before calling this method.
-    #[inline]
-    pub fn slice(&mut self) -> RecvSlice<T> {
-        let cursor = self.0.cursor;
-        RecvSlice(&mut self.0, cursor)
-    }
-
-    /// Blocks until at least one entry is available for consumption
-    #[inline]
-    pub async fn acquire(&mut self) -> Result<()> {
-        Acquire { receiver: self }.await
     }
 
     #[inline]
@@ -143,23 +124,6 @@ impl<'a, T> RecvSlice<'a, T> {
         len
     }
 
-    /// Releases `len` entries back to the sender
-    #[inline]
-    pub fn release(&mut self, len: usize) {
-        let (pair, _) = self.0.as_pairs();
-
-        debug_assert!(pair.len() >= len, "cannot release more than was acquired");
-
-        for entry in pair.iter().take(len) {
-            unsafe {
-                // Safety: the state's cursor indicates that each slot in the `iter` contains data
-                let _ = entry.take();
-            }
-        }
-
-        self.0.cursor.increment_head(len);
-    }
-
     #[inline]
     pub fn len(&self) -> usize {
         self.0.cursor.recv_len()
@@ -175,21 +139,5 @@ impl<'a, T> Drop for RecvSlice<'a, T> {
     #[inline]
     fn drop(&mut self) {
         self.0.persist_head(self.1);
-    }
-}
-
-struct Acquire<'a, T> {
-    receiver: &'a mut Receiver<T>,
-}
-
-impl<'a, T> Future for Acquire<'a, T> {
-    type Output = Result<()>;
-
-    #[inline]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        match self.receiver.poll_slice(cx) {
-            Poll::Ready(v) => Poll::Ready(v.map(|_| ())),
-            Poll::Pending => Poll::Pending,
-        }
     }
 }

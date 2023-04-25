@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(all(loom, test))]
-mod loom_primitive {
+mod loom {
     use ::core::task::Waker;
     use ::loom::future::AtomicWaker as Inner;
 
-    pub use ::loom::sync::{atomic::*, Arc};
+    pub use ::loom::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     #[derive(Debug, Default)]
     pub struct AtomicWaker(Inner);
@@ -31,16 +31,15 @@ mod loom_primitive {
 }
 
 #[cfg(all(loom, test))]
-pub use self::loom_primitive::*;
+pub use self::loom::*;
 
-mod core_primitive {
-    pub use ::core::sync::atomic::*;
-    pub use alloc::sync::Arc;
+mod core {
+    pub use ::core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     pub use atomic_waker::AtomicWaker;
 }
 
 #[cfg(not(all(loom, test)))]
-pub use self::core_primitive::*;
+pub use self::core::*;
 
 /// Indicates if the type is a zero-sized type
 ///
