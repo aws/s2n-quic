@@ -1,10 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{
-    primitive::{AtomicBool, AtomicUsize, AtomicWaker, IsZst, Ordering},
-    Cell, ClosedError, Result, Slice,
-};
+use super::{Cell, ClosedError, Result, Slice};
+use crate::sync::primitive::{AtomicBool, AtomicUsize, AtomicWaker, IsZst, Ordering};
 use alloc::alloc::Layout;
 use cache_padded::CachePadded;
 use core::{
