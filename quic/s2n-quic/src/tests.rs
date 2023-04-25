@@ -6,7 +6,10 @@ use crate::{
     provider::{
         self,
         event::{
-            events::{MtuUpdated, MtuUpdatedCause, PacketSent, RecoveryMetrics},
+            events::{
+                Frame, FrameReceived, FrameSent, MtuUpdated, MtuUpdatedCause, PacketSent,
+                RecoveryMetrics,
+            },
             ConnectionInfo, ConnectionMeta, Subscriber,
         },
         io::testing::{rand, spawn, test, time::delay, Model},
@@ -349,6 +352,7 @@ macro_rules! event_recorder {
 
 event_recorder!(PacketSentRecorder, PacketSent, on_packet_sent);
 event_recorder!(MtuUpdatedRecorder, MtuUpdated, on_mtu_updated);
+event_recorder!(FrameSentRecorder, FrameSent, on_frame_sent);
 event_recorder!(
     PathUpdatedRecorder,
     RecoveryMetrics,
@@ -368,6 +372,15 @@ event_recorder!(
     u32,
     |event: &RecoveryMetrics, storage: &mut Vec<u32>| {
         storage.push(event.pto_count);
+    }
+);
+event_recorder!(
+    FrameReceivedRecorder,
+    FrameReceived,
+    on_frame_received,
+    Frame,
+    |event: &FrameReceived, storage: &mut Vec<Frame>| {
+        storage.push(event.frame.clone());
     }
 );
 
@@ -696,8 +709,8 @@ fn increasing_pto_count_under_loss() {
 //
 // The rustls tls provider is used on windows and has different
 // build options than s2n-tls. We should build the rustls provider with
-// mTLS enabled and remove the below `cfg_attr(ignore)`.
-#[cfg_attr(any(target_os = "windows"), ignore)]
+// mTLS enabled and remove the `cfg(target_os("windows"))`.
+#[cfg(not(target_os = "windows"))]
 #[test]
 fn mtls() {
     use crate::provider::tls::default as s2n_tls;
@@ -709,6 +722,12 @@ fn mtls() {
 
             let model = Model::default();
             model.set_delay(delay_time);
+            // Only the Server sends a HandshakeDone frame
+            let server_subscriber = FrameSentRecorder::new();
+            let frame_sent = server_subscriber.events();
+            // Only the Client receives a HandshakeDone frame
+            let client_subscriber = FrameReceivedRecorder::new();
+            let frame_received = client_subscriber.events();
 
             test(model.clone(), |handle| {
                 spawn(async move {
@@ -734,8 +753,8 @@ fn mtls() {
 
                 let mut server = Server::builder()
                     .with_io(handle.builder().build()?)?
-                    .with_event(events())?
                     .with_tls(server_tls)?
+                    .with_event(server_subscriber)?
                     .start()?;
 
                 let addr = server.local_addr()?;
@@ -755,8 +774,8 @@ fn mtls() {
                     .build()?;
                 let client = Client::builder()
                     .with_io(handle.builder().build().unwrap())?
-                    .with_event(events())?
                     .with_tls(client_tls)?
+                    .with_event(client_subscriber)?
                     .start()?;
 
                 primary::spawn(async move {
@@ -770,6 +789,17 @@ fn mtls() {
                 Ok(addr)
             })
             .unwrap();
+
+            let frame_sent = frame_sent.lock().unwrap();
+            let server_done = frame_sent
+                .iter()
+                .any(|x| matches!(x.frame, Frame::HandshakeDone { .. }));
+            let frame_received = frame_received.lock().unwrap();
+            let client_done = frame_received
+                .iter()
+                .any(|x| matches!(&x, Frame::HandshakeDone { .. }));
+            assert!(server_done);
+            assert!(client_done);
         }
     }
 }
