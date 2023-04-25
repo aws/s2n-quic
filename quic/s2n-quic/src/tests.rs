@@ -692,6 +692,12 @@ fn increasing_pto_count_under_loss() {
     );
 }
 
+// TODO: https://github.com/aws/s2n-quic/issues/1726
+//
+// The rustls tls provider is used on windows and has different
+// build options than s2n-tls. We should build the rustls provider with
+// mTLS enabled and remove the below `cfg_attr(ignore)`.
+#[cfg_attr(any(target_os = "windows"), ignore)]
 #[test]
 fn mtls() {
     use crate::provider::tls::default as s2n_tls;
