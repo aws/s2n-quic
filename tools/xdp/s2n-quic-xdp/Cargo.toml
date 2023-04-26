@@ -3,11 +3,17 @@ name = "s2n-quic-xdp"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["tokio"]
+
 [dependencies]
 bitflags = "2"
 errno = "0.3"
 libc = "0.2"
 s2n-quic-core = { path = "../../../quic/s2n-quic-core", version = "0.19" }
+tokio = { version = "1", optional = true }
 
 [dev-dependencies]
 bolero = "0.9"
+rand = "0.8"
+tokio = { version = "1", features = ["full"] }

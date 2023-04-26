@@ -15,5 +15,7 @@ mod ring;
 mod socket;
 /// Helpers for making API calls to AF-XDP sockets
 mod syscall;
+/// A set of async tasks responsible for managing ring buffer and queue state
+mod task;
 /// A shared region of memory for holding frame (packet) data
 mod umem;

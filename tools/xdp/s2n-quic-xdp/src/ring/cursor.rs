@@ -123,6 +123,11 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         unsafe { &*self.consumer.as_ptr() }
     }
 
+    /// Returns the overall size of the ring
+    pub fn capacity(&self) -> u32 {
+        self.size
+    }
+
     /// Acquires a cursor index for a producer half
     ///
     /// The `watermark` can be provided to avoid synchronization by reusing the cached cursor
@@ -138,18 +143,18 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
             return free;
         }
 
-        let new_value = self.consumer().load(Ordering::Acquire);
+        let mut new_value = self.consumer().load(Ordering::Acquire);
+
+        // Our cached copy has the size added so we also need to add the size here when comparing
+        //
+        // See `Self::init_producer` for more details
+        new_value += self.size;
 
         if self.cached_consumer.0 == new_value {
             return free;
         }
 
         self.cached_consumer.0 = new_value;
-
-        unsafe {
-            // Safety: this is called on the producer side
-            self.init_producer();
-        }
 
         self.cached_len = self.cached_producer_len();
 
@@ -277,6 +282,12 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     #[inline]
     pub fn flags(&self) -> &RingFlags {
         unsafe { &*self.flags.as_ptr() }
+    }
+
+    /// Returns a reference to the flags on the ring
+    #[inline]
+    pub fn flags_mut(&mut self) -> &mut RingFlags {
+        unsafe { &mut *self.flags.as_ptr() }
     }
 
     /// Returns the current consumer entries

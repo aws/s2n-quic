@@ -292,3 +292,24 @@ pub struct UmemDescriptor {
     /// Offset into the umem where the packet starts
     pub address: u64,
 }
+
+impl UmemDescriptor {
+    /// Sets the length for the descriptor and converts it into a [`RxTxDescriptor`]
+    #[inline]
+    pub fn with_len(self, len: u32) -> RxTxDescriptor {
+        RxTxDescriptor {
+            address: self.address,
+            len,
+            options: 0,
+        }
+    }
+}
+
+impl From<RxTxDescriptor> for UmemDescriptor {
+    #[inline]
+    fn from(desc: RxTxDescriptor) -> Self {
+        Self {
+            address: desc.address,
+        }
+    }
+}

@@ -9,7 +9,7 @@ use std::{
 };
 
 /// A structure for reference counting an AF-XDP socket
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Fd(Arc<Inner>);
 
 impl fmt::Debug for Fd {
@@ -28,6 +28,20 @@ impl Fd {
         let fd = Arc::new(Inner(fd));
         Ok(Self(fd))
     }
+
+    pub fn attach_umem(&self, umem: &crate::umem::Umem) -> Result<()> {
+        umem.attach(self)?;
+        // TODO store the umem
+        Ok(())
+    }
+
+    /// Returns an invalid file descriptor
+    ///
+    /// This should only be used in tests to avoid creating an actual socket.
+    #[cfg(test)]
+    pub fn invalid() -> Self {
+        Self(Arc::new(Inner(-1)))
+    }
 }
 
 impl AsRawFd for Fd {
@@ -38,6 +52,7 @@ impl AsRawFd for Fd {
 }
 
 /// Wrap the RawFd in a structure that automatically closes the socket on drop
+#[derive(PartialEq, Eq)]
 struct Inner(RawFd);
 
 impl Drop for Inner {
