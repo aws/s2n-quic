@@ -6,10 +6,7 @@ use crate::{
     provider::{
         self,
         event::{
-            events::{
-                Frame, FrameReceived, FrameSent, MtuUpdated, MtuUpdatedCause, PacketSent,
-                RecoveryMetrics,
-            },
+            events::{MtuUpdated, MtuUpdatedCause, PacketSent, RecoveryMetrics},
             ConnectionInfo, ConnectionMeta, Subscriber,
         },
         io::testing::{rand, spawn, test, time::delay, Model},
@@ -18,6 +15,8 @@ use crate::{
     Client, Server,
 };
 use bytes::Bytes;
+#[cfg(not(target_os = "windows"))]
+use s2n_quic_core::event::api::HandshakeStatusUpdated;
 use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
 use s2n_quic_platform::io::testing::{network::Packet, primary, TxRecorder};
 use std::{
@@ -352,7 +351,6 @@ macro_rules! event_recorder {
 
 event_recorder!(PacketSentRecorder, PacketSent, on_packet_sent);
 event_recorder!(MtuUpdatedRecorder, MtuUpdated, on_mtu_updated);
-event_recorder!(FrameSentRecorder, FrameSent, on_frame_sent);
 event_recorder!(
     PathUpdatedRecorder,
     RecoveryMetrics,
@@ -374,14 +372,11 @@ event_recorder!(
         storage.push(event.pto_count);
     }
 );
+#[cfg(not(target_os = "windows"))]
 event_recorder!(
-    FrameReceivedRecorder,
-    FrameReceived,
-    on_frame_received,
-    Frame,
-    |event: &FrameReceived, storage: &mut Vec<Frame>| {
-        storage.push(event.frame.clone());
-    }
+    HandshakeStatusRecorder,
+    HandshakeStatusUpdated,
+    on_handshake_status_updated
 );
 
 #[test]
@@ -713,20 +708,20 @@ fn increasing_pto_count_under_loss() {
 #[cfg(not(target_os = "windows"))]
 #[test]
 fn mtls() {
-    use crate::provider::tls::default as s2n_tls;
+    use crate::provider::{event::events::HandshakeStatus, tls::default as s2n_tls};
 
     // Ensure connection is successful under different network conditions
     for delay_time in (500..=10_000).step_by(1000) {
-        for drop_percent in (0..=90).step_by(10) {
+        for drop_percent in (0..=100).step_by(10) {
             let delay_time = Duration::from_micros(delay_time);
 
             let model = Model::default();
             model.set_delay(delay_time);
             // Only the Server sends a HandshakeDone frame
-            let server_subscriber = FrameSentRecorder::new();
+            let server_subscriber = HandshakeStatusRecorder::new();
             let frame_sent = server_subscriber.events();
             // Only the Client receives a HandshakeDone frame
-            let client_subscriber = FrameReceivedRecorder::new();
+            let client_subscriber = HandshakeStatusRecorder::new();
             let frame_received = client_subscriber.events();
 
             test(model.clone(), |handle| {
@@ -737,9 +732,12 @@ fn mtls() {
                     model.set_delay(delay_time * 2);
 
                     // simulate network impairment
-                    let drop_rate = (drop_percent / 100).into();
+                    let drop_rate = drop_percent as f64 / 100.0;
                     model.set_drop_rate(drop_rate);
-                    model.set_corrupt_rate(drop_rate);
+
+                    // restore the network after some time
+                    model.set_delay(delay_time * 500);
+                    model.set_drop_rate(0.0);
                 });
 
                 let server_tls = s2n_tls::Server::builder()
@@ -793,11 +791,11 @@ fn mtls() {
             let frame_sent = frame_sent.lock().unwrap();
             let server_done = frame_sent
                 .iter()
-                .any(|x| matches!(x.frame, Frame::HandshakeDone { .. }));
+                .any(|x| matches!(x.status, HandshakeStatus::Confirmed { .. }));
             let frame_received = frame_received.lock().unwrap();
             let client_done = frame_received
                 .iter()
-                .any(|x| matches!(&x, Frame::HandshakeDone { .. }));
+                .any(|x| matches!(x.status, HandshakeStatus::Confirmed { .. }));
             assert!(server_done);
             assert!(client_done);
         }
