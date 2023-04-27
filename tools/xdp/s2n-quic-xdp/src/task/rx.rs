@@ -317,14 +317,12 @@ mod tests {
     use super::*;
     use crate::{
         if_xdp::UmemDescriptor,
-        task::testing::{random_delay, QUEUE_SIZE, TEST_ITEMS},
+        task::testing::{random_delay, QUEUE_SIZE_LARGE, QUEUE_SIZE_SMALL, TEST_ITEMS},
     };
     use rand::prelude::*;
     use tokio::sync::oneshot;
 
-    #[tokio::test]
-    async fn rx_test() {
-        let channel_size = QUEUE_SIZE;
+    async fn execute_test(channel_size: usize) {
         let expected_total = TEST_ITEMS as u64;
 
         let (rx_send, mut rx_recv) = spsc::channel(channel_size);
@@ -403,5 +401,15 @@ mod tests {
         let actual_total = done_recv.await.unwrap();
 
         assert_eq!(expected_total, actual_total);
+    }
+
+    #[tokio::test]
+    async fn rx_small_test() {
+        execute_test(QUEUE_SIZE_SMALL).await;
+    }
+
+    #[tokio::test]
+    async fn rx_large_test() {
+        execute_test(QUEUE_SIZE_LARGE).await;
     }
 }

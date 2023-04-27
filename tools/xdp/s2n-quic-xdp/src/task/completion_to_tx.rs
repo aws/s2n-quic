@@ -325,13 +325,12 @@ mod tests {
     use super::*;
     use crate::{
         if_xdp::UmemDescriptor,
-        task::testing::{random_delay, QUEUE_SIZE, TEST_ITEMS},
+        task::testing::{random_delay, QUEUE_SIZE_LARGE, QUEUE_SIZE_SMALL, TEST_ITEMS},
     };
     use rand::prelude::*;
     use tokio::sync::oneshot;
 
-    async fn execute_test(workers: usize, frame_size: u32) {
-        let channel_size = QUEUE_SIZE;
+    async fn execute_test(workers: usize, frame_size: u32, channel_size: usize) {
         let worker_total = TEST_ITEMS / workers;
         let expected_total = worker_total * workers;
 
@@ -440,17 +439,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn single_worker() {
-        execute_test(1, 4096).await;
+    async fn single_worker_small_test() {
+        execute_test(1, 4096, QUEUE_SIZE_SMALL).await;
     }
 
     #[tokio::test]
-    async fn multiple_worker_aligned() {
-        execute_test(4, 16).await;
+    async fn single_worker_large_test() {
+        execute_test(1, 4096, QUEUE_SIZE_LARGE).await;
     }
 
     #[tokio::test]
-    async fn multiple_worker_unaligned() {
-        execute_test(4, 17).await;
+    async fn multiple_worker_aligned_small_test() {
+        execute_test(4, 16, QUEUE_SIZE_SMALL).await;
+    }
+
+    #[tokio::test]
+    async fn multiple_worker_aligned_large_test() {
+        execute_test(4, 16, QUEUE_SIZE_LARGE).await;
+    }
+
+    #[tokio::test]
+    async fn multiple_worker_unaligned_small_test() {
+        execute_test(4, 17, QUEUE_SIZE_SMALL).await;
+    }
+
+    #[tokio::test]
+    async fn multiple_worker_unaligned_large_test() {
+        execute_test(4, 17, QUEUE_SIZE_LARGE).await;
     }
 }

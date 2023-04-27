@@ -190,13 +190,12 @@ mod tests {
     use super::*;
     use crate::{
         if_xdp::UmemDescriptor,
-        task::testing::{random_delay, QUEUE_SIZE, TEST_ITEMS},
+        task::testing::{random_delay, QUEUE_SIZE_LARGE, QUEUE_SIZE_SMALL, TEST_ITEMS},
     };
     use rand::prelude::*;
     use tokio::sync::oneshot;
 
-    async fn execute_test(workers: usize) {
-        let channel_size = QUEUE_SIZE;
+    async fn execute_test(workers: usize, channel_size: usize) {
         let worker_total = TEST_ITEMS / workers;
         let expected_total = worker_total * workers;
 
@@ -287,12 +286,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn single_worker() {
-        execute_test(1).await;
+    async fn single_worker_small_test() {
+        execute_test(1, QUEUE_SIZE_SMALL).await;
     }
 
     #[tokio::test]
-    async fn multiple_worker() {
-        execute_test(4).await;
+    async fn single_worker_large_test() {
+        execute_test(1, QUEUE_SIZE_LARGE).await;
+    }
+
+    #[tokio::test]
+    async fn multiple_worker_small_test() {
+        execute_test(4, QUEUE_SIZE_SMALL).await;
+    }
+
+    #[tokio::test]
+    async fn multiple_worker_large_test() {
+        execute_test(4, QUEUE_SIZE_LARGE).await;
     }
 }

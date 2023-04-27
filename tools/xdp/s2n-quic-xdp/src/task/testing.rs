@@ -21,4 +21,7 @@ pub const TEST_ITEMS: usize = 10_000;
 ///
 /// This value is purposefully low to more frequently trigger corner cases of
 /// queues wrapping and/or getting full.
-pub const QUEUE_SIZE: usize = 16;
+pub const QUEUE_SIZE_SMALL: usize = 16;
+
+/// Production queues are unlikely to be larger than this value
+pub const QUEUE_SIZE_LARGE: usize = 4096;

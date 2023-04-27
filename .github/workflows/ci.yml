@@ -666,6 +666,9 @@ jobs:
 
   kani:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate: [quic/s2n-quic-core, tools/xdp/s2n-quic-xdp]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -674,7 +677,7 @@ jobs:
       - name: Kani run
         uses: model-checking/kani-github-action@v0.26
         with:
-          working-directory: quic/s2n-quic-core
+          working-directory: ${{ matrix.crate }}
           args: --tests
 
   dhat:
