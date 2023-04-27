@@ -108,7 +108,9 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         // See
         // https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L99-L104
         self.cached_consumer += self.size;
-        self.cached_len = self.cached_producer_len()
+        self.cached_len = self.cached_producer_len();
+
+        debug_assert!(self.cached_len <= self.size);
     }
 
     /// Returns a reference to the producer atomic cursor
@@ -148,7 +150,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         // Our cached copy has the size added so we also need to add the size here when comparing
         //
         // See `Self::init_producer` for more details
-        new_value += self.size;
+        new_value = new_value.wrapping_add(self.size);
 
         if self.cached_consumer.0 == new_value {
             return free;
@@ -157,6 +159,8 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         self.cached_consumer.0 = new_value;
 
         self.cached_len = self.cached_producer_len();
+
+        debug_assert!(self.cached_len <= self.size);
 
         self.cached_len
     }
@@ -199,6 +203,9 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         }
         self.cached_producer += len;
         self.cached_len -= len;
+
+        debug_assert!(self.cached_len <= self.size);
+
         self.producer().fetch_add(len, Ordering::Release);
     }
 
@@ -225,6 +232,8 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         self.cached_producer.0 = new_value;
 
         self.cached_len = self.cached_consumer_len();
+
+        debug_assert!(self.cached_len <= self.size);
 
         self.cached_len
     }
@@ -267,6 +276,9 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         }
         self.cached_consumer += len;
         self.cached_len -= len;
+
+        debug_assert!(self.cached_len <= self.size);
+
         self.consumer().fetch_add(len, Ordering::Release);
     }
 
@@ -420,26 +432,28 @@ mod tests {
         }
     }
 
-    fn model(power_of_two: u8, ops: &[Op]) {
-        let size = 1 << power_of_two;
+    fn stack_cursors<T, F, R>(init_cursor: u32, desc: &mut [T], exec: F) -> R
+    where
+        T: fmt::Debug + Copy,
+        F: FnOnce(&mut Cursor<T>, &mut Cursor<T>) -> R,
+    {
+        let size = desc.len() as u32;
+        debug_assert!(size.is_power_of_two());
         let mask = size - 1;
-        let producer_v = UnsafeCell::new(AtomicU32::new(0));
-        let consumer_v = UnsafeCell::new(AtomicU32::new(0));
-        let desc = UnsafeCell::new(vec![u32::MAX; size as usize]);
+        let producer_v = UnsafeCell::new(AtomicU32::new(init_cursor));
+        let consumer_v = UnsafeCell::new(AtomicU32::new(init_cursor));
+        let desc = UnsafeCell::new(desc);
 
         let producer_v = producer_v.get();
         let consumer_v = consumer_v.get();
-        let desc = unsafe { (&mut *desc.get()).as_mut_ptr() as *mut _ };
+        let desc = unsafe { (*desc.get()).as_mut_ptr() as *mut _ };
 
-        let mut oracle = Oracle {
-            size,
-            producer: size,
-            ..Default::default()
-        };
+        let cached_consumer = Wrapping(init_cursor);
+        let cached_producer = Wrapping(init_cursor);
 
-        let mut producer: Cursor<u32> = Cursor {
-            cached_consumer: Wrapping(0),
-            cached_producer: Wrapping(0),
+        let mut producer: Cursor<T> = Cursor {
+            cached_consumer,
+            cached_producer,
             cached_len: 0,
             size,
             producer: NonNull::new(producer_v).unwrap(),
@@ -454,9 +468,11 @@ mod tests {
             producer.init_producer();
         }
 
-        let mut consumer: Cursor<u32> = Cursor {
-            cached_consumer: Wrapping(0),
-            cached_producer: Wrapping(0),
+        assert_eq!(producer.acquire_producer(u32::MAX), size);
+
+        let mut consumer: Cursor<T> = Cursor {
+            cached_consumer,
+            cached_producer,
             cached_len: 0,
             size,
             producer: NonNull::new(producer_v).unwrap(),
@@ -469,42 +485,70 @@ mod tests {
 
         assert_eq!(consumer.acquire_consumer(u32::MAX), 0);
 
-        for op in ops.iter().copied() {
-            oracle.fill_producer(unsafe { producer.producer_data() });
-
-            match op {
-                Op::ConsumerAcquire(count) => {
-                    let actual = consumer.acquire_consumer(count as _);
-                    oracle.acquire_consumer(actual);
-                }
-                Op::ConsumerRelease(count) => {
-                    let oracle_count = oracle.release_consumer(count);
-                    consumer.release_consumer(oracle_count);
-                }
-                Op::ProducerAcquire(count) => {
-                    let actual = producer.acquire_producer(count as _);
-                    oracle.acquire_producer(actual);
-                }
-                Op::ProducerRelease(count) => {
-                    let oracle_count = oracle.release_producer(count);
-                    producer.release_producer(oracle_count);
-                }
-            }
-
-            oracle.validate_consumer(unsafe { consumer.consumer_data() });
-        }
-
-        // final assertions
-        let actual = consumer.acquire_consumer(u32::MAX);
-        oracle.acquire_consumer(actual);
-        let data = unsafe { consumer.consumer_data() };
-        oracle.validate_consumer(data);
+        exec(&mut producer, &mut consumer)
     }
 
+    fn model(power_of_two: u8, init_cursor: u32, ops: &[Op]) {
+        let size = (1 << power_of_two) as u32;
+
+        #[cfg(not(kani))]
+        let mut desc = vec![u32::MAX; size as usize];
+
+        #[cfg(kani)]
+        let mut desc = &mut [u32::MAX; (1 << MAX_POWER_OF_TWO) as usize][..size as usize];
+
+        stack_cursors(init_cursor, &mut desc, |producer, consumer| {
+            let mut oracle = Oracle {
+                size,
+                producer: size,
+                ..Default::default()
+            };
+
+            for op in ops.iter().copied() {
+                oracle.fill_producer(unsafe { producer.producer_data() });
+
+                match op {
+                    Op::ConsumerAcquire(count) => {
+                        let actual = consumer.acquire_consumer(count as _);
+                        oracle.acquire_consumer(actual);
+                    }
+                    Op::ConsumerRelease(count) => {
+                        let oracle_count = oracle.release_consumer(count);
+                        consumer.release_consumer(oracle_count);
+                    }
+                    Op::ProducerAcquire(count) => {
+                        let actual = producer.acquire_producer(count as _);
+                        oracle.acquire_producer(actual);
+                    }
+                    Op::ProducerRelease(count) => {
+                        let oracle_count = oracle.release_producer(count);
+                        producer.release_producer(oracle_count);
+                    }
+                }
+
+                oracle.validate_consumer(unsafe { consumer.consumer_data() });
+            }
+
+            // final assertions
+            let actual = consumer.acquire_consumer(u32::MAX);
+            oracle.acquire_consumer(actual);
+            let data = unsafe { consumer.consumer_data() };
+            oracle.validate_consumer(data);
+        });
+    }
+
+    #[cfg(not(kani))]
+    type Ops = Vec<Op>;
+    #[cfg(kani)]
+    type Ops = s2n_quic_core::testing::InlineVec<Op, 4>;
+
+    const MAX_POWER_OF_TWO: u8 = if cfg!(kani) { 2 } else { 10 };
+
     #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
     fn oracle_test() {
         check!()
-            .with_generator((1..=10, gen::<Vec<Op>>()))
-            .for_each(|(power_of_two, ops)| model(*power_of_two, ops));
+            .with_generator((1..=MAX_POWER_OF_TWO, gen(), gen::<Ops>()))
+            .for_each(|(power_of_two, init_cursor, ops)| model(*power_of_two, *init_cursor, ops));
     }
 }
