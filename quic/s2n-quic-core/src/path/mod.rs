@@ -251,6 +251,11 @@ impl Handle for Tuple {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MaxMtu(NonZeroU16);
 
+impl MaxMtu {
+    /// The minimum value required for path MTU
+    pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+}
+
 impl Default for MaxMtu {
     fn default() -> Self {
         DEFAULT_MAX_MTU
