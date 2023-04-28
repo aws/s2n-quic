@@ -710,6 +710,11 @@ fn increasing_pto_count_under_loss() {
 fn mtls() {
     use crate::provider::{event::events::HandshakeStatus, tls::default as s2n_tls};
 
+    let max_handshake_duration = Duration::from_secs(5);
+    let limits = provider::limits::Limits::default()
+        .with_max_handshake_duration(max_handshake_duration)
+        .unwrap();
+
     // Ensure connection is successful under different network conditions
     for delay_time in (500..=10_000).step_by(1000) {
         for drop_percent in (0..=100).step_by(10) {
@@ -717,26 +722,25 @@ fn mtls() {
 
             let model = Model::default();
             model.set_delay(delay_time);
-            // Only the Server sends a HandshakeDone frame
             let server_subscriber = HandshakeStatusRecorder::new();
-            let frame_sent = server_subscriber.events();
-            // Only the Client receives a HandshakeDone frame
+            let server_status = server_subscriber.events();
             let client_subscriber = HandshakeStatusRecorder::new();
-            let frame_received = client_subscriber.events();
+            let client_status = client_subscriber.events();
 
             test(model.clone(), |handle| {
                 spawn(async move {
                     // allow for 1 RTT worth of data before impairing the connection.
                     // Both the Client and Server have received initial packets at
                     // this point.
-                    model.set_delay(delay_time * 2);
+                    delay(delay_time * 2).await;
 
                     // simulate network impairment
                     let drop_rate = drop_percent as f64 / 100.0;
                     model.set_drop_rate(drop_rate);
 
-                    // restore the network after some time
-                    model.set_delay(delay_time * 500);
+                    // restore the network after approximately half the max handshake
+                    // timeout to allow the handshake to succeed
+                    delay(max_handshake_duration / 2).await;
                     model.set_drop_rate(0.0);
                 });
 
@@ -752,14 +756,14 @@ fn mtls() {
                 let mut server = Server::builder()
                     .with_io(handle.builder().build()?)?
                     .with_tls(server_tls)?
+                    .with_limits(limits)?
                     .with_event(server_subscriber)?
                     .start()?;
 
                 let addr = server.local_addr()?;
                 spawn(async move {
-                    if let Some(conn) = server.accept().await {
+                    if let Some(_conn) = server.accept().await {
                         delay(Duration::from_secs(10)).await;
-                        let _ = conn;
                     }
                 });
 
@@ -773,27 +777,27 @@ fn mtls() {
                 let client = Client::builder()
                     .with_io(handle.builder().build().unwrap())?
                     .with_tls(client_tls)?
+                    .with_limits(limits)?
                     .with_event(client_subscriber)?
                     .start()?;
 
                 primary::spawn(async move {
                     let connect = Connect::new(addr).with_server_name("localhost");
-                    let conn = client.connect(connect).await.unwrap();
-
+                    let _conn = client.connect(connect).await.unwrap();
                     delay(Duration::from_secs(10)).await;
-                    let _ = conn;
                 });
 
                 Ok(addr)
             })
             .unwrap();
 
-            let frame_sent = frame_sent.lock().unwrap();
-            let server_done = frame_sent
+            // assert handshake completed for both the sever and client
+            let server_status = server_status.lock().unwrap();
+            let server_done = server_status
                 .iter()
                 .any(|x| matches!(x.status, HandshakeStatus::Confirmed { .. }));
-            let frame_received = frame_received.lock().unwrap();
-            let client_done = frame_received
+            let client_status = client_status.lock().unwrap();
+            let client_done = client_status
                 .iter()
                 .any(|x| matches!(x.status, HandshakeStatus::Confirmed { .. }));
             assert!(server_done);

@@ -33,6 +33,7 @@ impl s2n_quic_core::time::Clock for Clock {
     }
 }
 
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Timer {
     timer: scheduler::Timer,
     deadline: Option<Timestamp>,
