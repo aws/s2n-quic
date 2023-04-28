@@ -20,7 +20,7 @@ use s2n_quic_core::{
     frame::{stream::Stream as StreamFrame, Frame, ResetStream, StreamDataBlocked},
     packet::number::{PacketNumber, PacketNumberSpace},
     stream::{ops, StreamError, StreamId, StreamType},
-    time::Timestamp,
+    time::{clock::testing as time, Timestamp},
     transport,
     varint::VarInt,
 };
@@ -560,7 +560,7 @@ pub fn setup_stream_test_env_with_config(config: TestEnvironmentConfig) -> TestE
         tx_connection_flow_controller,
         wake_counter,
         waker,
-        current_time: s2n_quic_platform::time::now(),
+        current_time: time::now(),
         transmission_constraint: config.transmission_constraint,
         endpoint: config.local_endpoint_type,
     }

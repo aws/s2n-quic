@@ -7,7 +7,7 @@ use core::{
     task::{Context, Poll},
     time::Duration,
 };
-use s2n_quic_core::time::{self, Clock as ClockTrait, Timestamp};
+use s2n_quic_core::time::{self, Timestamp};
 use tokio::time::{sleep_until, Instant, Sleep};
 
 #[derive(Clone, Debug)]
@@ -23,19 +23,25 @@ impl Clock {
     pub fn new() -> Self {
         Self(Instant::now())
     }
-
-    pub fn timer(&self) -> Timer {
-        Timer::new(self.clone())
-    }
 }
 
-impl ClockTrait for Clock {
+impl time::Clock for Clock {
+    #[inline]
     fn get_time(&self) -> time::Timestamp {
         let duration = self.0.elapsed();
         unsafe {
             // Safety: time duration is only derived from a single `Instant`
             time::Timestamp::from_duration(duration)
         }
+    }
+}
+
+impl time::ClockWithTimer for Clock {
+    type Timer = Timer;
+
+    #[inline]
+    fn timer(&self) -> Timer {
+        Timer::new(self.clone())
     }
 }
 
@@ -63,9 +69,28 @@ impl Timer {
             sleep,
         }
     }
+}
 
-    /// Modifies the target expiration timestamp for the timer
-    pub fn update(&mut self, timestamp: Timestamp) {
+impl time::clock::Timer for Timer {
+    #[inline]
+    fn poll_ready(&mut self, cx: &mut Context) -> Poll<()> {
+        // Only poll the inner timer if we have a target set
+        if self.target.is_none() {
+            return Poll::Pending;
+        }
+
+        let res = self.sleep.as_mut().poll(cx);
+
+        if res.is_ready() {
+            // clear the target after it fires, otherwise we'll endlessly wake up the task
+            self.target = None;
+        }
+
+        res
+    }
+
+    #[inline]
+    fn update(&mut self, timestamp: Timestamp) {
         let delay = unsafe {
             // Safety: the same clock epoch is being used
             timestamp.as_duration()
@@ -85,25 +110,5 @@ impl Timer {
         // if the clock has changed let the sleep future know
         self.sleep.as_mut().reset(next_time);
         self.target = Some(next_time);
-    }
-}
-
-impl Future for Timer {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // Only poll the inner timer if we have a target set
-        if self.target.is_none() {
-            return Poll::Pending;
-        }
-
-        let res = self.sleep.as_mut().poll(cx);
-
-        if res.is_ready() {
-            // clear the target after it fires, otherwise we'll endlessly wake up the task
-            self.target = None;
-        }
-
-        res
     }
 }

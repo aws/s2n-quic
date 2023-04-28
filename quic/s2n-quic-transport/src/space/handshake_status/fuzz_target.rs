@@ -8,8 +8,7 @@ use crate::{
     transmission::{self, interest::Provider},
 };
 use bolero::{check, generator::*};
-use s2n_quic_core::{ack, event::testing::Publisher, packet};
-use s2n_quic_platform::time;
+use s2n_quic_core::{ack, event::testing::Publisher, packet, time::clock::testing as time};
 
 #[derive(Debug)]
 struct Oracle {

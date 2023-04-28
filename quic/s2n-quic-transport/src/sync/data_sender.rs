@@ -541,7 +541,7 @@ mod tests {
         transmission::{self, interest::Provider as _},
     };
     use bolero::{check, generator::*};
-    use s2n_quic_core::{endpoint, frame, stream::testing as stream};
+    use s2n_quic_core::{endpoint, frame, stream::testing as stream, time::clock::testing as time};
     use std::collections::HashSet;
 
     #[derive(Clone, Copy, Debug, TypeGenerator)]
@@ -588,7 +588,7 @@ mod tests {
         let mut total_len = 0;
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut context = MockWriteContext {
-            current_time: s2n_quic_platform::time::now(),
+            current_time: time::now(),
             frame_buffer: &mut frame_buffer,
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,

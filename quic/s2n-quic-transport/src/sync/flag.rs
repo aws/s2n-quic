@@ -185,8 +185,7 @@ impl Writer for PingWriter {
 mod tests {
     use super::*;
     use crate::{contexts::testing::*, transmission::interest::Provider};
-    use s2n_quic_core::endpoint;
-    use s2n_quic_platform::time;
+    use s2n_quic_core::{endpoint, time::clock::testing as time};
 
     #[test]
     fn ping_test() {

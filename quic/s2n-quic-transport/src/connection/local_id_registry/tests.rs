@@ -8,7 +8,7 @@ use s2n_quic_core::{
     packet::number::PacketNumberRange,
     random,
     stateless_reset::token::testing::*,
-    time::timer::Provider as _,
+    time::{clock::testing as time, timer::Provider as _},
     varint::VarInt,
 };
 
@@ -68,7 +68,7 @@ fn minimum_lifetime() {
     let ext_id_1 = id(b"id01");
     let ext_id_2 = id(b"id02");
 
-    let expiration = s2n_quic_platform::time::now() + MIN_LIFETIME;
+    let expiration = time::now() + MIN_LIFETIME;
 
     let (_mapper, mut reg1) = mapper(ext_id_1, Some(expiration), TEST_TOKEN_1);
     reg1.set_active_connection_id_limit(3);
@@ -144,7 +144,7 @@ fn connection_mapper_test() {
     let ext_id_3 = id(b"id03");
     let ext_id_4 = id(b"id04");
 
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let handshake_id_expiration_time = now + Duration::from_secs(60);
 
     let mut reg1 = mapper.create_local_id_registry(
@@ -240,7 +240,7 @@ fn on_retire_connection_id() {
     let ext_id_1 = id(b"id01");
     let ext_id_2 = id(b"id02");
 
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let (mapper, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
 
     reg1.set_active_connection_id_limit(2);
@@ -321,7 +321,7 @@ fn on_retire_connection_id_pending_removal() {
     let ext_id_1 = id(b"id01");
     let ext_id_2 = id(b"id02");
 
-    let now = s2n_quic_platform::time::now() + Duration::from_secs(60);
+    let now = time::now() + Duration::from_secs(60);
 
     let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
     reg1.set_active_connection_id_limit(2);
@@ -460,7 +460,7 @@ fn endpoint_may_exceed_limit_temporarily() {
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
 
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
 
     let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
     reg1.set_active_connection_id_limit(2);
@@ -510,7 +510,7 @@ fn on_transmit() {
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
 
-    let now = s2n_quic_platform::time::now() + Duration::from_secs(60);
+    let now = time::now() + Duration::from_secs(60);
 
     let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
 
@@ -532,7 +532,7 @@ fn on_transmit() {
 
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -627,7 +627,7 @@ fn on_transmit_constrained() {
 
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::RetransmissionOnly,
         transmission::Mode::Normal,
@@ -684,7 +684,7 @@ fn on_packet_ack_and_loss() {
 
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -732,7 +732,7 @@ fn timers() {
     // No timer set for the handshake connection ID
     assert_eq!(0, reg1.armed_timer_count());
 
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let expiration = now + Duration::from_secs(60);
 
     assert!(reg1
@@ -774,7 +774,7 @@ fn on_timeout() {
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
 
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let handshake_expiration = now + Duration::from_secs(60);
 
     let (_, mut reg1) = mapper(ext_id_1, Some(handshake_expiration), TEST_TOKEN_1);
@@ -840,7 +840,7 @@ fn retire_handshake_connection_id() {
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
 
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let handshake_expiration = now + Duration::from_secs(60);
     let (_, mut reg1) = mapper(ext_id_1, Some(handshake_expiration), TEST_TOKEN_1);
 

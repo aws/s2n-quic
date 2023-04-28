@@ -9,6 +9,7 @@ use s2n_quic_core::{
     event::{self, EndpointPublisher as _},
     inet::SocketAddress,
     path::MaxMtu,
+    time::clock::Timer as _,
 };
 
 type Error = std::io::Error;
@@ -301,12 +302,14 @@ impl<E: Endpoint<PathHandle = network::PathHandle>> Instance<E> {
             let mut wakeups = endpoint.wakeups(&clock);
             let mut wakeups = Pin::new(&mut wakeups);
 
+            let timer_ready = timer.ready();
+
             let select::Outcome {
                 rx_result,
                 tx_result,
                 timeout_expired,
                 application_wakeup,
-            } = if let Ok(res) = Select::new(io_task, empty_task, &mut wakeups, &mut timer).await {
+            } = if let Ok(res) = Select::new(io_task, empty_task, &mut wakeups, timer_ready).await {
                 res
             } else {
                 // The endpoint has shut down

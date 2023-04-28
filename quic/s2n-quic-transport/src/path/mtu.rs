@@ -467,11 +467,14 @@ mod test {
     use super::*;
     use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
     use s2n_quic_core::{
-        endpoint, event::testing::Publisher, frame::Frame, packet::number::PacketNumberSpace,
+        endpoint,
+        event::testing::Publisher,
+        frame::Frame,
+        packet::number::PacketNumberSpace,
         recovery::congestion_controller::testing::mock::CongestionController,
-        time::timer::Provider as _, varint::VarInt,
+        time::{clock::testing::now, timer::Provider as _},
+        varint::VarInt,
     };
-    use s2n_quic_platform::time::now;
     use std::{convert::TryInto, net::SocketAddr};
 
     /// Creates a new mtu::Controller with an IPv4 address and the given `max_mtu`
