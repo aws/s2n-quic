@@ -10,9 +10,12 @@ use aya_bpf::{
     maps::HashMap,
     programs::XdpContext,
 };
-use s2n_quic_core::xdp::{
-    bpf::DecoderBufferMut,
-    decoder::{decode_packet_validator, Validator},
+use s2n_quic_core::{
+    inet::udp,
+    xdp::{
+        bpf::DecoderBufferMut,
+        decoder::{self, EventHandler},
+    },
 };
 
 mod xskmap;
@@ -50,8 +53,8 @@ fn handle_packet(ctx: &XdpContext) -> u32 {
         // Safety: start and end come from the caller and have been validated
         DecoderBufferMut::new(start, end)
     };
-    match decode_packet_validator(buffer, &PortValidator) {
-        Ok(Some((_tuple, payload))) => {
+    match Validator.decode_packet(buffer) {
+        Ok(Some(payload)) => {
             // if the payload is empty there isn't much we can do with it
             if payload.is_empty() {
                 return xdp_action::XDP_DROP;
@@ -67,13 +70,17 @@ fn handle_packet(ctx: &XdpContext) -> u32 {
     }
 }
 
-struct PortValidator;
+struct Validator;
 
-impl Validator for PortValidator {
+impl EventHandler for Validator {
     #[inline(always)]
-    fn validate_local_port(&self, port: u16) -> bool {
+    fn on_udp_header(&mut self, header: &udp::Header) -> decoder::Result {
         // Make sure the port is in the port map. Otherwise, forward the packet to the OS.
-        PORTS.get_ptr(&port).is_some()
+        if PORTS.get_ptr(&header.destination().get()).is_some() {
+            Ok(Some(()))
+        } else {
+            Ok(None)
+        }
     }
 }
 

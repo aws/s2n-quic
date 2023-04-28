@@ -406,14 +406,15 @@ mod tests {
                 return;
             }
 
-            let (mut path, payload) =
+            let (mut header, payload) =
                 crate::xdp::decoder::decode_packet(DecoderBufferMut::new(&mut buffer))
                     .unwrap()
                     .unwrap();
 
-            path.swap();
+            header.path.swap();
 
-            assert!(Handle::eq(&path, &message.path));
+            assert!(Handle::eq(&header.path, &message.path));
+            assert_eq!(header.ecn, message.ecn);
             assert_eq!(payload.into_less_safe_slice(), &message.payload);
         });
     }
