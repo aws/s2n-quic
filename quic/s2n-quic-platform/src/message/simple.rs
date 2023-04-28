@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use core::pin::Pin;
 use s2n_quic_core::{
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
-    io::{rx, tx},
+    io::tx,
     path::{self, Handle as _},
 };
 
@@ -78,6 +78,45 @@ impl MessageTrait for Message {
         debug_assert_eq!(self.payload_ptr, other.payload_ptr);
         self.address = other.address;
         self.payload_len = other.payload_len;
+    }
+
+    #[inline]
+    fn rx_read(
+        &mut self,
+        local_address: &path::LocalAddress,
+    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+        let path = path::Tuple {
+            remote_address: self.address.into(),
+            local_address: *local_address,
+        };
+        let header = datagram::Header {
+            path,
+            ecn: self.ecn(),
+        };
+        let payload = self.payload_mut();
+        Some((header, payload))
+    }
+
+    #[inline]
+    fn tx_write<M: tx::Message<Handle = Self::Handle>>(
+        &mut self,
+        mut message: M,
+    ) -> Result<usize, tx::Error> {
+        let payload = self.payload_mut();
+
+        let len = message.write_payload(tx::PayloadBuffer::new(payload), 0)?;
+
+        unsafe {
+            debug_assert!(len <= payload.len());
+            let len = len.min(payload.len());
+            self.set_payload_len(len);
+        }
+
+        let remote_address = message.path_handle().remote_address;
+
+        self.set_remote_address(&remote_address);
+
+        Ok(len)
     }
 }
 
@@ -169,61 +208,5 @@ impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
     #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Message] {
         &mut self.messages[..]
-    }
-}
-
-impl tx::Entry for Message {
-    type Handle = Handle;
-
-    fn set<M: tx::Message<Handle = Self::Handle>>(
-        &mut self,
-        mut message: M,
-    ) -> Result<usize, tx::Error> {
-        let payload = MessageTrait::payload_mut(self);
-
-        let len = message.write_payload(tx::PayloadBuffer::new(payload), 0)?;
-
-        unsafe {
-            debug_assert!(len <= payload.len());
-            let len = len.min(payload.len());
-            self.set_payload_len(len);
-        }
-
-        let remote_address = message.path_handle().remote_address;
-
-        self.set_remote_address(&remote_address);
-
-        Ok(len)
-    }
-
-    #[inline]
-    fn payload(&self) -> &[u8] {
-        MessageTrait::payload(self)
-    }
-
-    #[inline]
-    fn payload_mut(&mut self) -> &mut [u8] {
-        MessageTrait::payload_mut(self)
-    }
-}
-
-impl rx::Entry for Message {
-    type Handle = Handle;
-
-    #[inline]
-    fn read(
-        &mut self,
-        local_address: &path::LocalAddress,
-    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let mut header = datagram::Header {
-            path: self.path_handle()?,
-            ecn: self.ecn(),
-        };
-
-        // set the correct local address
-        header.path.local_address = *local_address;
-
-        let payload = self.payload_mut();
-        Some((header, payload))
     }
 }

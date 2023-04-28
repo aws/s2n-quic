@@ -14,7 +14,7 @@ use s2n_quic_core::{
         datagram, AncillaryData, ExplicitCongestionNotification, IpV4Address, IpV6Address,
         SocketAddress, SocketAddressV4, SocketAddressV6,
     },
-    io::{rx, tx},
+    io::tx,
     path::{self, Handle as _, LocalAddress, RemoteAddress},
 };
 
@@ -363,6 +363,46 @@ impl MessageTrait for msghdr {
             iovec.iov_base as *mut _
         }
     }
+
+    #[inline]
+    fn rx_read(
+        &mut self,
+        local_address: &path::LocalAddress,
+    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+        let mut header = Message::header(self)?;
+
+        // only copy the port if we are told the IP address
+        if cfg!(s2n_quic_platform_pktinfo) {
+            header.path.local_address.set_port(local_address.port());
+        } else {
+            header.path.local_address = *local_address;
+        }
+
+        let payload = self.payload_mut();
+        Some((header, payload))
+    }
+
+    #[inline]
+    fn tx_write<M: tx::Message<Handle = Self::Handle>>(
+        &mut self,
+        mut message: M,
+    ) -> Result<usize, tx::Error> {
+        let payload = self.payload_mut();
+
+        let len = message.write_payload(tx::PayloadBuffer::new(payload), 0)?;
+
+        unsafe {
+            debug_assert!(len <= payload.len());
+            let len = len.min(payload.len());
+            self.set_payload_len(len);
+        }
+
+        let handle = *message.path_handle();
+        handle.update_msg_hdr(self);
+        self.set_ecn(message.ecn(), &handle.remote_address.0);
+
+        Ok(len)
+    }
 }
 
 pub struct Ring<Payloads> {
@@ -516,64 +556,6 @@ impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
     #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Message] {
         &mut self.messages[..]
-    }
-}
-
-impl tx::Entry for Message {
-    type Handle = Handle;
-
-    #[inline]
-    fn set<M: tx::Message<Handle = Self::Handle>>(
-        &mut self,
-        mut message: M,
-    ) -> Result<usize, tx::Error> {
-        let payload = MessageTrait::payload_mut(self);
-
-        let len = message.write_payload(tx::PayloadBuffer::new(payload), 0)?;
-
-        unsafe {
-            debug_assert!(len <= payload.len());
-            let len = len.min(payload.len());
-            self.set_payload_len(len);
-        }
-
-        let handle = *message.path_handle();
-        handle.update_msg_hdr(&mut self.0);
-        self.set_ecn(message.ecn(), &handle.remote_address.0);
-
-        Ok(len)
-    }
-
-    #[inline]
-    fn payload(&self) -> &[u8] {
-        MessageTrait::payload(self)
-    }
-
-    #[inline]
-    fn payload_mut(&mut self) -> &mut [u8] {
-        MessageTrait::payload_mut(self)
-    }
-}
-
-impl rx::Entry for Message {
-    type Handle = Handle;
-
-    #[inline]
-    fn read(
-        &mut self,
-        local_address: &path::LocalAddress,
-    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let mut header = Self::header(&self.0)?;
-
-        // only copy the port if we are told the IP address
-        if cfg!(s2n_quic_platform_pktinfo) {
-            header.path.local_address.set_port(local_address.port());
-        } else {
-            header.path.local_address = *local_address;
-        }
-
-        let payload = self.payload_mut();
-        Some((header, payload))
     }
 }
 

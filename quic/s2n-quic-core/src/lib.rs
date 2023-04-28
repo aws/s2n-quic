@@ -30,6 +30,25 @@ macro_rules! assume {
     };
 }
 
+/// Implements a future that wraps `T::poll_ready` and yields after ready
+macro_rules! impl_ready_future {
+    ($name:ident, $fut:ident, $output:ty) => {
+        pub struct $fut<'a, T>(&'a mut T);
+
+        impl<'a, T: $name> core::future::Future for $fut<'a, T> {
+            type Output = $output;
+
+            #[inline]
+            fn poll(
+                mut self: core::pin::Pin<&mut Self>,
+                cx: &mut core::task::Context,
+            ) -> core::task::Poll<Self::Output> {
+                self.0.poll_ready(cx)
+            }
+        }
+    };
+}
+
 pub mod ack;
 pub mod application;
 #[cfg(feature = "alloc")]

@@ -1,12 +1,39 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{inet::ExplicitCongestionNotification, path};
-use core::time::Duration;
+use crate::{event, inet::ExplicitCongestionNotification, path};
+use core::{
+    task::{Context, Poll},
+    time::Duration,
+};
+
+pub trait Tx: Sized {
+    type PathHandle;
+    // TODO make this generic over lifetime
+    // See https://github.com/aws/s2n-quic/issues/1742
+    type Queue: Queue<Handle = Self::PathHandle>;
+    type Error;
+
+    /// Returns a future that yields after a packet is ready to be transmitted
+    #[inline]
+    fn ready(&mut self) -> TxReady<Self> {
+        TxReady(self)
+    }
+
+    /// Polls the IO provider for capacity to send a packet
+    fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>>;
+
+    /// Calls the provided callback with the IO provider queue
+    fn queue<F: FnOnce(&mut Self::Queue)>(&mut self, f: F);
+
+    /// Handles the queue error and potentially publishes an event
+    fn handle_error<E: event::EndpointPublisher>(self, error: Self::Error, event: &mut E);
+}
+
+impl_ready_future!(Tx, TxReady, Result<(), T::Error>);
 
 /// A structure capable of queueing and transmitting messages
 pub trait Queue {
-    type Entry: Entry<Handle = Self::Handle>;
     type Handle: path::Handle;
 
     /// Set to true if the queue supports setting ECN markings
@@ -24,23 +51,12 @@ pub trait Queue {
     /// performed, e.g. encryption.
     fn push<M: Message<Handle = Self::Handle>>(&mut self, message: M) -> Result<Outcome, Error>;
 
-    /// Returns the pending messages as a mutable slice
-    fn as_slice_mut(&mut self) -> &mut [Self::Entry];
-
     /// Returns the number of remaining datagrams that can be transmitted
     fn capacity(&self) -> usize;
 
     /// Returns `true` if the queue will accept additional transmissions
     fn has_capacity(&self) -> bool {
         self.capacity() != 0
-    }
-
-    /// Returns the number of pending datagrams to be transmitted
-    fn len(&self) -> usize;
-
-    /// Returns `true` if there are no pending datagrams to be transmitted
-    fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 }
 
@@ -59,20 +75,6 @@ pub enum Error {
 
     /// The transmission queue is at capacity
     AtCapacity,
-}
-
-/// An entry in a Tx queue
-pub trait Entry {
-    type Handle: path::Handle;
-
-    /// Sets the message for the given entry
-    fn set<M: Message<Handle = Self::Handle>>(&mut self, message: M) -> Result<usize, Error>;
-
-    /// Returns the transmission payload as a slice of bytes
-    fn payload(&self) -> &[u8];
-
-    /// Returns the transmission payload as a mutable slice of bytes
-    fn payload_mut(&mut self) -> &mut [u8];
 }
 
 /// Abstraction over a message to be sent on a socket

@@ -18,7 +18,7 @@ pub mod simple;
 
 use core::ffi::c_void;
 use s2n_quic_core::{
-    inet::{ExplicitCongestionNotification, SocketAddress},
+    inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::tx,
     path,
 };
@@ -99,6 +99,18 @@ pub trait Message {
     fn as_mut_ptr(&mut self) -> *mut c_void {
         self as *mut _ as *mut _
     }
+
+    /// Reads the message as an RX packet
+    fn rx_read(
+        &mut self,
+        local_address: &path::LocalAddress,
+    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])>;
+
+    /// Writes the message into the TX packet
+    fn tx_write<M: tx::Message<Handle = Self::Handle>>(
+        &mut self,
+        message: M,
+    ) -> Result<usize, tx::Error>;
 }
 
 /// A message ring used to back a queue
