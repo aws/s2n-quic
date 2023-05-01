@@ -16,7 +16,7 @@ std = ["s2n-quic-core/std", "socket2", "lazy_static"]
 testing = ["std", "generator", "futures/std", "io-testing"] # Testing allows to overwrite the system time
 io-testing = ["bach"]
 generator = ["bolero-generator", "s2n-quic-core/generator"]
-tokio-runtime = ["futures", "pin-project", "tokio"]
+tokio-runtime = ["futures", "tokio"]
 
 [dependencies]
 bach = { version = "0.0.6", optional = true }
@@ -25,7 +25,6 @@ cfg-if = "1"
 errno = "0.3"
 futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 lazy_static = { version = "1", optional = true }
-pin-project = { version = "1", optional = true }
 s2n-quic-core = { version = "=0.20.0", path = "../s2n-quic-core", default-features = false }
 socket2 = { version = "0.5", features = ["all"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }

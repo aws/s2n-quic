@@ -1,13 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::select::{self, Select};
 use crate::{buffer::default as buffer, features::gso, socket::default as socket, syscall};
 use cfg_if::cfg_if;
 use s2n_quic_core::{
     endpoint::Endpoint,
     event::{self, EndpointPublisher as _},
     inet::{self, SocketAddress},
+    io::event_loop::select::{self, Select},
     path::MaxMtu,
     time::{
         clock::{ClockWithTimer as _, Timer as _},
