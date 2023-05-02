@@ -34,7 +34,7 @@ use core::{
 use s2n_quic_core::{
     application,
     application::ServerName,
-    connection::{id::Generator as _, InitialId, PeerId},
+    connection::{id::Generator as _, InitialId, PeerId, error::Error},
     crypto::{tls, CryptoSuite},
     datagram::{Receiver, Sender},
     event::{
@@ -1656,24 +1656,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.accept_state = AcceptState::Active;
     }
 
-    // Translates protocol errors into more useful user errors
-    fn translate_connection_err(&self, error: connection::Error) -> Result<(), connection::Error> {
-        match error {
-            // The connection closed without an error
-            connection::Error::Closed { .. } => Ok(()),
-            // The application closed the connection
-            connection::Error::Transport { code, .. }
-                if code == transport::Error::APPLICATION_ERROR.code =>
-            {
-                Ok(())
-            }
-            // The local connection's idle timer expired
-            connection::Error::IdleTimerExpired { .. } => Ok(()),
-            // Otherwise return the real error to the user
-            _ => Err(error),
-        }
-    }
-
     fn interests(&self) -> ConnectionInterests {
         use crate::connection::finalization::Provider as _;
         use timer::Provider as _;
@@ -1761,7 +1743,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         context: &Context,
     ) -> Poll<Result<Option<stream::StreamId>, connection::Error>> {
         if let Err(error) = self.error {
-            match self.translate_connection_err(error) {
+            match Error::into_accept_error(error) {
                 Ok(_) => return Ok(None).into(),
                 Err(err) => return Err(err).into(),
             };

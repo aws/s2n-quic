@@ -306,10 +306,6 @@ impl connection::Trait for TestConnection {
         None
     }
 
-    fn translate_connection_err(&self, _error: connection::Error) -> Result<(), connection::Error> {
-        todo!()
-    }
-
     fn query_event_context(&self, _query: &mut dyn query::Query) {
         todo!()
     }
