@@ -707,101 +707,163 @@ fn increasing_pto_count_under_loss() {
 // mTLS enabled and remove the `cfg(target_os("windows"))`.
 #[cfg(not(target_os = "windows"))]
 #[test]
-fn mtls() {
-    use crate::provider::{event::events::HandshakeStatus, tls::default as s2n_tls};
+fn mtls_happy_case() {
+    use crate::provider::event::events::HandshakeStatus;
 
-    let max_handshake_duration = Duration::from_secs(5);
-    let limits = provider::limits::Limits::default()
-        .with_max_handshake_duration(max_handshake_duration)
-        .unwrap();
+    let model = Model::default();
+    model.set_delay(Duration::from_millis(50));
+    const LEN: usize = 1000;
 
-    // Ensure connection is successful under different network conditions
-    for delay_time in (500..=10_000).step_by(1000) {
-        for drop_percent in (0..=100).step_by(10) {
-            let delay_time = Duration::from_micros(delay_time);
+    let server_subscriber = HandshakeStatusRecorder::new();
+    let server_status = server_subscriber.events();
+    let client_subscriber = HandshakeStatusRecorder::new();
+    let client_status = client_subscriber.events();
 
-            let model = Model::default();
-            model.set_delay(delay_time);
-            let server_subscriber = HandshakeStatusRecorder::new();
-            let server_status = server_subscriber.events();
-            let client_subscriber = HandshakeStatusRecorder::new();
-            let client_status = client_subscriber.events();
+    test(model, |handle| {
+        let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+        let mut server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(server_tls)?
+            .with_event(server_subscriber)?
+            .start()?;
 
-            test(model.clone(), |handle| {
-                spawn(async move {
-                    // allow for 1 RTT worth of data before impairing the connection.
-                    // Both the Client and Server have received initial packets at
-                    // this point.
-                    delay(delay_time * 2).await;
+        let addr = server.local_addr()?;
+        spawn(async move {
+            if let Some(mut conn) = server.accept().await {
+                while let Ok(Some(mut stream)) = conn.accept_bidirectional_stream().await {
+                    primary::spawn(async move {
+                        stream.send(vec![42; LEN].into()).await.unwrap();
+                    });
+                }
+            }
+        });
 
-                    // simulate network impairment
-                    let drop_rate = drop_percent as f64 / 100.0;
-                    model.set_drop_rate(drop_rate);
+        let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+        let client = Client::builder()
+            .with_io(handle.builder().build().unwrap())?
+            .with_tls(client_tls)?
+            .with_event(client_subscriber)?
+            .start()?;
 
-                    // restore the network after approximately half the max handshake
-                    // timeout to allow the handshake to succeed
-                    delay(max_handshake_duration / 2).await;
-                    model.set_drop_rate(0.0);
-                });
+        primary::spawn(async move {
+            let connect = Connect::new(addr).with_server_name("localhost");
+            let mut conn = client.connect(connect).await.unwrap();
+            let mut stream = conn.open_bidirectional_stream().await.unwrap();
 
-                let server_tls = s2n_tls::Server::builder()
-                    .with_certificate(
-                        certificates::MTLS_SERVER_CERT,
-                        certificates::MTLS_SERVER_KEY,
-                    )?
-                    .with_client_authentication()?
-                    .with_trusted_certificate(certificates::MTLS_CA_CERT)?
-                    .build()?;
+            let mut recv_len = 0;
+            while let Ok(Some(chunk)) = stream.receive().await {
+                recv_len += chunk.len();
+            }
+            assert_eq!(LEN, recv_len);
+        });
 
-                let mut server = Server::builder()
-                    .with_io(handle.builder().build()?)?
-                    .with_tls(server_tls)?
-                    .with_limits(limits)?
-                    .with_event(server_subscriber)?
-                    .start()?;
+        Ok(addr)
+    })
+    .unwrap();
 
-                let addr = server.local_addr()?;
-                spawn(async move {
-                    if let Some(_conn) = server.accept().await {
-                        delay(Duration::from_secs(10)).await;
+    // assert handshake 'Confirmed' for both the sever and client
+    let server_status = server_status.lock().unwrap();
+    let server_confirmed = server_status
+        .iter()
+        .any(|x| matches!(x.status, HandshakeStatus::Confirmed { .. }));
+    let client_status = client_status.lock().unwrap();
+    let client_confirmed = client_status
+        .iter()
+        .any(|x| matches!(x.status, HandshakeStatus::Confirmed { .. }));
+    assert!(server_confirmed);
+    assert!(client_confirmed);
+}
+
+// TODO: https://github.com/aws/s2n-quic/issues/1726
+#[cfg(not(target_os = "windows"))]
+#[test]
+fn mtls_auth_failure() {
+    use crate::provider::event::events::HandshakeStatus;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let model = Model::default();
+    model.set_delay(Duration::from_millis(50));
+    const LEN: usize = 1000;
+
+    let server_subscriber = HandshakeStatusRecorder::new();
+    let server_status = server_subscriber.events();
+    let client_subscriber = HandshakeStatusRecorder::new();
+    let client_status = client_subscriber.events();
+
+    // check that server attempts to accept but rejects a connection
+    let server_connection_closed = Arc::new(AtomicBool::new(false));
+    let server_connection_closed_clone = server_connection_closed.clone();
+
+    test(model, |handle| {
+        let server_tls = build_server_mtls_provider(certificates::UNTRUSTED_CERT_PEM)?;
+        let mut server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(server_tls)?
+            .with_event(server_subscriber)?
+            .start()?;
+
+        let addr = server.local_addr()?;
+        spawn(async move {
+            match server.accept().await {
+                Some(mut conn) => {
+                    while let Ok(Some(mut stream)) = conn.accept_bidirectional_stream().await {
+                        primary::spawn(async move {
+                            stream.send(vec![42; LEN].into()).await.unwrap();
+                        });
+                        unreachable!("expected handshake failure")
                     }
-                });
+                }
+                None => assert!(
+                    !server_connection_closed_clone.swap(true, Ordering::SeqCst),
+                    "confirm that this is only called once"
+                ),
+            }
+        });
 
-                let client_tls = s2n_tls::Client::builder()
-                    .with_certificate(certificates::MTLS_CA_CERT)?
-                    .with_client_identity(
-                        certificates::MTLS_CLIENT_CERT,
-                        certificates::MTLS_CLIENT_KEY,
-                    )?
-                    .build()?;
-                let client = Client::builder()
-                    .with_io(handle.builder().build().unwrap())?
-                    .with_tls(client_tls)?
-                    .with_limits(limits)?
-                    .with_event(client_subscriber)?
-                    .start()?;
+        let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+        let client = Client::builder()
+            .with_io(handle.builder().build().unwrap())?
+            .with_tls(client_tls)?
+            .with_event(client_subscriber)?
+            .start()?;
 
-                primary::spawn(async move {
-                    let connect = Connect::new(addr).with_server_name("localhost");
-                    let _conn = client.connect(connect).await.unwrap();
-                    delay(Duration::from_secs(10)).await;
-                });
+        primary::spawn(async move {
+            let connect = Connect::new(addr).with_server_name("localhost");
+            let mut conn = client.connect(connect).await.unwrap();
+            let mut stream = conn.open_bidirectional_stream().await.unwrap();
 
-                Ok(addr)
-            })
-            .unwrap();
+            let mut recv_len = 0;
+            while let Ok(Some(chunk)) = stream.receive().await {
+                recv_len += chunk.len();
+            }
+            // server shouldn't be sending data if mTLS fails
+            assert_eq!(0, recv_len);
+        });
 
-            // assert handshake completed for both the sever and client
-            let server_status = server_status.lock().unwrap();
-            let server_done = server_status
-                .iter()
-                .any(|x| matches!(x.status, HandshakeStatus::Confirmed { .. }));
-            let client_status = client_status.lock().unwrap();
-            let client_done = client_status
-                .iter()
-                .any(|x| matches!(x.status, HandshakeStatus::Confirmed { .. }));
-            assert!(server_done);
-            assert!(client_done);
-        }
-    }
+        Ok(addr)
+    })
+    .unwrap();
+
+    let server_status = server_status.lock().unwrap();
+    let server_handshake_success = server_status.iter().any(|x|
+        // server handshake TLS handshake fails
+        matches!(x.status, HandshakeStatus::Complete { .. }));
+    let client_status = client_status.lock().unwrap();
+    let client_complete = client_status.iter().any(|x|
+            // client TLS handshake succeeds
+            matches!(x.status, HandshakeStatus::Complete { .. }));
+    let client_confirmed = client_status.iter().any(|x|
+            // client QUIC handshake fails since server never confirms
+            matches!(x.status, HandshakeStatus::Confirmed { .. }));
+
+    // expect server handshake to fail
+    assert!(!server_handshake_success);
+    // expect the client handshake status to 'Complete' but not 'Confirmed'. We
+    // expect server's client-certificate-authentication (mTLS) to fail, which
+    // happens after client TLS handshake 'Complete'
+    assert!(client_complete);
+    assert!(!client_confirmed);
+
+    // confirm server connection was attempted but failed
+    assert!(server_connection_closed.load(Ordering::SeqCst));
 }
