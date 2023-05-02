@@ -444,6 +444,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn error(&self) -> Option<connection::Error>;
 
+    fn translate_connection_err(&self, error: connection::Error) -> Result<(), connection::Error>;
+
     fn query_event_context(&self, query: &mut dyn query::Query);
 
     fn query_event_context_mut(&mut self, query: &mut dyn query::QueryMut);
