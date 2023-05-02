@@ -1670,7 +1670,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // The local connection's idle timer expired
             connection::Error::IdleTimerExpired { .. } => return Ok(()),
             // Otherwise return the real error to the user
-            _=> return Err(error),
+            _ => return Err(error),
         }
     }
 
