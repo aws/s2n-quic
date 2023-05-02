@@ -33,7 +33,7 @@ pub async fn completion_to_tx<P: Poller>(
         frame_size.is_power_of_two(),
         tx_queues.len().is_power_of_two(),
     ) {
-        (0, _, _) => panic!("invalid tx_queues size"),
+        (0, _, _) => panic!("invalid must be non-zero length"),
         (1, _, _) => {
             trace!("using single queue mode");
             CompletionRingToTx {
@@ -101,7 +101,9 @@ pub async fn completion_to_tx<P: Poller>(
 
 /// Polls the completion queue for progress
 pub trait Poller: Unpin {
+    /// Polls the completion queue for progress
     fn poll(&mut self, comp: &mut ring::Completion, cx: &mut Context) -> Poll<Option<u32>>;
+    /// Releases `count` number of entries
     fn release(&mut self, comp: &mut ring::Completion, count: usize);
 }
 
@@ -271,7 +273,7 @@ impl<T: Txs, A: assign::Assign, P: Poller> Future for CompletionRingToTx<T, A, P
                                     .iter()
                                     .take(count as _)
                                     .copied()
-                                    .filter(|desc| assignment.assign(*desc, idx))
+                                    .filter(|desc| assignment.is_assigned(*desc, idx))
                                     .map(|desc| {
                                         trace!("assigning address {} to queue {idx}", desc.address);
 

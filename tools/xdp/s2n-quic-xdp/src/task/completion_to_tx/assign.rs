@@ -9,12 +9,12 @@ use crate::if_xdp::UmemDescriptor;
 /// which TX queues get which descriptors. This trait takes in a descriptor and decides if it
 /// pertains to a worker index or not.
 pub trait Assign: Unpin {
-    fn assign(&self, desc: UmemDescriptor, idx: u64) -> bool;
+    fn is_assigned(&self, desc: UmemDescriptor, idx: u64) -> bool;
 }
 
 impl Assign for () {
     #[inline]
-    fn assign(&self, _desc: UmemDescriptor, idx: u64) -> bool {
+    fn is_assigned(&self, _desc: UmemDescriptor, idx: u64) -> bool {
         debug_assert_eq!(
             idx, 0,
             "assignment mode should only be used for single queue workflows"
@@ -33,7 +33,7 @@ pub struct AssignGeneric<F: FrameToIndex, I: IndexToQueue> {
 
 impl<F: FrameToIndex, I: IndexToQueue> Assign for AssignGeneric<F, I> {
     #[inline]
-    fn assign(&self, desc: UmemDescriptor, idx: u64) -> bool {
+    fn is_assigned(&self, desc: UmemDescriptor, idx: u64) -> bool {
         let v = self.frame.frame_to_index(desc);
         let v = self.index.index_to_queue(v);
         v == idx
@@ -51,7 +51,8 @@ pub struct AlignedFrame {
 
 impl AlignedFrame {
     pub fn new(frame_size: u32) -> Self {
-        debug_assert!(frame_size.is_power_of_two());
+        assert!(frame_size.is_power_of_two());
+        assert!(frame_size > 2, "cannot take the square root of 2");
 
         let shift = frame_size.trailing_zeros();
 
@@ -163,7 +164,7 @@ mod tests {
                 for offset in [0, 1, 2, (frame_size - 1) as _] {
                     let mut desc = desc;
                     desc.address += offset;
-                    let was_assigned = assigner.assign(desc, queue as _);
+                    let was_assigned = assigner.is_assigned(desc, queue as _);
                     assert_eq!(
                         is_expected, was_assigned,
                         "desc: {desc:?}, expected_queue: {expected_queue}, queue: {queue}"
@@ -192,7 +193,7 @@ mod tests {
 
         let is_expected = queue == expected_queue;
 
-        let was_assigned = assigner.assign(desc, queue);
+        let was_assigned = assigner.is_assigned(desc, queue);
         assert_eq!(is_expected, was_assigned,);
     }
 

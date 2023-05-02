@@ -298,6 +298,8 @@ impl<P: Poller, N: Notifier> Future for Rx<P, N> {
                 "the number of actual items should not exceed what was acquired"
             );
 
+            // While we have a `debug_assert` above, this is being overly defensive just in case.
+            // In regular conditions, it's equivalent to just releasing `actual`.
             let len = len.min(actual);
 
             // release the entries back to the RX ring
