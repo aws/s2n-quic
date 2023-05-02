@@ -328,6 +328,7 @@ impl fmt::Display for Protocol {
             Self::IPV6_ICMP => "ICMP for IPv6",
             Self::IPV6_NO_NXT => "No Next Header for IPv6",
             Self::IPV6_OPTS => "Destination Options for IPv6",
+            Self::UDPLITE => "Lightweight User Datagram",
             Self { id } => return write!(f, "[unknown 0x{id:02x}]"),
         }
         .fmt(f)
@@ -360,6 +361,7 @@ impl Protocol {
     impl_p!(is_ipv6_icmp, IPV6_ICMP, 58);
     impl_p!(is_ipv6_no_next, IPV6_NO_NXT, 59);
     impl_p!(is_ipv6_options, IPV6_OPTS, 60);
+    impl_p!(is_udplite, UDPLITE, 136);
 }
 
 #[cfg(test)]

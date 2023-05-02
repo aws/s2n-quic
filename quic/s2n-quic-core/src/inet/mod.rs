@@ -14,9 +14,9 @@ pub mod ipv6;
 pub mod udp;
 pub mod unspecified;
 
-pub use datagram::*;
+pub use datagram::{AncillaryData, DatagramInfo};
 pub use ecn::*;
 pub use ip::*;
-pub use ipv4::*;
-pub use ipv6::*;
+pub use ipv4::{IpV4Address, SocketAddressV4};
+pub use ipv6::{IpV6Address, SocketAddressV6};
 pub use unspecified::*;

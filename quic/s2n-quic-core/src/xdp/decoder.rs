@@ -3,83 +3,143 @@
 
 use super::{bpf::Decoder, path};
 use crate::inet::{
+    datagram,
     ethernet::{self, EtherType},
-    ip, ipv4, ipv6, udp, SocketAddress,
+    ip, ipv4, ipv6, udp,
 };
 use s2n_codec::DecoderError;
 
-type Result<Addr, D> = core::result::Result<Option<(Addr, D)>, DecoderError>;
+pub type Result<D = ()> = core::result::Result<Option<D>, DecoderError>;
 
-pub trait Validator {
+pub trait EventHandler: Sized {
     #[inline(always)]
-    fn validate_local_port(&self, port: u16) -> bool {
-        let _ = port;
-        true
+    fn decode_packet<'a, D: Decoder<'a>>(&mut self, buffer: D) -> Result<D> {
+        decode_packet_with_event(buffer, self)
     }
 
     #[inline(always)]
-    fn validate_local_ipv4(&self, ip: &ipv4::IpV4Address) -> bool {
-        let _ = ip;
-        true
+    fn on_ethernet_header(&mut self, header: &ethernet::Header) -> Result {
+        let _ = header;
+        Ok(Some(()))
     }
 
     #[inline(always)]
-    fn validate_local_ipv6(&self, ip: &ipv6::IpV6Address) -> bool {
-        let _ = ip;
-        true
+    fn on_ipv4_header(&mut self, header: &ipv4::Header) -> Result {
+        let _ = header;
+        Ok(Some(()))
+    }
+
+    #[inline(always)]
+    fn on_ipv6_header(&mut self, header: &ipv6::Header) -> Result {
+        let _ = header;
+        Ok(Some(()))
+    }
+
+    #[inline(always)]
+    fn on_udp_header(&mut self, header: &udp::Header) -> Result {
+        let _ = header;
+        Ok(Some(()))
     }
 }
 
-impl Validator for () {}
+impl EventHandler for () {}
 
-/// Decodes a path tuple and payload from a raw packet
-#[inline(always)]
-pub fn decode_packet<'a, D: Decoder<'a>>(buffer: D) -> Result<path::Tuple, D> {
-    decode_packet_validator(buffer, &())
+impl EventHandler for path::Tuple {
+    #[inline(always)]
+    fn on_ethernet_header(&mut self, header: &ethernet::Header) -> Result {
+        self.remote_address.mac = header.source;
+        self.local_address.mac = header.destination;
+        Ok(Some(()))
+    }
+
+    #[inline(always)]
+    fn on_ipv4_header(&mut self, header: &ipv4::Header) -> Result {
+        self.remote_address.ip = header.source.into();
+        self.local_address.ip = header.destination.into();
+        Ok(Some(()))
+    }
+
+    #[inline(always)]
+    fn on_ipv6_header(&mut self, header: &ipv6::Header) -> Result {
+        self.remote_address.ip = header.source.into();
+        self.local_address.ip = header.destination.into();
+        Ok(Some(()))
+    }
+
+    #[inline(always)]
+    fn on_udp_header(&mut self, header: &udp::Header) -> Result {
+        self.remote_address.port = header.source.get();
+        self.local_address.port = header.destination.get();
+        Ok(Some(()))
+    }
+}
+
+impl<P: EventHandler> EventHandler for datagram::Header<P> {
+    #[inline(always)]
+    fn on_ethernet_header(&mut self, header: &ethernet::Header) -> Result {
+        self.path.on_ethernet_header(header)
+    }
+
+    #[inline(always)]
+    fn on_ipv4_header(&mut self, header: &ipv4::Header) -> Result {
+        self.path.on_ipv4_header(header)?;
+        self.ecn = header.tos().ecn();
+        Ok(Some(()))
+    }
+
+    #[inline(always)]
+    fn on_ipv6_header(&mut self, header: &ipv6::Header) -> Result {
+        self.path.on_ipv6_header(header)?;
+        self.ecn = header.vtcfl().ecn();
+        Ok(Some(()))
+    }
+
+    #[inline(always)]
+    fn on_udp_header(&mut self, header: &udp::Header) -> Result {
+        self.path.on_udp_header(header)
+    }
 }
 
 /// Decodes a path tuple and payload from a raw packet
 #[inline(always)]
-pub fn decode_packet_validator<'a, D: Decoder<'a>, V: Validator>(
+pub fn decode_packet<'a, D: Decoder<'a>>(
     buffer: D,
-    validator: &V,
-) -> Result<path::Tuple, D> {
+) -> core::result::Result<Option<(datagram::Header<path::Tuple>, D)>, DecoderError> {
+    let mut header = datagram::Header {
+        path: path::Tuple::UNSPECIFIED,
+        ecn: Default::default(),
+    };
+    match decode_packet_with_event(buffer, &mut header)? {
+        Some(buffer) => Ok(Some((header, buffer))),
+        None => Ok(None),
+    }
+}
+
+/// Decodes a path tuple and payload from a raw packet
+#[inline(always)]
+pub fn decode_packet_with_event<'a, D: Decoder<'a>, E: EventHandler>(
+    buffer: D,
+    events: &mut E,
+) -> Result<D> {
     let (header, buffer) = buffer.decode::<&ethernet::Header>()?;
 
-    let result = match *header.ethertype() {
-        EtherType::IPV4 => decode_ipv4(buffer, validator),
-        EtherType::IPV6 => decode_ipv6(buffer, validator),
-        // pass the packet on to the OS network stack if we don't understand it
-        _ => return Ok(None),
-    }?;
+    if events.on_ethernet_header(header)?.is_none() {
+        return Ok(None);
+    }
 
-    Ok(result.map(|(tuple, buffer)| {
-        let remote_address = path::RemoteAddress {
-            mac: *header.source(),
-            ip: tuple.source.ip(),
-            port: tuple.source.port(),
-        };
-        let local_address = path::LocalAddress {
-            mac: *header.destination(),
-            ip: tuple.destination.ip(),
-            port: tuple.destination.port(),
-        };
-        let tuple = path::Tuple {
-            remote_address,
-            local_address,
-        };
-        (tuple, buffer)
-    }))
+    match *header.ethertype() {
+        EtherType::IPV4 => decode_ipv4(buffer, events),
+        EtherType::IPV6 => decode_ipv6(buffer, events),
+        // pass the packet on to the OS network stack if we don't understand it
+        _ => Ok(None),
+    }
 }
 
 #[inline(always)]
-fn decode_ipv4<'a, D: Decoder<'a>, V: Validator>(
-    buffer: D,
-    validator: &V,
-) -> Result<Tuple<SocketAddress>, D> {
+fn decode_ipv4<'a, D: Decoder<'a>, E: EventHandler>(buffer: D, events: &mut E) -> Result<D> {
     let (header, buffer) = buffer.decode::<&ipv4::Header>()?;
 
-    if !validator.validate_local_ipv4(header.destination()) {
+    if events.on_ipv4_header(header)?.is_none() {
         return Ok(None);
     }
 
@@ -103,27 +163,14 @@ fn decode_ipv4<'a, D: Decoder<'a>, V: Validator>(
     let options_len = count_without_header as usize * (32 / 8);
     let (_options, buffer) = buffer.decode_slice(options_len)?;
 
-    Ok(
-        parse_ip_protocol(protocol, buffer, validator)?.map(|(ports, buffer)| {
-            let source = header.source().with_port(ports.source).into();
-            let destination = header.destination().with_port(ports.destination).into();
-            let tuple = Tuple {
-                source,
-                destination,
-            };
-            (tuple, buffer)
-        }),
-    )
+    parse_ip_protocol(protocol, buffer, events)
 }
 
 #[inline(always)]
-fn decode_ipv6<'a, D: Decoder<'a>, V: Validator>(
-    buffer: D,
-    validator: &V,
-) -> Result<Tuple<SocketAddress>, D> {
+fn decode_ipv6<'a, D: Decoder<'a>, E: EventHandler>(buffer: D, events: &mut E) -> Result<D> {
     let (header, buffer) = buffer.decode::<&ipv6::Header>()?;
 
-    if !validator.validate_local_ipv6(header.destination()) {
+    if events.on_ipv6_header(header)?.is_none() {
         return Ok(None);
     }
 
@@ -131,35 +178,29 @@ fn decode_ipv6<'a, D: Decoder<'a>, V: Validator>(
 
     // TODO parse Hop-by-hop/Options headers, for now we'll just forward the packet on to the OS
 
-    Ok(
-        parse_ip_protocol(protocol, buffer, validator)?.map(|(ports, buffer)| {
-            let source = header.source().with_port(ports.source).into();
-            let destination = header.destination().with_port(ports.destination).into();
-            let tuple = Tuple {
-                source,
-                destination,
-            };
-            (tuple, buffer)
-        }),
-    )
+    parse_ip_protocol(protocol, buffer, events)
 }
 
 #[inline]
-fn parse_ip_protocol<'a, D: Decoder<'a>, V: Validator>(
+fn parse_ip_protocol<'a, D: Decoder<'a>, E: EventHandler>(
     protocol: &ip::Protocol,
     buffer: D,
-    validator: &V,
-) -> Result<Tuple<u16>, D> {
+    events: &mut E,
+) -> Result<D> {
     match *protocol {
-        ip::Protocol::UDP => parse_udp(buffer, validator),
+        ip::Protocol::UDP | ip::Protocol::UDPLITE => parse_udp(buffer, events),
         // pass the packet on to the OS network stack if we don't understand it
         _ => Ok(None),
     }
 }
 
 #[inline(always)]
-fn parse_udp<'a, D: Decoder<'a>, V: Validator>(buffer: D, validator: &V) -> Result<Tuple<u16>, D> {
+fn parse_udp<'a, D: Decoder<'a>, E: EventHandler>(buffer: D, events: &mut E) -> Result<D> {
     let (header, buffer) = buffer.decode::<&udp::Header>()?;
+
+    if events.on_udp_header(header)?.is_none() {
+        return Ok(None);
+    }
 
     // NOTE: duvet doesn't know how to parse this RFC since it doesn't follow more modern formatting
     //# https://www.rfc-editor.org/rfc/rfc768
@@ -172,26 +213,7 @@ fn parse_udp<'a, D: Decoder<'a>, V: Validator>(buffer: D, validator: &V) -> Resu
         .ok_or(DecoderError::InvariantViolation("invalid UDP length"))?;
     let (udp_payload, _remaining) = buffer.decode_slice(payload_len as usize)?;
 
-    let source = header.source().get();
-    let destination = header.destination().get();
-
-    if !validator.validate_local_port(destination) {
-        return Ok(None);
-    }
-
-    let tuple = Tuple {
-        source,
-        destination,
-    };
-
-    Ok(Some((tuple, udp_payload)))
-}
-
-/// A generic tuple over an address type
-#[derive(Clone, Copy, Debug)]
-struct Tuple<Addr> {
-    source: Addr,
-    destination: Addr,
+    Ok(Some(udp_payload))
 }
 
 #[cfg(test)]

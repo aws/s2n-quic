@@ -67,6 +67,11 @@ pub struct Tuple {
 }
 
 impl Tuple {
+    pub const UNSPECIFIED: Self = Self {
+        remote_address: RemoteAddress::UNSPECIFIED,
+        local_address: LocalAddress::UNSPECIFIED,
+    };
+
     #[inline]
     pub fn swap(&mut self) {
         core::mem::swap(&mut self.remote_address.mac, &mut self.local_address.mac);
