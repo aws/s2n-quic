@@ -5,10 +5,23 @@
 
 type Result<T = (), E = std::io::Error> = core::result::Result<T, E>;
 
+/// Emits a log line if the `s2n_quic_xdp_trace` cfg option is enabled. Otherwise, the trace is a
+/// no-op.
+macro_rules! trace {
+    ($($fmt:tt)*) => {{
+        if cfg!(s2n_quic_xdp_trace) {
+            let args = format!($($fmt)*);
+            println!("{}:{}: {}", module_path!(), line!(), args);
+        }
+    }}
+}
+
 /// Default BPF programs to direct QUIC traffic
 pub mod bpf;
 /// Primitive types for AF-XDP kernel APIs
 mod if_xdp;
+/// Implementations of the IO traits from [`s2n_quic_core::io`]
+mod io;
 /// Helpers for creating mmap'd regions
 mod mmap;
 /// Structures for tracking ring cursors and synchronizing with the kernel

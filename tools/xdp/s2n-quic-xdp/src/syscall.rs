@@ -159,16 +159,11 @@ pub fn bind<Fd: AsRawFd>(fd: &Fd, addr: &mut Address) -> Result<()> {
 /// This should be called after checking if the TX ring needs a wake up.
 #[inline]
 pub fn wake_tx<Fd: AsRawFd>(fd: &Fd) -> Result<()> {
-    unsafe {
-        libc!(sendto(
-            fd.as_raw_fd(),
-            core::ptr::null_mut(),
-            0,
-            libc::MSG_DONTWAIT,
-            core::ptr::null_mut(),
-            0,
-        ))?;
-    }
+    let msg = unsafe {
+        // Safety: msghdr is zeroable
+        core::mem::zeroed()
+    };
+    unsafe { libc!(sendmsg(fd.as_raw_fd(), &msg, libc::MSG_DONTWAIT,)) }?;
     Ok(())
 }
 

@@ -169,6 +169,15 @@ impl<'a, T> RecvSlice<'a, T> {
     pub fn is_empty(&self) -> bool {
         self.0.cursor.is_empty()
     }
+
+    /// Synchronizes any updates from the peer
+    ///
+    /// This can be useful for when `slice` is called without polling for entries first.
+    #[inline]
+    pub fn sync(&mut self) -> Result<(), super::ClosedError> {
+        self.0.acquire_filled()?;
+        Ok(())
+    }
 }
 
 impl<'a, T> Drop for RecvSlice<'a, T> {
