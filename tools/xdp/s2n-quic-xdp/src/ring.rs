@@ -16,6 +16,10 @@ use cursor::Cursor;
 #[derive(Debug)]
 struct Ring<T: Copy + fmt::Debug> {
     cursor: Cursor<T>,
+    // make the area clonable in test mode
+    #[cfg(test)]
+    area: std::sync::Arc<Mmap>,
+    #[cfg(not(test))]
     area: Mmap,
     socket: socket::Fd,
 }
@@ -52,6 +56,9 @@ macro_rules! impl_producer {
                 // Safety: this is only called by a producer
                 cursor.init_producer();
             }
+
+            #[cfg(test)]
+            let area = std::sync::Arc::new(area);
 
             Ok(Self(Ring {
                 cursor,
@@ -95,6 +102,12 @@ macro_rules! impl_producer {
                 self.0.cursor.producer_data()
             }
         }
+
+        /// Returns the overall size of the ring
+        #[inline]
+        pub fn capacity(&self) -> usize {
+            self.0.cursor.capacity() as _
+        }
     };
 }
 
@@ -119,6 +132,9 @@ macro_rules! impl_consumer {
                 // Safety: `area` lives as long as `cursor`
                 Cursor::new(&area, offsets, size)
             };
+
+            #[cfg(test)]
+            let area = std::sync::Arc::new(area);
 
             Ok(Self(Ring {
                 cursor,
@@ -156,10 +172,22 @@ macro_rules! impl_consumer {
                 self.0.cursor.consumer_data()
             }
         }
+
+        /// Returns the overall size of the ring
+        #[inline]
+        pub fn capacity(&self) -> usize {
+            self.0.cursor.capacity() as _
+        }
+
+        #[cfg(test)]
+        pub fn set_flags(&mut self, flags: crate::if_xdp::RingFlags) {
+            *self.0.cursor.flags_mut() = flags;
+        }
     };
 }
 
 /// A transmission ring for entries to be transmitted
+#[derive(Debug)]
 pub struct Tx(Ring<RxTxDescriptor>);
 
 impl Tx {
@@ -167,6 +195,7 @@ impl Tx {
 }
 
 /// A receive ring for entries to be processed
+#[derive(Debug)]
 pub struct Rx(Ring<RxTxDescriptor>);
 
 impl Rx {
@@ -174,6 +203,7 @@ impl Rx {
 }
 
 /// The fill ring for entries to be populated
+#[derive(Debug)]
 pub struct Fill(Ring<UmemDescriptor>);
 
 impl Fill {
@@ -181,6 +211,7 @@ impl Fill {
 }
 
 /// The completion ring for entries to be reused for transmission
+#[derive(Debug)]
 pub struct Completion(Ring<UmemDescriptor>);
 
 impl Completion {
@@ -190,4 +221,81 @@ impl Completion {
         completion,
         COMPLETION_RING
     );
+}
+
+#[cfg(test)]
+pub mod testing {
+    use super::*;
+    use crate::{if_xdp, socket::Fd};
+
+    fn offsets() -> if_xdp::RingOffsetV2 {
+        if_xdp::RingOffsetV2 {
+            producer: 0,
+            consumer: core::mem::size_of::<usize>() as _,
+            flags: (core::mem::size_of::<usize>() * 2) as _,
+            desc: (core::mem::size_of::<usize>() * 3) as _,
+        }
+    }
+
+    macro_rules! impl_pair {
+        ($name:ident, $consumer:ident, $producer:ident, $T:ident) => {
+            /// Creates a pair of rings used for testing
+            pub fn $name(size: u32) -> ($consumer, $producer) {
+                assert!(size.is_power_of_two());
+
+                let offsets = offsets();
+
+                // start with the descriptor offset as the total length
+                let mut len = offsets.desc as usize;
+                // extend the length by the `size` multiplied the entry size
+                len += size as usize * size_of::<$T>();
+
+                let area = Mmap::new(len, 0, None).unwrap();
+
+                let consumer_cursor = unsafe {
+                    // Safety: `area` lives as long as `cursor`
+                    Cursor::new(&area, &offsets, size)
+                };
+
+                let mut producer_cursor = unsafe {
+                    // Safety: `area` lives as long as `cursor`
+                    Cursor::new(&area, &offsets, size)
+                };
+
+                unsafe {
+                    // Safety: this is only called by a producer
+                    producer_cursor.init_producer();
+                }
+
+                let area = std::sync::Arc::new(area);
+
+                let cons = $consumer(Ring {
+                    cursor: consumer_cursor,
+                    area: area.clone(),
+                    socket: Fd::invalid(),
+                });
+
+                let prod = $producer(Ring {
+                    cursor: producer_cursor,
+                    area,
+                    socket: Fd::invalid(),
+                });
+
+                (cons, prod)
+            }
+        };
+    }
+
+    impl_pair!(rx_tx, Rx, Tx, RxTxDescriptor);
+    impl_pair!(completion_fill, Completion, Fill, UmemDescriptor);
+
+    #[test]
+    fn rx_tx_test() {
+        let _ = rx_tx(16);
+    }
+
+    #[test]
+    fn comp_fill_test() {
+        let _ = completion_fill(16);
+    }
 }
