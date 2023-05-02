@@ -169,3 +169,35 @@ impl RngCore for Random {
         self.inner.next_u64()
     }
 }
+
+#[cfg(not(target_os = "windows"))]
+mod mtls {
+    use super::*;
+    use crate::provider::tls;
+
+    pub fn build_client_mtls_provider(ca_cert: &str) -> Result<tls::default::Client> {
+        let tls = tls::default::Client::builder()
+            .with_certificate(ca_cert)?
+            .with_client_identity(
+                certificates::MTLS_CLIENT_CERT,
+                certificates::MTLS_CLIENT_KEY,
+            )?
+            .build()?;
+        Ok(tls)
+    }
+
+    pub fn build_server_mtls_provider(ca_cert: &str) -> Result<tls::default::Server> {
+        let tls = tls::default::Server::builder()
+            .with_certificate(
+                certificates::MTLS_SERVER_CERT,
+                certificates::MTLS_SERVER_KEY,
+            )?
+            .with_client_authentication()?
+            .with_trusted_certificate(ca_cert)?
+            .build()?;
+        Ok(tls)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub use mtls::*;
