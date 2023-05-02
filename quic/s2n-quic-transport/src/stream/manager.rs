@@ -24,7 +24,9 @@ use core::{
 };
 use futures_core::ready;
 use s2n_quic_core::{
-    ack, connection::error::Error, endpoint,
+    ack,
+    connection::error::Error,
+    endpoint,
     frame::{
         stream::StreamRef, DataBlocked, MaxData, MaxStreamData, MaxStreams, ResetStream,
         StopSending, StreamDataBlocked, StreamsBlocked,

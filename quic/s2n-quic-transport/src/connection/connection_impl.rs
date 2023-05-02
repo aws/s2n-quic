@@ -34,7 +34,7 @@ use core::{
 use s2n_quic_core::{
     application,
     application::ServerName,
-    connection::{id::Generator as _, InitialId, PeerId, error::Error},
+    connection::{error::Error, id::Generator as _, InitialId, PeerId},
     crypto::{tls, CryptoSuite},
     datagram::{Receiver, Sender},
     event::{
