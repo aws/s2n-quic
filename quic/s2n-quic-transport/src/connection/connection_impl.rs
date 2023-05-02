@@ -34,7 +34,7 @@ use core::{
 use s2n_quic_core::{
     application,
     application::ServerName,
-    connection::{id::Generator as _, InitialId, PeerId},
+    connection::{error::Error, id::Generator as _, InitialId, PeerId},
     crypto::{tls, CryptoSuite},
     datagram::{Receiver, Sender},
     event::{
@@ -1742,7 +1742,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         stream_type: Option<stream::StreamType>,
         context: &Context,
     ) -> Poll<Result<Option<stream::StreamId>, connection::Error>> {
-        self.error?;
+        if let Err(error) = self.error {
+            match Error::into_accept_error(error) {
+                Ok(_) => return Ok(None).into(),
+                Err(err) => return Err(err).into(),
+            };
+        }
 
         let (space, _) = self
             .space_manager

@@ -24,7 +24,9 @@ use core::{
 };
 use futures_core::ready;
 use s2n_quic_core::{
-    ack, endpoint,
+    ack,
+    connection::error::Error,
+    endpoint,
     frame::{
         stream::StreamRef, DataBlocked, MaxData, MaxStreamData, MaxStreams, ResetStream,
         StopSending, StreamDataBlocked, StreamsBlocked,
@@ -524,19 +526,11 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
             return Ok(Some(stream_id)).into();
         });
 
-        match self.inner.close_reason {
-            // The connection closed without an error
-            Some(connection::Error::Closed { .. }) => return Ok(None).into(),
-            // Translate application closes to end of stream
-            Some(connection::Error::Transport { code, .. })
-                if code == transport::Error::APPLICATION_ERROR.code =>
-            {
-                return Ok(None).into()
-            }
-            // Translate idle timer expiration to end of stream
-            Some(connection::Error::IdleTimerExpired { .. }) => return Ok(None).into(),
-            Some(reason) => return Err(reason).into(),
-            None => {}
+        if let Some(close_reason) = self.inner.close_reason {
+            match Error::into_accept_error(close_reason) {
+                Ok(_) => return Ok(None).into(),
+                Err(err) => return Err(err).into(),
+            };
         }
 
         // Store the `Waker` for notifying the application if we accept a Stream

@@ -281,6 +281,25 @@ impl Error {
         let source = panic::Location::caller();
         Error::Unspecified { source }
     }
+
+    #[inline]
+    #[doc(hidden)]
+    pub fn into_accept_error(error: connection::Error) -> Result<(), connection::Error> {
+        match error {
+            // The connection closed without an error
+            connection::Error::Closed { .. } => Ok(()),
+            // The application closed the connection
+            connection::Error::Transport { code, .. }
+                if code == transport::Error::APPLICATION_ERROR.code =>
+            {
+                Ok(())
+            }
+            // The local connection's idle timer expired
+            connection::Error::IdleTimerExpired { .. } => Ok(()),
+            // Otherwise return the real error to the user
+            _ => Err(error),
+        }
+    }
 }
 
 /// Returns a CONNECTION_CLOSE frame for the given connection Error, if any
