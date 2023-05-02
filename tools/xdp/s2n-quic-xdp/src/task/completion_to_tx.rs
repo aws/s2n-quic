@@ -33,7 +33,7 @@ pub async fn completion_to_tx<P: Poller>(
         frame_size.is_power_of_two(),
         tx_queues.len().is_power_of_two(),
     ) {
-        (0, _, _) => panic!("invalid must be non-zero length"),
+        (0, _, _) => panic!("tx_queues must be non-zero length"),
         (1, _, _) => {
             trace!("using single queue mode");
             CompletionRingToTx {
