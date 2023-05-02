@@ -1660,17 +1660,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn translate_connection_err(&self, error: connection::Error) -> Result<(), connection::Error> {
         match error {
             // The connection closed without an error
-            connection::Error::Closed { .. } => return Ok(()),
+            connection::Error::Closed { .. } => Ok(()),
             // The application closed the connection
             connection::Error::Transport { code, .. }
                 if code == transport::Error::APPLICATION_ERROR.code =>
             {
-                return Ok(())
+                Ok(())
             }
             // The local connection's idle timer expired
-            connection::Error::IdleTimerExpired { .. } => return Ok(()),
+            connection::Error::IdleTimerExpired { .. } => Ok(()),
             // Otherwise return the real error to the user
-            _ => return Err(error),
+            _ => Err(error),
         }
     }
 
