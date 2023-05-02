@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::select::{self, Select};
-use crate::{buffer::default as buffer, features::gso, socket::default as socket};
+use crate::{buffer::default as buffer, features::gso, socket::default as socket, syscall};
 use cfg_if::cfg_if;
 use s2n_quic_core::{
     endpoint::Endpoint,
@@ -60,12 +60,10 @@ impl Io {
             send_addr,
             recv_buffer_size,
             send_buffer_size,
-            max_mtu,
+            mut max_mtu,
             max_segments,
             reuse_port,
         } = self.builder;
-
-        endpoint.set_max_mtu(max_mtu);
 
         let clock = Clock::default();
 
@@ -77,12 +75,6 @@ impl Io {
             None,
             endpoint.subscriber(),
         );
-
-        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
-            configuration: event::builder::PlatformFeatureConfiguration::MaxMtu {
-                mtu: max_mtu.into(),
-            },
-        });
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::Gso {
@@ -103,7 +95,7 @@ impl Io {
             rx_socket.set_nonblocking(true)?;
             rx_socket
         } else if let Some(recv_addr) = recv_addr {
-            bind(recv_addr, reuse_port)?
+            syscall::bind_udp(recv_addr, reuse_port)?
         } else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -116,7 +108,7 @@ impl Io {
             tx_socket.set_nonblocking(true)?;
             tx_socket
         } else if let Some(send_addr) = send_addr {
-            bind(send_addr, reuse_port)?
+            syscall::bind_udp(send_addr, reuse_port)?
         } else {
             // No tx_socket or send address was specified, so the tx socket
             // will be a handle to the rx socket.
@@ -143,107 +135,29 @@ impl Io {
             convert_addr_to_std(rx_socket.local_addr()?)?,
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-14
-        //# UDP datagrams MUST NOT be fragmented at the IP layer.
-
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-14
-        //# In IPv4 [IPv4], the Don't Fragment (DF) bit MUST be set if possible, to
-        //# prevent fragmentation on the path.
-
-        //= https://www.rfc-editor.org/rfc/rfc8899#section-3
-        //# In IPv4, a probe packet MUST be sent with the Don't
-        //# Fragment (DF) bit set in the IP header and without network layer
-        //# endpoint fragmentation.
-
-        //= https://www.rfc-editor.org/rfc/rfc8899#section-4.5
-        //# A PL implementing this specification MUST suspend network layer
-        //# processing of outgoing packets that enforces a PMTU
-        //# [RFC1191][RFC8201] for each flow utilizing DPLPMTUD and instead use
-        //# DPLPMTUD to control the size of packets that are sent by a flow.
-        #[cfg(s2n_quic_platform_mtu_disc)]
-        {
-            use std::os::unix::io::AsRawFd;
-
-            // IP_PMTUDISC_PROBE setting will set the DF (Don't Fragment) flag
-            // while also ignoring the Path MTU. This means packets will not
-            // be fragmented, and the EMSGSIZE error will not be returned for
-            // packets larger than the Path MTU according to the kernel.
-            libc!(setsockopt(
-                tx_socket.as_raw_fd(),
-                libc::IPPROTO_IP,
-                libc::IP_MTU_DISCOVER,
-                &libc::IP_PMTUDISC_PROBE as *const _ as _,
-                core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
-            ))?;
-
-            if tx_addr.is_ipv6() {
-                libc!(setsockopt(
-                    tx_socket.as_raw_fd(),
-                    libc::IPPROTO_IPV6,
-                    libc::IPV6_MTU_DISCOVER,
-                    &libc::IP_PMTUDISC_PROBE as *const _ as _,
-                    core::mem::size_of_val(&libc::IP_PMTUDISC_PROBE) as _,
-                ))?;
-            }
+        // Configure MTU discovery
+        if !syscall::configure_mtu_disc(&tx_socket) {
+            // disable MTU probing if we can't prevent fragmentation
+            max_mtu = MaxMtu::MIN;
         }
 
-        // Set up the RX socket to pass ECN information
-        #[cfg(s2n_quic_platform_tos)]
-        {
-            use std::os::unix::io::AsRawFd;
-            let enabled: libc::c_int = 1;
-
-            // This option needs to be enabled regardless of domain (IPv4 vs IPv6), except on mac
-            if rx_addr.is_ipv4() || !cfg!(any(target_os = "macos", target_os = "ios")) {
-                libc!(setsockopt(
-                    rx_socket.as_raw_fd(),
-                    libc::IPPROTO_IP,
-                    libc::IP_RECVTOS,
-                    &enabled as *const _ as _,
-                    core::mem::size_of_val(&enabled) as _,
-                ))?;
-            }
-
-            if rx_addr.is_ipv6() {
-                libc!(setsockopt(
-                    rx_socket.as_raw_fd(),
-                    libc::IPPROTO_IPV6,
-                    libc::IPV6_RECVTCLASS,
-                    &enabled as *const _ as _,
-                    core::mem::size_of_val(&enabled) as _,
-                ))?;
-            }
-        }
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
-            configuration: event::builder::PlatformFeatureConfiguration::Ecn {
-                enabled: cfg!(s2n_quic_platform_tos),
+            configuration: event::builder::PlatformFeatureConfiguration::MaxMtu {
+                mtu: max_mtu.into(),
             },
         });
 
-        // Set up the RX socket to pass information about the local address and interface
-        #[cfg(s2n_quic_platform_pktinfo)]
-        {
-            use std::os::unix::io::AsRawFd;
-            let enabled: libc::c_int = 1;
+        // Configure packet info CMSG
+        syscall::configure_pktinfo(&rx_socket);
 
-            if rx_addr.is_ipv4() {
-                libc!(setsockopt(
-                    rx_socket.as_raw_fd(),
-                    libc::IPPROTO_IP,
-                    libc::IP_PKTINFO,
-                    &enabled as *const _ as _,
-                    core::mem::size_of_val(&enabled) as _,
-                ))?;
-            } else {
-                libc!(setsockopt(
-                    rx_socket.as_raw_fd(),
-                    libc::IPPROTO_IPV6,
-                    libc::IPV6_RECVPKTINFO,
-                    &enabled as *const _ as _,
-                    core::mem::size_of_val(&enabled) as _,
-                ))?;
-            }
-        }
+        // Configure TOS/ECN
+        let tos_enabled = syscall::configure_tos(&rx_socket);
+
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::Ecn {
+                enabled: tos_enabled,
+            },
+        });
 
         let rx_buffer = buffer::Buffer::new_with_mtu(max_mtu.into());
         let tx_buffer = buffer::Buffer::new_with_mtu(max_mtu.into());
@@ -266,6 +180,9 @@ impl Io {
             let addr: inet::SocketAddress = rx_addr.into();
             addr.into()
         });
+
+        // Notify the endpoint of the MTU that we chose
+        endpoint.set_max_mtu(max_mtu);
 
         let instance = Instance {
             clock,
@@ -293,58 +210,6 @@ impl Io {
 
         Ok((task, local_addr))
     }
-}
-
-fn bind<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Result<socket2::Socket> {
-    use socket2::{Domain, Protocol, Socket, Type};
-
-    let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
-        std::io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "the provided bind address was empty",
-        )
-    })?;
-
-    let domain = Domain::for_address(addr);
-    let socket_type = Type::DGRAM;
-    let protocol = Some(Protocol::UDP);
-
-    cfg_if! {
-        // Set non-blocking mode in a single syscall if supported
-        if #[cfg(any(
-            target_os = "android",
-            target_os = "dragonfly",
-            target_os = "freebsd",
-            target_os = "fuchsia",
-            target_os = "illumos",
-            target_os = "linux",
-            target_os = "netbsd",
-            target_os = "openbsd"
-        ))] {
-            let socket_type = socket_type.nonblocking();
-            let socket = Socket::new(domain, socket_type, protocol)?;
-        } else {
-            let socket = Socket::new(domain, socket_type, protocol)?;
-            socket.set_nonblocking(true)?;
-        }
-    };
-
-    // allow ipv4 to also connect
-    if addr.is_ipv6() {
-        socket.set_only_v6(false)?;
-    }
-
-    socket.set_reuse_address(true)?;
-
-    #[cfg(unix)]
-    socket.set_reuse_port(reuse_port)?;
-
-    // mark the variable as "used" regardless of platform support
-    let _ = reuse_port;
-
-    socket.bind(&addr.into())?;
-
-    Ok(socket)
 }
 
 #[derive(Debug, Default)]
@@ -778,14 +643,14 @@ mod tests {
         receive_addr: A,
         send_addr: Option<A>,
     ) -> io::Result<()> {
-        let rx_socket = bind(receive_addr, false)?;
+        let rx_socket = syscall::bind_udp(receive_addr, false)?;
         let rx_socket: std::net::UdpSocket = rx_socket.into();
         let addr = rx_socket.local_addr()?;
 
         let mut io_builder = Io::builder().with_rx_socket(rx_socket)?;
 
         if let Some(addr) = send_addr {
-            let tx_socket = bind(addr, false)?;
+            let tx_socket = syscall::bind_udp(addr, false)?;
             let tx_socket: std::net::UdpSocket = tx_socket.into();
             io_builder = io_builder.with_tx_socket(tx_socket)?
         }
