@@ -511,10 +511,7 @@ mod tests {
         endpoint::{self, CloseError},
         event,
         inet::SocketAddress,
-        io::{
-            rx::{self, Entry as _},
-            tx,
-        },
+        io::{rx, tx},
         path::Handle as _,
         time::{Clock, Duration, Timestamp},
     };
@@ -596,19 +593,14 @@ mod tests {
         ) {
             let now = clock.get_time();
             self.now = Some(now);
-            let local_address = queue.local_address();
-            let entries = queue.as_slice_mut();
-            let len = entries.len();
-            for entry in entries {
-                if let Some((_header, payload)) = entry.read(&local_address) {
-                    assert_eq!(payload.len(), 4, "invalid payload {:?}", payload);
 
-                    let id = (&*payload).try_into().unwrap();
-                    let id = u32::from_be_bytes(id);
-                    self.messages.remove(&id);
-                }
-            }
-            queue.finish(len);
+            queue.for_each(|_header, payload| {
+                assert_eq!(payload.len(), 4, "invalid payload {:?}", payload);
+
+                let id = (&*payload).try_into().unwrap();
+                let id = u32::from_be_bytes(id);
+                self.messages.remove(&id);
+            });
         }
 
         fn poll_wakeups<C: Clock>(

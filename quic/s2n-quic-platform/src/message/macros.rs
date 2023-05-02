@@ -65,6 +65,25 @@ macro_rules! impl_message_delegate {
             fn payload_ptr_mut(&mut self) -> *mut u8 {
                 $crate::message::Message::payload_ptr_mut(&mut self.$field)
             }
+
+            #[inline]
+            fn rx_read(
+                &mut self,
+                local_address: &s2n_quic_core::path::LocalAddress,
+            ) -> Option<(
+                s2n_quic_core::inet::datagram::Header<Self::Handle>,
+                &mut [u8],
+            )> {
+                $crate::message::Message::rx_read(&mut self.$field, local_address)
+            }
+
+            #[inline]
+            fn tx_write<M: tx::Message<Handle = Self::Handle>>(
+                &mut self,
+                message: M,
+            ) -> Result<usize, tx::Error> {
+                $crate::message::Message::tx_write(&mut self.$field, message)
+            }
         }
     };
 }

@@ -1,40 +1,42 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{inet::datagram, path};
+use crate::{event, inet::datagram, path};
+use core::task::{Context, Poll};
+
+/// Handle to a receive IO provider
+pub trait Rx: Sized {
+    type PathHandle;
+    // TODO make this generic over lifetime
+    // See https://github.com/aws/s2n-quic/issues/1742
+    type Queue: Queue<Handle = Self::PathHandle>;
+    type Error;
+
+    /// Returns a future that yields after a packet is ready to be received
+    #[inline]
+    fn ready(&mut self) -> RxReady<Self> {
+        RxReady(self)
+    }
+
+    /// Polls the IO provider for a packet that is ready to be received
+    fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>>;
+
+    /// Calls the provided callback with the IO provider queue
+    fn queue<F: FnOnce(&mut Self::Queue)>(&mut self, f: F);
+
+    /// Handles the queue error and potentially publishes an event
+    fn handle_error<E: event::EndpointPublisher>(self, error: Self::Error, event: &mut E);
+}
+
+impl_ready_future!(Rx, RxReady, Result<(), T::Error>);
 
 /// A structure capable of queueing and receiving messages
 pub trait Queue {
-    type Entry: Entry<Handle = Self::Handle>;
     type Handle: path::Handle;
 
-    /// Returns the local address for the queue
-    ///
-    /// This value needs to be passed to each message as it is read from the queue slice
-    fn local_address(&self) -> path::LocalAddress;
+    /// Iterates over all of the packets in the receive queue and processes them
+    fn for_each<F: FnMut(datagram::Header<Self::Handle>, &mut [u8])>(&mut self, on_packet: F);
 
-    /// Returns a slice of all of the entries in the queue
-    fn as_slice_mut(&mut self) -> &mut [Self::Entry];
-
-    /// Returns the number of items in the queue
-    fn len(&self) -> usize;
-
-    /// Returns `true` if the queue is empty
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Consumes `count` number of entries in the queue
-    fn finish(&mut self, count: usize);
-}
-
-/// An entry in a Rx queue
-pub trait Entry {
-    type Handle: path::Handle;
-
-    /// Returns the datagram information with the datagram payload
-    fn read(
-        &mut self,
-        local_address: &path::LocalAddress,
-    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])>;
+    /// Returns if there are items in the queue or not
+    fn is_empty(&self) -> bool;
 }

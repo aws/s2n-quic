@@ -5,6 +5,7 @@ use super::{Behavior, Segment};
 use crate::message;
 use core::ops::{Deref, DerefMut};
 use s2n_quic_core::{
+    inet::datagram,
     io::{rx, tx},
     path::{self, LocalAddress},
 };
@@ -261,46 +262,39 @@ impl<'a, Message: message::Message, R> DerefMut for Slice<'a, Message, R> {
     }
 }
 
-impl<
-        'a,
-        Message: rx::Entry<Handle = H> + message::Message<Handle = H>,
-        B: Behavior,
-        H: path::Handle,
-    > rx::Queue for Slice<'a, Message, B>
+impl<'a, Message: message::Message<Handle = H>, B: Behavior, H: path::Handle> rx::Queue
+    for Slice<'a, Message, B>
 {
-    type Entry = Message;
     type Handle = H;
 
     #[inline]
-    fn local_address(&self) -> LocalAddress {
-        *self.local_address
-    }
-
-    #[inline]
-    fn as_slice_mut(&mut self) -> &mut [Message] {
+    fn for_each<F: FnMut(datagram::Header<H>, &mut [u8])>(&mut self, mut on_packet: F) {
+        // get the currently filled packets
         let range = self.primary.range();
-        &mut self.messages[range]
+
+        let len = range.len();
+
+        // iterate over the filled packets and invoke the callback for each one
+        let messages = &mut self.messages[range];
+        for message in messages {
+            if let Some((header, payload)) = message.rx_read(self.local_address) {
+                on_packet(header, payload);
+            }
+        }
+
+        // consume all of the messages
+        self.advance(len);
     }
 
     #[inline]
-    fn len(&self) -> usize {
-        self.primary.len
-    }
-
-    #[inline]
-    fn finish(&mut self, count: usize) {
-        self.advance(count)
+    fn is_empty(&self) -> bool {
+        self.primary.len == 0
     }
 }
 
-impl<
-        'a,
-        Message: tx::Entry<Handle = H> + message::Message<Handle = H>,
-        B: Behavior,
-        H: path::Handle,
-    > tx::Queue for Slice<'a, Message, B>
+impl<'a, Message: message::Message<Handle = H>, B: Behavior, H: path::Handle> tx::Queue
+    for Slice<'a, Message, B>
 {
-    type Entry = Message;
     type Handle = H;
 
     #[inline]
@@ -320,7 +314,7 @@ impl<
             .index(self.secondary)
             .ok_or(tx::Error::AtCapacity)?;
 
-        let size = self.messages[index].set(message)?;
+        let size = self.messages[index].tx_write(message)?;
         self.advance(1);
 
         // if we support GSO then mark the message as GSO-capable
@@ -336,18 +330,8 @@ impl<
     }
 
     #[inline]
-    fn as_slice_mut(&mut self) -> &mut [Message] {
-        &mut self.messages[self.secondary.range()]
-    }
-
-    #[inline]
     #[allow(unknown_lints, clippy::misnamed_getters)] // this slice is made up of two halves and uses the primary for unfilled data
     fn capacity(&self) -> usize {
         self.primary.len
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.secondary.len
     }
 }

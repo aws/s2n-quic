@@ -10,7 +10,7 @@ use s2n_quic_core::{
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::{
         self,
-        tx::{Entry as _, Queue as _},
+        tx::{self, Queue as _},
     },
     path::{LocalAddress, Tuple},
 };
@@ -288,7 +288,6 @@ impl Queue {
 }
 
 impl io::tx::Queue for Queue {
-    type Entry = Packet;
     type Handle = Tuple;
 
     const SUPPORTS_ECN: bool = true;
@@ -302,8 +301,7 @@ impl io::tx::Queue for Queue {
             return Err(io::tx::Error::AtCapacity);
         }
 
-        let len = self.pending.set(message)?;
-        self.pending.payload.truncate(len);
+        let len = self.pending.write(message)?;
 
         // create a packet for the next transmission
         let next = Packet::new(self.mtu, self.local_address);
@@ -314,37 +312,29 @@ impl io::tx::Queue for Queue {
         Ok(io::tx::Outcome { len, index: 0 })
     }
 
-    fn as_slice_mut(&mut self) -> &mut [Self::Entry] {
-        self.packets.make_contiguous()
-    }
-
     fn capacity(&self) -> usize {
         self.capacity - self.packets.len()
-    }
-
-    fn len(&self) -> usize {
-        self.packets.len()
     }
 }
 
 impl io::rx::Queue for Queue {
-    type Entry = Packet;
     type Handle = Tuple;
 
-    fn finish(&mut self, count: usize) {
-        self.packets.drain(..count);
+    #[inline]
+    fn for_each<F: FnMut(datagram::Header<Self::Handle>, &mut [u8])>(&mut self, mut on_packet: F) {
+        for mut packet in self.packets.drain(..) {
+            let header = datagram::Header {
+                path: packet.path,
+                ecn: packet.ecn,
+            };
+            let payload = &mut packet.payload;
+            on_packet(header, payload);
+        }
     }
 
-    fn len(&self) -> usize {
-        self.packets.len()
-    }
-
-    fn as_slice_mut(&mut self) -> &mut [Self::Entry] {
-        self.packets.make_contiguous()
-    }
-
-    fn local_address(&self) -> LocalAddress {
-        self.local_address
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.packets.is_empty()
     }
 }
 
@@ -376,42 +366,20 @@ impl Packet {
             local_address,
         };
     }
-}
 
-impl io::tx::Entry for Packet {
-    type Handle = Tuple;
+    fn write<M: tx::Message<Handle = Tuple>>(
+        &mut self,
+        mut message: M,
+    ) -> Result<usize, tx::Error> {
+        let buffer = tx::PayloadBuffer::new(&mut self.payload);
 
-    fn set<M>(&mut self, mut message: M) -> Result<usize, io::tx::Error>
-    where
-        M: io::tx::Message<Handle = Tuple>,
-    {
+        let len = message.write_payload(buffer, 0)?;
+
+        self.payload.truncate(len);
         self.path.remote_address = message.path_handle().remote_address;
         self.ecn = message.ecn();
-        message.write_payload(io::tx::PayloadBuffer::new(&mut self.payload), 0)
-    }
 
-    fn payload(&self) -> &[u8] {
-        &self.payload
-    }
-
-    fn payload_mut(&mut self) -> &mut [u8] {
-        &mut self.payload
-    }
-}
-
-impl io::rx::Entry for Packet {
-    type Handle = Tuple;
-
-    fn read(
-        &mut self,
-        _local_address: &LocalAddress,
-    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let header = datagram::Header {
-            path: self.path,
-            ecn: self.ecn,
-        };
-        let payload = &mut self.payload;
-        Some((header, payload))
+        Ok(len)
     }
 }
 
