@@ -675,7 +675,7 @@ jobs:
           submodules: true
 
       - name: Kani run
-        uses: model-checking/kani-github-action@v0.26
+        uses: model-checking/kani-github-action@v0.27
         with:
           working-directory: ${{ matrix.crate }}
           args: --tests
