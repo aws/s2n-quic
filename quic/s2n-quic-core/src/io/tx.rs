@@ -7,6 +7,9 @@ use core::{
     time::Duration,
 };
 
+pub mod handle_map;
+pub mod router;
+
 pub trait Tx: Sized {
     type PathHandle;
     // TODO make this generic over lifetime
@@ -31,6 +34,43 @@ pub trait Tx: Sized {
 }
 
 impl_ready_future!(Tx, TxReady, Result<(), T::Error>);
+
+/// Extension traits for Tx channels
+pub trait TxExt: Tx {
+    /// Routes messages into one channel or another
+    #[inline]
+    fn with_router<Router, Other>(
+        self,
+        router: Router,
+        other: Other,
+    ) -> router::Channel<Router, Self, Other>
+    where
+        Router: router::Router,
+        Other: Tx,
+    {
+        router::Channel {
+            router,
+            a: self,
+            b: other,
+        }
+    }
+
+    /// Maps one type of handle to another with a mapping function
+    #[inline]
+    fn with_handle_map<Map, Handle>(self, map: Map) -> handle_map::Channel<Map, Self, Handle>
+    where
+        Map: Fn(&Handle) -> Self::PathHandle,
+    {
+        handle_map::Channel {
+            map,
+            tx: self,
+            handle: Default::default(),
+        }
+    }
+}
+
+/// Implement the extension traits for all Tx queues
+impl<T: Tx> TxExt for T {}
 
 /// A structure capable of queueing and transmitting messages
 pub trait Queue {
@@ -63,6 +103,7 @@ pub trait Queue {
     fn capacity(&self) -> usize;
 
     /// Returns `true` if the queue will accept additional transmissions
+    #[inline]
     fn has_capacity(&self) -> bool {
         self.capacity() != 0
     }
