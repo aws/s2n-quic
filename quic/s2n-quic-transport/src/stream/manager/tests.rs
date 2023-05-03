@@ -41,6 +41,7 @@ use s2n_quic_core::{
     packet::number::{PacketNumberRange, PacketNumberSpace},
     stream::{ops, StreamId, StreamType},
     time::{
+        clock::testing as time,
         timer::{self, Provider as _},
         Timestamp,
     },
@@ -761,7 +762,7 @@ fn peer_closing_streams_transmits_max_streams() {
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
+            time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
             transmission::Mode::Normal,
@@ -842,7 +843,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
+            time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
             transmission::Mode::Normal,
@@ -1001,7 +1002,7 @@ where
 
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -1069,7 +1070,7 @@ fn send_data_blocked_frame_when_blocked_by_connection_flow_limits() {
 
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -1247,7 +1248,7 @@ fn blocked_on_local_concurrent_stream_limit() {
 
             let mut frame_buffer = OutgoingFrameBuffer::new();
             let mut write_context = MockWriteContext::new(
-                s2n_quic_platform::time::now(),
+                time::now(),
                 &mut frame_buffer,
                 transmission::Constraint::None,
                 transmission::Mode::Normal,
@@ -2329,7 +2330,7 @@ fn on_transmit_queries_streams_for_data() {
     assert_eq!([stream_5], *manager.streams_waiting_for_retransmission());
 
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -2381,7 +2382,7 @@ fn on_transmit_queries_streams_for_data() {
 
     frame_buffer.set_error_write_after_n_frames(15);
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -2415,7 +2416,7 @@ fn on_transmit_queries_streams_for_data() {
 
     frame_buffer.set_error_write_after_n_frames(15);
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -2440,7 +2441,7 @@ fn on_transmit_queries_streams_for_data() {
 
     frame_buffer.set_error_write_after_n_frames(5);
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -2465,7 +2466,7 @@ fn on_transmit_queries_streams_for_data() {
 
     frame_buffer.set_error_write_after_n_frames(5);
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -2487,7 +2488,7 @@ fn on_transmit_queries_streams_for_data() {
 
     frame_buffer.set_error_write_after_n_frames(11);
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
@@ -3085,7 +3086,7 @@ fn stream_transmission_fairness_test() {
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
+            time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
             transmission::Mode::Normal,

@@ -30,6 +30,7 @@ use s2n_quic_core::{
     packet::number::PacketNumberRange,
     random,
     stateless_reset::token::testing::*,
+    time::clock::testing as time,
     transport,
     varint::VarInt,
 };
@@ -253,7 +254,7 @@ fn retire_connection_id_when_retire_prior_to_increases() {
 
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,

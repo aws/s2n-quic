@@ -26,7 +26,7 @@ use s2n_quic_core::{
         },
         DEFAULT_INITIAL_RTT,
     },
-    time::{timer::Provider as _, Clock, NoopClock},
+    time::{clock::testing as time, timer::Provider as _, Clock, NoopClock},
     varint::VarInt,
 };
 use std::{collections::HashSet, net::SocketAddr};
@@ -46,7 +46,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
     let space = PacketNumberSpace::Handshake;
     let max_ack_delay = Duration::from_millis(0);
     let mut manager = Manager::new(space);
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
 
     let path = Path::new(
         Default::default(),
@@ -74,7 +74,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
 #[test]
 fn on_packet_sent() {
     let max_ack_delay = Duration::from_millis(100);
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let mut time_sent = now;
     let ecn = ExplicitCongestionNotification::Ect0;
     let space = PacketNumberSpace::ApplicationData;
@@ -215,7 +215,7 @@ fn on_packet_sent_across_multiple_paths() {
     // let space = PacketNumberSpace::ApplicationData;
     let max_ack_delay = Duration::from_millis(100);
     // let mut manager = Manager::new(space, max_ack_delay);
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let ecn = ExplicitCongestionNotification::default();
     let mut time_sent = now;
     let mut publisher = Publisher::snapshot();
@@ -343,7 +343,7 @@ fn on_ack_frame() {
     // Start the pto backoff at 2 so we can tell if it was reset
     context.path_mut().pto_backoff = 2;
 
-    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_sent = time::now() + Duration::from_secs(10);
 
     // Send packets 1 to 10
     for i in 1..=10 {
@@ -555,7 +555,7 @@ fn process_new_acked_packets_update_pto_timer() {
         helper_generate_multi_path_manager(space, &mut publisher);
     let mut context = MockContext::new(&mut path_manager);
     let ecn = ExplicitCongestionNotification::default();
-    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_sent = time::now() + Duration::from_secs(10);
 
     // Send packets 1 on first_path
     manager.on_packet_sent(
@@ -672,7 +672,7 @@ fn process_new_acked_packets_congestion_controller() {
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
 
-    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_sent = time::now() + Duration::from_secs(10);
 
     // Send packets 1 on first_path
     manager.on_packet_sent(
@@ -800,7 +800,7 @@ fn process_new_acked_packets_pto_timer() {
         helper_generate_multi_path_manager(space, &mut publisher);
     let mut context = MockContext::new(&mut path_manager);
     let ecn = ExplicitCongestionNotification::default();
-    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_sent = time::now() + Duration::from_secs(10);
 
     // Send packets 1 on first_path
     manager.on_packet_sent(
@@ -916,7 +916,7 @@ fn process_new_acked_packets_process_ecn() {
     let packet_bytes = 128;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let mut context = MockContext::new(&mut path_manager);
-    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_sent = time::now() + Duration::from_secs(10);
     let mut publisher = Publisher::snapshot();
 
     // Send 10 ECT0 marked packets
@@ -1018,7 +1018,7 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
     let packet_bytes = 128;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let mut context = MockContext::new(&mut path_manager);
-    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_sent = time::now() + Duration::from_secs(10);
     let mut publisher = Publisher::snapshot();
 
     // Send 10 ECT0 marked packets
@@ -1078,7 +1078,7 @@ fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
     let mut context = MockContext::new(&mut path_manager);
     let mut publisher = Publisher::snapshot();
 
-    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_sent = time::now() + Duration::from_secs(10);
 
     // Send 2 packets
     manager.on_packet_sent(
@@ -1171,7 +1171,7 @@ fn no_rtt_update_when_receiving_packet_on_different_path() {
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
 
-    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_sent = time::now() + Duration::from_secs(10);
 
     // Send packet
     manager.on_packet_sent(
@@ -1286,7 +1286,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
     let mut context = MockContext::new(&mut path_manager);
 
     // Trigger:
-    let time_sent = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_sent = time::now() + Duration::from_secs(10);
     let sent_time = time_sent + Duration::from_millis(300);
     let ack_receive_time = time_sent + Duration::from_millis(1000);
 
@@ -1371,7 +1371,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
 fn detect_and_remove_lost_packets() {
     let space = PacketNumberSpace::ApplicationData;
     let mut manager = Manager::new(space);
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -1380,7 +1380,7 @@ fn detect_and_remove_lost_packets() {
 
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
 
-    let mut time_sent = s2n_quic_platform::time::now();
+    let mut time_sent = time::now();
     let outcome = transmission::Outcome {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
@@ -1537,7 +1537,7 @@ fn detect_lost_packets_persistent_congestion_path_aware() {
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
 
-    let mut now = s2n_quic_platform::time::now();
+    let mut now = time::now();
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(20)));
 
     // create first rtt samples so they can enter enter persistent_congestion
@@ -1664,7 +1664,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
         helper_generate_multi_path_manager(space, &mut publisher);
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
-    let mut now = s2n_quic_platform::time::now();
+    let mut now = time::now();
     let random = &mut random::testing::Generator::default();
 
     assert_eq!(
@@ -1793,7 +1793,7 @@ fn detect_and_remove_lost_packets_nothing_lost() {
     let mut publisher = Publisher::snapshot();
     let random = &mut random::testing::Generator::default();
 
-    let time_sent = s2n_quic_platform::time::now();
+    let time_sent = time::now();
     let outcome = transmission::Outcome {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
@@ -1846,7 +1846,7 @@ fn detect_and_remove_lost_packets_mtu_probe() {
     let mut publisher = Publisher::snapshot();
     let random = &mut random::testing::Generator::default();
 
-    let time_sent = s2n_quic_platform::time::now();
+    let time_sent = time::now();
     let outcome = transmission::Outcome {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
@@ -1896,14 +1896,14 @@ fn persistent_congestion() {
     let mut context = MockContext::new(&mut path_manager);
     let mut publisher = Publisher::snapshot();
 
-    let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_zero = time::now() + Duration::from_secs(10);
     // The RFC doesn't mention it, but it is implied that the first RTT sample has already
     // been received when this example begins, otherwise packet #2 would not be considered
     // part of the persistent congestion period.
     context.path_mut().rtt_estimator.update_rtt(
         Duration::from_millis(10),
         Duration::from_millis(700),
-        s2n_quic_platform::time::now(),
+        time::now(),
         true,
         space,
     );
@@ -2068,7 +2068,7 @@ fn persistent_congestion_multiple_periods() {
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
-    let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_zero = time::now() + Duration::from_secs(10);
     let mut publisher = Publisher::snapshot();
 
     let outcome = transmission::Outcome {
@@ -2203,7 +2203,7 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
-    let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_zero = time::now() + Duration::from_secs(10);
     let mut publisher = Publisher::snapshot();
 
     let outcome = transmission::Outcome {
@@ -2283,11 +2283,11 @@ fn persistent_congestion_not_ack_eliciting() {
     let mut context = MockContext::new(&mut path_manager);
     let mut publisher = Publisher::snapshot();
 
-    let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_zero = time::now() + Duration::from_secs(10);
     context.path_mut().rtt_estimator.update_rtt(
         Duration::from_millis(10),
         Duration::from_millis(700),
-        s2n_quic_platform::time::now(),
+        time::now(),
         true,
         space,
     );
@@ -2371,11 +2371,11 @@ fn persistent_congestion_mtu_probe() {
     let mut context = MockContext::new(&mut path_manager);
     let mut publisher = Publisher::snapshot();
 
-    let time_zero = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let time_zero = time::now() + Duration::from_secs(10);
     context.path_mut().rtt_estimator.update_rtt(
         Duration::from_millis(10),
         Duration::from_millis(700),
-        s2n_quic_platform::time::now(),
+        time::now(),
         true,
         space,
     );
@@ -2449,7 +2449,7 @@ fn persistent_congestion_mtu_probe() {
 fn update_pto_timer() {
     let space = PacketNumberSpace::ApplicationData;
     let mut manager = Manager::new(space);
-    let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let now = time::now() + Duration::from_secs(10);
     let is_handshake_confirmed = true;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
@@ -2579,7 +2579,7 @@ fn update_pto_timer() {
 fn pto_armed_if_handshake_not_confirmed() {
     let space = PacketNumberSpace::Handshake;
     let mut manager = Manager::new(space);
-    let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let now = time::now() + Duration::from_secs(10);
     let is_handshake_confirmed = false;
 
     let mut path = Path::new(
@@ -2608,7 +2608,7 @@ fn pto_must_be_at_least_k_granularity() {
     let space = PacketNumberSpace::Handshake;
     let max_ack_delay = Duration::from_millis(0);
     let mut manager = Manager::new(space);
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
 
     let mut path = Path::new(
         Default::default(),
@@ -2643,7 +2643,7 @@ fn pto_must_be_at_least_k_granularity() {
 fn on_timeout() {
     let space = PacketNumberSpace::ApplicationData;
     let mut manager = Manager::new(space);
-    let now = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let now = time::now() + Duration::from_secs(10);
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
@@ -2762,8 +2762,8 @@ fn on_timeout() {
 fn timers() {
     let space = PacketNumberSpace::ApplicationData;
     let mut manager = Manager::new(space);
-    let loss_time = s2n_quic_platform::time::now() + Duration::from_secs(5);
-    let pto_time = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let loss_time = time::now() + Duration::from_secs(5);
+    let pto_time = time::now() + Duration::from_secs(10);
 
     // No timer is set
     assert_eq!(manager.armed_timer_count(), 0);
@@ -2792,7 +2792,7 @@ fn on_transmit() {
     let mut manager = Manager::new(space);
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
         transmission::Mode::LossRecoveryProbing,
@@ -2858,7 +2858,7 @@ fn on_transmit_normal_transmission_mode() {
     let mut manager = Manager::new(space);
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut context = MockWriteContext::new(
-        s2n_quic_platform::time::now(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
         transmission::Mode::Normal,
@@ -2989,7 +2989,7 @@ fn probe_packets_count_towards_bytes_in_flight() {
     manager.on_packet_sent(
         space.new_packet_number(VarInt::from_u8(1)),
         outcome,
-        s2n_quic_platform::time::now(),
+        time::now(),
         ecn,
         transmission::Mode::Normal,
         None,
@@ -3027,7 +3027,7 @@ fn time_threshold_multiplier_equals_nine_eighths() {
     rtt_estimator.update_rtt(
         Duration::from_millis(10),
         Duration::from_secs(1),
-        s2n_quic_platform::time::now(),
+        time::now(),
         true,
         PacketNumberSpace::Initial,
     );
@@ -3049,7 +3049,7 @@ fn timer_granularity() {
     rtt_estimator.update_rtt(
         Duration::from_millis(0),
         Duration::from_nanos(1),
-        s2n_quic_platform::time::now(),
+        time::now(),
         true,
         PacketNumberSpace::Initial,
     );
@@ -3071,7 +3071,7 @@ fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
     let mut publisher = Publisher::snapshot();
-    let sent_time = s2n_quic_platform::time::now() + Duration::from_secs(10);
+    let sent_time = time::now() + Duration::from_secs(10);
     let outcome = transmission::Outcome {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,

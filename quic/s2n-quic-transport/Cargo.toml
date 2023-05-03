@@ -32,4 +32,3 @@ futures-test = "0.3" # For testing Waker interactions
 insta = { version = "1", features = ["json"] }
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
-s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }

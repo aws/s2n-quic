@@ -3,7 +3,7 @@
 use super::*;
 use s2n_quic_core::{
     event::{builder::Path, testing::Publisher},
-    time::timer::Provider,
+    time::{clock::testing as time, timer::Provider},
     varint::VarInt,
 };
 use std::ops::Deref;
@@ -59,7 +59,7 @@ fn restart_already_in_testing_0() {
 fn on_timeout_failed() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     controller.fail(now, Path::test(), &mut publisher);
 
     if let State::Failed(timer) = &controller.state {
@@ -106,7 +106,7 @@ fn on_timeout_failed() {
 fn on_timeout_capable() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let rtt = Duration::from_millis(50);
     let ce_suppression_time = now + *CE_SUPPRESSION_TESTING_RTT_MULTIPLIER.start() as u32 * rtt;
     let mut ce_suppression_timer = Timer::default();
@@ -153,7 +153,7 @@ fn on_timeout_capable() {
 #[test]
 fn ecn() {
     let mut publisher = Publisher::snapshot();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
 
     for &transmission_mode in &[
         transmission::Mode::Normal,
@@ -183,7 +183,7 @@ fn ecn() {
         //# If validation fails, then the endpoint MUST disable ECN. It stops setting the ECT
         //# codepoint in IP packets that it sends, assuming that either the network path or
         //# the peer does not support ECN.
-        controller.fail(s2n_quic_platform::time::now(), Path::test(), &mut publisher);
+        controller.fail(time::now(), Path::test(), &mut publisher);
         assert!(!controller.ecn(transmission_mode, now).using_ecn());
 
         controller.state = State::Unknown;
@@ -193,7 +193,7 @@ fn ecn() {
 
 #[test]
 fn ecn_ce_suppression() {
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
 
     for &transmission_mode in &[
         transmission::Mode::Normal,
@@ -219,7 +219,7 @@ fn ecn_ce_suppression() {
 
 #[test]
 fn ecn_loss_recovery_probing() {
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
 
     for state in vec![
         State::Capable(Timer::default()),
@@ -262,7 +262,7 @@ fn is_capable() {
 fn validate_already_failed() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     controller.fail(now, Path::test(), &mut publisher);
     let outcome = controller.validate(
         EcnCounts::default(),
@@ -298,7 +298,7 @@ fn validate_already_failed() {
 fn validate_ecn_counts_not_in_ack() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
     let outcome = controller.validate(
         expected_ecn_counts,
@@ -324,7 +324,7 @@ fn validate_ecn_counts_not_in_ack() {
 fn validate_ecn_ce_remarking() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
     let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 0);
     let outcome = controller.validate(
@@ -350,7 +350,7 @@ fn validate_ecn_ce_remarking() {
 fn validate_ect_0_remarking() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
     let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(1, 1, 0);
@@ -373,7 +373,7 @@ fn validate_ect_0_remarking() {
 fn validate_ect_0_remarking_after_restart() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(0, 3, 0);
     let baseline_ecn_counts = helper_ecn_counts(0, 2, 0);
@@ -400,7 +400,7 @@ fn validate_no_ecn_counts() {
         state: State::Unknown,
         ..Default::default()
     };
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let outcome = controller.validate(
         EcnCounts::default(),
         EcnCounts::default(),
@@ -420,7 +420,7 @@ fn validate_no_ecn_counts() {
 fn validate_ecn_decrease() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let baseline_ecn_counts = helper_ecn_counts(1, 0, 0);
     let outcome = controller.validate(
         EcnCounts::default(),
@@ -449,7 +449,7 @@ fn validate_no_marked_packets_acked() {
         state: State::Unknown,
         ..Default::default()
     };
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let outcome = controller.validate(
         EcnCounts::default(),
         EcnCounts::default(),
@@ -476,7 +476,7 @@ fn validate_no_marked_packets_acked() {
 fn validate_ce_suppression_remarked_to_not_ect() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     // We sent one ECT0 and one CE
     let newly_acked_ecn_counts = helper_ecn_counts(1, 0, 1);
     let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 1);
@@ -508,7 +508,7 @@ fn validate_ce_suppression_remarked_to_not_ect() {
 fn validate_ce_suppression_remarked_to_ect0() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     // We sent one ECT0 and one CE
     let newly_acked_ecn_counts = helper_ecn_counts(1, 0, 1);
     let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 1);
@@ -536,7 +536,7 @@ fn validate_capable() {
         state: State::Unknown,
         ..Default::default()
     };
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
     let ack_frame_ecn_counts = helper_ecn_counts(2, 0, 0);
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
@@ -569,7 +569,7 @@ fn validate_capable_congestion_experienced() {
         state: State::Unknown,
         ..Default::default()
     };
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let expected_ecn_counts = helper_ecn_counts(2, 0, 5);
     let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 12);
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 5);
@@ -605,7 +605,7 @@ fn validate_capable_ce_suppression_test() {
         state: State::Unknown,
         ..Default::default()
     };
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let expected_ecn_counts = helper_ecn_counts(2, 0, 1);
     let ack_frame_ecn_counts = helper_ecn_counts(2, 0, 1);
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 1);
@@ -646,7 +646,7 @@ fn validate_capable_not_in_unknown_state() {
             state,
             ..Default::default()
         };
-        let now = s2n_quic_platform::time::now();
+        let now = time::now();
         let expected_ecn_counts = helper_ecn_counts(1, 0, 0);
         let ack_frame_ecn_counts = helper_ecn_counts(1, 0, 0);
         let sent_packet_ecn_counts = helper_ecn_counts(1, 0, 0);
@@ -674,7 +674,7 @@ fn validate_capable_lost_ack_frame() {
         state: State::Unknown,
         ..Default::default()
     };
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
 
     // We sent three ECT0 packets
     let sent_packet_ecn_counts = helper_ecn_counts(3, 0, 0);
@@ -714,7 +714,7 @@ fn validate_capable_after_restart() {
         state: State::Unknown,
         ..Default::default()
     };
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let sent_packet_ecn_counts = helper_ecn_counts(2, 0, 0);
     let expected_ecn_counts = helper_ecn_counts(2, 0, 0);
     // The Ect1 markings would normally fail validation, but since they are included
@@ -775,7 +775,7 @@ fn on_packet_loss() {
             state,
             ..Default::default()
         };
-        let now = s2n_quic_platform::time::now();
+        let now = time::now();
         let time_sent = now + Duration::from_secs(1);
 
         controller.last_acked_ecn_packet_timestamp = Some(now);
@@ -810,7 +810,7 @@ fn on_packet_loss() {
 fn on_packet_loss_already_failed() {
     let mut publisher = Publisher::snapshot();
     let mut controller = Controller::default();
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
     let time_sent = now + Duration::from_secs(1);
 
     controller.last_acked_ecn_packet_timestamp = Some(now);
@@ -843,7 +843,7 @@ fn on_packet_loss_already_failed() {
 
 #[test]
 fn fuzz_validate() {
-    let now = s2n_quic_platform::time::now();
+    let now = time::now();
 
     bolero::check!()
         .with_type::<(EcnCounts, EcnCounts, EcnCounts, Option<EcnCounts>, Duration)>()

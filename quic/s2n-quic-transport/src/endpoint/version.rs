@@ -320,6 +320,7 @@ mod tests {
             zero_rtt::ZeroRtt,
         },
         path::RemoteAddress,
+        time::clock::testing as time,
         varint::VarInt,
     };
 
@@ -334,7 +335,7 @@ mod tests {
         (
             RemoteAddress::from(SocketAddress::default()),
             DatagramInfo {
-                timestamp: s2n_quic_platform::time::now(),
+                timestamp: time::now(),
                 payload_len,
                 ecn: Default::default(),
                 destination_connection_id: connection::LocalId::TEST_ID,

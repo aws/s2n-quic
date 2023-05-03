@@ -415,7 +415,7 @@ mod tests {
         frame::{ack_elicitation::AckElicitation, ping, Frame},
         inet::{DatagramInfo, ExplicitCongestionNotification},
         path,
-        time::{Clock, NoopClock},
+        time::{clock::testing as time, Clock, NoopClock},
     };
 
     #[test]
@@ -541,7 +541,7 @@ mod tests {
             AckManager::new(PacketNumberSpace::ApplicationData, ack::Settings::default());
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
+            time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
             transmission::Mode::Normal,
@@ -607,7 +607,7 @@ mod tests {
             AckManager::new(PacketNumberSpace::ApplicationData, ack::Settings::default());
         let mut frame_buffer = OutgoingFrameBuffer::new();
         let mut write_context = MockWriteContext::new(
-            s2n_quic_platform::time::now(),
+            time::now(),
             &mut frame_buffer,
             transmission::Constraint::None,
             transmission::Mode::Normal,

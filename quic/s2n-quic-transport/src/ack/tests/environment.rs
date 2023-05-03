@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
-use s2n_quic_core::{endpoint, time::Timestamp, transmission};
+use s2n_quic_core::{
+    endpoint,
+    time::{clock::testing as time, Timestamp},
+    transmission,
+};
 
 #[derive(Clone, Debug)]
 pub struct TestEnvironment {
@@ -27,7 +31,7 @@ impl TestEnvironment {
 
         Self {
             sent_frames,
-            current_time: s2n_quic_platform::time::now(),
+            current_time: time::now(),
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,
             local_endpoint_type: endpoint::Type::Server,

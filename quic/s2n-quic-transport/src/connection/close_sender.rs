@@ -322,7 +322,7 @@ mod tests {
         event::testing::Publisher,
         io::tx::Message as _,
         path::MINIMUM_MTU,
-        time::{testing::Clock, timer::Provider as _, Clock as _},
+        time::{clock::testing as time, testing::Clock, timer::Provider as _, Clock as _},
     };
 
     static PACKET: Bytes = Bytes::from_static(b"CLOSE");
@@ -362,7 +362,7 @@ mod tests {
 
                 // transmit an initial packet
                 assert!(sender.can_transmit(path.transmission_constraint()));
-                let now = s2n_quic_platform::time::now();
+                let now = time::now();
                 let _ = sender
                     .transmission(&mut path, now, &mut publisher)
                     .write_payload(tx::PayloadBuffer::new(&mut buffer), 0);

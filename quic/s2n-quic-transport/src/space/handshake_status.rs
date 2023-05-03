@@ -209,8 +209,7 @@ mod fuzz_target;
 mod tests {
     use super::*;
     use crate::{contexts::testing::*, transmission::interest::Provider};
-    use s2n_quic_core::{endpoint, event::testing::Publisher};
-    use s2n_quic_platform::time;
+    use s2n_quic_core::{endpoint, event::testing::Publisher, time::clock::testing as time};
 
     #[test]
     fn server_test() {

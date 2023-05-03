@@ -8,7 +8,10 @@ use s2n_quic_core::{
     event::{self, EndpointPublisher as _},
     inet::SocketAddress,
     path::MaxMtu,
-    time::Clock as ClockTrait,
+    time::{
+        clock::{ClockWithTimer as _, Timer as _},
+        Clock as ClockTrait,
+    },
 };
 use std::{convert::TryInto, io, io::ErrorKind};
 use tokio::runtime::Handle;
@@ -221,12 +224,14 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
             // pin the wakeups future so we don't have to move it into the Select future.
             tokio::pin!(wakeups);
 
+            let timer_ready = timer.ready();
+
             let select::Outcome {
                 rx_result,
                 tx_result,
                 timeout_expired,
                 application_wakeup,
-            } = if let Ok(res) = Select::new(rx_task, tx_task, &mut wakeups, &mut timer).await {
+            } = if let Ok(res) = Select::new(rx_task, tx_task, &mut wakeups, timer_ready).await {
                 res
             } else {
                 // The endpoint has shut down
