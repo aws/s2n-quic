@@ -5,6 +5,8 @@
 
 type Result<T = (), E = std::io::Error> = core::result::Result<T, E>;
 
+/// Default BPF programs to direct QUIC traffic
+pub mod bpf;
 /// Primitive types for AF-XDP kernel APIs
 mod if_xdp;
 /// Helpers for creating mmap'd regions

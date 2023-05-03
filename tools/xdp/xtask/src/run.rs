@@ -14,6 +14,9 @@ pub struct Options {
     /// The command used to wrap your application
     #[clap(short, long, default_value = "sudo -E")]
     pub runner: String,
+    /// Skips building the bpf programs
+    #[clap(long)]
+    pub no_build: bool,
     /// Arguments to pass to your application
     #[clap(name = "args", last = true)]
     pub run_args: Vec<String>,
@@ -42,7 +45,9 @@ fn build(opts: &Options) -> Result<(), anyhow::Error> {
 /// Build and run the project
 pub fn run(opts: Options) -> Result<(), anyhow::Error> {
     // build our ebpf program followed by our application
-    build_ebpf::run().context("Error while building eBPF program")?;
+    if !opts.no_build {
+        build_ebpf::run().context("Error while building eBPF program")?;
+    }
     build(&opts).context("Error while building userspace application")?;
 
     // profile we are building (release or debug)

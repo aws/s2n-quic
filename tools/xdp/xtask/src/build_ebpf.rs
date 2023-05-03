@@ -53,7 +53,7 @@ pub fn run() -> Result<(), anyhow::Error> {
             let status = command.status().expect("failed to build bpf program");
             assert!(status.success());
 
-            let out = PathBuf::from("lib")
+            let out = PathBuf::from("s2n-quic-xdp/src/bpf")
                 .join(artifact_name)
                 .with_extension("ebpf");
 
