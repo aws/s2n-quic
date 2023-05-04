@@ -1,15 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::select::{self, Select};
 use bach::time::scheduler;
-use core::{pin::Pin, task::Poll};
+use core::task::Poll;
 use s2n_quic_core::{
-    endpoint::Endpoint,
-    event::{self, EndpointPublisher as _},
-    inet::SocketAddress,
-    path::MaxMtu,
-    time::clock::Timer as _,
+    endpoint::Endpoint, inet::SocketAddress, io::event_loop::EventLoop, path::MaxMtu,
 };
 
 type Error = std::io::Error;
@@ -264,96 +259,17 @@ impl Io {
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());
 
-        buffers.register(handle);
-
-        let instance = Instance {
-            buffers,
-            handle,
-            endpoint,
-        };
-        let join = executor.spawn(instance.event_loop());
-        Ok((join, handle))
-    }
-}
-
-struct Instance<E> {
-    buffers: network::Buffers,
-    handle: SocketAddress,
-    endpoint: E,
-}
-
-impl<E: Endpoint<PathHandle = network::PathHandle>> Instance<E> {
-    async fn event_loop(self) {
-        let Self {
-            buffers,
-            handle,
-            mut endpoint,
-        } = self;
+        let (tx, rx) = buffers.register(handle);
 
         let clock = time::Clock::default();
-        let mut timer = time::Timer::default();
 
-        loop {
-            let io_task = buffers.readiness(handle);
-
-            // make a future that never returns since we have a single future that checks both
-            let empty_task = futures::future::pending::<()>();
-
-            let mut wakeups = endpoint.wakeups(&clock);
-            let mut wakeups = Pin::new(&mut wakeups);
-
-            let timer_ready = timer.ready();
-
-            let select::Outcome {
-                rx_result,
-                tx_result,
-                timeout_expired,
-                application_wakeup,
-            } = if let Ok(res) = Select::new(io_task, empty_task, &mut wakeups, timer_ready).await {
-                res
-            } else {
-                // The endpoint has shut down
-                return;
-            };
-
-            let wakeup_timestamp = time::now();
-            let subscriber = endpoint.subscriber();
-            let mut publisher = event::EndpointPublisherSubscriber::new(
-                event::builder::EndpointMeta {
-                    endpoint_type: E::ENDPOINT_TYPE,
-                    timestamp: wakeup_timestamp,
-                },
-                None,
-                subscriber,
-            );
-
-            publisher.on_platform_event_loop_wakeup(event::builder::PlatformEventLoopWakeup {
-                timeout_expired,
-                rx_ready: rx_result.is_some(),
-                tx_ready: tx_result.is_some(),
-                application_wakeup,
-            });
-
-            if let Some(result) = rx_result {
-                if result.is_err() {
-                    // the endpoint shut down
-                    return;
-                }
-
-                buffers.rx(handle, |queue| {
-                    endpoint.receive(queue, &clock);
-                });
-            }
-
-            buffers.tx(handle, |queue| {
-                endpoint.transmit(queue, &clock);
-            });
-
-            if let Some(timestamp) = endpoint.timeout() {
-                timer.update(timestamp);
-            } else {
-                timer.cancel();
-            }
-        }
+        let event_loop = EventLoop {
+            endpoint,
+            clock,
+            tx,
+            rx,
+        };
+        let join = executor.spawn(event_loop.start());
+        Ok((join, handle))
     }
 }

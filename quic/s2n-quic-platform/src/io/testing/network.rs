@@ -1,15 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll, Waker},
-};
+use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
+    event,
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::{
-        self,
+        self, rx,
         tx::{self, Queue as _},
     },
     path::{LocalAddress, Tuple},
@@ -147,13 +144,6 @@ impl Buffers {
         n.execute(self);
     }
 
-    pub(crate) fn readiness(&self, handle: SocketAddress) -> Readiness {
-        Readiness {
-            network: self,
-            handle,
-        }
-    }
-
     /// Generate a unique address
     pub fn generate_addr(&self) -> SocketAddress {
         let ip = self
@@ -167,58 +157,102 @@ impl Buffers {
     }
 
     /// Register an address on the network
-    pub fn register(&self, handle: SocketAddress) {
+    pub fn register(&self, handle: SocketAddress) -> (TxIo, RxIo) {
         let mut lock = self.inner.lock().unwrap();
 
         let queue = Queue::new(handle);
 
         lock.tx.insert(handle, queue.clone());
         lock.rx.insert(handle, queue);
+
+        let tx = TxIo {
+            buffers: self.clone(),
+            handle,
+        };
+        let rx = RxIo {
+            buffers: self.clone(),
+            handle,
+        };
+
+        (tx, rx)
     }
 }
 
-pub(crate) struct Readiness<'a> {
-    network: &'a Buffers,
+pub struct TxIo {
+    buffers: Buffers,
     handle: SocketAddress,
 }
 
-impl<'a> Future for Readiness<'a> {
-    type Output = Result<(), ()>;
+impl tx::Tx for TxIo {
+    type PathHandle = Tuple;
+    type Queue = Queue;
+    type Error = ();
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut lock = self.network.inner.lock().unwrap();
+    fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        let mut lock = self.buffers.inner.lock().unwrap();
 
         if !lock.is_open {
             return Err(()).into();
         }
 
-        let mut is_ready = false;
-
         let tx = lock.tx.get_mut(&self.handle).unwrap();
-        if tx.is_blocked {
-            // if we were blocked and now have capacity wake up the endpoint
-            if tx.has_capacity() {
-                tx.is_blocked = false;
-                is_ready = true;
-            } else {
-                tx.waker = Some(cx.waker().clone());
-            }
+
+        // If we weren't previously full, then return pending so we don't spin
+        if !tx.is_blocked {
+            return Poll::Pending;
         }
 
-        let rx = lock.rx.get_mut(&self.handle).unwrap();
-        // wake up the endpoint if we have an rx message
-        if io::rx::Queue::is_empty(rx) {
-            rx.waker = Some(cx.waker().clone());
-        } else {
-            is_ready = true;
-        }
-
-        if is_ready {
+        // if we were blocked and now have capacity wake up the endpoint
+        if tx.has_capacity() {
+            tx.is_blocked = false;
             Poll::Ready(Ok(()))
         } else {
+            tx.waker = Some(cx.waker().clone());
             Poll::Pending
         }
     }
+
+    fn queue<F: FnOnce(&mut Self::Queue)>(&mut self, f: F) {
+        self.buffers.tx(self.handle, f);
+    }
+
+    fn handle_error<E: event::EndpointPublisher>(self, _error: Self::Error, _events: &mut E) {}
+}
+
+pub struct RxIo {
+    buffers: Buffers,
+    handle: SocketAddress,
+}
+
+impl rx::Rx for RxIo {
+    type PathHandle = Tuple;
+    type Queue = Queue;
+    type Error = ();
+
+    fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        let mut lock = self.buffers.inner.lock().unwrap();
+
+        if !lock.is_open {
+            return Err(()).into();
+        }
+
+        let rx = lock.rx.get_mut(&self.handle).unwrap();
+
+        // wake up the endpoint if we have an rx message
+        if !io::rx::Queue::is_empty(rx) {
+            return Poll::Ready(Ok(()));
+        }
+
+        // store the waker for later notifications
+        rx.waker = Some(cx.waker().clone());
+        Poll::Pending
+    }
+
+    fn queue<F: FnOnce(&mut Self::Queue)>(&mut self, f: F) {
+        self.buffers.rx(self.handle, f);
+    }
+
+    fn handle_error<E: event::EndpointPublisher>(self, _error: Self::Error, _events: &mut E) {}
 }
 
 #[derive(Debug)]
