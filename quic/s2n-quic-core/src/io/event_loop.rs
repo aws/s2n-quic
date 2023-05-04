@@ -65,6 +65,8 @@ where
 
             // TODO use the [pin macro](https://doc.rust-lang.org/std/pin/macro.pin.html) once
             // available in MSRV
+            //
+            // See https://github.com/aws/s2n-quic/issues/1751
             let wakeups = unsafe {
                 // Safety: the wakeups future is on the stack and won't move
                 Pin::new_unchecked(&mut wakeups)
