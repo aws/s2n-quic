@@ -296,8 +296,9 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         unsafe { &*self.flags.as_ptr() }
     }
 
-    /// Returns a reference to the flags on the ring
+    /// Returns a mutable reference to the flags on the ring
     #[inline]
+    #[cfg(test)]
     pub fn flags_mut(&mut self) -> &mut RingFlags {
         unsafe { &mut *self.flags.as_ptr() }
     }

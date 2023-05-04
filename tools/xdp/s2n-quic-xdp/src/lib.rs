@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(dead_code)] // TODO remove once the crate is finished
-
 type Result<T = (), E = std::io::Error> = core::result::Result<T, E>;
 
 /// Emits a log line if the `s2n_quic_xdp_trace` cfg option is enabled. Otherwise, the trace is a
@@ -19,18 +17,18 @@ macro_rules! trace {
 /// Default BPF programs to direct QUIC traffic
 pub mod bpf;
 /// Primitive types for AF-XDP kernel APIs
-mod if_xdp;
+pub mod if_xdp;
 /// Implementations of the IO traits from [`s2n_quic_core::io`]
-mod io;
+pub mod io;
 /// Helpers for creating mmap'd regions
-mod mmap;
+pub mod mmap;
 /// Structures for tracking ring cursors and synchronizing with the kernel
-mod ring;
+pub mod ring;
 /// Structure for opening and reference counting an AF-XDP socket
-mod socket;
+pub mod socket;
 /// Helpers for making API calls to AF-XDP sockets
-mod syscall;
+pub mod syscall;
 /// A set of async tasks responsible for managing ring buffer and queue state
-mod task;
+pub mod task;
 /// A shared region of memory for holding frame (packet) data
-mod umem;
+pub mod umem;

@@ -9,15 +9,7 @@ use cfg_if::cfg_if;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::io;
 
-/// Creates a UDP socket bound to the provided address
-pub fn bind_udp<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Result<Socket> {
-    let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
-        std::io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "the provided bind address was empty",
-        )
-    })?;
-
+pub fn udp_socket(addr: std::net::SocketAddr) -> io::Result<Socket> {
     let domain = Domain::for_address(addr);
     let socket_type = Type::DGRAM;
     let protocol = Some(Protocol::UDP);
@@ -40,14 +32,25 @@ pub fn bind_udp<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Re
             let socket = Socket::new(domain, socket_type, protocol)?;
             socket.set_nonblocking(true)?;
         }
-    };
-
-    // allow ipv4 to also connect
-    if addr.is_ipv6() {
-        socket.set_only_v6(false)?;
     }
 
+    // allow ipv4 to also connect - ignore the error if it fails
+    let _ = socket.set_only_v6(false);
+
     socket.set_reuse_address(true)?;
+
+    Ok(socket)
+}
+
+/// Creates a UDP socket bound to the provided address
+pub fn bind_udp<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Result<Socket> {
+    let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
+        std::io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the provided bind address was empty",
+        )
+    })?;
+    let socket = udp_socket(addr)?;
 
     #[cfg(unix)]
     socket.set_reuse_port(reuse_port)?;
@@ -58,6 +61,23 @@ pub fn bind_udp<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Re
     socket.bind(&addr.into())?;
 
     Ok(socket)
+}
+
+/// Binds a socket to a specified interface by name
+#[cfg(target_os = "linux")]
+#[allow(dead_code)] // This is currently only used in the XDP io provider, which is optional
+pub fn bind_to_interface<F: std::os::unix::io::AsRawFd>(
+    socket: &F,
+    ifname: &std::ffi::CStr,
+) -> io::Result<()> {
+    libc!(setsockopt(
+        socket.as_raw_fd(),
+        libc::SOL_SOCKET,
+        libc::SO_BINDTODEVICE,
+        ifname as *const _ as *const _,
+        libc::IF_NAMESIZE as _
+    ))?;
+    Ok(())
 }
 
 /// Disables MTU discovery and fragmentation on the socket

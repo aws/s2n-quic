@@ -22,6 +22,9 @@ pub mod testing;
 #[cfg(feature = "unstable-provider-io-turmoil")]
 pub mod turmoil;
 
+#[cfg(feature = "unstable-provider-io-xdp")]
+pub mod xdp;
+
 pub mod tokio;
 
 pub use self::tokio as default;

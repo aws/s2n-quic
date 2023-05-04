@@ -40,6 +40,8 @@ unstable-provider-datagram = []
 unstable-provider-io-testing = ["s2n-quic-platform/io-testing"]
 # This feature enables the turmoil IO provider
 unstable-provider-io-turmoil = ["s2n-quic-platform/turmoil"]
+# This feature enables the XDP IO provider
+unstable-provider-io-xdp = ["s2n-quic-platform/xdp"]
 # This feature enables the packet interceptor provider, which is invoked on each cleartext packet
 unstable-provider-packet-interceptor = []
 # This feature enables the random provider

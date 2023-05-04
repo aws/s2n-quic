@@ -17,6 +17,7 @@ testing = ["std", "generator", "futures/std", "io-testing"] # Testing allows to 
 io-testing = ["bach"]
 generator = ["bolero-generator", "s2n-quic-core/generator"]
 tokio-runtime = ["futures", "tokio"]
+xdp = ["s2n-quic-xdp"]
 
 [dependencies]
 bach = { version = "0.0.6", optional = true }
@@ -26,6 +27,7 @@ errno = "0.3"
 futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 lazy_static = { version = "1", optional = true }
 s2n-quic-core = { version = "=0.20.0", path = "../s2n-quic-core", default-features = false }
+s2n-quic-xdp = { version = "=0.1.0", path = "../../tools/xdp/s2n-quic-xdp", optional = true }
 socket2 = { version = "0.5", features = ["all"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
 turmoil = { version = "0.5.2", optional = true }
