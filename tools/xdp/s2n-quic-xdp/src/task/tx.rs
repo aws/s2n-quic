@@ -13,36 +13,55 @@ use s2n_quic_core::{
 };
 
 /// Takes a queue of descriptors to be transmitted on a socket
-pub async fn tx<N: Notifier>(
-    outgoing: spsc::Receiver<RxTxDescriptor>,
-    tx: ring::Tx,
-    notifier: N,
-    worker: worker::Sender,
-) {
+pub async fn tx<N: Notifier>(outgoing: spsc::Receiver<RxTxDescriptor>, tx: ring::Tx, notifier: N) {
     Tx {
         outgoing,
         tx,
         notifier,
-        worker,
     }
     .await;
 }
 
 /// Notifies the implementor of progress on the TX ring
 pub trait Notifier: Unpin {
-    fn notify(&mut self);
+    fn notify(&mut self, tx: &mut ring::Tx, count: u32);
 }
 
 impl Notifier for () {
     #[inline]
-    fn notify(&mut self) {
+    fn notify(&mut self, _tx: &mut ring::Tx, _count: u32) {
         // nothing to do
+    }
+}
+
+impl<A: Notifier, B: Notifier> Notifier for (A, B) {
+    #[inline]
+    fn notify(&mut self, tx: &mut ring::Tx, count: u32) {
+        self.0.notify(tx, count);
+        self.1.notify(tx, count);
+    }
+}
+
+impl Notifier for worker::Sender {
+    #[inline]
+    fn notify(&mut self, _tx: &mut ring::Tx, count: u32) {
+        if count > 0 {
+            trace!("notifying worker to wake up with {count} entries");
+            self.submit(count as _);
+        }
     }
 }
 
 impl Notifier for socket::Fd {
     #[inline]
-    fn notify(&mut self) {
+    fn notify(&mut self, tx: &mut ring::Tx, _count: u32) {
+        // only notify the socket if it's set the needs wakeup flag
+        if !tx.needs_wakeup() {
+            trace!("TX ring doesn't need wake, returning early");
+            return;
+        }
+
+        trace!("TX ring needs wakeup");
         let result = syscall::wake_tx(self);
 
         trace!("waking tx for progress {result:?}");
@@ -53,7 +72,6 @@ struct Tx<N: Notifier> {
     outgoing: spsc::Receiver<RxTxDescriptor>,
     tx: ring::Tx,
     notifier: N,
-    worker: worker::Sender,
 }
 
 impl<N: Notifier> Future for Tx<N> {
@@ -65,7 +83,6 @@ impl<N: Notifier> Future for Tx<N> {
             outgoing,
             tx,
             notifier,
-            worker,
         } = self.get_mut();
 
         trace!("polling tx");
@@ -92,7 +109,7 @@ impl<N: Notifier> Future for Tx<N> {
             trace!("acquired {count} items from TX ring");
 
             if count == 0 {
-                notifier.notify();
+                notifier.notify(tx, count);
                 continue;
             }
 
@@ -107,13 +124,9 @@ impl<N: Notifier> Future for Tx<N> {
             if count > 0 {
                 tx.release(count as _);
                 outgoing.release(count);
-                worker.submit(count);
             }
 
-            if tx.needs_wakeup() {
-                trace!("TX ring needs wakeup");
-                notifier.notify();
-            }
+            notifier.notify(tx, count as _);
         }
 
         // if we got here, we iterated 10 times and need to yield so we don't consume the event
@@ -142,7 +155,7 @@ mod tests {
         let (worker_send, mut worker_recv) = worker::channel();
         let (done_send, done_recv) = oneshot::channel();
 
-        tokio::spawn(tx(tx_recv, ring_tx, (), worker_send));
+        tokio::spawn(tx(tx_recv, ring_tx, worker_send));
 
         tokio::spawn(async move {
             let mut addresses = (0..expected_total)

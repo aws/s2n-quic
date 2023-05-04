@@ -107,12 +107,32 @@ pub trait Poller: Unpin {
     fn release(&mut self, comp: &mut ring::Completion, count: usize);
 }
 
-impl Poller for () {
+/// Performs busy polling on the completion ring
+pub struct BusyPoll;
+
+impl Poller for BusyPoll {
     #[inline]
     fn poll(&mut self, comp: &mut ring::Completion, cx: &mut Context) -> Poll<Option<u32>> {
         // In this mode we are busy polling so wake ourselves up on every iteration
         cx.waker().wake_by_ref();
 
+        OnDemand.poll(comp, cx)
+    }
+
+    #[inline]
+    fn release(&mut self, comp: &mut ring::Completion, count: usize) {
+        OnDemand.release(comp, count)
+    }
+}
+
+/// Performs on-demand polling on the completion ring
+///
+/// Note that the future will not make any progress unless poll is called based on demand.
+pub struct OnDemand;
+
+impl Poller for OnDemand {
+    #[inline]
+    fn poll(&mut self, comp: &mut ring::Completion, _cx: &mut Context) -> Poll<Option<u32>> {
         // try to acquire entries from the completion queue
         let count = comp.acquire(1);
 

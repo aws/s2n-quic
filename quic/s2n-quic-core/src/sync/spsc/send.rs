@@ -132,6 +132,15 @@ impl<'a, T> SendSlice<'a, T> {
     pub fn capacity(&self) -> usize {
         self.0.cursor.send_capacity()
     }
+
+    /// Synchronizes any updates from the peer
+    ///
+    /// This can be useful for when `slice` is called without polling for entries first.
+    #[inline]
+    pub fn sync(&mut self) -> Result<(), super::ClosedError> {
+        self.0.acquire_capacity()?;
+        Ok(())
+    }
 }
 
 impl<'a, T> Drop for SendSlice<'a, T> {

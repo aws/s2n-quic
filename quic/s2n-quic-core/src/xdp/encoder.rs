@@ -70,7 +70,7 @@ pub fn encode_packet<M: Message<Handle = path::Tuple>>(
     buffer: &mut EncoderBuffer,
     message: &mut M,
     state: &mut State,
-) -> Result<(), tx::Error> {
+) -> Result<u16, tx::Error> {
     unsafe {
         assume!(
             buffer.remaining_capacity()
@@ -115,7 +115,7 @@ fn encode_ipv4<M: Message<Handle = path::Tuple>>(
     remote_ip: ipv4::IpV4Address,
     message: &mut M,
     state: &mut State,
-) -> Result<(), tx::Error> {
+) -> Result<u16, tx::Error> {
     const HEADER_LEN: u16 = (size_of::<ipv4::Header>() + size_of::<udp::Header>()) as _;
 
     let checksum = state.ipv4_checksum();
@@ -177,7 +177,7 @@ fn encode_ipv4<M: Message<Handle = path::Tuple>>(
 
     encode_udp(buffer, outcome, message, state);
 
-    Ok(())
+    Ok(outcome.len)
 }
 
 #[inline]
@@ -187,7 +187,7 @@ fn encode_ipv6<M: Message<Handle = path::Tuple>>(
     remote_ip: ipv6::IpV6Address,
     message: &mut M,
     state: &mut State,
-) -> Result<(), tx::Error> {
+) -> Result<u16, tx::Error> {
     const HEADER_LEN: u16 = (size_of::<ipv6::Header>() + size_of::<udp::Header>()) as _;
 
     // Ipv6 checksums are required
@@ -252,7 +252,7 @@ fn encode_ipv6<M: Message<Handle = path::Tuple>>(
 
     encode_udp(buffer, outcome, message, state);
 
-    Ok(())
+    Ok(outcome.len)
 }
 
 #[inline]

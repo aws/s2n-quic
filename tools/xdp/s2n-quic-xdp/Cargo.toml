@@ -18,11 +18,14 @@ aya = { version = "0.11", default-features = false }
 bitflags = "2"
 errno = "0.3"
 libc = "0.2"
+s2n-codec = { version = "=0.5.0", path = "../../../common/s2n-codec" }
 s2n-quic-core = { version = "=0.20.0", path = "../../../quic/s2n-quic-core" }
 tokio = { version = "1", optional = true }
 
 [dev-dependencies]
 bolero = "0.9"
+futures = "0.3"
+pin-project-lite = "0.2"
 rand = "0.8"
 s2n-quic-core = { path = "../../../quic/s2n-quic-core", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
