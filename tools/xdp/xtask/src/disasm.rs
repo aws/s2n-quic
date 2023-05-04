@@ -16,7 +16,7 @@ pub fn run() -> Result<(), anyhow::Error> {
 }
 
 pub fn piped<O: io::Write>(input: &str, mut out: O) -> Result<(), anyhow::Error> {
-    let prog = std::fs::read(format!("lib/s2n-quic-xdp-{input}.ebpf"))?;
+    let prog = std::fs::read(format!("s2n-quic-xdp/src/bpf/s2n-quic-xdp-{input}.ebpf"))?;
     let file = File::minimal_parse(&prog)?;
 
     writeln!(out, "===== {input} =====")?;

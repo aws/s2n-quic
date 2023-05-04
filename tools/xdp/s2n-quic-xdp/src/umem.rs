@@ -197,11 +197,13 @@ pub trait UnsafeIndex<T> {
 }
 
 impl UnsafeIndex<RxTxDescriptor> for Umem {
+    #[inline]
     unsafe fn index(&self, idx: RxTxDescriptor) -> &[u8] {
         let ptr = self.validate_rx_tx_descriptor(idx);
         core::slice::from_raw_parts(ptr, idx.len as _)
     }
 
+    #[inline]
     unsafe fn index_mut(&self, idx: RxTxDescriptor) -> &mut [u8] {
         let ptr = self.validate_rx_tx_descriptor(idx);
         core::slice::from_raw_parts_mut(ptr, idx.len as _)
@@ -209,11 +211,13 @@ impl UnsafeIndex<RxTxDescriptor> for Umem {
 }
 
 impl UnsafeIndex<UmemDescriptor> for Umem {
+    #[inline]
     unsafe fn index(&self, idx: UmemDescriptor) -> &[u8] {
         let ptr = self.validate_umem_descriptor(idx);
         core::slice::from_raw_parts(ptr, self.frame_size as _)
     }
 
+    #[inline]
     unsafe fn index_mut(&self, idx: UmemDescriptor) -> &mut [u8] {
         let ptr = self.validate_umem_descriptor(idx);
         core::slice::from_raw_parts_mut(ptr, self.frame_size as _)

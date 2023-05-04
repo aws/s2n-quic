@@ -3,7 +3,6 @@
 
 use anyhow::Context;
 use aya::{
-    include_bytes_aligned,
     programs::{Xdp, XdpFlags},
     Bpf,
 };
@@ -36,15 +35,9 @@ async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
 
     let bpf = if opt.trace {
-        include_bytes_aligned!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../lib/s2n-quic-xdp-bpfel-trace.ebpf"
-        ))
+        s2n_quic_xdp::bpf::DEFAULT_PROGRAM_TRACE
     } else {
-        include_bytes_aligned!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../lib/s2n-quic-xdp-bpfel.ebpf"
-        ))
+        s2n_quic_xdp::bpf::DEFAULT_PROGRAM
     };
 
     let mut bpf = Bpf::load(bpf)?;
@@ -55,7 +48,10 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    let program: &mut Xdp = bpf.program_mut("s2n_quic_xdp").unwrap().try_into()?;
+    let program: &mut Xdp = bpf
+        .program_mut(s2n_quic_xdp::bpf::PROGRAM_NAME)
+        .unwrap()
+        .try_into()?;
     program.load()?;
 
     if opt.exit_on_load {
