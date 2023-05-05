@@ -1,8 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use s2n_quic_core::recovery::congestion_controller::{
-    CongestionController, Endpoint, PathInfo,
+pub use s2n_quic_core::{
+    random::Generator,
+    recovery::{
+        congestion_controller::{CongestionController, Endpoint, PathInfo, Publisher},
+        RttEstimator,
+    },
+    time::Timestamp,
 };
 
 /// Provides congestion controller support for an endpoint
