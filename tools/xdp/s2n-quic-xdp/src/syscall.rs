@@ -8,8 +8,10 @@ use crate::{
 use core::{mem::size_of, ptr::NonNull};
 use libc::{c_void, AF_XDP, SOCK_RAW, SOL_XDP};
 use std::{
+    ffi::CStr,
     io,
     os::unix::io::{AsRawFd, RawFd},
+    path::Path,
 };
 
 /// Calls the given libc function and wraps the result in an `io::Result`.
@@ -159,11 +161,19 @@ pub fn bind<Fd: AsRawFd>(fd: &Fd, addr: &mut Address) -> Result<()> {
 /// This should be called after checking if the TX ring needs a wake up.
 #[inline]
 pub fn wake_tx<Fd: AsRawFd>(fd: &Fd) -> Result<()> {
-    let msg = unsafe {
-        // Safety: msghdr is zeroable
-        core::mem::zeroed()
+    unsafe {
+        // after some testing, `sendto` is better than `sengmsg` here since it doesn't have to copy
+        // the msghdr from userspace, which would be zeroed and meaningless
+        libc!(sendto(
+            fd.as_raw_fd(),
+            core::ptr::null_mut(),
+            0,
+            libc::MSG_DONTWAIT,
+            core::ptr::null_mut(),
+            0,
+        ))?;
     };
-    unsafe { libc!(sendmsg(fd.as_raw_fd(), &msg, libc::MSG_DONTWAIT,)) }?;
+
     Ok(())
 }
 
@@ -231,6 +241,104 @@ pub unsafe fn munmap(addr: NonNull<c_void>, len: usize) -> Result<()> {
     Ok(())
 }
 
+/// Converts an interface name to its index
+///
+/// Returns an error if the name could not be resolved.
+pub fn if_nametoindex(name: &CStr) -> Result<u32> {
+    unsafe {
+        let ifindex = libc::if_nametoindex(name.as_ptr());
+
+        // https://man7.org/linux/man-pages/man3/if_nametoindex.3.html
+        // > On success, if_nametoindex() returns the index number of the
+        // > network interface; on error, 0 is returned and errno is set to
+        // > indicate the error.
+        if ifindex == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        Ok(ifindex)
+    }
+}
+
+/// Returns the maximum number of queues that can be opened on a particular network device
+pub fn max_queues(ifname: &str) -> u32 {
+    // See https://github.com/xdp-project/xdp-tools/blob/1c8662f4bb44445454c8f66df56ccd11274d4e30/lib/libxdp/xsk.c#L436
+
+    // First try the ethtool API
+    if let Some(queues) = ethtool_queues(ifname).filter(|v| *v > 0) {
+        return queues;
+    }
+
+    // Then try to query the number from sysfs
+    if let Some(queues) = sysfs_queues(ifname).filter(|v| *v > 0) {
+        return queues;
+    }
+
+    // If none of the previous methods worked, then just default to a single queue
+    1
+}
+
+/// Queries the number of queues for a given interface with ethtool APIs
+fn ethtool_queues(ifname: &str) -> Option<u32> {
+    // See https://github.com/xdp-project/xdp-tools/blob/1c8662f4bb44445454c8f66df56ccd11274d4e30/lib/libxdp/xsk.c#L436
+
+    let fd = unsafe { libc!(socket(libc::AF_LOCAL, libc::SOCK_DGRAM, 0)).ok()? };
+    // close the FD on drop
+    let fd = crate::socket::Fd::from_raw(fd);
+
+    let mut channels = unsafe { core::mem::zeroed::<crate::bindings::ethtool_channels>() };
+    channels.cmd = crate::bindings::ETHTOOL_GCHANNELS;
+
+    let mut ifreq = unsafe { core::mem::zeroed::<libc::ifreq>() };
+    ifreq.ifr_ifru.ifru_data = (&mut channels) as *mut _ as *mut _;
+
+    assert!(ifname.len() < ifreq.ifr_name.len());
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            ifname.as_bytes().as_ptr(),
+            &mut ifreq.ifr_name as *mut _ as *mut u8,
+            ifname.len(),
+        );
+    }
+
+    unsafe {
+        libc!(ioctl(fd.as_raw_fd(), libc::SIOCETHTOOL, &mut ifreq)).ok()?;
+    }
+
+    // Take the max of the max values, each driver returns in a different way
+    let queues = channels
+        .max_rx
+        .max(channels.max_tx)
+        .max(channels.max_combined);
+
+    Some(queues)
+}
+
+/// Queries the number of queues for a given interface with sysfs
+fn sysfs_queues(ifname: &str) -> Option<u32> {
+    // See https://github.com/xdp-project/xdp-tools/blob/1c8662f4bb44445454c8f66df56ccd11274d4e30/lib/libxdp/xsk.c#L408
+
+    let mut rx = 0;
+    let mut tx = 0;
+
+    let path = Path::new("/sys/class/net").join(ifname).join("queues");
+
+    for entry in path.read_dir().ok()?.flatten() {
+        let path = entry.path();
+
+        if let Some(path) = path.file_name().map(|p| p.to_string_lossy()) {
+            if path.starts_with("rx") {
+                rx += 1;
+            } else if path.starts_with("tx") {
+                tx += 1;
+            }
+        }
+    }
+
+    let queues = rx.max(tx).max(1);
+    Some(queues)
+}
+
 #[inline]
 fn xdp_option<Fd: AsRawFd, T: Sized>(fd: &Fd, opt: SocketOptions, value: &mut T) -> Result<usize> {
     let mut optlen = size_of::<T>() as libc::socklen_t;
@@ -272,6 +380,13 @@ mod tests {
     use core::ffi::CStr;
 
     #[test]
+    fn max_queues_test() {
+        // we can't make any assumptions about the test environment but we can at least make sure
+        // it returns >=1
+        assert!(max_queues("lo") >= 1);
+    }
+
+    #[test]
     fn syscall_test() {
         // This call requires `CAP_NET_RAW`. If the test doesn't have this set, then log and skip
         // the next calls
@@ -290,6 +405,8 @@ mod tests {
             );
             return;
         };
+        // close the FD on drop
+        let _owned_fd = crate::socket::Fd::from_raw(fd);
 
         // the ring sizes need to be a power of 2
         let ring_size = 32u32;
@@ -338,10 +455,6 @@ mod tests {
                     dbg!(busy_poll(&fd).unwrap());
                 }
             }
-        }
-
-        unsafe {
-            let _ = libc!(close(fd));
         }
     }
 }
