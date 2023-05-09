@@ -22,49 +22,85 @@ pub async fn tx<N: Notifier>(outgoing: spsc::Receiver<RxTxDescriptor>, tx: ring:
     .await;
 }
 
+#[cfg(feature = "tokio")]
+mod tokio_impl;
+
 /// Notifies the implementor of progress on the TX ring
 pub trait Notifier: Unpin {
-    fn notify(&mut self, tx: &mut ring::Tx, count: u32);
+    /// Notifies the subject that `count` items were transmitted on the TX ring
+    fn notify(&mut self, tx: &mut ring::Tx, cx: &mut Context, count: u32);
+    /// Notifies the subject that the TX ring doesn't have any capacity for transmission
+    fn notify_empty(&mut self, tx: &mut ring::Tx, cx: &mut Context) -> Poll<()>;
 }
 
 impl Notifier for () {
     #[inline]
-    fn notify(&mut self, _tx: &mut ring::Tx, _count: u32) {
+    fn notify(&mut self, _tx: &mut ring::Tx, _cx: &mut Context, _count: u32) {
         // nothing to do
+    }
+
+    #[inline]
+    fn notify_empty(&mut self, _tx: &mut ring::Tx, _cx: &mut Context) -> Poll<()> {
+        // nothing to do
+        Poll::Ready(())
     }
 }
 
 impl<A: Notifier, B: Notifier> Notifier for (A, B) {
     #[inline]
-    fn notify(&mut self, tx: &mut ring::Tx, count: u32) {
-        self.0.notify(tx, count);
-        self.1.notify(tx, count);
+    fn notify(&mut self, tx: &mut ring::Tx, cx: &mut Context, count: u32) {
+        self.0.notify(tx, cx, count);
+        self.1.notify(tx, cx, count);
+    }
+
+    #[inline]
+    fn notify_empty(&mut self, tx: &mut ring::Tx, cx: &mut Context) -> Poll<()> {
+        let a = self.0.notify_empty(tx, cx);
+        let b = self.1.notify_empty(tx, cx);
+        if a.is_ready() && b.is_ready() {
+            a
+        } else {
+            Poll::Pending
+        }
     }
 }
 
 impl Notifier for worker::Sender {
     #[inline]
-    fn notify(&mut self, _tx: &mut ring::Tx, count: u32) {
-        if count > 0 {
-            trace!("notifying worker to wake up with {count} entries");
-            self.submit(count as _);
-        }
+    fn notify(&mut self, _tx: &mut ring::Tx, _cx: &mut Context, count: u32) {
+        trace!("notifying worker to wake up with {count} entries");
+        self.submit(count as _);
+    }
+
+    #[inline]
+    fn notify_empty(&mut self, tx: &mut ring::Tx, _cx: &mut Context) -> Poll<()> {
+        // there is no feedback mechanism for the worker::Sender so do nothing
+        let _ = tx;
+        Poll::Ready(())
     }
 }
 
 impl Notifier for socket::Fd {
     #[inline]
-    fn notify(&mut self, tx: &mut ring::Tx, _count: u32) {
+    fn notify(&mut self, tx: &mut ring::Tx, cx: &mut Context, _count: u32) {
+        // notify the socket to ensure progress regardless of transmission count
+        let _ = self.notify_empty(tx, cx);
+    }
+
+    #[inline]
+    fn notify_empty(&mut self, tx: &mut ring::Tx, _cx: &mut Context) -> Poll<()> {
         // only notify the socket if it's set the needs wakeup flag
         if !tx.needs_wakeup() {
             trace!("TX ring doesn't need wake, returning early");
-            return;
+            return Poll::Ready(());
         }
 
         trace!("TX ring needs wakeup");
         let result = syscall::wake_tx(self);
 
         trace!("waking tx for progress {result:?}");
+
+        Poll::Ready(())
     }
 }
 
@@ -109,8 +145,12 @@ impl<N: Notifier> Future for Tx<N> {
             trace!("acquired {count} items from TX ring");
 
             if count == 0 {
-                notifier.notify(tx, count);
-                continue;
+                // we couldn't acquire any items so notify the socket that we don't have capacity
+                if notifier.notify_empty(tx, cx).is_ready() {
+                    continue;
+                } else {
+                    return Poll::Pending;
+                }
             }
 
             let mut outgoing = outgoing.slice();
@@ -120,13 +160,11 @@ impl<N: Notifier> Future for Tx<N> {
             let count = vectored_copy(&[rx_head, rx_tail], &mut [tx_head, tx_tail]);
 
             trace!("copied {count} items into TX ring");
+            debug_assert_ne!(count, 0);
 
-            if count > 0 {
-                tx.release(count as _);
-                outgoing.release(count);
-            }
-
-            notifier.notify(tx, count as _);
+            tx.release(count as _);
+            outgoing.release(count);
+            notifier.notify(tx, cx, count as _);
         }
 
         // if we got here, we iterated 10 times and need to yield so we don't consume the event
