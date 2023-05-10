@@ -124,7 +124,11 @@ impl<'a, Pub: event::ConnectionPublisher> Publisher for PathPublisher<'a, Pub> {
     }
 }
 
-pub trait CongestionController: 'static + Clone + Send + Debug {
+/// An algorithm for controlling congestion.
+///
+/// NOTE: This trait is considered unstable and can only be implemented by
+///       including the `unstable-congestion-controller` feature.
+pub trait CongestionController: 'static + Clone + Send + Debug + private::Sealed {
     /// Additional metadata about a packet to track until a sent packet
     /// is either acknowledged or declared lost
     type PacketInfo: Copy + Send + Sized + Debug;
@@ -241,6 +245,26 @@ pub trait CongestionController: 'static + Clone + Send + Debug {
     fn send_quantum(&self) -> Option<usize> {
         None
     }
+}
+
+// Prevent implementation of the `CongestionController` trait if the
+// `unstable-congestion-controller` feature is not turned on.
+mod private {
+    use cfg_if::cfg_if;
+
+    pub trait Sealed {}
+
+    cfg_if!(
+        if #[cfg(any(test, feature = "unstable-congestion-controller", feature = "testing"))] {
+            // If `unstable-congestion-controller` is enabled, implement Sealed for any type that
+            // otherwise implements `CongestionController`
+            impl<T: crate::recovery::CongestionController> Sealed for T {}
+        } else {
+            // Otherwise only allow the included CUBIC and BBRv2 congestion controllers
+            impl Sealed for crate::recovery::CubicCongestionController {}
+            impl Sealed for crate::recovery::bbr::BbrCongestionController {}
+        }
+    );
 }
 
 #[cfg(any(test, feature = "testing"))]

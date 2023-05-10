@@ -83,7 +83,7 @@ mod tests;
             feature = "unstable-provider-io-turmoil",
             feature = "unstable-provider-packet-interceptor",
             feature = "unstable-provider-random",
-            feature = "unstable-provider-congestion-controller",
+            feature = "unstable-congestion-controller",
         ),
         // any unstable features requires at least one of the following conditions
         not(any(

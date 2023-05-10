@@ -8,6 +8,7 @@ use core::fmt;
 mod macros;
 
 pub mod address_token;
+pub mod congestion_controller;
 pub mod connection_id;
 pub mod endpoint_limits;
 pub mod event;
@@ -42,14 +43,6 @@ cfg_if!(
         pub mod datagram;
     } else {
         pub(crate) mod datagram;
-    }
-);
-
-cfg_if!(
-    if #[cfg(any(test, feature = "unstable-provider-congestion-controller"))] {
-        pub mod congestion_controller;
-    } else {
-        pub(crate) mod congestion_controller;
     }
 );
 

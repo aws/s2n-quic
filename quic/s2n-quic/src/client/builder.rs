@@ -269,7 +269,6 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ClientProviders
     );
 
-    #[cfg(any(test, feature = "unstable-provider-congestion-controller"))]
     impl_provider_method!(
         /// Sets the congestion controller provider for the [`Client`]
         with_congestion_controller,
