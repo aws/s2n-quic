@@ -3,6 +3,9 @@
 
 /// Example implementation of a custom congestion controller algorithm.
 ///
+/// This example serves only to illustrate the integration points for incorporating a custom
+/// congestion controller into s2n-quic, and not as an actual congestion controller implementation.
+///
 /// NOTE: The `CongestionController` trait is considered unstable and may be subject to change
 ///       in a future release.
 pub mod custom_congestion_controller {
@@ -27,6 +30,9 @@ pub mod custom_congestion_controller {
     /// decreases the congestion window by half when packets are lost.
     #[allow(unused)]
     impl CongestionController for MyCongestionController {
+        // A custom `PacketInfo` type may optionally be defined to include additional per-packet
+        // state. This state will be stored for each in flight packet, and returned to the
+        // `on_ack` and `on_packet_lost` methods.
         type PacketInfo = ();
 
         fn congestion_window(&self) -> u32 {
@@ -90,6 +96,12 @@ pub mod custom_congestion_controller {
             timestamp: Timestamp,
             publisher: &mut Pub,
         ) {
+            // Loss-based congestion controllers such as New Reno or CUBIC will decrease the
+            // congestion window when a packet is lost. In this simple example congestion
+            // controller the congestion window is reduced for every packet; an actual congestion
+            // controller should take a more nuanced approach. This reduction would typically only
+            // occur once for the initial lost packet, and subsequent lost packets would not lead to
+            // further reduction.
             self.bytes_in_flight -= lost_bytes;
             self.congestion_window = (self.congestion_window as f32 * 0.5) as u32;
         }
@@ -130,7 +142,8 @@ pub mod custom_congestion_controller {
             path_info: congestion_controller::PathInfo,
         ) -> Self::CongestionController {
             MyCongestionController {
-                congestion_window: path_info.max_datagram_size as u32,
+                // Specify the initial congestion window
+                congestion_window: 10 * path_info.max_datagram_size as u32,
                 bytes_in_flight: 0,
             }
         }
