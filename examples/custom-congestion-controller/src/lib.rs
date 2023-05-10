@@ -77,7 +77,7 @@ pub mod custom_congestion_controller {
             publisher: &mut Pub,
         ) {
             self.bytes_in_flight -= bytes_acknowledged as u32;
-            self.congestion_window + bytes_acknowledged as u32;
+            self.congestion_window += bytes_acknowledged as u32;
         }
 
         fn on_packet_lost<Pub: Publisher>(
