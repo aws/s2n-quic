@@ -5,7 +5,10 @@ use crate::{
     if_xdp::{RxTxDescriptor, UmemDescriptor},
     umem::Umem,
 };
-use core::task::{Context, Poll};
+use core::{
+    cell::UnsafeCell,
+    task::{Context, Poll},
+};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     event,
@@ -28,18 +31,28 @@ pub trait ErrorLogger: Send {
 }
 
 pub struct Rx {
-    occupied: Occupied,
-    free: Free,
+    channels: UnsafeCell<Vec<(Occupied, Free)>>,
+    /// Store a vec of slices on the struct so we don't have to allocate every time `queue` is
+    /// called. Since this causes the type to be self-referential it does need a bit of unsafe code
+    /// to pull this off.
+    slices: UnsafeCell<
+        Vec<(
+            spsc::RecvSlice<'static, RxTxDescriptor>,
+            spsc::SendSlice<'static, UmemDescriptor>,
+        )>,
+    >,
     umem: Umem,
     error_logger: Option<Box<dyn ErrorLogger>>,
 }
 
 impl Rx {
     /// Creates a RX IO interface for an s2n-quic endpoint
-    pub fn new(occupied: Occupied, free: Free, umem: Umem) -> Self {
+    pub fn new(channels: Vec<(Occupied, Free)>, umem: Umem) -> Self {
+        let slices = UnsafeCell::new(Vec::with_capacity(channels.len()));
+        let channels = UnsafeCell::new(channels);
         Self {
-            occupied,
-            free,
+            channels,
+            slices,
             umem,
             error_logger: None,
         }
@@ -60,13 +73,46 @@ impl rx::Rx for Rx {
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         // poll both channels to make sure we can make progress in both
-        let free = self.free.poll_slice(cx);
-        let occupied = self.occupied.poll_slice(cx);
 
-        ready!(free)?;
-        ready!(occupied)?;
+        let mut is_any_ready = false;
+        let mut is_all_occupied_closed = true;
+        let mut is_all_free_closed = true;
 
-        Poll::Ready(Ok(()))
+        for (occupied, free) in self.channels.get_mut() {
+            let mut is_ready = true;
+
+            macro_rules! ready {
+                ($slice:ident, $closed:ident) => {
+                    match $slice.poll_slice(cx) {
+                        Poll::Ready(Ok(_)) => {
+                            $closed = false;
+                        }
+                        Poll::Ready(Err(_)) => {
+                            // defer returning an error until all slices return one
+                        }
+                        Poll::Pending => {
+                            $closed = false;
+                            is_ready = false
+                        }
+                    }
+                };
+            }
+
+            ready!(occupied, is_all_occupied_closed);
+            ready!(free, is_all_free_closed);
+
+            is_any_ready |= is_ready;
+        }
+
+        if is_all_occupied_closed || is_all_free_closed {
+            return Err(spsc::ClosedError).into();
+        }
+
+        if is_any_ready {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
+        }
     }
 
     #[inline]
@@ -88,14 +134,21 @@ impl rx::Rx for Rx {
             core::mem::transmute(self)
         };
 
-        let occupied = this.occupied.slice();
-        let free = this.free.slice();
+        let slices = this.slices.get_mut();
+
+        for (occupied, free) in this.channels.get_mut().iter_mut() {
+            if occupied.is_empty() || free.capacity() == 0 {
+                continue;
+            }
+
+            slices.push((occupied.slice(), free.slice()));
+        }
+
         let umem = &mut this.umem;
         let error_logger = &mut this.error_logger;
 
         let mut queue = Queue {
-            occupied,
-            free,
+            slices,
             umem,
             error_logger,
         };
@@ -111,8 +164,10 @@ impl rx::Rx for Rx {
 }
 
 pub struct Queue<'a> {
-    occupied: spsc::RecvSlice<'a, RxTxDescriptor>,
-    free: spsc::SendSlice<'a, UmemDescriptor>,
+    slices: &'a mut Vec<(
+        spsc::RecvSlice<'a, RxTxDescriptor>,
+        spsc::SendSlice<'a, UmemDescriptor>,
+    )>,
     umem: &'a mut Umem,
     error_logger: &'a mut Option<Box<dyn ErrorLogger>>,
 }
@@ -122,48 +177,58 @@ impl<'a> rx::Queue for Queue<'a> {
 
     #[inline]
     fn for_each<F: FnMut(datagram::Header<Self::Handle>, &mut [u8])>(&mut self, mut on_packet: F) {
-        // only pop as many items as we have capacity to free them
-        while self.free.capacity() > 0 {
-            let descriptor = match self.occupied.pop() {
-                Some(v) => v,
-                None => break,
-            };
+        for (occupied, free) in self.slices.iter_mut() {
+            // only pop as many items as we have capacity to free them
+            while free.capacity() > 0 {
+                let descriptor = match occupied.pop() {
+                    Some(v) => v,
+                    None => break,
+                };
 
-            let buffer = unsafe {
-                // Safety: this descriptor should be unique, assuming the tasks are functioning
-                // properly
-                self.umem.get_mut(descriptor)
-            };
+                let buffer = unsafe {
+                    // Safety: this descriptor should be unique, assuming the tasks are functioning
+                    // properly
+                    self.umem.get_mut(descriptor)
+                };
 
-            // create a decoder from the descriptor's buffer
-            let decoder = DecoderBufferMut::new(buffer);
+                // create a decoder from the descriptor's buffer
+                let decoder = DecoderBufferMut::new(buffer);
 
-            // try to decode the packet and emit the result
-            match decoder::decode_packet(decoder) {
-                Ok(Some((header, payload))) => {
-                    on_packet(header, payload.into_less_safe_slice());
-                }
-                Ok(None) | Err(_) => {
-                    // This shouldn't happen. If it does, the BPF program isn't properly validating
-                    // packets before they get to userspace.
-                    if let Some(error_logger) = self.error_logger.as_mut() {
-                        error_logger.log_invalid_packet(buffer);
+                // try to decode the packet and emit the result
+                match decoder::decode_packet(decoder) {
+                    Ok(Some((header, payload))) => {
+                        on_packet(header, payload.into_less_safe_slice());
+                    }
+                    Ok(None) | Err(_) => {
+                        // This shouldn't happen. If it does, the BPF program isn't properly validating
+                        // packets before they get to userspace.
+                        if let Some(error_logger) = self.error_logger.as_mut() {
+                            error_logger.log_invalid_packet(buffer);
+                        }
                     }
                 }
+
+                // send the descriptor to the free queue
+                let result = free.push(descriptor.into());
+
+                debug_assert!(
+                    result.is_ok(),
+                    "free queue capacity should always exceed occupied"
+                );
             }
-
-            // send the descriptor to the free queue
-            let result = self.free.push(descriptor.into());
-
-            debug_assert!(
-                result.is_ok(),
-                "free queue capacity should always exceed occupied"
-            );
         }
     }
 
     #[inline]
     fn is_empty(&self) -> bool {
-        self.occupied.is_empty()
+        self.slices.is_empty()
+    }
+}
+
+impl<'a> Drop for Queue<'a> {
+    #[inline]
+    fn drop(&mut self) {
+        // make sure we drop all of the slices to flush our changes
+        self.slices.clear();
     }
 }

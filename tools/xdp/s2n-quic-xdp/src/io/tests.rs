@@ -28,24 +28,41 @@ use s2n_quic_core::{
 /// Tests the s2n-quic-core IO trait implementations by sending packets over spsc channels
 #[tokio::test]
 async fn tx_rx_test() {
+    let frame_count = 16;
     let mut umem = Umem::builder();
-    umem.frame_count = 16;
+    umem.frame_count = frame_count;
     umem.frame_size = 128;
     let umem = umem.build().unwrap();
 
     // send a various amount of packets for each test
     for packets in [1, 100, 1000, 10_000] {
-        let (input, tx_input) = spsc::channel(16);
-        let (mut rx_free, tx_free) = spsc::channel(32);
-        let (tx_occupied, rx_occupied) = spsc::channel(16);
-        let (rx_output, output) = spsc::channel(32);
+        for input_counts in [1, 2] {
+            eprintln!("packets: {packets}, input_counts: {input_counts}");
 
-        rx_free.slice().extend(&mut umem.frames()).unwrap();
+            let mut rx_inputs = vec![];
+            let mut tx_outputs = vec![];
 
-        tokio::spawn(packet_gen(packets, input));
-        tokio::spawn(send(tx_free, tx_occupied, umem.clone(), tx_input));
-        tokio::spawn(recv(rx_occupied, rx_free, umem.clone(), rx_output));
-        packet_checker(packets, output).await;
+            let mut frames = umem.frames();
+
+            for _ in 0..input_counts {
+                let (mut rx_free, tx_free) = spsc::channel(32);
+                let (tx_occupied, rx_occupied) = spsc::channel(16);
+
+                let mut rx_frames = (&mut frames).take((frame_count / input_counts) as usize);
+                rx_free.slice().extend(&mut rx_frames).unwrap();
+
+                tx_outputs.push((tx_free, tx_occupied));
+                rx_inputs.push((rx_occupied, rx_free));
+            }
+
+            let (input, tx_input) = spsc::channel(16);
+            let (rx_output, output) = spsc::channel(32);
+
+            tokio::spawn(packet_gen(packets, input));
+            tokio::spawn(send(tx_outputs, umem.clone(), tx_input));
+            tokio::spawn(recv(rx_inputs, umem.clone(), rx_output));
+            packet_checker(packets, output).await;
+        }
     }
 }
 
@@ -111,13 +128,12 @@ async fn packet_gen(count: u32, mut output: spsc::Sender<Packet>) {
 
 /// Sends packets over the TX queue from an input channel
 async fn send(
-    free: tx::Free,
-    occupied: tx::Occupied,
+    outputs: Vec<(tx::Free, tx::Occupied)>,
     umem: Umem,
     mut input: spsc::Receiver<Packet>,
 ) {
     let state = Default::default();
-    let mut tx = Tx::new(free, occupied, umem, state);
+    let mut tx = Tx::new(outputs, umem, state);
 
     loop {
         let res = select(input.acquire(), tx.ready()).await;
@@ -149,27 +165,32 @@ async fn send(
 
     trace!("send finishing");
 
-    let (mut free, occupied) = tx.consume();
+    let channels = tx.consume();
 
-    // notify the recv task that there aren't going to be any more packets sent
-    drop(occupied);
+    let free: Vec<_> = channels
+        .into_iter()
+        .map(|(mut free, occupied)| {
+            // notify the recv task that there aren't going to be any more packets sent
+            drop(occupied);
 
-    // drain the free queue so the `recv` task doesn't shut down prematurely
-    while free.acquire().await.is_ok() {
-        free.slice().clear();
-    }
+            async move {
+                // drain the free queue so the `recv` task doesn't shut down prematurely
+                while free.acquire().await.is_ok() {
+                    free.slice().clear();
+                }
+            }
+        })
+        .collect();
+
+    // wait until all of the futures finish
+    futures::future::join_all(free).await;
 
     trace!("shutting down send");
 }
 
 /// Receives raw packets and converts them into [`Packet`]s, putting them on the `output` channel.
-async fn recv(
-    occupied: rx::Occupied,
-    free: rx::Free,
-    umem: Umem,
-    mut output: spsc::Sender<Packet>,
-) {
-    let mut rx = Rx::new(occupied, free, umem);
+async fn recv(inputs: Vec<(rx::Occupied, rx::Free)>, umem: Umem, mut output: spsc::Sender<Packet>) {
+    let mut rx = Rx::new(inputs, umem);
 
     while rx.ready().await.is_ok() {
         trace!("recv ready");
@@ -198,24 +219,25 @@ async fn recv(
 
 /// Checks that the received [`Packet`]s match the expected values
 async fn packet_checker(total: u32, mut output: spsc::Receiver<Packet>) {
-    let mut expected = 0;
+    let mut actual = s2n_quic_core::interval_set::IntervalSet::default();
+
     while output.acquire().await.is_ok() {
         let mut output = output.slice();
         while let Some(packet) = output.pop() {
             trace!("output packet recv: {packet:?}");
 
-            assert_eq!(
-                packet.counter, expected,
-                "packet counter should be sequential"
-            );
-            expected += 1;
+            actual.insert_value(packet.counter).unwrap();
         }
 
         // we want to consume the output queue as fast as possible so the `recv` task doesn't have
         // to block on the checker
     }
 
-    assert_eq!(total, expected, "total output packets does not match input");
+    assert_eq!(
+        total as usize,
+        actual.count(),
+        "total output packets does not match input"
+    );
 }
 
 /// Randomly yields to other tasks
