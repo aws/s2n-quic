@@ -1,9 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use s2n_quic_core::recovery::congestion_controller::{
-    CongestionController, Endpoint, PathInfo,
-};
+use cfg_if::cfg_if;
+pub use s2n_quic_core::recovery::congestion_controller::Endpoint;
 
 /// Provides congestion controller support for an endpoint
 pub trait Provider {
@@ -11,6 +10,17 @@ pub trait Provider {
     type Error: 'static + core::fmt::Display;
 
     fn start(self) -> Result<Self::Endpoint, Self::Error>;
+}
+
+cfg_if! {
+    if #[cfg(feature = "unstable-congestion-controller")] {
+        // Export the types needed to implement the CongestionController trait
+        pub use s2n_quic_core::{
+            random::Generator as RandomGenerator,
+            recovery::{congestion_controller::{CongestionController, PathInfo, Publisher}, RttEstimator},
+            time::Timestamp,
+        };
+    }
 }
 
 pub use s2n_quic_core::recovery::{bbr::Endpoint as Bbr, cubic::Endpoint as Cubic};

@@ -44,8 +44,8 @@ unstable-provider-io-turmoil = ["s2n-quic-platform/turmoil"]
 unstable-provider-packet-interceptor = []
 # This feature enables the random provider
 unstable-provider-random = []
-# This feature enables the congestion controller provider
-unstable-provider-congestion-controller = []
+# This feature enables support for third party congestion controller implementations
+unstable-congestion-controller = ["s2n-quic-core/unstable-congestion-controller"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }
