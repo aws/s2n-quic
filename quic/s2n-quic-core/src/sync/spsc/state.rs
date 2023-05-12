@@ -266,10 +266,6 @@ impl<T> State<T> {
             return Err(ClosedError);
         }
 
-        if !self.cursor.is_full() {
-            return Ok(true);
-        }
-
         // update the cached version
         self.cursor.head = self.head.load(Ordering::Acquire);
 
@@ -284,10 +280,6 @@ impl<T> State<T> {
     /// capacity, `true` is returned. Otherwise `false` is returned.
     #[inline]
     pub fn acquire_filled(&mut self) -> Result<bool> {
-        if !self.cursor.is_empty() {
-            return Ok(true);
-        }
-
         self.cursor.tail = self.tail.load(Ordering::Acquire);
 
         if !self.cursor.is_empty() {

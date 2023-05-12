@@ -170,7 +170,7 @@ impl<'a, T> RecvSlice<'a, T> {
         self.0.cursor.is_empty()
     }
 
-    /// Synchronizes any updates from the peer
+    /// Synchronizes any updates from the sender
     ///
     /// This can be useful for when `slice` is called without polling for entries first.
     #[inline]

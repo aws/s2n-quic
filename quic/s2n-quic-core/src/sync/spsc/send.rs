@@ -133,7 +133,7 @@ impl<'a, T> SendSlice<'a, T> {
         self.0.cursor.send_capacity()
     }
 
-    /// Synchronizes any updates from the peer
+    /// Synchronizes any updates from the receiver
     ///
     /// This can be useful for when `slice` is called without polling for entries first.
     #[inline]
