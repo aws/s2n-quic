@@ -4,6 +4,7 @@ RUN cargo install cargo-chef --version 0.1.23
 COPY Cargo.toml /app
 COPY common /app/common
 COPY quic /app/quic
+COPY tools/xdp /app/tools/xdp
 # Don't include testing crates
 RUN rm -rf quic/s2n-quic-bench quic/s2n-quic-events quic/s2n-quic-sim
 RUN cargo chef prepare  --recipe-path recipe.json
@@ -25,6 +26,7 @@ RUN set -eux; \
 COPY Cargo.toml /app
 COPY common /app/common
 COPY quic /app/quic
+COPY tools/xdp /app/tools/xdp
 # Don't include testing crates
 RUN rm -rf quic/s2n-quic-bench quic/s2n-quic-events quic/s2n-quic-sim
 
