@@ -6,6 +6,7 @@ use s2n_quic_core::{
     inet::{ethernet, ipv4, udp},
     path::{MaxMtu, MaxMtuError},
 };
+use s2n_quic_xdp::umem::DEFAULT_FRAME_SIZE;
 use tokio::runtime::Handle;
 
 /// Calculate how much a packet will need for fixed-size headers
@@ -26,7 +27,7 @@ impl Default for Builder<(), ()> {
         Self {
             rx: (),
             tx: (),
-            max_mtu: MaxMtu::try_from(4096 - MIN_FRAME_OVERHEAD).unwrap(),
+            max_mtu: MaxMtu::try_from(DEFAULT_FRAME_SIZE as u16 - MIN_FRAME_OVERHEAD).unwrap(),
             handle: None,
         }
     }

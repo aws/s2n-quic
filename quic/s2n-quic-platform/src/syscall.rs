@@ -64,8 +64,7 @@ pub fn bind_udp<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Re
 }
 
 /// Binds a socket to a specified interface by name
-#[cfg(target_os = "linux")]
-#[allow(dead_code)] // This is currently only used in the XDP io provider, which is optional
+#[cfg(feature = "xdp")]
 pub fn bind_to_interface<F: std::os::unix::io::AsRawFd>(
     socket: &F,
     ifname: &std::ffi::CStr,
