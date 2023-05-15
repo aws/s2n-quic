@@ -12,6 +12,8 @@ mod interop;
 mod perf;
 mod server;
 mod tls;
+#[cfg(feature = "xdp")]
+mod xdp;
 
 /// This message is searched in interop logs to ensure the application doesn't panic
 ///

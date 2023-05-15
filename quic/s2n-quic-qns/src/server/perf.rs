@@ -46,6 +46,10 @@ pub struct Perf {
     /// Logs statistics for the endpoint
     #[structopt(long)]
     stats: bool,
+
+    #[cfg(feature = "xdp")]
+    #[structopt(flatten)]
+    xdp: crate::xdp::Xdp,
 }
 
 impl Perf {
@@ -168,7 +172,19 @@ impl Perf {
         }
     }
 
-    fn server(&self) -> Result<Server> {
+    #[cfg(feature = "xdp")]
+    fn io(&self) -> Result<impl io::Provider> {
+        // GSO isn't currently supported for XDP so just read it to avoid a dead_code warning
+        let _ = self.disable_gso;
+        let _ = self.max_mtu;
+
+        let addr = (self.ip, self.port).into();
+
+        self.xdp.server(addr)
+    }
+
+    #[cfg(not(feature = "xdp"))]
+    fn io(&self) -> Result<impl io::Provider> {
         let mut io_builder = io::Default::builder()
             .with_receive_address((self.ip, self.port).into())?
             .with_max_mtu(self.max_mtu)?;
@@ -177,7 +193,11 @@ impl Perf {
             io_builder = io_builder.with_gso_disabled()?;
         }
 
-        let io = io_builder.build()?;
+        Ok(io_builder.build()?)
+    }
+
+    fn server(&self) -> Result<Server> {
+        let io = self.io()?;
 
         let tls = s2n_quic::provider::tls::default::Server::builder()
             .with_certificate(
