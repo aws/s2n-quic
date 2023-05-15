@@ -4,7 +4,6 @@
 use super::{Cell, ClosedError, Result, Slice};
 use crate::sync::primitive::{AtomicBool, AtomicUsize, AtomicWaker, IsZst, Ordering};
 use alloc::alloc::Layout;
-use crossbeam_utils::CachePadded;
 use core::{
     fmt,
     marker::PhantomData,
@@ -12,6 +11,7 @@ use core::{
     panic::{RefUnwindSafe, UnwindSafe},
     ptr::NonNull,
 };
+use crossbeam_utils::CachePadded;
 
 type Pair<'a, T> = super::Pair<Slice<'a, Cell<T>>>;
 

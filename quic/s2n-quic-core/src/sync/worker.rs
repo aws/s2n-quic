@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::sync::primitive::{Arc, AtomicUsize, AtomicWaker, Ordering};
-use crossbeam_utils::CachePadded;
 use core::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+use crossbeam_utils::CachePadded;
 
 /// Creates a worker channel with a Sender and Receiver
 pub fn channel() -> (Sender, Receiver) {
