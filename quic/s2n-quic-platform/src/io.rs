@@ -9,3 +9,6 @@ pub mod testing;
 
 #[cfg(feature = "turmoil")]
 pub mod turmoil;
+
+#[cfg(feature = "xdp")]
+pub mod xdp;

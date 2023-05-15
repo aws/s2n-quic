@@ -14,6 +14,7 @@ mod cursor;
 use cursor::Cursor;
 
 #[derive(Debug)]
+#[allow(dead_code)] // we hold on to `area` and `socket` to ensure they live long enough
 struct Ring<T: Copy + fmt::Debug> {
     cursor: Cursor<T>,
     // make the area clonable in test mode

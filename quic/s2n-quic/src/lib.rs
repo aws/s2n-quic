@@ -81,6 +81,7 @@ mod tests;
             feature = "unstable-provider-datagram",
             feature = "unstable-provider-io-testing",
             feature = "unstable-provider-io-turmoil",
+            feature = "unstable-provider-io-xdp",
             feature = "unstable-provider-packet-interceptor",
             feature = "unstable-provider-random",
             feature = "unstable-congestion-controller",

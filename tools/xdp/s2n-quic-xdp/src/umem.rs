@@ -9,6 +9,9 @@ use crate::{
 use core::ptr::NonNull;
 use std::{os::unix::io::AsRawFd, sync::Arc};
 
+/// The default value for frame sizes
+pub const DEFAULT_FRAME_SIZE: u32 = 4096;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Builder {
     /// The maximum number of bytes a frame can hold (MTU)
@@ -24,7 +27,7 @@ pub struct Builder {
 impl Default for Builder {
     fn default() -> Self {
         Self {
-            frame_size: 4096,
+            frame_size: DEFAULT_FRAME_SIZE,
             frame_count: 1024,
             frame_headroom: 0,
             flags: Default::default(),
