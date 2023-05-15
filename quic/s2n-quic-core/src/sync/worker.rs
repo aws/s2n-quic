@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::sync::primitive::{Arc, AtomicUsize, AtomicWaker, Ordering};
-use cache_padded::CachePadded;
+use crossbeam_utils::CachePadded;
 use core::{
     future::Future,
     pin::Pin,

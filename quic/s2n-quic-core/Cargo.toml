@@ -12,7 +12,7 @@ exclude = ["corpus.tar.gz"]
 
 [features]
 default = ["alloc", "std"]
-alloc = ["atomic-waker", "bytes", "cache-padded"]
+alloc = ["atomic-waker", "bytes", "crossbeam-utils"]
 std = ["alloc", "once_cell"]
 testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta", "futures-test"]
 generator = ["bolero-generator"]
@@ -26,7 +26,7 @@ atomic-waker = { version = "1", optional = true }
 bolero-generator = { version = "0.9", optional = true }
 byteorder = { version = "1", default-features = false }
 bytes = { version = "1", optional = true, default-features = false }
-cache-padded = { version = "1", optional = true }
+crossbeam-utils = { version = "0.8", optional = true }
 cfg-if = "1"
 hex-literal = "0.4"
 # used for event snapshot testing - needs an internal API so we require a minimum version

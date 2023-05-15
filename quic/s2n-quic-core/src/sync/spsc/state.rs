@@ -4,7 +4,7 @@
 use super::{Cell, ClosedError, Result, Slice};
 use crate::sync::primitive::{AtomicBool, AtomicUsize, AtomicWaker, IsZst, Ordering};
 use alloc::alloc::Layout;
-use cache_padded::CachePadded;
+use crossbeam_utils::CachePadded;
 use core::{
     fmt,
     marker::PhantomData,
