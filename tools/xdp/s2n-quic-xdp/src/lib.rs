@@ -14,6 +14,9 @@ macro_rules! trace {
     }}
 }
 
+/// Low-level bindings to various linux userspace APIs
+mod bindings;
+
 /// Default BPF programs to direct QUIC traffic
 pub mod bpf;
 /// Primitive types for AF-XDP kernel APIs

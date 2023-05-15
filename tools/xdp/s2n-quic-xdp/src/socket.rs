@@ -35,12 +35,11 @@ impl Fd {
         Ok(())
     }
 
-    /// Returns an invalid file descriptor
+    /// Creates a socket from a raw file descriptor
     ///
-    /// This should only be used in tests to avoid creating an actual socket.
-    #[cfg(test)]
-    pub fn invalid() -> Self {
-        Self(Arc::new(Inner(-1)))
+    /// This can be useful for automatically cleaning up a socket on drop
+    pub(crate) fn from_raw(value: RawFd) -> Self {
+        Self(Arc::new(Inner(value)))
     }
 }
 

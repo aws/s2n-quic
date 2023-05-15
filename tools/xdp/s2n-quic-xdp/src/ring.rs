@@ -109,6 +109,12 @@ macro_rules! impl_producer {
         pub fn capacity(&self) -> usize {
             self.0.cursor.capacity() as _
         }
+
+        /// Returns the socket associated with the ring
+        #[inline]
+        pub fn socket(&self) -> &socket::Fd {
+            &self.0.socket
+        }
     };
 }
 
@@ -178,6 +184,12 @@ macro_rules! impl_consumer {
         #[inline]
         pub fn capacity(&self) -> usize {
             self.0.cursor.capacity() as _
+        }
+
+        /// Returns the socket associated with the ring
+        #[inline]
+        pub fn socket(&self) -> &socket::Fd {
+            &self.0.socket
         }
 
         #[cfg(test)]
@@ -273,13 +285,13 @@ pub mod testing {
                 let cons = $consumer(Ring {
                     cursor: consumer_cursor,
                     area: area.clone(),
-                    socket: Fd::invalid(),
+                    socket: Fd::from_raw(-1),
                 });
 
                 let prod = $producer(Ring {
                     cursor: producer_cursor,
                     area,
-                    socket: Fd::invalid(),
+                    socket: Fd::from_raw(-1),
                 });
 
                 (cons, prod)

@@ -6,7 +6,7 @@
 use crate::Result;
 use bitflags::bitflags;
 use core::mem::size_of;
-use std::ffi::CStr;
+use std::{ffi::CStr, os::unix::io::AsRawFd};
 
 bitflags!(
     /// Options for the `flags` field in [`Address`]
@@ -79,20 +79,16 @@ impl Address {
     /// If the device does not exist, then an error is returned.
     #[inline]
     pub fn set_if_name(&mut self, name: &CStr) -> Result<&mut Self> {
-        unsafe {
-            let ifindex = libc::if_nametoindex(name.as_ptr());
-
-            // https://man7.org/linux/man-pages/man3/if_nametoindex.3.html
-            // > On success, if_nametoindex() returns the index number of the
-            // > network interface; on error, 0 is returned and errno is set to
-            // > indicate the error.
-            if ifindex == 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-
-            self.ifindex = ifindex;
-        }
+        self.ifindex = crate::syscall::if_nametoindex(name)?;
         Ok(self)
+    }
+
+    /// Configures the address with a shared UMEM region from a previous socket file descriptor
+    pub fn set_shared_umem<F: AsRawFd>(&mut self, fd: &F) -> &mut Self {
+        // clear out all of the previous flags except the shared - the others will be inherited
+        self.flags = XdpFlags::SHARED_UMEM;
+        self.shared_umem_fd = fd.as_raw_fd() as _;
+        self
     }
 }
 

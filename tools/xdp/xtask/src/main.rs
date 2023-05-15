@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+mod bindings;
 mod build_ebpf;
 mod ci;
 mod disasm;
@@ -19,6 +20,7 @@ pub struct Options {
 #[derive(Debug, Parser)]
 enum Command {
     BuildEbpf,
+    Bindings,
     Ci,
     Disasm,
     Run(run::Options),
@@ -30,6 +32,7 @@ fn main() {
     use Command::*;
     let ret = match opts.command {
         BuildEbpf => build_ebpf::run(),
+        Bindings => bindings::run(),
         Ci => ci::run(),
         Disasm => disasm::run(),
         Run(opts) => run::run(opts),
