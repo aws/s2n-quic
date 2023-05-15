@@ -8,8 +8,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - ".github/workflows/release.yml"
 
   release:
     types: [published]
@@ -44,6 +42,7 @@ jobs:
 
       - name: Login to Amazon Elastic Container Registry Public
         uses: docker/login-action@v2.1.0
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           registry: public.ecr.aws
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
