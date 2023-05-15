@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-crypto"
-version = "0.20.0"
+version = "0.21.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -18,7 +18,7 @@ testing = []
 cfg-if = "1"
 lazy_static = "1"
 s2n-codec = { version = "=0.5.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.20.0", path = "../s2n-quic-core", default-features = false }
+s2n-quic-core = { version = "=0.21.0", path = "../s2n-quic-core", default-features = false }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
