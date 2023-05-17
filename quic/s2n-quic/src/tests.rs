@@ -5,18 +5,17 @@ use crate::{
     client::Connect,
     provider::{
         self,
-        event::{
-            events::{MtuUpdated, MtuUpdatedCause, PacketSent, RecoveryMetrics},
-            ConnectionInfo, ConnectionMeta, Subscriber,
+        event::{events, ConnectionInfo, ConnectionMeta, Subscriber},
+        io::testing::{
+            rand, spawn, test,
+            time::{self, delay},
+            Model, Test,
         },
-        io::testing::{rand, spawn, test, time::delay, Model},
         packet_interceptor::Loss,
     },
     Client, Server,
 };
 use bytes::Bytes;
-#[cfg(not(target_os = "windows"))]
-use s2n_quic_core::event::api::HandshakeStatusUpdated;
 use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
 use s2n_quic_platform::io::testing::{network::Packet, primary, TxRecorder};
 use std::{
@@ -31,7 +30,10 @@ use setup::*;
 
 #[test]
 fn client_server_test() {
-    test(Model::default(), client_server).unwrap();
+    Test::new(Model::default())
+        .with_name("client_server_test")
+        .run(client_server)
+        .unwrap();
 }
 
 fn blackhole(model: Model, blackhole_duration: Duration) {
@@ -355,14 +357,14 @@ macro_rules! event_recorder {
     };
 }
 
-event_recorder!(PacketSentRecorder, PacketSent, on_packet_sent);
-event_recorder!(MtuUpdatedRecorder, MtuUpdated, on_mtu_updated);
+event_recorder!(PacketSentRecorder, events::PacketSent, on_packet_sent);
+event_recorder!(MtuUpdatedRecorder, events::MtuUpdated, on_mtu_updated);
 event_recorder!(
     PathUpdatedRecorder,
-    RecoveryMetrics,
+    events::RecoveryMetrics,
     on_recovery_metrics,
     SocketAddr,
-    |event: &RecoveryMetrics, storage: &mut Vec<SocketAddr>| {
+    |event: &events::RecoveryMetrics, storage: &mut Vec<SocketAddr>| {
         let addr: SocketAddr = event.path.local_addr.to_string().parse().unwrap();
         if storage.last().map_or(true, |prev| *prev != addr) {
             storage.push(addr);
@@ -371,17 +373,17 @@ event_recorder!(
 );
 event_recorder!(
     PtoRecorder,
-    RecoveryMetrics,
+    events::RecoveryMetrics,
     on_recovery_metrics,
     u32,
-    |event: &RecoveryMetrics, storage: &mut Vec<u32>| {
+    |event: &events::RecoveryMetrics, storage: &mut Vec<u32>| {
         storage.push(event.pto_count);
     }
 );
 #[cfg(not(target_os = "windows"))]
 event_recorder!(
     HandshakeStatusRecorder,
-    HandshakeStatusUpdated,
+    events::HandshakeStatusUpdated,
     on_handshake_status_updated
 );
 
@@ -438,7 +440,7 @@ fn packet_sent_event_test() {
 // Construct a simulation where a client sends some data, which the server echos
 // back. The MtuUpdated events that the server experiences are recorded and
 // returns at the end of the simulation.
-fn mtu_updates(max_mtu: u16) -> Vec<MtuUpdated> {
+fn mtu_updates(max_mtu: u16) -> Vec<events::MtuUpdated> {
     let model = Model::default();
     model.set_max_udp_payload(max_mtu);
 
@@ -478,7 +480,7 @@ fn mtu_probe_jumbo_frame_test() {
     assert_eq!(handshake_mtu.mtu, 1200);
     assert!(matches!(
         handshake_mtu.cause,
-        MtuUpdatedCause::NewPath { .. }
+        events::MtuUpdatedCause::NewPath { .. }
     ));
 
     // we should then successfully probe for 1500 (minus headers = 1472)
@@ -862,4 +864,111 @@ fn mtls_auth_failure() {
 
     // confirm server connection was attempted but failed
     assert!(server_connection_closed.load(Ordering::SeqCst));
+}
+
+#[derive(Clone)]
+struct Latency {
+    now: std::time::Instant,
+    times: Arc<Mutex<std::collections::BTreeMap<Duration, usize>>>,
+}
+
+impl Subscriber for Latency {
+    type ConnectionContext = ();
+
+    fn create_connection_context(
+        &mut self,
+        _: &ConnectionMeta,
+        _: &ConnectionInfo,
+    ) -> Self::ConnectionContext {
+    }
+
+    #[inline]
+    fn on_platform_event_loop_wakeup(
+        &mut self,
+        _: &events::EndpointMeta,
+        _: &events::PlatformEventLoopWakeup,
+    ) {
+        self.now = std::time::Instant::now();
+    }
+
+    #[inline]
+    fn on_platform_event_loop_sleep(
+        &mut self,
+        _: &events::EndpointMeta,
+        _: &events::PlatformEventLoopSleep,
+    ) {
+        let duration = self.now.elapsed();
+        let duration = duration.as_micros() as u64;
+        let duration = duration / 5 * 5;
+        let duration = Duration::from_micros(duration);
+        let mut times = self.times.lock().unwrap();
+        *times.entry(duration).or_default() += 1;
+    }
+}
+
+#[test]
+fn transport_latency() {
+    let model = Model::default();
+
+    model.set_delay(Duration::from_micros(500));
+    model.set_max_inflight(100);
+
+    let subscriber = Latency {
+        now: std::time::Instant::now(),
+        times: Default::default(),
+    };
+
+    let latencies = subscriber.times.clone();
+
+    fn var(name: &str) -> Option<u64> {
+        std::env::var(name).ok().and_then(|v| v.parse().ok())
+    }
+
+    let len = var("BYTES").unwrap_or(10_000) as usize;
+    let concurrency = var("CONCURRENCY").unwrap_or(20);
+    let streams = var("STREAMS").unwrap_or(1000);
+
+    test(model, |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event(subscriber.clone())?
+            .start()?;
+        let server_addr = start_server(server)?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build().unwrap())?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(subscriber)?
+            .start()?;
+
+        primary::spawn(async move {
+            let connect = Connect::new(server_addr).with_server_name("localhost");
+            let connection = client.connect(connect).await.unwrap();
+            for _ in 0..concurrency {
+                let mut connection = connection.handle();
+
+                primary::spawn(async move {
+                    for _ in 0..streams {
+                        let mut stream = connection.open_bidirectional_stream().await.unwrap();
+                        stream.send(vec![42; len].into()).await.unwrap();
+                        stream.finish().unwrap();
+
+                        let mut recv = 0;
+                        while let Ok(Some(chunk)) = stream.receive().await {
+                            recv += chunk.len();
+                        }
+
+                        assert_eq!(recv, len);
+                    }
+                });
+            }
+        });
+
+        Ok(())
+    })
+    .unwrap();
+
+    let totals = latencies.lock().unwrap();
+    println!("{totals:#?}");
 }

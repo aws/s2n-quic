@@ -4,7 +4,7 @@
 use crate::{stats, Result};
 use indicatif::{ParallelProgressIterator, ProgressBar};
 use rayon::prelude::*;
-use s2n_quic::provider::io::testing::{test_seed, Model};
+use s2n_quic::provider::io::testing::{Model, Test};
 use structopt::StructOpt;
 
 mod config;
@@ -45,36 +45,38 @@ impl Run {
         let test = |seed: u64| {
             let network = Model::default();
 
-            test_seed(network.clone(), seed, |handle| {
-                let server_len = self.servers.gen();
-                let client_len = self.clients.gen();
+            Test::new(network.clone())
+                .with_seed(seed)
+                .run(|handle| {
+                    let server_len = self.servers.gen();
+                    let client_len = self.clients.gen();
 
-                let events = self.gen_network(seed, server_len, client_len, &network);
+                    let events = self.gen_network(seed, server_len, client_len, &network);
 
-                let mut servers = vec![];
-                for _ in 0..server_len {
-                    servers.push(endpoint::server(handle, events.clone())?);
-                }
+                    let mut servers = vec![];
+                    for _ in 0..server_len {
+                        servers.push(endpoint::server(handle, events.clone())?);
+                    }
 
-                for _ in 0..client_len {
-                    let count = self.connections.gen() as usize;
-                    let delay = self.connect_delay;
-                    let streams = self.streams;
-                    let stream_data = self.stream_data;
-                    endpoint::client(
-                        handle,
-                        events.clone(),
-                        &servers,
-                        count,
-                        delay,
-                        streams,
-                        stream_data,
-                    )?;
-                }
+                    for _ in 0..client_len {
+                        let count = self.connections.gen() as usize;
+                        let delay = self.connect_delay;
+                        let streams = self.streams;
+                        let stream_data = self.stream_data;
+                        endpoint::client(
+                            handle,
+                            events.clone(),
+                            &servers,
+                            count,
+                            delay,
+                            streams,
+                            stream_data,
+                        )?;
+                    }
 
-                Ok(())
-            })
-            .unwrap();
+                    Ok(())
+                })
+                .unwrap();
         };
 
         if self.seed.is_empty() {

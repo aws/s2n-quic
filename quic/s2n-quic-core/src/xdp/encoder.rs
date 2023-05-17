@@ -49,6 +49,12 @@ impl State {
     }
 
     #[inline]
+    pub fn set_ipv4_id(&mut self, value: u16) -> &mut Self {
+        self.ipv4_id_counter = value;
+        self
+    }
+
+    #[inline]
     fn ipv4_id(&mut self) -> u16 {
         let id = self.ipv4_id_counter;
         self.ipv4_id_counter = self.ipv4_id_counter.wrapping_add(1);

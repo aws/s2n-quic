@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::task::{Context, Poll, Waker};
+use core::{
+    fmt,
+    task::{Context, Poll, Waker},
+};
 use s2n_quic_core::{
     event,
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
@@ -14,7 +17,7 @@ use s2n_quic_core::{
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
-        atomic::{AtomicU16, AtomicU32, Ordering},
+        atomic::{AtomicU16, AtomicU32, AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
@@ -30,6 +33,10 @@ pub trait Network {
     fn execute(&mut self, buffers: &Buffers) -> usize;
 }
 
+pub trait Recorder: 'static + Send + Sync {
+    fn record(&self, packet: &Packet);
+}
+
 impl<A: Network, B: Network> Network for (A, B) {
     fn execute(&mut self, buffers: &Buffers) -> usize {
         let mut result = 0;
@@ -39,11 +46,23 @@ impl<A: Network, B: Network> Network for (A, B) {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Buffers {
     inner: Arc<Mutex<State>>,
     next_ip: Arc<AtomicU32>,
     next_port: Arc<AtomicU16>,
+    recorder: Option<Arc<dyn Recorder>>,
+    packet_counter: Counter,
+}
+
+impl fmt::Debug for Buffers {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Ok(inner) = self.inner.lock() {
+            inner.fmt(f)
+        } else {
+            f.debug_tuple("Buffers").field(&"<poisoned>").finish()
+        }
+    }
 }
 
 impl Default for Buffers {
@@ -55,11 +74,18 @@ impl Default for Buffers {
             //# o  the Dynamic Ports, also known as the Private or Ephemeral Ports,
             //#    from 49152-65535 (never assigned)
             next_port: Arc::new(AtomicU16::new(49152)),
+            recorder: None,
+            packet_counter: Counter::default(),
         }
     }
 }
 
 impl Buffers {
+    pub fn with_recorder(mut self, recorder: Arc<dyn Recorder>) -> Self {
+        self.recorder = Some(recorder);
+        self
+    }
+
     pub fn close(&self) {
         let mut lock = self.inner.lock().unwrap();
         lock.is_open = false;
@@ -84,6 +110,12 @@ impl Buffers {
         let mut lock = self.inner.lock().unwrap();
         if let Some(queue) = lock.rx.get_mut(&handle) {
             f(queue)
+        }
+    }
+
+    pub fn record(&self, packet: &Packet) {
+        if let Some(recorder) = self.recorder.as_ref() {
+            recorder.record(packet);
         }
     }
 
@@ -160,7 +192,7 @@ impl Buffers {
     pub fn register(&self, handle: SocketAddress) -> (TxIo, RxIo) {
         let mut lock = self.inner.lock().unwrap();
 
-        let queue = Queue::new(handle);
+        let queue = Queue::new(handle, self.packet_counter.clone());
 
         lock.tx.insert(handle, queue.clone());
         lock.rx.insert(handle, queue);
@@ -272,6 +304,23 @@ impl Default for State {
     }
 }
 
+#[derive(Clone, Default)]
+struct Counter(Arc<AtomicU64>);
+
+impl fmt::Debug for Counter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("Counter")
+            .field(&self.0.load(Ordering::Relaxed))
+            .finish()
+    }
+}
+
+impl Counter {
+    fn next(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::SeqCst)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Queue {
     capacity: usize,
@@ -281,20 +330,22 @@ pub struct Queue {
     local_address: LocalAddress,
     is_blocked: bool,
     waker: Option<Waker>,
+    packet_counter: Counter,
 }
 
 impl Queue {
-    fn new(addr: SocketAddress) -> Self {
+    fn new(addr: SocketAddress, packet_counter: Counter) -> Self {
         let mtu = MAX_TESTED_MTU;
         let local_address = addr.into();
         Self {
             capacity: 1024,
             mtu,
             packets: VecDeque::new(),
-            pending: Packet::new(mtu, local_address),
+            pending: Packet::new(packet_counter.next(), mtu, local_address),
             local_address,
             is_blocked: false,
             waker: None,
+            packet_counter,
         }
     }
 
@@ -338,7 +389,7 @@ impl io::tx::Queue for Queue {
         let len = self.pending.write(message)?;
 
         // create a packet for the next transmission
-        let next = Packet::new(self.mtu, self.local_address);
+        let next = Packet::new(self.packet_counter.next(), self.mtu, self.local_address);
         let packet = core::mem::replace(&mut self.pending, next);
 
         self.packets.push_back(packet);
@@ -374,14 +425,16 @@ impl io::rx::Queue for Queue {
 
 #[derive(Clone, Debug)]
 pub struct Packet {
+    pub id: u64,
     pub path: Tuple,
     pub ecn: ExplicitCongestionNotification,
     pub payload: Vec<u8>,
 }
 
 impl Packet {
-    fn new(mtu: u16, local_address: LocalAddress) -> Self {
+    fn new(id: u64, mtu: u16, local_address: LocalAddress) -> Self {
         Self {
+            id,
             path: Tuple {
                 local_address,
                 remote_address: Default::default(),

@@ -12,6 +12,7 @@ type Result<T = (), E = Error> = core::result::Result<T, E>;
 
 mod model;
 pub mod network;
+pub mod pcap;
 pub mod time;
 
 pub use model::{Model, TxRecorder};
@@ -65,6 +66,30 @@ impl<N: Network> Executor<N> {
             time: scheduler::Scheduler::new(),
             rand: bach::rand::Scope::new(seed),
             buffers: network::Buffers::default(),
+            network,
+            stalled_iterations: 0,
+        });
+
+        let handle = Handle {
+            executor: executor.handle().clone(),
+            buffers: executor.environment().buffers.clone(),
+        };
+
+        Self { executor, handle }
+    }
+
+    pub fn new_recorded(
+        network: N,
+        seed: u64,
+        recorder: std::sync::Arc<dyn network::Recorder>,
+    ) -> Self {
+        let buffers = network::Buffers::default().with_recorder(recorder);
+
+        let mut executor = bach::executor::Executor::new(|handle| Env {
+            handle: handle.clone(),
+            time: scheduler::Scheduler::new(),
+            rand: bach::rand::Scope::new(seed),
+            buffers,
             network,
             stalled_iterations: 0,
         });

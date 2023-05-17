@@ -309,6 +309,7 @@ impl Network for Model {
                     super::time::delay_until(transmit_time).await;
                 }
 
+                buffers.record(&packet);
                 buffers.rx(*packet.path.local_address, |queue| {
                     model.0.current_inflight.fetch_sub(1, Ordering::SeqCst);
                     queue.receive(packet);
@@ -320,6 +321,8 @@ impl Network for Model {
 
         let mut transmission_count = 0;
         buffers.drain_pending_transmissions(|packet| {
+            buffers.record(&packet);
+
             // retransmit the packet until the rate fails or we retransmit 5
             //
             // We limit retransmissions to 5 just so we don't endlessly iterate when the

@@ -24,32 +24,70 @@ impl super::Provider for Io {
     }
 }
 
+pub struct Test<N> {
+    network: N,
+    seed: u64,
+    recorder: Option<std::sync::Arc<dyn network::Recorder>>,
+}
+
+impl<N: Network> Test<N> {
+    pub fn new(network: N) -> Self {
+        Self {
+            network,
+            seed: 123456789,
+            recorder: None,
+        }
+    }
+
+    pub fn with_name(mut self, name: impl AsRef<str>) -> Self {
+        if std::env::var("S2N_QUIC_PCAP").is_ok() {
+            let name = name.as_ref();
+            let file = pcap::File::open(format!("{name}.pcapng")).unwrap();
+            self.recorder = Some(std::sync::Arc::new(file));
+        }
+        self
+    }
+
+    pub fn with_recorder(mut self, r: std::sync::Arc<dyn network::Recorder>) -> Self {
+        self.recorder = Some(r);
+        self
+    }
+
+    pub fn with_seed(mut self, seed: u64) -> Self {
+        self.seed = seed;
+        self
+    }
+
+    pub fn run<F, O>(self, f: F) -> Result<(Duration, O)>
+    where
+        F: FnOnce(&Handle) -> Result<O>,
+    {
+        let mut executor = if let Some(recorder) = self.recorder {
+            Executor::new_recorded(self.network, self.seed, recorder)
+        } else {
+            Executor::new(self.network, self.seed)
+        };
+        let handle = executor.handle().clone();
+
+        let out = executor.enter(|| f(&handle))?;
+
+        executor.run();
+
+        // return the total runtime of the test
+        let now = executor.enter(time::now);
+
+        let now = unsafe { now.as_duration() };
+
+        Ok((now, out))
+    }
+}
+
 /// Runs a single test with the given network
 ///
 /// Returns the total runtime of the test
-pub fn test<N: Network, F: FnOnce(&Handle) -> Result<O>, O>(network: N, f: F) -> Result<Duration> {
-    test_seed(network, 123456789, f)
-}
-
-/// Runs a single test with the given network and seed value
-///
-/// Returns the total runtime of the test
-pub fn test_seed<N: Network, F: FnOnce(&Handle) -> Result<O>, O>(
+pub fn test<N: Network, F: FnOnce(&Handle) -> Result<O>, O>(
     network: N,
-    seed: u64,
     f: F,
-) -> Result<Duration> {
-    let mut executor = Executor::new(network, seed);
-    let handle = executor.handle().clone();
-
-    executor.enter(|| f(&handle))?;
-
-    executor.run();
-
-    // return the total runtime of the test
-    let now = executor.enter(time::now);
-
-    let now = unsafe { now.as_duration() };
-
-    Ok(now)
+) -> Result<(Duration, O)> {
+    Test::new(network).run(f)
 }

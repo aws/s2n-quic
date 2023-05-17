@@ -121,3 +121,15 @@ impl Handle for Tuple {
         }
     }
 }
+
+impl From<path::Tuple> for Tuple {
+    #[inline]
+    fn from(t: path::Tuple) -> Self {
+        let local_address = t.local_address.into();
+        let remote_address = t.remote_address.into();
+        Self {
+            local_address,
+            remote_address,
+        }
+    }
+}
