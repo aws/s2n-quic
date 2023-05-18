@@ -169,19 +169,30 @@ impl Io {
 
             let mut consumers = vec![];
 
-            let rx_socket_count = parse_env("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT").unwrap_or(1);
+            let rx_socket_count = parse_env("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT")
+                .unwrap_or(1u16)
+                .max(1);
+            let blocking = parse_env("S2N_QUIC_UNSTABLE_RX_BLOCKING").unwrap_or(0u16) > 0;
 
-            for idx in 0usize..rx_socket_count {
+            let spawn = |rx_socket, producer| {
+                // spawn a task that actually reads from the socket into the ring buffer
+                if blocking {
+                    std::thread::spawn(|| crate::socket::task::blocking::rx(rx_socket, producer));
+                } else {
+                    handle.spawn(task::rx(rx_socket, producer));
+                }
+            };
+
+            for idx in 0..rx_socket_count {
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 consumers.push(consumer);
 
-                // spawn a task that actually reads from the socket into the ring buffer
                 if idx + 1 == rx_socket_count {
-                    handle.spawn(task::rx(rx_socket, producer));
+                    spawn(rx_socket, producer);
                     break;
                 } else {
                     let rx_socket = rx_socket.try_clone()?;
-                    handle.spawn(task::rx(rx_socket, producer));
+                    spawn(rx_socket, producer);
                 }
             }
 
@@ -212,19 +223,34 @@ impl Io {
 
             let mut producers = vec![];
 
-            let tx_socket_count = parse_env("S2N_QUIC_UNSTABLE_TX_SOCKET_COUNT").unwrap_or(1);
+            let tx_socket_count = parse_env("S2N_QUIC_UNSTABLE_TX_SOCKET_COUNT")
+                .unwrap_or(1u16)
+                .max(1);
+            let blocking = parse_env("S2N_QUIC_UNSTABLE_TX_BLOCKING").unwrap_or(0u16) > 0;
 
-            for idx in 0usize..tx_socket_count {
+            let spawn = |tx_socket, consumer| {
+                // spawn a task that actually reads from the socket into the ring buffer
+                if blocking {
+                    let gso = gso.clone();
+                    std::thread::spawn(|| {
+                        crate::socket::task::blocking::tx(tx_socket, consumer, gso)
+                    });
+                } else {
+                    handle.spawn(task::tx(tx_socket, consumer, gso.clone()));
+                }
+            };
+
+            for idx in 0..tx_socket_count {
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 producers.push(producer);
 
                 // spawn a task that actually flushes the ring buffer to the socket
                 if idx + 1 == tx_socket_count {
-                    handle.spawn(task::tx(tx_socket, consumer, gso.clone()));
+                    spawn(tx_socket, consumer);
                     break;
                 } else {
                     let tx_socket = tx_socket.try_clone()?;
-                    handle.spawn(task::tx(tx_socket, consumer, gso.clone()));
+                    spawn(tx_socket, consumer);
                 }
             }
 
@@ -235,15 +261,34 @@ impl Io {
         // Notify the endpoint of the MTU that we chose
         endpoint.set_max_mtu(max_mtu);
 
-        let task = handle.spawn(
-            EventLoop {
-                endpoint,
-                clock,
-                rx,
-                tx,
+        let task = {
+            let blocking = parse_env("S2N_QUIC_UNSTABLE_ENDPOINT_BLOCKING").unwrap_or(0u16) > 0;
+
+            if blocking {
+                std::thread::spawn(|| {
+                    crate::socket::task::blocking::endpoint(|clock| {
+                        EventLoop {
+                            endpoint,
+                            clock,
+                            rx,
+                            tx,
+                        }
+                        .start()
+                    })
+                });
+                handle.spawn(core::future::pending())
+            } else {
+                handle.spawn(
+                    EventLoop {
+                        endpoint,
+                        clock,
+                        rx,
+                        tx,
+                    }
+                    .start(),
+                )
             }
-            .start(),
-        );
+        };
 
         drop(guard);
 
