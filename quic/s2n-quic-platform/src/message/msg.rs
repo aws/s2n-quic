@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::message::{cmsg, cmsg::Encoder, Message as MessageTrait};
-use alloc::vec::Vec;
 use core::{
     alloc::Layout,
-    mem::{size_of, size_of_val, zeroed},
-    pin::Pin,
+    mem::{size_of, size_of_val},
 };
-use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
+use libc::{iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
     inet::{
         datagram, ExplicitCongestionNotification, IpV4Address, IpV6Address, SocketAddress,
@@ -31,27 +29,6 @@ pub use libc::msghdr as Message;
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
-fn new(
-    iovec: *mut iovec,
-    msg_name: *mut c_void,
-    msg_namelen: usize,
-    msg_control: *mut c_void,
-    msg_controllen: usize,
-) -> Message {
-    let mut msghdr = unsafe { core::mem::zeroed::<msghdr>() };
-
-    msghdr.msg_iov = iovec;
-    msghdr.msg_iovlen = 1; // a single iovec is allocated per message
-
-    msghdr.msg_name = msg_name;
-    msghdr.msg_namelen = msg_namelen as _;
-
-    msghdr.msg_control = msg_control;
-    msghdr.msg_controllen = msg_controllen as _;
-
-    msghdr
-}
-
 impl MessageTrait for msghdr {
     type Handle = Handle;
 
@@ -67,38 +44,22 @@ impl MessageTrait for msghdr {
     #[inline]
     fn payload_len(&self) -> usize {
         debug_assert!(!self.msg_iov.is_null());
-        unsafe { (*self.msg_iov).iov_len }
+        let len = unsafe { (*self.msg_iov).iov_len as _ };
+        debug_assert!(len <= u16::MAX as usize);
+        len
     }
 
     #[inline]
     unsafe fn set_payload_len(&mut self, payload_len: usize) {
+        debug_assert!(payload_len <= u16::MAX as usize);
         debug_assert!(!self.msg_iov.is_null());
         (*self.msg_iov).iov_len = payload_len;
-    }
-
-    #[inline]
-    fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool {
-        if let Some((header, _cmsg)) = self.header() {
-            let mut other_handle = *other.path_handle();
-
-            // when reading the header back from the msghdr, we don't know the port
-            // so set the other port to 0 as well.
-            other_handle.local_address.set_port(0);
-
-            // check the path handles match
-            header.path.strict_eq(&other_handle) &&
-                // check the ECN markings match
-                header.ecn == other.ecn()
-        } else {
-            false
-        }
     }
 
     #[cfg(s2n_quic_platform_gso)]
     #[inline]
     fn set_segment_size(&mut self, size: usize) {
-        type SegmentType = u16;
-        self.encode_cmsg(libc::SOL_UDP, libc::UDP_SEGMENT, size as SegmentType)
+        self.encode_cmsg(libc::SOL_UDP, libc::UDP_SEGMENT, size as cmsg::UdpGso)
             .unwrap();
     }
 
@@ -148,22 +109,6 @@ impl MessageTrait for msghdr {
         check_cmsg(self);
 
         self.msg_controllen = cmsg::MAX_LEN as _;
-    }
-
-    #[inline]
-    fn replicate_fields_from(&mut self, other: &Self) {
-        debug_assert_eq!(
-            self.msg_name, other.msg_name,
-            "msg_name needs to point to the same data"
-        );
-        debug_assert_eq!(
-            self.msg_control, other.msg_control,
-            "msg_control needs to point to the same data"
-        );
-        debug_assert_eq!(self.msg_iov, other.msg_iov);
-        debug_assert_eq!(self.msg_iovlen, other.msg_iovlen);
-        self.msg_namelen = other.msg_namelen;
-        self.msg_controllen = other.msg_controllen;
     }
 
     #[inline]
@@ -357,158 +302,5 @@ impl Header {
                 .align_offset(core::mem::align_of::<cmsg::Storage>()),
             0
         );
-    }
-}
-
-pub struct Ring<Payloads> {
-    pub(crate) messages: Vec<msghdr>,
-    pub(crate) storage: Storage<Payloads>,
-}
-
-pub struct Storage<Payloads> {
-    // this field holds references to allocated payloads, but is never read directly
-    #[allow(dead_code)]
-    pub(crate) payloads: Pin<Payloads>,
-
-    // this field holds references to allocated iovecs, but is never read directly
-    #[allow(dead_code)]
-    pub(crate) iovecs: Pin<Box<[iovec]>>,
-
-    // this field holds references to allocated msg_names, but is never read directly
-    #[allow(dead_code)]
-    pub(crate) msg_names: Pin<Box<[sockaddr_in6]>>,
-
-    // this field holds references to allocated msg_names, but is never read directly
-    #[allow(dead_code)]
-    pub(crate) cmsgs: Pin<Box<[cmsg::Storage]>>,
-
-    /// The maximum payload for any given message
-    mtu: usize,
-
-    /// The maximum number of segments that can be offloaded in a single message
-    gso: crate::features::Gso,
-}
-
-impl<Payloads: crate::buffer::Buffer> Storage<Payloads> {
-    #[inline]
-    pub fn mtu(&self) -> usize {
-        self.mtu
-    }
-
-    #[inline]
-    pub fn max_gso(&self) -> usize {
-        self.gso.max_segments()
-    }
-
-    #[inline]
-    pub fn disable_gso(&mut self) {
-        // TODO recompute message offsets
-        // https://github.com/aws/s2n-quic/issues/762
-        self.gso.disable()
-    }
-}
-
-/// Even though `Ring` contains raw pointers, it owns all of the data
-/// and can be sent across threads safely.
-#[allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
-unsafe impl<Payloads: Send> Send for Ring<Payloads> {}
-
-impl<Payloads: crate::buffer::Buffer + Default> Default for Ring<Payloads> {
-    fn default() -> Self {
-        Self::new(
-            Payloads::default(),
-            crate::features::gso::MaxSegments::DEFAULT.into(),
-        )
-    }
-}
-
-impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
-    pub fn new(payloads: Payloads, max_gso: usize) -> Self {
-        let gso = crate::features::gso::MaxSegments::try_from(max_gso)
-            .expect("invalid max segments value")
-            .into();
-
-        let mtu = payloads.mtu();
-        let capacity = payloads.len() / mtu / max_gso;
-
-        let mut payloads = Pin::new(payloads);
-        let mut iovecs = Pin::new(vec![unsafe { zeroed() }; capacity].into_boxed_slice());
-        let mut msg_names = Pin::new(vec![unsafe { zeroed() }; capacity].into_boxed_slice());
-        let mut cmsgs = Pin::new(vec![cmsg::Storage::default(); capacity].into_boxed_slice());
-
-        // double message capacity to enable contiguous access
-        let mut messages = Vec::with_capacity(capacity * 2);
-
-        let mut payload_buf = &mut payloads.as_mut()[..];
-
-        for index in 0..capacity {
-            let (payload, remaining) = payload_buf.split_at_mut(mtu * max_gso);
-            payload_buf = remaining;
-
-            let mut iovec = unsafe { zeroed::<iovec>() };
-            iovec.iov_base = payload.as_mut_ptr() as _;
-            iovec.iov_len = mtu;
-            iovecs[index] = iovec;
-
-            let msg = new(
-                (&mut iovecs[index]) as *mut _,
-                (&mut msg_names[index]) as *mut _ as *mut _,
-                size_of::<sockaddr_in6>(),
-                cmsgs[index].as_mut_ptr() as *mut _,
-                cmsgs[index].len(),
-            );
-
-            messages.push(msg);
-        }
-
-        for index in 0..capacity {
-            messages.push(messages[index]);
-        }
-
-        Self {
-            messages,
-            storage: Storage {
-                payloads,
-                iovecs,
-                msg_names,
-                cmsgs,
-                mtu,
-                gso,
-            },
-        }
-    }
-}
-
-impl<Payloads: crate::buffer::Buffer> super::Ring for Ring<Payloads> {
-    type Message = Message;
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.messages.len() / 2
-    }
-
-    #[inline]
-    fn mtu(&self) -> usize {
-        self.storage.mtu()
-    }
-
-    #[inline]
-    fn max_gso(&self) -> usize {
-        // TODO recompute message offsets
-        self.storage.max_gso()
-    }
-
-    fn disable_gso(&mut self) {
-        self.storage.disable_gso()
-    }
-
-    #[inline]
-    fn as_slice(&self) -> &[Self::Message] {
-        &self.messages[..]
-    }
-
-    #[inline]
-    fn as_mut_slice(&mut self) -> &mut [Self::Message] {
-        &mut self.messages[..]
     }
 }

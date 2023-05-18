@@ -77,6 +77,7 @@ impl Storage {
     }
 
     #[inline]
+    #[allow(dead_code)] // clippy wants this to exist but we don't use it
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
