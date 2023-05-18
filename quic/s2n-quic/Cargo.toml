@@ -63,7 +63,7 @@ s2n-quic-crypto = { version = "=0.21.0", path = "../s2n-quic-crypto", optional =
 s2n-quic-platform = { version = "=0.22.0", path = "../s2n-quic-platform", features = ["tokio-runtime"] }
 s2n-quic-rustls = { version = "=0.21.0", path = "../s2n-quic-rustls", optional = true }
 s2n-quic-tls = { version = "=0.21.0", path = "../s2n-quic-tls", optional = true }
-s2n-quic-tls-default = { version = "=0.20.0", path = "../s2n-quic-tls-default", optional = true }
+s2n-quic-tls-default = { version = "=0.21.0", path = "../s2n-quic-tls-default", optional = true }
 s2n-quic-transport = { version = "=0.21.0", path = "../s2n-quic-transport" }
 tokio = { version = "1", default-features = false }
 zerocopy = { version = "0.6", optional = true }
