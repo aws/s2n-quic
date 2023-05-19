@@ -15,7 +15,7 @@ use std::net::SocketAddr;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
 
-pub fn events() -> event::tracing::Provider {
+pub fn events() -> event::tracing::Subscriber {
     use std::sync::Once;
 
     static TRACING: Once = Once::new();
@@ -47,7 +47,7 @@ pub fn events() -> event::tracing::Provider {
             .init();
     });
 
-    event::tracing::Provider::default()
+    event::tracing::Subscriber::default()
 }
 
 pub fn start_server(mut server: Server) -> Result<SocketAddr> {

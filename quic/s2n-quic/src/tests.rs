@@ -29,6 +29,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 mod setup;
 use setup::*;
 
+#[cfg(not(target_os = "windows"))]
+mod client_handshake_confirm;
+
 #[test]
 fn client_server_test() {
     test(Model::default(), client_server).unwrap();
