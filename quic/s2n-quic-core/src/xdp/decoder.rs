@@ -223,7 +223,7 @@ mod tests {
 
     // Tests to ensure memory safety and no panics
     #[test]
-    #[cfg_attr(kani, kani::proof, kani::unwind(258), kani::solver(kissat))]
+    #[cfg_attr(kani, kani::proof, kani::unwind(258), kani::solver(cadical))]
     fn decode_test() {
         check!().for_each(|bytes| {
             let buffer = s2n_codec::DecoderBuffer::new(bytes);

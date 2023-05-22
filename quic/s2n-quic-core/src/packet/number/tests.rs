@@ -10,7 +10,7 @@ use bolero::{check, generator::*};
 use s2n_codec::{testing::encode, DecoderBuffer};
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
+#[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(cadical))]
 fn round_trip() {
     check!()
         .with_generator(
