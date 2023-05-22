@@ -18,7 +18,7 @@ fn round_trip_bytes_test() {
 }
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(kissat))]
+#[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(cadical))]
 fn round_trip_values_test() {
     check!().with_type().cloned().for_each(|v| {
         if let Ok(v) = VarInt::new(v) {
@@ -91,7 +91,7 @@ sequence_test!(one_byte_sequence_example([0x25], 37));
 // # +------+--------+-------------+-----------------------+
 #[test]
 #[cfg_attr(miri, ignore)]
-#[cfg_attr(kani, kani::proof, kani::unwind(3), kani::solver(kissat))]
+#[cfg_attr(kani, kani::proof, kani::unwind(3), kani::solver(cadical))]
 fn one_byte_sequence_test() {
     bolero::check!()
         .with_type()
@@ -107,7 +107,7 @@ fn one_byte_sequence_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
-#[cfg_attr(kani, kani::proof, kani::unwind(4), kani::solver(kissat))]
+#[cfg_attr(kani, kani::proof, kani::unwind(4), kani::solver(cadical))]
 fn two_byte_sequence_test() {
     // the s2n-quic implementation always chooses the smallest encoding possible.
     // this means if we wish to test two-byte sequences, we need to encode a number
@@ -130,7 +130,7 @@ fn two_byte_sequence_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
-#[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(kissat))]
+#[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(cadical))]
 fn four_byte_sequence_test() {
     // The s2n-quic implementation always chooses the smallest encoding possible.
     // This means if we wish to test the four-byte sequences, we need to encode a number
@@ -153,7 +153,7 @@ fn four_byte_sequence_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
-#[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(kissat))]
+#[cfg_attr(kani, kani::proof, kani::unwind(10), kani::solver(cadical))]
 fn eight_byte_sequence_test() {
     // The s2n-quic implementation always chooses the smallest encoding possible.
     // This means if we wish to test eight-byte sequences, we need to encode a number
