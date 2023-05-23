@@ -18,6 +18,14 @@ env:
   RUST_NIGHTLY_TOOLCHAIN: nightly-2022-09-15
   CDN: https://dnglbrstg7yg.cloudfront.net
 
+# By default depandabot only receives read permissions. Explicitly give it write
+# permissions which is needed by the ouzi-dev/commit-status-updater task.
+#
+# Updating status is relatively safe (doesnt modify source code) and caution
+# should we taken before adding more permissions.
+permissions:
+  statuses: write
+
 jobs:
   rustfmt:
     runs-on: ubuntu-latest
