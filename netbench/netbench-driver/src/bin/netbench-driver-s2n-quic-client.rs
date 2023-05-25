@@ -10,9 +10,10 @@ use structopt::StructOpt;
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator::new();
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), String> {
-    Client::from_args().run().await.map_err(|e| e.to_string())
+fn main() -> Result<()> {
+    let args = Client::from_args();
+    let runtime = args.opts.runtime();
+    runtime.block_on(args.run())
 }
 
 #[derive(Debug, StructOpt)]

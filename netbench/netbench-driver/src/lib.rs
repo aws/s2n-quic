@@ -47,6 +47,9 @@ pub struct Server {
     #[structopt(long)]
     pub nagle: bool,
 
+    #[structopt(long, env = "MULTITHREADED")]
+    pub multithreaded: Option<Option<bool>>,
+
     /// Forces multiplex mode for the driver
     ///
     /// Without this, the requirement is inferred based on the scenario
@@ -55,6 +58,22 @@ pub struct Server {
 }
 
 impl Server {
+    pub fn runtime(&self) -> tokio::runtime::Runtime {
+        let multithreaded = match self.multithreaded {
+            Some(Some(v)) => v,
+            Some(None) => true,
+            None => false,
+        };
+        if multithreaded {
+            tokio::runtime::Builder::new_multi_thread()
+        } else {
+            tokio::runtime::Builder::new_current_thread()
+        }
+        .enable_all()
+        .build()
+        .unwrap()
+    }
+
     pub fn scenario(&self) -> Arc<scenario::Server> {
         let id = self.server_id;
         self.scenario.servers[id].clone()
@@ -112,6 +131,9 @@ pub struct Client {
     #[structopt(long)]
     pub nagle: bool,
 
+    #[structopt(long, env = "MULTITHREADED")]
+    pub multithreaded: Option<Option<bool>>,
+
     /// Forces multiplex mode for the driver
     ///
     /// Without this, the requirement is inferred based on the scenario
@@ -120,6 +142,22 @@ pub struct Client {
 }
 
 impl Client {
+    pub fn runtime(&self) -> tokio::runtime::Runtime {
+        let multithreaded = match self.multithreaded {
+            Some(Some(v)) => v,
+            Some(None) => true,
+            None => false,
+        };
+        if multithreaded {
+            tokio::runtime::Builder::new_multi_thread()
+        } else {
+            tokio::runtime::Builder::new_current_thread()
+        }
+        .enable_all()
+        .build()
+        .unwrap()
+    }
+
     pub fn scenario(&self) -> Arc<scenario::Client> {
         let id = self.client_id;
         self.scenario.clients[id].clone()
