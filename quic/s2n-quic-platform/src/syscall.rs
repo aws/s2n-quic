@@ -5,34 +5,36 @@
                                                                 // implementations so disable any
                                                                 // warnings from those
 
-use cfg_if::cfg_if;
+use core::ops::ControlFlow;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::io;
+
+#[cfg(s2n_quic_platform_socket_mmsg)]
+pub mod mmsg;
+#[cfg(s2n_quic_platform_socket_msg)]
+pub mod msg;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // TODO remove once used
+pub enum SocketType {
+    Blocking,
+    NonBlocking,
+}
+
+pub trait SocketEvents {
+    /// Called when `count` packets are completed
+    fn on_complete(&mut self, count: usize) -> ControlFlow<(), ()>;
+
+    /// Called when an error occurs on a socket
+    fn on_error(&mut self, error: io::Error) -> ControlFlow<(), ()>;
+}
 
 pub fn udp_socket(addr: std::net::SocketAddr) -> io::Result<Socket> {
     let domain = Domain::for_address(addr);
     let socket_type = Type::DGRAM;
     let protocol = Some(Protocol::UDP);
 
-    cfg_if! {
-        // Set non-blocking mode in a single syscall if supported
-        if #[cfg(any(
-            target_os = "android",
-            target_os = "dragonfly",
-            target_os = "freebsd",
-            target_os = "fuchsia",
-            target_os = "illumos",
-            target_os = "linux",
-            target_os = "netbsd",
-            target_os = "openbsd"
-        ))] {
-            let socket_type = socket_type.nonblocking();
-            let socket = Socket::new(domain, socket_type, protocol)?;
-        } else {
-            let socket = Socket::new(domain, socket_type, protocol)?;
-            socket.set_nonblocking(true)?;
-        }
-    }
+    let socket = Socket::new(domain, socket_type, protocol)?;
 
     // allow ipv4 to also connect - ignore the error if it fails
     let _ = socket.set_only_v6(false);
@@ -187,6 +189,28 @@ pub fn configure_pktinfo(rx_socket: &Socket) -> bool {
             libc::IPV6_RECVPKTINFO,
             &enabled as *const _ as _,
             core::mem::size_of_val(&enabled) as _,
+        ))
+        .is_ok();
+    }
+
+    success
+}
+
+#[allow(dead_code)] // TODO remove once used
+pub fn configure_gro(rx_socket: &Socket) -> bool {
+    let mut success = false;
+
+    #[cfg(s2n_quic_platform_gro)]
+    {
+        use std::os::unix::io::AsRawFd;
+        let enabled: libc::c_int = 1;
+
+        success |= libc!(setsockopt(
+            rx_socket.as_raw_fd(),
+            libc::SOL_UDP,
+            libc::UDP_GRO,
+            &enabled as *const _ as _,
+            core::mem::size_of_val(&enabled) as _
         ))
         .is_ok();
     }

@@ -94,8 +94,6 @@ impl Io {
         let guard = handle.enter();
 
         let rx_socket = if let Some(rx_socket) = rx_socket {
-            // ensure the socket is non-blocking
-            rx_socket.set_nonblocking(true)?;
             rx_socket
         } else if let Some(recv_addr) = recv_addr {
             syscall::bind_udp(recv_addr, reuse_port)?
@@ -106,9 +104,10 @@ impl Io {
             ));
         };
 
+        // ensure the socket is non-blocking
+        rx_socket.set_nonblocking(true)?;
+
         let tx_socket = if let Some(tx_socket) = tx_socket {
-            // ensure the socket is non-blocking
-            tx_socket.set_nonblocking(true)?;
             tx_socket
         } else if let Some(send_addr) = send_addr {
             syscall::bind_udp(send_addr, reuse_port)?
@@ -117,6 +116,9 @@ impl Io {
             // will be a handle to the rx socket.
             rx_socket.try_clone()?
         };
+
+        // ensure the socket is non-blocking
+        tx_socket.set_nonblocking(true)?;
 
         if let Some(size) = send_buffer_size {
             tx_socket.set_send_buffer_size(size)?;

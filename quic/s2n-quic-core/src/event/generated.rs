@@ -1116,6 +1116,9 @@ pub mod api {
             max_segments: usize,
         },
         #[non_exhaustive]
+        #[doc = " Emitted when receive segment offload was configured"]
+        Gro { enabled: bool },
+        #[non_exhaustive]
         #[doc = " Emitted when ECN support is configured"]
         Ecn { enabled: bool },
         #[non_exhaustive]
@@ -4243,6 +4246,8 @@ pub mod builder {
             #[doc = " If this value not greater than 1, GSO is disabled."]
             max_segments: usize,
         },
+        #[doc = " Emitted when receive segment offload was configured"]
+        Gro { enabled: bool },
         #[doc = " Emitted when ECN support is configured"]
         Ecn { enabled: bool },
         #[doc = " Emitted when the maximum transmission unit is configured"]
@@ -4255,6 +4260,9 @@ pub mod builder {
             match self {
                 Self::Gso { max_segments } => Gso {
                     max_segments: max_segments.into_event(),
+                },
+                Self::Gro { enabled } => Gro {
+                    enabled: enabled.into_event(),
                 },
                 Self::Ecn { enabled } => Ecn {
                     enabled: enabled.into_event(),
