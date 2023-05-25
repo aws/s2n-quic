@@ -15,9 +15,10 @@ use tokio_native_tls::native_tls::{Identity, TlsAcceptor};
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator::new();
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
-    Server::from_args().run().await
+fn main() -> Result<()> {
+    let args = Server::from_args();
+    let runtime = args.opts.runtime();
+    runtime.block_on(args.run())
 }
 
 #[derive(Debug, StructOpt)]
