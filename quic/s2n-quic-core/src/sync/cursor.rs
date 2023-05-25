@@ -1,24 +1,77 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    if_xdp::{RingFlags, RingOffsetV2},
-    mmap::Mmap,
-};
 use core::{
-    ffi::c_void,
-    fmt,
     marker::PhantomData,
     num::Wrapping,
     ptr::NonNull,
     sync::atomic::{AtomicU32, Ordering},
 };
 
+pub struct Builder<T: Copy> {
+    pub producer: NonNull<AtomicU32>,
+    pub consumer: NonNull<AtomicU32>,
+    pub data: NonNull<T>,
+    pub size: u32,
+}
+
+impl<T: Copy> Builder<T> {
+    /// Builds a cursor for a producer
+    ///
+    /// # Safety
+    ///
+    /// * This should only be called for the producer
+    /// * The pointers should outlive the `Cursor`
+    #[inline]
+    pub unsafe fn build_producer(self) -> Cursor<T> {
+        let mut cursor = self.build();
+        cursor.init_producer();
+        cursor
+    }
+
+    /// Builds a cursor for a consumer
+    ///
+    /// # Safety
+    ///
+    /// * This should only be called for the consumer
+    /// * The pointers should outlive the `Cursor`
+    #[inline]
+    pub unsafe fn build_consumer(self) -> Cursor<T> {
+        self.build()
+    }
+
+    #[inline]
+    const fn build(self) -> Cursor<T> {
+        let Self {
+            producer,
+            consumer,
+            data,
+            size,
+        } = self;
+
+        debug_assert!(size.is_power_of_two());
+
+        let mask = size - 1;
+
+        Cursor {
+            cached_consumer: Wrapping(0),
+            cached_producer: Wrapping(0),
+            cached_len: 0,
+            size,
+            mask,
+            producer,
+            consumer,
+            data,
+            entry: PhantomData,
+        }
+    }
+}
+
 /// A structure for tracking a ring shared between a producer and consumer
 ///
 /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L34-L42).
 #[derive(Debug)]
-pub struct Cursor<T: Copy + fmt::Debug> {
+pub struct Cursor<T: Copy> {
     /// A cached value for the producer cursor index
     ///
     /// This is stored locally to avoid atomic synchronization, if possible
@@ -39,10 +92,8 @@ pub struct Cursor<T: Copy + fmt::Debug> {
     producer: NonNull<AtomicU32>,
     /// Points to the consumer cursor index
     consumer: NonNull<AtomicU32>,
-    /// Points to the descriptor values in the ring
-    descriptors: NonNull<c_void>,
-    /// Points to the shared flags for the ring
-    flags: NonNull<RingFlags>,
+    /// Points to the values in the ring
+    data: NonNull<T>,
     /// A cached value of the computed number of entries for the owner of the `Cursor`
     ///
     /// Since the `acquire` paths are critical to efficiency, we store a derived length to avoid
@@ -53,55 +104,14 @@ pub struct Cursor<T: Copy + fmt::Debug> {
     entry: PhantomData<T>,
 }
 
-impl<T: Copy + fmt::Debug> Cursor<T> {
-    /// Creates a cursor structure from a shared memory region and configured offsets
-    ///
-    /// # Safety
-    ///
-    /// The `Cursor` structure holds references to the provided `area` argument. As such, the
-    /// `area` MUST outlive the `Cursors` structure.
-    ///
-    /// The provided `T` MUST be the type of data pointed to by the `desc` offset.
-    ///
-    /// The `size` MUST be a power of two.
-    #[inline]
-    pub unsafe fn new(area: &Mmap, offsets: &RingOffsetV2, size: u32) -> Self {
-        debug_assert!(size.is_power_of_two());
-
-        let mask = size - 1;
-
-        let producer = area.addr().as_ptr().add(offsets.producer as _);
-        let producer = NonNull::new_unchecked(producer as _);
-        let consumer = area.addr().as_ptr().add(offsets.consumer as _);
-        let consumer = NonNull::new_unchecked(consumer as _);
-
-        let flags = area.addr().as_ptr().add(offsets.flags as _);
-        let flags = NonNull::new_unchecked(flags as *mut RingFlags);
-
-        let descriptors = area.addr().as_ptr().add(offsets.desc as _);
-        let descriptors = NonNull::new_unchecked(descriptors);
-
-        Self {
-            cached_consumer: Wrapping(0),
-            cached_producer: Wrapping(0),
-            cached_len: 0,
-            size,
-            mask,
-            producer,
-            consumer,
-            flags,
-            descriptors,
-            entry: PhantomData,
-        }
-    }
-
+impl<T: Copy> Cursor<T> {
     /// Initializes a producer cursor
     ///
     /// # Safety
     ///
     /// This should only be called by a producer
     #[inline]
-    pub unsafe fn init_producer(&mut self) {
+    unsafe fn init_producer(&mut self) {
         // increment the consumer cursor by the total size to avoid doing an addition inside
         // `cached_producer`
         //
@@ -126,7 +136,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     }
 
     /// Returns the overall size of the ring
-    pub fn capacity(&self) -> u32 {
+    pub const fn capacity(&self) -> u32 {
         self.size
     }
 
@@ -194,12 +204,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     pub fn release_producer(&mut self, len: u32) {
         if cfg!(debug_assertions) {
             let max_len = self.cached_producer_len();
-            assert!(
-                max_len >= len,
-                "available: {}, requested: {}, {self:?}",
-                max_len,
-                len
-            );
+            assert!(max_len >= len, "available: {}, requested: {}", max_len, len);
         }
         self.cached_producer += len;
         self.cached_len -= len;
@@ -267,12 +272,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
     pub fn release_consumer(&mut self, len: u32) {
         if cfg!(debug_assertions) {
             let max_len = self.cached_consumer_len();
-            assert!(
-                max_len >= len,
-                "available: {}, requested: {}, {self:?}",
-                max_len,
-                len
-            );
+            assert!(max_len >= len, "available: {}, requested: {}", max_len, len);
         }
         self.cached_consumer += len;
         self.cached_len -= len;
@@ -280,27 +280,6 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         debug_assert!(self.cached_len <= self.size);
 
         self.consumer().fetch_add(len, Ordering::Release);
-    }
-
-    /// Returns `true` if the ring needs to be notified when entries are updated
-    ///
-    /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L87).
-    #[inline]
-    pub fn needs_wakeup(&self) -> bool {
-        self.flags().contains(RingFlags::NEED_WAKEUP)
-    }
-
-    /// Returns a reference to the flags on the ring
-    #[inline]
-    pub fn flags(&self) -> &RingFlags {
-        unsafe { &*self.flags.as_ptr() }
-    }
-
-    /// Returns a mutable reference to the flags on the ring
-    #[inline]
-    #[cfg(test)]
-    pub fn flags_mut(&mut self) -> &mut RingFlags {
-        unsafe { &mut *self.flags.as_ptr() }
     }
 
     /// Returns the current consumer entries
@@ -333,6 +312,11 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
         self.mut_slices(idx as _, len as _)
     }
 
+    #[inline]
+    pub const fn data_ptr(&self) -> NonNull<T> {
+        self.data
+    }
+
     /// Creates a pair of slices for a given cursor index and len
     #[inline]
     fn mut_slices(&mut self, idx: u64, len: u64) -> (&mut [T], &mut [T]) {
@@ -340,7 +324,7 @@ impl<T: Copy + fmt::Debug> Cursor<T> {
             return (&mut [][..], &mut [][..]);
         }
 
-        let ptr = self.descriptors.as_ptr() as *mut T;
+        let ptr = self.data.as_ptr();
 
         if let Some(tail_len) = (idx + len).checked_sub(self.size as _) {
             let head_len = self.size as u64 - idx;
@@ -435,12 +419,11 @@ mod tests {
 
     fn stack_cursors<T, F, R>(init_cursor: u32, desc: &mut [T], exec: F) -> R
     where
-        T: fmt::Debug + Copy,
+        T: Copy,
         F: FnOnce(&mut Cursor<T>, &mut Cursor<T>) -> R,
     {
         let size = desc.len() as u32;
         debug_assert!(size.is_power_of_two());
-        let mask = size - 1;
         let producer_v = UnsafeCell::new(AtomicU32::new(init_cursor));
         let consumer_v = UnsafeCell::new(AtomicU32::new(init_cursor));
         let desc = UnsafeCell::new(desc);
@@ -452,37 +435,33 @@ mod tests {
         let cached_consumer = Wrapping(init_cursor);
         let cached_producer = Wrapping(init_cursor);
 
-        let mut producer: Cursor<T> = Cursor {
-            cached_consumer,
-            cached_producer,
-            cached_len: 0,
-            size,
-            producer: NonNull::new(producer_v).unwrap(),
-            consumer: NonNull::new(consumer_v).unwrap(),
-            descriptors: NonNull::new(desc).unwrap(),
-            flags: NonNull::dangling(),
-            mask,
-            entry: PhantomData,
+        let mut producer: Cursor<T> = unsafe {
+            Builder {
+                size,
+                producer: NonNull::new(producer_v).unwrap(),
+                consumer: NonNull::new(consumer_v).unwrap(),
+                data: NonNull::new(desc).unwrap(),
+            }
+            .build_producer()
         };
 
-        unsafe {
-            producer.init_producer();
-        }
+        producer.cached_consumer = cached_consumer;
+        producer.cached_producer = cached_producer;
 
         assert_eq!(producer.acquire_producer(u32::MAX), size);
 
-        let mut consumer: Cursor<T> = Cursor {
-            cached_consumer,
-            cached_producer,
-            cached_len: 0,
-            size,
-            producer: NonNull::new(producer_v).unwrap(),
-            consumer: NonNull::new(consumer_v).unwrap(),
-            descriptors: NonNull::new(desc).unwrap(),
-            flags: NonNull::dangling(),
-            mask,
-            entry: PhantomData,
+        let mut consumer: Cursor<T> = unsafe {
+            Builder {
+                size,
+                producer: NonNull::new(producer_v).unwrap(),
+                consumer: NonNull::new(consumer_v).unwrap(),
+                data: NonNull::new(desc).unwrap(),
+            }
+            .build_consumer()
         };
+
+        consumer.cached_consumer = cached_consumer;
+        consumer.cached_producer = cached_producer;
 
         assert_eq!(consumer.acquire_consumer(u32::MAX), 0);
 
@@ -541,11 +520,12 @@ mod tests {
     #[cfg(not(kani))]
     type Ops = Vec<Op>;
     #[cfg(kani)]
-    type Ops = s2n_quic_core::testing::InlineVec<Op, 4>;
+    type Ops = crate::testing::InlineVec<Op, 4>;
 
     const MAX_POWER_OF_TWO: u8 = if cfg!(kani) { 2 } else { 10 };
 
     #[test]
+    #[cfg_attr(miri, ignore)] // this test is too expensive for miri to run
     #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
     fn oracle_test() {
         check!()

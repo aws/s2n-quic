@@ -2,21 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    if_xdp::{MmapOffsets, RxTxDescriptor, UmemDescriptor},
+    if_xdp::{MmapOffsets, RingFlags, RingOffsetV2, RxTxDescriptor, UmemDescriptor},
     mmap::Mmap,
     socket, syscall,
 };
-use core::{fmt, mem::size_of};
+use core::{fmt, mem::size_of, ptr::NonNull};
+use s2n_quic_core::sync::cursor::{self, Cursor};
 use std::{io, os::unix::io::AsRawFd};
-
-mod cursor;
-
-use cursor::Cursor;
 
 #[derive(Debug)]
 #[allow(dead_code)] // we hold on to `area` and `socket` to ensure they live long enough
 struct Ring<T: Copy + fmt::Debug> {
     cursor: Cursor<T>,
+    flags: NonNull<RingFlags>,
     // make the area clonable in test mode
     #[cfg(test)]
     area: std::sync::Arc<Mmap>,
@@ -25,11 +23,61 @@ struct Ring<T: Copy + fmt::Debug> {
     socket: socket::Fd,
 }
 
+impl<T: Copy + fmt::Debug> Ring<T> {
+    /// Returns `true` if the ring needs to be notified when entries are updated
+    ///
+    /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L87).
+    #[inline]
+    pub fn needs_wakeup(&self) -> bool {
+        self.flags().contains(RingFlags::NEED_WAKEUP)
+    }
+
+    /// Returns a reference to the flags on the ring
+    #[inline]
+    pub fn flags(&self) -> &RingFlags {
+        unsafe { &*self.flags.as_ptr() }
+    }
+
+    /// Returns a mutable reference to the flags on the ring
+    #[inline]
+    #[cfg(test)]
+    pub fn flags_mut(&mut self) -> &mut RingFlags {
+        unsafe { &mut *self.flags.as_ptr() }
+    }
+}
+
 /// Safety: the Mmap area is held for as long as the Cursor
 unsafe impl<T: Copy + fmt::Debug> Send for Ring<T> {}
 
 /// Safety: the Mmap area is held for as long as the Cursor
 unsafe impl<T: Copy + fmt::Debug> Sync for Ring<T> {}
+
+#[inline]
+unsafe fn builder<T: Copy>(
+    area: &Mmap,
+    offsets: &RingOffsetV2,
+    size: u32,
+) -> (cursor::Builder<T>, NonNull<RingFlags>) {
+    let producer = area.addr().as_ptr().add(offsets.producer as _);
+    let producer = NonNull::new_unchecked(producer as _);
+    let consumer = area.addr().as_ptr().add(offsets.consumer as _);
+    let consumer = NonNull::new_unchecked(consumer as _);
+
+    let flags = area.addr().as_ptr().add(offsets.flags as _);
+    let flags = NonNull::new_unchecked(flags as *mut RingFlags);
+
+    let descriptors = area.addr().as_ptr().add(offsets.desc as _);
+    let descriptors = NonNull::new_unchecked(descriptors as *mut T);
+
+    let builder = cursor::Builder {
+        producer,
+        consumer,
+        data: descriptors,
+        size,
+    };
+
+    (builder, flags)
+}
 
 macro_rules! impl_producer {
     ($T:ty, $syscall:ident, $field:ident, $offset:ident) => {
@@ -48,21 +96,18 @@ macro_rules! impl_producer {
 
             let area = Mmap::new(len, offset, Some(socket.as_raw_fd()))?;
 
-            let mut cursor = unsafe {
+            let (cursor, flags) = unsafe {
                 // Safety: `area` lives as long as `cursor`
-                Cursor::new(&area, offsets, size)
+                let (builder, flags) = builder(&area, offsets, size);
+                (builder.build_producer(), flags)
             };
-
-            unsafe {
-                // Safety: this is only called by a producer
-                cursor.init_producer();
-            }
 
             #[cfg(test)]
             let area = std::sync::Arc::new(area);
 
             Ok(Self(Ring {
                 cursor,
+                flags,
                 area,
                 socket,
             }))
@@ -90,7 +135,7 @@ macro_rules! impl_producer {
         /// Returns `true` if the ring needs to be woken up in order to notify the kernel
         #[inline]
         pub fn needs_wakeup(&self) -> bool {
-            self.0.cursor.needs_wakeup()
+            self.0.needs_wakeup()
         }
 
         /// Returns the unfilled entries for the producer
@@ -135,9 +180,10 @@ macro_rules! impl_consumer {
 
             let area = Mmap::new(len, offset, Some(socket.as_raw_fd()))?;
 
-            let cursor = unsafe {
+            let (cursor, flags) = unsafe {
                 // Safety: `area` lives as long as `cursor`
-                Cursor::new(&area, offsets, size)
+                let (builder, flags) = builder(&area, offsets, size);
+                (builder.build_consumer(), flags)
             };
 
             #[cfg(test)]
@@ -145,6 +191,7 @@ macro_rules! impl_consumer {
 
             Ok(Self(Ring {
                 cursor,
+                flags,
                 area,
                 socket,
             }))
@@ -194,7 +241,7 @@ macro_rules! impl_consumer {
 
         #[cfg(test)]
         pub fn set_flags(&mut self, flags: crate::if_xdp::RingFlags) {
-            *self.0.cursor.flags_mut() = flags;
+            *self.0.flags_mut() = flags;
         }
     };
 }
@@ -265,31 +312,30 @@ pub mod testing {
 
                 let area = Mmap::new(len, 0, None).unwrap();
 
-                let consumer_cursor = unsafe {
+                let (consumer_cursor, flags) = unsafe {
                     // Safety: `area` lives as long as `cursor`
-                    Cursor::new(&area, &offsets, size)
+                    let (builder, flags) = builder(&area, &offsets, size);
+                    (builder.build_consumer(), flags)
                 };
 
-                let mut producer_cursor = unsafe {
+                let producer_cursor = unsafe {
                     // Safety: `area` lives as long as `cursor`
-                    Cursor::new(&area, &offsets, size)
+                    let (builder, _flags) = builder(&area, &offsets, size);
+                    builder.build_producer()
                 };
-
-                unsafe {
-                    // Safety: this is only called by a producer
-                    producer_cursor.init_producer();
-                }
 
                 let area = std::sync::Arc::new(area);
 
                 let cons = $consumer(Ring {
                     cursor: consumer_cursor,
+                    flags,
                     area: area.clone(),
                     socket: Fd::from_raw(-1),
                 });
 
                 let prod = $producer(Ring {
                     cursor: producer_cursor,
+                    flags,
                     area,
                     socket: Fd::from_raw(-1),
                 });
