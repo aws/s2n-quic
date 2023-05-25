@@ -154,7 +154,7 @@ impl<Payloads: crate::buffer::Buffer + Default> Default for Ring<Payloads> {
     fn default() -> Self {
         Self::new(
             Payloads::default(),
-            crate::features::get().gso.default_max_segments(),
+            crate::features::gso::MaxSegments::DEFAULT.into(),
         )
     }
 }
