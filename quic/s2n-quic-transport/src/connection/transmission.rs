@@ -74,6 +74,12 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
 
     #[inline]
     fn can_gso(&self, segment_len: usize, segment_count: usize) -> bool {
+        // MTU probes can cause delivery issues for other types of packets so they should always be
+        // transmitted in single packets
+        if self.context.transmission_mode.is_mtu_probing() {
+            return false;
+        }
+
         if let Some(min_packet_len) = self.context.min_packet_len {
             if segment_len < min_packet_len {
                 return false;
@@ -92,6 +98,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
         segment_len >= self.context.path().mtu(self.context.transmission_mode)
     }
 
+    #[inline]
     fn write_payload(
         &mut self,
         buffer: tx::PayloadBuffer,

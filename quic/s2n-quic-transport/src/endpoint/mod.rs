@@ -147,6 +147,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 endpoint_context.packet_interceptor,
             );
 
+            // flush the TX queue between connections
+            queue.flush();
+
             ConnectionContainerIterationResult::Continue
         });
 

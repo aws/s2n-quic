@@ -51,6 +51,14 @@ pub trait Queue {
     /// performed, e.g. encryption.
     fn push<M: Message<Handle = Self::Handle>>(&mut self, message: M) -> Result<Outcome, Error>;
 
+    /// Flushes any pending messages from the TX queue.
+    ///
+    /// This should be called between multiple connections to ensure GSO segments aren't shared.
+    #[inline]
+    fn flush(&mut self) {
+        // default as no-op
+    }
+
     /// Returns the number of remaining datagrams that can be transmitted
     fn capacity(&self) -> usize;
 

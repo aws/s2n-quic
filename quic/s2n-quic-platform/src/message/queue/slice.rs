@@ -314,11 +314,19 @@ impl<'a, Message: message::Message<Handle = H>, B: Behavior, H: path::Handle> tx
             .index(self.secondary)
             .ok_or(tx::Error::AtCapacity)?;
 
-        let size = self.messages[index].tx_write(message)?;
-        self.advance(1);
+        let output = &mut self.messages[index];
 
         // if we support GSO then mark the message as GSO-capable
-        if Message::SUPPORTS_GSO && self.max_gso > 1 {
+        let can_gso = if Message::SUPPORTS_GSO && self.max_gso > 1 {
+            message.can_gso(output.payload_len(), 0)
+        } else {
+            false
+        };
+
+        let size = output.tx_write(message)?;
+        self.advance(1);
+
+        if can_gso {
             self.gso_segment = Some(GsoSegment {
                 index,
                 count: 1,
@@ -333,5 +341,13 @@ impl<'a, Message: message::Message<Handle = H>, B: Behavior, H: path::Handle> tx
     #[allow(unknown_lints, clippy::misnamed_getters)] // this slice is made up of two halves and uses the primary for unfilled data
     fn capacity(&self) -> usize {
         self.primary.len
+    }
+
+    #[inline]
+    fn flush(&mut self) {
+        // Flush GSO packets between connections to ensure the next connection has an accurate
+        // `is_empty` query. In reality, it's unlikely that the connections can even share a packet
+        // so it's not really worth trying.
+        self.flush_gso();
     }
 }
