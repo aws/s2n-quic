@@ -1,48 +1,35 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[macro_use]
-mod macros;
-
-#[cfg(s2n_quic_platform_socket_mmsg)]
-pub mod mmsg;
-
-#[cfg(s2n_quic_platform_socket_msg)]
-pub mod msg;
+use core::ffi::c_void;
+use s2n_quic_core::{inet::datagram, io::tx, path};
 
 #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))]
 pub mod cmsg;
-
+#[cfg(s2n_quic_platform_socket_mmsg)]
+pub mod mmsg;
+#[cfg(s2n_quic_platform_socket_msg)]
+pub mod msg;
 pub mod queue;
 pub mod simple;
 
-use core::ffi::c_void;
-use s2n_quic_core::{
-    inet::{datagram, ExplicitCongestionNotification, SocketAddress},
-    io::tx,
-    path,
-};
+pub mod default {
+    cfg_if::cfg_if! {
+        if #[cfg(s2n_quic_platform_socket_mmsg)] {
+            pub use super::mmsg::*;
+        } else if #[cfg(s2n_quic_platform_socket_msg)] {
+            pub use super::msg::*;
+        } else {
+            pub use super::simple::*;
+        }
+    }
+}
 
 /// An abstract message that can be sent and received on a network
 pub trait Message {
     type Handle: path::Handle;
 
     const SUPPORTS_GSO: bool;
-
-    /// Returns the ECN values for the message
-    fn ecn(&self) -> ExplicitCongestionNotification;
-
-    /// Sets the ECN values for the message
-    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress);
-
-    /// Returns the `SocketAddress` for the message
-    fn remote_address(&self) -> Option<SocketAddress>;
-
-    /// Sets the `SocketAddress` for the message
-    fn set_remote_address(&mut self, remote_address: &SocketAddress);
-
-    /// Returns the path handle for the message
-    fn path_handle(&self) -> Option<Self::Handle>;
 
     /// Returns the length of the payload
     fn payload_len(&self) -> usize;
@@ -63,18 +50,11 @@ pub trait Message {
     /// This should used in scenarios where the data pointers are the same.
     fn replicate_fields_from(&mut self, other: &Self);
 
-    /// Returns a pointer for the message payload
-    fn payload_ptr(&self) -> *const u8;
-
     /// Returns a mutable pointer for the message payload
     fn payload_ptr_mut(&mut self) -> *mut u8;
 
-    /// Returns a slice for the message payload
-    fn payload(&self) -> &[u8] {
-        unsafe { core::slice::from_raw_parts(self.payload_ptr(), self.payload_len()) }
-    }
-
     /// Returns a mutable slice for the message payload
+    #[inline]
     fn payload_mut(&mut self) -> &mut [u8] {
         unsafe { core::slice::from_raw_parts_mut(self.payload_ptr_mut(), self.payload_len()) }
     }
@@ -101,16 +81,33 @@ pub trait Message {
     }
 
     /// Reads the message as an RX packet
-    fn rx_read(
-        &mut self,
-        local_address: &path::LocalAddress,
-    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])>;
+    fn rx_read(&mut self, local_address: &path::LocalAddress) -> Option<RxMessage<Self::Handle>>;
 
     /// Writes the message into the TX packet
     fn tx_write<M: tx::Message<Handle = Self::Handle>>(
         &mut self,
         message: M,
     ) -> Result<usize, tx::Error>;
+}
+
+pub struct RxMessage<'a, Handle: Copy> {
+    /// The received header for the message
+    pub header: datagram::Header<Handle>,
+    /// The number of segments inside the message
+    pub segment_size: usize,
+    /// The full payload of the message
+    pub payload: &'a mut [u8],
+}
+
+impl<'a, Handle: Copy> RxMessage<'a, Handle> {
+    #[inline]
+    pub fn for_each<F: FnMut(datagram::Header<Handle>, &mut [u8])>(self, mut on_packet: F) {
+        debug_assert_ne!(self.segment_size, 0);
+
+        for segment in self.payload.chunks_mut(self.segment_size) {
+            on_packet(self.header, segment);
+        }
+    }
 }
 
 /// A message ring used to back a queue

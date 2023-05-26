@@ -164,28 +164,11 @@ mod tests {
     use super::*;
     use crate::{buffer::VecBuffer, message::Message};
     use bolero::{check, generator::*};
-    use s2n_quic_core::inet;
+    use s2n_quic_core::path::{self, Handle};
     use std::collections::VecDeque;
 
     const MTU: usize = 1200;
-
-    fn set<M: Message>(message: &mut M, value: u8, len: usize) {
-        assert_eq!(
-            message.payload_len(),
-            MTU,
-            "payload len should be reset for free messages"
-        );
-        unsafe {
-            message.set_payload_len(len);
-        }
-        for b in message.payload_mut().iter_mut() {
-            *b = value;
-        }
-    }
-
-    fn gen_address() -> impl ValueGenerator<Output = inet::SocketAddress> {
-        gen()
-    }
+    const MAX_PAYLOAD: usize = 32;
 
     #[derive(Clone, Copy, Debug, TypeGenerator)]
     enum Operation {
@@ -195,11 +178,10 @@ mod tests {
             count: usize,
 
             /// Length of the payload to be pushed
-            #[generator(1..32)]
+            #[generator(1..MAX_PAYLOAD)]
             len: usize,
 
-            #[generator(gen_address())]
-            address: inet::SocketAddress,
+            address: path::RemoteAddress,
 
             /// true if the operation is successful
             success: bool,
@@ -215,6 +197,7 @@ mod tests {
     }
 
     fn check<R: message::Ring>(mut queue: Queue<R>, capacity: usize, ops: &[Operation]) {
+        let mut payload_buffer = [0u8; MAX_PAYLOAD];
         let mut oracle = VecDeque::new();
         let mut value = 0u8;
         for op in ops {
@@ -227,20 +210,22 @@ mod tests {
                 } => {
                     let mut free = queue.free_mut();
                     let count = count.min(free.len());
-                    let mut payload = value;
 
                     // push messages onto the queue and the oracle
                     for message in &mut free[..count] {
-                        set(message, payload, len);
+                        for byte in &mut payload_buffer[..len] {
+                            *byte = value;
+                        }
 
-                        message.set_remote_address(&address);
-                        oracle.push_back((address, len, payload));
-                        payload = payload.wrapping_add(1);
+                        let address = Handle::from_remote_address(address);
+                        let output = (address, &payload_buffer[..len]);
+                        message.tx_write(output).unwrap();
+                        oracle.push_back((address, len, value));
+                        value = value.wrapping_add(1);
                     }
 
                     // if successful, finish the slice, otherwise cancel
                     if success {
-                        value = payload;
                         free.finish(count);
                     } else {
                         oracle.drain((oracle.len() - count)..);
@@ -265,15 +250,17 @@ mod tests {
             assert_eq!(capacity, queue.occupied_len() + queue.free_len());
 
             // assert the queue matches the oracle
-            let occupied = queue.occupied_mut();
+            let mut occupied = queue.occupied_mut();
             assert_eq!(oracle.len(), occupied.len());
 
-            for (message, (address, len, value)) in occupied.iter().zip(oracle.iter()) {
-                let address = *address;
-
-                assert_eq!(message.remote_address(), Some(address));
-                assert_eq!(message.payload_len(), *len);
-                assert!(message.payload().iter().all(|v| v == value));
+            for (message, (address, len, value)) in occupied.iter_mut().zip(oracle.iter()) {
+                let local_address = LocalAddress(Default::default());
+                let message = message.rx_read(&local_address).unwrap();
+                message.for_each(|header, payload| {
+                    assert!(header.path.eq(address));
+                    assert_eq!(payload.len(), *len);
+                    assert!(payload.iter().all(|v| v == value));
+                });
             }
         }
     }
