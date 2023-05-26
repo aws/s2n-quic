@@ -7,7 +7,7 @@ use core::pin::Pin;
 use s2n_quic_core::{
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::tx,
-    path::{self, Handle as _},
+    path,
 };
 
 /// A simple message type that holds an address and payload
@@ -20,34 +20,28 @@ pub struct Message {
     payload_len: usize,
 }
 
+impl Message {
+    fn ecn(&self) -> ExplicitCongestionNotification {
+        ExplicitCongestionNotification::default()
+    }
+
+    pub(crate) fn remote_address(&self) -> Option<SocketAddress> {
+        Some(self.address)
+    }
+
+    pub(crate) fn set_remote_address(&mut self, remote_address: &SocketAddress) {
+        let remote_address = *remote_address;
+
+        self.address = remote_address;
+    }
+}
+
 pub type Handle = path::Tuple;
 
 impl MessageTrait for Message {
     type Handle = Handle;
 
     const SUPPORTS_GSO: bool = false;
-
-    fn ecn(&self) -> ExplicitCongestionNotification {
-        ExplicitCongestionNotification::default()
-    }
-
-    fn set_ecn(&mut self, _ecn: ExplicitCongestionNotification, _remote_address: &SocketAddress) {
-        // the std UDP socket doesn't provide a method to set ECN
-    }
-
-    fn remote_address(&self) -> Option<SocketAddress> {
-        Some(self.address)
-    }
-
-    fn set_remote_address(&mut self, remote_address: &SocketAddress) {
-        let remote_address = *remote_address;
-
-        self.address = remote_address;
-    }
-
-    fn path_handle(&self) -> Option<Self::Handle> {
-        Some(Handle::from_remote_address(self.address.into()))
-    }
 
     fn payload_len(&self) -> usize {
         self.payload_len
@@ -66,10 +60,6 @@ impl MessageTrait for Message {
         self.set_payload_len(mtu)
     }
 
-    fn payload_ptr(&self) -> *const u8 {
-        self.payload_ptr as *const _
-    }
-
     fn payload_ptr_mut(&mut self) -> *mut u8 {
         self.payload_ptr
     }
@@ -84,7 +74,7 @@ impl MessageTrait for Message {
     fn rx_read(
         &mut self,
         local_address: &path::LocalAddress,
-    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+    ) -> Option<super::RxMessage<Self::Handle>> {
         let path = path::Tuple {
             remote_address: self.address.into(),
             local_address: *local_address,
@@ -94,7 +84,14 @@ impl MessageTrait for Message {
             ecn: self.ecn(),
         };
         let payload = self.payload_mut();
-        Some((header, payload))
+
+        let message = super::RxMessage {
+            header,
+            segment_size: payload.len(),
+            payload,
+        };
+
+        Some(message)
     }
 
     #[inline]

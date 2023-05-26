@@ -4,262 +4,55 @@
 use crate::message::{cmsg, cmsg::Encoder, Message as MessageTrait};
 use alloc::vec::Vec;
 use core::{
-    fmt,
     mem::{size_of, zeroed},
     pin::Pin,
 };
 use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
     inet::{
-        datagram, AncillaryData, ExplicitCongestionNotification, IpV4Address, IpV6Address,
-        SocketAddress, SocketAddressV4, SocketAddressV6,
+        datagram, ExplicitCongestionNotification, IpV4Address, IpV6Address, SocketAddress,
+        SocketAddressV4, SocketAddressV6,
     },
     io::tx,
-    path::{self, Handle as _, LocalAddress, RemoteAddress},
+    path::{self, Handle as _},
 };
+
+mod ext;
+mod handle;
+
+use ext::Ext as _;
+
+pub use handle::Handle;
+pub use libc::msghdr as Message;
 
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
-#[repr(transparent)]
-pub struct Message(pub(crate) msghdr);
+fn new(
+    iovec: *mut iovec,
+    msg_name: *mut c_void,
+    msg_namelen: usize,
+    msg_control: *mut c_void,
+    msg_controllen: usize,
+) -> Message {
+    let mut msghdr = unsafe { core::mem::zeroed::<msghdr>() };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
-pub struct Handle {
-    pub remote_address: RemoteAddress,
-    pub local_address: LocalAddress,
-}
+    msghdr.msg_iov = iovec;
+    msghdr.msg_iovlen = 1; // a single iovec is allocated per message
 
-impl Handle {
-    #[inline]
-    fn with_ancillary_data(&mut self, ancillary_data: AncillaryData) {
-        self.local_address = ancillary_data.local_address;
-    }
+    msghdr.msg_name = msg_name;
+    msghdr.msg_namelen = msg_namelen as _;
 
-    #[inline]
-    pub(crate) fn update_msg_hdr(self, msghdr: &mut msghdr) {
-        // when sending a packet, we start out with no cmsg items
-        msghdr.msg_controllen = 0;
+    msghdr.msg_control = msg_control;
+    msghdr.msg_controllen = msg_controllen as _;
 
-        msghdr.set_remote_address(&self.remote_address.0);
-
-        #[cfg(s2n_quic_platform_pktinfo)]
-        match self.local_address.0 {
-            SocketAddress::IpV4(addr) => {
-                use s2n_quic_core::inet::Unspecified;
-
-                let ip = addr.ip();
-
-                if ip.is_unspecified() {
-                    return;
-                }
-
-                let mut pkt_info = unsafe { core::mem::zeroed::<libc::in_pktinfo>() };
-                pkt_info.ipi_spec_dst.s_addr = u32::from_ne_bytes((*ip).into());
-
-                msghdr.encode_cmsg(libc::IPPROTO_IP, libc::IP_PKTINFO, pkt_info);
-            }
-            SocketAddress::IpV6(addr) => {
-                use s2n_quic_core::inet::Unspecified;
-
-                let ip = addr.ip();
-
-                if ip.is_unspecified() {
-                    return;
-                }
-
-                let mut pkt_info = unsafe { core::mem::zeroed::<libc::in6_pktinfo>() };
-
-                pkt_info.ipi6_addr.s6_addr = (*ip).into();
-
-                msghdr.encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, pkt_info);
-            }
-        }
-    }
-}
-
-impl path::Handle for Handle {
-    #[inline]
-    fn from_remote_address(remote_address: RemoteAddress) -> Self {
-        Self {
-            remote_address,
-            local_address: SocketAddressV4::UNSPECIFIED.into(),
-        }
-    }
-
-    #[inline]
-    fn remote_address(&self) -> RemoteAddress {
-        self.remote_address
-    }
-
-    #[inline]
-    fn local_address(&self) -> LocalAddress {
-        self.local_address
-    }
-
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        let mut eq = true;
-
-        // only compare local addresses if the OS returns them
-        if cfg!(s2n_quic_platform_pktinfo) {
-            eq &= self.local_address.eq(&other.local_address);
-        }
-
-        eq && path::Handle::eq(&self.remote_address, &other.remote_address)
-    }
-
-    #[inline]
-    fn strict_eq(&self, other: &Self) -> bool {
-        PartialEq::eq(self, other)
-    }
-
-    #[inline]
-    fn maybe_update(&mut self, other: &Self) {
-        // once we discover our path, update the address local address
-        if self.local_address.port() == 0 {
-            self.local_address = other.local_address;
-        }
-    }
-}
-
-impl_message_delegate!(Message, 0, msghdr);
-
-impl fmt::Debug for Message {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let alt = f.alternate();
-        let mut s = f.debug_struct("msghdr");
-
-        s.field("remote_address", &self.remote_address())
-            .field("anciliary_data", &cmsg::decode(&self.0));
-
-        if alt {
-            s.field("payload", &self.payload());
-        } else {
-            s.field("payload_len", &self.payload_len());
-        }
-
-        s.finish()
-    }
-}
-
-impl Message {
-    fn new(
-        iovec: *mut iovec,
-        msg_name: *mut c_void,
-        msg_namelen: usize,
-        msg_control: *mut c_void,
-        msg_controllen: usize,
-    ) -> Self {
-        let mut msghdr = unsafe { core::mem::zeroed::<msghdr>() };
-
-        msghdr.msg_iov = iovec;
-        msghdr.msg_iovlen = 1; // a single iovec is allocated per message
-
-        msghdr.msg_name = msg_name;
-        msghdr.msg_namelen = msg_namelen as _;
-
-        msghdr.msg_control = msg_control;
-        msghdr.msg_controllen = msg_controllen as _;
-
-        Self(msghdr)
-    }
-
-    #[inline]
-    pub(crate) fn header(msghdr: &msghdr) -> Option<datagram::Header<Handle>> {
-        let addr = msghdr.remote_address()?;
-        let mut path = Handle::from_remote_address(addr.into());
-
-        let ancillary_data = cmsg::decode(msghdr);
-        let ecn = ancillary_data.ecn;
-
-        path.with_ancillary_data(ancillary_data);
-
-        Some(datagram::Header { path, ecn })
-    }
+    msghdr
 }
 
 impl MessageTrait for msghdr {
     type Handle = Handle;
 
     const SUPPORTS_GSO: bool = cfg!(s2n_quic_platform_gso);
-
-    #[inline]
-    fn ecn(&self) -> ExplicitCongestionNotification {
-        let ancillary_data = cmsg::decode(self);
-        ancillary_data.ecn
-    }
-
-    #[inline]
-    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress) {
-        if ecn == ExplicitCongestionNotification::NotEct {
-            return;
-        }
-
-        let ecn = ecn as libc::c_int;
-
-        // the remote address needs to be unmapped in order to set the appropriate cmsg
-        match remote_address.unmap() {
-            SocketAddress::IpV4(_) => {
-                // FreeBSD uses an unsigned_char for IP_TOS
-                // see https://svnweb.freebsd.org/base/stable/8/sys/netinet/ip_input.c?view=markup&pathrev=247944#l1716
-                #[cfg(target_os = "freebsd")]
-                let ecn = ecn as libc::c_uchar;
-
-                self.encode_cmsg(libc::IPPROTO_IP, libc::IP_TOS, ecn)
-            }
-            SocketAddress::IpV6(_) => self.encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_TCLASS, ecn),
-        };
-    }
-
-    #[inline]
-    fn remote_address(&self) -> Option<SocketAddress> {
-        debug_assert!(!self.msg_name.is_null());
-        match self.msg_namelen as usize {
-            size if size == size_of::<sockaddr_in>() => {
-                let sockaddr: &sockaddr_in = unsafe { &*(self.msg_name as *const _) };
-                let port = sockaddr.sin_port.to_be();
-                let addr: IpV4Address = sockaddr.sin_addr.s_addr.to_ne_bytes().into();
-                Some(SocketAddressV4::new(addr, port).into())
-            }
-            size if size == size_of::<sockaddr_in6>() => {
-                let sockaddr: &sockaddr_in6 = unsafe { &*(self.msg_name as *const _) };
-                let port = sockaddr.sin6_port.to_be();
-                let addr: IpV6Address = sockaddr.sin6_addr.s6_addr.into();
-                Some(SocketAddressV6::new(addr, port).into())
-            }
-            _ => None,
-        }
-    }
-
-    #[inline]
-    fn set_remote_address(&mut self, remote_address: &SocketAddress) {
-        debug_assert!(!self.msg_name.is_null());
-
-        match remote_address {
-            SocketAddress::IpV4(addr) => {
-                let sockaddr: &mut sockaddr_in = unsafe { &mut *(self.msg_name as *mut _) };
-                sockaddr.sin_family = AF_INET as _;
-                sockaddr.sin_port = addr.port().to_be();
-                sockaddr.sin_addr.s_addr = u32::from_ne_bytes((*addr.ip()).into());
-                self.msg_namelen = size_of::<sockaddr_in>() as _;
-            }
-            SocketAddress::IpV6(addr) => {
-                let sockaddr: &mut sockaddr_in6 = unsafe { &mut *(self.msg_name as *mut _) };
-                sockaddr.sin6_family = AF_INET6 as _;
-                sockaddr.sin6_port = addr.port().to_be();
-                sockaddr.sin6_addr.s6_addr = (*addr.ip()).into();
-                self.msg_namelen = size_of::<sockaddr_in6>() as _;
-            }
-        }
-    }
-
-    #[inline]
-    fn path_handle(&self) -> Option<Self::Handle> {
-        let header = Message::header(self)?;
-        Some(header.path)
-    }
 
     #[inline]
     fn payload_len(&self) -> usize {
@@ -275,7 +68,7 @@ impl MessageTrait for msghdr {
 
     #[inline]
     fn can_gso<M: tx::Message<Handle = Self::Handle>>(&self, other: &mut M) -> bool {
-        if let Some(header) = Message::header(self) {
+        if let Some((header, _cmsg)) = self.header() {
             let mut other_handle = *other.path_handle();
 
             // when reading the header back from the msghdr, we don't know the port
@@ -349,14 +142,6 @@ impl MessageTrait for msghdr {
     }
 
     #[inline]
-    fn payload_ptr(&self) -> *const u8 {
-        unsafe {
-            let iovec = &*self.msg_iov;
-            iovec.iov_base as *const _
-        }
-    }
-
-    #[inline]
     fn payload_ptr_mut(&mut self) -> *mut u8 {
         unsafe {
             let iovec = &mut *self.msg_iov;
@@ -368,8 +153,8 @@ impl MessageTrait for msghdr {
     fn rx_read(
         &mut self,
         local_address: &path::LocalAddress,
-    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
-        let mut header = Message::header(self)?;
+    ) -> Option<super::RxMessage<Self::Handle>> {
+        let (mut header, cmsg) = self.header()?;
 
         // only copy the port if we are told the IP address
         if cfg!(s2n_quic_platform_pktinfo) {
@@ -379,7 +164,20 @@ impl MessageTrait for msghdr {
         }
 
         let payload = self.payload_mut();
-        Some((header, payload))
+
+        let segment_size = if cmsg.segment_size == 0 {
+            payload.len()
+        } else {
+            cmsg.segment_size as _
+        };
+
+        let message = crate::message::RxMessage {
+            header,
+            segment_size,
+            payload,
+        };
+
+        Some(message)
     }
 
     #[inline]
@@ -406,7 +204,7 @@ impl MessageTrait for msghdr {
 }
 
 pub struct Ring<Payloads> {
-    pub(crate) messages: Vec<Message>,
+    pub(crate) messages: Vec<msghdr>,
     pub(crate) storage: Storage<Payloads>,
 }
 
@@ -498,7 +296,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
             iovec.iov_len = mtu;
             iovecs[index] = iovec;
 
-            let msg = Message::new(
+            let msg = new(
                 (&mut iovecs[index]) as *mut _,
                 (&mut msg_names[index]) as *mut _ as *mut _,
                 size_of::<sockaddr_in6>(),
@@ -510,7 +308,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
         }
 
         for index in 0..capacity {
-            messages.push(Message(messages[index].0));
+            messages.push(messages[index]);
         }
 
         Self {
@@ -581,7 +379,7 @@ mod tests {
         let mut iovec = unsafe { zeroed::<iovec>() };
         msghdr.msg_iov = &mut iovec;
 
-        let mut message = Message(msghdr);
+        let mut message = msghdr;
 
         check!()
             .with_type::<SocketAddress>()
@@ -623,15 +421,15 @@ mod tests {
                 msghdr.msg_controllen = cmsg_buf.len() as _;
                 msghdr.msg_control = (&mut cmsg_buf[0]) as *mut u8 as _;
 
-                let mut message = Message(msghdr);
+                let mut message = msghdr;
 
-                handle.update_msg_hdr(&mut message.0);
+                handle.update_msg_hdr(&mut message);
 
                 if segment_size > 1 {
                     message.set_segment_size(segment_size);
                 }
 
-                let header = Message::header(&message.0).unwrap();
+                let (header, _cmsg) = message.header().unwrap();
 
                 assert_eq!(header.path.remote_address, handle.remote_address);
 
@@ -644,7 +442,7 @@ mod tests {
                     message.reset(0);
                 }
 
-                let header = Message::header(&msghdr).unwrap();
+                let (header, _cmsg) = msghdr.header().unwrap();
                 assert!(header.path.remote_address.is_unspecified());
             });
     }

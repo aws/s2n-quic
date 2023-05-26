@@ -49,12 +49,12 @@ impl<B: Buffer> Queue<B> {
             //
             // If that's the case here, then set the `msg_control` to null and restore it after
             // calling sendmsg.
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            #[cfg(any(target_os = "macos", target_os = "ios", test))]
             let msg_control = {
-                let msg_control = entry.0.msg_control;
+                let msg_control = entry.msg_control;
 
-                if entry.0.msg_controllen == 0 {
-                    entry.0.msg_control = core::ptr::null_mut();
+                if entry.msg_controllen == 0 {
+                    entry.msg_control = core::ptr::null_mut();
                 }
 
                 msg_control
@@ -84,9 +84,9 @@ impl<B: Buffer> Queue<B> {
             // > On error, -1 is returned, and errno is set appropriately.
             let result = libc!(sendmsg(sockfd, msg, flags));
 
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            #[cfg(any(target_os = "macos", target_os = "ios", test))]
             {
-                entry.0.msg_control = msg_control;
+                entry.msg_control = msg_control;
             }
 
             match result {

@@ -277,8 +277,8 @@ impl<'a, Message: message::Message<Handle = H>, B: Behavior, H: path::Handle> rx
         // iterate over the filled packets and invoke the callback for each one
         let messages = &mut self.messages[range];
         for message in messages {
-            if let Some((header, payload)) = message.rx_read(self.local_address) {
-                on_packet(header, payload);
+            if let Some(message) = message.rx_read(self.local_address) {
+                message.for_each(&mut on_packet);
             }
         }
 
