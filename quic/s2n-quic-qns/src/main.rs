@@ -22,8 +22,7 @@ const CRASH_ERROR_MESSAGE: &str = "The s2n-quic-qns application shut down unexpe
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-#[tokio::main()]
-async fn main() {
+fn main() {
     let format = tracing_subscriber::fmt::format()
         .with_level(false) // don't include levels in formatted output
         .with_timer(tracing_subscriber::fmt::time::uptime())
@@ -37,7 +36,7 @@ async fn main() {
 
     match Arguments::from_args_safe() {
         Ok(args) => {
-            if let Err(error) = args.run().await {
+            if let Err(error) = args.run() {
                 eprintln!("Error: {error:?}");
             }
         }
@@ -56,12 +55,37 @@ async fn main() {
 }
 
 #[derive(Debug, StructOpt)]
-enum Arguments {
+struct Arguments {
+    #[structopt(long, env = "S2N_QUIC_MULTI_THREAD")]
+    multithread: bool,
+
+    #[structopt(flatten)]
+    program: Program,
+}
+
+impl Arguments {
+    pub fn run(&self) -> Result<()> {
+        let runtime = if self.multithread {
+            tokio::runtime::Builder::new_multi_thread()
+        } else {
+            tokio::runtime::Builder::new_current_thread()
+        }
+        .enable_all()
+        .build()?;
+
+        runtime.block_on(self.program.run())?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, StructOpt)]
+enum Program {
     Interop(Interop),
     Perf(Perf),
 }
 
-impl Arguments {
+impl Program {
     pub async fn run(&self) -> Result<()> {
         match self {
             Self::Interop(subject) => subject.run().await,

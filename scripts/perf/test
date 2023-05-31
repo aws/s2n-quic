@@ -32,8 +32,6 @@ SERVER=$SERVER \
   TMP_DIR=$TMP_DIR \
   OUT_DIR=$OUT_DIR \
   TEST=$TEST \
-  S2N_UNSTABLE_CRYPTO_OPT_TX=1 \
-  S2N_UNSTABLE_CRYPTO_OPT_RX=1 \
   ultraman start --no-timestamp true
 
 function report() {

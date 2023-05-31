@@ -37,6 +37,9 @@ pub struct Perf {
     #[structopt(long)]
     disable_gso: bool,
 
+    #[structopt(long, default_value = "9000")]
+    max_mtu: u16,
+
     #[structopt(flatten)]
     limits: perf::Limits,
 
@@ -166,8 +169,9 @@ impl Perf {
     }
 
     fn server(&self) -> Result<Server> {
-        let mut io_builder =
-            io::Default::builder().with_receive_address((self.ip, self.port).into())?;
+        let mut io_builder = io::Default::builder()
+            .with_receive_address((self.ip, self.port).into())?
+            .with_max_mtu(self.max_mtu)?;
 
         if self.disable_gso {
             io_builder = io_builder.with_gso_disabled()?;

@@ -289,7 +289,7 @@ pub struct Counters {
 
 impl Counters {
     pub fn print_header(&self) {
-        eprintln!(
+        println!(
             "Tx Rate\t\
             Rx Rate\t\
             Max Cwnd\t\
@@ -339,7 +339,7 @@ impl Counters {
         // The maximum estimate of bandwidth observed during the interval. Only output for BBRv2
         let max_delivery_rate = self.max_delivery_rate.swap(0, Ordering::Relaxed);
         let max_delivery_rate = rate(max_delivery_rate, Duration::from_secs(1));
-        eprintln!(
+        println!(
             "{send_rate}\t\
             {receive_rate}\t\
             {max_cwnd}\t\
