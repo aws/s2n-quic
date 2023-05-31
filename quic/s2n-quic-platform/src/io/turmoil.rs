@@ -17,6 +17,12 @@ use std::{convert::TryInto, io, io::ErrorKind};
 use tokio::runtime::Handle;
 use turmoil::net::UdpSocket;
 
+mod builder;
+#[cfg(test)]
+mod tests;
+
+pub use builder::Builder;
+
 impl crate::socket::std::Socket for UdpSocket {
     type Error = io::Error;
 
@@ -127,55 +133,6 @@ impl Io {
         let local_addr = Default::default();
 
         Ok((task, local_addr))
-    }
-}
-
-#[derive(Default)]
-pub struct Builder {
-    handle: Option<Handle>,
-    socket: Option<UdpSocket>,
-    addr: Option<Box<dyn turmoil::ToSocketAddrs + Send + Sync + 'static>>,
-    max_mtu: MaxMtu,
-}
-
-impl Builder {
-    #[must_use]
-    pub fn with_handle(mut self, handle: Handle) -> Self {
-        self.handle = Some(handle);
-        self
-    }
-
-    /// Sets the local address for the runtime to listen on.
-    ///
-    /// NOTE: this method is mutually exclusive with `with_socket`
-    pub fn with_address<A: turmoil::ToSocketAddrs + Send + Sync + 'static>(
-        mut self,
-        addr: A,
-    ) -> io::Result<Self> {
-        debug_assert!(self.socket.is_none(), "socket has already been set");
-        self.addr = Some(Box::new(addr));
-        Ok(self)
-    }
-
-    /// Sets the socket used for sending and receiving for the runtime.
-    ///
-    /// NOTE: this method is mutually exclusive with `with_address`
-    pub fn with_socket(mut self, socket: UdpSocket) -> io::Result<Self> {
-        debug_assert!(self.addr.is_none(), "address has already been set");
-        self.socket = Some(socket);
-        Ok(self)
-    }
-
-    /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
-    pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
-        self.max_mtu = max_mtu
-            .try_into()
-            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
-        Ok(self)
-    }
-
-    pub fn build(self) -> io::Result<Io> {
-        Ok(Io { builder: self })
     }
 }
 
@@ -291,173 +248,5 @@ impl<E: Endpoint<PathHandle = PathHandle>> Instance<E> {
                 processing_duration: timestamp.saturating_duration_since(wakeup_timestamp),
             });
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use core::{
-        convert::TryInto,
-        task::{Context, Poll},
-    };
-    use s2n_quic_core::{
-        endpoint::{self, CloseError},
-        event,
-        inet::SocketAddress,
-        io::{rx, tx},
-        path::Handle as _,
-        time::{timer::Provider as _, Clock, Duration, Timer, Timestamp},
-    };
-    use std::collections::BTreeMap;
-
-    struct TestEndpoint {
-        addr: SocketAddress,
-        tx_message_id: u32,
-        rx_messages: BTreeMap<u32, Timestamp>,
-        total_messages: u32,
-        subscriber: NoopSubscriber,
-        close_timer: Timer,
-    }
-
-    impl TestEndpoint {
-        fn new(addr: SocketAddress) -> Self {
-            Self {
-                addr,
-                tx_message_id: 0,
-                rx_messages: BTreeMap::new(),
-                total_messages: 1000,
-                subscriber: Default::default(),
-                close_timer: Default::default(),
-            }
-        }
-    }
-
-    #[derive(Debug, Default)]
-    struct NoopSubscriber;
-
-    impl event::Subscriber for NoopSubscriber {
-        type ConnectionContext = ();
-
-        fn create_connection_context(
-            &mut self,
-            _meta: &event::api::ConnectionMeta,
-            _info: &event::api::ConnectionInfo,
-        ) -> Self::ConnectionContext {
-        }
-    }
-
-    impl Endpoint for TestEndpoint {
-        type PathHandle = PathHandle;
-        type Subscriber = NoopSubscriber;
-
-        const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
-
-        fn transmit<Tx: tx::Queue<Handle = PathHandle>, C: Clock>(
-            &mut self,
-            queue: &mut Tx,
-            _clock: &C,
-        ) {
-            while self.tx_message_id < self.total_messages {
-                let payload = self.tx_message_id.to_be_bytes();
-                let addr = PathHandle::from_remote_address(self.addr.into());
-                let msg = (addr, payload);
-                if queue.push(msg).is_ok() {
-                    self.tx_message_id += 1;
-                } else {
-                    // no more capacity
-                    return;
-                }
-            }
-        }
-
-        fn receive<Rx: rx::Queue<Handle = PathHandle>, C: Clock>(
-            &mut self,
-            queue: &mut Rx,
-            clock: &C,
-        ) {
-            let now = clock.get_time();
-            queue.for_each(|_header, payload| {
-                assert_eq!(payload.len(), 4, "invalid payload {:?}", payload);
-
-                let id = (&*payload).try_into().unwrap();
-                let id = u32::from_be_bytes(id);
-                self.rx_messages.insert(id, now);
-            });
-        }
-
-        fn poll_wakeups<C: Clock>(
-            &mut self,
-            _cx: &mut Context<'_>,
-            clock: &C,
-        ) -> Poll<Result<usize, CloseError>> {
-            let now = clock.get_time();
-
-            if self.close_timer.poll_expiration(now).is_ready() {
-                assert!(self.rx_messages.len() as u32 * 4 > self.total_messages);
-                return Err(CloseError).into();
-            }
-
-            if !self.close_timer.is_armed()
-                && self.total_messages <= self.tx_message_id
-                && !self.rx_messages.is_empty()
-            {
-                self.close_timer.set(now + Duration::from_millis(100));
-            }
-
-            Poll::Pending
-        }
-
-        fn timeout(&self) -> Option<Timestamp> {
-            self.close_timer.next_expiration()
-        }
-
-        fn set_max_mtu(&mut self, _max_mtu: MaxMtu) {
-            // noop
-        }
-
-        fn subscriber(&mut self) -> &mut Self::Subscriber {
-            &mut self.subscriber
-        }
-    }
-
-    fn bind(port: u16) -> std::net::SocketAddr {
-        use std::net::Ipv4Addr;
-        (Ipv4Addr::UNSPECIFIED, port).into()
-    }
-
-    #[test]
-    fn sim_test() -> io::Result<()> {
-        use turmoil::lookup;
-
-        let mut sim = turmoil::Builder::new().build();
-
-        sim.client("client", async move {
-            let io = Io::builder().with_address(bind(123))?.build()?;
-
-            let endpoint = TestEndpoint::new((lookup("server"), 456).into());
-
-            let (task, _) = io.start(endpoint)?;
-
-            task.await?;
-
-            Ok(())
-        });
-
-        sim.client("server", async move {
-            let io = Io::builder().with_address(bind(456))?.build()?;
-
-            let endpoint = TestEndpoint::new((lookup("client"), 123).into());
-
-            let (task, _) = io.start(endpoint)?;
-
-            task.await?;
-
-            Ok(())
-        });
-
-        sim.run().unwrap();
-
-        Ok(())
     }
 }
