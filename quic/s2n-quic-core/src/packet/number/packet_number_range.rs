@@ -44,6 +44,7 @@ impl PacketNumberRange {
 }
 
 impl IntoEvent<RangeInclusive<u64>> for PacketNumberRange {
+    #[inline]
     fn into_event(self) -> RangeInclusive<u64> {
         self.start().into_event()..=self.end().into_event()
     }

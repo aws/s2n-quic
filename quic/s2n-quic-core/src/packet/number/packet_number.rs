@@ -38,6 +38,7 @@ const PACKET_NUMBER_MASK: u64 = core::u64::MAX >> PACKET_SPACE_BITLEN;
 pub struct PacketNumber(NonZeroU64);
 
 impl IntoEvent<u64> for PacketNumber {
+    #[inline]
     fn into_event(self) -> u64 {
         self.as_u64()
     }

@@ -28,6 +28,7 @@ pub struct AttemptBuilder<'a> {
 }
 
 impl<'a> From<AttemptBuilder<'a>> for Attempt<'a> {
+    #[inline]
     fn from(builder: AttemptBuilder<'a>) -> Self {
         Self {
             active_path: builder.active_path,
@@ -50,6 +51,7 @@ pub struct PacketInfoBuilder<'a> {
 }
 
 impl<'a> From<PacketInfoBuilder<'a>> for PacketInfo<'a> {
+    #[inline]
     fn from(builder: PacketInfoBuilder<'a>) -> Self {
         Self {
             remote_address: builder.remote_address.into_event(),
@@ -90,6 +92,7 @@ pub enum DenyReason {
 }
 
 impl IntoEvent<event::builder::ConnectionMigrationDenied> for DenyReason {
+    #[inline]
     fn into_event(self) -> event::builder::ConnectionMigrationDenied {
         let reason = match self {
             DenyReason::BlockedPort => event::builder::MigrationDenyReason::BlockedPort,
@@ -117,6 +120,7 @@ pub mod default {
     pub struct Validator;
 
     impl super::Validator for Validator {
+        #[inline]
         fn on_migration_attempt(&mut self, attempt: &Attempt) -> Outcome {
             let active_addr = to_addr(&attempt.active_path.remote_addr);
             let packet_addr = to_addr(&attempt.packet.remote_address);

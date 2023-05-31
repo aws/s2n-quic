@@ -1292,6 +1292,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::DuplicatePacketError> for crate::packet::number::SlidingWindowError {
+        #[inline]
         fn into_event(self) -> builder::DuplicatePacketError {
             use crate::packet::number::SlidingWindowError;
             match self {
@@ -1301,6 +1302,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::EcnCounts> for crate::frame::ack::EcnCounts {
+        #[inline]
         fn into_event(self) -> builder::EcnCounts {
             builder::EcnCounts {
                 ect_0_count: self.ect_0_count.into_event(),
@@ -1310,11 +1312,13 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::Padding {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::Padding {}
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::Ping {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::Ping {}
         }
@@ -1322,6 +1326,7 @@ pub mod api {
     impl<AckRanges: crate::frame::ack::AckRanges> IntoEvent<builder::Frame>
         for &crate::frame::Ack<AckRanges>
     {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::Ack {
                 ecn_counts: self.ecn_counts.map(|val| val.into_event()),
@@ -1331,6 +1336,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::ResetStream {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::ResetStream {
                 id: self.stream_id.as_u64(),
@@ -1340,6 +1346,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::StopSending {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::StopSending {
                 id: self.stream_id.as_u64(),
@@ -1348,11 +1355,13 @@ pub mod api {
         }
     }
     impl<'a> IntoEvent<builder::Frame> for &crate::frame::NewToken<'a> {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::NewToken {}
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::MaxData {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::MaxData {
                 value: self.maximum_data.as_u64(),
@@ -1360,6 +1369,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::MaxStreamData {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::MaxStreamData {
                 id: self.stream_id.as_u64(),
@@ -1371,6 +1381,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::MaxStreams {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::MaxStreams {
                 stream_type: self.stream_type.into_event(),
@@ -1379,6 +1390,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::DataBlocked {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::DataBlocked {
                 data_limit: self.data_limit.as_u64(),
@@ -1386,6 +1398,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::StreamDataBlocked {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::StreamDataBlocked {
                 stream_id: self.stream_id.as_u64(),
@@ -1394,6 +1407,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::StreamsBlocked {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::StreamsBlocked {
                 stream_type: self.stream_type.into_event(),
@@ -1402,31 +1416,37 @@ pub mod api {
         }
     }
     impl<'a> IntoEvent<builder::Frame> for &crate::frame::NewConnectionId<'a> {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::NewConnectionId {}
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::RetireConnectionId {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::RetireConnectionId {}
         }
     }
     impl<'a> IntoEvent<builder::Frame> for &crate::frame::PathChallenge<'a> {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::PathChallenge {}
         }
     }
     impl<'a> IntoEvent<builder::Frame> for &crate::frame::PathResponse<'a> {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::PathResponse {}
         }
     }
     impl<'a> IntoEvent<builder::Frame> for &crate::frame::ConnectionClose<'a> {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::ConnectionClose {}
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::HandshakeDone {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::HandshakeDone {}
         }
@@ -1435,6 +1455,7 @@ pub mod api {
     where
         Data: s2n_codec::EncoderValue,
     {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::Stream {
                 id: self.stream_id.as_u64(),
@@ -1448,6 +1469,7 @@ pub mod api {
     where
         Data: s2n_codec::EncoderValue,
     {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::Crypto {
                 offset: self.offset.as_u64(),
@@ -1459,6 +1481,7 @@ pub mod api {
     where
         Data: s2n_codec::EncoderValue,
     {
+        #[inline]
         fn into_event(self) -> builder::Frame {
             builder::Frame::Datagram {
                 len: self.data.encoding_size() as _,
@@ -1466,6 +1489,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::StreamType> for &crate::stream::StreamType {
+        #[inline]
         fn into_event(self) -> builder::StreamType {
             match self {
                 crate::stream::StreamType::Bidirectional => builder::StreamType::Bidirectional {},
@@ -1474,6 +1498,7 @@ pub mod api {
         }
     }
     impl builder::PacketHeader {
+        #[inline]
         pub fn new(
             packet_number: crate::packet::number::PacketNumber,
             version: u32,
@@ -1504,6 +1529,7 @@ pub mod api {
         }
     }
     impl IntoEvent<api::EndpointType> for crate::endpoint::Type {
+        #[inline]
         fn into_event(self) -> api::EndpointType {
             match self {
                 Self::Client => api::EndpointType::Client {},
@@ -1512,6 +1538,7 @@ pub mod api {
         }
     }
     impl IntoEvent<builder::EndpointType> for crate::endpoint::Type {
+        #[inline]
         fn into_event(self) -> builder::EndpointType {
             match self {
                 Self::Client => builder::EndpointType::Client {},
@@ -1520,6 +1547,7 @@ pub mod api {
         }
     }
     impl CipherSuite {
+        #[inline]
         pub fn as_str(&self) -> &'static str {
             match self {
                 Self::TLS_AES_128_GCM_SHA256 {} => "TLS_AES_128_GCM_SHA256",
