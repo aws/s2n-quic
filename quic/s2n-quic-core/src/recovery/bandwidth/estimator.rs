@@ -200,6 +200,7 @@ impl RateSample {
 }
 
 impl IntoEvent<event::builder::RateSample> for RateSample {
+    #[inline]
     fn into_event(self) -> event::builder::RateSample {
         event::builder::RateSample {
             interval: self.interval.into_event(),

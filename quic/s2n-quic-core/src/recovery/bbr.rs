@@ -199,6 +199,7 @@ impl State {
 }
 
 impl IntoEvent<event::builder::BbrState> for &State {
+    #[inline]
     fn into_event(self) -> event::builder::BbrState {
         use event::builder::BbrState;
         match self {

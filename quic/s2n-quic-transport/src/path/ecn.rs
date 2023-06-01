@@ -56,6 +56,7 @@ enum State {
 }
 
 impl IntoEvent<event::builder::EcnState> for &State {
+    #[inline]
     fn into_event(self) -> event::builder::EcnState {
         match self {
             State::Testing(_) => event::builder::EcnState::Testing,
