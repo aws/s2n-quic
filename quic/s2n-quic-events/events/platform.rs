@@ -62,6 +62,8 @@ enum PlatformFeatureConfiguration {
         /// If this value not greater than 1, GSO is disabled.
         max_segments: usize,
     },
+    /// Emitted when receive segment offload was configured
+    Gro { enabled: bool },
     /// Emitted when ECN support is configured
     Ecn { enabled: bool },
     /// Emitted when the maximum transmission unit is configured

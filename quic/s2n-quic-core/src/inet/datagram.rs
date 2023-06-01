@@ -32,4 +32,6 @@ pub struct AncillaryData {
     /// Correctly threading this value through to connections ensures packets end up on the same
     /// network interfaces and thereby have consistent MAC addresses.
     pub local_interface: Option<u32>,
+    /// Set when the packet buffer is an aggregate of multiple received packets
+    pub segment_size: u16,
 }

@@ -12,16 +12,25 @@ use s2n_quic_core::inet::{AncillaryData, ExplicitCongestionNotification};
 /// to allow for future control messages.
 pub const MAX_LEN: usize = 128;
 
+#[cfg(s2n_quic_platform_gso)]
+pub type UdpGso = u16;
+#[cfg(s2n_quic_platform_gro)]
+pub type UdpGro = libc::c_int;
+pub type IpTos = libc::c_int;
+
 #[test]
 fn max_len_test() {
-    let mut len = 0;
+    unsafe fn tx_len() -> usize {
+        let mut len = 0;
 
-    unsafe {
-        // UDP_SEGMENT
-        len += libc::CMSG_LEN(size_of::<u16>() as _) as usize;
+        // UDP_SEGMENT for GSO
+        #[cfg(s2n_quic_platform_gso)]
+        {
+            len += libc::CMSG_LEN(size_of::<UdpGso>() as _) as usize;
+        }
 
         // IP_TOS
-        len += libc::CMSG_LEN(size_of::<libc::c_int>() as _) as usize;
+        len += libc::CMSG_LEN(size_of::<IpTos>() as _) as usize;
 
         // IP_PKTINFO
         #[cfg(s2n_quic_platform_pktinfo)]
@@ -30,7 +39,34 @@ fn max_len_test() {
                 size_of::<libc::in_pktinfo>().max(size_of::<libc::in6_pktinfo>()) as _,
             ) as usize;
         }
+
+        len
     }
+
+    unsafe fn rx_len() -> usize {
+        let mut len = 0;
+
+        // UDP_SEGMENT for GRO
+        #[cfg(s2n_quic_platform_gro)]
+        {
+            len += libc::CMSG_LEN(size_of::<UdpGro>() as _) as usize;
+        }
+
+        // IP_TOS
+        len += libc::CMSG_LEN(size_of::<IpTos>() as _) as usize;
+
+        // IP_PKTINFO
+        #[cfg(s2n_quic_platform_pktinfo)]
+        {
+            len += libc::CMSG_LEN(
+                size_of::<libc::in_pktinfo>().max(size_of::<libc::in6_pktinfo>()) as _,
+            ) as usize;
+        }
+
+        len
+    }
+
+    let len = unsafe { tx_len().max(rx_len()) };
 
     // We use the MAX_LEN to determine if the cmsg has been populated at all so the actual
     // len must be less than it, rather than less than or equal.
@@ -122,17 +158,15 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                 }
                 (libc::IPPROTO_IP, libc::IP_TOS, cmsg_len)
                 | (libc::IPPROTO_IP, libc::IP_RECVTOS, cmsg_len)
-                    if cmsg_len == libc::CMSG_LEN(mem::size_of::<libc::c_int>() as _) as usize =>
+                    if cmsg_len == libc::CMSG_LEN(mem::size_of::<IpTos>() as _) as usize =>
                 {
                     // IP_TOS cmsgs should be 1 byte, but occasionally are reported as 4 bytes
-                    result.ecn = ExplicitCongestionNotification::new(decode_value::<libc::c_int>(
-                        cmsg,
-                    ) as u8);
+                    result.ecn =
+                        ExplicitCongestionNotification::new(decode_value::<IpTos>(cmsg) as u8);
                 }
                 (libc::IPPROTO_IPV6, libc::IPV6_TCLASS, _) => {
-                    result.ecn = ExplicitCongestionNotification::new(decode_value::<libc::c_int>(
-                        cmsg,
-                    ) as u8);
+                    result.ecn =
+                        ExplicitCongestionNotification::new(decode_value::<IpTos>(cmsg) as u8);
                 }
                 #[cfg(s2n_quic_platform_pktinfo)]
                 (libc::IPPROTO_IP, libc::IP_PKTINFO, _) => {
@@ -173,6 +207,11 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                 (libc::SOL_UDP, libc::UDP_SEGMENT, _) => {
                     // ignore GSO settings when reading
                     continue;
+                }
+                #[cfg(s2n_quic_platform_gro)]
+                (libc::SOL_UDP, libc::UDP_GRO, _) => {
+                    let segment_size = decode_value::<UdpGro>(cmsg);
+                    result.segment_size = segment_size as _;
                 }
                 (level, ty, len) if cfg!(test) => {
                     // if we're getting an unexpected cmsg we should know about it in testing

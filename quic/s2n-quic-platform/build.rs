@@ -19,6 +19,7 @@ fn main() -> Result<(), Error> {
     match env.target_os.as_str() {
         "linux" => {
             supports("gso");
+            supports("gro");
             supports("mtu_disc");
             supports("pktinfo");
             supports("tos");
