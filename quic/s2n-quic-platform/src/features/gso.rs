@@ -11,6 +11,11 @@ use core::{
 #[derive(Clone, Copy, Debug)]
 pub struct MaxSegments(NonZeroUsize);
 
+impl MaxSegments {
+    pub(crate) const MAX: Self = gso_impl::MAX;
+    pub(crate) const DEFAULT: Self = gso_impl::DEFAULT;
+}
+
 impl Default for MaxSegments {
     fn default() -> Self {
         MaxSegments::DEFAULT
@@ -52,7 +57,13 @@ impl From<MaxSegments> for usize {
 }
 
 #[cfg(s2n_quic_platform_gso)]
-impl MaxSegments {
+mod gso_enabled {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
     // This value represents the Maximum value MaxSegments can be set to, i.e. a Max of a Max. The
     // value comes from the Linux kernel:
     //
@@ -60,7 +71,7 @@ impl MaxSegments {
     // ```
     // #define UDP_MAX_SEGMENTS	(1 << 6UL)
     // ```
-    const MAX: Self = MaxSegments(unsafe { NonZeroUsize::new_unchecked(1 << 6) });
+    pub const MAX: MaxSegments = MaxSegments(unsafe { NonZeroUsize::new_unchecked(1 << 6) });
 
     // The packet pacer enforces a burst limit of 10 packets, so generally there is no benefit to
     // exceeding that value for GSO segments. However, in low RTT/high bandwidth networks the pacing
@@ -69,39 +80,86 @@ impl MaxSegments {
     // positive effect on efficiency.
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
     //# Senders SHOULD limit bursts to the initial congestion window
-    const DEFAULT: Self = MaxSegments(unsafe {
+    pub const DEFAULT: MaxSegments = MaxSegments(unsafe {
         NonZeroUsize::new_unchecked(s2n_quic_core::recovery::MAX_BURST_PACKETS as usize)
     });
-}
 
-#[cfg(not(s2n_quic_platform_gso))]
-impl MaxSegments {
-    const MAX: Self = MaxSegments(unsafe { NonZeroUsize::new_unchecked(1) });
-    const DEFAULT: MaxSegments = MaxSegments(unsafe { NonZeroUsize::new_unchecked(1) });
-}
+    #[derive(Clone, Debug)]
+    pub struct Gso(Arc<AtomicUsize>);
 
-#[derive(Debug)]
-pub struct Gso {
-    #[allow(dead_code)] // ignore this field on unsupported platforms
-    max_segments: MaxSegments,
-}
+    impl Default for Gso {
+        fn default() -> Self {
+            MaxSegments::DEFAULT.into()
+        }
+    }
 
-impl Default for Gso {
-    fn default() -> Self {
-        Self {
-            max_segments: MaxSegments::MAX,
+    impl Gso {
+        #[inline]
+        pub fn max_segments(&self) -> usize {
+            self.0.load(Ordering::Relaxed)
+        }
+
+        #[inline]
+        pub fn default_max_segments(&self) -> usize {
+            self.max_segments().min(MaxSegments::default().0.into())
+        }
+
+        #[inline]
+        pub fn disable(&self) {
+            self.0.store(1, Ordering::Relaxed);
+        }
+    }
+
+    impl From<MaxSegments> for Gso {
+        #[inline]
+        fn from(segments: MaxSegments) -> Self {
+            Self(Arc::new(AtomicUsize::new(segments.0.into())))
         }
     }
 }
 
-impl Gso {
-    #[inline]
-    pub fn max_segments(&self) -> usize {
-        self.max_segments.into()
+#[cfg(any(not(s2n_quic_platform_gso), test))]
+mod gso_disabled {
+    #![cfg_attr(test, allow(dead_code))]
+
+    use super::*;
+
+    pub const MAX: MaxSegments = MaxSegments(unsafe { NonZeroUsize::new_unchecked(1) });
+    pub const DEFAULT: MaxSegments = MAX;
+
+    #[derive(Clone, Default, Debug)]
+    pub struct Gso(());
+
+    impl Gso {
+        #[inline]
+        pub fn max_segments(&self) -> usize {
+            1
+        }
+
+        #[inline]
+        pub fn default_max_segments(&self) -> usize {
+            1
+        }
+
+        #[inline]
+        pub fn disable(&self) {
+            // it's already disabled
+        }
     }
 
-    #[inline]
-    pub fn default_max_segments(&self) -> usize {
-        self.max_segments.0.min(MaxSegments::default().0).into()
+    impl From<MaxSegments> for Gso {
+        #[inline]
+        fn from(_segments: MaxSegments) -> Self {
+            Self(())
+        }
     }
 }
+
+mod gso_impl {
+    #[cfg(not(s2n_quic_platform_gso))]
+    pub use super::gso_disabled::*;
+    #[cfg(s2n_quic_platform_gso)]
+    pub use super::gso_enabled::*;
+}
+
+pub use gso_impl::Gso;

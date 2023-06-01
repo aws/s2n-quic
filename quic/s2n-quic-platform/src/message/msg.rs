@@ -431,7 +431,7 @@ pub struct Storage<Payloads> {
     mtu: usize,
 
     /// The maximum number of segments that can be offloaded in a single message
-    max_gso: usize,
+    gso: crate::features::Gso,
 }
 
 impl<Payloads: crate::buffer::Buffer> Storage<Payloads> {
@@ -442,14 +442,14 @@ impl<Payloads: crate::buffer::Buffer> Storage<Payloads> {
 
     #[inline]
     pub fn max_gso(&self) -> usize {
-        self.max_gso
+        self.gso.max_segments()
     }
 
     #[inline]
     pub fn disable_gso(&mut self) {
         // TODO recompute message offsets
         // https://github.com/aws/s2n-quic/issues/762
-        self.max_gso = 1;
+        self.gso.disable()
     }
 }
 
@@ -462,14 +462,16 @@ impl<Payloads: crate::buffer::Buffer + Default> Default for Ring<Payloads> {
     fn default() -> Self {
         Self::new(
             Payloads::default(),
-            crate::features::get().gso.default_max_segments(),
+            crate::features::gso::MaxSegments::DEFAULT.into(),
         )
     }
 }
 
 impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
     pub fn new(payloads: Payloads, max_gso: usize) -> Self {
-        assert!(max_gso <= crate::features::get().gso.max_segments());
+        let gso = crate::features::gso::MaxSegments::try_from(max_gso)
+            .expect("invalid max segments value")
+            .into();
 
         let mtu = payloads.mtu();
         let capacity = payloads.len() / mtu / max_gso;
@@ -519,7 +521,7 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
                 msg_names,
                 cmsgs,
                 mtu,
-                max_gso,
+                gso,
             },
         }
     }
@@ -599,7 +601,7 @@ mod tests {
         check!()
             .with_generator((
                 gen::<Handle>(),
-                1..=crate::features::get().gso.max_segments(),
+                1..=crate::features::gso::MaxSegments::MAX.into(),
             ))
             .cloned()
             .for_each(|(handle, segment_size)| {
