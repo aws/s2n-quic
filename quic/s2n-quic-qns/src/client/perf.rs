@@ -32,6 +32,9 @@ pub struct Perf {
     #[structopt(long)]
     disable_gso: bool,
 
+    #[structopt(long, default_value = "9000")]
+    max_mtu: u16,
+
     #[structopt(short, long, default_value = "::")]
     local_ip: std::net::IpAddr,
 
@@ -103,8 +106,9 @@ impl Perf {
     }
 
     fn client(&self) -> Result<Client> {
-        let mut io_builder =
-            io::Default::builder().with_receive_address((self.local_ip, 0u16).into())?;
+        let mut io_builder = io::Default::builder()
+            .with_receive_address((self.local_ip, 0u16).into())?
+            .with_max_mtu(self.max_mtu)?;
 
         if self.disable_gso {
             io_builder = io_builder.with_gso_disabled()?;

@@ -12,7 +12,9 @@ case "$PS" in
           ../../target/release/s2n-quic-qns \
             perf \
             server \
-            --port $SERVER_PORT
+            --port $SERVER_PORT \
+            --max-mtu 16000 \
+            --stats
         ;;
     client*)
           ../../target/release/s2n-quic-qns \
@@ -22,6 +24,7 @@ case "$PS" in
             --send "${UPLOAD_BYTES}" \
             --port $SERVER_PORT \
             --server-name localhost \
+            --max-mtu 16000 \
             --stats
         ;;
 esac
