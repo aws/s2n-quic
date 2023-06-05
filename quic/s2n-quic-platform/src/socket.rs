@@ -3,12 +3,11 @@
 
 use cfg_if::cfg_if;
 
-#[cfg(s2n_quic_platform_socket_msg)]
-pub mod msg;
-
 #[cfg(s2n_quic_platform_socket_mmsg)]
 pub mod mmsg;
-
+#[cfg(s2n_quic_platform_socket_msg)]
+pub mod msg;
+pub mod ring;
 pub mod std;
 
 cfg_if! {

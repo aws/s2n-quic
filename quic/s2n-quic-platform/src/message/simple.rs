@@ -3,7 +3,7 @@
 
 use crate::message::Message as MessageTrait;
 use alloc::vec::Vec;
-use core::pin::Pin;
+use core::{alloc::Layout, cell::UnsafeCell, pin::Pin, ptr::NonNull};
 use s2n_quic_core::{
     inet::{datagram, ExplicitCongestionNotification, SocketAddress},
     io::tx,
@@ -41,6 +41,11 @@ pub type Handle = path::Tuple;
 impl MessageTrait for Message {
     type Handle = Handle;
 
+    #[inline]
+    fn alloc(entries: u32, payload_len: u32, offset: usize) -> super::Storage {
+        unsafe { alloc(entries, payload_len, offset) }
+    }
+
     const SUPPORTS_GSO: bool = false;
 
     fn payload_len(&self) -> usize {
@@ -68,6 +73,11 @@ impl MessageTrait for Message {
         debug_assert_eq!(self.payload_ptr, other.payload_ptr);
         self.address = other.address;
         self.payload_len = other.payload_len;
+    }
+
+    #[inline]
+    fn validate_replication(source: &Self, dest: &Self) {
+        assert_eq!(source.payload_ptr, dest.payload_ptr);
     }
 
     #[inline]
@@ -115,6 +125,50 @@ impl MessageTrait for Message {
 
         Ok(len)
     }
+}
+
+#[inline]
+unsafe fn alloc(entries: u32, payload_len: u32, offset: usize) -> super::Storage {
+    let (layout, entry_offset, payload_offset) = layout(entries, payload_len, offset);
+
+    let ptr = alloc::alloc::alloc_zeroed(layout);
+
+    let end_pointer = ptr.add(layout.size());
+
+    let ptr = NonNull::new(ptr).expect("could not allocate socket message ring");
+
+    {
+        let mut entry_ptr = ptr.as_ptr().add(entry_offset) as *mut UnsafeCell<Message>;
+        let mut payload_ptr = ptr.as_ptr().add(payload_offset) as *mut UnsafeCell<u8>;
+        for _ in 0..entries {
+            let entry = (*entry_ptr).get_mut();
+            entry.payload_ptr = (*payload_ptr).get();
+            entry.payload_len = payload_len as _;
+
+            entry_ptr = entry_ptr.add(1);
+            debug_assert!(end_pointer >= entry_ptr as *mut u8);
+            payload_ptr = payload_ptr.add(payload_len as _);
+            debug_assert!(end_pointer >= payload_ptr as *mut u8);
+        }
+
+        let primary = ptr.as_ptr().add(entry_offset) as *mut Message;
+        let secondary = primary.add(entries as _);
+        debug_assert!(end_pointer >= secondary.add(entries as _) as *mut u8);
+        core::ptr::copy_nonoverlapping(primary, secondary, entries as _);
+    }
+
+    let slice = core::slice::from_raw_parts_mut(ptr.as_ptr() as *mut UnsafeCell<u8>, layout.size());
+    Box::from_raw(slice).into()
+}
+
+fn layout(entries: u32, payload_len: u32, offset: usize) -> (Layout, usize, usize) {
+    let cursor = Layout::array::<UnsafeCell<u8>>(offset).unwrap();
+    let payloads =
+        Layout::array::<UnsafeCell<u8>>(entries as usize * payload_len as usize).unwrap();
+    let entries = Layout::array::<UnsafeCell<Message>>((entries * 2) as usize).unwrap();
+    let (layout, entry_offset) = cursor.extend(entries).unwrap();
+    let (layout, payload_offset) = layout.extend(payloads).unwrap();
+    (layout, entry_offset, payload_offset)
 }
 
 pub struct Ring<Payloads> {

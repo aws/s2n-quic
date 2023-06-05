@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::ffi::c_void;
+use core::{cell::UnsafeCell, ffi::c_void, pin::Pin};
 use s2n_quic_core::{inet::datagram, io::tx, path};
 
 #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))]
@@ -25,11 +25,16 @@ pub mod default {
     }
 }
 
+pub type Storage = Pin<Box<[UnsafeCell<u8>]>>;
+
 /// An abstract message that can be sent and received on a network
-pub trait Message {
+pub trait Message: 'static + Copy {
     type Handle: path::Handle;
 
     const SUPPORTS_GSO: bool;
+
+    /// Allocates `entries` messages, each with `payload_len` bytes
+    fn alloc(entries: u32, payload_len: u32, offset: usize) -> Storage;
 
     /// Returns the length of the payload
     fn payload_len(&self) -> usize;
@@ -49,6 +54,13 @@ pub trait Message {
     /// # Panics
     /// This should used in scenarios where the data pointers are the same.
     fn replicate_fields_from(&mut self, other: &Self);
+
+    /// Validates that the `source` message can be replicated to `dest`.
+    ///
+    /// # Panics
+    ///
+    /// This panics when the messages cannot be replicated
+    fn validate_replication(source: &Self, dest: &Self);
 
     /// Returns a mutable pointer for the message payload
     fn payload_ptr_mut(&mut self) -> *mut u8;
