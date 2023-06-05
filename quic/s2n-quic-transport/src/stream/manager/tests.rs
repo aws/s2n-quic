@@ -14,6 +14,7 @@ use crate::{
     recovery::RttEstimator,
     stream::{
         controller::MAX_STREAMS_SYNC_FRACTION,
+        manager_api::Manager as _,
         stream_impl::StreamConfig,
         stream_interests::{StreamInterestProvider, StreamInterests},
         testing::*,

@@ -9,7 +9,7 @@ use crate::{
     path::mtu,
     recovery,
     space::{datagram, HandshakeStatus},
-    stream::{AbstractStreamManager, StreamTrait as Stream},
+    stream::Manager as _,
     sync::{flag, flag::Ping},
     transmission::{self, Mode},
 };
@@ -17,7 +17,7 @@ use core::ops::RangeInclusive;
 use s2n_quic_core::packet::number::PacketNumberSpace;
 
 pub enum Payload<'a, Config: endpoint::Config> {
-    Normal(Normal<'a, Config::Stream, Config>),
+    Normal(Normal<'a, Config>),
     MtuProbe(MtuProbe<'a>),
     /// For use on non-active paths where only path validation frames are sent.
     PathValidationOnly(PathValidationOnly<'a, Config>),
@@ -35,7 +35,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
         ack_manager: &'a mut AckManager,
         handshake_status: &'a mut HandshakeStatus,
         ping: &'a mut flag::Ping,
-        stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
+        stream_manager: &'a mut Config::StreamManager,
         recovery_manager: &'a mut recovery::Manager<Config>,
         datagram_manager: &'a mut datagram::Manager<Config>,
     ) -> Self {
@@ -101,11 +101,11 @@ impl<'a, Config: endpoint::Config> transmission::interest::Provider for Payload<
     }
 }
 
-pub struct Normal<'a, S: Stream, Config: endpoint::Config> {
+pub struct Normal<'a, Config: endpoint::Config> {
     ack_manager: &'a mut AckManager,
     handshake_status: &'a mut HandshakeStatus,
     ping: &'a mut Ping,
-    stream_manager: &'a mut AbstractStreamManager<S>,
+    stream_manager: &'a mut Config::StreamManager,
     local_id_registry: &'a mut connection::LocalIdRegistry,
     path_manager: &'a mut path::Manager<Config>,
     recovery_manager: &'a mut recovery::Manager<Config>,
@@ -113,7 +113,7 @@ pub struct Normal<'a, S: Stream, Config: endpoint::Config> {
     prioritize_datagrams: bool,
 }
 
-impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
+impl<'a, Config: endpoint::Config> Normal<'a, Config> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let can_transmit = context.transmission_constraint().can_transmit()
             || context.transmission_constraint().can_retransmit();
@@ -186,9 +186,7 @@ impl<'a, S: Stream, Config: endpoint::Config> Normal<'a, S, Config> {
     }
 }
 
-impl<'a, S: Stream, Config: endpoint::Config> transmission::interest::Provider
-    for Normal<'a, S, Config>
-{
+impl<'a, Config: endpoint::Config> transmission::interest::Provider for Normal<'a, Config> {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,

@@ -427,9 +427,132 @@ pub struct AbstractStreamManager<S> {
 #[allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
 unsafe impl<S> Send for AbstractStreamManager<S> {}
 
-impl<S: StreamTrait> AbstractStreamManager<S> {
-    /// Creates a new `StreamManager` using the provided configuration parameters
-    pub fn new(
+impl<S: 'static + StreamTrait> AbstractStreamManager<S> {
+    fn accept_stream_with_type(
+        &mut self,
+        stream_type: StreamType,
+    ) -> Result<Option<StreamId>, connection::Error> {
+        // Check if the Stream exists
+        let next_id_to_accept = self
+            .inner
+            .accept_state
+            .next_stream_id(stream_type)
+            .ok_or_else(connection::Error::stream_id_exhausted)?;
+
+        if self.inner.streams.contains(next_id_to_accept) {
+            *self.inner.accept_state.next_stream_mut(stream_type) =
+                next_id_to_accept.next_of_type();
+            Ok(Some(next_id_to_accept))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Calculates the period for sending STREAMS_BLOCKED, STREAM_DATA_BLOCKED and
+    /// DATA_BLOCKED frames when blocked, according to the idle timeout and latest RTT estimates
+    fn blocked_sync_period(&self, rtt_estimator: &RttEstimator) -> Duration {
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
+        //# To keep the
+        //# connection from closing, a sender that is flow control limited SHOULD
+        //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
+        //# has no ack-eliciting packets in flight.
+
+        // STREAMS_BLOCKED, DATA_BLOCKED, and STREAM_DATA_BLOCKED frames are
+        // sent to prevent the connection from closing due to an idle timeout
+        // when we are blocked from opening or sending on streams. We use a pto count
+        // of 1 so the periodic components can track backoff independently.
+
+        // For extremely low RTT networks, this will ensure we do not send blocked
+        // frames too frequently.
+        const MIN_BLOCKED_SYNC_PERIOD: Duration = Duration::from_millis(5);
+
+        let pto = rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData);
+
+        pto.max(MIN_BLOCKED_SYNC_PERIOD)
+    }
+
+    /// This method encapsulates all common actions for handling incoming frames
+    /// which target a specific `Stream`.
+    /// It will open unopened Streams, lookup the required `Stream`,
+    /// and then call the provided function on the Stream.
+    /// If this leads to a connection error it will reset all internal connections.
+    fn handle_stream_frame<F>(
+        &mut self,
+        stream_id: StreamId,
+        mut func: F,
+    ) -> Result<(), transport::Error>
+    where
+        F: FnMut(&mut S, &mut StreamEvents) -> Result<(), transport::Error>,
+    {
+        let mut events = StreamEvents::new();
+
+        let result = {
+            // If Stream handling causes an error, trigger an internal reset
+            self.inner.reset_streams_on_error(|state| {
+                // Open streams if necessary
+                state.open_stream_if_necessary(stream_id)?;
+                // Apply the provided function on the Stream.
+                // If the Stream does not exist it is no error.
+                state
+                    .streams
+                    .with_stream(stream_id, &mut state.stream_controller, |stream| {
+                        func(stream, &mut events)
+                    })
+                    .unwrap_or(Ok(()))
+            })
+        };
+
+        // We wake `Waker`s outside of the Mutex to reduce contention.
+        // TODO: This is now no longer outside the Mutex
+        events.wake_all();
+        result
+    }
+
+    /// Executes an application API call on the given Stream if the Stream exists
+    /// and returns the result of the API call.
+    ///
+    /// If the Stream does not exist `unknown_stream_result` will be returned.
+    ///
+    /// If the application call requires transmission of data, the QUIC connection
+    /// thread will be notified through the [`WakeHandle`] in the provided [`ConnectionApiCallContext`].
+    fn perform_api_call<F, R>(
+        &mut self,
+        stream_id: StreamId,
+        unknown_stream_result: R,
+        api_call_context: &mut ConnectionApiCallContext,
+        func: F,
+    ) -> R
+    where
+        F: FnOnce(&mut S) -> R,
+    {
+        let had_transmission_interest = self.inner.streams.has_transmission_interest();
+
+        let result = self
+            .inner
+            .streams
+            .with_stream(stream_id, &mut self.inner.stream_controller, |stream| {
+                func(stream)
+            })
+            .unwrap_or(unknown_stream_result);
+
+        // A wakeup is only triggered if the the transmission list is
+        // now empty, but was previously not. The edge triggered behavior
+        // minimizes the amount of necessary wakeups.
+        let require_wakeup =
+            !had_transmission_interest && self.inner.streams.has_transmission_interest();
+
+        // TODO: This currently wakes the connection task while inside the connection Mutex.
+        // It will be better if we return the `Waker` instead and perform the wakeup afterwards.
+        if require_wakeup {
+            api_call_context.wakeup_handle().wakeup();
+        }
+
+        result
+    }
+}
+
+impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
+    fn new(
         connection_limits: &connection::Limits,
         local_endpoint_type: endpoint::Type,
         initial_local_limits: InitialFlowControlLimits,
@@ -474,22 +597,19 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         }
     }
 
-    /// The number of bytes of forward progress the peer has made on incoming streams
-    pub fn incoming_bytes_progressed(&self) -> VarInt {
+    fn incoming_bytes_progressed(&self) -> VarInt {
         self.inner
             .incoming_connection_flow_controller
             .acquired_window()
     }
 
-    /// The number of bytes of forward progress the local endpoint has made on outgoing streams
-    pub fn outgoing_bytes_progressed(&self) -> VarInt {
+    fn outgoing_bytes_progressed(&self) -> VarInt {
         self.inner
             .outgoing_connection_flow_controller
             .acquired_window()
     }
 
-    /// Accepts the next incoming stream of a given type
-    pub fn poll_accept(
+    fn poll_accept(
         &mut self,
         stream_type: Option<StreamType>,
         context: &Context,
@@ -542,28 +662,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         Poll::Pending
     }
 
-    fn accept_stream_with_type(
-        &mut self,
-        stream_type: StreamType,
-    ) -> Result<Option<StreamId>, connection::Error> {
-        // Check if the Stream exists
-        let next_id_to_accept = self
-            .inner
-            .accept_state
-            .next_stream_id(stream_type)
-            .ok_or_else(connection::Error::stream_id_exhausted)?;
-
-        if self.inner.streams.contains(next_id_to_accept) {
-            *self.inner.accept_state.next_stream_mut(stream_type) =
-                next_id_to_accept.next_of_type();
-            Ok(Some(next_id_to_accept))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Opens the next local initiated stream of a certain type
-    pub fn poll_open_local_stream(
+    fn poll_open_local_stream(
         &mut self,
         stream_type: StreamType,
         open_token: &mut connection::OpenToken,
@@ -589,8 +688,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         Ok(first_unopened_id).into()
     }
 
-    /// This method gets called when a packet delivery got acknowledged
-    pub fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
+    fn on_packet_ack<A: ack::Set>(&mut self, ack_set: &A) {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_ack(ack_set);
@@ -611,8 +709,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         );
     }
 
-    /// This method gets called when a packet loss is reported
-    pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
+    fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.inner
             .incoming_connection_flow_controller
             .on_packet_loss(ack_set);
@@ -633,8 +730,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         );
     }
 
-    /// This method gets called when the RTT estimate is updated for the active path
-    pub fn on_rtt_update(&mut self, rtt_estimator: &RttEstimator) {
+    fn on_rtt_update(&mut self, rtt_estimator: &RttEstimator) {
         let blocked_sync_period = self.blocked_sync_period(rtt_estimator);
 
         {
@@ -671,8 +767,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         );
     }
 
-    /// Called when the connection timer expires
-    pub fn on_timeout(&mut self, now: Timestamp) {
+    fn on_timeout(&mut self, now: Timestamp) {
         self.inner.stream_controller.on_timeout(now);
         self.inner
             .outgoing_connection_flow_controller
@@ -686,30 +781,19 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         );
     }
 
-    /// Closes the [`AbstractStreamManager`] and resets all streams with the
-    /// given error. The current implementation will still
-    /// allow to forward frames to the contained Streams as well as to query them
-    /// for data. However new Streams can not be created.
-    pub fn close(&mut self, error: connection::Error) {
+    fn close(&mut self, error: connection::Error) {
         self.inner.close(error, false);
     }
 
-    /// If the `StreamManager` is closed, this returns the error which which was
-    /// used to close it.
-    pub fn close_reason(&self) -> Option<connection::Error> {
+    fn close_reason(&self) -> Option<connection::Error> {
         self.inner.close_reason
     }
 
-    /// Closes the [`AbstractStreamManager`], flushes all send streams and resets all receive streams.
-    ///
-    /// This is used for when the application drops the connection but still has pending data to
-    /// transmit.
-    pub fn flush(&mut self, error: connection::Error) -> Poll<()> {
+    fn flush(&mut self, error: connection::Error) -> Poll<()> {
         self.inner.flush(error)
     }
 
-    /// Queries the component for any outgoing frames that need to get sent
-    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
+    fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
         self.inner
             .incoming_connection_flow_controller
             .on_transmit(context)?;
@@ -770,84 +854,19 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         transmit_result
     }
 
-    /// Calculates the period for sending STREAMS_BLOCKED, STREAM_DATA_BLOCKED and
-    /// DATA_BLOCKED frames when blocked, according to the idle timeout and latest RTT estimates
-    fn blocked_sync_period(&self, rtt_estimator: &RttEstimator) -> Duration {
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
-        //# To keep the
-        //# connection from closing, a sender that is flow control limited SHOULD
-        //# periodically send a STREAM_DATA_BLOCKED or DATA_BLOCKED frame when it
-        //# has no ack-eliciting packets in flight.
-
-        // STREAMS_BLOCKED, DATA_BLOCKED, and STREAM_DATA_BLOCKED frames are
-        // sent to prevent the connection from closing due to an idle timeout
-        // when we are blocked from opening or sending on streams. We use a pto count
-        // of 1 so the periodic components can track backoff independently.
-
-        // For extremely low RTT networks, this will ensure we do not send blocked
-        // frames too frequently.
-        const MIN_BLOCKED_SYNC_PERIOD: Duration = Duration::from_millis(5);
-
-        let pto = rtt_estimator.pto_period(1, PacketNumberSpace::ApplicationData);
-
-        pto.max(MIN_BLOCKED_SYNC_PERIOD)
-    }
-
     // Frame reception
     // These functions are called from the packet delivery thread
 
-    /// This method encapsulates all common actions for handling incoming frames
-    /// which target a specific `Stream`.
-    /// It will open unopened Streams, lookup the required `Stream`,
-    /// and then call the provided function on the Stream.
-    /// If this leads to a connection error it will reset all internal connections.
-    fn handle_stream_frame<F>(
-        &mut self,
-        stream_id: StreamId,
-        mut func: F,
-    ) -> Result<(), transport::Error>
-    where
-        F: FnMut(&mut S, &mut StreamEvents) -> Result<(), transport::Error>,
-    {
-        let mut events = StreamEvents::new();
-
-        let result = {
-            // If Stream handling causes an error, trigger an internal reset
-            self.inner.reset_streams_on_error(|state| {
-                // Open streams if necessary
-                state.open_stream_if_necessary(stream_id)?;
-                // Apply the provided function on the Stream.
-                // If the Stream does not exist it is no error.
-                state
-                    .streams
-                    .with_stream(stream_id, &mut state.stream_controller, |stream| {
-                        func(stream, &mut events)
-                    })
-                    .unwrap_or(Ok(()))
-            })
-        };
-
-        // We wake `Waker`s outside of the Mutex to reduce contention.
-        // TODO: This is now no longer outside the Mutex
-        events.wake_all();
-        result
-    }
-
-    /// This is called when a `STREAM_DATA` frame had been received for
-    /// a stream
-    pub fn on_data(&mut self, frame: &StreamRef) -> Result<(), transport::Error> {
+    fn on_data(&mut self, frame: &StreamRef) -> Result<(), transport::Error> {
         let stream_id = StreamId::from_varint(frame.stream_id);
         self.handle_stream_frame(stream_id, |stream, events| stream.on_data(frame, events))
     }
 
-    /// This is called when a `DATA_BLOCKED` frame had been received
-    pub fn on_data_blocked(&mut self, _frame: DataBlocked) -> Result<(), transport::Error> {
+    fn on_data_blocked(&mut self, _frame: DataBlocked) -> Result<(), transport::Error> {
         Ok(()) // This is currently ignored
     }
 
-    /// This is called when a `STREAM_DATA_BLOCKED` frame had been received for
-    /// a stream
-    pub fn on_stream_data_blocked(
+    fn on_stream_data_blocked(
         &mut self,
         frame: &StreamDataBlocked,
     ) -> Result<(), transport::Error> {
@@ -857,33 +876,26 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         })
     }
 
-    /// This is called when a `RESET_STREAM` frame had been received for
-    /// a stream
-    pub fn on_reset_stream(&mut self, frame: &ResetStream) -> Result<(), transport::Error> {
+    fn on_reset_stream(&mut self, frame: &ResetStream) -> Result<(), transport::Error> {
         let stream_id = StreamId::from_varint(frame.stream_id);
         self.handle_stream_frame(stream_id, |stream, events| stream.on_reset(frame, events))
     }
 
-    /// This is called when a `MAX_STREAM_DATA` frame had been received for
-    /// a stream
-    pub fn on_max_stream_data(&mut self, frame: &MaxStreamData) -> Result<(), transport::Error> {
+    fn on_max_stream_data(&mut self, frame: &MaxStreamData) -> Result<(), transport::Error> {
         let stream_id = StreamId::from_varint(frame.stream_id);
         self.handle_stream_frame(stream_id, |stream, events| {
             stream.on_max_stream_data(frame, events)
         })
     }
 
-    /// This is called when a `STOP_SENDING` frame had been received for
-    /// a stream
-    pub fn on_stop_sending(&mut self, frame: &StopSending) -> Result<(), transport::Error> {
+    fn on_stop_sending(&mut self, frame: &StopSending) -> Result<(), transport::Error> {
         let stream_id = StreamId::from_varint(frame.stream_id);
         self.handle_stream_frame(stream_id, |stream, events| {
             stream.on_stop_sending(frame, events)
         })
     }
 
-    /// This is called when a `MAX_DATA` frame had been received
-    pub fn on_max_data(&mut self, frame: MaxData) -> Result<(), transport::Error> {
+    fn on_max_data(&mut self, frame: MaxData) -> Result<(), transport::Error> {
         self.inner
             .outgoing_connection_flow_controller
             .on_max_data(frame);
@@ -918,8 +930,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         Ok(())
     }
 
-    /// This is called when a `STREAMS_BLOCKED` frame had been received
-    pub fn on_streams_blocked(&mut self, _frame: &StreamsBlocked) -> Result<(), transport::Error> {
+    fn on_streams_blocked(&mut self, _frame: &StreamsBlocked) -> Result<(), transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
         //= type=TODO
         //= tracking-issue=244
@@ -927,58 +938,13 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         Ok(()) // TODO: Implement me
     }
 
-    /// This is called when a `MAX_STREAMS` frame had been received
-    pub fn on_max_streams(&mut self, frame: &MaxStreams) -> Result<(), transport::Error> {
+    fn on_max_streams(&mut self, frame: &MaxStreams) -> Result<(), transport::Error> {
         self.inner.stream_controller.on_max_streams(frame);
 
         Ok(())
     }
 
-    // User APIs
-
-    /// Executes an application API call on the given Stream if the Stream exists
-    /// and returns the result of the API call.
-    ///
-    /// If the Stream does not exist `unknown_stream_result` will be returned.
-    ///
-    /// If the application call requires transmission of data, the QUIC connection
-    /// thread will be notified through the [`WakeHandle`] in the provided [`ConnectionApiCallContext`].
-    fn perform_api_call<F, R>(
-        &mut self,
-        stream_id: StreamId,
-        unknown_stream_result: R,
-        api_call_context: &mut ConnectionApiCallContext,
-        func: F,
-    ) -> R
-    where
-        F: FnOnce(&mut S) -> R,
-    {
-        let had_transmission_interest = self.inner.streams.has_transmission_interest();
-
-        let result = self
-            .inner
-            .streams
-            .with_stream(stream_id, &mut self.inner.stream_controller, |stream| {
-                func(stream)
-            })
-            .unwrap_or(unknown_stream_result);
-
-        // A wakeup is only triggered if the the transmission list is
-        // now empty, but was previously not. The edge triggered behavior
-        // minimizes the amount of necessary wakeups.
-        let require_wakeup =
-            !had_transmission_interest && self.inner.streams.has_transmission_interest();
-
-        // TODO: This currently wakes the connection task while inside the connection Mutex.
-        // It will be better if we return the `Waker` instead and perform the wakeup afterwards.
-        if require_wakeup {
-            api_call_context.wakeup_handle().wakeup();
-        }
-
-        result
-    }
-
-    pub fn poll_request(
+    fn poll_request(
         &mut self,
         stream_id: StreamId,
         api_call_context: &mut ConnectionApiCallContext,
@@ -993,8 +959,7 @@ impl<S: StreamTrait> AbstractStreamManager<S> {
         )
     }
 
-    /// Returns whether or not streams have data to send
-    pub fn has_pending_streams(&self) -> bool {
+    fn has_pending_streams(&self) -> bool {
         self.inner.streams.has_pending_streams()
     }
 }

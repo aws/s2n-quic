@@ -7,6 +7,7 @@ use crate::{
     connection, endpoint, path,
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
+    stream::Manager as _,
     transmission,
 };
 use bytes::Bytes;

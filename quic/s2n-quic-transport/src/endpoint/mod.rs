@@ -1169,7 +1169,7 @@ pub mod testing {
         type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
         type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
-        type Stream = crate::stream::StreamImpl;
+        type StreamManager = crate::stream::DefaultStreamManager;
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;
@@ -1199,7 +1199,7 @@ pub mod testing {
         type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
         type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
-        type Stream = crate::stream::StreamImpl;
+        type StreamManager = crate::stream::DefaultStreamManager;
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
         type PathMigrationValidator = path::migration::default::Validator;

@@ -9,7 +9,7 @@ use crate::{
         datagram, keep_alive::KeepAlive, ApplicationSpace, HandshakeSpace, HandshakeStatus,
         InitialSpace,
     },
-    stream::AbstractStreamManager,
+    stream,
 };
 use bytes::Bytes;
 use core::{ops::Not, task::Waker};
@@ -382,7 +382,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         self.local_id_registry
             .set_active_connection_id_limit(active_connection_id_limit.as_u64());
 
-        let stream_manager = AbstractStreamManager::new(
+        let stream_manager = <Config::StreamManager as stream::Manager>::new(
             self.limits,
             Config::ENDPOINT_TYPE,
             self.limits.initial_flow_control_limits(),
