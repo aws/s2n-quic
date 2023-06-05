@@ -4,8 +4,11 @@
 use crate::message::{cmsg, cmsg::Encoder, Message as MessageTrait};
 use alloc::vec::Vec;
 use core::{
-    mem::{size_of, zeroed},
+    alloc::Layout,
+    cell::UnsafeCell,
+    mem::{size_of, size_of_val, zeroed},
     pin::Pin,
+    ptr::NonNull,
 };
 use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
@@ -53,6 +56,11 @@ impl MessageTrait for msghdr {
     type Handle = Handle;
 
     const SUPPORTS_GSO: bool = cfg!(s2n_quic_platform_gso);
+
+    #[inline]
+    fn alloc(entries: u32, payload_len: u32, offset: usize) -> super::Storage {
+        unsafe { alloc(entries, payload_len, offset, |msg| msg) }
+    }
 
     #[inline]
     fn payload_len(&self) -> usize {
@@ -150,6 +158,13 @@ impl MessageTrait for msghdr {
     }
 
     #[inline]
+    fn validate_replication(source: &Self, dest: &Self) {
+        assert_eq!(source.msg_name, dest.msg_name);
+        assert_eq!(source.msg_iov, dest.msg_iov);
+        assert_eq!(source.msg_control, dest.msg_control);
+    }
+
+    #[inline]
     fn rx_read(
         &mut self,
         local_address: &path::LocalAddress,
@@ -200,6 +215,94 @@ impl MessageTrait for msghdr {
         self.set_ecn(message.ecn(), &handle.remote_address.0);
 
         Ok(len)
+    }
+}
+
+#[inline]
+pub(super) unsafe fn alloc<T: Copy + Sized, F: Fn(&mut T) -> &mut msghdr>(
+    entries: u32,
+    payload_len: u32,
+    offset: usize,
+    on_entry: F,
+) -> super::Storage {
+    let (layout, entry_offset, header_offset, payload_offset) =
+        layout::<T>(entries, payload_len, offset);
+
+    let ptr = alloc::alloc::alloc_zeroed(layout);
+
+    let end_pointer = ptr.add(layout.size());
+
+    let ptr = NonNull::new(ptr).expect("could not allocate socket message ring");
+
+    {
+        let mut entry_ptr = ptr.as_ptr().add(entry_offset) as *mut UnsafeCell<T>;
+        let mut header_ptr = ptr.as_ptr().add(header_offset) as *mut UnsafeCell<Header>;
+        let mut payload_ptr = ptr.as_ptr().add(payload_offset) as *mut UnsafeCell<u8>;
+        for _ in 0..entries {
+            let entry = on_entry((*entry_ptr).get_mut());
+            (*header_ptr)
+                .get_mut()
+                .update(entry, &*payload_ptr, payload_len);
+
+            entry_ptr = entry_ptr.add(1);
+            debug_assert!(end_pointer >= entry_ptr as *mut u8);
+            header_ptr = header_ptr.add(1);
+            debug_assert!(end_pointer >= header_ptr as *mut u8);
+            payload_ptr = payload_ptr.add(payload_len as _);
+            debug_assert!(end_pointer >= payload_ptr as *mut u8);
+        }
+
+        let primary = ptr.as_ptr().add(entry_offset) as *mut T;
+        let secondary = primary.add(entries as _);
+        debug_assert!(end_pointer >= secondary.add(entries as _) as *mut u8);
+        core::ptr::copy_nonoverlapping(primary, secondary, entries as _);
+    }
+
+    let slice = core::slice::from_raw_parts_mut(ptr.as_ptr() as *mut UnsafeCell<u8>, layout.size());
+    Box::from_raw(slice).into()
+}
+
+fn layout<T: Copy + Sized>(
+    entries: u32,
+    payload_len: u32,
+    offset: usize,
+) -> (Layout, usize, usize, usize) {
+    let cursor = Layout::array::<UnsafeCell<u8>>(offset).unwrap();
+    let headers = Layout::array::<UnsafeCell<Header>>(entries as _).unwrap();
+    let payloads =
+        Layout::array::<UnsafeCell<u8>>(entries as usize * payload_len as usize).unwrap();
+    let entries = Layout::array::<UnsafeCell<T>>((entries * 2) as usize).unwrap();
+    let (layout, entry_offset) = cursor.extend(entries).unwrap();
+    let (layout, header_offset) = layout.extend(headers).unwrap();
+    let (layout, payload_offset) = layout.extend(payloads).unwrap();
+    (layout, entry_offset, header_offset, payload_offset)
+}
+
+#[repr(C)]
+struct Header {
+    pub iovec: Aligned<iovec>,
+    pub msg_name: Aligned<sockaddr_in6>,
+    pub cmsg: Aligned<[u8; cmsg::MAX_LEN]>,
+}
+
+#[repr(C, align(8))]
+struct Aligned<T>(UnsafeCell<T>);
+
+impl Header {
+    unsafe fn update(&mut self, entry: &mut msghdr, payload: &UnsafeCell<u8>, payload_len: u32) {
+        let iovec = self.iovec.0.get_mut();
+
+        iovec.iov_base = payload.get() as *mut _;
+        iovec.iov_len = payload_len as _;
+
+        let entry = &mut *entry;
+
+        entry.msg_name = self.msg_name.0.get() as *mut _;
+        entry.msg_namelen = size_of_val(&self.msg_name) as _;
+        entry.msg_iov = self.iovec.0.get();
+        entry.msg_iovlen = 1;
+        entry.msg_control = self.cmsg.0.get() as *mut _;
+        entry.msg_controllen = cmsg::MAX_LEN as _;
     }
 }
 
