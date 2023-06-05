@@ -13,6 +13,8 @@ use core::{
 };
 use futures::ready;
 
+pub use events::TxEvents as Events;
+
 pub trait Socket<T: Message> {
     type Error;
 
@@ -20,7 +22,7 @@ pub trait Socket<T: Message> {
         &mut self,
         cx: &mut Context,
         entries: &mut [T],
-        events: &mut events::TxEvents,
+        events: &mut Events,
     ) -> Result<(), Self::Error>;
 }
 
@@ -28,7 +30,7 @@ pub struct Sender<T: Message, S: Socket<T>> {
     ring: Consumer<T>,
     tx: S,
     pending: u32,
-    events: events::TxEvents,
+    events: Events,
 }
 
 impl<T, S> Sender<T, S>
@@ -42,7 +44,7 @@ where
             ring,
             tx,
             pending: 0,
-            events: events::TxEvents::new(gso),
+            events: Events::new(gso),
         }
     }
 

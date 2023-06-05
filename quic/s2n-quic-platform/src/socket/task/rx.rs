@@ -12,6 +12,8 @@ use core::{
 };
 use futures::ready;
 
+pub use events::RxEvents as Events;
+
 pub trait Socket<T: Message> {
     type Error;
 
@@ -19,7 +21,7 @@ pub trait Socket<T: Message> {
         &mut self,
         cx: &mut Context,
         entries: &mut [T],
-        events: &mut events::RxEvents,
+        events: &mut Events,
     ) -> Result<(), Self::Error>;
 }
 
@@ -74,7 +76,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        let mut events = events::RxEvents::default();
+        let mut events = Events::default();
 
         while !events.take_blocked() {
             let pending = match ready!(this.poll_ring(u32::MAX, cx)) {

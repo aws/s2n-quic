@@ -19,6 +19,7 @@ use tokio::{net::UdpSocket, runtime::Handle};
 
 mod builder;
 mod clock;
+mod task;
 #[cfg(test)]
 mod tests;
 

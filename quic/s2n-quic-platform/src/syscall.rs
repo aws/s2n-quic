@@ -1,9 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(unused_variables, unused_mut, clippy::let_and_return)] // some platforms contain empty
-                                                                // implementations so disable any
-                                                                // warnings from those
+// some platforms contain empty implementations so disable any warnings from those
+#![allow(unused_variables, unused_macros, unused_mut, clippy::let_and_return)]
 
 use core::ops::ControlFlow;
 use socket2::{Domain, Protocol, Socket, Type};
@@ -15,7 +14,7 @@ pub mod mmsg;
 pub mod msg;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // TODO remove once used
+#[cfg_attr(not(unix), allow(dead_code))]
 pub enum SocketType {
     Blocking,
     NonBlocking,
@@ -27,6 +26,17 @@ pub trait SocketEvents {
 
     /// Called when an error occurs on a socket
     fn on_error(&mut self, error: io::Error) -> ControlFlow<(), ()>;
+}
+
+#[cfg(unix)]
+pub trait UnixMessage: crate::message::Message {
+    fn send<E: SocketEvents>(fd: std::os::unix::io::RawFd, entries: &mut [Self], events: &mut E);
+    fn recv<E: SocketEvents>(
+        fd: std::os::unix::io::RawFd,
+        ty: SocketType,
+        entries: &mut [Self],
+        events: &mut E,
+    );
 }
 
 pub fn udp_socket(addr: std::net::SocketAddr) -> io::Result<Socket> {

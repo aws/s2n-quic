@@ -1,11 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(dead_code)] // TODO remove once used
-
-use super::{SocketEvents, SocketType};
+use super::{SocketEvents, SocketType, UnixMessage};
 use libc::mmsghdr;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
+
+impl UnixMessage for mmsghdr {
+    #[inline]
+    fn send<E: SocketEvents>(fd: RawFd, entries: &mut [Self], events: &mut E) {
+        send(&fd, entries, events)
+    }
+
+    #[inline]
+    fn recv<E: SocketEvents>(fd: RawFd, ty: SocketType, entries: &mut [Self], events: &mut E) {
+        recv(&fd, ty, entries, events)
+    }
+}
 
 #[inline]
 pub fn send<Sock: AsRawFd, E: SocketEvents>(
