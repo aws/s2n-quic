@@ -98,28 +98,26 @@ impl<B: Buffer> Queue<B> {
         let mut entries = self.0.occupied_mut();
 
         for entry in entries.as_mut() {
-            if let Some(remote_address) = entry.remote_address() {
-                match socket.send_to(entry.payload_mut(), &remote_address) {
-                    Ok(_) => {
-                        count += 1;
+            let remote_address = *entry.remote_address();
+            match socket.send_to(entry.payload_mut(), &remote_address) {
+                Ok(_) => {
+                    count += 1;
 
-                        publisher.on_platform_tx(event::builder::PlatformTx { count: 1 });
-                    }
-                    Err(err) if count > 0 && err.would_block() => {
-                        break;
-                    }
-                    Err(err) if err.was_interrupted() || err.permission_denied() => {
-                        break;
-                    }
-                    Err(err) => {
-                        entries.finish(count);
+                    publisher.on_platform_tx(event::builder::PlatformTx { count: 1 });
+                }
+                Err(err) if count > 0 && err.would_block() => {
+                    break;
+                }
+                Err(err) if err.was_interrupted() || err.permission_denied() => {
+                    break;
+                }
+                Err(err) => {
+                    entries.finish(count);
 
-                        publisher.on_platform_tx_error(event::builder::PlatformTxError {
-                            errno: errno().0,
-                        });
+                    publisher
+                        .on_platform_tx_error(event::builder::PlatformTxError { errno: errno().0 });
 
-                        return Err(err);
-                    }
+                    return Err(err);
                 }
             }
         }
