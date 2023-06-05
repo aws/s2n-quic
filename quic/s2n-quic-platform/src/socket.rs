@@ -10,6 +10,7 @@ pub mod mmsg;
 pub mod msg;
 pub mod ring;
 pub mod std;
+pub mod task;
 
 cfg_if! {
     if #[cfg(s2n_quic_platform_socket_mmsg)] {
