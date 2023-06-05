@@ -3,6 +3,7 @@
 
 use cfg_if::cfg_if;
 
+pub mod io;
 #[cfg(s2n_quic_platform_socket_mmsg)]
 pub mod mmsg;
 #[cfg(s2n_quic_platform_socket_msg)]
