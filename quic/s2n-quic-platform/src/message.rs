@@ -32,6 +32,8 @@ pub trait Message: 'static + Copy {
     type Handle: path::Handle;
 
     const SUPPORTS_GSO: bool;
+    const SUPPORTS_ECN: bool;
+    const SUPPORTS_FLOW_LABELS: bool;
 
     /// Allocates `entries` messages, each with `payload_len` bytes
     fn alloc(entries: u32, payload_len: u32, offset: usize) -> Storage;

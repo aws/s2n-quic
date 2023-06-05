@@ -17,6 +17,8 @@ impl MessageTrait for mmsghdr {
     type Handle = Handle;
 
     const SUPPORTS_GSO: bool = libc::msghdr::SUPPORTS_GSO;
+    const SUPPORTS_ECN: bool = libc::msghdr::SUPPORTS_ECN;
+    const SUPPORTS_FLOW_LABELS: bool = libc::msghdr::SUPPORTS_FLOW_LABELS;
 
     #[inline]
     fn alloc(entries: u32, payload_len: u32, offset: usize) -> super::Storage {

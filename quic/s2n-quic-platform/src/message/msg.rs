@@ -58,6 +58,8 @@ impl MessageTrait for msghdr {
     type Handle = Handle;
 
     const SUPPORTS_GSO: bool = cfg!(s2n_quic_platform_gso);
+    const SUPPORTS_ECN: bool = cfg!(s2n_quic_platform_tos);
+    const SUPPORTS_FLOW_LABELS: bool = true;
 
     #[inline]
     fn alloc(entries: u32, payload_len: u32, offset: usize) -> super::Storage {
