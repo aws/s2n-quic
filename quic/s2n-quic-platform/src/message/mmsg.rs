@@ -6,70 +6,17 @@ use crate::message::{
     Message as MessageTrait,
 };
 use alloc::vec::Vec;
-use core::{fmt, mem::zeroed};
+use core::mem::zeroed;
 use libc::mmsghdr;
-use s2n_quic_core::{
-    inet::{datagram, ExplicitCongestionNotification, SocketAddress},
-    io::tx,
-    path,
-};
+use s2n_quic_core::{io::tx, path};
 
-#[repr(transparent)]
-pub struct Message(pub(crate) mmsghdr);
-
+pub use libc::mmsghdr as Message;
 pub type Handle = msg::Handle;
-
-impl_message_delegate!(Message, 0, mmsghdr);
-
-impl fmt::Debug for Message {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let alt = f.alternate();
-        let mut s = f.debug_struct("mmsghdr");
-
-        s.field("remote_address", &self.remote_address()).field(
-            "ancillary_data",
-            &crate::message::cmsg::decode(&self.0.msg_hdr),
-        );
-
-        if alt {
-            s.field("payload", &self.payload());
-        } else {
-            s.field("payload_len", &self.payload_len());
-        }
-
-        s.finish()
-    }
-}
 
 impl MessageTrait for mmsghdr {
     type Handle = Handle;
 
     const SUPPORTS_GSO: bool = libc::msghdr::SUPPORTS_GSO;
-
-    #[inline]
-    fn ecn(&self) -> ExplicitCongestionNotification {
-        self.msg_hdr.ecn()
-    }
-
-    #[inline]
-    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress) {
-        self.msg_hdr.set_ecn(ecn, remote_address)
-    }
-
-    #[inline]
-    fn remote_address(&self) -> Option<SocketAddress> {
-        self.msg_hdr.remote_address()
-    }
-
-    #[inline]
-    fn set_remote_address(&mut self, remote_address: &SocketAddress) {
-        self.msg_hdr.set_remote_address(remote_address)
-    }
-
-    #[inline]
-    fn path_handle(&self) -> Option<Self::Handle> {
-        self.msg_hdr.path_handle()
-    }
 
     #[inline]
     fn payload_len(&self) -> usize {
@@ -100,11 +47,6 @@ impl MessageTrait for mmsghdr {
     }
 
     #[inline]
-    fn payload_ptr(&self) -> *const u8 {
-        self.msg_hdr.payload_ptr()
-    }
-
-    #[inline]
     fn payload_ptr_mut(&mut self) -> *mut u8 {
         self.msg_hdr.payload_ptr_mut()
     }
@@ -119,7 +61,7 @@ impl MessageTrait for mmsghdr {
     fn rx_read(
         &mut self,
         local_address: &path::LocalAddress,
-    ) -> Option<(datagram::Header<Self::Handle>, &mut [u8])> {
+    ) -> Option<super::RxMessage<Self::Handle>> {
         unsafe {
             // We need to replicate the `msg_len` field to the inner type before delegating
             // Safety: The `msg_len` is associated with the same buffer as the `msg_hdr`
@@ -172,9 +114,9 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
             .map(|msg_hdr| unsafe {
                 let mut mmsghdr = zeroed::<mmsghdr>();
                 let payload_len = msg_hdr.payload_len();
-                mmsghdr.msg_hdr = msg_hdr.0;
+                mmsghdr.msg_hdr = msg_hdr;
                 mmsghdr.set_payload_len(payload_len);
-                Message(mmsghdr)
+                mmsghdr
             })
             .collect();
 
