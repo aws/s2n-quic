@@ -267,7 +267,7 @@ impl<
     type TLSEndpoint = Tls;
     type TokenFormat = AddressToken;
     type ConnectionLimits = Limits;
-    type Stream = stream::StreamImpl;
+    type StreamManager = stream::DefaultStreamManager;
     type PathMigrationValidator = PathMigration;
     type PacketInterceptor = PacketInterceptor;
     type DatagramEndpoint = Datagram;

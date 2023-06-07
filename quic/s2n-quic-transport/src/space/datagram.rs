@@ -3,7 +3,7 @@
 
 use crate::{
     endpoint,
-    stream::{AbstractStreamManager, StreamTrait as Stream},
+    stream::Manager as _,
     transmission::{
         interest::{self, Provider},
         WriteContext,
@@ -42,10 +42,10 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     /// A callback that allows users to write datagrams directly to the packet.
-    pub fn on_transmit<S: Stream, W: WriteContext>(
+    pub fn on_transmit<W: WriteContext>(
         &mut self,
         context: &mut W,
-        stream_manager: &mut AbstractStreamManager<S>,
+        stream_manager: &mut Config::StreamManager,
         datagrams_prioritized: bool,
     ) {
         let mut packet = Packet {

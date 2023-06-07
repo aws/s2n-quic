@@ -9,7 +9,7 @@ use crate::{
     processed_packet::ProcessedPacket,
     recovery,
     space::{datagram, keep_alive::KeepAlive, HandshakeStatus, PacketSpace, TxPacketNumbers},
-    stream::AbstractStreamManager,
+    stream::Manager as _,
     sync::flag,
     transmission,
     transmission::interest::Provider,
@@ -43,7 +43,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     /// Ack manager
     pub ack_manager: AckManager,
     /// All streams that are managed through this connection
-    pub stream_manager: AbstractStreamManager<Config::Stream>,
+    pub stream_manager: Config::StreamManager,
     /// The current state of the Spin bit
     /// TODO: Spin me
     pub spin_bit: SpinBit,
@@ -85,7 +85,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
         now: Timestamp,
-        stream_manager: AbstractStreamManager<Config::Stream>,
+        stream_manager: Config::StreamManager,
         ack_manager: AckManager,
         keep_alive: KeepAlive,
         max_mtu: MaxMtu,
@@ -599,7 +599,7 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
     ack_manager: &'a mut AckManager,
     handshake_status: &'a mut HandshakeStatus,
     ping: &'a mut flag::Ping,
-    stream_manager: &'a mut AbstractStreamManager<Config::Stream>,
+    stream_manager: &'a mut Config::StreamManager,
     local_id_registry: &'a mut connection::LocalIdRegistry,
     path_id: path::Id,
     path_manager: &'a mut path::Manager<Config>,

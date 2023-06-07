@@ -31,7 +31,7 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     /// The connection limits
     type ConnectionLimits: connection::limits::Limiter;
     /// The type of stream
-    type Stream: stream::StreamTrait;
+    type StreamManager: stream::Manager;
     /// The connection close formatter
     type ConnectionCloseFormatter: connection::close::Formatter;
     /// The event subscriber

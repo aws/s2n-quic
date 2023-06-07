@@ -20,7 +20,8 @@ use crate::{
     processed_packet::ProcessedPacket,
     recovery::{recovery_event, RttEstimator},
     space::{PacketSpace, PacketSpaceManager},
-    stream, transmission,
+    stream::{self, Manager as _},
+    transmission,
     transmission::interest::Provider as _,
     wakeup_queue::WakeupHandle,
 };
