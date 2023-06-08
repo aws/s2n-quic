@@ -19,6 +19,16 @@ impl MessageTrait for mmsghdr {
     const SUPPORTS_GSO: bool = libc::msghdr::SUPPORTS_GSO;
 
     #[inline]
+    fn alloc(entries: u32, payload_len: u32, offset: usize) -> super::Storage {
+        unsafe {
+            msg::alloc(entries, payload_len, offset, |mmsghdr: &mut mmsghdr| {
+                mmsghdr.msg_len = payload_len as _;
+                &mut mmsghdr.msg_hdr
+            })
+        }
+    }
+
+    #[inline]
     fn payload_len(&self) -> usize {
         self.msg_len as usize
     }
@@ -55,6 +65,11 @@ impl MessageTrait for mmsghdr {
     fn replicate_fields_from(&mut self, other: &Self) {
         self.msg_len = other.msg_len;
         self.msg_hdr.replicate_fields_from(&other.msg_hdr)
+    }
+
+    #[inline]
+    fn validate_replication(source: &Self, dest: &Self) {
+        libc::msghdr::validate_replication(&source.msg_hdr, &dest.msg_hdr)
     }
 
     #[inline]
