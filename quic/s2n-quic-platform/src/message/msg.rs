@@ -227,25 +227,35 @@ pub(super) unsafe fn alloc<T: Copy + Sized, F: Fn(&mut T) -> &mut msghdr>(
     offset: usize,
     on_entry: F,
 ) -> super::Storage {
+    // calculate the layout of the storage for the given configuration
     let (layout, entry_offset, header_offset, payload_offset) =
         layout::<T>(entries, payload_len, offset);
 
+    // allocate a single contiguous block of memory
     let ptr = alloc::alloc::alloc_zeroed(layout);
 
+    // compute the end pointer of the whole allocation so we can check ourselves on the pointer
+    // arithmetic.
     let end_pointer = ptr.add(layout.size());
 
+    // make sure the allocation didn't fail
     let ptr = NonNull::new(ptr).expect("could not allocate socket message ring");
 
     {
+        // calculate each of the pointers we need to set up a message
         let mut entry_ptr = ptr.as_ptr().add(entry_offset) as *mut UnsafeCell<T>;
         let mut header_ptr = ptr.as_ptr().add(header_offset) as *mut UnsafeCell<Header>;
         let mut payload_ptr = ptr.as_ptr().add(payload_offset) as *mut UnsafeCell<u8>;
+
         for _ in 0..entries {
+            // for each message update all of the pointers to the correct locations
+
             let entry = on_entry((*entry_ptr).get_mut());
             (*header_ptr)
                 .get_mut()
                 .update(entry, &*payload_ptr, payload_len);
 
+            // increment the pointers for the next iteration
             entry_ptr = entry_ptr.add(1);
             debug_assert!(end_pointer >= entry_ptr as *mut u8);
             header_ptr = header_ptr.add(1);
@@ -254,6 +264,7 @@ pub(super) unsafe fn alloc<T: Copy + Sized, F: Fn(&mut T) -> &mut msghdr>(
             debug_assert!(end_pointer >= payload_ptr as *mut u8);
         }
 
+        // replicate the primary messages into the secondary region
         let primary = ptr.as_ptr().add(entry_offset) as *mut T;
         let secondary = primary.add(entries as _);
         debug_assert!(end_pointer >= secondary.add(entries as _) as *mut u8);
@@ -264,6 +275,16 @@ pub(super) unsafe fn alloc<T: Copy + Sized, F: Fn(&mut T) -> &mut msghdr>(
     Box::from_raw(slice).into()
 }
 
+/// Computes the following layout
+///
+/// ```ignore
+/// struct Storage {
+///    cursor: Cursor,
+///    headers: [Header; entries],
+///    payloads: [[u8; payload_len]; entries],
+///    entries: [T; entries * 2],
+/// }
+/// ```
 fn layout<T: Copy + Sized>(
     entries: u32,
     payload_len: u32,
@@ -273,6 +294,7 @@ fn layout<T: Copy + Sized>(
     let headers = Layout::array::<UnsafeCell<Header>>(entries as _).unwrap();
     let payloads =
         Layout::array::<UnsafeCell<u8>>(entries as usize * payload_len as usize).unwrap();
+    // double the number of entries we allocate to support the primary/secondary regions
     let entries = Layout::array::<UnsafeCell<T>>((entries * 2) as usize).unwrap();
     let (layout, entry_offset) = cursor.extend(entries).unwrap();
     let (layout, header_offset) = layout.extend(headers).unwrap();
@@ -280,6 +302,7 @@ fn layout<T: Copy + Sized>(
     (layout, entry_offset, header_offset, payload_offset)
 }
 
+/// A structure for holding data pointed to in the [`libc::msghdr`] struct.
 #[repr(C)]
 struct Header {
     pub iovec: Aligned<iovec>,
@@ -287,10 +310,14 @@ struct Header {
     pub cmsg: Aligned<[u8; cmsg::MAX_LEN]>,
 }
 
+/// Ensures the `T` is aligned to the nearest 8 bytes
+///
+/// This is required for each type to make sure the pointer is well-aligned
 #[repr(C, align(8))]
 struct Aligned<T>(UnsafeCell<T>);
 
 impl Header {
+    /// sets all of the pointers of the provided `entry` to the correct locations
     unsafe fn update(&mut self, entry: &mut msghdr, payload: &UnsafeCell<u8>, payload_len: u32) {
         let iovec = self.iovec.0.get_mut();
 

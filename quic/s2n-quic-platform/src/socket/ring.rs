@@ -1,6 +1,67 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Structure for concurrently queueing network messages
+//!
+//! Two halves are created: `Producer` and `Consumer`. The producer's role is:
+//!
+//! * Acquire capacity to send messages
+//! * Fill the messages with some data
+//! * Release the filled messages to the consumer
+//!
+//! The consumer then:
+//!
+//! * Acquires filled messages
+//! * Reads the messages
+//! * Releases the read messages back to the producer to be filled with more messages
+//!
+//! Normally, ring buffers wrap around the data region and return 2 slices of data (see
+//! [`std::collections::VecDeque::as_mut_slices`]). This causes issues for syscalls like
+//! [`libc::sendmmsg`] where it expects a single contiguous region of memory to be passed
+//! for the messages. This would result in either having to make 2 syscalls for
+//! when both slices have items (one of the more expensive operations we do) or copying all of the
+//! messages out of the ring buffer into a [`Vec`] and passing that to the syscall. Neither of
+//! these are ideal. Instead, the ring buffer capacity is doubled and split into a primary and
+//! secondary region. The messages are replicated by the producer between the regions to ensure a
+//! single slice can be taken at any arbitrary index by the consumer.
+//!
+//! Looking at an example, let's assume we have created a ring with capacity of 4. The ring will
+//! actually allocate a memory region of 8 messages, where the first 4 point to the same payload
+//! buffer as the last 4:
+//!
+//! ```ignore
+//! [ primary   ]
+//!              [ secondary ]
+//! [ 0, 1, 2, 3, 0, 1, 2, 3 ]
+//! ```
+//!
+//! We call the first half of the messages the "primary" region and the second half "secondary".
+//! Now, let's assume that the current index of the producer is `2`. The region of memory returned
+//! in the [`Producer::data`] call would be:
+//!
+//! ```ignore
+//! [ primary   ]
+//!              [ secondary ]
+//! [ 0, 1, 2, 3, 0, 1, 2, 3 ]
+//!        [ data     ]
+//! ```
+//!
+//! If the producer fills the `data` slice with messages it will have written into both the primary
+//! and secondary regions and those values need to be copied to the areas that weren't written to
+//! in order to maintain a consistent view of the data:
+//!
+//! ```ignore
+//! [ primary   ]
+//!              [ secondary ]
+//! [ 0, 1, 2, 3, 0, 1, 2, 3 ]
+//!        [ data     ]
+//!        [src ]  ->  [ dst ]
+//! [ dst ]  <-  [src ]
+//! ```
+//!
+//! When the consumer goes to read the queue it can do so at its own index without having to split
+//! the data, even if it wraps around the end.
+
 use crate::message::{self, Message};
 use alloc::sync::Arc;
 use core::{
@@ -9,10 +70,13 @@ use core::{
     sync::atomic::AtomicU32,
     task::{Context, Poll},
 };
-use s2n_quic_core::sync::{
-    atomic_waker,
-    cursor::{self, Cursor},
-    CachePadded,
+use s2n_quic_core::{
+    assume,
+    sync::{
+        atomic_waker,
+        cursor::{self, Cursor},
+        CachePadded,
+    },
 };
 
 const CURSOR_SIZE: usize = size_of::<CachePadded<AtomicU32>>();
@@ -77,10 +141,13 @@ impl<T: Message> Consumer<T> {
             }};
         }
 
+        // first try to acquire some messages
         try_acquire!();
 
+        // if we couldn't acquire anything register our waker
         self.wakers.register(cx.waker());
 
+        // try to acquire some messages in case we got some concurrently to waker registration
         try_acquire!();
 
         Poll::Pending
@@ -88,8 +155,8 @@ impl<T: Message> Consumer<T> {
 
     /// Releases consumed messages to the producer
     #[inline]
-    pub fn release(&mut self, len: u32) {
-        self.cursor.release_consumer(len);
+    pub fn release(&mut self, release_len: u32) {
+        self.cursor.release_consumer(release_len);
 
         self.wakers.wake();
     }
@@ -146,10 +213,13 @@ impl<T: Message> Producer<T> {
             }};
         }
 
+        // first try to acquire some messages
         try_acquire!();
 
+        // if we couldn't acquire anything register our waker
         self.wakers.register(cx.waker());
 
+        // try to acquire some messages in case we got some concurrently to waker registration
         try_acquire!();
 
         Poll::Pending
@@ -157,45 +227,74 @@ impl<T: Message> Producer<T> {
 
     /// Releases ready-to-consume messages to the consumer
     #[inline]
-    pub fn release(&mut self, len: u32) {
-        if len == 0 {
+    pub fn release(&mut self, release_len: u32) {
+        if release_len == 0 {
             return;
         }
 
-        debug_assert!(len <= self.cursor.cached_producer_len());
+        debug_assert!(
+            release_len <= self.cursor.cached_producer_len(),
+            "cannot release more messages than acquired"
+        );
 
         let idx = self.cursor.cached_producer();
-        let size = self.cursor.capacity();
+        let ring_size = self.cursor.capacity();
 
         // replicate any written items to the secondary region
         unsafe {
-            let replication_count = (size - idx).min(len);
+            assume!(ring_size > idx, "idx should never exceed the ring size");
 
-            debug_assert_ne!(replication_count, 0);
+            // calculate the maximum number of replications we need to perform for the primary ->
+            // secondary
+            let max_possible_replications = ring_size - idx;
+            // the replication count should exceed the number that we're releasing
+            let replication_count = max_possible_replications.min(release_len);
 
-            let ptr = self.cursor.data_ptr().as_ptr().add(idx as _);
+            assume!(
+                replication_count != 0,
+                "we should always be releasing at least 1 item"
+            );
 
-            let primary = ptr;
-            let secondary = ptr.add(size as _);
+            // calculate the data pointer based on the current message index
+            let primary = self.cursor.data_ptr().as_ptr().add(idx as _);
+            // add the size of the ring to the primary pointer to get into the secondary message
+            let secondary = primary.add(ring_size as _);
 
+            // copy the primary into the secondary
             self.replicate(primary, secondary, replication_count as _);
-        }
 
-        // if messages were also written to the secondary region, we need to copy them back to the
-        // primary region
-        if let Some(replication_count) = (idx + len).checked_sub(size).filter(|v| *v > 0) {
-            unsafe {
-                let ptr = self.cursor.data_ptr().as_ptr();
+            // if messages were also written to the secondary region, we need to copy them back to the
+            // primary region
+            assume!(
+                idx.checked_add(release_len).is_some(),
+                "overflow amount should not exceed u32::MAX"
+            );
+            assume!(
+                idx + release_len < ring_size * 2,
+                "overflow amount should not extend beyond the secondary replica"
+            );
 
-                let primary = ptr;
-                let secondary = ptr.add(size as _);
+            let overflow_amount = (idx + release_len).checked_sub(ring_size).filter(|v| {
+                // we didn't overflow if the count is 0
+                *v > 0
+            });
 
+            if let Some(replication_count) = overflow_amount {
+                // secondary -> primary replication always happens at the beginning of the data
+                let primary = self.cursor.data_ptr().as_ptr();
+                // add the size of the ring to the primary pointer to get into the secondary
+                // message
+                let secondary = primary.add(ring_size as _);
+
+                // copy the secondary into the primary
                 self.replicate(secondary, primary, replication_count as _);
             }
         }
 
-        self.cursor.release_producer(len);
+        // finally release the len to the consumer
+        self.cursor.release_producer(release_len);
 
+        // wake up the consumer to notify it of progress
         self.wakers.wake();
     }
 
@@ -258,14 +357,22 @@ mod tests {
     use super::*;
     use bolero::check;
 
+    #[cfg(not(kani))]
+    type Counts = Vec<u32>;
+    #[cfg(kani)]
+    type Counts = s2n_quic_core::testing::InlineVec<u32, 2>;
+
     macro_rules! replication_test {
         ($name:ident, $msg:ty) => {
             #[test]
+            #[cfg(any(not(kani), kani_slow))] // the test takes ~15min with ~60GiB memory
+            #[cfg_attr(kani, kani::proof, kani::solver(kissat), kani::unwind(3))]
             fn $name() {
-                check!().with_type::<Vec<u32>>().for_each(|counts| {
-                    let entries = 16;
+                check!().with_type::<Counts>().for_each(|counts| {
+                    let entries = if cfg!(kani) { 2 } else { 16 };
+                    let payload_len = if cfg!(kani) { 2 } else { 128 };
 
-                    let (mut producer, mut consumer) = pair::<$msg>(entries, 100);
+                    let (mut producer, mut consumer) = pair::<$msg>(entries, payload_len);
 
                     let mut counter = 0;
 
