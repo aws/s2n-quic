@@ -49,7 +49,7 @@ jobs:
       - name: Evaluate definitions
         id: definitions
         run: |
-          export MSRV=$(cat rust-toolchain | awk '{$1=$1};1')
+          export MSRV=$(rustup show | awk 'NF' | awk 'END{print $2}')
           echo "msrv=$MSRV"
           echo "msrv=$MSRV" >> $GITHUB_OUTPUT
           export RAW_VERSIONS="stable beta $RUST_NIGHTLY_TOOLCHAIN $MSRV"
@@ -59,7 +59,7 @@ jobs:
           export EXAMPLES=$(find examples/ -maxdepth 1 -mindepth 1 -type d | jq -R | jq -sc)
           echo "examples=$EXAMPLES"
           echo "examples=$EXAMPLES" >> $GITHUB_OUTPUT
-          export CRATES=$(find find quic common -name *Cargo.toml | jq -R | jq -sc)
+          export CRATES=$(find quic common -name *Cargo.toml | jq -R | jq -sc)
           echo "crates=$CRATES"
           echo "crates=$CRATES" >> $GITHUB_OUTPUT
 
