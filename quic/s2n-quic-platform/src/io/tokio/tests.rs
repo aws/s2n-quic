@@ -168,6 +168,8 @@ async fn runtime<A: ToSocketAddrs>(
     Ok((io, rx_addr.into()))
 }
 
+/// The tokio IO provider allows the application to configure different sockets for rx
+/// and tx. This function will accept optional TX addresses to test this functionality.
 async fn test<A: ToSocketAddrs>(
     server_rx_addr: A,
     server_tx_addr: Option<A>,
