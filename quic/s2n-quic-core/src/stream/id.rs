@@ -59,7 +59,7 @@ impl StreamId {
     /// assert_eq!(3u64, stream_id.as_varint().as_u64());
     /// ```
     #[inline]
-    pub fn initial(initator: endpoint::Type, stream_type: StreamType) -> StreamId {
+    pub fn initial(initiator: endpoint::Type, stream_type: StreamType) -> StreamId {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-2.1
         //# The two least significant bits from a stream ID therefore identify a
         //# stream as one of four types, as summarized in Table 1.
@@ -78,7 +78,7 @@ impl StreamId {
 
         match (
             stream_type == StreamType::Bidirectional,
-            initator == endpoint::Type::Client,
+            initiator == endpoint::Type::Client,
         ) {
             (true, true) => StreamId(VarInt::from_u32(0)),
             (true, false) => StreamId(VarInt::from_u32(1)),

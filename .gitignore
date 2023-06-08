@@ -10,3 +10,5 @@ Cargo.lock
 .DS_Store
 /.idea
 dhat-heap.json
+flamegraph.svg
+perf.data*

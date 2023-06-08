@@ -10,7 +10,7 @@
 ./scripts/perf/run
 ```
 
-## Generating a flamegraph with a specific downoad and upload size
+## Generating a flamegraph with a specific download and upload size
 
 ```bash
 ./scripts/perf/run 123 456
