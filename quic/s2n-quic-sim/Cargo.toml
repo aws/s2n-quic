@@ -30,7 +30,7 @@ structopt = "0.3"
 toml = "0.7"
 # >0.6.1 breaks compatibility with 1.63
 # See https://github.com/aws/s2n-quic/issues/1735
-toml_datetime = "=0.6.1"
+toml_datetime = "=0.6.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # >0.4.1 breaks compatibility with 1.63
