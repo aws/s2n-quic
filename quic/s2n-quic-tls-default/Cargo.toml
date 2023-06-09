@@ -11,7 +11,7 @@ license = "Apache-2.0"
 exclude = ["corpus.tar.gz"]
 
 [target.'cfg(unix)'.dependencies]
-s2n-quic-tls = { version = "=0.21.0", path = "../s2n-quic-tls" }
+s2n-quic-tls = { version = "=0.22.0", path = "../s2n-quic-tls" }
 
 [target.'cfg(not(unix))'.dependencies]
-s2n-quic-rustls = { version = "=0.21.0", path = "../s2n-quic-rustls" }
+s2n-quic-rustls = { version = "=0.22.0", path = "../s2n-quic-rustls" }
