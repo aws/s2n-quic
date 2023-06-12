@@ -771,17 +771,19 @@ impl<Config: endpoint::Config> Manager<Config> {
         // older than the largest acked packet, but not old enough to be considered lost yet
         self.loss_timer.cancel();
 
-        let (persistent_congestion_duration, sent_packets_to_remove) =
+        let (persistent_congestion_duration, lost_packets) =
             self.detect_lost_packets(now, context, publisher);
 
-        self.remove_lost_packets(
-            now,
-            persistent_congestion_duration,
-            sent_packets_to_remove,
-            random_generator,
-            context,
-            publisher,
-        );
+        if let Some(lost_packets) = lost_packets {
+            self.remove_lost_packets(
+                now,
+                persistent_congestion_duration,
+                lost_packets,
+                random_generator,
+                context,
+                publisher,
+            );
+        }
     }
 
     fn detect_lost_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
@@ -789,19 +791,18 @@ impl<Config: endpoint::Config> Manager<Config> {
         now: Timestamp,
         context: &mut Ctx,
         publisher: &mut Pub,
-    ) -> (Duration, Vec<PacketDetails<packet_info_type!()>>) {
+    ) -> (Duration, Option<PacketNumberRange>) {
         let largest_acked_packet = self
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
-        // TODO: Investigate a more efficient mechanism for managing sent packets to remove
-        //       See: https://github.com/aws/s2n-quic/issues/1075
-        let mut sent_packets_to_remove = Vec::new();
         let mut persistent_congestion_calculator = PersistentCongestionCalculator::new(
             context.path().rtt_estimator.first_rtt_sample(),
             context.path_id(),
         );
 
+        let mut smallest_lost_packet = None;
+        let mut largest_lost_packet = None;
         for (unacked_packet_number, unacked_sent_info) in self.sent_packets.iter() {
             if unacked_packet_number > largest_acked_packet {
                 // sent_packets is ordered by packet number, so all remaining packets will be larger
@@ -835,7 +836,10 @@ impl<Config: endpoint::Config> Manager<Config> {
             //#        acknowledged packet (Section 6.1.1), or it was sent long enough in
             //#        the past (Section 6.1.2).
             if time_threshold_exceeded || packet_number_threshold_exceeded {
-                sent_packets_to_remove.push((unacked_packet_number, *unacked_sent_info));
+                if smallest_lost_packet.is_none() {
+                    smallest_lost_packet = Some(unacked_packet_number);
+                }
+                largest_lost_packet = Some(unacked_packet_number);
 
                 if unacked_sent_info.congestion_controlled {
                     // The packet is "in-flight", ie congestion controlled
@@ -870,6 +874,14 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
         }
 
+        let sent_packets_to_remove = {
+            if let (Some(start), Some(end)) = (smallest_lost_packet, largest_lost_packet) {
+                Some(PacketNumberRange::new(start, end))
+            } else {
+                None
+            }
+        };
+
         (
             persistent_congestion_calculator.persistent_congestion_duration(),
             sent_packets_to_remove,
@@ -880,7 +892,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         now: Timestamp,
         persistent_congestion_duration: Duration,
-        sent_packets_to_remove: Vec<PacketDetails<packet_info_type!()>>,
+        lost_packets: PacketNumberRange,
         random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
@@ -890,9 +902,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         let mut prev_lost_packet_number = None;
 
         // Remove the lost packets and account for the bytes on the proper congestion controller
-        for (packet_number, sent_info) in sent_packets_to_remove {
+        for (packet_number, sent_info) in self.sent_packets.remove_range(lost_packets) {
             let path = context.path_mut_by_id(sent_info.path_id);
-            self.sent_packets.remove(packet_number);
 
             //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
             //# A sender that does not have state for all packet
