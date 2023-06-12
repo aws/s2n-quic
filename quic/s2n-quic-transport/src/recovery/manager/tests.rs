@@ -1715,34 +1715,36 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
         .is_some());
 
     now += Duration::from_secs(10);
-    let sent_packets_to_remove = vec![
-        (
-            space.new_packet_number(VarInt::from_u8(9)),
-            SentPacketInfo::new(
-                true,
-                1,
-                now,
-                AckElicitation::Eliciting,
-                first_path_id,
-                ecn,
-                transmission::Mode::Normal,
-                Default::default(),
-            ),
+    let sent_packets_to_remove = PacketNumberRange::new(
+        space.new_packet_number(VarInt::from_u8(9)),
+        space.new_packet_number(VarInt::from_u8(10)),
+    );
+    manager.sent_packets.insert(
+        space.new_packet_number(VarInt::from_u8(9)),
+        SentPacketInfo::new(
+            true,
+            1,
+            now,
+            AckElicitation::Eliciting,
+            first_path_id,
+            ecn,
+            transmission::Mode::Normal,
+            Default::default(),
         ),
-        (
-            space.new_packet_number(VarInt::from_u8(9)),
-            SentPacketInfo::new(
-                true,
-                1,
-                now,
-                AckElicitation::Eliciting,
-                second_path_id,
-                ecn,
-                transmission::Mode::Normal,
-                Default::default(),
-            ),
+    );
+    manager.sent_packets.insert(
+        space.new_packet_number(VarInt::from_u8(10)),
+        SentPacketInfo::new(
+            true,
+            1,
+            now,
+            AckElicitation::Eliciting,
+            second_path_id,
+            ecn,
+            transmission::Mode::Normal,
+            Default::default(),
         ),
-    ];
+    );
 
     // Trigger:
     context.set_path_id(second_path_id);
