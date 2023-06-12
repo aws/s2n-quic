@@ -92,14 +92,14 @@ impl<T: Message> tx::Tx for Tx<T> {
         };
 
         let mut capacity = 0;
-        let mut first_occupied = None;
+        let mut first_with_free_slots = None;
         for (idx, channel) in this.channels.iter_mut().enumerate() {
             // try to make one more effort to acquire capacity for sending
             let count = channel.acquire(u32::MAX) as usize;
 
-            if count > 0 && first_occupied.is_none() {
+            if count > 0 && first_with_free_slots.is_none() {
                 // find the first channel that had capacity
-                first_occupied = Some(idx);
+                first_with_free_slots = Some(idx);
             }
 
             capacity += count;
@@ -108,7 +108,9 @@ impl<T: Message> tx::Tx for Tx<T> {
         // mark that we're still full so we need to poll and wake up next iteration
         this.is_full = capacity == 0;
 
-        let channel_index = first_occupied.unwrap_or(this.channels.len());
+        // start with the first queue that has free slots, otherwise set the index to the length,
+        // which will return an AtCapacity error immediately.
+        let channel_index = first_with_free_slots.unwrap_or(this.channels.len());
 
         // query the maximum number of segments we can fill at this point in time
         //
@@ -136,28 +138,56 @@ impl<T: Message> tx::Tx for Tx<T> {
         // The only reason we would be returning an error is if a channel closed. This could either
         // be because the endpoint is shutting down or one of the tasks panicked. Either way, we
         // don't know what the cause is here so we don't have any events to emit.
-        // take the first free descriptor, we should have at least one item
     }
 }
 
 /// Tracks the current state of a GSO message
 #[derive(Debug, Default)]
 pub struct GsoSegment<Handle> {
+    /// The path handle of the current GSO segment being written
+    ///
+    /// This is used to determine if future messages should be included in this payload or need a
+    /// separate packet.
     handle: Handle,
+    /// The value of the ecn markings for the current GSO segment being written.
+    ///
+    /// This is used to determine if future messages should be included in this payload or need a
+    /// separate packet.
     ecn: ExplicitCongestionNotification,
+    /// The number of segments that have been written
     count: usize,
+    /// The size of each segment.
+    ///
+    /// Note that the last segment can be smaller than the previous ones and will result in a flush
     size: usize,
 }
 
 pub struct TxQueue<'a, T: Message> {
     channels: &'a mut [Producer<T>],
+    /// The channel index that we are currently operating on.
+    ///
+    /// This will be incremented after each channel is filled until it exceeds the len of `channels`.
     channel_index: usize,
+    /// The message index into the current channel that we are operating on.
+    ///
+    /// This is incremented after each message is finished until it exceeds the acquired free
+    /// slots, after which the `channel_index` is incremented.
     message_index: usize,
+    /// The number of messages in the current channel that need to be released to notify the
+    /// consumer.
+    ///
+    /// This is to avoid calling `release` for each message and waking up the socket task too much.
     pending_release: u32,
+    /// The current GSO segment we are filling, if any
     gso_segment: Option<GsoSegment<T::Handle>>,
+    /// The maximum number of GSO segments that can be written
     max_segments: usize,
+    /// The maximum MTU for any given packet
     max_mtu: usize,
+    /// The maximum number of packets that can be sent in the current iteration
     capacity: usize,
+    /// Used to track if we have filled up the producer queue and waiting on free slots to be
+    /// released by the consumer.
     is_full: &'a mut bool,
 }
 
@@ -209,72 +239,63 @@ impl<'a, T: Message> TxQueue<'a, T> {
 
         let payload_len = prev_message.payload_len();
 
-        unsafe {
+        let buffer = unsafe {
+            // Create a slice the `message` can write into. This avoids having to update the
+            // payload length and worrying about panic safety.
+
+            let payload = prev_message.payload_ptr_mut();
+
             // Safety: all payloads should have enough capacity to extend max_segments *
             // gso.size
-            prev_message.set_payload_len(payload_len + gso.size);
-        }
-
-        // allow the message to write up to `gso.size` bytes
-        let buffer = &mut T::payload_mut(prev_message)[payload_len..];
+            let current_payload = payload.add(payload_len);
+            core::slice::from_raw_parts_mut(current_payload, gso.size)
+        };
         let buffer = tx::PayloadBuffer::new(buffer);
 
-        match message.write_payload(buffer, gso.count).and_then(|size| {
-            // we don't want to send empty packets
-            if size == 0 {
-                Err(tx::Error::EmptyPayload)
-            } else {
-                Ok(size)
-            }
-        }) {
-            Err(err) => {
-                unsafe {
-                    // revert the len to what it was before
-                    prev_message.set_payload_len(payload_len);
-                }
-                Err(err)
-            }
-            Ok(size) => {
-                debug_assert_ne!(size, 0, "payloads should never be empty");
+        let size = message.write_payload(buffer, gso.count)?;
 
-                unsafe {
-                    debug_assert!(
-                        gso.size >= size,
-                        "the payload tried to write more than available"
-                    );
-                    // set the len to the actual amount written to the payload
-                    prev_message.set_payload_len(payload_len + size.min(gso.size));
-                }
-                // increment the number of segments that we've written
-                gso.count += 1;
-
-                debug_assert!(
-                    gso.count <= max_segments,
-                    "{} cannot exceed {}",
-                    gso.count,
-                    max_segments
-                );
-
-                // the last segment can be smaller but we can't write any more if it is
-                let size_mismatch = gso.size != size;
-
-                // we're bounded by the max_segments amount
-                let at_segment_limit = gso.count >= max_segments;
-
-                // we also can't write more data than u16::MAX
-                let at_payload_limit = gso.size * (gso.count + 1) > u16::MAX as usize;
-
-                // if we've hit any limits, then flush the GSO information to the message
-                if size_mismatch || at_segment_limit || at_payload_limit {
-                    self.flush_gso();
-                }
-
-                Ok(Ok(tx::Outcome {
-                    len: size,
-                    index: 0,
-                }))
-            }
+        // we don't want to send empty packets
+        if size == 0 {
+            return Err(tx::Error::EmptyPayload);
         }
+
+        unsafe {
+            debug_assert!(
+                gso.size >= size,
+                "the payload tried to write more than available"
+            );
+            // Set the len to the actual amount written to the payload. In case there is a bug,
+            // take the min anyway so we don't have errors elsewhere.
+            prev_message.set_payload_len(payload_len + size.min(gso.size));
+        }
+        // increment the number of segments that we've written
+        gso.count += 1;
+
+        debug_assert!(
+            gso.count <= max_segments,
+            "{} cannot exceed {}",
+            gso.count,
+            max_segments
+        );
+
+        // the last segment can be smaller but we can't write any more if it is
+        let size_mismatch = gso.size != size;
+
+        // we're bounded by the max_segments amount
+        let at_segment_limit = gso.count >= max_segments;
+
+        // we also can't write more data than u16::MAX
+        let at_payload_limit = gso.size * (gso.count + 1) > u16::MAX as usize;
+
+        // if we've hit any limits, then flush the GSO information to the message
+        if size_mismatch || at_segment_limit || at_payload_limit {
+            self.flush_gso();
+        }
+
+        Ok(Ok(tx::Outcome {
+            len: size,
+            index: 0,
+        }))
     }
 
     /// Flushes the current GSO message, if any

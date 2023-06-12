@@ -97,7 +97,6 @@ impl<T: Message> rx::Rx for Rx<T> {
         // The only reason we would be returning an error is if a channel closed. This could either
         // be because the endpoint is shutting down or one of the tasks panicked. Either way, we
         // don't know what the cause is here so we don't have any events to emit.
-        // take the first free descriptor, we should have at least one item
     }
 }
 
@@ -117,8 +116,13 @@ impl<'a, T: Message> rx::Queue for RxQueue<'a, T> {
             let len = channel.acquire(u32::MAX);
 
             let data = channel.data();
+            debug_assert_eq!(data.len(), len as usize);
+
             for message in data {
                 // call the `on_packet` function for each message received
+                //
+                // NOTE: it's important that we process all of the messages in the queue as the
+                //       channel is completely drained here.
                 if let Some(message) = message.rx_read(self.local_address) {
                     message.for_each(&mut on_packet);
                 }
