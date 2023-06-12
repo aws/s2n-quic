@@ -171,7 +171,7 @@ pub struct TxQueue<'a, T: Message> {
     /// The message index into the current channel that we are operating on.
     ///
     /// This is incremented after each message is finished until it exceeds the acquired free
-    /// slots, after which the `channel_index` is incremented.
+    /// slots, after which the `channel_index` is incremented (and message_index is reset to zero).
     message_index: usize,
     /// The number of messages in the current channel that need to be released to notify the
     /// consumer.
