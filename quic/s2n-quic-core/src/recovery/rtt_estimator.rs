@@ -251,9 +251,11 @@ impl RttEstimator {
         //# smoothed_rtt = 7/8 * smoothed_rtt + 1/8 * adjusted_rtt
         //# rttvar_sample = abs(smoothed_rtt - adjusted_rtt)
         //# rttvar = 3/4 * rttvar + 1/4 * rttvar_sample
-        self.smoothed_rtt = weighted_average(self.smoothed_rtt, adjusted_rtt, 8);
+        //#
+        //# this logic has been updated to follow the errata reported in https://www.rfc-editor.org/errata/eid7539
         let rttvar_sample = abs_difference(self.smoothed_rtt, adjusted_rtt);
         self.rttvar = weighted_average(self.rttvar, rttvar_sample, 4);
+        self.smoothed_rtt = weighted_average(self.smoothed_rtt, adjusted_rtt, 8);
     }
 
     /// Calculates the persistent congestion threshold used for determining
@@ -522,7 +524,7 @@ mod test {
         assert_eq!(rtt_estimator.first_rtt_sample, Some(now));
         assert_eq!(
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::ApplicationData),
-            Duration::from_micros(1551246)
+            Duration::from_micros(1620466)
         );
     }
 
