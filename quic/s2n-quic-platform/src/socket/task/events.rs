@@ -74,7 +74,7 @@ impl crate::syscall::SocketEvents for TxEvents {
                 ControlFlow::Break(())
             }
             #[cfg(s2n_quic_platform_gso)]
-            _ if errno::errno().0 == libc::EIO => {
+            _ if error.raw_os_error() == Some(libc::EIO) => {
                 // on platforms that don't support GSO we need to disable it and mark the packet as
                 // "sent" even though we weren't able to.
                 self.count += 1;
