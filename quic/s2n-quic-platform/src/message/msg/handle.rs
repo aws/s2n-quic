@@ -46,7 +46,9 @@ impl Handle {
                 let mut pkt_info = unsafe { core::mem::zeroed::<libc::in_pktinfo>() };
                 pkt_info.ipi_spec_dst.s_addr = u32::from_ne_bytes((*ip).into());
 
-                msghdr.encode_cmsg(libc::IPPROTO_IP, libc::IP_PKTINFO, pkt_info);
+                msghdr
+                    .encode_cmsg(libc::IPPROTO_IP, libc::IP_PKTINFO, pkt_info)
+                    .unwrap();
             }
             SocketAddress::IpV6(addr) => {
                 use s2n_quic_core::inet::Unspecified;
@@ -61,7 +63,9 @@ impl Handle {
 
                 pkt_info.ipi6_addr.s6_addr = (*ip).into();
 
-                msghdr.encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, pkt_info);
+                msghdr
+                    .encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, pkt_info)
+                    .unwrap();
             }
         }
     }

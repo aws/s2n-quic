@@ -269,6 +269,7 @@ mod tests {
         ($name:ident, $ring:path) => {
             /// A VecDeque is used to assert the behavior matches the Queue
             #[test]
+            #[cfg_attr(miri, ignore)]
             fn $name() {
                 check!()
                     .with_generator((0usize..16, gen::<Vec<Operation>>()))

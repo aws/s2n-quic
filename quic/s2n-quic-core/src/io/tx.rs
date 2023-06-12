@@ -184,6 +184,40 @@ impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message for (Handle, Payload) {
     }
 }
 
+impl<Handle: path::Handle, Payload: AsRef<[u8]>> Message
+    for (Handle, ExplicitCongestionNotification, Payload)
+{
+    type Handle = Handle;
+
+    fn path_handle(&self) -> &Self::Handle {
+        &self.0
+    }
+
+    fn ecn(&mut self) -> ExplicitCongestionNotification {
+        self.1
+    }
+
+    fn delay(&mut self) -> Duration {
+        Default::default()
+    }
+
+    fn ipv6_flow_label(&mut self) -> u32 {
+        0
+    }
+
+    fn can_gso(&self, segment_len: usize, _segment_count: usize) -> bool {
+        segment_len >= self.2.as_ref().len()
+    }
+
+    fn write_payload(
+        &mut self,
+        mut buffer: PayloadBuffer,
+        _gso_offset: usize,
+    ) -> Result<usize, Error> {
+        buffer.write(self.2.as_ref())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

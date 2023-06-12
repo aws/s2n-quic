@@ -9,6 +9,7 @@ use core::{
 use s2n_quic_core::{
     endpoint::{self, CloseError},
     event,
+    inet::ExplicitCongestionNotification,
     io::{rx, tx},
     path::Handle as _,
     time::{Clock, Duration, Timestamp},
@@ -75,7 +76,8 @@ impl<const IS_SERVER: bool> Endpoint for TestEndpoint<IS_SERVER> {
                 _ => {
                     let payload = id.to_be_bytes();
                     let addr = self.handle;
-                    let msg = (addr, payload);
+                    let ecn = ExplicitCongestionNotification::Ect0;
+                    let msg = (addr, ecn, payload);
                     if queue.push(msg).is_ok() {
                         *tx_time = Some(now);
                     } else {
@@ -208,11 +210,13 @@ static IPV4_LOCALHOST: &str = "127.0.0.1:0";
 static IPV6_LOCALHOST: &str = "[::1]:0";
 
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn ipv4_test() -> io::Result<()> {
     test(IPV4_LOCALHOST, None, IPV4_LOCALHOST, None).await
 }
 
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn ipv4_two_socket_test() -> io::Result<()> {
     test(
         IPV4_LOCALHOST,
@@ -224,6 +228,7 @@ async fn ipv4_two_socket_test() -> io::Result<()> {
 }
 
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn ipv6_test() -> io::Result<()> {
     let result = test(IPV6_LOCALHOST, None, IPV6_LOCALHOST, None).await;
 
@@ -237,6 +242,7 @@ async fn ipv6_test() -> io::Result<()> {
 }
 
 #[tokio::test]
+#[cfg_attr(miri, ignore)]
 async fn ipv6_two_socket_test() -> io::Result<()> {
     let result = test(
         IPV6_LOCALHOST,

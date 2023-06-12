@@ -431,6 +431,8 @@ mod tests {
             addrs.push(buffers.generate_addr());
         }
 
-        assert_debug_snapshot!(addrs);
+        if !cfg!(miri) {
+            assert_debug_snapshot!(addrs);
+        }
     }
 }
