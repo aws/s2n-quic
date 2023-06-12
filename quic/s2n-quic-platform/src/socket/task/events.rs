@@ -81,11 +81,16 @@ impl crate::syscall::SocketEvents for TxEvents {
 
                 self.gso.disable();
 
+                // We `continue` instead of break because it's very unlikely the message would be
+                // accepted at a later time, so we just discard the packet.
                 ControlFlow::Continue(())
             }
             _ => {
                 // ignore all other errors and just consider the packet sent
                 self.count += 1;
+
+                // We `continue` instead of break because it's very unlikely the message would be
+                // accepted at a later time, so we just discard the packet.
                 ControlFlow::Continue(())
             }
         }

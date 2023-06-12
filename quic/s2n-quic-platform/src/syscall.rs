@@ -23,9 +23,17 @@ pub enum SocketType {
 
 pub trait SocketEvents {
     /// Called when `count` packets are completed
+    ///
+    /// If `Continue` is returned, the socket will assume the packet was acceptable and continue
+    /// with the remaining packets. If `Break` is returned, the syscall stop looping and yield to
+    /// the caller.
     fn on_complete(&mut self, count: usize) -> ControlFlow<(), ()>;
 
     /// Called when an error occurs on a socket
+    ///
+    /// If `Continue` is returned, the socket will discard the packet and continue
+    /// with the remaining packets. If `Break` is returned, the syscall will assume the current
+    /// packet can be retried and yield to the caller.
     fn on_error(&mut self, error: io::Error) -> ControlFlow<(), ()>;
 }
 

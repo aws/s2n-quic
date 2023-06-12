@@ -25,7 +25,11 @@ pub trait Socket<T: Message> {
 
 pub struct Receiver<T: Message, S: Socket<T>> {
     ring: Producer<T>,
+    /// Implementation of a socket that fills free slots in the ring buffer
     rx: S,
+    /// The number of messages that have been filled but not yet released to the consumer.
+    ///
+    /// This value is to avoid calling `release` too much and excessively waking up the consumer.
     pending: u32,
 }
 
@@ -44,17 +48,28 @@ where
     }
 
     #[inline]
-    fn poll_ring(&mut self, watermark: u32, cx: &mut Context) -> Poll<Option<usize>> {
+    fn poll_ring(&mut self, watermark: u32, cx: &mut Context) -> Poll<Result<(), ()>> {
         loop {
-            let count = ready!(self.ring.poll_acquire(watermark, cx));
+            let count = match self.ring.poll_acquire(watermark, cx) {
+                Poll::Ready(count) => count,
+                Poll::Pending if self.pending == 0 => {
+                    return if !self.ring.is_open() {
+                        Err(()).into()
+                    } else {
+                        Poll::Pending
+                    };
+                }
+                Poll::Pending => 0,
+            };
 
-            // if the number of items increased since last time then yield
+            // if the number of free slots increased since last time then yield
             if count > self.pending {
-                return Some(self.pending as usize).into();
+                return Ok(()).into();
             }
 
-            // if we didn't get any items we can release the ones that we currently have and poll
-            // again
+            // If there is no additional capacity available (i.e. we have filled all slots),
+            // then release those filled slots for the consumer to read from. Once
+            // the consumer reads, we will have spare capacity to populate again.
             self.release();
         }
     }
@@ -80,13 +95,12 @@ where
         let mut events = events::RxEvents::default();
 
         while !events.take_blocked() {
-            let pending = match ready!(this.poll_ring(u32::MAX, cx)) {
-                Some(entries) => entries,
-                None => return None.into(),
-            };
+            if ready!(this.poll_ring(u32::MAX, cx)).is_err() {
+                return None.into();
+            }
 
-            // slice the ring data by the number of items we've already received
-            let entries = &mut this.ring.data()[pending..];
+            // slice the ring data by the number of slots we've already filled
+            let entries = &mut this.ring.data()[this.pending as usize..];
 
             // perform the recv syscall
             match this.rx.recv(cx, entries, &mut events) {
