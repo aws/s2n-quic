@@ -56,13 +56,11 @@ impl tx::Socket<Message> for UdpSocket {
         entries: &mut [Message],
         events: &mut tx::Events,
     ) -> io::Result<()> {
-        let mut index = 0;
-        while let Some(entry) = entries.get_mut(index) {
+        for entry in entries {
             let target = (*entry.remote_address()).into();
             let payload = entry.payload_mut();
             match self.poll_send_to(cx, payload, target) {
                 Poll::Ready(Ok(_)) => {
-                    index += 1;
                     if events.on_complete(1).is_break() {
                         return Ok(());
                     }
@@ -93,8 +91,7 @@ impl rx::Socket<Message> for UdpSocket {
         entries: &mut [Message],
         events: &mut rx::Events,
     ) -> io::Result<()> {
-        let mut index = 0;
-        while let Some(entry) = entries.get_mut(index) {
+        for entry in entries {
             let payload = entry.payload_mut();
             let mut buf = io::ReadBuf::new(payload);
             match self.poll_recv_from(cx, &mut buf) {
@@ -105,7 +102,6 @@ impl rx::Socket<Message> for UdpSocket {
                     }
                     entry.set_remote_address(&(addr.into()));
 
-                    index += 1;
                     if events.on_complete(1).is_break() {
                         return Ok(());
                     }

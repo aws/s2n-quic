@@ -56,12 +56,25 @@ impl<S: AsRawFd, M: UnixMessage> tx::Socket<M> for AsyncFd<S> {
         entries: &mut [M],
         events: &mut tx::Events,
     ) -> io::Result<()> {
+        // Call the syscall for the socket
+        //
+        // NOTE: we usually wrap this in a `AsyncFdReadyGuard::try_io`. However, here we just
+        //       assume the socket is ready in the general case and then fall back to querying
+        //       socket readiness if it's not. This can avoid some things like having to construct
+        //       a `std::io::Error` with `WouldBlock` and dereferencing the registration.
         M::send(self.get_ref().as_raw_fd(), entries, events);
 
+        // yield back if we weren't blocked
         if !events.is_blocked() {
             return Ok(());
         }
 
+        // * First iteration we need to clear socket readiness since the `send` call returned a
+        // `WouldBlock`.
+        // * Second iteration we need to register the waker, assuming the socket readiness was
+        // cleared.
+        //   * If we got a `Ready` anyway, then clear the blocked status and have the caller try
+        //   again.
         for i in 0..2 {
             match self.poll_write_ready(cx) {
                 Poll::Ready(guard) => {
@@ -92,6 +105,12 @@ impl<S: AsRawFd, M: UnixMessage> rx::Socket<M> for AsyncFd<S> {
         entries: &mut [M],
         events: &mut rx::Events,
     ) -> io::Result<()> {
+        // Call the syscall for the socket
+        //
+        // NOTE: we usually wrap this in a `AsyncFdReadyGuard::try_io`. However, here we just
+        //       assume the socket is ready in the general case and then fall back to querying
+        //       socket readiness if it's not. This can avoid some things like having to construct
+        //       a `std::io::Error` with `WouldBlock` and dereferencing the registration.
         M::recv(
             self.get_ref().as_raw_fd(),
             SocketType::NonBlocking,
@@ -99,10 +118,17 @@ impl<S: AsRawFd, M: UnixMessage> rx::Socket<M> for AsyncFd<S> {
             events,
         );
 
+        // yield back if we weren't blocked
         if !events.is_blocked() {
             return Ok(());
         }
 
+        // * First iteration we need to clear socket readiness since the `recv` call returned a
+        // `WouldBlock`.
+        // * Second iteration we need to register the waker, assuming the socket readiness was
+        // cleared.
+        //   * If we got a `Ready` anyway, then clear the blocked status and have the caller try
+        //   again.
         for i in 0..2 {
             match self.poll_read_ready(cx) {
                 Poll::Ready(guard) => {
