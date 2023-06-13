@@ -42,11 +42,12 @@ jobs:
       # examples is populated by
       # find all child folders in the examples directory
       # jq -R - raw content is passed in (not json, just strings)
-      # jq -sc - slurp the content into a single object, -c enabled compact
+      # jq -s - slurp the content into an object
       # jq '. += ' adds the s2n-quic-xdp crate to the list of crates we build
       # Many of the xdp crates have much more complex build processes, so we
       # don't try to build all of them.
-      # output onto a single line, github will fail to parse the multi line.
+      # jq -c - output the object in (c)ompact mode on a single line, github
+      # will fail to parse multi line output
       #
       # the output is echo'd to make debugging easier
       - name: Evaluate definitions
@@ -62,7 +63,7 @@ jobs:
           export EXAMPLES=$(find examples/ -maxdepth 1 -mindepth 1 -type d | jq -R | jq -sc)
           echo "examples=$EXAMPLES"
           echo "examples=$EXAMPLES" >> $GITHUB_OUTPUT
-          export CRATES=$(find quic common tools -name *Cargo.toml | jq -R | jq -sc | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]')
+          export CRATES=$(find quic common tools -name *Cargo.toml | jq -R | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]' | jq -c)
           echo "crates=$CRATES"
           echo "crates=$CRATES" >> $GITHUB_OUTPUT
 
