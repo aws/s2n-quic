@@ -41,12 +41,14 @@ pub type Handle = path::Tuple;
 impl MessageTrait for Message {
     type Handle = Handle;
 
+    const SUPPORTS_GSO: bool = false;
+    const SUPPORTS_ECN: bool = false;
+    const SUPPORTS_FLOW_LABELS: bool = false;
+
     #[inline]
     fn alloc(entries: u32, payload_len: u32, offset: usize) -> super::Storage {
         unsafe { alloc(entries, payload_len, offset) }
     }
-
-    const SUPPORTS_GSO: bool = false;
 
     fn payload_len(&self) -> usize {
         self.payload_len
