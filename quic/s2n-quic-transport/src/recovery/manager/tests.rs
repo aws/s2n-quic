@@ -1904,7 +1904,7 @@ fn persistent_congestion() {
     // part of the persistent congestion period.
     context.path_mut().rtt_estimator.update_rtt(
         Duration::from_millis(10),
-        Duration::from_millis(700),
+        Duration::from_millis(600),
         time::now(),
         true,
         space,
