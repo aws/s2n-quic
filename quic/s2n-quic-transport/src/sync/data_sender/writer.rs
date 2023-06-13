@@ -61,7 +61,7 @@ impl FrameWriter for Stream {
             offset,
             is_last_frame: false,
             is_fin: true,
-            data: &[][..],
+            data: &[0u8; 0][..],
         };
 
         // the length is always 0 so we don't need to trim the data

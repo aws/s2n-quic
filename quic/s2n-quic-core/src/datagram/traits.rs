@@ -107,6 +107,10 @@ pub trait Packet {
     /// per datagram.
     fn write_datagram(&mut self, data: &[u8]) -> Result<(), WriteError>;
 
+    /// Writes a single datagram to a packet from a collection of buffers. This function should be
+    /// called per datagram.
+    fn write_datagram_vectored(&mut self, data: &[&[u8]]) -> Result<(), WriteError>;
+
     /// Returns whether or not there is reliable data waiting to be sent.
     ///
     /// Use method to decide whether or not to cede the packet space to the stream data.

@@ -267,7 +267,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             version: context.quic_version,
             destination_connection_id,
             source_connection_id: context.path_manager[context.path_id].local_connection_id,
-            token: &[][..],
+            token: &[0u8; 0][..],
             packet_number,
             payload,
         };
