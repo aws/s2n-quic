@@ -138,6 +138,25 @@ encoder_value_slice!(&mut [u8], |self| self);
 encoder_value_slice!(DecoderBuffer<'_>, |self| self.as_less_safe_slice());
 encoder_value_slice!(DecoderBufferMut<'_>, |self| self.as_less_safe_slice());
 
+impl EncoderValue for &'_ [&'_ [u8]] {
+    #[inline]
+    fn encode<E: Encoder>(&self, encoder: &mut E) {
+        for slice in self.iter() {
+            encoder.write_slice(slice)
+        }
+    }
+
+    #[inline]
+    fn encoding_size(&self) -> usize {
+        self.iter().map(|s| s.len()).sum()
+    }
+
+    #[inline]
+    fn encoding_size_for_encoder<E: Encoder>(&self, _encoder: &E) -> usize {
+        self.iter().map(|s| s.len()).sum()
+    }
+}
+
 impl EncoderValue for () {
     #[inline]
     fn encode<E: Encoder>(&self, _encoder: &mut E) {}

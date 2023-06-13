@@ -118,11 +118,16 @@ impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
 
     /// Writes a single datagram to a packet
     fn write_datagram(&mut self, data: &[u8]) -> Result<(), WriteError> {
-        if data.len() as u64 > self.max_datagram_payload {
+        self.write_datagram_vectored(&[data])
+    }
+
+    fn write_datagram_vectored(&mut self, data: &[&[u8]]) -> Result<(), WriteError> {
+        let data_len = data.iter().map(|d| d.len()).sum::<usize>();
+        if data_len as u64 > self.max_datagram_payload {
             return Err(WriteError::ExceedsPeerTransportLimits);
         }
+
         let remaining_capacity = self.context.remaining_capacity();
-        let data_len = data.len();
         let is_last_frame =
             remaining_capacity == frame::datagram::DATAGRAM_TAG.encoding_size() + data_len;
         let frame = frame::Datagram {

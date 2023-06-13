@@ -914,10 +914,15 @@ mod tests {
         }
 
         fn write_datagram(&mut self, data: &[u8]) -> Result<(), WriteError> {
-            if data.len() > self.remaining_capacity {
+            self.write_datagram_vectored(&[data])
+        }
+
+        fn write_datagram_vectored(&mut self, data: &[&[u8]]) -> Result<(), WriteError> {
+            let data_len = data.iter().map(|d| d.len()).sum::<usize>();
+            if data_len > self.remaining_capacity {
                 return Err(WriteError::ExceedsPacketCapacity);
             }
-            self.remaining_capacity -= data.len();
+            self.remaining_capacity -= data_len;
             Ok(())
         }
 

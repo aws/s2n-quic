@@ -381,7 +381,7 @@ mod tests {
                 version,
                 destination_connection_id: &[1u8, 2, 3][..],
                 source_connection_id: &[4u8, 5, 6, 7][..],
-                token: &[][..],
+                token: &[0u8; 0][..],
                 packet_number: pn(PacketNumberSpace::Initial),
                 payload: &[1u8, 2, 3, 4, 5][..],
             }
@@ -407,7 +407,7 @@ mod tests {
                 // Maximum length connection IDs that may be valid in future versions
                 destination_connection_id: &[1u8; size_of::<u8>()][..],
                 source_connection_id: &[2u8; size_of::<u8>()][..],
-                token: &[][..],
+                token: &[0u8; 0][..],
                 packet_number: pn(PacketNumberSpace::Initial),
                 payload: payload.as_slice(),
             }

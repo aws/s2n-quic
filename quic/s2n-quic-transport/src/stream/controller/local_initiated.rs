@@ -426,7 +426,7 @@ impl ValueToFrameWriter<()> for OpenNotifyFrameWriter {
             is_last_frame: false,
             is_fin: false,
             offset: VarInt::from_u32(0),
-            data: &[][..],
+            data: &[0u8; 0][..],
         })
     }
 }
