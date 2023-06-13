@@ -251,8 +251,8 @@ impl RttEstimator {
         //# smoothed_rtt = 7/8 * smoothed_rtt + 1/8 * adjusted_rtt
         //# rttvar_sample = abs(smoothed_rtt - adjusted_rtt)
         //# rttvar = 3/4 * rttvar + 1/4 * rttvar_sample
-        //#
-        //# this logic has been updated to follow the errata reported in https://www.rfc-editor.org/errata/eid7539
+
+        // this logic has been updated to follow the errata reported in https://www.rfc-editor.org/errata/eid7539
         let rttvar_sample = abs_difference(self.smoothed_rtt, adjusted_rtt);
         self.rttvar = weighted_average(self.rttvar, rttvar_sample, 4);
         self.smoothed_rtt = weighted_average(self.smoothed_rtt, adjusted_rtt, 8);
