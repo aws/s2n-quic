@@ -1,2 +1,3 @@
 [workspace]
 members = ["s2n-quic-xdp", "tester", "xtask"]
+resolver = "2"
