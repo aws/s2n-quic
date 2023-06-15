@@ -19,6 +19,9 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Set override
+        run: rustup override stable
+
       - uses: camshaft/install@v1
         with:
           crate: mdbook
