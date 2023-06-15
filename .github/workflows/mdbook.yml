@@ -31,11 +31,15 @@ jobs:
       with:
         profile: minimal
         toolchain: stable
-    - name: Run cargo check
+    - name: Run cargo version
       uses: actions-rs/cargo@v1
       with:
         command: |
           version
+    - name: Run cargo version
+      uses: actions-rs/cargo@v1
+      with:
+        command: |
           install --version ${{env.MDBOOK_VERSION}} mdbook
 #     - name: Install mdBook
 #       run: |
