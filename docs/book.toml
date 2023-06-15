@@ -6,7 +6,7 @@ src = "."
 title = "s2n-quic Guide"
 
 [build]
-build-dir = "../target/guide"
+build-dir = "../target/book"
 
 [output.html]
 git-repository-url = "https://github.com/aws/s2n-quic"
