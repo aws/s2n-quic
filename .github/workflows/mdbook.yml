@@ -36,7 +36,6 @@ jobs:
     - run: rustup show profile
     - uses: actions-rs/toolchain@v1.0.7
       with:
-        toolchain: stable
         profile: minimal
 #     - name: Install mdBook
 #       run: |
