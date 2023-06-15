@@ -1,0 +1,14 @@
+[book]
+authors = ["AWS s2n"]
+language = "en"
+multilingual = false
+src = "."
+title = "s2n-quic Guide"
+
+[build]
+build-dir = "../target/book"
+
+[output.html]
+git-repository-url = "https://github.com/aws/s2n-quic"
+edit-url-template = "https://github.com/aws/s2n-quic/edit/main/docs/{path}"
+site-url = "/s2n-quic/"
