@@ -35,9 +35,8 @@ jobs:
     steps:
     - uses: actions/checkout@master
     - uses: actions-rs/toolchain@v1.0.7
-      id: toolchain
       with:
-        toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+        toolchain: ${RUST_NIGHTLY_TOOLCHAIN}
         profile: minimal
     - name: Install mdBook
       run: |
