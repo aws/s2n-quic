@@ -1,0 +1,14 @@
+artifacts/
+build/
+corpus/
+crashes/
+target/
+**/*.rs.bk
+Cargo.lock
+*.tar.gz
+/.history
+.DS_Store
+/.idea
+dhat-heap.json
+flamegraph.svg
+perf.data*
