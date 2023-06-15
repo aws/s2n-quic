@@ -46,8 +46,8 @@ jobs:
         uses: actions/configure-pages@v3
       - name: Build with mdBook
         run: mdbook build
+      - run: pwd
       - name: Upload artifact
-        run: pwd
         uses: actions/upload-pages-artifact@v1
         with:
           path: ./docs/book
