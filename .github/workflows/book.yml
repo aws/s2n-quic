@@ -8,11 +8,21 @@ on:
 
 name: book
 
+env:
+  CDN: https://dnglbrstg7yg.cloudfront.net
+
+# By default depandabot only receives read permissions. Explicitly give it write
+# permissions which is needed by the ouzi-dev/commit-status-updater task.
+#
+# Updating status is relatively safe (doesnt modify source code) and caution
+# should we taken before adding more permissions.
+permissions:
+  contents: write
+  statuses: write
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v3.5.3
