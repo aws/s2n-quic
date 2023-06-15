@@ -130,6 +130,12 @@ mod gso_disabled {
         pub fn max_segments(&self) -> usize {
             1
         }
+
+        #[inline]
+        #[allow(dead_code)] // this may or may not be used on certain platforms
+        pub fn disable(&self) {
+            // it's already disabled
+        }
     }
 
     impl From<MaxSegments> for Gso {
