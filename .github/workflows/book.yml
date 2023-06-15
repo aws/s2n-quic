@@ -17,6 +17,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3.5.3
 
+      - uses: dtolnay/rust-toolchain@stable
+
       - uses: camshaft/install@v1
         with:
           crate: mdbook
