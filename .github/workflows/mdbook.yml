@@ -27,7 +27,7 @@ jobs:
         working-directory: docs
     steps:
     - uses: actions/checkout@master
-    - uses: actions-rs/toolchain@v1.0.7
+    - uses: actions-rs/toolchain@v1
       with:
         profile: minimal
         toolchain: stable
