@@ -31,11 +31,10 @@ jobs:
       with:
         profile: minimal
         toolchain: stable
-    - name: Test rust install
-      run: |
-        rustc -V
-        cargo -V
-        rustup -V
+    - name: Run cargo check
+      uses: actions-rs/cargo@v1
+      with:
+        command: check
     - name: Install mdBook
       run: |
         url="https://github.com/rust-lang/mdbook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
