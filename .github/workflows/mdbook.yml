@@ -35,7 +35,7 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: version
-    - name: Run cargo version
+    - name: Run cargo install mdbook
       uses: actions-rs/cargo@v1
       with:
         command: install 
