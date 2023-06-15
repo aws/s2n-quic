@@ -32,20 +32,20 @@ jobs:
       run:
         working-directory: docs
     steps:
-      - uses: actions/checkout@v3
-      - name: Install Rust
-        run: |
-          rustup set profile minimal
-         rustup toolchain install stable
-          rustup default stable
-      - name: Install mdBook
-        run: |
-          url="https://github.com/rust-lang/mdbook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+    - uses: actions/checkout@master
+    - name: Install Rust
+      run: |
+        rustup set profile minimal
+        rustup toolchain install stable
+        rustup default stable
+    - name: Install mdBook
+      run: |
+        url="https://github.com/rust-lang/mdbook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
 #          mkdir bin
-          curl -sSL $url | tar -xz --directory=bin
-          echo "$(pwd)/bin" >> $GITHUB_PATH 
-      - name: Run tests
-        run: mdbook test
+        curl -sSL $url | tar -xz --directory=bin
+        echo "$(pwd)/bin" >> $GITHUB_PATH 
+    - name: Run tests
+      run: mdbook test
 #        - name: Setup Pages
 #         id: pages
 #         uses: actions/configure-pages@v3
