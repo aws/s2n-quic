@@ -40,8 +40,14 @@ jobs:
           rustup default stable
       - name: Install mdBook
         run: |
-          cargo install --version ${MDBOOK_VERSION} mdbook
-#       - name: Setup Pages
+          tag=$(curl 'https://api.github.com/repos/rust-lang/mdbook/releases/${MDBOOK_VERSION}' | jq -r '.tag_name')
+          url="https://github.com/rust-lang/mdbook/releases/download/${tag}/mdbook-${tag}-x86_64-unknown-linux-gnu.tar.gz"
+          mkdir bin
+          curl -sSL $url | tar -xz --directory=bin
+          echo "$(pwd)/bin" >> $GITHUB_PATH 
+      - name: Run tests
+        run: mdbook test
+#        - name: Setup Pages
 #         id: pages
 #         uses: actions/configure-pages@v3
 #       - name: Build with mdBook
