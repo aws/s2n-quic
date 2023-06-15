@@ -1,11 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(dead_code)] // TODO remove once used
-
-use super::{SocketEvents, SocketType};
+use super::{SocketEvents, SocketType, UnixMessage};
+use crate::message::Message as _;
 use libc::msghdr;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
+
+impl UnixMessage for msghdr {
+    #[inline]
+    fn send<E: SocketEvents>(fd: RawFd, entries: &mut [Self], events: &mut E) {
+        send(&fd, entries, events)
+    }
+
+    #[inline]
+    fn recv<E: SocketEvents>(fd: RawFd, ty: SocketType, entries: &mut [Self], events: &mut E) {
+        recv(&fd, ty, entries, events)
+    }
+}
 
 #[inline]
 pub fn send<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: SocketEvents>(
@@ -139,7 +150,13 @@ pub fn recv<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
         }
 
         let cf = match result {
-            Ok(_) => events.on_complete(1),
+            Ok(payload_len) => {
+                // update the message based on the return size of the syscall
+                unsafe {
+                    msg.set_payload_len(payload_len.min(u16::MAX as _).max(0) as _);
+                }
+                events.on_complete(1)
+            }
             Err(err) => events.on_error(err),
         };
 

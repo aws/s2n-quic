@@ -25,8 +25,8 @@ impl Message {
         ExplicitCongestionNotification::default()
     }
 
-    pub(crate) fn remote_address(&self) -> Option<SocketAddress> {
-        Some(self.address)
+    pub(crate) fn remote_address(&self) -> &SocketAddress {
+        &self.address
     }
 
     pub(crate) fn set_remote_address(&mut self, remote_address: &SocketAddress) {
