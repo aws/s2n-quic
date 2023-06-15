@@ -47,8 +47,8 @@ jobs:
         run: mdbook build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
-        with:
-          path: ./book
+          with:
+            path: ../target
 
   # Deployment job
   deploy:
