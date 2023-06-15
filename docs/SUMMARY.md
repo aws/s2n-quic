@@ -4,12 +4,16 @@
 
 # User Guide
 
-- [Introduction](user-guide.md)
+- [Introduction](user-guide/user-guide.md)
 - [Installation](user-guide/installation.md)
+
+# Examples
+
+- [Introduction](examples/examples.md)
+- [async-client-hello-callback](examples/async-client-hello-callback.md)
 
 # Developer Guide
 
-- [Introduction](dev-guide.md)
 - [Setup](dev-guide/setup.md)
-- [Continuous Integration](ci.md)
+- [Continuous Integration](dev-guide/ci.md)
 - [Kani](dev-guide/kani.md)
