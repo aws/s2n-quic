@@ -1,0 +1,69 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+name: book
+
+env:
+  CDN: https://dnglbrstg7yg.cloudfront.net
+
+# By default depandabot only receives read permissions. Explicitly give it write
+# permissions which is needed by the ouzi-dev/commit-status-updater task.
+#
+# Updating status is relatively safe (doesnt modify source code) and caution
+# should we taken before adding more permissions.
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3.5.3
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Set override
+        run: rustup override set stable
+
+      - uses: camshaft/install@v1
+        with:
+          crate: mdbook
+
+      - name: Build book
+        run: ./scripts/book
+
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4.4.2
+        if: github.event_name == 'push'
+        with:
+          folder: target/book
+
+      - uses: aws-actions/configure-aws-credentials@v2.2.0
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-1
+
+      - name: Upload to S3
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        id: s3
+        run: |
+          TARGET="${{ github.sha }}/book"
+          aws s3 sync target/book "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
+          URL="$CDN/$TARGET/index.html"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
+
+      - uses: ouzi-dev/commit-status-updater@v2.0.1
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        with:
+          name: "book / url"
+          status: "success"
+          url: "${{ steps.s3.outputs.URL }}"

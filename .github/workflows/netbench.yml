@@ -222,7 +222,7 @@ jobs:
           name: netbench-report
           path: reports
 
-      - uses: aws-actions/configure-aws-credentials@v2.1.0
+      - uses: aws-actions/configure-aws-credentials@v2.2.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
