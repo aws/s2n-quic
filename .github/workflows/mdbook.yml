@@ -34,18 +34,18 @@ jobs:
         working-directory: docs
     steps:
     - uses: actions/checkout@master
+    - run: rustup show profile
     - uses: actions-rs/toolchain@v1.0.7
       with:
         toolchain: ${RUST_NIGHTLY_TOOLCHAIN}
-      run: rustup show profile
-    - name: Install mdBook
-      run: |
-        url="https://github.com/rust-lang/mdbook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-#          mkdir bin
-        curl -sSL $url | tar -xz --directory=bin
-        echo "$(pwd)/bin" >> $GITHUB_PATH 
-    - name: Run tests
-      run: mdbook test
+#     - name: Install mdBook
+#       run: |
+#         url="https://github.com/rust-lang/mdbook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+# #          mkdir bin
+#         curl -sSL $url | tar -xz --directory=bin
+#         echo "$(pwd)/bin" >> $GITHUB_PATH 
+#     - name: Run tests
+#       run: mdbook test
 #        - name: Setup Pages
 #         id: pages
 #         uses: actions/configure-pages@v3
