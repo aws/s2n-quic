@@ -28,7 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MDBOOK_VERSION: 0.4.21
-      RUST_NIGHTLY_TOOLCHAIN: nightly-2023-06-12
     defaults:
       run:
         working-directory: docs
@@ -37,10 +36,8 @@ jobs:
     - run: rustup show profile
     - uses: actions-rs/toolchain@v1.0.7
       with:
-        toolchain: ${RUST_NIGHTLY_TOOLCHAIN}
+        toolchain: stable
         profile: minimal
-        override: true
-        components: rstfmt
 #     - name: Install mdBook
 #       run: |
 #         url="https://github.com/rust-lang/mdbook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
