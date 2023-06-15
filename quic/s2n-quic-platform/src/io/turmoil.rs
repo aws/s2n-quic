@@ -74,9 +74,12 @@ impl Io {
         let payload_len: usize = max_mtu.into();
         let payload_len = payload_len as u32;
 
-        let (rx, rx_producer) = {
-            let entries = 1024;
+        // This number is somewhat arbitrary but it's a decent number of messages without it consuming
+        // large in memory. Eventually, it might be a good idea to expose this value in the
+        // builder, but we'll wait until someone asks for it :).
+        let entries = 1024;
 
+        let (rx, rx_producer) = {
             let mut consumers = vec![];
 
             let (producer, consumer) = ring::pair(entries, payload_len);
@@ -88,23 +91,26 @@ impl Io {
         };
 
         let (tx, tx_consumer) = {
-            let entries = 1024;
-
             let mut producers = vec![];
 
             let (producer, consumer) = ring::pair(entries, payload_len);
             producers.push(producer);
 
             let gso = crate::features::Gso::default();
+
+            // GSO is not supported by turmoil so disable it
             gso.disable();
+
             let tx = tx::Tx::new(producers, gso, max_mtu);
 
             (tx, consumer)
         };
 
+        // Spawn a task that does the actual socket calls and coordinates with the event loop
+        // through the ring buffers
         tokio::spawn(run_io(socket, rx_producer, tx_consumer));
 
-        let el = EventLoop {
+        let event_loop = EventLoop {
             clock,
             rx,
             tx,
@@ -112,7 +118,7 @@ impl Io {
         }
         .start();
 
-        Ok((el, local_addr))
+        Ok((event_loop, local_addr))
     }
 
     pub fn start<E: Endpoint<PathHandle = PathHandle>>(
@@ -153,19 +159,26 @@ async fn run_io(
 
     loop {
         let socket_ready = socket.readable();
-        let consumer_ready = poll_fn(|cx| consumer.poll_acquire(1, cx));
+        let consumer_ready = poll_fn(|cx| consumer.poll_acquire(u32::MAX, cx));
         let producer_ready = async {
+            // Only poll the producer if we need more capacity - otherwise we would constantly wake
+            // up
             if poll_producer {
-                poll_fn(|cx| producer.poll_acquire(1, cx)).await
+                poll_fn(|cx| producer.poll_acquire(u32::MAX, cx)).await
             } else {
                 core::future::pending().await
             }
         };
+        // The socket task doesn't have any application wakeups to handle so just make it pending
+        let application_wakeup = core::future::pending();
 
+        // We replace the timer future with the `socket_ready` instead, since we don't have a
+        // timer here. Other than the application wakeup, Select doesn't really treat any of
+        // the futures special.
         let is_readable = Select::new(
             consumer_ready,
             producer_ready,
-            core::future::pending(),
+            application_wakeup,
             socket_ready,
         )
         .await
@@ -175,8 +188,11 @@ async fn run_io(
         if is_readable {
             let mut count = 0;
             for entry in producer.data() {
+                // Since UDP sockets are stateless, the only errors we should back is a WouldBlock.
+                // If we get any errors, we'll try again later.
                 if let Ok((len, addr)) = socket.try_recv_from(entry.payload_mut()) {
                     count += 1;
+                    // update the packet information
                     entry.set_remote_address(&(addr.into()));
                     unsafe {
                         entry.set_payload_len(len);
@@ -186,6 +202,7 @@ async fn run_io(
                 }
             }
 
+            // release the received messages to the consumer
             producer.release(count);
 
             // only poll the producer if we need entries
@@ -198,16 +215,21 @@ async fn run_io(
                 let addr = *entry.remote_address();
                 let addr: std::net::SocketAddr = addr.into();
                 let payload = entry.payload_mut();
+                // Since UDP sockets are stateless, the only errors we should back is a WouldBlock.
+                // If we get any errors, we'll try again later.
                 if socket.try_send_to(payload, addr).is_ok() {
                     count += 1;
                 } else {
                     break;
                 }
             }
+
+            // release capacity back to the producer
             consumer.release(count);
         }
 
-        if !(producer.is_open() || consumer.is_open()) {
+        // check to see if the rings are open, otherwise we need to shut down the task
+        if !(producer.is_open() && consumer.is_open()) {
             return Ok(());
         }
     }
