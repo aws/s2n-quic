@@ -38,18 +38,21 @@ jobs:
       with:
         profile: minimal
         toolchain: stable
-    - run: |
+    - name: Test rust install
+      run: |
         rustc -V
         cargo -V
         rustup -V
-#     - name: Install mdBook
-#       run: |
-#         url="https://github.com/rust-lang/mdbook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-# #          mkdir bin
-#         curl -sSL $url | tar -xz --directory=bin
-#         echo "$(pwd)/bin" >> $GITHUB_PATH 
-#     - name: Run tests
-#       run: mdbook test
+    - name: Install mdBook
+      run: |
+        url="https://github.com/rust-lang/mdbook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+#          mkdir bin
+        curl -sSL $url | tar -xz --directory=bin
+        echo "$(pwd)/bin" >> $GITHUB_PATH 
+    - name: Run tests
+      run: |
+        mdbook -V
+        mdbook test
 #        - name: Setup Pages
 #         id: pages
 #         uses: actions/configure-pages@v3
