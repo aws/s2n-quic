@@ -38,7 +38,7 @@ jobs:
       with:
         profile: minimal
         toolchain: stable
-      run: |
+    - run: |
         rustc
         cargo
         rustup
