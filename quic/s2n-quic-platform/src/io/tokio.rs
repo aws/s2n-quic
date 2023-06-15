@@ -73,7 +73,8 @@ impl Io {
             },
         });
 
-        // try to use the tokio runtime handle if provided
+        // try to use the tokio runtime handle if provided, otherwise try to use the implicit tokio
+        // runtime in the current scope of the application.
         let handle = if let Some(handle) = handle {
             handle
         } else {
