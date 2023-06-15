@@ -100,11 +100,6 @@ mod gso_enabled {
         }
 
         #[inline]
-        pub fn default_max_segments(&self) -> usize {
-            self.max_segments().min(MaxSegments::default().0.into())
-        }
-
-        #[inline]
         pub fn disable(&self) {
             self.0.store(1, Ordering::Relaxed);
         }
@@ -137,11 +132,7 @@ mod gso_disabled {
         }
 
         #[inline]
-        pub fn default_max_segments(&self) -> usize {
-            1
-        }
-
-        #[inline]
+        #[allow(dead_code)] // this may or may not be used on certain platforms
         pub fn disable(&self) {
             // it's already disabled
         }

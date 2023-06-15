@@ -8,13 +8,25 @@ use core::ops::ControlFlow;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::io;
 
+/// Calls the given libc function and wraps the result in an `io::Result`.
+macro_rules! libc {
+    ($fn: ident ( $($arg: expr),* $(,)* ) ) => {{
+        let res = unsafe { libc::$fn($($arg, )*) };
+        if res < 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(res)
+        }
+    }};
+}
+
 #[cfg(s2n_quic_platform_socket_mmsg)]
 pub mod mmsg;
 #[cfg(s2n_quic_platform_socket_msg)]
 pub mod msg;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(unix), allow(dead_code))]
+#[allow(dead_code)] // this isn't constructed on some platforms
 pub enum SocketType {
     Blocking,
     NonBlocking,
@@ -214,7 +226,6 @@ pub fn configure_pktinfo(rx_socket: &Socket) -> bool {
     success
 }
 
-#[allow(dead_code)] // TODO remove once used
 pub fn configure_gro(rx_socket: &Socket) -> bool {
     let mut success = false;
 
