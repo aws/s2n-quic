@@ -36,7 +36,7 @@ jobs:
       - name: Install Rust
         run: |
           rustup set profile minimal
-          rustup toolchain install stable
+          rustup toolchain install 1.63.0
           rustup default stable
 #       - name: Install mdBook
 #         run: |
