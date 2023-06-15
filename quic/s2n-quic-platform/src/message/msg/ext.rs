@@ -43,8 +43,11 @@ impl Ext for msghdr {
                 let ecn = ecn as libc::c_uchar;
 
                 self.encode_cmsg(libc::IPPROTO_IP, libc::IP_TOS, ecn)
+                    .unwrap()
             }
-            SocketAddress::IpV6(_) => self.encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_TCLASS, ecn),
+            SocketAddress::IpV6(_) => self
+                .encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_TCLASS, ecn)
+                .unwrap(),
         };
     }
 

@@ -5,10 +5,8 @@ use crate::message::{cmsg, cmsg::Encoder, Message as MessageTrait};
 use alloc::vec::Vec;
 use core::{
     alloc::Layout,
-    cell::UnsafeCell,
     mem::{size_of, size_of_val, zeroed},
     pin::Pin,
-    ptr::NonNull,
 };
 use libc::{c_void, iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
@@ -100,7 +98,8 @@ impl MessageTrait for msghdr {
     #[inline]
     fn set_segment_size(&mut self, size: usize) {
         type SegmentType = u16;
-        self.encode_cmsg(libc::SOL_UDP, libc::UDP_SEGMENT, size as SegmentType);
+        self.encode_cmsg(libc::SOL_UDP, libc::UDP_SEGMENT, size as SegmentType)
+            .unwrap();
     }
 
     #[inline]
@@ -111,13 +110,29 @@ impl MessageTrait for msghdr {
         // reset the address
         self.set_remote_address(&SocketAddress::IpV6(Default::default()));
 
-        if cfg!(debug_assertions) && self.msg_controllen == 0 {
-            // make sure nothing was written to the control message if it was set to 0
-            assert!(
-                core::slice::from_raw_parts_mut(self.msg_control as *mut u8, cmsg::MAX_LEN)
-                    .iter()
-                    .all(|v| *v == 0)
-            )
+        #[inline]
+        unsafe fn check_cmsg(msghdr: &msghdr) {
+            if cfg!(debug_assertions) {
+                let ptr = msghdr.msg_control as *mut u8;
+                let cmsg = core::slice::from_raw_parts_mut(ptr, cmsg::MAX_LEN);
+                // make sure nothing was written to the control message if it was set to 0
+                #[cfg(not(kani))]
+                {
+                    assert!(cmsg.iter().all(|v| *v == 0), "msg_control was not cleared");
+                }
+
+                #[cfg(kani)]
+                {
+                    let index: usize = kani::any();
+                    kani::assume(index < cmsg.len());
+                    assert_eq!(cmsg[index], 0);
+                }
+            }
+        }
+
+        // make sure we didn't get any data written without setting the len
+        if self.msg_controllen == 0 {
+            check_cmsg(self);
         }
 
         // reset the control messages if it isn't set to the default value
@@ -127,12 +142,10 @@ impl MessageTrait for msghdr {
         let msg_controllen = self.msg_controllen as usize;
 
         if msg_controllen != cmsg::MAX_LEN {
-            let cmsg = core::slice::from_raw_parts_mut(self.msg_control as *mut u8, msg_controllen);
-
-            for byte in cmsg.iter_mut() {
-                *byte = 0;
-            }
+            core::slice::from_raw_parts_mut(self.msg_control as *mut u8, msg_controllen).fill(0);
         }
+
+        check_cmsg(self);
 
         self.msg_controllen = cmsg::MAX_LEN as _;
     }
@@ -206,11 +219,21 @@ impl MessageTrait for msghdr {
     ) -> Result<usize, tx::Error> {
         let payload = self.payload_mut();
 
+        let max_len = payload.len();
         let len = message.write_payload(tx::PayloadBuffer::new(payload), 0)?;
 
+        debug_assert_ne!(len, 0);
+        debug_assert!(len <= max_len);
+        let len = len.min(max_len);
+
+        debug_assert_eq!(
+            cmsg::MAX_LEN,
+            self.msg_controllen as _,
+            "message should be reset before writing"
+        );
+        self.msg_controllen = 0;
+
         unsafe {
-            debug_assert!(len <= payload.len());
-            let len = len.min(payload.len());
             self.set_payload_len(len);
         }
 
@@ -222,6 +245,12 @@ impl MessageTrait for msghdr {
     }
 }
 
+/// Allocates a region of memory holding `entries` number of `T` messages, each with `payload_len`
+/// payloads.
+///
+/// # Safety
+///
+/// * `T` can be initialized with zero bytes and still be valid
 #[inline]
 pub(super) unsafe fn alloc<T: Copy + Sized, F: Fn(&mut T) -> &mut msghdr>(
     entries: u32,
@@ -234,47 +263,41 @@ pub(super) unsafe fn alloc<T: Copy + Sized, F: Fn(&mut T) -> &mut msghdr>(
         layout::<T>(entries, payload_len, offset);
 
     // allocate a single contiguous block of memory
-    let ptr = alloc::alloc::alloc_zeroed(layout);
-
-    // compute the end pointer of the whole allocation so we can check ourselves on the pointer
-    // arithmetic.
-    let end_pointer = ptr.add(layout.size());
-
-    // make sure the allocation didn't fail
-    let ptr = NonNull::new(ptr).expect("could not allocate socket message ring");
+    let storage = super::Storage::new(layout);
 
     {
+        let ptr = storage.as_ptr();
+
         // calculate each of the pointers we need to set up a message
-        let mut entry_ptr = ptr.as_ptr().add(entry_offset) as *mut UnsafeCell<T>;
-        let mut header_ptr = ptr.as_ptr().add(header_offset) as *mut UnsafeCell<Header>;
-        let mut payload_ptr = ptr.as_ptr().add(payload_offset) as *mut UnsafeCell<u8>;
+        let mut entry_ptr = ptr.add(entry_offset) as *mut T;
+        let mut header_ptr = ptr.add(header_offset) as *mut Header;
+        let mut payload_ptr = ptr.add(payload_offset) as *mut u8;
 
         for _ in 0..entries {
             // for each message update all of the pointers to the correct locations
 
-            let entry = on_entry((*entry_ptr).get_mut());
-            (*header_ptr)
-                .get_mut()
-                .update(entry, &*payload_ptr, payload_len);
+            let entry = on_entry(&mut *entry_ptr);
+            (*header_ptr).update(entry, payload_ptr, payload_len);
 
             // increment the pointers for the next iteration
             entry_ptr = entry_ptr.add(1);
-            debug_assert!(end_pointer >= entry_ptr as *mut u8);
             header_ptr = header_ptr.add(1);
-            debug_assert!(end_pointer >= header_ptr as *mut u8);
             payload_ptr = payload_ptr.add(payload_len as _);
-            debug_assert!(end_pointer >= payload_ptr as *mut u8);
+
+            // make sure the pointers are within the bounds of the allocation
+            storage.check_bounds(entry_ptr);
+            storage.check_bounds(header_ptr);
+            storage.check_bounds(payload_ptr);
         }
 
         // replicate the primary messages into the secondary region
-        let primary = ptr.as_ptr().add(entry_offset) as *mut T;
+        let primary = ptr.add(entry_offset) as *mut T;
         let secondary = primary.add(entries as _);
-        debug_assert!(end_pointer >= secondary.add(entries as _) as *mut u8);
+        storage.check_bounds(secondary.add(entries as _));
         core::ptr::copy_nonoverlapping(primary, secondary, entries as _);
     }
 
-    let slice = core::slice::from_raw_parts_mut(ptr.as_ptr() as *mut UnsafeCell<u8>, layout.size());
-    Box::from_raw(slice).into()
+    storage
 }
 
 /// Computes the following layout
@@ -292,12 +315,11 @@ fn layout<T: Copy + Sized>(
     payload_len: u32,
     offset: usize,
 ) -> (Layout, usize, usize, usize) {
-    let cursor = Layout::array::<UnsafeCell<u8>>(offset).unwrap();
-    let headers = Layout::array::<UnsafeCell<Header>>(entries as _).unwrap();
-    let payloads =
-        Layout::array::<UnsafeCell<u8>>(entries as usize * payload_len as usize).unwrap();
+    let cursor = Layout::array::<u8>(offset).unwrap();
+    let headers = Layout::array::<Header>(entries as _).unwrap();
+    let payloads = Layout::array::<u8>(entries as usize * payload_len as usize).unwrap();
     // double the number of entries we allocate to support the primary/secondary regions
-    let entries = Layout::array::<UnsafeCell<T>>((entries * 2) as usize).unwrap();
+    let entries = Layout::array::<T>((entries * 2) as usize).unwrap();
     let (layout, entry_offset) = cursor.extend(entries).unwrap();
     let (layout, header_offset) = layout.extend(headers).unwrap();
     let (layout, payload_offset) = layout.extend(payloads).unwrap();
@@ -305,35 +327,36 @@ fn layout<T: Copy + Sized>(
 }
 
 /// A structure for holding data pointed to in the [`libc::msghdr`] struct.
-#[repr(C)]
 struct Header {
-    pub iovec: Aligned<iovec>,
-    pub msg_name: Aligned<sockaddr_in6>,
-    pub cmsg: Aligned<[u8; cmsg::MAX_LEN]>,
+    pub iovec: iovec,
+    pub msg_name: sockaddr_in6,
+    pub cmsg: cmsg::Storage,
 }
-
-/// Ensures the `T` is aligned to the nearest 8 bytes
-///
-/// This is required for each type to make sure the pointer is well-aligned
-#[repr(C, align(8))]
-struct Aligned<T>(UnsafeCell<T>);
 
 impl Header {
     /// sets all of the pointers of the provided `entry` to the correct locations
-    unsafe fn update(&mut self, entry: &mut msghdr, payload: &UnsafeCell<u8>, payload_len: u32) {
-        let iovec = self.iovec.0.get_mut();
+    unsafe fn update(&mut self, entry: &mut msghdr, payload: *mut u8, payload_len: u32) {
+        let iovec = &mut self.iovec;
 
-        iovec.iov_base = payload.get() as *mut _;
+        iovec.iov_base = payload as *mut _;
         iovec.iov_len = payload_len as _;
 
         let entry = &mut *entry;
 
-        entry.msg_name = self.msg_name.0.get() as *mut _;
+        entry.msg_name = &mut self.msg_name as *mut _ as *mut _;
         entry.msg_namelen = size_of_val(&self.msg_name) as _;
-        entry.msg_iov = self.iovec.0.get();
+        entry.msg_iov = &mut self.iovec as *mut _;
         entry.msg_iovlen = 1;
-        entry.msg_control = self.cmsg.0.get() as *mut _;
-        entry.msg_controllen = cmsg::MAX_LEN as _;
+        entry.msg_controllen = self.cmsg.len() as _;
+        entry.msg_control = self.cmsg.as_mut_ptr() as *mut _;
+
+        // make sure that the control pointer is well-aligned
+        debug_assert_eq!(
+            entry
+                .msg_control
+                .align_offset(core::mem::align_of::<cmsg::Storage>()),
+            0
+        );
     }
 }
 
@@ -357,7 +380,7 @@ pub struct Storage<Payloads> {
 
     // this field holds references to allocated msg_names, but is never read directly
     #[allow(dead_code)]
-    pub(crate) cmsgs: Pin<Box<[u8]>>,
+    pub(crate) cmsgs: Pin<Box<[cmsg::Storage]>>,
 
     /// The maximum payload for any given message
     mtu: usize,
@@ -411,19 +434,16 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
         let mut payloads = Pin::new(payloads);
         let mut iovecs = Pin::new(vec![unsafe { zeroed() }; capacity].into_boxed_slice());
         let mut msg_names = Pin::new(vec![unsafe { zeroed() }; capacity].into_boxed_slice());
-        let mut cmsgs = Pin::new(vec![0u8; capacity * cmsg::MAX_LEN].into_boxed_slice());
+        let mut cmsgs = Pin::new(vec![cmsg::Storage::default(); capacity].into_boxed_slice());
 
         // double message capacity to enable contiguous access
         let mut messages = Vec::with_capacity(capacity * 2);
 
         let mut payload_buf = &mut payloads.as_mut()[..];
-        let mut cmsg_buf = &mut cmsgs.as_mut()[..];
 
         for index in 0..capacity {
             let (payload, remaining) = payload_buf.split_at_mut(mtu * max_gso);
             payload_buf = remaining;
-            let (cmsg, remaining) = cmsg_buf.split_at_mut(cmsg::MAX_LEN);
-            cmsg_buf = remaining;
 
             let mut iovec = unsafe { zeroed::<iovec>() };
             iovec.iov_base = payload.as_mut_ptr() as _;
@@ -434,8 +454,8 @@ impl<Payloads: crate::buffer::Buffer> Ring<Payloads> {
                 (&mut iovecs[index]) as *mut _,
                 (&mut msg_names[index]) as *mut _ as *mut _,
                 size_of::<sockaddr_in6>(),
-                cmsg as *mut _ as *mut _,
-                cmsg::MAX_LEN,
+                cmsgs[index].as_mut_ptr() as *mut _,
+                cmsgs[index].len(),
             );
 
             messages.push(msg);

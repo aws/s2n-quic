@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{cell::UnsafeCell, ffi::c_void, pin::Pin};
+use core::{alloc::Layout, ffi::c_void, ptr::NonNull};
 use s2n_quic_core::{inet::datagram, io::tx, path};
 
 #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))]
@@ -25,7 +25,49 @@ pub mod default {
     }
 }
 
-pub type Storage = Pin<Box<[UnsafeCell<u8>]>>;
+/// Tracks allocations of message ring buffer state
+pub struct Storage {
+    ptr: NonNull<u8>,
+    layout: Layout,
+}
+
+impl Storage {
+    #[inline]
+    pub fn new(layout: Layout) -> Self {
+        unsafe {
+            let ptr = alloc::alloc::alloc_zeroed(layout);
+            let ptr = NonNull::new(ptr).expect("could not allocate message storage");
+            Self { layout, ptr }
+        }
+    }
+
+    #[inline]
+    pub(crate) fn as_ptr(&self) -> *mut u8 {
+        self.ptr.as_ptr()
+    }
+
+    /// Asserts that the pointer is in bounds of the allocation
+    #[inline]
+    pub(crate) fn check_bounds<T: Sized>(&self, ptr: *mut T) {
+        let start = self.as_ptr();
+        let end = unsafe {
+            // Safety: pointer is allocated with the self.layout
+            start.add(self.layout.size())
+        };
+        let allocation_range = start..=end;
+        let actual_end_ptr = ptr as *mut u8;
+        debug_assert!(allocation_range.contains(&actual_end_ptr));
+    }
+}
+
+impl Drop for Storage {
+    fn drop(&mut self) {
+        unsafe {
+            // Safety: pointer was allocated with self.layout
+            alloc::alloc::dealloc(self.as_ptr(), self.layout)
+        }
+    }
+}
 
 /// An abstract message that can be sent and received on a network
 pub trait Message: 'static + Copy {

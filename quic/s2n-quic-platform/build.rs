@@ -16,6 +16,8 @@ fn main() -> Result<(), Error> {
         }
     }
 
+    let is_miri = std::env::var("CARGO_CFG_MIRI").is_ok();
+
     match env.target_os.as_str() {
         "linux" => {
             supports("gso");
@@ -23,10 +25,21 @@ fn main() -> Result<(), Error> {
             supports("mtu_disc");
             supports("pktinfo");
             supports("tos");
+
+            // miri doesn't support the way we detect syscall support so override it
+            if is_miri {
+                supports("socket_msg");
+                supports("socket_mmsg");
+            }
         }
         "macos" => {
             supports("pktinfo");
             supports("tos");
+
+            // miri doesn't support the way we detect syscall support so override it
+            if is_miri {
+                supports("socket_msg");
+            }
         }
         "android" => {
             supports("mtu_disc");

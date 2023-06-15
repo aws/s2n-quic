@@ -89,7 +89,7 @@ pub fn pair<T: Message>(entries: u32, payload_len: u32) -> (Producer<T>, Consume
     let storage = T::alloc(entries, payload_len, DATA_OFFSET);
 
     let storage = Arc::new(storage);
-    let ptr = NonNull::new(storage.as_ref()[0].get()).unwrap();
+    let ptr = storage.as_ptr();
 
     let wakers = atomic_waker::pair();
 
@@ -335,8 +335,7 @@ impl<T: Message> Producer<T> {
 }
 
 #[inline]
-unsafe fn builder<T: Message>(ptr: NonNull<u8>, size: u32) -> cursor::Builder<T> {
-    let ptr = ptr.as_ptr();
+unsafe fn builder<T: Message>(ptr: *mut u8, size: u32) -> cursor::Builder<T> {
     let producer = ptr.add(PRODUCER_OFFSET) as *mut _;
     let producer = NonNull::new(producer).unwrap();
     let consumer = ptr.add(CONSUMER_OFFSET) as *mut _;
@@ -356,6 +355,10 @@ unsafe fn builder<T: Message>(ptr: NonNull<u8>, size: u32) -> cursor::Builder<T>
 mod tests {
     use super::*;
     use bolero::check;
+    use s2n_quic_core::{
+        inet::{ExplicitCongestionNotification, SocketAddress},
+        path::{Handle as _, LocalAddress, RemoteAddress},
+    };
 
     #[cfg(not(kani))]
     type Counts = Vec<u32>;
@@ -365,8 +368,9 @@ mod tests {
     macro_rules! replication_test {
         ($name:ident, $msg:ty) => {
             #[test]
-            #[cfg(any(not(kani), kani_slow))] // the test takes ~15min with ~60GiB memory
-            #[cfg_attr(kani, kani::proof, kani::solver(kissat), kani::unwind(3))]
+            #[cfg_attr(kani, kani::proof, kani::solver(cadical), kani::unwind(3))]
+            #[cfg(any(not(kani), kani_slow))] // this test takes too much memory for our CI
+                                              // environment
             fn $name() {
                 check!().with_type::<Counts>().for_each(|counts| {
                     let entries = if cfg!(kani) { 2 } else { 16 };
@@ -388,7 +392,17 @@ mod tests {
 
                         producer.release(count);
 
-                        for idx in 0..entries {
+                        #[cfg(kani)]
+                        let ids_to_check = {
+                            let idx: u32 = kani::any();
+                            kani::assume(idx < entries);
+                            idx..idx + 1
+                        };
+
+                        #[cfg(not(kani))]
+                        let ids_to_check = 0..entries;
+
+                        for idx in ids_to_check {
                             let ptr = producer.cursor.data_ptr().as_ptr();
                             unsafe {
                                 let primary = &*ptr.add(idx as _);
@@ -411,4 +425,70 @@ mod tests {
     replication_test!(msg_replication, crate::message::msg::Message);
     #[cfg(s2n_quic_platform_socket_mmsg)]
     replication_test!(mmsg_replication, crate::message::mmsg::Message);
+
+    macro_rules! send_recv_test {
+        ($name:ident, $msg:ty) => {
+            #[test]
+            fn $name() {
+                check!().with_type::<Counts>().for_each(|counts| {
+                    let entries = if cfg!(miri) { 2 } else { 16 };
+                    let payload_len = if cfg!(miri) { 4 } else { 128 };
+
+                    let (mut producer, mut consumer) = pair::<$msg>(entries, payload_len);
+
+                    let mut tx_counter = 0u32;
+                    let mut rx_counter = 0u32;
+
+                    let local_address = LocalAddress::from(SocketAddress::default());
+
+                    for count in counts.iter().copied() {
+                        let count = producer.acquire(count);
+
+                        for entry in &mut producer.data()[..count as usize] {
+                            unsafe {
+                                entry.reset(payload_len as _);
+                            }
+
+                            let mut remote_address = SocketAddress::default();
+                            remote_address.set_port(tx_counter as _);
+                            let remote_address = RemoteAddress::from(remote_address);
+                            let handle =
+                                <$msg as Message>::Handle::from_remote_address(remote_address);
+                            let ecn = ExplicitCongestionNotification::new(tx_counter as _);
+                            let payload = tx_counter.to_le_bytes();
+                            let msg = (handle, ecn, &payload[..]);
+                            entry.tx_write(msg).unwrap();
+                            tx_counter += 1;
+                        }
+
+                        producer.release(count);
+
+                        let count = consumer.acquire(count);
+                        for entry in consumer.data() {
+                            let message = entry.rx_read(&local_address).unwrap();
+                            message.for_each(|header, payload| {
+                                if <$msg>::SUPPORTS_ECN {
+                                    let ecn = ExplicitCongestionNotification::new(rx_counter as _);
+                                    assert_eq!(header.ecn, ecn);
+                                }
+
+                                let counter: &[u8; 4] = (&*payload).try_into().unwrap();
+                                let counter = u32::from_le_bytes(*counter);
+                                assert_eq!(counter, rx_counter);
+
+                                rx_counter += 1;
+                            });
+                        }
+                        consumer.release(count);
+                    }
+                });
+            }
+        };
+    }
+
+    send_recv_test!(simple_send_recv, crate::message::simple::Message);
+    #[cfg(s2n_quic_platform_socket_msg)]
+    send_recv_test!(msg_send_recv, crate::message::msg::Message);
+    #[cfg(s2n_quic_platform_socket_mmsg)]
+    send_recv_test!(mmsg_send_recv, crate::message::mmsg::Message);
 }

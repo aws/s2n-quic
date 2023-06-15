@@ -14,6 +14,9 @@ pub fn send<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
     events: &mut E,
 ) {
     for packet in packets {
+        #[cfg(debug_assertions)]
+        let prev_msg_control_ptr = packet.msg_control;
+
         // macOS doesn't like when msg_control have valid pointers but the len is 0
         //
         // If that's the case here, then set the `msg_control` to null and restore it after
@@ -59,6 +62,14 @@ pub fn send<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
             msg.msg_control = msg_control;
         }
 
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(
+                prev_msg_control_ptr, msg.msg_control,
+                "msg_control pointer was modified by the OS"
+            );
+        }
+
         let cf = match result {
             Ok(_) => events.on_complete(1),
             Err(err) => events.on_error(err),
@@ -83,6 +94,9 @@ pub fn recv<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
     };
 
     for packet in packets {
+        #[cfg(debug_assertions)]
+        let prev_msg_control_ptr = packet.msg_control;
+
         // Safety: calling a libc function is inherently unsafe as rust cannot
         // make any invariant guarantees. This has to be reviewed by humans instead
         // so the [docs](https://linux.die.net/man/2/recmsg) are inlined here:
@@ -115,6 +129,14 @@ pub fn recv<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
         //
         // > These calls return the number of bytes received, or -1 if an error occurred.
         let result = libc!(recvmsg(sockfd, msg, flags));
+
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(
+                prev_msg_control_ptr, msg.msg_control,
+                "msg_control pointer was modified by the OS"
+            );
+        }
 
         let cf = match result {
             Ok(_) => events.on_complete(1),
