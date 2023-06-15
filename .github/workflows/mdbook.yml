@@ -1,10 +1,4 @@
-# Sample workflow for building and deploying a mdBook site to GitHub Pages
-#
-# To get started with mdBook see: https://rust-lang.github.io/mdBook/index.html
-#
-
 on:
-  # Runs on pushes targeting the default branch
   push:
   workflow_dispatch:
 
