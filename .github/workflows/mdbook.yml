@@ -23,13 +23,17 @@ permissions:
 concurrency:
   group: "pages"
   cancel-in-progress: false
-
+    
 jobs:
   # Build job
   build:
     runs-on: ubuntu-latest
     env:
       MDBOOK_VERSION: 0.4.21
+    defaults:
+      run:
+        working-directory: docs
+        shell: bash
     steps:
       - uses: actions/checkout@v3
       - name: Install mdBook
