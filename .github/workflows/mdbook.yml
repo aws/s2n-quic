@@ -38,9 +38,9 @@ jobs:
           rustup set profile minimal
           rustup toolchain install 1.63.0
           rustup default stable
-#       - name: Install mdBook
-#         run: |
-#           cargo install --version ${MDBOOK_VERSION} mdbook
+      - name: Install mdBook
+        run: |
+          cargo install --version ${MDBOOK_VERSION} mdbook
 #       - name: Setup Pages
 #         id: pages
 #         uses: actions/configure-pages@v3
