@@ -5,7 +5,7 @@ use crate::{
     ack::AckManager, contexts::WriteContext, endpoint, recovery, space::CryptoStream, transmission,
 };
 use core::ops::RangeInclusive;
-use s2n_quic_core::packet::number::PacketNumberSpace;
+use s2n_quic_core::{frame::Ping, packet::number::PacketNumberSpace};
 
 pub struct Payload<'a, Config: endpoint::Config> {
     pub ack_manager: &'a mut AckManager,
@@ -46,6 +46,14 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
         if did_send_ack {
             // inform the ack manager the packet is populated
             self.ack_manager.on_transmit_complete(context);
+        }
+
+        // In order to trigger the loss recovery mechanisms during the handshake make all packets
+        // ack-eliciting. This is especially true for the client in order to give the server more
+        // amplification credits.
+        if !context.ack_elicitation().is_ack_eliciting() {
+            // we need to ignore the transmission constraint
+            let _ = context.write_frame_forced(&Ping);
         }
     }
 
