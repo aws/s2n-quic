@@ -131,6 +131,14 @@ impl MessageTrait for msghdr {
         &mut self,
         local_address: &path::LocalAddress,
     ) -> Option<super::RxMessage<Self::Handle>> {
+        if cfg!(test) {
+            assert_eq!(
+                self.msg_flags & libc::MSG_CTRUNC,
+                0,
+                "control message buffers should always have enough capacity"
+            );
+        }
+
         let (mut header, cmsg) = self.header()?;
 
         // only copy the port if we are told the IP address
