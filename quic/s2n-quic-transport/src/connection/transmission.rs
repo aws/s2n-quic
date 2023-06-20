@@ -175,7 +175,16 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             // end, so we check that next. Finally, if there is no ApplicationData or Handshake packet
             // to transmit, the Initial packet itself will be padded.
             let mut pn_space_to_pad = {
-                if !has_transmission(space_manager.initial(), transmission_constraint) {
+                let needs_padding = if Config::ENDPOINT_TYPE.is_client() {
+                    // if we're the client and haven't completed the handshake, we need to pad out packets
+                    // in order to give the server as many amplification credits as possible.
+                    !space_manager.is_handshake_confirmed()
+                } else {
+                    // if we're the server, we only need to pad while we have the initial space
+                    has_transmission(space_manager.initial(), transmission_constraint)
+                };
+
+                if !needs_padding {
                     // There is no Initial packet, so no padding is needed
                     None
                 } else if has_transmission(space_manager.application(), transmission_constraint) {
