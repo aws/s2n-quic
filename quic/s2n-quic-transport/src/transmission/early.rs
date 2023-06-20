@@ -44,26 +44,25 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
             // send PINGs last, since they might not actually be needed if there's an ack-eliciting
             // frame already present in the payload
             self.recovery_manager.on_transmit(context);
+
+            // In order to trigger the loss recovery mechanisms during the handshake make all packets
+            // ack-eliciting. This is especially true for the client in order to give the server more
+            // amplification credits.
+            //
+            // Only send a PING if:
+            // * We're not congestion limited
+            // * The packet isn't already ack-eliciting
+            // * Another frame was written to the context
+            if !context.ack_elicitation().is_ack_eliciting()
+                && start_capacity != context.remaining_capacity()
+            {
+                let _ = context.write_frame(&Ping);
+            }
         }
 
         if did_send_ack {
             // inform the ack manager the packet is populated
             self.ack_manager.on_transmit_complete(context);
-        }
-
-        // In order to trigger the loss recovery mechanisms during the handshake make all packets
-        // ack-eliciting. This is especially true for the client in order to give the server more
-        // amplification credits.
-        // Only send a PING if:
-        // * We're not congestion limited
-        // * The packet isn't already ack-eliciting
-        // * Another frame was written to the context
-        if !context.transmission_constraint().is_congestion_limited()
-            && !context.ack_elicitation().is_ack_eliciting()
-            && start_capacity != context.remaining_capacity()
-        {
-            // we need to ignore the transmission constraint
-            let _ = context.write_frame(&Ping);
         }
     }
 
