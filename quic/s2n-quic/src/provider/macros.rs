@@ -175,7 +175,7 @@ macro_rules! impl_provider_method {
             $(
                 #[$($attr)*]
             )*
-            pub fn $name<T, U>(self, $field: T) -> Result<Builder<impl $trait>, T::Error>
+            pub fn $name<T, U>(self, $field: T) -> Result<Builder<U>, T::Error>
             where
                 T: $field::TryInto,
                 U: $trait,
