@@ -155,6 +155,21 @@ macro_rules! impl_producer {
             self.0.cursor.capacity() as _
         }
 
+        #[inline]
+        pub fn len(&self) -> u32 {
+            self.0.cursor.cached_producer_len()
+        }
+
+        #[inline]
+        pub fn is_empty(&self) -> bool {
+            self.0.cursor.cached_producer_len() == 0
+        }
+
+        #[inline]
+        pub fn is_full(&self) -> bool {
+            self.0.cursor.cached_producer_len() == self.0.cursor.capacity()
+        }
+
         /// Returns the socket associated with the ring
         #[inline]
         pub fn socket(&self) -> &socket::Fd {
@@ -233,6 +248,21 @@ macro_rules! impl_consumer {
             self.0.cursor.capacity() as _
         }
 
+        #[inline]
+        pub fn len(&self) -> u32 {
+            self.0.cursor.cached_consumer_len()
+        }
+
+        #[inline]
+        pub fn is_empty(&self) -> bool {
+            self.0.cursor.cached_consumer_len() == 0
+        }
+
+        #[inline]
+        pub fn is_full(&self) -> bool {
+            self.0.cursor.cached_consumer_len() == self.0.cursor.capacity()
+        }
+
         /// Returns the socket associated with the ring
         #[inline]
         pub fn socket(&self) -> &socket::Fd {
@@ -268,6 +298,25 @@ pub struct Fill(Ring<UmemDescriptor>);
 
 impl Fill {
     impl_producer!(UmemDescriptor, set_fill_ring_size, fill, FILL_RING);
+
+    /// Initializes the ring with the given Umem descriptors
+    ///
+    /// # Panics
+    ///
+    /// This should only be called at initialization and will panic if called on a non-full ring.
+    #[inline]
+    pub fn init<I: Iterator<Item = UmemDescriptor>>(&mut self, descriptors: I) {
+        assert!(self.is_full());
+
+        let (head, tail) = self.data();
+        let items = head.iter_mut().chain(tail);
+        let mut count = 0;
+        for (item, desc) in items.zip(descriptors) {
+            *item = desc;
+            count += 1;
+        }
+        self.release(count);
+    }
 }
 
 /// The completion ring for entries to be reused for transmission
@@ -281,6 +330,33 @@ impl Completion {
         completion,
         COMPLETION_RING
     );
+
+    /// Initializes the ring with the given Umem descriptors
+    ///
+    /// # Panics
+    ///
+    /// This should only be called at initialization and will panic if called on a non-empty ring.
+    #[inline]
+    pub fn init<I: Iterator<Item = UmemDescriptor>>(&mut self, descriptors: I) {
+        assert!(self.is_empty());
+
+        {
+            // pretend we're the producer so we can push items to ourselves
+            let size = self.capacity() as u32;
+            self.0
+                .cursor
+                .producer()
+                .fetch_add(size, core::sync::atomic::Ordering::SeqCst);
+
+            self.acquire(size);
+        }
+
+        let (head, tail) = self.data();
+        let items = head.iter_mut().chain(tail);
+        for (item, desc) in items.zip(descriptors) {
+            *item = desc;
+        }
+    }
 }
 
 #[cfg(test)]
