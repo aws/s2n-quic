@@ -148,6 +148,8 @@ impl<T: Copy> Cursor<T> {
     /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L92).
     #[inline]
     pub fn acquire_producer(&mut self, watermark: u32) -> u32 {
+        // cap the watermark by the max size of the ring to prevent needless loads
+        let watermark = watermark.min(self.size);
         let free = self.cached_len;
 
         // if we have enough space, then return the cached value
@@ -222,6 +224,8 @@ impl<T: Copy> Cursor<T> {
     /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L112).
     #[inline]
     pub fn acquire_consumer(&mut self, watermark: u32) -> u32 {
+        // cap the watermark by the max size of the ring to prevent needless loads
+        let watermark = watermark.min(self.size);
         let filled = self.cached_len;
 
         if filled >= watermark {
@@ -258,7 +262,7 @@ impl<T: Copy> Cursor<T> {
     ///
     /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L114).
     #[inline]
-    pub fn cached_consumer_len(&mut self) -> u32 {
+    pub fn cached_consumer_len(&self) -> u32 {
         (self.cached_producer - self.cached_consumer).0
     }
 
@@ -446,9 +450,14 @@ mod tests {
         };
 
         producer.cached_consumer = cached_consumer;
+        // the producer increments the consumer by `size` to optimize the math so we need to do the
+        // same here
+        producer.cached_consumer += size;
         producer.cached_producer = cached_producer;
+        producer.cached_len = size;
 
         assert_eq!(producer.acquire_producer(u32::MAX), size);
+        assert_eq!(producer.cached_len, producer.cached_producer_len());
 
         let mut consumer: Cursor<T> = unsafe {
             Builder {
@@ -462,8 +471,10 @@ mod tests {
 
         consumer.cached_consumer = cached_consumer;
         consumer.cached_producer = cached_producer;
+        consumer.cached_len = 0;
 
         assert_eq!(consumer.acquire_consumer(u32::MAX), 0);
+        assert_eq!(consumer.cached_len, consumer.cached_consumer_len());
 
         exec(&mut producer, &mut consumer)
     }
