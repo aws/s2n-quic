@@ -7,12 +7,49 @@ use core::ops::{Deref, DerefMut};
 ///
 /// The number of copied items is limited by the minimum of the lengths of each of the slices.
 ///
-/// Returns the number of bytes that were copied
+/// Returns the number of entries that were copied
+#[inline]
 pub fn vectored_copy<A, B, T>(from: &[A], to: &mut [B]) -> usize
 where
     A: Deref<Target = [T]>,
     B: Deref<Target = [T]> + DerefMut,
     T: Copy,
+{
+    zip_chunks(from, to, |a, b| {
+        b.copy_from_slice(a);
+    })
+}
+
+/// Zips entries from one slice to another
+///
+/// The number of copied items is limited by the minimum of the lengths of each of the slices.
+///
+/// Returns the number of entries that were processed
+#[inline]
+pub fn zip<A, At, B, Bt, F>(from: &[A], to: &mut [B], mut on_item: F) -> usize
+where
+    A: Deref<Target = [At]>,
+    B: Deref<Target = [Bt]> + DerefMut,
+    F: FnMut(&At, &mut Bt),
+{
+    zip_chunks(from, to, |a, b| {
+        for (a, b) in a.iter().zip(b) {
+            on_item(a, b);
+        }
+    })
+}
+
+/// Zips overlapping chunks from one slice to another
+///
+/// The number of copied items is limited by the minimum of the lengths of each of the slices.
+///
+/// Returns the number of entries that were processed
+#[inline]
+pub fn zip_chunks<A, At, B, Bt, F>(from: &[A], to: &mut [B], mut on_slice: F) -> usize
+where
+    A: Deref<Target = [At]>,
+    B: Deref<Target = [Bt]> + DerefMut,
+    F: FnMut(&[At], &mut [Bt]),
 {
     let mut count = 0;
 
@@ -42,7 +79,7 @@ where
         };
 
         {
-            // copy the bytes in the current views
+            // calculate the current views
             let from = unsafe {
                 // Safety: the slice offsets are checked at the end of the while loop
                 debug_assert!(from.len() >= from_offset);
@@ -62,8 +99,11 @@ where
                 //         either slice's buffer
                 debug_assert!(from.len() >= len);
                 debug_assert!(to.len() >= len);
-                to.get_unchecked_mut(..len)
-                    .copy_from_slice(from.get_unchecked(..len));
+
+                let at = from.get_unchecked(..len);
+                let bt = to.get_unchecked_mut(..len);
+
+                on_slice(at, bt);
             }
 
             // increment the offsets
