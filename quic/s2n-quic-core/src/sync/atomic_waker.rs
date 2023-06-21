@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::sync::primitive::{Arc, AtomicBool, Ordering};
-use core::{pin::Pin, task::Waker};
+use core::{
+    pin::Pin,
+    task::{Context, Poll, Waker},
+};
 use crossbeam_utils::CachePadded;
 
 pub use crate::sync::primitive::AtomicWaker;
@@ -43,6 +46,11 @@ pub struct Handle {
     storage: Pin<Arc<Storage>>,
 }
 
+/// Safety: Pointers live as long as the storage
+unsafe impl Send for Handle {}
+/// Safety: Pointers live as long as the storage
+unsafe impl Sync for Handle {}
+
 impl Handle {
     /// Registers the local task for notifications from the other handle
     #[inline]
@@ -63,6 +71,22 @@ impl Handle {
     #[inline]
     pub fn is_open(&self) -> bool {
         unsafe { (*self.is_open).load(Ordering::Acquire) }
+    }
+
+    /// Polls the handle until the peer handle has been closed
+    #[inline]
+    pub fn poll_close(&mut self, cx: &mut Context) -> Poll<()> {
+        if !self.is_open() {
+            return Poll::Ready(());
+        }
+
+        self.register(cx.waker());
+
+        if !self.is_open() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
     }
 }
 
