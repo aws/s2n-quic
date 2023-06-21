@@ -299,6 +299,9 @@ impl Display for MaxMtuError {
     }
 }
 
+#[cfg(feature = "std")]
+impl std::error::Error for MaxMtuError {}
+
 //= https://www.rfc-editor.org/rfc/rfc9308#section-8.1
 //# Some UDP protocols are vulnerable to reflection attacks, where an
 //# attacker is able to direct traffic to a third party as a denial of
