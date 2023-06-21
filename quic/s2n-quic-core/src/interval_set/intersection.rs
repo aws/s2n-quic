@@ -209,6 +209,7 @@ impl<'a, T: 'a + IntervalBound + Ord> Iterator for Intersection<'a, T> {
 }
 
 /// Apply the intersection of `set_a` with `set_b` to `set_a`
+#[inline]
 pub(super) fn apply<T: IntervalBound>(
     set_a: &mut VecDeque<Interval<T>>,
     set_b: &VecDeque<Interval<T>>,
