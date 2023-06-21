@@ -339,7 +339,6 @@ pub(super) fn apply<T: IntervalBound>(
             (Equal, Equal) => {
                 advance_set_a!();
                 advance_set_b!();
-                continue;
             }
 
             // interval A ends with interval B
