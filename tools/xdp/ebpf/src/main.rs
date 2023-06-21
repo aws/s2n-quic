@@ -7,7 +7,7 @@
 use aya_bpf::{
     bindings::xdp_action,
     macros::{map, xdp},
-    maps::HashMap,
+    maps::{HashMap, XskMap},
     programs::XdpContext,
 };
 use s2n_quic_core::{
@@ -18,10 +18,8 @@ use s2n_quic_core::{
     },
 };
 
-mod xskmap;
-
 #[map(name = "S2N_QUIC_XDP_SOCKETS")]
-static SOCKETS: xskmap::XskMap = xskmap::XskMap::with_max_entries(1024, 0);
+static SOCKETS: XskMap = XskMap::with_max_entries(1024, 0);
 
 #[map(name = "S2N_QUIC_XDP_PORTS")]
 static PORTS: HashMap<u16, u8> = HashMap::with_max_entries(1024, 0);
