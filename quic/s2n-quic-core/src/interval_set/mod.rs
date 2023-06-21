@@ -464,18 +464,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// ```
     #[inline]
     pub fn intersection(&mut self, other: &Self) -> Result<(), IntervalSetError> {
-        if self.is_empty() {
-            return Ok(());
-        }
-
-        if other.is_empty() {
-            self.clear();
-            return Ok(());
-        }
-
-        // TODO optimize this to remove the allocation
-        //      https://github.com/aws/s2n-quic/issues/746
-        self.intervals = self.intersection_iter(other).collect();
+        intersection::apply(&mut self.intervals, &other.intervals);
 
         Ok(())
     }
