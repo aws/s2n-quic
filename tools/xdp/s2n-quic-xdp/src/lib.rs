@@ -31,7 +31,5 @@ pub mod ring;
 pub mod socket;
 /// Helpers for making API calls to AF-XDP sockets
 pub mod syscall;
-/// A set of async tasks responsible for managing ring buffer and queue state
-pub mod task;
 /// A shared region of memory for holding frame (packet) data
 pub mod umem;

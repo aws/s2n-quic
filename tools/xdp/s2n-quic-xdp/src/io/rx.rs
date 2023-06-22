@@ -1,25 +1,20 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    if_xdp::{RxTxDescriptor, UmemDescriptor},
-    umem::Umem,
-};
-use core::{
-    cell::UnsafeCell,
-    task::{Context, Poll},
-};
+use crate::{if_xdp::RxTxDescriptor, ring, umem::Umem};
+use core::task::{Context, Poll};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     event,
     inet::datagram,
     io::rx,
-    sync::spsc,
+    slice::zip,
+    sync::atomic_waker,
     xdp::{decoder, path},
 };
 
-pub type Occupied = spsc::Receiver<RxTxDescriptor>;
-pub type Free = spsc::Sender<UmemDescriptor>;
+#[cfg(feature = "tokio")]
+mod tokio_impl;
 
 /// An interface to handle any errors that happen on the RX IO provider
 pub trait ErrorLogger: Send {
@@ -30,29 +25,101 @@ pub trait ErrorLogger: Send {
     fn log_invalid_packet(&mut self, bytes: &[u8]);
 }
 
-pub struct Rx {
-    channels: UnsafeCell<Vec<(Occupied, Free)>>,
-    /// Store a vec of slices on the struct so we don't have to allocate every time `queue` is
-    /// called. Since this causes the type to be self-referential it does need a bit of unsafe code
-    /// to pull this off.
-    slices: UnsafeCell<
-        Vec<(
-            spsc::RecvSlice<'static, RxTxDescriptor>,
-            spsc::SendSlice<'static, UmemDescriptor>,
-        )>,
-    >,
+/// Drives the Rx and Fill rings forward
+pub trait Driver: 'static {
+    fn poll(&mut self, rx: &mut ring::Rx, fill: &mut ring::Fill, cx: &mut Context) -> Option<u32>;
+}
+
+impl Driver for atomic_waker::Handle {
+    #[inline]
+    fn poll(&mut self, rx: &mut ring::Rx, fill: &mut ring::Fill, cx: &mut Context) -> Option<u32> {
+        let mut count = 0;
+
+        // iterate twice to avoid race conditions on the waker registration
+        for i in 0..2 {
+            count = rx.acquire(u32::MAX);
+            count = fill.acquire(count).min(count);
+
+            // we have items to receive and fill so return
+            if count > 0 {
+                break;
+            }
+
+            // check to see if the channel is open, if not return
+            if !self.is_open() {
+                return None;
+            }
+
+            // only register the waker the first iteration
+            if i > 0 {
+                continue;
+            }
+
+            trace!("registering waker");
+            self.register(cx.waker());
+            trace!("waking peer waker");
+            self.wake();
+        }
+
+        Some(count)
+    }
+}
+
+pub struct Channel<D: Driver> {
+    pub rx: ring::Rx,
+    pub fill: ring::Fill,
+    pub driver: D,
+}
+
+impl<D: Driver> Channel<D> {
+    /// Tries to acquire entries in the channel
+    ///
+    /// Returns None if the channel is closed
+    #[inline]
+    fn acquire(&mut self, cx: &mut Context) -> Option<u32> {
+        self.driver.poll(&mut self.rx, &mut self.fill, cx)
+    }
+
+    /// Iterates over all of the acquired entries in the ring and calls `on_packet`
+    #[inline]
+    fn for_each<F: FnMut(RxTxDescriptor)>(&mut self, mut on_packet: F) {
+        // one last effort to acquire any packets
+        let len = self.rx.acquire(1);
+        let len = self.fill.acquire(len);
+        if len == 0 {
+            return;
+        }
+
+        let rx = self.rx.data();
+        let rx = [rx.0, rx.1];
+
+        let fill = self.fill.data();
+        let mut fill = [fill.0, fill.1];
+
+        let count = zip(&rx, &mut fill, |rx, fill| {
+            on_packet(*rx);
+            // send the descriptor to the fill queue
+            *fill = (*rx).into();
+        });
+
+        trace!("releasing {count} descriptors");
+
+        self.rx.release(count as _);
+        self.fill.release(count as _);
+    }
+}
+
+pub struct Rx<D: Driver> {
+    channels: Vec<Channel<D>>,
     umem: Umem,
     error_logger: Option<Box<dyn ErrorLogger>>,
 }
 
-impl Rx {
+impl<D: Driver> Rx<D> {
     /// Creates a RX IO interface for an s2n-quic endpoint
-    pub fn new(channels: Vec<(Occupied, Free)>, umem: Umem) -> Self {
-        let slices = UnsafeCell::new(Vec::with_capacity(channels.len()));
-        let channels = UnsafeCell::new(channels);
+    pub fn new(channels: Vec<Channel<D>>, umem: Umem) -> Self {
         Self {
             channels,
-            slices,
             umem,
             error_logger: None,
         }
@@ -65,50 +132,37 @@ impl Rx {
     }
 }
 
-impl rx::Rx for Rx {
+impl<D: Driver> rx::Rx for Rx<D> {
     type PathHandle = path::Tuple;
-    type Queue = Queue<'static>;
-    type Error = spsc::ClosedError;
+    type Queue = Queue<'static, D>;
+    type Error = ();
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         // poll both channels to make sure we can make progress in both
 
         let mut is_any_ready = false;
-        let mut is_all_occupied_closed = true;
-        let mut is_all_free_closed = true;
+        // assume all of the channels are closed until we get the first open one
+        let mut is_all_closed = true;
 
-        for (occupied, free) in self.channels.get_mut() {
-            let mut is_ready = true;
-
-            macro_rules! ready {
-                ($slice:ident, $closed:ident) => {
-                    match $slice.poll_slice(cx) {
-                        Poll::Ready(Ok(_)) => {
-                            $closed = false;
-                        }
-                        Poll::Ready(Err(_)) => {
-                            // defer returning an error until all slices return one
-                        }
-                        Poll::Pending => {
-                            $closed = false;
-                            is_ready = false
-                        }
-                    }
-                };
+        for (idx, channel) in self.channels.iter_mut().enumerate() {
+            if let Some(count) = channel.acquire(cx) {
+                trace!("acquired {count} items from channel {idx}");
+                is_all_closed = false;
+                is_any_ready |= count > 0;
+            } else {
+                trace!("channel {idx} closed");
             }
-
-            ready!(occupied, is_all_occupied_closed);
-            ready!(free, is_all_free_closed);
-
-            is_any_ready |= is_ready;
         }
 
-        if is_all_occupied_closed || is_all_free_closed {
-            return Err(spsc::ClosedError).into();
+        // if all of the channels are closed then shut down
+        if is_all_closed {
+            return Err(()).into();
         }
 
+        // wake the endpoint if any of the channels are ready to be processed
         if is_any_ready {
+            trace!("rx ready");
             Poll::Ready(Ok(()))
         } else {
             Poll::Pending
@@ -134,21 +188,12 @@ impl rx::Rx for Rx {
             core::mem::transmute(self)
         };
 
-        let slices = this.slices.get_mut();
-
-        for (occupied, free) in this.channels.get_mut().iter_mut() {
-            if occupied.is_empty() || free.capacity() == 0 {
-                continue;
-            }
-
-            slices.push((occupied.slice(), free.slice()));
-        }
-
+        let channels = &mut this.channels;
         let umem = &mut this.umem;
         let error_logger = &mut this.error_logger;
 
         let mut queue = Queue {
-            slices,
+            channels,
             umem,
             error_logger,
         };
@@ -163,27 +208,22 @@ impl rx::Rx for Rx {
     }
 }
 
-pub struct Queue<'a> {
-    slices: &'a mut Vec<(
-        spsc::RecvSlice<'a, RxTxDescriptor>,
-        spsc::SendSlice<'a, UmemDescriptor>,
-    )>,
+pub struct Queue<'a, D: Driver> {
+    channels: &'a mut Vec<Channel<D>>,
     umem: &'a mut Umem,
     error_logger: &'a mut Option<Box<dyn ErrorLogger>>,
 }
 
-impl<'a> rx::Queue for Queue<'a> {
+impl<'a, D: Driver> rx::Queue for Queue<'a, D> {
     type Handle = path::Tuple;
 
     #[inline]
     fn for_each<F: FnMut(datagram::Header<Self::Handle>, &mut [u8])>(&mut self, mut on_packet: F) {
-        for (occupied, free) in self.slices.iter_mut() {
-            // only pop as many items as we have capacity to free them
-            while free.capacity() > 0 {
-                let descriptor = match occupied.pop() {
-                    Some(v) => v,
-                    None => break,
-                };
+        for (idx, channel) in self.channels.iter_mut().enumerate() {
+            trace!("draining channel {idx}");
+
+            channel.for_each(|descriptor| {
+                trace!("received descriptor {descriptor:?}");
 
                 let buffer = unsafe {
                     // Safety: this descriptor should be unique, assuming the tasks are functioning
@@ -207,28 +247,12 @@ impl<'a> rx::Queue for Queue<'a> {
                         }
                     }
                 }
-
-                // send the descriptor to the free queue
-                let result = free.push(descriptor.into());
-
-                debug_assert!(
-                    result.is_ok(),
-                    "free queue capacity should always exceed occupied"
-                );
-            }
+            });
         }
     }
 
     #[inline]
     fn is_empty(&self) -> bool {
-        self.slices.is_empty()
-    }
-}
-
-impl<'a> Drop for Queue<'a> {
-    #[inline]
-    fn drop(&mut self) {
-        // make sure we drop all of the slices to flush our changes
-        self.slices.clear();
+        false
     }
 }
