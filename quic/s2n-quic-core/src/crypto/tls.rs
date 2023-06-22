@@ -9,6 +9,9 @@ use zerocopy::{AsBytes, FromBytes, Unaligned};
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
+#[cfg(all(feature = "alloc", any(test, feature = "testing")))]
+pub mod null;
+
 /// Holds all application parameters which are exchanged within the TLS handshake.
 #[derive(Debug)]
 pub struct ApplicationParameters<'a> {

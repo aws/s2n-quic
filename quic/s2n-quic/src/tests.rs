@@ -31,6 +31,7 @@ use setup::*;
 
 #[cfg(not(target_os = "windows"))]
 mod client_handshake_confirm;
+mod no_tls;
 
 #[test]
 fn client_server_test() {
