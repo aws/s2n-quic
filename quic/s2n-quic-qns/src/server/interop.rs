@@ -14,7 +14,6 @@ use s2n_quic::{
     provider::{
         endpoint_limits,
         event::{events, Subscriber},
-        io,
     },
     Server,
 };
@@ -27,12 +26,6 @@ use tokio::spawn;
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
-    #[structopt(short, long, default_value = "::")]
-    ip: std::net::IpAddr,
-
-    #[structopt(short, long, default_value = "443")]
-    port: u16,
-
     #[structopt(long)]
     certificate: Option<PathBuf>,
 
@@ -45,18 +38,14 @@ pub struct Interop {
     #[structopt(long, default_value = ".")]
     www_dir: PathBuf,
 
-    #[structopt(long)]
-    disable_gso: bool,
-
     #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
     testcase: Option<Testcase>,
 
     #[structopt(long, default_value)]
     tls: TlsProviders,
 
-    #[cfg(feature = "xdp")]
     #[structopt(flatten)]
-    xdp: crate::xdp::Xdp,
+    io: crate::io::Server,
 }
 
 impl Interop {
@@ -89,28 +78,6 @@ impl Interop {
         Err(crate::CRASH_ERROR_MESSAGE.into())
     }
 
-    #[cfg(feature = "xdp")]
-    fn io(&self) -> Result<impl io::Provider> {
-        // GSO isn't currently supported for XDP so just read it to avoid a dead_code warning
-        let _ = self.disable_gso;
-
-        let addr = (self.ip, self.port).into();
-
-        self.xdp.server(addr)
-    }
-
-    #[cfg(not(feature = "xdp"))]
-    fn io(&self) -> Result<impl io::Provider> {
-        let mut io_builder =
-            io::Default::builder().with_receive_address((self.ip, self.port).into())?;
-
-        if self.disable_gso {
-            io_builder = io_builder.with_gso_disabled()?;
-        }
-
-        Ok(io_builder.build()?)
-    }
-
     fn server(&self) -> Result<Server> {
         let mut max_handshakes = 100;
         if let Some(Testcase::Retry) = self.testcase {
@@ -121,7 +88,7 @@ impl Interop {
             .with_inflight_handshake_limit(max_handshakes)?
             .build()?;
 
-        let io = self.io()?;
+        let io = self.io.build()?;
 
         let server = Server::builder()
             .with_io(io)?
@@ -157,7 +124,7 @@ impl Interop {
             }
         };
 
-        eprintln!("Server listening on port {}", self.port);
+        eprintln!("Server listening on port {}", self.io.port);
 
         Ok(server)
     }
