@@ -17,18 +17,24 @@ pub struct Router(());
 impl router::Router for Router {
     type Handle = path::Tuple;
 
+    /// If the local port is 0 then forward to `AddressUnknown`. Otherwise forward to
+    /// `AddressKnown`.
     #[inline]
-    fn route<M, A, B>(&mut self, message: M, a: &mut A, b: &mut B) -> Result<tx::Outcome, tx::Error>
+    fn route<M, AddressKnown, AddressUnknown>(
+        &mut self,
+        message: M,
+        address_known: &mut AddressKnown,
+        address_unknown: &mut AddressUnknown,
+    ) -> Result<tx::Outcome, tx::Error>
     where
         M: tx::Message<Handle = Self::Handle>,
-        A: tx::Queue<Handle = Self::Handle>,
-        B: tx::Queue<Handle = Self::Handle>,
+        AddressKnown: tx::Queue<Handle = Self::Handle>,
+        AddressUnknown: tx::Queue<Handle = Self::Handle>,
     {
-        // If the local port is 0 then forward to `B`. Otherwise forward to `A`.
         if message.path_handle().local_address().port() == 0 {
-            b.push(message)
+            address_unknown.push(message)
         } else {
-            a.push(message)
+            address_known.push(message)
         }
     }
 }
