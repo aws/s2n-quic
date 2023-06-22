@@ -94,7 +94,16 @@ fn interval_set_test() {
 
             set_op_test!(union, union_ops);
             set_op_test!(difference, difference_ops);
-            set_op_test!(intersection, intersection_ops);
+
+            // Assert that both `intersection` and `intersection_iter`
+            // produce the same results as the oracle
+            let (mut expected, mut actual) = process_operation(intersection_ops);
+            expected.intersection(&oracle);
+            actual.remove_limit();
+            let actual_iter = IntervalSet::from_iter(actual.intersection_iter(&subject));
+            actual.intersection(&subject).expect("invalid op");
+            assert_set_eq!(expected, actual);
+            assert_set_eq!(expected, actual_iter);
         },
     );
 }
