@@ -4,6 +4,8 @@
 use crate::{event, inet::datagram, path};
 use core::task::{Context, Poll};
 
+pub mod pair;
+
 /// Handle to a receive IO provider
 pub trait Rx: Sized {
     type PathHandle;
@@ -29,6 +31,21 @@ pub trait Rx: Sized {
 }
 
 impl_ready_future!(Rx, RxReady, Result<(), T::Error>);
+
+/// Extension traits for Rx channels
+pub trait RxExt: Rx {
+    /// Creates single channel from a pair of channels
+    #[inline]
+    fn with_pair<Other>(self, other: Other) -> pair::Channel<Self, Other>
+    where
+        Other: Rx<PathHandle = Self::PathHandle>,
+    {
+        pair::Channel { a: self, b: other }
+    }
+}
+
+/// Implement the extension traits for all Rx queues
+impl<R: Rx> RxExt for R {}
 
 /// A structure capable of queueing and receiving messages
 pub trait Queue {

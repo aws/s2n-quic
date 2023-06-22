@@ -4,3 +4,6 @@
 pub mod event_loop;
 pub mod rx;
 pub mod tx;
+
+#[cfg(test)]
+mod testing;
