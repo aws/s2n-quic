@@ -20,6 +20,10 @@ pub trait Driver: 'static {
         completion: &mut ring::Completion,
         cx: &mut Context,
     ) -> Option<bool> {
+        // Default to doing nothing
+        //
+        // In order to keep the trait signature from having `_` prefixes in the name, discard the
+        // variables in the body.
         let _ = tx;
         let _ = completion;
         let _ = cx;
@@ -28,6 +32,10 @@ pub trait Driver: 'static {
 
     #[inline]
     fn wake(&mut self, tx: &mut ring::Tx, completion: &mut ring::Completion) {
+        // Default to doing nothing
+        //
+        // In order to keep the trait signature from having `_` prefixes in the name, discard the
+        // variables in the body.
         let _ = tx;
         let _ = completion;
     }

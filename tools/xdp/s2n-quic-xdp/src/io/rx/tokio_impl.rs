@@ -8,6 +8,9 @@ use core::task::{Context, Poll};
 type Fd = tokio::io::unix::AsyncFd<socket::Fd>;
 
 /// Polls read readiness for a tokio socket
+///
+/// In the case of a successful poll, the function will return `Some(count)`. Note that `count` may
+/// still be `0`. If `None` is returned, an error was encountered and the task should be shut down.
 #[inline]
 fn poll(fd: &Fd, rx: &mut ring::Rx, fill: &mut ring::Fill, cx: &mut Context) -> Option<u32> {
     // iterate twice to avoid race conditions on waker registration
