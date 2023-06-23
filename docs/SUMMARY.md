@@ -21,7 +21,7 @@
 - [dos mitigation]()
 - [Echo]()
 - [Event framework]()
-- [Jumbo frame]()e
+- [Jumbo frame]()
 - [rustls mtls]()
 - [rustls provider]()
 - [turmoil provider]()
