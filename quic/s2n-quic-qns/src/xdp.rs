@@ -24,6 +24,7 @@ pub struct Xdp {
     #[structopt(long, default_value = "lo")]
     interface: String,
 
+    // Default values come from https://elixir.bootlin.com/linux/v6.3.9/source/tools/testing/selftests/bpf/xsk.h#L185
     #[structopt(long, default_value = "2048")]
     tx_queue_len: u32,
 
@@ -48,9 +49,13 @@ pub struct Xdp {
 
 #[derive(Clone, Copy, Debug)]
 enum XdpMode {
+    /// Automatically selects an XDP mode based on the capabilities of the NIC
     Auto,
+    /// Uses the software SKB (socket buffer) mode - usually requires no NIC support
     Skb,
+    /// Uses the driver mode, which integrates with XDP directly in the kernel driver
     Drv,
+    /// Uses the hardware mode, which integrates with XDP directly in the actual NIC hardware
     Hw,
 }
 
@@ -218,7 +223,11 @@ impl Xdp {
                 .expect("missing port map")
                 .try_into()?;
 
-            ports.insert(port, 1u8, 0)?;
+            // the BPF program just needs to have a non-zero value for the port
+            let enabled = 1u8;
+            // no flags are needed
+            let flags = 0;
+            ports.insert(port, enabled, flags)?;
 
             // register all of the RX sockets on each of the queues
             let mut xskmap: XskMap<&mut MapData> = bpf
@@ -288,10 +297,15 @@ impl Xdp {
             .with_frame_size(self.frame_size as _)?
             .build();
 
+        // Set up a task to read from the bound UDP socket
+        //
+        // If everything is working properly, this won't ever get a packet, since the AF_XDP socket
+        // is intercepting all packets on this port. If it does start logging, something has gone
+        // wrong with the BPF setup.
+        let mut recv_buffer = vec![0; self.frame_size as usize];
         tokio::spawn(async move {
-            let mut buffer = vec![0; 1500];
             loop {
-                let result = socket.recv_from(&mut buffer).await;
+                let result = socket.recv_from(&mut recv_buffer).await;
                 eprintln!(
                     "WARNING: received packet on regular UDP socket: {:?}",
                     result
