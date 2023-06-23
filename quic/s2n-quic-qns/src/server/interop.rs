@@ -4,12 +4,8 @@
 use crate::{
     interop::Testcase,
     server::{h09, h3},
-    tls,
-    tls::TlsProviders,
-    Result,
+    tls, Result,
 };
-#[cfg(unix)]
-use s2n_quic::provider::tls::s2n_tls;
 use s2n_quic::{
     provider::{
         endpoint_limits,
@@ -26,12 +22,6 @@ use tokio::spawn;
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
-    #[structopt(long)]
-    certificate: Option<PathBuf>,
-
-    #[structopt(long)]
-    private_key: Option<PathBuf>,
-
     #[structopt(long, default_value = "hq-interop")]
     application_protocols: Vec<String>,
 
@@ -41,8 +31,8 @@ pub struct Interop {
     #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
     testcase: Option<Testcase>,
 
-    #[structopt(long, default_value)]
-    tls: TlsProviders,
+    #[structopt(flatten)]
+    tls: tls::Server,
 
     #[structopt(flatten)]
     io: crate::io::Server,
@@ -97,59 +87,11 @@ impl Interop {
                 EventSubscriber(1),
                 s2n_quic::provider::event::tracing::Subscriber::default(),
             ))?;
-        let server = match self.tls {
-            #[cfg(unix)]
-            TlsProviders::S2N => {
-                // The server builder defaults to a chain because this allows certs to just work, whether
-                // the PEM contains a single cert or a chain
-                let tls = self.build_s2n_tls_server()?;
-
-                server.with_tls(tls)?.start().unwrap()
-            }
-            TlsProviders::Rustls => {
-                // The server builder defaults to a chain because this allows certs to just work, whether
-                // the PEM contains a single cert or a chain
-                let tls = s2n_quic::provider::tls::rustls::Server::builder()
-                    .with_certificate(
-                        tls::rustls::ca(self.certificate.as_ref())?,
-                        tls::rustls::private_key(self.private_key.as_ref())?,
-                    )?
-                    .with_application_protocols(
-                        self.application_protocols.iter().map(String::as_bytes),
-                    )?
-                    .with_key_logging()?
-                    .build()?;
-
-                server.with_tls(tls)?.start().unwrap()
-            }
-        };
+        let server = self.tls.build(server, &self.application_protocols)?;
 
         eprintln!("Server listening on port {}", self.io.port);
 
         Ok(server)
-    }
-
-    #[cfg(unix)]
-    fn build_s2n_tls_server(&self) -> Result<s2n_tls::Server> {
-        let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
-            .with_certificate(
-                tls::s2n::ca(self.certificate.as_ref())?,
-                tls::s2n::private_key(self.private_key.as_ref())?,
-            )?
-            .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
-            .with_key_logging()?;
-
-        cfg_if::cfg_if! {
-            if #[cfg(all(
-                s2n_quic_unstable,
-                feature = "unstable_client_hello"
-            ))] {
-                use super::unstable::MyClientHelloHandler;
-                let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
-            }
-        }
-
-        Ok(tls.build()?)
     }
 }
 
