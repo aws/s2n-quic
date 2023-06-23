@@ -28,7 +28,7 @@ s2n-quic = "1"
 ```
 
 **NOTE**: On unix-like systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider.
-On `aarch64` linux systems,  [`aws-lc-rs`](https://github.com/awslabs/aws-lc-rs) will be used for cryptographic 
+On linux systems,  [`aws-lc-rs`](https://github.com/awslabs/aws-lc-rs) will be used for cryptographic
 operations. A C compiler and CMake may be required on these systems for installation.
 
 ## Example
