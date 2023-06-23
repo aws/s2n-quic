@@ -437,83 +437,78 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         Ok(decrypted)
     }
 
+    #[inline]
     fn parse_client_hello<Pub: event::ConnectionPublisher>(
         &mut self,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
+
         if let Some(payload) = self.parse_hello(tls::HandshakeType::ClientHello)? {
             publisher.on_tls_client_hello(event::builder::TlsClientHello { payload: &payload });
         }
+
         Ok(())
     }
 
+    #[inline]
     fn parse_server_hello<Pub: event::ConnectionPublisher>(
         &mut self,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         debug_assert!(Config::ENDPOINT_TYPE.is_client());
+
         if let Some(payload) = self.parse_hello(tls::HandshakeType::ServerHello)? {
             publisher.on_tls_server_hello(event::builder::TlsServerHello { payload: &payload });
         }
+
         Ok(())
     }
 
+    #[inline]
     fn parse_hello(
         &mut self,
         msg_type: tls::HandshakeType,
-    ) -> Result<Option<SmallVec<[&[u8]; 5]>>, transport::Error> {
-        debug_assert!(!self.received_hello_message);
+    ) -> Result<Option<SmallVec<[&[u8]; 16]>>, transport::Error> {
+        debug_assert!(
+            !self.received_hello_message,
+            "should only be called before the hello is parsed"
+        );
+        debug_assert_eq!(
+            self.crypto_stream.rx.consumed_len(),
+            0,
+            "should not consume any crypto data"
+        );
 
-        let crypto_stream = &self.crypto_stream.rx;
-        debug_assert_eq!(crypto_stream.consumed_len(), 0);
+        let chunks = self.crypto_stream.rx.iter();
+        let total_received_len = self.crypto_stream.rx.total_received_len();
 
-        let mut chunks = crypto_stream.iter().peekable();
-        let buffer = s2n_codec::DecoderBuffer::new(chunks.peek().unwrap_or(&&[][..]));
-
-        let header = if let Ok((header, _)) = buffer.decode::<tls::HandshakeHeader>() {
-            header
-        } else {
-            // we don't have enough data to parse the header so wait until later
-            return Ok(None);
-        };
-
-        if header.msg_type() != Some(msg_type) {
-            return Err(transport::Error::PROTOCOL_VIOLATION
-                .with_reason("first TLS message should be a hello message"));
-        }
-
-        let len = header.len() as u64;
+        let mut chunks = chunks.peekable();
+        let empty_chunk = &[][..];
+        let header_chunk = chunks.peek().unwrap_or(&empty_chunk);
 
         // TODO make this configurable:
         //      https://github.com/aws/s2n-quic/issues/1001
         const MAX_HELLO_SIZE: u64 = 2 << 16;
 
-        if len > MAX_HELLO_SIZE {
-            return Err(transport::Error::CRYPTO_BUFFER_EXCEEDED
-                .with_reason("hello message cannot exceed 16k"));
+        let outcome =
+            <<Config::TLSEndpoint as tls::Endpoint>::Session as tls::Session>::parse_hello(
+                msg_type,
+                header_chunk,
+                total_received_len,
+                MAX_HELLO_SIZE,
+            )?;
+
+        if let Some(offsets) = outcome {
+            // record that we've received the hello message
+            self.received_hello_message = true;
+
+            let payload = offsets.trim_chunks(chunks).collect();
+            Ok(Some(payload))
+        } else {
+            // we are still waiting on more data
+            Ok(None)
         }
-
-        // wait until we have more chunks
-        if crypto_stream.total_received_len() < len {
-            return Ok(None);
-        }
-
-        self.received_hello_message = true;
-
-        let payload = chunks
-            .enumerate()
-            .map(|(idx, chunk)| {
-                if idx == 0 {
-                    // trim off the message header
-                    &chunk[core::mem::size_of::<tls::HandshakeHeader>()..]
-                } else {
-                    chunk
-                }
-            })
-            .collect();
-
-        Ok(Some(payload))
     }
 }
 

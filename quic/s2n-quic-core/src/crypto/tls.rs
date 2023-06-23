@@ -116,6 +116,93 @@ pub trait Session: crate::crypto::CryptoSuite + Sized + Send + Debug {
         &mut self,
         context: &mut C,
     ) -> core::task::Poll<Result<(), crate::transport::Error>>;
+
+    /// Parses a hello message of the provided type
+    ///
+    /// The default implementation of this function assumes TLS messages are being exchanged.
+    #[inline]
+    fn parse_hello(
+        msg_type: HandshakeType,
+        header_chunk: &[u8],
+        total_received_len: u64,
+        max_hello_size: u64,
+    ) -> Result<Option<HelloOffsets>, crate::transport::Error> {
+        let buffer = s2n_codec::DecoderBuffer::new(header_chunk);
+
+        let header = if let Ok((header, _)) = buffer.decode::<HandshakeHeader>() {
+            header
+        } else {
+            // we don't have enough data to parse the header so wait until later
+            return Ok(None);
+        };
+
+        if header.msg_type() != Some(msg_type) {
+            return Err(crate::transport::Error::PROTOCOL_VIOLATION
+                .with_reason("first TLS message should be a hello message"));
+        }
+
+        let payload_len = header.len() as u64;
+
+        if payload_len > max_hello_size {
+            return Err(crate::transport::Error::CRYPTO_BUFFER_EXCEEDED
+                .with_reason("hello message cannot exceed 16k"));
+        }
+
+        let header_len = core::mem::size_of::<HandshakeHeader>() as u64;
+
+        // wait until we have more chunks
+        if total_received_len < payload_len + header_len {
+            return Ok(None);
+        }
+
+        let offsets = HelloOffsets {
+            payload_offset: header_len as _,
+            payload_len: payload_len as _,
+        };
+
+        Ok(Some(offsets))
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct HelloOffsets {
+    pub payload_offset: usize,
+    pub payload_len: usize,
+}
+
+impl HelloOffsets {
+    #[inline]
+    pub fn trim_chunks<'a, I: Iterator<Item = &'a [u8]>>(
+        &self,
+        chunks: I,
+    ) -> impl Iterator<Item = &'a [u8]> {
+        let mut offsets = *self;
+
+        chunks.filter_map(move |mut chunk| {
+            // trim off the header
+            if offsets.payload_offset > 0 {
+                let start = offsets.payload_offset.min(chunk.len());
+                chunk = &chunk[start..];
+                offsets.payload_offset -= start;
+            }
+
+            // trim off any trailing data after we've trimmed the header
+            if offsets.payload_offset == 0 && offsets.payload_len > 0 {
+                let end = offsets.payload_len.min(chunk.len());
+                chunk = &chunk[..end];
+                offsets.payload_len -= end;
+            } else {
+                // if the payload doesn't have any remaining data, return an empty chunk
+                return None;
+            }
+
+            if chunk.is_empty() {
+                None
+            } else {
+                Some(chunk)
+            }
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -150,7 +237,8 @@ impl crate::event::IntoEvent<crate::event::api::CipherSuite> for CipherSuite {
 
 macro_rules! handshake_type {
     ($($variant:ident($value:literal)),* $(,)?) => {
-        #[derive(Debug, PartialEq, Eq, AsBytes, Unaligned)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, AsBytes, Unaligned)]
+        #[cfg_attr(any(test, feature = "bolero-generator"), derive(bolero_generator::TypeGenerator))]
         #[repr(u8)]
         pub enum HandshakeType {
             $($variant = $value),*
@@ -237,3 +325,121 @@ impl HandshakeHeader {
 }
 
 s2n_codec::zerocopy_value_codec!(HandshakeHeader);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bolero::check;
+    use hex_literal::hex;
+
+    const MAX_HELLO_SIZE: u64 = if cfg!(kani) { 32 } else { 255 };
+
+    type Chunk = crate::testing::InlineVec<u8, { MAX_HELLO_SIZE as usize + 2 }>;
+
+    /// make sure the hello parser doesn't panic on arbitrary inputs
+    #[test]
+    #[cfg_attr(kani, kani::proof, kani::solver(cadical), kani::unwind(36))]
+    fn parse_hello_test() {
+        check!()
+            .with_type::<(HandshakeType, Chunk, u64)>()
+            .for_each(|(ty, chunk, total_received_len)| {
+                let _ =
+                    testing::Session::parse_hello(*ty, chunk, *total_received_len, MAX_HELLO_SIZE);
+            });
+    }
+
+    macro_rules! h {
+        ($($tt:tt)*) => {
+            &hex!($($tt)*)[..]
+        }
+    }
+
+    fn parse_hello<'a>(
+        ty: HandshakeType,
+        input: &'a [&'a [u8]],
+    ) -> Result<Option<Vec<&'a [u8]>>, crate::transport::Error> {
+        let total_received_len: usize = input.iter().map(|chunk| chunk.len()).sum();
+
+        let empty = &[][..];
+        let first = input.iter().copied().next().unwrap_or(empty);
+
+        let outcome =
+            testing::Session::parse_hello(ty, first, total_received_len as _, MAX_HELLO_SIZE)?;
+
+        if let Some(offsets) = outcome {
+            let payload = offsets.trim_chunks(input.iter().copied()).collect();
+            Ok(Some(payload))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn client_hello_valid_tests() {
+        let tests = [
+            (&[h!("01 00 00 02 aa bb cc")][..], &[h!("aa bb")][..]),
+            (&[h!("01 00 00 01"), h!("aa bb cc dd")], &[h!("aa")]),
+            (
+                &[h!("01 00 00 02"), h!("aa"), h!("bb"), h!("cc")],
+                &[h!("aa"), h!("bb")],
+            ),
+        ];
+
+        for (input, expected) in tests {
+            let output = parse_hello(HandshakeType::ClientHello, input)
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(&output[..], expected);
+        }
+    }
+
+    #[test]
+    fn server_hello_valid_tests() {
+        let tests = [(&[h!("02 00 00 02 aa bb cc")][..], &[h!("aa bb")][..])];
+
+        for (input, expected) in tests {
+            let output = parse_hello(HandshakeType::ServerHello, input)
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(&output[..], expected);
+        }
+    }
+
+    #[test]
+    fn client_hello_incomplete_tests() {
+        let tests = [
+            &[][..],
+            // missing header
+            &[h!("01 00 00")],
+            // missing entire payload
+            &[h!("01 00 00 01")],
+            // missing partial payload
+            &[h!("01 00 00 04"), h!("aa"), h!("bb")],
+        ];
+
+        for input in tests {
+            assert_eq!(
+                parse_hello(HandshakeType::ClientHello, input).unwrap(),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn client_hello_invalid_tests() {
+        let tests = [
+            // invalid message
+            &[h!("02 00 00 01 aa")],
+            // invalid size - too big
+            &[h!("01 00 01 00 aa")],
+            // invalid size - too big
+            &[h!("01 ff ff ff aa")],
+        ];
+
+        for input in tests {
+            assert!(parse_hello(HandshakeType::ClientHello, input).is_err());
+        }
+    }
+}
