@@ -450,6 +450,9 @@ static QUERIES: &[(&str, Type, Q)] = &[
             .checked_sub(conn.start_time.unwrap_or_default().as_duration())?;
         Some(duration.as_secs_f64())
     }),
+    ("conn.id", B, |_params, conn, _conns| {
+        conn.client_id.or(conn.server_id).map(|v| v as f64)
+    }),
     ("conn.client", B, |_params, conn, _conns| {
         Some(if conn.client_id.is_some() { 1.0 } else { 0.0 })
     }),

@@ -54,20 +54,23 @@ pub fn client(
         .with_event((events, Tracing::default()))?
         .start()?;
 
+    let mut total_delay = core::time::Duration::ZERO;
+
     for _ in 0..count {
-        let delay = delay.gen_duration();
+        total_delay += delay.gen_duration();
 
         // pick a random server to connect to
         let server_addr = *rand::one_of(servers);
+        let delay = total_delay;
 
-        let connect = Connect::new(server_addr).with_server_name("localhost");
-        let connection = client.connect(connect);
+        let client = client.clone();
         primary::spawn(async move {
             if !delay.is_zero() {
                 time::delay(delay).await;
             }
 
-            let mut connection = connection.await?;
+            let connect = Connect::new(server_addr).with_server_name("localhost");
+            let mut connection = client.connect(connect).await?;
 
             for _ in 0..streams.gen() {
                 let stream = connection.open_bidirectional_stream().await?;
