@@ -53,6 +53,10 @@ pub struct Interop {
 
     #[structopt(long, default_value)]
     tls: TlsProviders,
+
+    #[cfg(feature = "xdp")]
+    #[structopt(flatten)]
+    xdp: crate::xdp::Xdp,
 }
 
 impl Interop {
@@ -85,6 +89,28 @@ impl Interop {
         Err(crate::CRASH_ERROR_MESSAGE.into())
     }
 
+    #[cfg(feature = "xdp")]
+    fn io(&self) -> Result<impl io::Provider> {
+        // GSO isn't currently supported for XDP so just read it to avoid a dead_code warning
+        let _ = self.disable_gso;
+
+        let addr = (self.ip, self.port).into();
+
+        self.xdp.server(addr)
+    }
+
+    #[cfg(not(feature = "xdp"))]
+    fn io(&self) -> Result<impl io::Provider> {
+        let mut io_builder =
+            io::Default::builder().with_receive_address((self.ip, self.port).into())?;
+
+        if self.disable_gso {
+            io_builder = io_builder.with_gso_disabled()?;
+        }
+
+        Ok(io_builder.build()?)
+    }
+
     fn server(&self) -> Result<Server> {
         let mut max_handshakes = 100;
         if let Some(Testcase::Retry) = self.testcase {
@@ -95,14 +121,7 @@ impl Interop {
             .with_inflight_handshake_limit(max_handshakes)?
             .build()?;
 
-        let mut io_builder =
-            io::Default::builder().with_receive_address((self.ip, self.port).into())?;
-
-        if self.disable_gso {
-            io_builder = io_builder.with_gso_disabled()?;
-        }
-
-        let io = io_builder.build()?;
+        let io = self.io()?;
 
         let server = Server::builder()
             .with_io(io)?

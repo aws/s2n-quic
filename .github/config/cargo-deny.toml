@@ -31,7 +31,7 @@ skip-tree = [
 
 [sources]
 allow-git = [
-    "https://github.com/hyperium/h3", # TODO: Remove once hyperium h3 is in crates.io
+    "https://github.com/camshaft/aya", # TODO: Remove once aya supports XdpMaps - https://github.com/aya-rs/aya/pull/527
 ]
 unknown-registry = "deny"
 unknown-git = "deny"
