@@ -8,7 +8,22 @@ title = "s2n-quic Guide"
 [build]
 build-dir = "../target/book"
 
+[rust]
+edition = "2021"
+
 [output.html]
 git-repository-url = "https://github.com/aws/s2n-quic"
 edit-url-template = "https://github.com/aws/s2n-quic/edit/main/docs/{path}"
 site-url = "/s2n-quic/"
+
+[output.html.search]
+enable = true            # enables the search feature
+limit-results = 10       # maximum number of search results
+teaser-word-count = 20   # number of words used for a search result teaser
+use-boolean-and = true   # multiple search terms must all match
+boost-title = 2          # ranking boost factor for matches in headers
+boost-hierarchy = 1      # ranking boost factor for matches in page names
+boost-paragraph = 1      # ranking boost factor for matches in text
+expand = true            # partial words will match longer terms
+heading-split-level = 3  # link results to heading levels
+copy-js = true           # include Javascript code for search
