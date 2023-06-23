@@ -84,7 +84,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="user-guide.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="user-guide/installation.html"><strong aria-hidden="true">2.</strong> Installation</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer Guide</li><li class="chapter-item expanded "><a href="dev-guide.html"><strong aria-hidden="true">3.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="dev-guide/setup.html"><strong aria-hidden="true">4.</strong> Setup</a></li><li class="chapter-item expanded "><a href="ci.html"><strong aria-hidden="true">5.</strong> Continuous Integration</a></li><li class="chapter-item expanded "><a href="dev-guide/kani.html"><strong aria-hidden="true">6.</strong> Kani</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="index.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><div><strong aria-hidden="true">2.</strong> Introduction</div></li><li class="chapter-item expanded "><a href="user-guide/installation.html"><strong aria-hidden="true">3.</strong> Installation</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer Guide</li><li class="chapter-item expanded "><a href="dev-guide.html"><strong aria-hidden="true">4.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="dev-guide/setup.html"><strong aria-hidden="true">5.</strong> Setup</a></li><li class="chapter-item expanded "><a href="dev-guide/ci.html"><strong aria-hidden="true">6.</strong> Continuous Integration</a></li><li class="chapter-item expanded "><a href="dev-guide/kani.html"><strong aria-hidden="true">7.</strong> Kani</a></li><li class="chapter-item expanded affix "><li class="part-title">Examples</li><li class="chapter-item expanded "><a href="examples/async-client-hello-callback.html"><strong aria-hidden="true">8.</strong> Async client hello callback</a></li><li class="chapter-item expanded "><a href="examples/custom-congestion-controller.html"><strong aria-hidden="true">9.</strong> Custom congestion controller</a></li><li class="chapter-item expanded "><div><strong aria-hidden="true">10.</strong> dos mitigation</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">11.</strong> Echo</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">12.</strong> Event framework</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">13.</strong> Jumbo frame</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">14.</strong> rustls mtls</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">15.</strong> rustls provider</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">16.</strong> turmoil provider</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">17.</strong> Unreliable datagram</div></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -156,7 +156,6 @@
 <p>If you are wanting to contribute and/or learn about implementation details of <code>s2n-quic</code>, please read the <a href="dev-guide.html">developer guide</a>.</p>
 <h2 id="license"><a class="header" href="#license">License</a></h2>
 <p><code>s2n-quic</code> source code and documentation is released under the <a href="https://aws.amazon.com/apache-2-0">Apache 2.0 License</a>.</p>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="introduction-1"><a class="header" href="#introduction-1">Introduction</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="contributing-guidelines"><a class="header" href="#contributing-guidelines">Contributing Guidelines</a></h1>
 <p>Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
@@ -250,6 +249,249 @@ $ cargo kani --tests
 $ grep -Rn 'kani::proof' .
 
 &lt; LIST OF LOCATIONS WITH KANI PROOFS &gt;
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="async-client-hello-callback"><a class="header" href="#async-client-hello-callback">Async client hello callback</a></h1>
+<pre><code class="language-rs">#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
+    let client = Client::builder()
+        .with_tls(CERT_PEM)?
+        .with_io(&quot;0.0.0.0:0&quot;)?
+        .start()?;
+
+    let addr: SocketAddr = &quot;127.0.0.1:4433&quot;.parse()?;
+    let connect = Connect::new(addr).with_server_name(&quot;localhost&quot;);
+    let mut connection = client.connect(connect).await?;
+
+    // ensure the connection doesn't time out with inactivity
+    connection.keep_alive(true)?;
+
+    // open a new stream and split the receiving and sending sides
+    let stream = connection.open_bidirectional_stream().await?;
+    let (mut receive_stream, mut send_stream) = stream.split();
+
+    // spawn a task that copies responses from the server to stdout
+    tokio::spawn(async move {
+        let mut stdout = tokio::io::stdout();
+        let _ = tokio::io::copy(&amp;mut receive_stream, &amp;mut stdout).await;
+    });
+
+    // copy data from stdin and send it to the server
+    let mut stdin = tokio::io::stdin();
+    tokio::io::copy(&amp;mut stdin, &amp;mut send_stream).await?;
+
+    Ok(())
+}
+</code></pre>
+<pre><code class="language-rs">// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+use moka::sync::Cache;
+use rand::{distributions::WeightedIndex, prelude::*};
+use s2n_quic::{
+    provider::tls::s2n_tls::{
+        s2n_tls::{
+            callbacks::{ConfigResolver, ConnectionFuture},
+            config::Config,
+            error::Error as S2nError,
+        },
+        ClientHelloCallback, Connection,
+    },
+    Server,
+};
+use std::{error::Error, fmt::Display, pin::Pin, sync::Arc, time::Duration};
+use tokio::{fs, sync::OnceCell};
+
+/// NOTE: this certificate is to be used for demonstration purposes only!
+pub static CERT_PEM_PATH: &amp;str = concat!(
+    env!(&quot;CARGO_MANIFEST_DIR&quot;),
+    &quot;/../../quic/s2n-quic-core/certs/cert.pem&quot;
+);
+/// NOTE: this certificate is to be used for demonstration purposes only!
+pub static KEY_PEM_PATH: &amp;str = concat!(
+    env!(&quot;CARGO_MANIFEST_DIR&quot;),
+    &quot;/../../quic/s2n-quic-core/certs/key.pem&quot;
+);
+
+type Sni = String;
+
+// A Config cache associated with as SNI (server name indication).
+//
+// Implements ClientHelloCallback, loading the certificates asynchronously,
+// and caching the s2n_tls::config::Config for subsequent calls with the
+// same SNI.
+//
+// An SNI, indicates which hostname the client is attempting to connect to.
+// Some deployments could require configuring the s2n_tls::config::Config
+// based on the SNI (certificate).
+struct ConfigCache {
+    cache: Cache&lt;Sni, Arc&lt;OnceCell&lt;Config&gt;&gt;&gt;,
+}
+
+impl ConfigCache {
+    fn new() -&gt; Self {
+        ConfigCache {
+            // store Config for up to 100 unique SNI
+            cache: Cache::new(100),
+        }
+    }
+}
+
+impl ClientHelloCallback for ConfigCache {
+    fn on_client_hello(
+        &amp;self,
+        connection: &amp;mut Connection,
+    ) -&gt; Result&lt;Option&lt;Pin&lt;Box&lt;dyn ConnectionFuture&gt;&gt;&gt;, S2nError&gt; {
+        let sni = connection
+            .server_name()
+            .ok_or_else(|| S2nError::application(Box::new(CustomError)))?
+            .to_string();
+
+        let once_cell_config = self
+            .cache
+            .get_with(sni.clone(), || Arc::new(OnceCell::new()));
+        if let Some(config) = once_cell_config.get() {
+            eprintln!(&quot;Config already cached for SNI: {}&quot;, sni);
+            connection.set_config(config.clone())?;
+            // return `None` if the Config is already in the cache
+            return Ok(None);
+        }
+
+        // simulate failure 75% of times and success 25% of the times
+        let choices = [true, false];
+        let weights = [3, 1];
+        let dist = WeightedIndex::new(weights).unwrap();
+        let mut rng = thread_rng();
+
+        let fut = async move {
+            let fut = once_cell_config.get_or_try_init(|| async {
+                let simulated_network_call_failed = choices[dist.sample(&amp;mut rng)];
+
+                if simulated_network_call_failed {
+                    eprintln!(&quot;simulated network call failed&quot;);
+                    return Err(S2nError::application(Box::new(CustomError)));
+                }
+
+                eprintln!(&quot;resolving certificate for SNI: {}&quot;, sni);
+
+                // load the cert and key file asynchronously.
+                let (cert, key) = {
+                    // the SNI can be used to load the appropriate cert file
+                    let _sni = sni;
+                    let cert = fs::read_to_string(CERT_PEM_PATH)
+                        .await
+                        .map_err(|_| S2nError::application(Box::new(CustomError)))?;
+                    let key = fs::read_to_string(KEY_PEM_PATH)
+                        .await
+                        .map_err(|_| S2nError::application(Box::new(CustomError)))?;
+                    (cert, key)
+                };
+
+                // sleep(async tokio task which doesn't block thread) to mimic delay
+                tokio::time::sleep(Duration::from_secs(3)).await;
+
+                let config = s2n_quic::provider::tls::s2n_tls::Server::builder()
+                    .with_certificate(cert, key)?
+                    .build()?
+                    .into();
+                Ok(config)
+            });
+            fut.await.map(|config| config.clone())
+        };
+
+        // return `Some(ConnectionFuture)` if the Config wasn't found in the
+        // cache and we need to load it asynchronously
+        Ok(Some(Box::pin(ConfigResolver::new(fut))))
+    }
+}
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
+    let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
+        .with_client_hello_handler(ConfigCache::new())?
+        .build()?;
+
+    let mut server = Server::builder()
+        .with_tls(tls)?
+        .with_io(&quot;127.0.0.1:4433&quot;)?
+        .start()?;
+
+    while let Some(mut connection) = server.accept().await {
+        // spawn a new task for the connection
+        tokio::spawn(async move {
+            eprintln!(&quot;Connection accepted from {:?}&quot;, connection.remote_addr());
+
+            while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
+                // spawn a new task for the stream
+                tokio::spawn(async move {
+                    eprintln!(&quot;Stream opened from {:?}&quot;, stream.connection().remote_addr());
+
+                    // echo any data back to the stream
+                    while let Ok(Some(data)) = stream.receive().await {
+                        stream.send(data).await.expect(&quot;stream should be open&quot;);
+                    }
+                });
+            }
+        });
+    }
+
+    Ok(())
+}
+
+#[derive(Debug)]
+struct CustomError;
+
+impl Display for CustomError {
+    fn fmt(&amp;self, f: &amp;mut std::fmt::Formatter&lt;'_&gt;) -&gt; std::fmt::Result {
+        write!(f, &quot;custom error&quot;)?;
+        Ok(())
+    }
+}
+
+impl Error for CustomError {}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="custom-congestion-controller"><a class="header" href="#custom-congestion-controller">Custom Congestion Controller</a></h1>
+<p>This folder contains an example of implementing and configuring a custom congestion controller in <code>s2n-quic</code>. <code>s2n-quic</code> includes <a href="https://www.rfc-editor.org/rfc/rfc8312">CUBIC</a> and <a href="https://datatracker.ietf.org/doc/html/draft-cardwell-iccrg-bbr-congestion-control">BBRv2</a> congestion controller implementations, but you may
+implement the <code>CongestionController</code> trait, found in <a href="examples/../../quic/s2n-quic-core/src/recovery/congestion_controller.rs">congestion_controller.rs</a>, to provide your own.</p>
+<h1 id="set-up"><a class="header" href="#set-up">Set-up</a></h1>
+<p>The <code>CongestionController</code> trait is considered unstable and may be subject to change in a future release. In order to build it you must pass a compiler flag:</p>
+<pre><code class="language-sh">export RUSTFLAGS=&quot;--cfg s2n_quic_unstable&quot;
+</code></pre>
+<p>and add this line to your Cargo.toml file:</p>
+<pre><code class="language-toml">[dependencies]
+s2n-quic = { version = &quot;1&quot;, features = [&quot;unstable-congestion-controller&quot;]}
+</code></pre>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<pre><code class="language-rs">#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
+    // Build an `s2n_quic::Server`
+    let mut server = Server::builder()
+        .with_tls((CERT_PEM, KEY_PEM))?
+        .with_io(&quot;127.0.0.1:4433&quot;)?
+        // Specify the custom congestion controller endpoint defined in `custom-congestion-controller/src/lib.rs`
+        .with_congestion_controller(MyCongestionControllerEndpoint::default())?
+        .start()?;
+
+    while let Some(mut connection) = server.accept().await {
+        // spawn a new task for the connection
+        tokio::spawn(async move {
+            eprintln!(&quot;Connection accepted from {:?}&quot;, connection.remote_addr());
+
+            while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
+                // spawn a new task for the stream
+                tokio::spawn(async move {
+                    eprintln!(&quot;Stream opened from {:?}&quot;, stream.connection().remote_addr());
+
+                    // echo any data back to the stream
+                    while let Ok(Some(data)) = stream.receive().await {
+                        stream.send(data).await.expect(&quot;stream should be open&quot;);
+                    }
+                });
+            }
+        });
+    }
+
+    Ok(())
+}
 </code></pre>
 
                     </main>

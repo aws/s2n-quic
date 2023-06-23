@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Continuous Integration - s2n-quic Guide</title>
+        <title>Custom congestion controller - s2n-quic Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -12,21 +12,21 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" href="highlight.css">
-        <link rel="stylesheet" href="tomorrow-night.css">
-        <link rel="stylesheet" href="ayu-highlight.css">
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
@@ -35,7 +35,7 @@
     <div id="body-container">
         <!-- Provide site root to javascript -->
         <script>
-            var path_to_root = "";
+            var path_to_root = "../";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
         </script>
 
@@ -83,7 +83,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="user-guide.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="user-guide/installation.html"><strong aria-hidden="true">2.</strong> Installation</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer Guide</li><li class="chapter-item expanded "><a href="dev-guide.html"><strong aria-hidden="true">3.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="dev-guide/setup.html"><strong aria-hidden="true">4.</strong> Setup</a></li><li class="chapter-item expanded "><a href="ci.html" class="active"><strong aria-hidden="true">5.</strong> Continuous Integration</a></li><li class="chapter-item expanded "><a href="dev-guide/kani.html"><strong aria-hidden="true">6.</strong> Kani</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../index.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><div><strong aria-hidden="true">2.</strong> Introduction</div></li><li class="chapter-item expanded "><a href="../user-guide/installation.html"><strong aria-hidden="true">3.</strong> Installation</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer Guide</li><li class="chapter-item expanded "><a href="../dev-guide.html"><strong aria-hidden="true">4.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="../dev-guide/setup.html"><strong aria-hidden="true">5.</strong> Setup</a></li><li class="chapter-item expanded "><a href="../dev-guide/ci.html"><strong aria-hidden="true">6.</strong> Continuous Integration</a></li><li class="chapter-item expanded "><a href="../dev-guide/kani.html"><strong aria-hidden="true">7.</strong> Kani</a></li><li class="chapter-item expanded affix "><li class="part-title">Examples</li><li class="chapter-item expanded "><a href="../examples/async-client-hello-callback.html"><strong aria-hidden="true">8.</strong> Async client hello callback</a></li><li class="chapter-item expanded "><a href="../examples/custom-congestion-controller.html" class="active"><strong aria-hidden="true">9.</strong> Custom congestion controller</a></li><li class="chapter-item expanded "><div><strong aria-hidden="true">10.</strong> dos mitigation</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">11.</strong> Echo</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">12.</strong> Event framework</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">13.</strong> Jumbo frame</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">14.</strong> rustls mtls</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">15.</strong> rustls provider</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">16.</strong> turmoil provider</div></li><li class="chapter-item expanded "><div><strong aria-hidden="true">17.</strong> Unreliable datagram</div></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -115,13 +115,13 @@
                     <h1 class="menu-title">s2n-quic Guide</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
                         <a href="https://github.com/aws/s2n-quic" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/aws/s2n-quic/edit/main/docs/./ci.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/aws/s2n-quic/edit/main/docs/./examples/custom-congestion-controller.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -150,30 +150,59 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="s2n-quic-continuous-integration"><a class="header" href="#s2n-quic-continuous-integration">s2n-quic Continuous Integration</a></h1>
-<p><code>s2n-quic</code> runs many tests on <a href="https://github.com/aws/s2n-quic/actions/workflows/ci.yml?query=event%3Apull_request">each pull request</a> and merge into <a href="https://github.com/aws/s2n-quic/actions/workflows/ci.yml?query=branch%3Amain">main</a>. This ensures each change is thoroughly tested.</p>
-<h2 id="tests"><a class="header" href="#tests">Tests</a></h2>
-<p><code>s2n-quic</code> defines many tests that can be executed with <code>cargo test</code>. These tests include unit, integration, snapshot, property, and fuzz tests.</p>
-<h2 id="clippy"><a class="header" href="#clippy">Clippy</a></h2>
-<p><a href="https://github.com/rust-lang/rust-clippy">clippy</a> is a rust linter which catches common mistakes.</p>
-<h2 id="rustfmt"><a class="header" href="#rustfmt">Rustfmt</a></h2>
-<p><a href="https://github.com/rust-lang/rustfmt">rustfmt</a> ensures code is consistently formatted.</p>
-<h2 id="interop"><a class="header" href="#interop">Interop</a></h2>
-<p>The <a href="https://github.com/marten-seemann/quic-interop-runner">quic-interop-runner</a> defines many test cases that ensure many of the 3rd party QUIC implementations are compatible. <code>s2n-quic</code> publishes <a href="https://dnglbrstg7yg.cloudfront.net/08c33571ee8679775e810303f65c96c1d48e270d/interop/index.html">a report</a> with the results.</p>
-<h2 id="compliance"><a class="header" href="#compliance">Compliance</a></h2>
-<p><code>s2n-quic</code> annotates source code with inline references to requirements in design documents and RFCs. <a href="https://dnglbrstg7yg.cloudfront.net/08c33571ee8679775e810303f65c96c1d48e270d/compliance.html#/">A report</a> is then generated, which makes it easy to track compliance with each requirement.</p>
+                        <h1 id="custom-congestion-controller"><a class="header" href="#custom-congestion-controller">Custom Congestion Controller</a></h1>
+<p>This folder contains an example of implementing and configuring a custom congestion controller in <code>s2n-quic</code>. <code>s2n-quic</code> includes <a href="https://www.rfc-editor.org/rfc/rfc8312">CUBIC</a> and <a href="https://datatracker.ietf.org/doc/html/draft-cardwell-iccrg-bbr-congestion-control">BBRv2</a> congestion controller implementations, but you may
+implement the <code>CongestionController</code> trait, found in <a href="../../quic/s2n-quic-core/src/recovery/congestion_controller.rs">congestion_controller.rs</a>, to provide your own.</p>
+<h1 id="set-up"><a class="header" href="#set-up">Set-up</a></h1>
+<p>The <code>CongestionController</code> trait is considered unstable and may be subject to change in a future release. In order to build it you must pass a compiler flag:</p>
+<pre><code class="language-sh">export RUSTFLAGS=&quot;--cfg s2n_quic_unstable&quot;
+</code></pre>
+<p>and add this line to your Cargo.toml file:</p>
+<pre><code class="language-toml">[dependencies]
+s2n-quic = { version = &quot;1&quot;, features = [&quot;unstable-congestion-controller&quot;]}
+</code></pre>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<pre><code class="language-rs">#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
+    // Build an `s2n_quic::Server`
+    let mut server = Server::builder()
+        .with_tls((CERT_PEM, KEY_PEM))?
+        .with_io(&quot;127.0.0.1:4433&quot;)?
+        // Specify the custom congestion controller endpoint defined in `custom-congestion-controller/src/lib.rs`
+        .with_congestion_controller(MyCongestionControllerEndpoint::default())?
+        .start()?;
+
+    while let Some(mut connection) = server.accept().await {
+        // spawn a new task for the connection
+        tokio::spawn(async move {
+            eprintln!(&quot;Connection accepted from {:?}&quot;, connection.remote_addr());
+
+            while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
+                // spawn a new task for the stream
+                tokio::spawn(async move {
+                    eprintln!(&quot;Stream opened from {:?}&quot;, stream.connection().remote_addr());
+
+                    // echo any data back to the stream
+                    while let Ok(Some(data)) = stream.receive().await {
+                        stream.send(data).await.expect(&quot;stream should be open&quot;);
+                    }
+                });
+            }
+        });
+    }
+
+    Ok(())
+}
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="dev-guide/setup.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../examples/async-client-hello-callback.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next" href="dev-guide/kani.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -181,13 +210,10 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="dev-guide/setup.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../examples/async-client-hello-callback.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next" href="dev-guide/kani.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
             </nav>
 
         </div>
@@ -200,13 +226,13 @@
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
 
