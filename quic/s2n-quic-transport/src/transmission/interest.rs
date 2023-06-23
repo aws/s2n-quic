@@ -174,6 +174,50 @@ impl Query for HasTransmissionInterestQuery {
     }
 }
 
+pub struct Debugger;
+
+impl Query for Debugger {
+    #[inline]
+    #[track_caller]
+    fn on_interest(&mut self, interest: Interest) -> Result {
+        eprintln!("  {} - {:?}", core::panic::Location::caller(), interest);
+        Ok(())
+    }
+
+    #[inline]
+    #[track_caller]
+    fn on_new_data(&mut self) -> Result {
+        eprintln!(
+            "  {} - {:?}",
+            core::panic::Location::caller(),
+            Interest::NewData
+        );
+        Ok(())
+    }
+
+    #[inline]
+    #[track_caller]
+    fn on_lost_data(&mut self) -> Result {
+        eprintln!(
+            "  {} - {:?}",
+            core::panic::Location::caller(),
+            Interest::LostData
+        );
+        Ok(())
+    }
+
+    #[inline]
+    #[track_caller]
+    fn on_forced(&mut self) -> Result {
+        eprintln!(
+            "  {} - {:?}",
+            core::panic::Location::caller(),
+            Interest::Forced
+        );
+        Ok(())
+    }
+}
+
 pub struct QueryBreak;
 
 pub type Result<T = (), E = QueryBreak> = core::result::Result<T, E>;
