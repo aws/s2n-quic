@@ -1,28 +1,15 @@
-FROM rust:latest as planner
-WORKDIR app
-RUN cargo install cargo-chef --version 0.1.23
-COPY Cargo.toml /app
-COPY common /app/common
-COPY quic /app/quic
-COPY tools/xdp /app/tools/xdp
-# Don't include testing crates
-RUN rm -rf quic/s2n-quic-bench quic/s2n-quic-events quic/s2n-quic-sim
-RUN cargo chef prepare  --recipe-path recipe.json
+FROM rust:latest AS base
 
-FROM rust:latest as cacher
-WORKDIR app
-RUN cargo install cargo-chef --version 0.1.23
-COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --recipe-path recipe.json
-
-FROM rust:latest AS builder
 WORKDIR app
 
 RUN set -eux; \
   apt-get update; \
   apt-get install -y cmake clang;
 
-# copy sources
+RUN cargo install cargo-chef --version 0.1.23
+
+# create an image for all of the repo sources
+FROM base AS sources
 COPY Cargo.toml /app
 COPY common /app/common
 COPY quic /app/quic
@@ -32,6 +19,18 @@ RUN rm -rf quic/s2n-quic-bench quic/s2n-quic-events quic/s2n-quic-sim
 # apply patch to use forked version of the webpki crate
 # see https://github.com/aws/s2n-quic/issues/1836
 RUN git apply quic/s2n-quic-qns/etc/webpki.patch
+
+# create a planner image that forms the dependencies
+FROM sources AS planner
+RUN cargo chef prepare  --recipe-path recipe.json
+
+# create a cacher image that builds the dependencies
+FROM base AS cacher
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --recipe-path recipe.json
+
+# create an image that builds the final crate
+FROM sources AS builder
 
 # Copy over the cached dependencies
 COPY --from=cacher /app/target target
