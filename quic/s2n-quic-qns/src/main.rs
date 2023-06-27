@@ -9,6 +9,7 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 mod client;
 mod file;
 mod interop;
+mod io;
 mod perf;
 mod server;
 mod tls;

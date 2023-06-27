@@ -15,7 +15,7 @@ use tokio::runtime::Handle;
 
 mod builder;
 mod clock;
-mod task;
+pub(crate) mod task;
 #[cfg(test)]
 mod tests;
 

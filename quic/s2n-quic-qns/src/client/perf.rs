@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{perf, tls, Result};
-use s2n_quic::{client, provider::io, Client, Connection};
+use s2n_quic::{client, Client, Connection};
 use std::path::PathBuf;
 use structopt::StructOpt;
 use tokio::task::JoinSet;
@@ -29,15 +29,6 @@ pub struct Perf {
     #[structopt(long)]
     connections: Option<usize>,
 
-    #[structopt(long)]
-    disable_gso: bool,
-
-    #[structopt(long, default_value = "9000")]
-    max_mtu: u16,
-
-    #[structopt(short, long, default_value = "::")]
-    local_ip: std::net::IpAddr,
-
     #[structopt(long, default_value)]
     send: u64,
 
@@ -53,6 +44,9 @@ pub struct Perf {
     /// Logs statistics for the endpoint
     #[structopt(long)]
     stats: bool,
+
+    #[structopt(flatten)]
+    io: crate::io::Client,
 }
 
 impl Perf {
@@ -117,15 +111,7 @@ impl Perf {
     }
 
     fn client(&self) -> Result<Client> {
-        let mut io_builder = io::Default::builder()
-            .with_receive_address((self.local_ip, 0u16).into())?
-            .with_max_mtu(self.max_mtu)?;
-
-        if self.disable_gso {
-            io_builder = io_builder.with_gso_disabled()?;
-        }
-
-        let io = io_builder.build()?;
+        let io = self.io.build()?;
 
         let tls = s2n_quic::provider::tls::default::Client::builder()
             .with_certificate(tls::default::ca(self.ca.as_ref())?)?
