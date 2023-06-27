@@ -50,15 +50,14 @@ pub mod tx {
         // Initial packets don't need to be bigger than the minimum
         let max_mtu = s2n_quic_core::path::MaxMtu::MIN;
 
-        // It's unlikely the initial packets will utilize, so just disable it
+        // It's unlikely the initial packets will utilize GSO, so just disable it
         let gso = crate::features::Gso::default();
         gso.disable();
 
-        // compute the payload size for each message from the number of GSO segments we can
-        // fill
+        // compute the payload size for each message from the MaxMtu
         let payload_len = {
             let max_mtu: u16 = max_mtu.into();
-            (max_mtu as u32 * gso.max_segments() as u32).min(u16::MAX as u32)
+            max_mtu as u32
         };
 
         // 512Kb

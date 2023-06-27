@@ -290,6 +290,21 @@ impl Xdp {
         encoder
     }
 
+    fn spawn_udp_rx(&self, udp_socket: UdpSocket) {
+        // Set up a task to read from the bound UDP socket
+        //
+        // If everything is working properly, this won't ever get a packet, since the AF_XDP socket
+        // is intercepting all packets on this port. If it does start logging, something has gone
+        // wrong with the BPF setup.
+        let mut recv_buffer = vec![0; self.frame_size as usize];
+        tokio::spawn(async move {
+            let result = udp_socket.recv_from(&mut recv_buffer).await;
+            eprintln!("ERROR: received packet on regular UDP socket: {:?}", result);
+
+            std::process::exit(1);
+        });
+    }
+
     pub fn server(&self, addr: SocketAddr) -> Result<impl io::Provider> {
         let udp_socket = self.udp_socket(addr)?;
         let udp_socket = UdpSocket::from_std(udp_socket)?;
@@ -307,21 +322,7 @@ impl Xdp {
             .with_frame_size(self.frame_size as _)?
             .build();
 
-        // Set up a task to read from the bound UDP socket
-        //
-        // If everything is working properly, this won't ever get a packet, since the AF_XDP socket
-        // is intercepting all packets on this port. If it does start logging, something has gone
-        // wrong with the BPF setup.
-        let mut recv_buffer = vec![0; self.frame_size as usize];
-        tokio::spawn(async move {
-            loop {
-                let result = udp_socket.recv_from(&mut recv_buffer).await;
-                eprintln!(
-                    "WARNING: received packet on regular UDP socket: {:?}",
-                    result
-                );
-            }
-        });
+        self.spawn_udp_rx(udp_socket);
 
         Ok(provider)
     }
@@ -365,22 +366,8 @@ impl Xdp {
             .build();
 
         if let Ok(udp_socket) = recv_udp_socket {
-            let udp_socket = tokio::net::UdpSocket::from_std(udp_socket)?;
-            // Set up a task to read from the bound UDP socket
-            //
-            // If everything is working properly, this won't ever get a packet, since the AF_XDP socket
-            // is intercepting all packets on this port. If it does start logging, something has gone
-            // wrong with the BPF setup.
-            let mut recv_buffer = vec![0; self.frame_size as usize];
-            tokio::spawn(async move {
-                loop {
-                    let result = udp_socket.recv_from(&mut recv_buffer).await;
-                    eprintln!(
-                        "WARNING: received packet on regular UDP socket: {:?}",
-                        result
-                    );
-                }
-            });
+            let udp_socket = UdpSocket::from_std(udp_socket)?;
+            self.spawn_udp_rx(udp_socket);
         }
 
         Ok(provider)
