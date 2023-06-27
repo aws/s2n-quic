@@ -193,19 +193,34 @@ macro_rules! zerocopy_network_integer {
         impl $name {
             pub const ZERO: Self = Self(::zerocopy::byteorder::$name::ZERO);
 
-            #[inline]
+            #[inline(always)]
             pub fn new(value: $native) -> Self {
                 value.into()
             }
 
-            #[inline]
+            #[inline(always)]
             pub fn get(&self) -> $native {
-                self.0.get()
+                self.get_be().to_be()
             }
 
-            #[inline]
+            #[inline(always)]
+            pub fn get_be(&self) -> $native {
+                unsafe {
+                    $native::from_ne_bytes(
+                        *(self.0.as_bytes().as_ptr()
+                            as *const [u8; ::core::mem::size_of::<$native>()]),
+                    )
+                }
+            }
+
+            #[inline(always)]
             pub fn set(&mut self, value: $native) {
-                self.0.set(value);
+                self.0.as_bytes_mut().copy_from_slice(&value.to_be_bytes());
+            }
+
+            #[inline(always)]
+            pub fn set_be(&mut self, value: $native) {
+                self.0.as_bytes_mut().copy_from_slice(&value.to_ne_bytes());
             }
         }
 
@@ -233,32 +248,32 @@ macro_rules! zerocopy_network_integer {
         impl PartialOrd<$native> for $name {
             #[inline]
             fn partial_cmp(&self, other: &$native) -> Option<Ordering> {
-                Some(self.0.get().cmp(other))
+                Some(self.get().cmp(other))
             }
         }
 
         impl Ord for $name {
             #[inline]
             fn cmp(&self, other: &Self) -> Ordering {
-                self.0.get().cmp(&other.0.get())
+                self.get_be().cmp(&other.get_be())
             }
         }
 
         impl Hash for $name {
             fn hash<H: Hasher>(&self, state: &mut H) {
-                self.0.get().hash(state);
+                self.get().hash(state);
             }
         }
 
         impl fmt::Debug for $name {
             fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                write!(formatter, "{}", self.0.get())
+                write!(formatter, "{}", self.get())
             }
         }
 
         impl fmt::Display for $name {
             fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                write!(formatter, "{}", self.0.get())
+                write!(formatter, "{}", self.get())
             }
         }
 
@@ -272,7 +287,7 @@ macro_rules! zerocopy_network_integer {
         impl From<$name> for $native {
             #[inline]
             fn from(v: $name) -> $native {
-                v.0.get()
+                v.get()
             }
         }
 

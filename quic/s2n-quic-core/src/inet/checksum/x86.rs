@@ -1,48 +1,61 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{LargeWriteFn, LARGE_WRITE_LEN};
-use core::num::Wrapping;
+#![cfg_attr(kani, allow(dead_code))]
+
+use super::{Accumulator, LargeWriteFn, State, LARGE_WRITE_LEN};
 
 #[cfg(target_arch = "x86")]
-use core::arch::x86::*;
+pub use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
-use core::arch::x86_64::*;
+pub use core::arch::x86_64::*;
 
 /// Returns the optimized function for the given platform
 ///
 /// If possible, this uses runtime feature detection so this should be cached.
 #[inline]
 pub fn probe() -> Option<LargeWriteFn> {
-    #[cfg(all(feature = "std", not(any(kani, miri))))]
-    {
-        if std::is_x86_feature_detected!("avx") {
-            return Some(write_sized_avx);
+    probe_avx().or_else(probe_sse)
+}
+
+macro_rules! probe {
+    ($feature:tt, $fun:ident) => {{
+        #[cfg(all(feature = "std", not(any(miri, kani))))]
+        {
+            if std::is_x86_feature_detected!($feature) {
+                return Some($fun);
+            }
         }
 
-        if std::is_x86_feature_detected!("sse4.1") {
-            return Some(write_sized_sse);
-        }
-    }
+        // no way to reliably detect features in no_std
+        None
+    }};
+}
 
-    // no way to reliably detect features in no_std
-    None
+#[inline]
+fn probe_avx() -> Option<LargeWriteFn> {
+    probe!("avx", write_sized_avx)
+}
+
+#[inline]
+fn probe_sse() -> Option<LargeWriteFn> {
+    probe!("sse4.1", write_sized_sse)
 }
 
 /// Enable sse4.1 optimizations for the implementation
 #[target_feature(enable = "sse4.1")]
-pub unsafe fn write_sized_sse<'a>(state: &mut Wrapping<u32>, bytes: &'a [u8]) -> &'a [u8] {
+pub unsafe fn write_sized_sse<'a>(state: &mut State, bytes: &'a [u8]) -> &'a [u8] {
     write_sized(state, bytes)
 }
 
 /// Enable avx optimizations for the implementation
 #[target_feature(enable = "avx")]
-pub unsafe fn write_sized_avx<'a>(state: &mut Wrapping<u32>, bytes: &'a [u8]) -> &'a [u8] {
+pub unsafe fn write_sized_avx<'a>(state: &mut State, bytes: &'a [u8]) -> &'a [u8] {
     write_sized(state, bytes)
 }
 
 #[inline(always)]
-unsafe fn write_sized<'a>(state: &mut Wrapping<u32>, mut bytes: &'a [u8]) -> &'a [u8] {
+unsafe fn write_sized<'a>(state: &mut State, mut bytes: &'a [u8]) -> &'a [u8] {
     assume!(
         bytes.len() >= LARGE_WRITE_LEN,
         "large write function should only be called with large byte buffers"
@@ -59,23 +72,23 @@ unsafe fn write_sized<'a>(state: &mut Wrapping<u32>, mut bytes: &'a [u8]) -> &'a
 
         let ptr = chunks.as_ptr() as *const __m128i;
 
-        sum_a += _mm_loadu_si128(ptr);
-        sum_a += _mm_loadu_si128(ptr.add(1));
-        sum_a += _mm_loadu_si128(ptr.add(2));
-        sum_a += _mm_loadu_si128(ptr.add(3));
-        sum_a += _mm_loadu_si128(ptr.add(4));
-        sum_a += _mm_loadu_si128(ptr.add(5));
-        sum_a += _mm_loadu_si128(ptr.add(6));
-        sum_a += _mm_loadu_si128(ptr.add(7));
+        sum_a += ptr;
+        sum_a += ptr.add(1);
+        sum_a += ptr.add(2);
+        sum_a += ptr.add(3);
+        sum_a += ptr.add(4);
+        sum_a += ptr.add(5);
+        sum_a += ptr.add(6);
+        sum_a += ptr.add(7);
 
-        sum_b += _mm_loadu_si128(ptr.add(8));
-        sum_b += _mm_loadu_si128(ptr.add(9));
-        sum_b += _mm_loadu_si128(ptr.add(10));
-        sum_b += _mm_loadu_si128(ptr.add(11));
-        sum_b += _mm_loadu_si128(ptr.add(12));
-        sum_b += _mm_loadu_si128(ptr.add(13));
-        sum_b += _mm_loadu_si128(ptr.add(14));
-        sum_b += _mm_loadu_si128(ptr.add(15));
+        sum_b += ptr.add(8);
+        sum_b += ptr.add(9);
+        sum_b += ptr.add(10);
+        sum_b += ptr.add(11);
+        sum_b += ptr.add(12);
+        sum_b += ptr.add(13);
+        sum_b += ptr.add(14);
+        sum_b += ptr.add(15);
     }
 
     // Unroll the loop to read 64 bytes at a time (4 16-byte blocks)
@@ -85,10 +98,10 @@ unsafe fn write_sized<'a>(state: &mut Wrapping<u32>, mut bytes: &'a [u8]) -> &'a
 
         let ptr = chunks.as_ptr() as *const __m128i;
 
-        sum_a += _mm_loadu_si128(ptr);
-        sum_a += _mm_loadu_si128(ptr.add(1));
-        sum_b += _mm_loadu_si128(ptr.add(2));
-        sum_b += _mm_loadu_si128(ptr.add(3));
+        sum_a += ptr;
+        sum_a += ptr.add(1);
+        sum_b += ptr.add(2);
+        sum_b += ptr.add(3);
     }
 
     // Finish reading the full 16-byte blocks
@@ -97,22 +110,18 @@ unsafe fn write_sized<'a>(state: &mut Wrapping<u32>, mut bytes: &'a [u8]) -> &'a
         bytes = remaining;
 
         let ptr = chunks.as_ptr() as *const __m128i;
-        sum_a += _mm_loadu_si128(ptr);
+        sum_a += ptr;
     }
 
     // Add up all of the sums and merge them into a single u32
-    let sum_a = _mm_add_epi32(sum_a.a, sum_a.b);
-    let sum_b = _mm_add_epi32(sum_b.a, sum_b.b);
-    let mut total = _mm_add_epi32(sum_a, sum_b);
+    let sum = sum_a + sum_b;
 
-    total = _mm_hadd_epi32(total, _mm_setzero_si128());
-    total = _mm_hadd_epi32(total, _mm_setzero_si128());
-
-    *state += _mm_extract_epi32(total, 0) as u32;
+    sum.extract(state);
 
     bytes
 }
 
+#[derive(Clone)]
 struct Sum {
     a: __m128i,
     b: __m128i,
@@ -143,6 +152,15 @@ impl Sum {
         self.a = _mm_add_epi32(self.a, _mm_shuffle_epi8(rhs, mask_a));
         self.b = _mm_add_epi32(self.b, _mm_shuffle_epi8(rhs, mask_b));
     }
+
+    #[inline(always)]
+    unsafe fn extract(self, state: &mut State) {
+        let total = _mm_add_epi32(self.a, self.b);
+        let total = _mm_hadd_epi32(total, _mm_setzero_si128());
+        let total = _mm_hadd_epi32(total, _mm_setzero_si128());
+
+        *state += _mm_extract_epi32(total, 0) as Accumulator;
+    }
 }
 
 impl core::ops::AddAssign<__m128i> for Sum {
@@ -152,10 +170,31 @@ impl core::ops::AddAssign<__m128i> for Sum {
     }
 }
 
+impl core::ops::AddAssign<*const __m128i> for Sum {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: *const __m128i) {
+        unsafe { self.add(_mm_loadu_si128(rhs)) }
+    }
+}
+
+impl core::ops::Add for Sum {
+    type Output = Self;
+
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self {
+        unsafe {
+            let a = _mm_add_epi32(self.a, self.b);
+            let b = _mm_add_epi32(rhs.a, rhs.b);
+            Self { a, b }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{super::write_sized_generic, *};
+    use super::{super::write_sized_generic_u16, *};
     use bolero::check;
+    use core::num::Wrapping;
 
     /// Compares the x86-optimized function to the generic function and ensures consistency
     #[test]
@@ -168,15 +207,14 @@ mod tests {
 
                 let generic = {
                     let mut state = Wrapping(0);
-                    write_sized_generic::<2>(&mut state, bytes);
+                    write_sized_generic_u16::<2>(&mut state, bytes);
                     state.0
                 };
 
                 let actual = {
                     let mut state = Wrapping(0);
                     let bytes = unsafe { write_sized_opt(&mut state, bytes) };
-                    // finish the rest of the bytes
-                    write_sized_generic::<2>(&mut state, bytes);
+                    write_sized_generic_u16::<2>(&mut state, bytes);
                     state.0
                 };
 

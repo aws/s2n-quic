@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#![cfg_attr(kani, allow(unused_variables))] // kani complains about things not being used
+
 use crate::{
     application::ServerName,
     crypto::{
