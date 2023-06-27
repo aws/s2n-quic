@@ -4,7 +4,6 @@
 use crate::{perf, tls, Result};
 use futures::future::try_join_all;
 use s2n_quic::{
-    provider::io,
     stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection, Server,
 };
@@ -14,12 +13,6 @@ use tokio::spawn;
 
 #[derive(Debug, StructOpt)]
 pub struct Perf {
-    #[structopt(short, long, default_value = "::")]
-    ip: std::net::IpAddr,
-
-    #[structopt(short, long, default_value = "443")]
-    port: u16,
-
     #[structopt(long)]
     certificate: Option<PathBuf>,
 
@@ -34,12 +27,6 @@ pub struct Perf {
     #[structopt(long)]
     connections: Option<usize>,
 
-    #[structopt(long)]
-    disable_gso: bool,
-
-    #[structopt(long, default_value = "9000")]
-    max_mtu: u16,
-
     #[structopt(flatten)]
     limits: perf::Limits,
 
@@ -47,9 +34,8 @@ pub struct Perf {
     #[structopt(long)]
     stats: bool,
 
-    #[cfg(feature = "xdp")]
     #[structopt(flatten)]
-    xdp: crate::xdp::Xdp,
+    io: crate::io::Server,
 }
 
 impl Perf {
@@ -172,32 +158,8 @@ impl Perf {
         }
     }
 
-    #[cfg(feature = "xdp")]
-    fn io(&self) -> Result<impl io::Provider> {
-        // GSO isn't currently supported for XDP so just read it to avoid a dead_code warning
-        let _ = self.disable_gso;
-        let _ = self.max_mtu;
-
-        let addr = (self.ip, self.port).into();
-
-        self.xdp.server(addr)
-    }
-
-    #[cfg(not(feature = "xdp"))]
-    fn io(&self) -> Result<impl io::Provider> {
-        let mut io_builder = io::Default::builder()
-            .with_receive_address((self.ip, self.port).into())?
-            .with_max_mtu(self.max_mtu)?;
-
-        if self.disable_gso {
-            io_builder = io_builder.with_gso_disabled()?;
-        }
-
-        Ok(io_builder.build()?)
-    }
-
     fn server(&self) -> Result<Server> {
-        let io = self.io()?;
+        let io = self.io.build()?;
 
         let tls = s2n_quic::provider::tls::default::Server::builder()
             .with_certificate(
@@ -226,7 +188,7 @@ impl Perf {
             .start()
             .unwrap();
 
-        eprintln!("Server listening on port {}", self.port);
+        eprintln!("Server listening on port {}", self.io.port);
 
         Ok(server)
     }

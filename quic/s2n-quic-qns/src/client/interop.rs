@@ -9,11 +9,7 @@ use crate::{
     Result,
 };
 use core::time::Duration;
-use s2n_quic::{
-    client::Connect,
-    provider::{event, io},
-    Client,
-};
+use s2n_quic::{client::Connect, provider::event, Client};
 use std::{
     collections::{hash_map::Entry, HashMap},
     path::PathBuf,
@@ -40,14 +36,8 @@ pub struct Interop {
     #[structopt(long)]
     download_dir: Option<PathBuf>,
 
-    #[structopt(long)]
-    disable_gso: bool,
-
     #[structopt(long, parse(try_from_str = parse_duration))]
     keep_alive: Option<Duration>,
-
-    #[structopt(short, long, default_value = "::")]
-    local_ip: std::net::IpAddr,
 
     #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
     testcase: Option<Testcase>,
@@ -57,6 +47,9 @@ pub struct Interop {
 
     #[structopt(long, default_value)]
     tls: TlsProviders,
+
+    #[structopt(flatten)]
+    io: crate::io::Client,
 }
 
 impl Interop {
@@ -130,14 +123,7 @@ impl Interop {
     }
 
     fn client(&self) -> Result<Client> {
-        let mut io_builder =
-            io::Default::builder().with_receive_address((self.local_ip, 0u16).into())?;
-
-        if self.disable_gso {
-            io_builder = io_builder.with_gso_disabled()?;
-        }
-
-        let io = io_builder.build()?;
+        let io = self.io.build()?;
 
         let client = Client::builder()
             .with_io(io)?
