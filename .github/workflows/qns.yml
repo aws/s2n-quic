@@ -165,7 +165,8 @@ jobs:
           path: quinn/
 
   interop:
-    runs-on: ubuntu-latest
+    runs-on:
+      labels: s2n_ubuntu-20.04_8-core
     needs: [env, s2n-quic-qns]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
