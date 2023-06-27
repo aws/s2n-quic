@@ -15,7 +15,7 @@ use std::sync::{
 
 /// Drains a receive stream
 pub async fn handle_receive_stream(mut stream: ReceiveStream) -> Result<()> {
-    let mut chunks = vec![Bytes::new(); 64];
+    let mut chunks: [_; 64] = core::array::from_fn(|_| Bytes::new());
 
     loop {
         let (len, is_open) = stream.receive_vectored(&mut chunks).await?;
@@ -35,7 +35,7 @@ pub async fn handle_receive_stream(mut stream: ReceiveStream) -> Result<()> {
 
 /// Sends a specified amount of data on a send stream
 pub async fn handle_send_stream(mut stream: SendStream, len: u64) -> Result<()> {
-    let mut chunks = vec![Bytes::new(); 64];
+    let mut chunks: [_; 64] = core::array::from_fn(|_| Bytes::new());
 
     //= https://tools.ietf.org/id/draft-banks-quic-performance-00#4.1
     //# Since the goal here is to measure the efficiency of the QUIC
