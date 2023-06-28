@@ -42,7 +42,7 @@ pub const MAX_LEN: usize = {
     #[cfg(s2n_quic_platform_pktinfo)]
     let pktinfo_size = size_of_cmsg::<libc::in_pktinfo>() + size_of_cmsg::<libc::in6_pktinfo>();
     #[cfg(not(s2n_quic_platform_pktinfo))]
-    let pktinfo = 0;
+    let pktinfo_size = 0;
 
     // This is currently needed due to how we detect if CMSG data has been written or not.
     //
