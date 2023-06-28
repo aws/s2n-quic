@@ -53,4 +53,4 @@ plotters = { version = "0.3", default-features = false, features = ["svg_backend
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 
 [target.'cfg(loom)'.dev-dependencies]
-loom = { version = "0.5", features = ["checkpoint", "futures"] }
+loom = { version = "0.6", features = ["checkpoint", "futures"] }
