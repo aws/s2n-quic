@@ -757,9 +757,7 @@ fn write_start_fin_test() {
 
         buffer.write_at_fin(0u32.into(), &bytes).unwrap();
 
-        let chunk = buffer
-            .pop_transform(|chunk| core::mem::take(chunk))
-            .expect("buffer should pop final chunk");
+        let chunk = buffer.pop().expect("buffer should pop final chunk");
 
         assert_eq!(&chunk[..], &bytes);
 
@@ -816,7 +814,9 @@ fn write_partial_fin_test() {
                     let mut allocated_len = 0;
 
                     // use pop_transform so we can take the entire buffer and get an accurate `capacity` value
-                    while let Some(chunk) = buf.pop_transform(core::mem::take) {
+                    while let Some(chunk) =
+                        buf.pop_transform(|chunk, _is_final_chunk| core::mem::take(chunk))
+                    {
                         actual_len += chunk.len();
                         allocated_len += chunk.capacity();
                         chunks.push(chunk);
@@ -874,6 +874,30 @@ fn write_fin_zero_test() {
         Err(ReceiveBufferError::InvalidFin),
         "no data can be written after a fin"
     );
+}
+
+#[test]
+fn fin_pop_take_test() {
+    for write_fin in [false, true] {
+        let mut buffer = ReceiveBuffer::new();
+        buffer.write_at(0u32.into(), &[1]).unwrap();
+        if write_fin {
+            buffer.write_at_fin(1u32.into(), &[]).unwrap();
+        }
+
+        let chunk = buffer.pop().unwrap();
+        assert_eq!(chunk.len(), 1);
+
+        // if we wrote a fin, then we should get the entire chunk so the BytesMut doesn't get
+        // promoted to shared mode
+        //
+        // See https://github.com/tokio-rs/bytes/blob/64c4fa286771ad9e522ffbefc576bcf7b76933d0/src/bytes_mut.rs#L975
+        if write_fin {
+            assert_eq!(chunk.capacity(), 4096);
+        } else {
+            assert_eq!(chunk.capacity(), 1);
+        }
+    }
 }
 
 #[test]

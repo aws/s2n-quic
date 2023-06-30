@@ -277,20 +277,30 @@ impl ReceiveBuffer {
     /// Pops a buffer from the front of the receive queue if available
     #[inline]
     pub fn pop(&mut self) -> Option<BytesMut> {
-        self.pop_transform(|buffer| buffer.split())
+        self.pop_transform(|buffer, is_final_offset| {
+            if is_final_offset {
+                core::mem::take(buffer)
+            } else {
+                buffer.split()
+            }
+        })
     }
 
     /// Pops a buffer from the front of the receive queue, who's length is always guaranteed to be
     /// less than the provided `watermark`.
     #[inline]
     pub fn pop_watermarked(&mut self, watermark: usize) -> Option<BytesMut> {
-        self.pop_transform(|buffer| {
+        self.pop_transform(|buffer, is_final_offset| {
             // make sure the buffer doesn't exceed the watermark
             let watermark = watermark.min(buffer.len());
 
             // if the watermark is 0 then don't needlessly increment refcounts
             if watermark == 0 {
                 return BytesMut::new();
+            }
+
+            if watermark == buffer.len() && is_final_offset {
+                return core::mem::take(buffer);
             }
 
             buffer.split_to(watermark)
@@ -300,7 +310,7 @@ impl ReceiveBuffer {
     /// Pops a buffer from the front of the receive queue as long as the `transform` function returns a
     /// non-empty buffer.
     #[inline]
-    fn pop_transform<F: Fn(&mut BytesMut) -> BytesMut>(
+    fn pop_transform<F: Fn(&mut BytesMut, bool) -> BytesMut>(
         &mut self,
         transform: F,
     ) -> Option<BytesMut> {
@@ -310,9 +320,10 @@ impl ReceiveBuffer {
             return None;
         }
 
+        let is_final_offset = self.final_offset == slot.end();
         let buffer = slot.data_mut();
 
-        let out = transform(buffer);
+        let out = transform(buffer, is_final_offset);
 
         // filter out empty buffers
         if out.is_empty() {
