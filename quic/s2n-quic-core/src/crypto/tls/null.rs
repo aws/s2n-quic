@@ -18,8 +18,60 @@ use crate::{
 use bytes::Bytes;
 use core::{mem::size_of, task::Poll};
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Endpoint(());
+
+impl Default for Endpoint {
+    #[track_caller]
+    fn default() -> Self {
+        #[cfg(feature = "std")]
+        {
+            static WARNING: &str = r"
+                             ▒▒████
+                             ████████
+                           ██████████
+                           ████▒▒██████
+                         ██████    ████▒▒
+                         ████      ▒▒████
+                       ██████        ██████
+                     ▒▒████    ████    ████
+                     ████▒▒  ████████  ██████
+                   ██████    ████████    ████
+                   ████░░    ████████    ██████
+                 ██████      ████████      ████▒▒
+               ░░████        ████████      ▒▒████
+               ██████        ████████        ██████
+             ▒▒████          ████████          ████
+             ████▒▒          ██████▒▒          ██████
+           ██████              ████              ████
+           ████                ████              ██████
+         ██████                ████                ████▒▒
+       ░░████                                      ▒▒████
+       ████▓▓                                        ██████
+     ▒▒████                    ████                    ████
+     ████▒▒                  ████████                  ██████
+   ██████                      ▒▒▒▒                      ████░░
+   ████                                                  ▒▒████
+ ██████  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ░░░░░░░░░░░░░░░░▒▒██████
+ ████████████████████████████████████████████████████████████████
+ ▓▓████████████████████████████████████████████████████████████▓▓
+            ";
+            eprintln!("{}", WARNING);
+            eprintln!();
+            eprintln!("                  =====  W A R N I N G !!! =====");
+            eprintln!();
+            eprintln!("  An s2n-quic endpoint has configured without cryptographic protections.");
+            eprintln!("  This should ONLY be used for testing purposed only.");
+            eprintln!();
+            let location = core::panic::Location::caller();
+            eprintln!("  Endpoint configured by: {}", location);
+            eprintln!();
+            eprintln!("                  ==============================");
+        }
+
+        Self(())
+    }
+}
 
 impl crypto::tls::Endpoint for Endpoint {
     type Session = Session;
