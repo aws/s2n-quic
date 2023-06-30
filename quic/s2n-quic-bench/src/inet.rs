@@ -7,7 +7,7 @@ use s2n_quic_core::inet::checksum::Checksum;
 
 pub fn benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("inet");
-    for block in [1500, 9000, 1 << 16] {
+    for block in [20, 1500, 9000, 1 << 16] {
         let data = vec![123u8; block];
         group.throughput(Throughput::Bytes(block as u64));
         group.bench_with_input(

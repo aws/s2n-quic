@@ -17,14 +17,17 @@ pub fn checksum(data: &[u8]) -> u16 {
 /// Minimum size for a payload to be considered for platform-specific code
 const LARGE_WRITE_LEN: usize = 32;
 
-/// Platform-specific function for computing a checksum
-type LargeWriteFn = for<'a> unsafe fn(&mut Wrapping<u32>, bytes: &'a [u8]) -> &'a [u8];
+type Accumulator = u64;
+type State = Wrapping<Accumulator>;
 
-/// Generic implementation of a function that computes a checksum over the given slice
-#[inline]
-fn write_sized_generic<'a, const LEN: usize>(
-    state: &mut Wrapping<u32>,
+/// Platform-specific function for computing a checksum
+type LargeWriteFn = for<'a> unsafe fn(&mut State, bytes: &'a [u8]) -> &'a [u8];
+
+#[inline(always)]
+fn write_sized_generic<'a, const MAX_LEN: usize, const CHUNK_LEN: usize>(
+    state: &mut State,
     mut bytes: &'a [u8],
+    on_chunk: impl Fn(&[u8; CHUNK_LEN], &mut Accumulator),
 ) -> &'a [u8] {
     //= https://www.rfc-editor.org/rfc/rfc1071#section-4.1
     //# The following "C" code algorithm computes the checksum with an inner
@@ -54,21 +57,50 @@ fn write_sized_generic<'a, const LEN: usize>(
     //#    checksum = ~sum;
     //# }
 
-    while bytes.len() >= LEN {
-        let (chunks, remaining) = bytes.split_at(LEN);
+    while bytes.len() >= MAX_LEN {
+        let (chunks, remaining) = bytes.split_at(MAX_LEN);
 
         bytes = remaining;
 
         let mut sum = 0;
-        // for each pair of bytes, interpret them as 16 bit integers and sum them up
-        for chunk in chunks.chunks_exact(2) {
-            let value = u16::from_ne_bytes([chunk[0], chunk[1]]) as u32;
-            sum += value;
+        // for each pair of bytes, interpret them as integers and sum them up
+        for chunk in chunks.chunks_exact(CHUNK_LEN) {
+            let chunk = unsafe {
+                // SAFETY: chunks_exact always produces a slice of CHUNK_LEN
+                debug_assert_eq!(chunk.len(), CHUNK_LEN);
+                &*(chunk.as_ptr() as *const [u8; CHUNK_LEN])
+            };
+            on_chunk(chunk, &mut sum);
         }
         *state += sum;
     }
 
     bytes
+}
+
+/// Generic implementation of a function that computes a checksum over the given slice
+#[inline(always)]
+fn write_sized_generic_u16<'a, const LEN: usize>(state: &mut State, bytes: &'a [u8]) -> &'a [u8] {
+    write_sized_generic::<LEN, 2>(
+        state,
+        bytes,
+        #[inline(always)]
+        |&bytes, acc| {
+            *acc += u16::from_ne_bytes(bytes) as Accumulator;
+        },
+    )
+}
+
+#[inline(always)]
+fn write_sized_generic_u32<'a, const LEN: usize>(state: &mut State, bytes: &'a [u8]) -> &'a [u8] {
+    write_sized_generic::<LEN, 4>(
+        state,
+        bytes,
+        #[inline(always)]
+        |&bytes, acc| {
+            *acc += u32::from_ne_bytes(bytes) as Accumulator;
+        },
+    )
 }
 
 /// Returns the most optimized function implementation for the current platform
@@ -83,7 +115,7 @@ fn probe_write_large() -> LargeWriteFn {
             }
         }
 
-        write_sized_generic::<8>
+        write_sized_generic_u32::<16>
     });
 
     *LARGE_WRITE_FN
@@ -92,13 +124,13 @@ fn probe_write_large() -> LargeWriteFn {
 #[inline]
 #[cfg(not(all(feature = "once_cell", not(any(kani, miri)))))]
 fn probe_write_large() -> LargeWriteFn {
-    write_sized_generic::<8>
+    write_sized_generic_u32::<16>
 }
 
 /// Computes the [IP checksum](https://www.rfc-editor.org/rfc/rfc1071) over an arbitrary set of inputs
 #[derive(Clone, Copy)]
 pub struct Checksum {
-    state: Wrapping<u32>,
+    state: State,
     partial_write: bool,
     write_large: LargeWriteFn,
 }
@@ -122,26 +154,74 @@ impl fmt::Debug for Checksum {
 }
 
 impl Checksum {
+    /// Creates a checksum instance without enabling the native implementation
+    #[inline]
+    pub fn generic() -> Self {
+        Self {
+            state: Default::default(),
+            partial_write: false,
+            write_large: write_sized_generic_u32::<16>,
+        }
+    }
+
     /// Writes a single byte to the checksum state
     #[inline]
     fn write_byte(&mut self, byte: u8, shift: bool) {
         if shift {
-            self.state += (byte as u32) << 8;
+            self.state += (byte as Accumulator) << 8;
         } else {
-            self.state += byte as u32;
+            self.state += byte as Accumulator;
         }
     }
 
     /// Carries all of the bits into a single 16 bit range
     #[inline]
     fn carry(&mut self) {
-        let mut state = self.state;
+        #[cfg(kani)]
+        self.carry_rfc();
+        #[cfg(not(kani))]
+        self.carry_optimized();
+    }
 
-        for _ in 0..3 {
-            state = Wrapping((state.0 & 0xffff) + (state.0 >> 16));
+    /// Carries all of the bits into a single 16 bit range
+    ///
+    /// This implementation is very similar to the way the RFC is written.
+    #[inline]
+    #[allow(dead_code)]
+    fn carry_rfc(&mut self) {
+        let mut state = self.state.0;
+
+        for _ in 0..core::mem::size_of::<Accumulator>() {
+            state = (state & 0xffff) + (state >> 16);
         }
 
-        self.state = state;
+        self.state.0 = state;
+    }
+
+    /// Carries all of the bits into a single 16 bit range
+    ///
+    /// This implementation was written after some optimization on the RFC version. It results in
+    /// about half the instructions needed as the RFC.
+    #[inline]
+    #[allow(dead_code)]
+    fn carry_optimized(&mut self) {
+        let values: [u16; core::mem::size_of::<Accumulator>() / 2] = unsafe {
+            // SAFETY: alignment of the State is >= of u16
+            debug_assert!(core::mem::align_of::<State>() >= core::mem::align_of::<u16>());
+            core::mem::transmute(self.state.0)
+        };
+
+        let mut sum = 0u16;
+
+        for value in values {
+            let (res, overflowed) = sum.overflowing_add(value);
+            sum = res;
+            if overflowed {
+                sum += 1;
+            }
+        }
+
+        self.state.0 = sum as _;
     }
 
     /// Writes bytes to the checksum and ensures any single byte remainders are padded
@@ -157,7 +237,12 @@ impl Checksum {
 
     /// Computes the final checksum
     #[inline]
-    pub fn finish(mut self) -> u16 {
+    pub fn finish(self) -> u16 {
+        self.finish_be().to_be()
+    }
+
+    #[inline]
+    pub fn finish_be(mut self) -> u16 {
         self.carry();
 
         let value = self.state.0 as u16;
@@ -169,7 +254,7 @@ impl Checksum {
             return 0xffff;
         }
 
-        value.to_be()
+        value
     }
 }
 
@@ -195,7 +280,16 @@ impl Hasher for Checksum {
         }
 
         // Fall back on the generic implementation to wrap things up
-        bytes = write_sized_generic::<2>(&mut self.state, bytes);
+        //
+        // NOTE: We don't use the u32 version with kani as it causes the verification time to
+        // increase by quite a bit. We have a separate proof for the functional equivalence of
+        // these two configurations.
+        #[cfg(not(kani))]
+        {
+            bytes = write_sized_generic_u32::<4>(&mut self.state, bytes);
+        }
+
+        bytes = write_sized_generic_u16::<2>(&mut self.state, bytes);
 
         // if we only have a single byte left, write it to the state and mark it as a partial write
         if let Some(byte) = bytes.first().copied() {
@@ -310,10 +404,10 @@ mod tests {
     /// * Compares the implementation to a port of the C code defined in the RFC
     /// * Ensures partial writes are correctly handled, even if they're not at a 16 bit boundary
     #[test]
-    #[cfg_attr(kani, kani::proof, kani::unwind(8), kani::solver(kissat))]
+    #[cfg_attr(kani, kani::proof, kani::unwind(17), kani::solver(kissat))]
     fn differential() {
         #[cfg(any(kani, miri))]
-        type Bytes = crate::testing::InlineVec<u8, 5>;
+        type Bytes = crate::testing::InlineVec<u8, 16>;
         #[cfg(not(any(kani, miri)))]
         type Bytes = Vec<u8>;
 
@@ -337,5 +431,49 @@ mod tests {
 
                 assert_eq!(rfc_value.to_be_bytes(), cs.finish().to_be_bytes());
             });
+    }
+
+    /// Shows that using the u32+u16 methods is the same as only using u16
+    #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(9), kani::solver(kissat))]
+    fn u32_u16_differential() {
+        #[cfg(any(kani, miri))]
+        type Bytes = crate::testing::InlineVec<u8, 8>;
+        #[cfg(not(any(kani, miri)))]
+        type Bytes = Vec<u8>;
+
+        check!().with_type::<Bytes>().for_each(|bytes| {
+            let a = {
+                let mut cs = Checksum::generic();
+                let bytes = write_sized_generic_u32::<4>(&mut cs.state, bytes);
+                write_sized_generic_u16::<2>(&mut cs.state, bytes);
+                cs.finish()
+            };
+
+            let b = {
+                let mut cs = Checksum::generic();
+                write_sized_generic_u16::<2>(&mut cs.state, bytes);
+                cs.finish()
+            };
+
+            assert_eq!(a, b);
+        });
+    }
+
+    /// Shows that RFC carry implementation is the same as the optimized version
+    #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(9), kani::solver(kissat))]
+    fn carry_differential() {
+        check!().with_type::<u64>().cloned().for_each(|state| {
+            let mut opt = Checksum::generic();
+            opt.state.0 = state;
+            opt.carry_optimized();
+
+            let mut rfc = Checksum::generic();
+            rfc.state.0 = state;
+            rfc.carry_rfc();
+
+            assert_eq!(opt.state.0, rfc.state.0);
+        });
     }
 }

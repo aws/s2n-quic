@@ -141,11 +141,7 @@ fn encode_ipv4<M: Message<Handle = path::Tuple>>(
         *header.destination_mut() = remote_ip;
 
         // calculate the IPv4 header checksum
-        {
-            let mut checksum = state.cached_checksum;
-            checksum.write(header.as_bytes());
-            header.checksum_mut().set(checksum.finish());
-        }
+        header.update_checksum();
 
         // NOTE: duvet doesn't know how to parse this RFC since it doesn't follow more modern formatting
         //# https://www.rfc-editor.org/rfc/rfc768#Fields
