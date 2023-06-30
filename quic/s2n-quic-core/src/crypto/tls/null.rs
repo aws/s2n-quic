@@ -60,8 +60,12 @@ impl Default for Endpoint {
             eprintln!();
             eprintln!("                  =====  W A R N I N G !!! =====");
             eprintln!();
-            eprintln!("  An s2n-quic endpoint has configured without cryptographic protections.");
-            eprintln!("  This should ONLY be used for testing purposed only.");
+            eprintln!(
+                "  An s2n-quic endpoint has been configured without cryptographic protections."
+            );
+            eprintln!("  This should ONLY be used for testing purposes. Without cryptographic");
+            eprintln!("  protections in place, s2n-quic cannot guarantee confidentiality,");
+            eprintln!("  integrity, or authenticity.");
             eprintln!();
             let location = core::panic::Location::caller();
             eprintln!("  Endpoint configured by: {}", location);
