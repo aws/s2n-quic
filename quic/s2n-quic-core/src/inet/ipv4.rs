@@ -485,6 +485,21 @@ impl Header {
     pub fn destination_mut(&mut self) -> &mut IpV4Address {
         &mut self.destination
     }
+
+    #[inline]
+    pub fn update_checksum(&mut self) {
+        use core::hash::Hasher;
+
+        self.checksum.set(0);
+
+        let bytes = self.as_bytes();
+
+        let mut checksum = crate::inet::checksum::Checksum::generic();
+
+        checksum.write(bytes);
+
+        self.checksum.set_be(checksum.finish_be());
+    }
 }
 
 // This struct covers the bits for version and IHL (header len).
