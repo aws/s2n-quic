@@ -138,10 +138,48 @@ pub struct RxMessage<'a, Handle: Copy> {
 impl<'a, Handle: Copy> RxMessage<'a, Handle> {
     #[inline]
     pub fn for_each<F: FnMut(datagram::Header<Handle>, &mut [u8])>(self, mut on_packet: F) {
-        debug_assert_ne!(self.segment_size, 0);
+        // `chunks_mut` doesn't know what to do with zero-sized segments so return early
+        if self.segment_size == 0 {
+            return;
+        }
 
         for segment in self.payload.chunks_mut(self.segment_size) {
             on_packet(self.header, segment);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bolero::check;
+
+    #[test]
+    #[cfg_attr(kani, kani::proof, kani::unwind(17), kani::solver(cadical))]
+    fn rx_message_test() {
+        let path = bolero::gen::<path::RemoteAddress>();
+        let ecn = bolero::gen();
+        let segment_size = bolero::gen();
+        let max_payload_len = if cfg!(kani) { 16 } else { u16::MAX as usize };
+        let payload_len = 0..=max_payload_len;
+
+        check!()
+            .with_generator((path, ecn, segment_size, payload_len))
+            .cloned()
+            .for_each(|(path, ecn, segment_size, payload_len)| {
+                let mut payload = vec![0u8; payload_len];
+                let rx_message = RxMessage {
+                    header: datagram::Header { path, ecn },
+                    segment_size,
+                    payload: &mut payload,
+                };
+
+                rx_message.for_each(|header, segment| {
+                    assert_eq!(header.path, path);
+                    assert_eq!(header.ecn, ecn);
+                    assert!(segment.len() <= payload_len);
+                    assert!(segment.len() <= segment_size);
+                })
+            })
     }
 }
