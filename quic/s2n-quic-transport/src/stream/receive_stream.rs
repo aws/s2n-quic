@@ -71,7 +71,7 @@ pub(super) enum ReceiveStreamState {
     /// for the states is mostly identical.
     /// The parameter indicates the total size of the stream if it had already
     /// been signalled by the peer.
-    Receiving(Option<u64>),
+    Receiving,
     /// All data had been received from the peer and consumed by the user.
     /// This is the terminal state.
     DataRead,
@@ -363,7 +363,7 @@ impl ReceiveStream {
         let state = if is_closed {
             ReceiveStreamState::DataRead
         } else {
-            ReceiveStreamState::Receiving(None)
+            ReceiveStreamState::Receiving
         };
 
         let mut result = ReceiveStream {
@@ -417,7 +417,7 @@ impl ReceiveStream {
                 // it actually fitted into previously announced window, but
                 // don't get any benefit from this.
             }
-            ReceiveStreamState::Receiving(mut total_size) => {
+            ReceiveStreamState::Receiving => {
                 // In this function errors are returned, but the Stream is left
                 // intact. It will be task of the caller to fail the stream
                 // with `trigger_internal_reset()`.
@@ -435,39 +435,45 @@ impl ReceiveStream {
                             .with_frame_type(frame.tag().into())
                     })?;
 
-                if let Some(total_size) = total_size {
-                    if data_end > total_size || frame.is_fin && data_end != total_size {
+                // If we don't know the final size then try acquiring flow control
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# The receiver MUST use the final size of the stream to
+                //# account for all bytes sent on the stream in its connection level flow
+                //# controller.
+                if self.receive_buffer.final_size().is_none() {
+                    self.flow_controller
+                        .acquire_window_up_to(data_end, frame.tag().into())?;
+                }
+
+                // If this is the last frame then inform the receive_buffer so it can check for any
+                // final size errors.
+                let write_result = if frame.is_fin {
+                    self.receive_buffer.write_at_fin(frame.offset, frame.data)
+                } else {
+                    self.receive_buffer.write_at(frame.offset, frame.data)
+                };
+
+                write_result.map_err(|error| {
+                    match error {
+                        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.9
+                        //# An endpoint MUST terminate a connection with an error of type
+                        //# FLOW_CONTROL_ERROR if it receives more data than the maximum data
+                        //# value that it has sent.  This includes violations of remembered
+                        //# limits in Early Data; see Section 7.4.1.
+                        StreamReceiveBufferError::OutOfRange => {
+                            transport::Error::FLOW_CONTROL_ERROR
+                        }
                         //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
                         //# Once a final size for a stream is known, it cannot change.  If a
                         //# RESET_STREAM or STREAM frame is received indicating a change in the
                         //# final size for the stream, an endpoint SHOULD respond with an error
                         //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
                         //# handling.
-                        return Err(transport::Error::FINAL_SIZE_ERROR
-                            .with_reason("Final size changed")
-                            .with_frame_type(frame.tag().into()));
+                        StreamReceiveBufferError::InvalidFin => transport::Error::FINAL_SIZE_ERROR,
                     }
-                } else {
-                    self.flow_controller
-                        .acquire_window_up_to(data_end, frame.tag().into())?;
-                }
-
-                self.receive_buffer
-                    .write_at(frame.offset, frame.data)
-                    .map_err(|error| {
-                        match error {
-                            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.9
-                            //# An endpoint MUST terminate a connection with an error of type
-                            //# FLOW_CONTROL_ERROR if it receives more data than the maximum data
-                            //# value that it has sent.  This includes violations of remembered
-                            //# limits in Early Data; see Section 7.4.1.
-                            StreamReceiveBufferError::OutOfRange => {
-                                transport::Error::FLOW_CONTROL_ERROR
-                            }
-                        }
-                        .with_reason("data reception error")
-                        .with_frame_type(frame.tag().into())
-                    })?;
+                    .with_reason("data reception error")
+                    .with_frame_type(frame.tag().into())
+                })?;
 
                 // wake the waiter if the buffer has data and the len has crossed the watermark
                 let mut should_wake = self
@@ -491,16 +497,7 @@ impl ReceiveStream {
                     })
                     .unwrap_or(false);
 
-                if frame.is_fin && total_size.is_none() {
-                    // Store the total size
-                    total_size = Some(data_end.into());
-
-                    //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
-                    //# The receiver MUST use the final size of the stream to
-                    //# account for all bytes sent on the stream in its connection level flow
-                    //# controller.
-                    self.state = ReceiveStreamState::Receiving(total_size);
-
+                if frame.is_fin {
                     // We don't have to transmit MAX_STREAM_DATA frames anymore.
                     // If there is pending transmission/retransmission then remove it.
                     //
@@ -519,7 +516,7 @@ impl ReceiveStream {
                     self.flow_controller.stop_sync();
                 }
 
-                if let Some(total_size) = total_size {
+                if let Some(total_size) = self.receive_buffer.final_size() {
                     // If we already have received all the data, there is no point
                     // in transmitting STOP_SENDING anymore.
                     // Note that this might not happen in the same frame where we
@@ -617,7 +614,8 @@ impl ReceiveStream {
         // data had been already received.
         match self.state {
             ReceiveStreamState::Reset(_) | ReceiveStreamState::DataRead => return Ok(()),
-            ReceiveStreamState::Receiving(Some(total_size)) => {
+            ReceiveStreamState::Receiving if self.receive_buffer.final_size().is_some() => {
+                let total_size = self.receive_buffer.final_size().unwrap();
                 if let Some(actual_size) = actual_size {
                     // If the stream size which is indicated through the reset
                     // diverges from the stream size which had been communicated
@@ -649,7 +647,7 @@ impl ReceiveStream {
                     return Ok(());
                 }
             }
-            ReceiveStreamState::Receiving(None) | ReceiveStreamState::Stopping { .. } => {
+            ReceiveStreamState::Receiving | ReceiveStreamState::Stopping { .. } => {
                 if let Some(actual_size) = actual_size {
                     // We have to acquire the flow control credits up up to the
                     // offset which the peer indicates as the end of the Stream.
@@ -768,9 +766,7 @@ impl ReceiveStream {
                     return Ok(response);
                 }
                 // If we've already buffered everything, transition to the final state
-                ReceiveStreamState::Receiving(Some(total_size))
-                    if self.receive_buffer.total_received_len() == total_size =>
-                {
+                ReceiveStreamState::Receiving if self.receive_buffer.is_writing_complete() => {
                     self.state = ReceiveStreamState::DataRead;
                     self.final_state_observed = true;
                     response.status = ops::Status::Finished;
@@ -833,7 +829,7 @@ impl ReceiveStream {
                 response.status = ops::Status::Finished;
                 return Ok(response);
             }
-            ReceiveStreamState::Receiving(total_size) => total_size,
+            ReceiveStreamState::Receiving => self.receive_buffer.final_size(),
         };
 
         let low_watermark = &mut request.low_watermark;

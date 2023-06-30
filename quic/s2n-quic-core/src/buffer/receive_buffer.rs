@@ -22,12 +22,20 @@ use slot::Slot;
 pub enum ReceiveBufferError {
     /// An invalid data range was provided
     OutOfRange,
+    /// The provided final size was invalid for the buffer's state
+    InvalidFin,
 }
 
 /// The default buffer size for slots that the [`ReceiveBuffer`] uses.
 ///
 /// This value was picked as it is typically used for the default memory page size.
 const MIN_BUFFER_ALLOCATION_SIZE: usize = 4096;
+
+/// The value used for when the final size is unknown.
+///
+/// By using `u64::MAX` we don't have to special case any of the logic. Also note that the actual
+/// max size of any stream is a `VarInt::MAX` so this isn't a valid value.
+const UNKNOWN_FINAL_SIZE: u64 = u64::MAX;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-2.2
 //# Endpoints MUST be able to deliver stream data to an application as an
@@ -73,10 +81,12 @@ const MIN_BUFFER_ALLOCATION_SIZE: usize = 4096;
 /// // they will be returned in combined fashion.
 /// assert_eq!(&[0u8, 1, 2, 3, 4, 5, 6, 7], &buffer.pop().unwrap()[..]);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ReceiveBuffer {
     slots: VecDeque<Slot>,
     start_offset: u64,
+    max_recv_offset: u64,
+    final_offset: u64,
 }
 
 impl Default for ReceiveBuffer {
@@ -91,6 +101,32 @@ impl ReceiveBuffer {
         ReceiveBuffer {
             slots: VecDeque::new(),
             start_offset: 0,
+            max_recv_offset: 0,
+            final_offset: UNKNOWN_FINAL_SIZE,
+        }
+    }
+
+    /// Returns true if the buffer has completely been written to and the final size is known
+    #[inline]
+    pub fn is_writing_complete(&self) -> bool {
+        self.final_size()
+            .map_or(false, |len| self.total_received_len() == len)
+    }
+
+    /// Returns true if the buffer has completely been read and the final size is known
+    #[inline]
+    pub fn is_reading_complete(&self) -> bool {
+        self.final_size()
+            .map_or(false, |len| self.start_offset == len)
+    }
+
+    /// Returns the final size of the stream, if known
+    #[inline]
+    pub fn final_size(&self) -> Option<u64> {
+        if self.final_offset == UNKNOWN_FINAL_SIZE {
+            None
+        } else {
+            Some(self.final_offset)
         }
     }
 
@@ -124,15 +160,56 @@ impl ReceiveBuffer {
     #[inline]
     pub fn write_at(&mut self, offset: VarInt, data: &[u8]) -> Result<(), ReceiveBufferError> {
         // create a request
-        let request = Request::new(offset, data)?;
+        let request = Request::new(offset, data, false)?;
+        self.write_request(request)?;
+        Ok(())
+    }
 
+    /// Pushes a slice at a certain offset, which is the end of the buffer
+    #[inline]
+    pub fn write_at_fin(&mut self, offset: VarInt, data: &[u8]) -> Result<(), ReceiveBufferError> {
+        // create a request
+        let request = Request::new(offset, data, true)?;
+
+        // compute the final offset for the fin request
+        let final_offset = request.end_exclusive();
+
+        // make sure if we previously saw a final size that they still match
+        if self.final_offset != UNKNOWN_FINAL_SIZE && self.final_offset != final_offset {
+            return Err(ReceiveBufferError::InvalidFin);
+        }
+
+        // make sure that we didn't see any previous chunks greater than the final size
+        if self.max_recv_offset > final_offset {
+            return Err(ReceiveBufferError::InvalidFin);
+        }
+
+        self.final_offset = final_offset;
+
+        self.write_request(request)?;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn write_request(&mut self, request: Request) -> Result<(), ReceiveBufferError> {
         // trim off any data that we've already read
-        let (_, mut request) = request.split(self.start_offset);
+        let (_, request) = request.split(self.start_offset);
+        // trim off any data that exceeds our final length
+        let (mut request, excess) = request.split(self.final_offset);
+
+        // make sure the request isn't trying to write beyond the final size
+        if !excess.is_empty() {
+            return Err(ReceiveBufferError::InvalidFin);
+        }
 
         // if the request is empty we're done
         if request.is_empty() {
             return Ok(());
         }
+
+        // record the maximum offset that we've seen
+        self.max_recv_offset = self.max_recv_offset.max(request.end_exclusive());
 
         // start from the back with the assumption that most data arrives in order
         for mut idx in (0..self.slots.len()).rev() {
@@ -191,6 +268,12 @@ impl ReceiveBuffer {
         Iter::new(self)
     }
 
+    /// Drains all of the currently available chunks
+    #[inline]
+    pub fn drain(&mut self) -> impl Iterator<Item = BytesMut> + '_ {
+        Drain { inner: self }
+    }
+
     /// Pops a buffer from the front of the receive queue if available
     #[inline]
     pub fn pop(&mut self) -> Option<BytesMut> {
@@ -245,6 +328,8 @@ impl ReceiveBuffer {
 
         self.start_offset += out.len() as u64;
 
+        self.check_consistency();
+
         Some(out)
     }
 
@@ -271,6 +356,8 @@ impl ReceiveBuffer {
     pub fn reset(&mut self) {
         self.slots.clear();
         self.start_offset = Default::default();
+        self.max_recv_offset = 0;
+        self.final_offset = u64::MAX;
     }
 
     #[inline(always)]
@@ -285,30 +372,61 @@ impl ReceiveBuffer {
 
     #[inline]
     fn allocate_request(&mut self, mut idx: usize, mut request: Request) {
+        if request.is_empty() {
+            return;
+        }
+
+        if request.is_fin() {
+            let start = request.start();
+            let offset = Self::align_offset(start, Self::allocation_size(start));
+            let size = (start - offset) as usize + request.len();
+            request = self.allocate_slot(&mut idx, request, offset, size);
+
+            debug_assert!(
+                request.is_empty(),
+                "fin requests should allocate a single chunk"
+            );
+
+            return;
+        }
+
         while !request.is_empty() {
             let size = Self::allocation_size(request.start());
             let offset = Self::align_offset(request.start(), size);
-            let buffer = BytesMut::with_capacity(size);
-            let end = offset + size as u64;
-            let mut slot = Slot::new(offset, end, buffer);
-
-            let slot::Outcome { lower, mid, upper } = slot.try_write(request);
-
-            debug_assert!(lower.is_empty(), "lower requests should always be empty");
-
-            // first insert the newly-created Slot
-            self.insert(idx, slot);
-            idx += 1;
-
-            // check if we have a mid-slot and insert that as well
-            if let Some(mid) = mid {
-                self.insert(idx, mid);
-                idx += 1;
-            }
 
             // set the current request to the upper slot and loop
-            request = upper;
+            request = self.allocate_slot(&mut idx, request, offset, size);
         }
+    }
+
+    #[inline]
+    fn allocate_slot<'a>(
+        &mut self,
+        idx: &mut usize,
+        request: Request<'a>,
+        offset: u64,
+        size: usize,
+    ) -> Request<'a> {
+        let buffer = BytesMut::with_capacity(size);
+        let end = offset + size as u64;
+        let mut slot = Slot::new(offset, end, buffer);
+
+        let slot::Outcome { lower, mid, upper } = slot.try_write(request);
+
+        debug_assert!(lower.is_empty(), "lower requests should always be empty");
+
+        // first insert the newly-created Slot
+        self.insert(*idx, slot);
+        *idx += 1;
+
+        // check if we have a mid-slot and insert that as well
+        if let Some(mid) = mid {
+            self.insert(*idx, mid);
+            *idx += 1;
+        }
+
+        // return the upper request if we need to allocate more
+        upper
     }
 
     /// Aligns an offset to a certain alignment size
@@ -388,5 +506,24 @@ impl<'a> Iterator for Iter<'a> {
 
         self.prev_end = slot.end();
         Some(slot.as_slice())
+    }
+}
+
+pub struct Drain<'a> {
+    inner: &'a mut ReceiveBuffer,
+}
+
+impl<'a> Iterator for Drain<'a> {
+    type Item = BytesMut;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.pop()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.inner.slots.len();
+        (len, Some(len))
     }
 }

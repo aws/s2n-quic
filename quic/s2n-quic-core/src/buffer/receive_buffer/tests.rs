@@ -11,8 +11,9 @@ static BYTES: &[u8] = &[42u8; 9000];
 enum Op {
     Write {
         offset: VarInt,
-        #[generator(0..BYTES.len())]
+        #[generator(0..=BYTES.len())]
         len: usize,
+        is_fin: bool,
     },
     Pop {
         watermark: Option<u16>,
@@ -26,8 +27,16 @@ fn model_test() {
         let mut buffer = ReceiveBuffer::new();
         for op in ops {
             match *op {
-                Op::Write { offset, len } => {
-                    let _ = buffer.write_at(offset, &BYTES[..len]);
+                Op::Write {
+                    offset,
+                    len,
+                    is_fin,
+                } => {
+                    if is_fin {
+                        let _ = buffer.write_at_fin(offset, &BYTES[..len]);
+                    } else {
+                        let _ = buffer.write_at(offset, &BYTES[..len]);
+                    }
                 }
                 Op::Pop { watermark } => {
                     if let Some(watermark) = watermark {
@@ -40,6 +49,10 @@ fn model_test() {
                 }
             }
         }
+
+        // make sure a cleared buffer is the same as a new one
+        buffer.reset();
+        assert_eq!(buffer, ReceiveBuffer::new());
     })
 }
 
@@ -730,6 +743,188 @@ fn pop_watermarked_test() {
         buffer.pop_watermarked(1),
         "the receive buffer should be empty after splitting"
     );
+}
+
+// these are various chunk sizes that should trigger different behavior
+const INTERESTING_CHUNK_SIZES: &[u32] = &[4, 4095, 4096, 4097];
+
+#[test]
+#[cfg_attr(miri, ignore)] // this allocates too many bytes for miri
+fn write_start_fin_test() {
+    for size in INTERESTING_CHUNK_SIZES.iter().copied() {
+        let bytes: Vec<u8> = Iterator::map(0..size, |v| v as u8).collect();
+        let mut buffer = ReceiveBuffer::new();
+
+        buffer.write_at_fin(0u32.into(), &bytes).unwrap();
+
+        let chunk = buffer
+            .pop_transform(|chunk| core::mem::take(chunk))
+            .expect("buffer should pop final chunk");
+
+        assert_eq!(&chunk[..], &bytes);
+
+        assert_eq!(
+            chunk.capacity(),
+            bytes.len(),
+            "final chunk should only allocate what is needed"
+        );
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // this allocates too many bytes for miri
+fn write_partial_fin_test() {
+    for partial_size in INTERESTING_CHUNK_SIZES.iter().copied() {
+        for fin_size in INTERESTING_CHUNK_SIZES.iter().copied() {
+            for reverse in [false, true] {
+                dbg!(partial_size, fin_size, reverse);
+
+                let partial_bytes: Vec<u8> = Iterator::map(0..partial_size, |v| v as u8).collect();
+                let fin_bytes: Vec<u8> = Iterator::map(0..fin_size, |v| v as u8).collect();
+
+                let mut buffer = ReceiveBuffer::new();
+                assert!(!buffer.is_writing_complete());
+                assert!(!buffer.is_reading_complete());
+
+                let mut oracle = ReceiveBuffer::new();
+
+                let mut requests = vec![
+                    (0u32, &partial_bytes, false),
+                    (partial_size, &fin_bytes, true),
+                ];
+
+                if reverse {
+                    requests.reverse();
+                }
+
+                for (offset, data, is_fin) in requests {
+                    oracle.write_at(offset.into(), data).unwrap();
+                    if is_fin {
+                        buffer.write_at_fin(offset.into(), data).unwrap()
+                    } else {
+                        buffer.write_at(offset.into(), data).unwrap()
+                    }
+                }
+
+                assert!(buffer.is_writing_complete());
+
+                let mut results = vec![];
+
+                for buf in [&mut buffer, &mut oracle] {
+                    let mut chunks = vec![];
+                    let mut actual_len = 0;
+                    let mut allocated_len = 0;
+
+                    // use pop_transform so we can take the entire buffer and get an accurate `capacity` value
+                    while let Some(chunk) = buf.pop_transform(core::mem::take) {
+                        actual_len += chunk.len();
+                        allocated_len += chunk.capacity();
+                        chunks.push(chunk);
+                    }
+
+                    assert_eq!(
+                        (partial_size + fin_size) as usize,
+                        actual_len,
+                        "the number of received bytes should match"
+                    );
+
+                    results.push((chunks, actual_len, allocated_len));
+                }
+
+                assert!(buffer.is_reading_complete());
+
+                let mut oracle_results = results.pop().unwrap();
+                let actual_results = results.pop().unwrap();
+
+                assert_eq!(
+                    oracle_results.1, actual_results.1,
+                    "the lengths should match"
+                );
+
+                // make sure the buffers match
+                crate::slice::zip(&actual_results.0, &mut oracle_results.0, |a, b| {
+                    assert_eq!(a, b, "all chunk bytes should match");
+                });
+
+                assert!(
+                    oracle_results.2 >= actual_results.2,
+                    "the actual allocations should be no worse than the oracle"
+                );
+
+                if reverse {
+                    let ideal_allocation = (partial_size + fin_size) as usize;
+                    assert_eq!(
+                        actual_results.2, ideal_allocation,
+                        "if the chunks were reversed, the allocation should be ideal"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn write_fin_zero_test() {
+    let mut buffer = ReceiveBuffer::new();
+
+    buffer.write_at_fin(0u32.into(), &[]).unwrap();
+
+    assert_eq!(
+        buffer.write_at(0u32.into(), &[1]),
+        Err(ReceiveBufferError::InvalidFin),
+        "no data can be written after a fin"
+    );
+}
+
+#[test]
+fn write_fin_changed_error_test() {
+    let mut buffer = ReceiveBuffer::new();
+
+    buffer.write_at_fin(16u32.into(), &[]).unwrap();
+
+    assert_eq!(
+        buffer.write_at_fin(0u32.into(), &[]),
+        Err(ReceiveBufferError::InvalidFin),
+        "the fin cannot decrease a previous fin"
+    );
+    assert_eq!(
+        buffer.write_at_fin(32u32.into(), &[]),
+        Err(ReceiveBufferError::InvalidFin),
+        "the fin cannot exceed a previous fin"
+    );
+}
+
+#[test]
+fn write_fin_lowered_test() {
+    let mut buffer = ReceiveBuffer::new();
+
+    buffer.write_at(32u32.into(), &[1]).unwrap();
+
+    assert_eq!(
+        buffer.write_at_fin(16u32.into(), &[]),
+        Err(ReceiveBufferError::InvalidFin),
+        "the fin cannot be lower than an already existing chunk"
+    );
+}
+
+#[test]
+fn write_fin_complete_test() {
+    let mut buffer = ReceiveBuffer::new();
+
+    buffer.write_at_fin(4u32.into(), &[4]).unwrap();
+
+    assert!(!buffer.is_writing_complete());
+    assert!(!buffer.is_reading_complete());
+
+    buffer.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
+
+    assert!(buffer.is_writing_complete());
+    assert!(!buffer.is_reading_complete());
+
+    buffer.pop().unwrap();
+
+    assert!(buffer.is_writing_complete());
+    assert!(buffer.is_reading_complete());
 }
 
 #[test]
