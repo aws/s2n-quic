@@ -23,8 +23,12 @@ use bytes::Bytes;
 /// - It can be converted into [`Bytes`] which supports zero-copy slicing and
 /// reference counting.
 /// - It can be accessed as `&str` so that applications can reason about the string value.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct ServerName(Bytes);
+
+/// A static value for localhost
+#[allow(dead_code)] // this is used by conditional modules so don't warn
+pub(crate) static LOCALHOST: ServerName = ServerName(Bytes::from_static(b"localhost"));
 
 impl ServerName {
     #[inline]

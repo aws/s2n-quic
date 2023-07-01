@@ -4,9 +4,7 @@
 use crate::{
     client::{h09, h3},
     interop::Testcase,
-    tls,
-    tls::TlsProviders,
-    Result,
+    tls, Result,
 };
 use core::time::Duration;
 use s2n_quic::{client::Connect, provider::event, Client};
@@ -27,9 +25,6 @@ pub struct Interop {
     #[structopt(short, long, default_value = "443")]
     port: u16,
 
-    #[structopt(long)]
-    ca: Option<PathBuf>,
-
     #[structopt(long, default_value = "hq-interop")]
     application_protocols: Vec<String>,
 
@@ -45,11 +40,11 @@ pub struct Interop {
     #[structopt(min_values = 1, required = true)]
     requests: Vec<Url>,
 
-    #[structopt(long, default_value)]
-    tls: TlsProviders,
-
     #[structopt(flatten)]
     io: crate::io::Client,
+
+    #[structopt(flatten)]
+    tls: tls::Client,
 }
 
 impl Interop {
@@ -128,33 +123,8 @@ impl Interop {
         let client = Client::builder()
             .with_io(io)?
             .with_event(event::tracing::Subscriber::default())?;
-        let client = match self.tls {
-            #[cfg(unix)]
-            TlsProviders::S2N => {
-                let tls = s2n_quic::provider::tls::s2n_tls::Client::builder()
-                    .with_certificate(tls::s2n::ca(self.ca.as_ref())?)?
-                    // the "amplificationlimit" tests generates a very large chain so bump the limit
-                    .with_max_cert_chain_depth(10)?
-                    .with_application_protocols(
-                        self.application_protocols.iter().map(String::as_bytes),
-                    )?
-                    .with_key_logging()?
-                    .build()?;
-                client.with_tls(tls)?.start().unwrap()
-            }
-            TlsProviders::Rustls => {
-                let tls = s2n_quic::provider::tls::rustls::Client::builder()
-                    .with_certificate(tls::rustls::ca(self.ca.as_ref())?)?
-                    // the "amplificationlimit" tests generates a very large chain so bump the limit
-                    .with_max_cert_chain_depth(10)?
-                    .with_application_protocols(
-                        self.application_protocols.iter().map(String::as_bytes),
-                    )?
-                    .with_key_logging()?
-                    .build()?;
-                client.with_tls(tls)?.start().unwrap()
-            }
-        };
+
+        let client = self.tls.build(client, &self.application_protocols)?;
 
         Ok(client)
     }

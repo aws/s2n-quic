@@ -3,7 +3,6 @@
 
 use crate::{perf, tls, Result};
 use s2n_quic::{client, Client, Connection};
-use std::path::PathBuf;
 use structopt::StructOpt;
 use tokio::task::JoinSet;
 
@@ -17,9 +16,6 @@ pub struct Perf {
 
     #[structopt(short, long)]
     server_name: Option<String>,
-
-    #[structopt(long)]
-    ca: Option<PathBuf>,
 
     //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.1
     //# The ALPN used by the QUIC performance protocol is "perf".
@@ -47,6 +43,9 @@ pub struct Perf {
 
     #[structopt(flatten)]
     io: crate::io::Client,
+
+    #[structopt(flatten)]
+    tls: tls::Client,
 }
 
 impl Perf {
@@ -113,11 +112,6 @@ impl Perf {
     fn client(&self) -> Result<Client> {
         let io = self.io.build()?;
 
-        let tls = s2n_quic::provider::tls::default::Client::builder()
-            .with_certificate(tls::default::ca(self.ca.as_ref())?)?
-            .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
-            .build()?;
-
         let subscriber = perf::Subscriber::default();
 
         if self.stats {
@@ -132,10 +126,9 @@ impl Perf {
         let client = Client::builder()
             .with_limits(self.limits.limits())?
             .with_io(io)?
-            .with_event(subscriber)?
-            .with_tls(tls)?
-            .start()
-            .unwrap();
+            .with_event(subscriber)?;
+
+        let client = self.tls.build(client, &self.application_protocols)?;
 
         Ok(client)
     }

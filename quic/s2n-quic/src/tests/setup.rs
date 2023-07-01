@@ -56,8 +56,10 @@ pub fn start_server(mut server: Server) -> Result<SocketAddr> {
     // accept connections and echo back
     spawn(async move {
         while let Some(mut connection) = server.accept().await {
+            tracing::debug!("accepted server connection: {}", connection.id());
             spawn(async move {
                 while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
+                    tracing::debug!("accepted server stream: {}", stream.id());
                     spawn(async move {
                         while let Ok(Some(chunk)) = stream.receive().await {
                             let _ = stream.send(chunk).await;
@@ -94,7 +96,11 @@ pub fn start_client(client: Client, server_addr: SocketAddr, data: Data) -> Resu
         let connect = Connect::new(server_addr).with_server_name("localhost");
         let mut connection = client.connect(connect).await.unwrap();
 
+        tracing::debug!("connected with client connection: {}", connection.id());
+
         let stream = connection.open_bidirectional_stream().await.unwrap();
+        tracing::debug!("opened client stream: {}", stream.id());
+
         let (mut recv, mut send) = stream.split();
 
         let mut send_data = data;
@@ -108,6 +114,7 @@ pub fn start_client(client: Client, server_addr: SocketAddr, data: Data) -> Resu
         });
 
         while let Some(chunk) = send_data.send_one(usize::MAX) {
+            tracing::debug!("client sending {} chunk", chunk.len());
             send.send(chunk).await.unwrap();
         }
     });
