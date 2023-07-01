@@ -7,18 +7,11 @@ use s2n_quic::{
     stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection, Server,
 };
-use std::path::PathBuf;
 use structopt::StructOpt;
 use tokio::spawn;
 
 #[derive(Debug, StructOpt)]
 pub struct Perf {
-    #[structopt(long)]
-    certificate: Option<PathBuf>,
-
-    #[structopt(long)]
-    private_key: Option<PathBuf>,
-
     //= https://tools.ietf.org/id/draft-banks-quic-performance-00#2.1
     //# The ALPN used by the QUIC performance protocol is "perf".
     #[structopt(long, default_value = "perf")]
@@ -33,6 +26,9 @@ pub struct Perf {
     /// Logs statistics for the endpoint
     #[structopt(long)]
     stats: bool,
+
+    #[structopt(flatten)]
+    tls: tls::Server,
 
     #[structopt(flatten)]
     io: crate::io::Server,
@@ -161,14 +157,6 @@ impl Perf {
     fn server(&self) -> Result<Server> {
         let io = self.io.build()?;
 
-        let tls = s2n_quic::provider::tls::default::Server::builder()
-            .with_certificate(
-                tls::default::ca(self.certificate.as_ref())?,
-                tls::default::private_key(self.private_key.as_ref())?,
-            )?
-            .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
-            .build()?;
-
         let subscriber = perf::Subscriber::default();
 
         if self.stats {
@@ -183,10 +171,9 @@ impl Perf {
         let server = Server::builder()
             .with_limits(self.limits.limits())?
             .with_io(io)?
-            .with_event(subscriber)?
-            .with_tls(tls)?
-            .start()
-            .unwrap();
+            .with_event(subscriber)?;
+
+        let server = self.tls.build(server, &self.application_protocols)?;
 
         eprintln!("Server listening on port {}", self.io.port);
 

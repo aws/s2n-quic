@@ -75,4 +75,5 @@ bolero = { version = "0.9" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing", "event-tracing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
+tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
