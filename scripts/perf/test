@@ -7,7 +7,7 @@
 
 set -e
 
-DOWNLOAD_MB=${1:-1000}
+DOWNLOAD_MB=${1:-10000}
 UPLOAD_MB=${2:-0}
 SERVER=${3:-s2n-quic}
 CLIENT=${4:-s2n-quic}
