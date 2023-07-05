@@ -10,8 +10,10 @@ pub struct Builder {
     pub(super) tx_socket: Option<socket2::Socket>,
     pub(super) recv_addr: Option<std::net::SocketAddr>,
     pub(super) send_addr: Option<std::net::SocketAddr>,
-    pub(super) recv_buffer_size: Option<usize>,
-    pub(super) send_buffer_size: Option<usize>,
+    pub(super) socket_recv_buffer_size: Option<usize>,
+    pub(super) socket_send_buffer_size: Option<usize>,
+    pub(super) queue_recv_buffer_size: Option<u32>,
+    pub(super) queue_send_buffer_size: Option<u32>,
     pub(super) max_mtu: MaxMtu,
     pub(super) max_segments: gso::MaxSegments,
     pub(super) reuse_port: bool,
@@ -72,13 +74,33 @@ impl Builder {
 
     /// Sets the size of the operating system’s send buffer associated with the tx socket
     pub fn with_send_buffer_size(mut self, send_buffer_size: usize) -> io::Result<Self> {
-        self.send_buffer_size = Some(send_buffer_size);
+        self.socket_send_buffer_size = Some(send_buffer_size);
         Ok(self)
     }
 
     /// Sets the size of the operating system’s receive buffer associated with the rx socket
     pub fn with_recv_buffer_size(mut self, recv_buffer_size: usize) -> io::Result<Self> {
-        self.recv_buffer_size = Some(recv_buffer_size);
+        self.socket_recv_buffer_size = Some(recv_buffer_size);
+        Ok(self)
+    }
+
+    /// Sets the size of the send buffer associated with the transmit side (internal to s2n-quic)
+    pub fn with_internal_send_buffer_size(mut self, send_buffer_size: usize) -> io::Result<Self> {
+        self.queue_send_buffer_size = Some(
+            send_buffer_size
+                .try_into()
+                .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?,
+        );
+        Ok(self)
+    }
+
+    /// Sets the size of the send buffer associated with the receive side (internal to s2n-quic)
+    pub fn with_internal_recv_buffer_size(mut self, recv_buffer_size: usize) -> io::Result<Self> {
+        self.queue_recv_buffer_size = Some(
+            recv_buffer_size
+                .try_into()
+                .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?,
+        );
         Ok(self)
     }
 
