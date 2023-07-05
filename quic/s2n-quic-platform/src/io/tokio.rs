@@ -190,7 +190,7 @@ impl Io {
                 (max_mtu as u32 * gso.max_segments() as u32).min(u16::MAX as u32)
             };
 
-            let tx_buffer_size = queue_send_buffer_size.unwrap_or(8 * (1 << 20));
+            let tx_buffer_size = queue_send_buffer_size.unwrap_or(128 * 1024);
             let entries = tx_buffer_size / payload_len;
             let entries = if entries.is_power_of_two() {
                 entries
