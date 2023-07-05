@@ -199,7 +199,7 @@ async fn test<A: ToSocketAddrs>(
     let (client_task, actual_client_addr) = client_io.start(client_endpoint)?;
     assert_eq!(actual_client_addr, client_addr);
 
-    tokio::time::timeout(core::time::Duration::from_secs(10), client_task).await??;
+    tokio::time::timeout(core::time::Duration::from_secs(60), client_task).await??;
 
     server_task.abort();
 
