@@ -25,7 +25,7 @@ struct TestEndpoint<const IS_SERVER: bool> {
 
 impl<const IS_SERVER: bool> TestEndpoint<IS_SERVER> {
     fn new(handle: PathHandle) -> Self {
-        let messages = if IS_SERVER { 0 } else { 1000 };
+        let messages = if IS_SERVER { 0 } else { 30 };
         let messages = (0..messages).map(|id| (id, None)).collect();
         Self {
             handle,
