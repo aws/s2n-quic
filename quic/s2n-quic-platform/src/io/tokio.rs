@@ -49,8 +49,10 @@ impl Io {
             tx_socket,
             recv_addr,
             send_addr,
-            recv_buffer_size,
-            send_buffer_size,
+            socket_recv_buffer_size,
+            socket_send_buffer_size,
+            queue_recv_buffer_size,
+            queue_send_buffer_size,
             mut max_mtu,
             max_segments,
             reuse_port,
@@ -106,11 +108,11 @@ impl Io {
             rx_socket.try_clone()?
         };
 
-        if let Some(size) = send_buffer_size {
+        if let Some(size) = socket_send_buffer_size {
             tx_socket.set_send_buffer_size(size)?;
         }
 
-        if let Some(size) = recv_buffer_size {
+        if let Some(size) = socket_recv_buffer_size {
             rx_socket.set_recv_buffer_size(size)?;
         }
 
@@ -155,8 +157,7 @@ impl Io {
                 max_mtu.into()
             } as u32;
 
-            // 8Mb - TODO make this configurable: https://github.com/aws/s2n-quic/issues/1811
-            let rx_buffer_size = 8 * (1 << 20);
+            let rx_buffer_size = queue_recv_buffer_size.unwrap_or(8 * (1 << 20));
             let entries = rx_buffer_size / payload_len;
             let entries = if entries.is_power_of_two() {
                 entries
@@ -189,8 +190,7 @@ impl Io {
                 (max_mtu as u32 * gso.max_segments() as u32).min(u16::MAX as u32)
             };
 
-            // 8Mb - TODO make this configurable: https://github.com/aws/s2n-quic/issues/1811
-            let tx_buffer_size = 8 * (1 << 20);
+            let tx_buffer_size = queue_send_buffer_size.unwrap_or(8 * (1 << 20));
             let entries = tx_buffer_size / payload_len;
             let entries = if entries.is_power_of_two() {
                 entries
