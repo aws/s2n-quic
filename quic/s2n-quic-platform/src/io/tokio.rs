@@ -8,6 +8,7 @@ use s2n_quic_core::{
     inet::{self, SocketAddress},
     io::event_loop::EventLoop,
     path::MaxMtu,
+    task::cooldown::Cooldown,
     time::Clock as ClockTrait,
 };
 use std::{convert::TryInto, io, io::ErrorKind};
@@ -171,17 +172,21 @@ impl Io {
 
             let rx_socket_count = parse_env("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT").unwrap_or(1);
 
+            // configure the number of self-wakes before "cooling down" and waiting for epoll to
+            // complete
+            let rx_cooldown = cooldown("RX");
+
             for idx in 0usize..rx_socket_count {
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 consumers.push(consumer);
 
                 // spawn a task that actually reads from the socket into the ring buffer
                 if idx + 1 == rx_socket_count {
-                    handle.spawn(task::rx(rx_socket, producer));
+                    handle.spawn(task::rx(rx_socket, producer, rx_cooldown));
                     break;
                 } else {
                     let rx_socket = rx_socket.try_clone()?;
-                    handle.spawn(task::rx(rx_socket, producer));
+                    handle.spawn(task::rx(rx_socket, producer, rx_cooldown.clone()));
                 }
             }
 
@@ -214,17 +219,26 @@ impl Io {
 
             let tx_socket_count = parse_env("S2N_QUIC_UNSTABLE_TX_SOCKET_COUNT").unwrap_or(1);
 
+            // configure the number of self-wakes before "cooling down" and waiting for epoll to
+            // complete
+            let tx_cooldown = cooldown("TX");
+
             for idx in 0usize..tx_socket_count {
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 producers.push(producer);
 
                 // spawn a task that actually flushes the ring buffer to the socket
                 if idx + 1 == tx_socket_count {
-                    handle.spawn(task::tx(tx_socket, consumer, gso.clone()));
+                    handle.spawn(task::tx(tx_socket, consumer, gso.clone(), tx_cooldown));
                     break;
                 } else {
                     let tx_socket = tx_socket.try_clone()?;
-                    handle.spawn(task::tx(tx_socket, consumer, gso.clone()));
+                    handle.spawn(task::tx(
+                        tx_socket,
+                        consumer,
+                        gso.clone(),
+                        tx_cooldown.clone(),
+                    ));
                 }
             }
 
@@ -241,6 +255,7 @@ impl Io {
                 clock,
                 rx,
                 tx,
+                cooldown: cooldown("ENDPOINT"),
             }
             .start(),
         );
@@ -258,4 +273,10 @@ fn convert_addr_to_std(addr: socket2::SockAddr) -> io::Result<std::net::SocketAd
 
 fn parse_env<T: core::str::FromStr>(name: &str) -> Option<T> {
     std::env::var(name).ok().and_then(|v| v.parse().ok())
+}
+
+pub fn cooldown(direction: &str) -> Cooldown {
+    let name = format!("S2N_QUIC_UNSTABLE_COOLDOWN_{direction}");
+    let limit = parse_env(&name).unwrap_or(0);
+    Cooldown::new(limit)
 }

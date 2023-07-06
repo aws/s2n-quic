@@ -11,12 +11,16 @@ use s2n_quic::provider::io::{
     xdp::{
         bpf, encoder,
         if_xdp::{self, XdpFlags},
-        io::{self as xdp_io},
+        io::{
+            self as xdp_io,
+            rx::{Driver as _, WithCooldown},
+        },
         ring, socket, syscall,
         tx::{self, TxExt as _},
         umem, Provider,
     },
 };
+use s2n_quic_core::task::cooldown::Cooldown;
 use std::{ffi::CString, net::SocketAddr, os::unix::io::AsRawFd, sync::Arc};
 use structopt::StructOpt;
 use tokio::{io::unix::AsyncFd, net::UdpSocket};
@@ -47,6 +51,9 @@ pub struct Xdp {
 
     #[structopt(long)]
     no_checksum: bool,
+
+    #[structopt(long, default_value)]
+    rx_cooldown: u16,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -88,7 +95,7 @@ impl From<XdpMode> for programs::xdp::XdpFlags {
 
 type SetupResult = Result<(
     umem::Umem,
-    Vec<xdp_io::rx::Channel<Arc<AsyncFd<socket::Fd>>>>,
+    Vec<xdp_io::rx::Channel<WithCooldown<Arc<AsyncFd<socket::Fd>>>>>,
     Vec<(u32, socket::Fd)>,
     Vec<xdp_io::tx::Channel<xdp_io::tx::BusyPoll>>,
 )>;
@@ -158,10 +165,12 @@ impl Xdp {
                 // put descriptors in the Fill queue
                 fill.init((&mut desc).take(rx_queue_len as _));
 
+                let cooldown = Cooldown::new(self.rx_cooldown);
+
                 rx_channels.push(xdp_io::rx::Channel {
                     rx,
                     fill,
-                    driver: async_fd.clone(),
+                    driver: async_fd.clone().with_cooldown(cooldown),
                 });
             };
 

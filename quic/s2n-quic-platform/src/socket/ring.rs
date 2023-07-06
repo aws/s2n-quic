@@ -156,9 +156,19 @@ impl<T: Message> Consumer<T> {
     /// Releases consumed messages to the producer
     #[inline]
     pub fn release(&mut self, release_len: u32) {
-        self.cursor.release_consumer(release_len);
+        self.release_no_wake(release_len);
+        self.wake();
+    }
 
-        self.wakers.wake();
+    /// Releases consumed messages to the producer without waking the producer
+    #[inline]
+    pub fn release_no_wake(&mut self, release_len: u32) {
+        self.cursor.release_consumer(release_len);
+    }
+
+    #[inline]
+    pub fn wake(&self) {
+        self.wakers.wake()
     }
 
     /// Returns the currently acquired messages
@@ -227,7 +237,19 @@ impl<T: Message> Producer<T> {
 
     /// Releases ready-to-consume messages to the consumer
     #[inline]
+    #[allow(dead_code)] // even though this isn't used, it's kept for completeness
     pub fn release(&mut self, release_len: u32) {
+        if release_len == 0 {
+            return;
+        }
+
+        self.release_no_wake(release_len);
+        self.wake();
+    }
+
+    /// Releases consumed messages to the producer without waking the producer
+    #[inline]
+    pub fn release_no_wake(&mut self, release_len: u32) {
         if release_len == 0 {
             return;
         }
@@ -293,9 +315,11 @@ impl<T: Message> Producer<T> {
 
         // finally release the len to the consumer
         self.cursor.release_producer(release_len);
+    }
 
-        // wake up the consumer to notify it of progress
-        self.wakers.wake();
+    #[inline]
+    pub fn wake(&self) {
+        self.wakers.wake()
     }
 
     /// Returns the empty messages for the producer

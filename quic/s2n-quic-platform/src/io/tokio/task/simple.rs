@@ -11,17 +11,19 @@ use crate::{
     syscall::SocketEvents,
 };
 use core::task::{Context, Poll};
+use s2n_quic_core::task::cooldown::Cooldown;
 use tokio::{io, net::UdpSocket};
 
 pub async fn rx<S: Into<std::net::UdpSocket>>(
     socket: S,
     producer: ring::Producer<Message>,
+    cooldown: Cooldown,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = UdpSocket::from_std(socket).unwrap();
-    let result = task::Receiver::new(producer, socket).await;
+    let result = task::Receiver::new(producer, socket, cooldown).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -33,12 +35,13 @@ pub async fn tx<S: Into<std::net::UdpSocket>>(
     socket: S,
     consumer: ring::Consumer<Message>,
     gso: Gso,
+    cooldown: Cooldown,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = UdpSocket::from_std(socket).unwrap();
-    let result = task::Sender::new(consumer, socket, gso).await;
+    let result = task::Sender::new(consumer, socket, gso, cooldown).await;
     if let Some(err) = result {
         Err(err)
     } else {

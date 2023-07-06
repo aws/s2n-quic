@@ -5,6 +5,7 @@ use crate::{
     endpoint::Endpoint,
     event::{self, EndpointPublisher},
     io::{rx::Rx, tx::Tx},
+    task::cooldown::Cooldown,
     time::clock::{ClockWithTimer, Timer},
 };
 use core::pin::Pin;
@@ -17,6 +18,7 @@ pub struct EventLoop<E, C, R, T> {
     pub clock: C,
     pub rx: R,
     pub tx: T,
+    pub cooldown: Cooldown,
 }
 
 impl<E, C, R, T> EventLoop<E, C, R, T>
@@ -33,6 +35,7 @@ where
             clock,
             mut rx,
             mut tx,
+            mut cooldown,
         } = self;
 
         /// Creates a event publisher with the endpoint's subscriber
@@ -77,6 +80,8 @@ where
 
             // Concurrently poll all of the futures and wake up on the first one that's ready
             let select = Select::new(rx_ready, tx_ready, wakeups, timer_ready);
+
+            let select = cooldown.wrap(select);
 
             let select::Outcome {
                 rx_result,

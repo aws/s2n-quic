@@ -10,18 +10,20 @@ use crate::{
     syscall::{SocketType, UnixMessage},
 };
 use core::task::{Context, Poll};
+use s2n_quic_core::task::cooldown::Cooldown;
 use std::{io, os::unix::io::AsRawFd};
 use tokio::io::unix::AsyncFd;
 
 pub async fn rx<S: Into<std::net::UdpSocket>, M: UnixMessage + Unpin>(
     socket: S,
     producer: ring::Producer<M>,
+    cooldown: Cooldown,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = AsyncFd::new(socket).unwrap();
-    let result = rx::Receiver::new(producer, socket).await;
+    let result = rx::Receiver::new(producer, socket, cooldown).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -33,12 +35,13 @@ pub async fn tx<S: Into<std::net::UdpSocket>, M: UnixMessage + Unpin>(
     socket: S,
     consumer: ring::Consumer<M>,
     gso: Gso,
+    cooldown: Cooldown,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = AsyncFd::new(socket).unwrap();
-    let result = tx::Sender::new(consumer, socket, gso).await;
+    let result = tx::Sender::new(consumer, socket, gso, cooldown).await;
     if let Some(err) = result {
         Err(err)
     } else {

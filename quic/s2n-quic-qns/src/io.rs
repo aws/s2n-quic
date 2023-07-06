@@ -72,6 +72,12 @@ pub struct Client {
     #[structopt(long, default_value = "9000")]
     pub max_mtu: u16,
 
+    #[structopt(long)]
+    pub queue_recv_buffer_size: Option<usize>,
+
+    #[structopt(long)]
+    pub queue_send_buffer_size: Option<usize>,
+
     #[structopt(short, long, default_value = "::")]
     pub local_ip: std::net::IpAddr,
 
@@ -100,6 +106,14 @@ impl Client {
 
         if self.disable_gso {
             io_builder = io_builder.with_gso_disabled()?;
+        }
+
+        if let Some(size) = self.queue_send_buffer_size {
+            io_builder = io_builder.with_internal_send_buffer_size(size)?;
+        }
+
+        if let Some(size) = self.queue_recv_buffer_size {
+            io_builder = io_builder.with_internal_recv_buffer_size(size)?;
         }
 
         Ok(io_builder.build()?)

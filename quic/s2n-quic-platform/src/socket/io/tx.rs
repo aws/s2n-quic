@@ -352,17 +352,27 @@ impl<'a, T: Message> TxQueue<'a, T> {
     fn release_message(&mut self) {
         self.capacity -= 1;
         *self.is_full = self.capacity == 0;
-        self.message_index += 1;
+
+        let channel = unsafe {
+            // Safety: the channel_index should always be in-bound if gso_segment is set
+            s2n_quic_core::assume!(self.channels.len() > self.channel_index);
+            &mut self.channels[self.channel_index]
+        };
+
+        channel.release_no_wake(1);
+
         self.pending_release += 1;
     }
 
     /// Flushes the current channel and releases any pending messages
     #[inline]
     fn flush_channel(&mut self) {
-        if let Some(channel) = self.channels.get_mut(self.channel_index) {
-            channel.release(self.pending_release);
-            self.message_index = 0;
-            self.pending_release = 0;
+        if self.pending_release > 0 {
+            if let Some(channel) = self.channels.get_mut(self.channel_index) {
+                channel.wake();
+                self.message_index = 0;
+                self.pending_release = 0;
+            }
         }
     }
 }
