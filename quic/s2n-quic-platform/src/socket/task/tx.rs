@@ -15,6 +15,21 @@ use futures::ready;
 
 pub use events::TxEvents as Events;
 
+mod probes {
+    s2n_quic_core::extern_probe!(
+        extern "probe" {
+            #[link_name = s2n_quic_platform__socket__task__tx__acquire]
+            pub fn acquire(channel: *const (), count: u32);
+
+            #[link_name = s2n_quic_platform__socket__task__tx__finish]
+            pub fn finish(channel: *const (), message: u32);
+
+            #[link_name = s2n_quic_platform__socket__task__tx__release]
+            pub fn release(channel: *const (), count: u32);
+        }
+    );
+}
+
 pub trait Socket<T: Message> {
     type Error;
 
@@ -67,6 +82,8 @@ where
                 Poll::Pending => 0,
             };
 
+            probes::acquire(self.ring.as_ptr(), count);
+
             // if the number of free slots increased since last time then yield
             if count > self.pending {
                 return Ok(()).into();
@@ -82,7 +99,10 @@ where
     #[inline]
     fn release(&mut self) {
         let to_release = core::mem::take(&mut self.pending);
-        self.ring.release(to_release);
+        if to_release > 0 {
+            probes::release(self.ring.as_ptr(), to_release);
+            self.ring.release(to_release);
+        }
     }
 }
 
@@ -108,8 +128,18 @@ where
             // perform the send syscall
             match this.tx.send(cx, entries, &mut this.events) {
                 Ok(()) => {
-                    // increment the number of received messages
-                    this.pending += this.events.take_count() as u32
+                    let count = this.events.take_count();
+                    let new_pending = this.pending + count as u32;
+
+                    for index in this.pending..new_pending {
+                        probes::finish(
+                            this.ring.as_ptr(),
+                            this.ring.absolute_index().from_relative(index),
+                        );
+                    }
+
+                    // increment the number of finished messages
+                    this.pending = new_pending;
                 }
                 Err(err) => return Some(err).into(),
             }

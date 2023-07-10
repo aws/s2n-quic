@@ -1,0 +1,52 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Prints the stats for UDP syscalls in the s2n-quic-qns application
+ */
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__syscall__mmsg__start_send
+/pid==cpid/
+{
+  @tx_timestamps[arg0] = nsecs;
+  @tx_arg_counts = hist(arg2);
+}
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__syscall__mmsg__finish_send
+/pid==cpid/
+{
+  @tx_latencies = hist(nsecs - @tx_timestamps[arg0]);
+  @tx_ret_counts = hist(arg2);
+}
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__syscall__mmsg__start_recv
+/pid==cpid/
+{
+  @rx_timestamps[arg0] = nsecs;
+  @rx_arg_counts = hist(arg2);
+}
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__syscall__mmsg__finish_recv
+/pid==cpid/
+{
+  @rx_latencies = hist(nsecs - @rx_timestamps[arg0]);
+  @rx_ret_counts = hist(arg2);
+}
+
+i:ms:1000 {
+  print("===");
+  print(@tx_latencies);
+  print(@tx_arg_counts);
+  print(@tx_ret_counts);
+  print(@rx_latencies);
+  print(@rx_arg_counts);
+  print(@rx_ret_counts);
+}
+
+END {
+    /* clear any of the pending timestamps to avoid printing them to the console */
+    clear(@tx_timestamps);
+    clear(@rx_timestamps);
+}

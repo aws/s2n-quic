@@ -67,6 +67,23 @@ impl<T: Copy> Builder<T> {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct AbsoluteIndex {
+    index: Wrapping<u32>,
+    mask: u32,
+}
+
+impl AbsoluteIndex {
+    /// Returns the absolute index for the given relative index
+    #[inline]
+    pub fn from_relative(&self, relative_index: u32) -> u32 {
+        // Wrap the cursor around the size of the ring
+        //
+        // Masking with a `2^N - 1` value is the same as a mod operation, just more efficient
+        (self.index + Wrapping(relative_index)).0 & self.mask
+    }
+}
+
 /// A structure for tracking a ring shared between a producer and consumer
 ///
 /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L34-L42).
@@ -188,6 +205,15 @@ impl<T: Copy> Cursor<T> {
         self.cached_producer.0 & self.mask
     }
 
+    /// Returns the absolute producer index for the relative index
+    #[inline]
+    pub fn producer_abs_index(&self) -> AbsoluteIndex {
+        AbsoluteIndex {
+            index: self.cached_producer,
+            mask: self.mask,
+        }
+    }
+
     /// Returns the cached number of available entries for the consumer
     ///
     /// See [xsk.h](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/headers/xdp/xsk.h#L94).
@@ -256,6 +282,15 @@ impl<T: Copy> Cursor<T> {
         //
         // Masking with a `2^N - 1` value is the same as a mod operation, just more efficient
         self.cached_consumer.0 & self.mask
+    }
+
+    /// Returns the absolute consumer index for the relative index
+    #[inline]
+    pub fn consumer_abs_index(&self) -> AbsoluteIndex {
+        AbsoluteIndex {
+            index: self.cached_consumer,
+            mask: self.mask,
+        }
     }
 
     /// Returns the cached number of available entries for the consumer

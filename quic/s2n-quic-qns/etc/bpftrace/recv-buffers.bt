@@ -1,0 +1,33 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Prints the histogram of receive buffer stats in the s2n-quic-qns application
+ */
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_core__buffer__receive_buffer__alloc
+/pid==cpid/
+{
+  @allocs = hist(arg1);
+}
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_core__buffer__receive_buffer__pop
+/pid==cpid/
+{
+  @pops = hist(arg1);
+}
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_core__buffer__receive_buffer__write
+/pid==cpid/
+{
+  @writes = hist(arg1);
+}
+
+i:ms:1000 {
+  print("===");
+  print(@allocs);
+  print(@pops);
+  print(@writes);
+}

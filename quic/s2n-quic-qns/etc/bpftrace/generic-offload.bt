@@ -1,0 +1,30 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Prints the histogram of GSO and GRO usage for the s2n-quic-qns application
+ */
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__socket__io__tx__finish_write
+/pid==cpid/
+{
+  @gso_count = hist(arg2);
+  @gso_size = hist(arg3);
+}
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__socket__io__rx__finish_read
+/pid==cpid/
+{
+  @gro_count = hist(arg2);
+  @gro_size = hist(arg3);
+}
+
+i:ms:1000 {
+  print("===");
+  print(@gso_count);
+  print(@gso_size);
+  print(@gro_count);
+  print(@gro_size);
+}

@@ -1,0 +1,48 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Prints the histogram of IO latencies in the s2n-quic-qns application
+ */
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__socket__io__tx__write
+/pid==cpid/
+{
+  /* record the starting timestamp */
+  if (arg2 == 0) {
+    @tx_timestamps[arg0,arg1] = nsecs;
+  }
+}
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__socket__task__tx__finish
+/pid==cpid/
+{
+  @tx_latencies = hist(nsecs - @tx_timestamps[arg0,arg1]);
+}
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__socket__task__rx__finish
+/pid==cpid/
+{
+  /* record the starting timestamp */
+  @rx_timestamps[arg0,arg1] = nsecs;
+}
+
+usdt:./target/release/s2n-quic-qns:s2n_quic_platform__socket__io__rx__finish_read
+/pid==cpid/
+{
+  @rx_latencies = hist(nsecs - @rx_timestamps[arg0,arg1]);
+}
+
+i:ms:1000 {
+  print("===");
+  print(@tx_latencies);
+  print(@rx_latencies);
+}
+
+END {
+    /* clear any of the pending timestamps to avoid printing them to the console */
+    clear(@tx_timestamps);
+    clear(@rx_timestamps);
+}

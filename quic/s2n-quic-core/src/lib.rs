@@ -30,6 +30,103 @@ macro_rules! assume {
     };
 }
 
+#[macro_export]
+macro_rules! extern_probe {
+    (extern "probe" {
+        $(
+            $(
+                #[doc = $doc:tt]
+            )*
+            #[link_name = $link_name:ident]
+            $vis:vis fn $fun:ident($($arg:ident: $arg_t:ty),* $(,)?);
+        )*
+    }) => {
+        $(
+            $(
+                #[doc = $doc]
+            )*
+            #[inline(always)]
+            $vis fn $fun($($arg: $arg_t),*) {
+                #[cfg(s2n_quic_probe_print)]
+                {
+                    struct Args {
+                        $(
+                            $arg: $arg_t,
+                        )*
+                    }
+
+                    impl ::core::fmt::Display for Args {
+                        #[inline]
+                        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                            let mut is_first = true;
+                            $(
+                                if !core::mem::take(&mut is_first) {
+                                    write!(f, ", ")?;
+                                }
+                                write!(f, "{}: {:?}", stringify!($arg), self.$arg)?;
+                            )*
+                            Ok(())
+                        }
+                    }
+
+                    let args = Args { $($arg),* };
+
+                    ::std::eprintln!("{}: {}", stringify!($link_name), args);
+                }
+
+                #[cfg(test)]
+                {
+                    let expected = concat!(module_path!(), "::", stringify!($fun))
+                        .split("::")
+                        .filter(|v| *v != "probes")
+                        .collect::<Vec<_>>().join("__");
+
+                    let actual = stringify!($link_name);
+
+                    assert_eq!(&expected, actual);
+                }
+
+                $crate::probe!(
+                    s2n_quic,
+                    $link_name,
+                    $(
+                        $arg
+                    ),*
+                );
+            }
+        )*
+    }
+}
+
+#[cfg(feature = "usdt")]
+#[doc(hidden)]
+pub use probe::probe as __probe;
+
+#[cfg(feature = "usdt")]
+#[macro_export]
+macro_rules! probe {
+    ($provider:ident, $name:ident $(, $arg:expr)* $(,)?) => {{
+        // define a function with inline(never) to consolidate probes
+        let probe = {
+            #[inline(never)]
+            || {
+                $crate::__probe!($provider, $name, $($arg),*);
+            }
+        };
+        probe();
+    }}
+}
+
+#[cfg(not(feature = "usdt"))]
+#[macro_export]
+macro_rules! probe {
+    ($provider:ident, $name:ident $(, $arg:expr)* $(,)?) => {{
+        $(
+            let _ = $arg;
+        )*
+    }}
+}
+
 /// Implements a future that wraps `T::poll_ready` and yields after ready
 macro_rules! impl_ready_future {
     ($name:ident, $fut:ident, $output:ty) => {

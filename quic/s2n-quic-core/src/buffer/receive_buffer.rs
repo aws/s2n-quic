@@ -11,6 +11,24 @@ use bytes::BytesMut;
 mod request;
 mod slot;
 
+mod probes {
+    crate::extern_probe!(
+        extern "probe" {
+            /// Emitted when a buffer is allocated for a particular offset
+            #[link_name = s2n_quic_core__buffer__receive_buffer__alloc]
+            pub fn alloc(offset: u64, capacity: usize);
+
+            /// Emitted when a chunk is read from the beginning of the buffer
+            #[link_name = s2n_quic_core__buffer__receive_buffer__pop]
+            pub fn pop(offset: u64, len: usize);
+
+            /// Emitted when a chunk of data is written at an offset
+            #[link_name = s2n_quic_core__buffer__receive_buffer__write]
+            pub fn write(offset: u64, len: usize);
+        }
+    );
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -348,6 +366,8 @@ impl ReceiveBuffer {
             // remove empty buffers
             self.slots.pop_front();
         }
+
+        probes::pop(self.start_offset, out.len());
 
         self.start_offset += out.len() as u64;
 

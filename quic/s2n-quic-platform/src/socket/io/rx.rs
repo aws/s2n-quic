@@ -10,6 +10,38 @@ use s2n_quic_core::{
     path::{LocalAddress, MaxMtu},
 };
 
+mod probes {
+    s2n_quic_core::extern_probe!(
+        extern "probe" {
+            /// Emitted when a channel tries to acquire messages
+            #[link_name = s2n_quic_platform__socket__io__rx__acquire]
+            pub fn acquire(channel: *const (), count: u32);
+
+            /// Emitted when a message is read from a channel
+            #[link_name = s2n_quic_platform__socket__io__rx__read]
+            pub fn read(
+                channel: *const (),
+                message: u32,
+                segment_index: usize,
+                segment_size: usize,
+            );
+
+            /// Emitted when a message is finished being read from a channel
+            #[link_name = s2n_quic_platform__socket__io__rx__finish_read]
+            pub fn finish_read(
+                channel: *const (),
+                message: u32,
+                segment_count: usize,
+                segment_size: usize,
+            );
+
+            /// Emitted when all acquired messages are read from the channel
+            #[link_name = s2n_quic_platform__socket__io__rx__release]
+            pub fn release(channel: *const (), count: u32);
+        }
+    );
+}
+
 /// Structure for receiving messages from consumer channels
 pub struct Rx<T: Message> {
     channels: Vec<Consumer<T>>,
@@ -39,13 +71,15 @@ impl<T: Message> rx::Rx for Rx<T> {
         let mut is_all_closed = true;
 
         // try to acquire any messages we can from the set of channels
-        for channel in &mut self.channels {
+        for channel in self.channels.iter_mut() {
             match channel.poll_acquire(u32::MAX, cx) {
-                Poll::Ready(_) => {
+                Poll::Ready(count) => {
+                    probes::acquire(channel.as_ptr(), count);
                     is_all_closed = false;
                     is_any_ready = true;
                 }
                 Poll::Pending => {
+                    probes::acquire(channel.as_ptr(), 0);
                     is_all_closed &= !channel.is_open();
                 }
             }
@@ -114,17 +148,36 @@ impl<'a, T: Message> rx::Queue for RxQueue<'a, T> {
         for channel in self.channels.iter_mut() {
             // one last effort to acquire items if some were received since we last polled
             let len = channel.acquire(u32::MAX);
+            let channel_ptr = channel.as_ptr();
+
+            probes::acquire(channel_ptr, len);
+
+            let absolute_index = channel.absolute_index();
 
             let data = channel.data();
             debug_assert_eq!(data.len(), len as usize);
 
-            for message in data {
+            for (message_idx, message) in data.iter_mut().enumerate() {
+                let message_idx = absolute_index.from_relative(message_idx as _);
+
                 // call the `on_packet` function for each message received
                 //
                 // NOTE: it's important that we process all of the messages in the queue as the
                 //       channel is completely drained here.
                 if let Some(message) = message.rx_read(self.local_address) {
-                    message.for_each(&mut on_packet);
+                    let mut segment_index = 0;
+                    let mut segment_size = 0;
+                    message.for_each(|header, payload| {
+                        probes::read(channel_ptr, message_idx, segment_index, payload.len());
+
+                        segment_size = segment_size.max(payload.len());
+
+                        on_packet(header, payload);
+
+                        segment_index += 1;
+                    });
+
+                    probes::finish_read(channel_ptr, message_idx, segment_index, segment_size as _);
                 }
 
                 unsafe {
@@ -134,6 +187,7 @@ impl<'a, T: Message> rx::Queue for RxQueue<'a, T> {
             }
 
             // release the messages back to the producer
+            probes::release(channel_ptr, len);
             channel.release(len);
         }
     }

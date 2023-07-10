@@ -10,6 +10,38 @@ use s2n_quic_core::{
     path::{Handle as _, MaxMtu},
 };
 
+mod probes {
+    s2n_quic_core::extern_probe!(
+        extern "probe" {
+            /// Emitted when a channel tries to acquire capacity to write messages
+            #[link_name = s2n_quic_platform__socket__io__tx__acquire]
+            pub fn acquire(channel: *const (), count: u32);
+
+            /// Emitted when a message is written into a channel
+            #[link_name = s2n_quic_platform__socket__io__tx__write]
+            pub fn write(
+                channel: *const (),
+                message: u32,
+                segment_index: usize,
+                segment_size: usize,
+            );
+
+            /// Emitted when a messages is finished being written to in a channel
+            #[link_name = s2n_quic_platform__socket__io__tx__finish_write]
+            pub fn finish_write(
+                channel: *const (),
+                message: u32,
+                segment_count: usize,
+                segment_size: usize,
+            );
+
+            /// Emitted when `count` acquired messages are written into the channel
+            #[link_name = s2n_quic_platform__socket__io__tx__release]
+            pub fn release(channel: *const (), count: u32);
+        }
+    );
+}
+
 /// Structure for sending messages to producer channels
 pub struct Tx<T: Message> {
     channels: Vec<Producer<T>>,
@@ -97,6 +129,8 @@ impl<T: Message> tx::Tx for Tx<T> {
             // try to make one more effort to acquire capacity for sending
             let count = channel.acquire(u32::MAX) as usize;
 
+            probes::acquire(channel.as_ptr(), count as _);
+
             if count > 0 && first_with_free_slots.is_none() {
                 // find the first channel that had capacity
                 first_with_free_slots = Some(idx);
@@ -122,6 +156,7 @@ impl<T: Message> tx::Tx for Tx<T> {
             channels: &mut this.channels,
             channel_index,
             message_index: 0,
+            message_abs_index: 0,
             pending_release: 0,
             gso_segment: None,
             max_segments,
@@ -129,6 +164,9 @@ impl<T: Message> tx::Tx for Tx<T> {
             capacity,
             is_full: &mut this.is_full,
         };
+
+        // compute the absolute index into the ring
+        queue.update_message_abs_index();
 
         f(&mut queue);
     }
@@ -173,6 +211,10 @@ pub struct TxQueue<'a, T: Message> {
     /// This is incremented after each message is finished until it exceeds the acquired free
     /// slots, after which the `channel_index` is incremented (and message_index is reset to zero).
     message_index: usize,
+    /// Maintains the absolute index in the current channel
+    ///
+    /// This is used for probes to have a stable index to identify a particular message.
+    message_abs_index: u32,
     /// The number of messages in the current channel that need to be released to notify the
     /// consumer.
     ///
@@ -207,7 +249,7 @@ impl<'a, T: Message> TxQueue<'a, T> {
 
         let max_segments = self.max_segments;
 
-        let (prev_message, gso) = if let Some(gso) = self.gso_message() {
+        let (prev_message, gso, channel_ptr) = if let Some(gso) = self.gso_message() {
             gso
         } else {
             return Ok(Err(message));
@@ -240,19 +282,26 @@ impl<'a, T: Message> TxQueue<'a, T> {
         let payload_len = prev_message.payload_len();
 
         let buffer = unsafe {
+            debug_assert!(
+                payload_len + gso.size <= u16::MAX as usize,
+                "GSO messages cannot exceed u16::MAX"
+            );
+
             // Create a slice the `message` can write into. This avoids having to update the
             // payload length and worrying about panic safety.
 
             let payload = prev_message.payload_ptr_mut();
 
             // Safety: all payloads should have enough capacity to extend max_segments *
-            // gso.size
+            // gso.size, while staying under u16::MAX
             let current_payload = payload.add(payload_len);
             core::slice::from_raw_parts_mut(current_payload, gso.size)
         };
         let buffer = tx::PayloadBuffer::new(buffer);
 
-        let size = message.write_payload(buffer, gso.count)?;
+        let segment_index = gso.count;
+
+        let size = message.write_payload(buffer, segment_index)?;
 
         // we don't want to send empty packets
         if size == 0 {
@@ -287,6 +336,8 @@ impl<'a, T: Message> TxQueue<'a, T> {
         // we also can't write more data than u16::MAX
         let at_payload_limit = gso.size * (gso.count + 1) > u16::MAX as usize;
 
+        probes::write(channel_ptr, self.message_abs_index, segment_index, size);
+
         // if we've hit any limits, then flush the GSO information to the message
         if size_mismatch || at_segment_limit || at_payload_limit {
             self.flush_gso();
@@ -314,11 +365,15 @@ impl<'a, T: Message> TxQueue<'a, T> {
             return;
         }
 
-        if let Some((message, gso)) = self.gso_message() {
+        if let Some((message, gso, channel_ptr)) = self.gso_message() {
+            let gso_count = gso.count;
+            let gso_size = gso.size;
             // only need to set the segment size if there was more than one payload written to the message
-            if gso.count > 1 {
-                message.set_segment_size(gso.size);
+            if gso_count > 1 {
+                message.set_segment_size(gso_size);
             }
+
+            probes::finish_write(channel_ptr, self.message_abs_index, gso_count, gso_size);
 
             // clear out the current state and release the message
             self.gso_segment = None;
@@ -328,7 +383,7 @@ impl<'a, T: Message> TxQueue<'a, T> {
 
     /// Returns the current GSO message waiting for more segments
     #[inline]
-    fn gso_message(&mut self) -> Option<(&mut T, &mut GsoSegment<T::Handle>)> {
+    fn gso_message(&mut self) -> Option<(&mut T, &mut GsoSegment<T::Handle>, *const ())> {
         let gso = self.gso_segment.as_mut()?;
 
         let channel = unsafe {
@@ -337,6 +392,8 @@ impl<'a, T: Message> TxQueue<'a, T> {
             &mut self.channels[self.channel_index]
         };
 
+        let channel_ptr = channel.as_ptr();
+
         let message = unsafe {
             // Safety: the message_index should always be in-bound if gso_segment is set
             let data = channel.data();
@@ -344,7 +401,7 @@ impl<'a, T: Message> TxQueue<'a, T> {
             &mut data[self.message_index]
         };
 
-        Some((message, gso))
+        Some((message, gso, channel_ptr))
     }
 
     /// Releases the current message and marks it pending for release
@@ -354,16 +411,42 @@ impl<'a, T: Message> TxQueue<'a, T> {
         *self.is_full = self.capacity == 0;
         self.message_index += 1;
         self.pending_release += 1;
+        self.update_message_abs_index();
     }
 
     /// Flushes the current channel and releases any pending messages
     #[inline]
     fn flush_channel(&mut self) {
+        // flush the current GSO message, if possible
+        self.flush_gso();
+
+        // nothing to flush
+        if self.pending_release == 0 {
+            return;
+        }
+
         if let Some(channel) = self.channels.get_mut(self.channel_index) {
+            probes::release(channel.as_ptr(), self.pending_release);
+
             channel.release(self.pending_release);
             self.message_index = 0;
             self.pending_release = 0;
+            self.update_message_abs_index();
         }
+    }
+
+    #[inline]
+    fn increment_channel(&mut self) {
+        self.flush_channel();
+        self.channel_index += 1;
+        self.update_message_abs_index();
+    }
+
+    #[inline]
+    fn update_message_abs_index(&mut self) {
+        self.message_abs_index = self.channels.get(self.channel_index).map_or(0, |chan| {
+            chan.absolute_index().from_relative(self.message_index as _)
+        });
     }
 }
 
@@ -385,18 +468,19 @@ impl<'a, T: Message> tx::Queue for TxQueue<'a, T> {
         };
 
         // find the next free entry, if any
-        let entry = loop {
+        let (channel_ptr, entry) = loop {
             let channel = self
                 .channels
                 .get_mut(self.channel_index)
                 .ok_or(tx::Error::AtCapacity)?;
 
+            let channel_ptr = channel.as_ptr();
+
             if let Some(entry) = channel.data().get_mut(self.message_index) {
-                break entry;
+                break (channel_ptr, entry);
             } else {
                 // this channel is out of free messages so flush it and move to the next channel
-                self.flush_channel();
-                self.channel_index += 1;
+                self.increment_channel();
             };
         };
 
@@ -414,6 +498,8 @@ impl<'a, T: Message> tx::Queue for TxQueue<'a, T> {
         // write the message to the entry
         let payload_len = entry.tx_write(message)?;
 
+        probes::write(channel_ptr, self.message_abs_index, 0, payload_len);
+
         // if GSO is supported and we are allowed to have additional segments, store the GSO state
         // for another potential message to be written later
         if T::SUPPORTS_GSO && self.max_segments > 1 && can_gso {
@@ -425,6 +511,7 @@ impl<'a, T: Message> tx::Queue for TxQueue<'a, T> {
             });
         } else {
             // otherwise, release the message to the consumer
+            probes::finish_write(channel_ptr, self.message_abs_index, 0, payload_len);
             self.release_message();
         }
 
@@ -452,8 +539,6 @@ impl<'a, T: Message> tx::Queue for TxQueue<'a, T> {
 impl<'a, T: Message> Drop for TxQueue<'a, T> {
     #[inline]
     fn drop(&mut self) {
-        // flush the current GSO message, if possible
-        self.flush_gso();
         // flush the pending messages for the channel
         self.flush_channel();
     }

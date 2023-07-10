@@ -6,6 +6,24 @@ use crate::message::Message as _;
 use libc::msghdr;
 use std::os::unix::io::{AsRawFd, RawFd};
 
+mod probes {
+    use super::*;
+
+    s2n_quic_core::extern_probe!(
+        extern "probe" {
+            #[link_name = s2n_quic_platform__syscall__msg__start_send]
+            pub fn start_send(fd: RawFd, msghdr: *const msghdr);
+            #[link_name = s2n_quic_platform__syscall__msg__finish_send]
+            pub fn finish_send(fd: RawFd, msghdr: *const msghdr, error: u32);
+
+            #[link_name = s2n_quic_platform__syscall__msg__start_recv]
+            pub fn start_recv(fd: RawFd, msghdr: *const msghdr);
+            #[link_name = s2n_quic_platform__syscall__msg__finish_recv]
+            pub fn finish_recv(fd: RawFd, msghdr: *const msghdr, error: u32);
+        }
+    );
+}
+
 impl UnixMessage for msghdr {
     #[inline]
     fn send<E: SocketEvents>(fd: RawFd, entries: &mut [Self], events: &mut E) {
@@ -65,6 +83,7 @@ pub fn send<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
 
         // > On success, these calls return the number of characters sent.
         // > On error, -1 is returned, and errno is set appropriately.
+        probes::start_send(sockfd, msg);
         let result = libc!(sendmsg(sockfd, msg, flags));
 
         // restore the msg_control pointer if needed

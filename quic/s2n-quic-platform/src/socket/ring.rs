@@ -74,7 +74,7 @@ use s2n_quic_core::{
     assume,
     sync::{
         atomic_waker,
-        cursor::{self, Cursor},
+        cursor::{self, AbsoluteIndex, Cursor},
         CachePadded,
     },
 };
@@ -83,6 +83,36 @@ const CURSOR_SIZE: usize = size_of::<CachePadded<AtomicU32>>();
 const PRODUCER_OFFSET: usize = 0;
 const CONSUMER_OFFSET: usize = CURSOR_SIZE;
 const DATA_OFFSET: usize = CURSOR_SIZE * 2;
+
+mod probes {
+    pub mod consumer {
+        s2n_quic_core::extern_probe!(
+            extern "probe" {
+                /// Emitted when a consumer tries to acquire messages
+                #[link_name = s2n_quic_platform__socket__ring__consumer__acquire]
+                pub fn acquire(channel: *const (), index: u32, count: u32, capacity: u32);
+
+                /// Emitted when a consumer releases finished messages
+                #[link_name = s2n_quic_platform__socket__ring__consumer__release]
+                pub fn release(channel: *const (), index: u32, count: u32, capacity: u32);
+            }
+        );
+    }
+
+    pub mod producer {
+        s2n_quic_core::extern_probe!(
+            extern "probe" {
+                /// Emitted when a producer tries to acquire capacity to send messages
+                #[link_name = s2n_quic_platform__socket__ring__producer__acquire]
+                pub fn acquire(channel: *const (), index: u32, count: u32, capacity: u32);
+
+                /// Emitted when a producer releases ready-to-be-read messages
+                #[link_name = s2n_quic_platform__socket__ring__producer__release]
+                pub fn release(channel: *const (), index: u32, count: u32, capacity: u32);
+            }
+        );
+    }
+}
 
 /// Creates a pair of rings for a given message type
 pub fn pair<T: Message>(entries: u32, payload_len: u32) -> (Producer<T>, Consumer<T>) {
@@ -125,7 +155,16 @@ impl<T: Message> Consumer<T> {
     /// Acquires ready-to-consume messages from the producer
     #[inline]
     pub fn acquire(&mut self, watermark: u32) -> u32 {
-        self.cursor.acquire_consumer(watermark)
+        let amount = self.cursor.acquire_consumer(watermark);
+
+        probes::consumer::acquire(
+            self.as_ptr(),
+            self.cursor.cached_consumer(),
+            amount,
+            self.cursor.capacity(),
+        );
+
+        amount
     }
 
     /// Polls ready-to-consume messages from the producer
@@ -156,8 +195,18 @@ impl<T: Message> Consumer<T> {
     /// Releases consumed messages to the producer
     #[inline]
     pub fn release(&mut self, release_len: u32) {
-        self.cursor.release_consumer(release_len);
+        if release_len == 0 {
+            return;
+        }
 
+        probes::consumer::release(
+            self.as_ptr(),
+            self.cursor.cached_consumer(),
+            release_len,
+            self.cursor.capacity(),
+        );
+
+        self.cursor.release_consumer(release_len);
         self.wakers.wake();
     }
 
@@ -178,6 +227,16 @@ impl<T: Message> Consumer<T> {
     pub fn is_open(&self) -> bool {
         self.wakers.is_open()
     }
+
+    #[inline]
+    pub(crate) fn absolute_index(&self) -> AbsoluteIndex {
+        self.cursor.consumer_abs_index()
+    }
+
+    #[inline]
+    pub(crate) fn as_ptr(&self) -> *const () {
+        self.storage.as_ptr() as *const ()
+    }
 }
 
 /// A producer ring for messages
@@ -197,7 +256,16 @@ impl<T: Message> Producer<T> {
     /// Acquires capacity for sending messages to the consumer
     #[inline]
     pub fn acquire(&mut self, watermark: u32) -> u32 {
-        self.cursor.acquire_producer(watermark)
+        let amount = self.cursor.acquire_producer(watermark);
+
+        probes::producer::acquire(
+            self.as_ptr(),
+            self.cursor.cached_producer(),
+            amount,
+            self.cursor.capacity(),
+        );
+
+        amount
     }
 
     /// Polls capacity for sending messages to the consumer
@@ -239,6 +307,8 @@ impl<T: Message> Producer<T> {
 
         let idx = self.cursor.cached_producer();
         let ring_size = self.cursor.capacity();
+
+        probes::producer::release(self.as_ptr(), idx, release_len, ring_size);
 
         // replicate any written items to the secondary region
         unsafe {
@@ -331,6 +401,16 @@ impl<T: Message> Producer<T> {
         }
 
         core::ptr::copy_nonoverlapping(primary, secondary, len as _);
+    }
+
+    #[inline]
+    pub(crate) fn absolute_index(&self) -> AbsoluteIndex {
+        self.cursor.producer_abs_index()
+    }
+
+    #[inline]
+    pub(crate) fn as_ptr(&self) -> *const () {
+        self.storage.as_ptr() as *const ()
     }
 }
 

@@ -5,6 +5,24 @@ use super::{SocketEvents, SocketType, UnixMessage};
 use libc::mmsghdr;
 use std::os::unix::io::{AsRawFd, RawFd};
 
+mod probes {
+    use super::*;
+
+    s2n_quic_core::extern_probe!(
+        extern "probe" {
+            #[link_name = s2n_quic_platform__syscall__mmsg__start_send]
+            pub fn start_send(fd: RawFd, msghdr: *const mmsghdr, message_count: usize);
+            #[link_name = s2n_quic_platform__syscall__mmsg__finish_send]
+            pub fn finish_send(fd: RawFd, msghdr: *const mmsghdr, message_count: usize, error: u32);
+
+            #[link_name = s2n_quic_platform__syscall__mmsg__start_recv]
+            pub fn start_recv(fd: RawFd, msghdr: *const mmsghdr, message_count: usize);
+            #[link_name = s2n_quic_platform__syscall__mmsg__finish_recv]
+            pub fn finish_recv(fd: RawFd, msghdr: *const mmsghdr, message_count: usize, error: u32);
+        }
+    );
+}
+
 impl UnixMessage for mmsghdr {
     #[inline]
     fn send<E: SocketEvents>(fd: RawFd, entries: &mut [Self], events: &mut E) {
@@ -70,11 +88,23 @@ pub fn send<Sock: AsRawFd, E: SocketEvents>(
     //
     // > On error, -1 is returned, and errno is set to indicate the error.
 
+    probes::start_send(sockfd, msgvec, vlen as _);
     let res = libc!(sendmmsg(sockfd, msgvec, vlen, flags));
 
     let _ = match res {
-        Ok(count) => events.on_complete(count as _),
-        Err(error) => events.on_error(error),
+        Ok(count) => {
+            probes::finish_send(sockfd, msgvec, count as _, 0);
+            events.on_complete(count as _)
+        }
+        Err(error) => {
+            probes::finish_send(
+                sockfd,
+                msgvec,
+                0,
+                error.raw_os_error().map_or(0, |v| v as _),
+            );
+            events.on_error(error)
+        }
     };
 }
 
@@ -137,10 +167,23 @@ pub fn recv<Sock: AsRawFd, E: SocketEvents>(
     //
     // > On success, recvmmsg() returns the number of messages received in
     // > msgvec; on error, -1 is returned, and errno is set to indicate the error.
+
+    probes::start_recv(sockfd, msgvec, vlen as _);
     let res = libc!(recvmmsg(sockfd, msgvec, vlen, flags, timeout));
 
     let _ = match res {
-        Ok(count) => events.on_complete(count as _),
-        Err(error) => events.on_error(error),
+        Ok(count) => {
+            probes::finish_recv(sockfd, msgvec, count as _, 0);
+            events.on_complete(count as _)
+        }
+        Err(error) => {
+            probes::finish_recv(
+                sockfd,
+                msgvec,
+                0,
+                error.raw_os_error().map_or(0, |v| v as _),
+            );
+            events.on_error(error)
+        }
     };
 }

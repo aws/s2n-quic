@@ -32,7 +32,9 @@ pub struct Outcome<'a> {
 }
 
 impl Slot {
+    #[inline]
     pub fn new(start: u64, end: u64, data: BytesMut) -> Self {
+        super::probes::alloc(start, data.capacity());
         Self { start, end, data }
     }
 
