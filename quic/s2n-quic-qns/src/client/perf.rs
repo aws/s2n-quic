@@ -1,10 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{perf, tls, Result};
+use crate::{perf, task, tls, Result};
 use s2n_quic::{client, Client, Connection};
 use structopt::StructOpt;
-use tokio::task::JoinSet;
 
 #[derive(Debug, StructOpt)]
 pub struct Perf {
@@ -24,6 +23,10 @@ pub struct Perf {
 
     #[structopt(long)]
     connections: Option<usize>,
+
+    /// Defines the number of concurrent connections to open at any given time
+    #[structopt(long, default_value = "10")]
+    concurrency: u64,
 
     #[structopt(long, default_value)]
     send: u64,
@@ -59,29 +62,35 @@ impl Perf {
     async fn task(&self) -> Result<()> {
         let mut client = self.client()?;
 
-        let mut requests = JoinSet::new();
+        let mut requests = task::Limiter::new(self.concurrency);
+
+        let streams = self.streams;
+        let send = self.send;
+        let receive = self.receive;
+
+        let mut connect = client::Connect::new((self.ip, self.port));
+        if let Some(server_name) = self.server_name.as_deref() {
+            connect = connect.with_server_name(server_name);
+        } else {
+            // TODO allow skipping setting the server_name
+            connect = connect.with_server_name("localhost");
+        }
 
         // TODO support a richer connection strategy
         for _ in 0..self.connections.unwrap_or(1) {
-            let mut connect = client::Connect::new((self.ip, self.port));
-            if let Some(server_name) = self.server_name.as_deref() {
-                connect = connect.with_server_name(server_name);
-            } else {
-                // TODO allow skipping setting the server_name
-                connect = connect.with_server_name("localhost");
-            }
-            let connection = client.connect(connect).await?;
+            let client = client.clone();
+            let connect = connect.clone();
 
-            requests.spawn(handle_connection(
-                connection,
-                self.streams,
-                self.send,
-                self.receive,
-            ));
+            let task = async move {
+                let connection = client.connect(connect).await?;
+
+                handle_connection(connection, streams, send, receive).await
+            };
+
+            let _ = requests.spawn(task).await;
         }
 
-        // wait until all of the connections finish before closing
-        while requests.join_next().await.is_some() {}
+        while requests.join_next().await.is_none() {}
 
         client.wait_idle().await?;
 
