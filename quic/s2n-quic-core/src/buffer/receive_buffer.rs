@@ -175,6 +175,12 @@ impl ReceiveBuffer {
         let final_offset = request.end_exclusive();
 
         // make sure if we previously saw a final size that they still match
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+        //# Once a final size for a stream is known, it cannot change.  If a
+        //# RESET_STREAM or STREAM frame is received indicating a change in the
+        //# final size for the stream, an endpoint SHOULD respond with an error
+        //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
+        //# handling.
         if self.final_offset != UNKNOWN_FINAL_SIZE && self.final_offset != final_offset {
             return Err(ReceiveBufferError::InvalidFin);
         }
@@ -199,6 +205,12 @@ impl ReceiveBuffer {
         let (mut request, excess) = request.split(self.final_offset);
 
         // make sure the request isn't trying to write beyond the final size
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+        //# Once a final size for a stream is known, it cannot change.  If a
+        //# RESET_STREAM or STREAM frame is received indicating a change in the
+        //# final size for the stream, an endpoint SHOULD respond with an error
+        //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
+        //# handling.
         if !excess.is_empty() {
             return Err(ReceiveBufferError::InvalidFin);
         }
