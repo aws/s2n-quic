@@ -16,6 +16,7 @@ pub struct Builder {
     pub(super) queue_send_buffer_size: Option<u32>,
     pub(super) max_mtu: MaxMtu,
     pub(super) max_segments: gso::MaxSegments,
+    pub(super) gro_enabled: Option<bool>,
     pub(super) reuse_port: bool,
 }
 
@@ -118,6 +119,15 @@ impl Builder {
     /// GSO fails. If it is known that GSO is not available, set this option to explicitly disable it.
     pub fn with_gso_disabled(mut self) -> io::Result<Self> {
         self.max_segments = 1.try_into().expect("1 is always a valid MaxSegments value");
+        Ok(self)
+    }
+
+    /// Disables Generic Receive Offload (GRO)
+    ///
+    /// By default, GRO will be used unless the platform does not support it. If it is known that
+    /// GRO is not available, set this option to explicitly disable it.
+    pub fn with_gro_disabled(mut self) -> io::Result<Self> {
+        self.gro_enabled = Some(false);
         Ok(self)
     }
 

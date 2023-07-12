@@ -55,6 +55,7 @@ impl Io {
             queue_send_buffer_size,
             mut max_mtu,
             max_segments,
+            gro_enabled,
             reuse_port,
         } = self.builder;
 
@@ -129,7 +130,7 @@ impl Io {
         });
 
         // Configure the socket with GRO
-        let gro_enabled = syscall::configure_gro(&rx_socket);
+        let gro_enabled = gro_enabled.unwrap_or(true) && syscall::configure_gro(&rx_socket);
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::Gro {
