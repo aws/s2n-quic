@@ -549,7 +549,7 @@ impl LocalIdRegistry {
             return;
         }
 
-        for mut id_info in self
+        for id_info in self
             .registered_ids
             .iter_mut()
             .filter(|id_info| id_info.transmission_interest().can_transmit(constraint))
@@ -579,7 +579,7 @@ impl LocalIdRegistry {
             return;
         }
 
-        for mut id_info in self.registered_ids.iter_mut() {
+        for id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
                     id_info.status = Active;
@@ -601,7 +601,7 @@ impl LocalIdRegistry {
             return;
         }
 
-        for mut id_info in self.registered_ids.iter_mut() {
+        for id_info in self.registered_ids.iter_mut() {
             if let PendingAcknowledgement(packet_number) = id_info.status {
                 if ack_set.contains(packet_number) {
                     id_info.status = PendingReissue;

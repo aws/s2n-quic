@@ -144,7 +144,7 @@ impl HeaderDecoderResult {
         DecoderError,
     > {
         let (payload, remaining) = buffer.decode_slice(self.packet_len)?;
-        let packet_number = ProtectedPacketNumber::default();
+        let packet_number = ProtectedPacketNumber;
         let payload = ProtectedPayload::new(self.header_len, payload.into_less_safe_slice());
 
         Ok((payload, packet_number, remaining))

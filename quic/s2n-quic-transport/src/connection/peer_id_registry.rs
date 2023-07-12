@@ -400,7 +400,7 @@ impl PeerIdRegistry {
             if new_id_info.is_active() {
                 active_id_count += 1;
 
-                if let Some(mut id_pending_new_connection_id) = id_pending_new_connection_id {
+                if let Some(id_pending_new_connection_id) = id_pending_new_connection_id {
                     // If there was an ID pending new connection ID, it can be moved to PendingRetirement
                     // now that we know we aren't processing a duplicate NEW_CONNECTION_ID and the
                     // new connection ID wasn't immediately retired.

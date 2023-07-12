@@ -89,7 +89,7 @@ impl Server {
     }
 
     fn build_null(&self) -> Result<null::Provider> {
-        Ok(null::Provider::default())
+        Ok(null::Provider)
     }
 }
 
@@ -154,7 +154,7 @@ impl Client {
     }
 
     fn build_null(&self) -> Result<null::Provider> {
-        Ok(null::Provider::default())
+        Ok(null::Provider)
     }
 }
 
