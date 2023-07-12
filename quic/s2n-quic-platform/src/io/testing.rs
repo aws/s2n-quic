@@ -10,12 +10,15 @@ use s2n_quic_core::{
 type Error = std::io::Error;
 type Result<T = (), E = Error> = core::result::Result<T, E>;
 
+pub mod message;
 mod model;
 pub mod network;
+mod socket;
 pub mod time;
 
 pub use model::{Model, TxRecorder};
 pub use network::{Network, PathHandle};
+pub use socket::Socket;
 pub use time::now;
 
 pub use bach::task::{self, primary, spawn};
@@ -219,6 +222,7 @@ impl Handle {
         Builder {
             handle: self.clone(),
             address: None,
+            on_socket: None,
             max_mtu: MaxMtu::default(),
         }
     }
@@ -227,6 +231,7 @@ impl Handle {
 pub struct Builder {
     handle: Handle,
     address: Option<SocketAddress>,
+    on_socket: Option<Box<dyn FnOnce(socket::Socket)>>,
     max_mtu: MaxMtu,
 }
 
@@ -237,6 +242,11 @@ impl Builder {
 
     pub fn with_max_mtu(mut self, max_mtu: u16) -> Self {
         self.max_mtu = max_mtu.try_into().unwrap();
+        self
+    }
+
+    pub fn on_socket(mut self, f: impl FnOnce(socket::Socket) + 'static) -> Self {
+        self.on_socket = Some(Box::new(f));
         self
     }
 }
@@ -253,13 +263,18 @@ impl Io {
         let Builder {
             handle: Handle { executor, buffers },
             address,
+            on_socket,
             max_mtu,
         } = self.builder;
         endpoint.set_max_mtu(max_mtu);
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());
 
-        let (tx, rx) = buffers.register(handle);
+        let (tx, rx, socket) = buffers.register(handle, self.builder.max_mtu);
+
+        if let Some(on_socket) = on_socket {
+            on_socket(socket);
+        }
 
         let clock = time::Clock::default();
 

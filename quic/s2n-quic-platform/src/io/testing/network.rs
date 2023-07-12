@@ -1,18 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::task::{Context, Poll, Waker};
+use crate::{message::Message as _, socket};
+use core::task::{Context, Waker};
 use s2n_quic_core::{
-    event,
-    inet::{datagram, ExplicitCongestionNotification, SocketAddress},
-    io::{
-        self, rx,
-        tx::{self, Queue as _},
-    },
-    path::{LocalAddress, Tuple},
+    inet::{ExplicitCongestionNotification, SocketAddress},
+    io::{rx, tx},
+    path::{LocalAddress, MaxMtu, Tuple},
 };
 use std::{
     collections::{HashMap, VecDeque},
+    io,
     sync::{
         atomic::{AtomicU16, AtomicU32, Ordering},
         Arc, Mutex,
@@ -29,6 +27,9 @@ pub type PathHandle = Tuple;
 pub trait Network {
     fn execute(&mut self, buffers: &Buffers) -> usize;
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct HostId(u64);
 
 impl<A: Network, B: Network> Network for (A, B) {
     fn execute(&mut self, buffers: &Buffers) -> usize {
@@ -61,43 +62,139 @@ impl Default for Buffers {
 
 impl Buffers {
     pub fn close(&self) {
-        let mut lock = self.inner.lock().unwrap();
-        lock.is_open = false;
+        if let Ok(mut lock) = self.inner.lock() {
+            lock.is_open = false;
 
-        let state = &mut *lock;
+            let state = &mut *lock;
 
-        for entry in state.tx.values_mut().chain(state.rx.values_mut()) {
-            if let Some(waker) = entry.waker.take() {
-                waker.wake();
+            for entry in state.tx.values_mut().chain(state.rx.values_mut()) {
+                if let Some(waker) = entry.waker.take() {
+                    waker.wake();
+                }
             }
         }
     }
 
+    pub fn lookup_addr(&self, host: HostId) -> io::Result<std::net::SocketAddr> {
+        let lock = self
+            .inner
+            .lock()
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+
+        let entries = lock.host_to_addr.get(&host).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("host {host:?} was not found"),
+            )
+        })?;
+
+        let addr = *entries.first().unwrap();
+
+        Ok(addr.into())
+    }
+
+    pub fn rebind(&self, host: HostId, addr: std::net::SocketAddr) {
+        if let Ok(mut lock) = self.inner.lock() {
+            let addr = addr.into();
+            // can't rebind to an already used address
+            if lock.addr_to_host.contains_key(&addr) {
+                return;
+            }
+
+            lock.addr_to_host.insert(addr, host);
+            let host_to_addr = lock.host_to_addr.get_mut(&host).unwrap();
+            let prev = host_to_addr.pop().unwrap();
+            host_to_addr.push(addr);
+
+            lock.addr_to_host.remove(&prev);
+
+            lock.tx.get_mut(&host).unwrap().local_address = addr.into();
+            lock.rx.get_mut(&host).unwrap().local_address = addr.into();
+
+            eprintln!("{prev} -> {addr}");
+        }
+    }
+
     pub fn tx<F: FnOnce(&mut Queue)>(&self, handle: SocketAddress, f: F) {
-        let mut lock = self.inner.lock().unwrap();
-        if let Some(queue) = lock.tx.get_mut(&handle) {
+        if let Ok(mut lock) = self.inner.lock() {
+            let lock = &mut *lock;
+            if let Some(host) = lock.addr_to_host.get(&handle) {
+                if let Some(queue) = lock.tx.get_mut(host) {
+                    f(queue)
+                }
+            }
+        }
+    }
+
+    pub fn tx_host<F: FnOnce(&mut Queue)>(&self, host: HostId, f: F) -> io::Result<()> {
+        let mut lock = self
+            .inner
+            .lock()
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+
+        if !lock.is_open {
+            return Err(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "host is closed",
+            ));
+        }
+
+        let lock = &mut *lock;
+        if let Some(queue) = lock.tx.get_mut(&host) {
             f(queue)
         }
+
+        Ok(())
     }
 
     pub fn rx<F: FnOnce(&mut Queue)>(&self, handle: SocketAddress, f: F) {
-        let mut lock = self.inner.lock().unwrap();
-        if let Some(queue) = lock.rx.get_mut(&handle) {
-            f(queue)
+        if let Ok(mut lock) = self.inner.lock() {
+            let lock = &mut *lock;
+            if let Some(host) = lock.addr_to_host.get(&handle) {
+                if let Some(queue) = lock.rx.get_mut(host) {
+                    f(queue)
+                }
+            }
         }
     }
 
+    pub fn rx_host<F: FnOnce(&mut Queue)>(&self, host: HostId, f: F) -> io::Result<()> {
+        let mut lock = self
+            .inner
+            .lock()
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+
+        if !lock.is_open {
+            return Err(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "host is closed",
+            ));
+        }
+
+        let lock = &mut *lock;
+        if let Some(queue) = lock.rx.get_mut(&host) {
+            f(queue)
+        }
+
+        Ok(())
+    }
+
     pub fn pending_transmission<F: FnMut(&Packet)>(&self, mut f: F) {
-        let lock = self.inner.lock().unwrap();
-        for queue in lock.tx.values() {
-            for packet in &queue.packets {
-                f(packet);
+        if let Ok(lock) = self.inner.lock() {
+            for queue in lock.tx.values() {
+                for packet in &queue.packets {
+                    f(packet);
+                }
             }
         }
     }
 
     pub fn drain_pending_transmissions<F: FnMut(Packet) -> Result<(), ()>>(&self, mut f: F) {
-        let mut lock = self.inner.lock().unwrap();
+        let mut lock = if let Ok(lock) = self.inner.lock() {
+            lock
+        } else {
+            return;
+        };
 
         let mut queues = vec![];
 
@@ -156,116 +253,127 @@ impl Buffers {
         SocketAddress::IpV4(addr.into())
     }
 
+    pub fn close_host(&mut self, host: HostId) {
+        if let Ok(mut lock) = self.inner.lock() {
+            lock.tx.remove(&host);
+            lock.rx.remove(&host);
+            if let Some(addrs) = lock.host_to_addr.remove(&host) {
+                for addr in addrs {
+                    lock.addr_to_host.remove(&addr);
+                }
+            }
+        }
+    }
+
     /// Register an address on the network
-    pub fn register(&self, handle: SocketAddress) -> (TxIo, RxIo) {
+    pub fn register(
+        &self,
+        handle: SocketAddress,
+        max_mtu: MaxMtu,
+    ) -> (
+        impl tx::Tx<PathHandle = PathHandle>,
+        impl rx::Rx<PathHandle = PathHandle>,
+        super::socket::Socket,
+    ) {
         let mut lock = self.inner.lock().unwrap();
+
+        let host = HostId(lock.next_host);
+        lock.next_host += 1;
 
         let queue = Queue::new(handle);
 
-        lock.tx.insert(handle, queue.clone());
-        lock.rx.insert(handle, queue);
+        lock.addr_to_host.insert(handle, host);
+        lock.host_to_addr.insert(host, vec![handle]);
+        lock.tx.insert(host, queue.clone());
+        lock.rx.insert(host, queue);
 
-        let tx = TxIo {
-            buffers: self.clone(),
-            handle,
+        // TODO allow configuration of this
+        let queue_recv_buffer_size = None;
+        let queue_send_buffer_size = None;
+
+        let socket = super::socket::Socket::new(self.clone(), host);
+
+        let rx = {
+            let payload_len = {
+                let max_mtu: u16 = max_mtu.into();
+                max_mtu as u32
+            };
+
+            let rx_buffer_size = queue_recv_buffer_size.unwrap_or(8u32 * (1 << 20));
+            let entries = rx_buffer_size / payload_len;
+            let entries = if entries.is_power_of_two() {
+                entries
+            } else {
+                // round up to the nearest power of two, since the ring buffers require it
+                entries.next_power_of_two()
+            };
+
+            let mut consumers = vec![];
+
+            let (producer, consumer) = socket::ring::pair(entries, payload_len);
+            consumers.push(consumer);
+
+            // spawn a task that actually reads from the socket into the ring buffer
+            super::spawn(super::socket::rx(socket.clone(), producer));
+
+            // construct the RX side for the endpoint event loop
+            let max_mtu = MaxMtu::try_from(payload_len as u16).unwrap();
+            socket::io::rx::Rx::new(consumers, max_mtu, handle.into())
         };
-        let rx = RxIo {
-            buffers: self.clone(),
-            handle,
+
+        let tx = {
+            let gso = crate::features::Gso::default();
+            gso.disable();
+
+            // compute the payload size for each message from the number of GSO segments we can
+            // fill
+            let payload_len = {
+                let max_mtu: u16 = max_mtu.into();
+                (max_mtu as u32 * gso.max_segments() as u32).min(u16::MAX as u32)
+            };
+
+            let tx_buffer_size = queue_send_buffer_size.unwrap_or(128 * 1024);
+            let entries = tx_buffer_size / payload_len;
+            let entries = if entries.is_power_of_two() {
+                entries
+            } else {
+                // round up to the nearest power of two, since the ring buffers require it
+                entries.next_power_of_two()
+            };
+
+            let mut producers = vec![];
+
+            let (producer, consumer) = socket::ring::pair(entries, payload_len);
+            producers.push(producer);
+
+            // spawn a task that actually flushes the ring buffer to the socket
+            super::spawn(super::socket::tx(socket.clone(), consumer, gso.clone()));
+
+            // construct the TX side for the endpoint event loop
+            socket::io::tx::Tx::new(producers, gso, max_mtu)
         };
 
-        (tx, rx)
+        (tx, rx, socket)
     }
-}
-
-pub struct TxIo {
-    buffers: Buffers,
-    handle: SocketAddress,
-}
-
-impl tx::Tx for TxIo {
-    type PathHandle = Tuple;
-    type Queue = Queue;
-    type Error = ();
-
-    fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        let mut lock = self.buffers.inner.lock().unwrap();
-
-        if !lock.is_open {
-            return Err(()).into();
-        }
-
-        let tx = lock.tx.get_mut(&self.handle).unwrap();
-
-        // If we weren't previously full, then return pending so we don't spin
-        if !tx.is_blocked {
-            return Poll::Pending;
-        }
-
-        // if we were blocked and now have capacity wake up the endpoint
-        if tx.has_capacity() {
-            tx.is_blocked = false;
-            Poll::Ready(Ok(()))
-        } else {
-            tx.waker = Some(cx.waker().clone());
-            Poll::Pending
-        }
-    }
-
-    fn queue<F: FnOnce(&mut Self::Queue)>(&mut self, f: F) {
-        self.buffers.tx(self.handle, f);
-    }
-
-    fn handle_error<E: event::EndpointPublisher>(self, _error: Self::Error, _events: &mut E) {}
-}
-
-pub struct RxIo {
-    buffers: Buffers,
-    handle: SocketAddress,
-}
-
-impl rx::Rx for RxIo {
-    type PathHandle = Tuple;
-    type Queue = Queue;
-    type Error = ();
-
-    fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        let mut lock = self.buffers.inner.lock().unwrap();
-
-        if !lock.is_open {
-            return Err(()).into();
-        }
-
-        let rx = lock.rx.get_mut(&self.handle).unwrap();
-
-        // wake up the endpoint if we have an rx message
-        if !io::rx::Queue::is_empty(rx) {
-            return Poll::Ready(Ok(()));
-        }
-
-        // store the waker for later notifications
-        rx.waker = Some(cx.waker().clone());
-        Poll::Pending
-    }
-
-    fn queue<F: FnOnce(&mut Self::Queue)>(&mut self, f: F) {
-        self.buffers.rx(self.handle, f);
-    }
-
-    fn handle_error<E: event::EndpointPublisher>(self, _error: Self::Error, _events: &mut E) {}
 }
 
 #[derive(Debug)]
 struct State {
     is_open: bool,
-    tx: HashMap<SocketAddress, Queue>,
-    rx: HashMap<SocketAddress, Queue>,
+    next_host: u64,
+    addr_to_host: HashMap<SocketAddress, HostId>,
+    host_to_addr: HashMap<HostId, Vec<SocketAddress>>,
+    tx: HashMap<HostId, Queue>,
+    rx: HashMap<HostId, Queue>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             is_open: true,
+            next_host: 0,
+            addr_to_host: Default::default(),
+            host_to_addr: Default::default(),
             tx: Default::default(),
             rx: Default::default(),
         }
@@ -277,9 +385,7 @@ pub struct Queue {
     capacity: usize,
     mtu: u16,
     packets: VecDeque<Packet>,
-    pending: Packet,
     local_address: LocalAddress,
-    is_blocked: bool,
     waker: Option<Waker>,
 }
 
@@ -291,14 +397,12 @@ impl Queue {
             capacity: 1024,
             mtu,
             packets: VecDeque::new(),
-            pending: Packet::new(mtu, local_address),
             local_address,
-            is_blocked: false,
             waker: None,
         }
     }
 
-    pub fn receive(&mut self, packet: Packet) {
+    pub fn enqueue(&mut self, packet: Packet) {
         if self.packets.len() == self.capacity {
             // drop old packets if we're at capacity
             let _ = self.packets.pop_front();
@@ -311,7 +415,7 @@ impl Queue {
         }
     }
 
-    pub fn take(&mut self, count: usize) -> impl Iterator<Item = Packet> + '_ {
+    pub fn dequeue(&mut self, count: usize) -> impl Iterator<Item = Packet> + '_ {
         let count = self.packets.len().min(count);
         self.packets.drain(..count)
     }
@@ -319,56 +423,63 @@ impl Queue {
     pub fn drain(&mut self) -> impl Iterator<Item = Packet> + '_ {
         self.packets.drain(..)
     }
-}
 
-impl io::tx::Queue for Queue {
-    type Handle = Tuple;
+    pub fn send(&mut self, msgs: &[super::message::Message]) -> usize {
+        let to_drop = self
+            .packets
+            .len()
+            .saturating_add(msgs.len())
+            .saturating_sub(self.capacity);
 
-    const SUPPORTS_ECN: bool = true;
-
-    fn push<M: io::tx::Message<Handle = Self::Handle>>(
-        &mut self,
-        message: M,
-    ) -> Result<io::tx::Outcome, io::tx::Error> {
-        if !self.has_capacity() {
-            self.is_blocked = true;
-            return Err(io::tx::Error::AtCapacity);
+        // drop the oldest packets, if needed
+        if to_drop > 0 {
+            self.packets.drain(..to_drop);
         }
 
-        let len = self.pending.write(message)?;
+        for msg in msgs {
+            let mut path = *msg.handle();
 
-        // create a packet for the next transmission
-        let next = Packet::new(self.mtu, self.local_address);
-        let packet = core::mem::replace(&mut self.pending, next);
+            // update the path with the latest address
+            path.local_address = self.local_address;
 
-        self.packets.push_back(packet);
+            let ecn = msg.ecn();
 
-        Ok(io::tx::Outcome { len, index: 0 })
-    }
+            let msg_payload = msg.payload();
+            let payload_len = msg_payload.len().min(self.mtu as _);
+            let mut payload = vec![0u8; payload_len];
+            payload.copy_from_slice(&msg_payload[..payload_len]);
 
-    fn capacity(&self) -> usize {
-        self.capacity - self.packets.len()
-    }
-}
+            let packet = Packet { path, ecn, payload };
 
-impl io::rx::Queue for Queue {
-    type Handle = Tuple;
-
-    #[inline]
-    fn for_each<F: FnMut(datagram::Header<Self::Handle>, &mut [u8])>(&mut self, mut on_packet: F) {
-        for mut packet in self.packets.drain(..) {
-            let header = datagram::Header {
-                path: packet.path,
-                ecn: packet.ecn,
-            };
-            let payload = &mut packet.payload;
-            on_packet(header, payload);
+            self.packets.push_back(packet);
         }
+
+        msgs.len()
     }
 
-    #[inline]
-    fn is_empty(&self) -> bool {
-        self.packets.is_empty()
+    pub fn recv(&mut self, cx: &mut Context, msgs: &mut [super::message::Message]) -> usize {
+        let to_remove = self.packets.len().min(msgs.len());
+
+        if to_remove == 0 {
+            self.waker = Some(cx.waker().clone());
+            return 0;
+        }
+
+        self.waker.take();
+
+        for (packet, msg) in self.packets.drain(..to_remove).zip(msgs) {
+            *msg.handle_mut() = packet.path;
+            *msg.ecn_mut() = packet.ecn;
+            let payload = msg.payload_mut();
+            let to_copy = payload.len().min(packet.payload.len());
+            payload[..to_copy].copy_from_slice(&packet.payload[..to_copy]);
+
+            unsafe {
+                msg.set_payload_len(to_copy);
+            }
+        }
+
+        to_remove
     }
 }
 
@@ -380,17 +491,6 @@ pub struct Packet {
 }
 
 impl Packet {
-    fn new(mtu: u16, local_address: LocalAddress) -> Self {
-        Self {
-            path: Tuple {
-                local_address,
-                remote_address: Default::default(),
-            },
-            ecn: Default::default(),
-            payload: vec![0u8; mtu as usize],
-        }
-    }
-
     pub fn switch(&mut self) {
         let path = self.path;
         let remote_address = path.local_address.0.into();
@@ -399,21 +499,6 @@ impl Packet {
             remote_address,
             local_address,
         };
-    }
-
-    fn write<M: tx::Message<Handle = Tuple>>(
-        &mut self,
-        mut message: M,
-    ) -> Result<usize, tx::Error> {
-        let buffer = tx::PayloadBuffer::new(&mut self.payload);
-
-        let len = message.write_payload(buffer, 0)?;
-
-        self.payload.truncate(len);
-        self.path.remote_address = message.path_handle().remote_address;
-        self.ecn = message.ecn();
-
-        Ok(len)
     }
 }
 
