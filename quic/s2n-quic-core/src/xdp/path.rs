@@ -120,4 +120,9 @@ impl Handle for Tuple {
             *self = *other;
         }
     }
+
+    #[inline]
+    fn update_local_address(&mut self, other: &Self) {
+        self.local_address = other.local_address;
+    }
 }

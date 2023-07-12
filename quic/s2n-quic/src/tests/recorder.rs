@@ -84,3 +84,13 @@ event_recorder!(
     HandshakeStatusUpdated,
     on_handshake_status_updated
 );
+event_recorder!(
+    ActivePathUpdated,
+    ActivePathUpdated,
+    on_active_path_updated,
+    SocketAddr,
+    |event: &events::ActivePathUpdated, storage: &mut Vec<SocketAddr>| {
+        let addr = (&event.active.remote_addr).into();
+        storage.push(addr);
+    }
+);

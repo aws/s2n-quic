@@ -238,7 +238,20 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) -> Result<(Id, bool), DatagramDropReason> {
         let valid_initial_received = self.valid_initial_received();
 
-        if let Some((id, path)) = self.path_mut(path_handle) {
+        for (idx, path) in self.paths.iter_mut().enumerate() {
+            let is_match = if Config::ENDPOINT_TYPE.is_client() {
+                // only compare remote addresses in the case of a local rebind
+                path.handle.remote_address() == path_handle.remote_address()
+            } else {
+                path.handle.eq(path_handle)
+            };
+
+            if !is_match {
+                continue;
+            }
+
+            let id = path_id(idx as _);
+
             let source_cid_changed = datagram.source_connection_id.map_or(false, |scid| {
                 scid != path.peer_connection_id && valid_initial_received
             });
@@ -261,6 +274,11 @@ impl<Config: endpoint::Config> Manager<Config> {
             // update the address if it was resolved
             path.handle.maybe_update(path_handle);
 
+            // make sure the client is always using the latest local address
+            if Config::ENDPOINT_TYPE.is_client() {
+                path.handle.update_local_address(path_handle);
+            }
+
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
         }
@@ -270,7 +288,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# the client MUST discard these packets.
         if Config::ENDPOINT_TYPE.is_client() {
             return Err(DatagramDropReason::UnknownServerAddress);
-        };
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# The design of QUIC relies on endpoints retaining a stable address

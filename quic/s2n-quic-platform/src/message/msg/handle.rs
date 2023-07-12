@@ -114,4 +114,9 @@ impl path::Handle for Handle {
             self.local_address = other.local_address;
         }
     }
+
+    #[inline]
+    fn update_local_address(&mut self, other: &Self) {
+        self.local_address = other.local_address;
+    }
 }
