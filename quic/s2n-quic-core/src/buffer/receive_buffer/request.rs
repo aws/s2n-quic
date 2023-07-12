@@ -10,6 +10,7 @@ use core::fmt;
 pub struct Request<'a> {
     offset: u64,
     data: &'a [u8],
+    is_fin: bool,
 }
 
 impl<'a> fmt::Debug for Request<'a> {
@@ -17,19 +18,21 @@ impl<'a> fmt::Debug for Request<'a> {
         f.debug_struct("Request")
             .field("offset", &self.offset)
             .field("len", &self.data.len())
+            .field("is_fin", &self.is_fin)
             .finish()
     }
 }
 
 impl<'a> Request<'a> {
     #[inline]
-    pub fn new(offset: VarInt, data: &'a [u8]) -> Result<Self, ReceiveBufferError> {
+    pub fn new(offset: VarInt, data: &'a [u8], is_fin: bool) -> Result<Self, ReceiveBufferError> {
         offset
             .checked_add_usize(data.len())
             .ok_or(ReceiveBufferError::OutOfRange)?;
         Ok(Self {
             offset: offset.as_u64(),
             data,
+            is_fin,
         })
     }
 
@@ -42,14 +45,27 @@ impl<'a> Request<'a> {
         let a_offset = self.offset.min(offset);
         let b_offset = self.offset.max(offset);
 
-        let a = Self {
+        let mut a = Self {
             offset: a_offset,
             data: a,
+            is_fin: false,
         };
-        let b = Self {
+        let mut b = Self {
             offset: b_offset,
             data: b,
+            is_fin: false,
         };
+
+        if self.is_fin {
+            let fin_offset = self.end_exclusive();
+
+            if b.offset == fin_offset {
+                a.is_fin = true;
+            } else if b.end_exclusive() == fin_offset {
+                b.is_fin = true;
+            }
+        }
+
         (a, b)
     }
 
@@ -69,13 +85,28 @@ impl<'a> Request<'a> {
     }
 
     #[inline]
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     #[inline]
+    pub fn is_fin(&self) -> bool {
+        self.is_fin
+    }
+
+    #[inline]
     pub fn start(&self) -> u64 {
         self.offset
+    }
+
+    #[inline]
+    pub fn end_exclusive(&self) -> u64 {
+        self.offset + self.len() as u64
     }
 
     #[inline]

@@ -152,7 +152,7 @@ mod tests {
     }
 
     fn req(offset: u64, data: &[u8]) -> Request {
-        Request::new(VarInt::new(offset).unwrap(), data).unwrap()
+        Request::new(VarInt::new(offset).unwrap(), data, false).unwrap()
     }
 
     macro_rules! assert_write {
