@@ -23,7 +23,7 @@ pub(crate) mod ecn;
 mod manager;
 pub(crate) mod mtu;
 
-pub use challenge::*;
+pub use challenge::Challenge;
 pub use manager::*;
 
 /// re-export core

@@ -948,7 +948,7 @@ mod test {
         let mut publisher = Publisher::snapshot();
 
         // test the loss in each state
-        for state in vec![
+        for state in [
             State::Disabled,
             State::SearchRequested,
             State::Searching(pn(1), now()),

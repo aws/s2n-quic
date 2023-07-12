@@ -128,7 +128,7 @@ unsafe fn alloc(entries: u32, payload_len: u32, offset: usize) -> super::Storage
         let ptr = storage.as_ptr();
 
         let mut entry_ptr = ptr.add(entry_offset) as *mut Message;
-        let mut payload_ptr = ptr.add(payload_offset) as *mut u8;
+        let mut payload_ptr = ptr.add(payload_offset);
         for _ in 0..entries {
             let entry = &mut *entry_ptr;
             entry.payload_ptr = payload_ptr;
