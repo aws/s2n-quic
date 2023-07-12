@@ -164,31 +164,36 @@ fn parse_h09_request(chunks: &[Bytes], path: &mut String, is_open: bool) -> Resu
 
 #[test]
 fn parse_h09_request_test() {
+    fn parse(chunks: &[&str]) -> Result<Option<String>> {
+        let chunks: Vec<_> = chunks
+            .iter()
+            .map(|v| Bytes::copy_from_slice(v.as_bytes()))
+            .collect();
+
+        let mut path = String::new();
+
+        for idx in 0..chunks.len() {
+            let _ = parse_h09_request(&chunks[..idx], &mut path, true);
+        }
+
+        let result = parse_h09_request(&chunks, &mut path, false);
+
+        result.map(|has_request| if has_request { Some(path) } else { None })
+    }
+
     macro_rules! test {
         ([$($chunk:expr),* $(,)?], $expected:pat) => {{
-            let chunks = [$(Bytes::from_static($chunk.as_bytes())),*];
-            let mut path = String::new();
-
-            for idx in 0..chunks.len() {
-                let _ = parse_h09_request(&chunks[..idx], &mut path, true);
-            }
-
-            let result = parse_h09_request(&chunks, &mut path, false);
-            let result = result.map(|has_request| if has_request { Some(path) } else { None });
-            let result = result.as_ref().map(|v| v.as_deref());
-
+            let result = parse(&[$($chunk),*]).unwrap();
+            let result = result.as_deref();
             assert!(matches!(result, $expected), "{:?}", result);
         }}
     }
 
-    test!([], Err(_));
-    test!(["GET /"], Ok(Some("")));
-    test!(["GET /abc"], Ok(Some("abc")));
-    test!(["GET /abc/123"], Ok(Some("abc/123")));
-    test!(["GET /CAPS/lower"], Ok(Some("CAPS/lower")));
-    test!(["GET /abc\rextra stuff"], Ok(Some("abc")));
-    test!(
-        ["G", "E", "T", " ", "/", "t", "E", "s", "T"],
-        Ok(Some("tEsT"))
-    );
+    assert!(parse(&[]).is_err());
+    test!(["GET /"], Some(""));
+    test!(["GET /abc"], Some("abc"));
+    test!(["GET /abc/123"], Some("abc/123"));
+    test!(["GET /CAPS/lower"], Some("CAPS/lower"));
+    test!(["GET /abc\rextra stuff"], Some("abc"));
+    test!(["G", "E", "T", " ", "/", "t", "E", "s", "T"], Some("tEsT"));
 }

@@ -221,7 +221,7 @@ fn ecn_ce_suppression() {
 fn ecn_loss_recovery_probing() {
     let now = time::now();
 
-    for state in vec![
+    for state in [
         State::Capable(Timer::default()),
         State::Testing(0),
         State::Unknown,
@@ -239,7 +239,7 @@ fn ecn_loss_recovery_probing() {
 
 #[test]
 fn is_capable() {
-    for state in vec![
+    for state in [
         State::Testing(0),
         State::Unknown,
         State::Failed(Timer::default()),
@@ -637,7 +637,7 @@ fn validate_capable_ce_suppression_test() {
 #[test]
 fn validate_capable_not_in_unknown_state() {
     let mut publisher = Publisher::snapshot();
-    for state in vec![
+    for state in [
         State::Testing(0),
         State::Capable(Timer::default()),
         State::Failed(Timer::default()),
@@ -766,7 +766,7 @@ fn on_packet_sent() {
 #[test]
 fn on_packet_loss() {
     let mut publisher = Publisher::snapshot();
-    for state in vec![
+    for state in [
         State::Testing(0),
         State::Capable(Timer::default()),
         State::Unknown,

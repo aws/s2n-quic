@@ -163,7 +163,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         let bytes_progressed = self.stream_manager.outgoing_bytes_progressed();
 
         let payload = transmission::Transmission {
-            config: <PhantomData<Config>>::default(),
+            config: PhantomData::<Config>,
             outcome: &mut outcome,
             packet_number,
             payload: transmission::application::Payload::<Config>::new(
@@ -262,7 +262,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         let destination_connection_id = context.path().peer_connection_id;
 
         let payload = transmission::Transmission {
-            config: <PhantomData<Config>>::default(),
+            config: PhantomData::<Config>,
             outcome: &mut outcome,
             packet_number,
             payload: transmission::connection_close::Payload {

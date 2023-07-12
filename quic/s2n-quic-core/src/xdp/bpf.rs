@@ -22,7 +22,7 @@ impl<'a> DecoderBufferMut<'a> {
     #[inline]
     pub unsafe fn new(start: *mut u8, end: *mut u8) -> Self {
         let len = end as usize - start as usize;
-        let data = core::slice::from_raw_parts_mut(start as *mut u8, len);
+        let data = core::slice::from_raw_parts_mut(start, len);
         let buffer = Inner::new(data);
         Self { buffer, end }
     }

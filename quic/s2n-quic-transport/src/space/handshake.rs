@@ -123,7 +123,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 
         let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
-            config: <PhantomData<Config>>::default(),
+            config: PhantomData::<Config>,
             outcome: &mut outcome,
             packet_number,
             payload: transmission::early::Payload {
@@ -198,7 +198,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 
         let destination_connection_id = context.path().peer_connection_id;
         let payload = transmission::Transmission {
-            config: <PhantomData<Config>>::default(),
+            config: PhantomData::<Config>,
             outcome: &mut outcome,
             packet_number,
             payload: transmission::connection_close::Payload {

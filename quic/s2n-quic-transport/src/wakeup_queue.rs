@@ -23,7 +23,7 @@ struct QueueState<T> {
     wakeup_in_progress: bool,
 }
 
-impl<T: Copy> QueueState<T> {
+impl<T: Copy + Send + Sync> QueueState<T> {
     fn new() -> Self {
         Self {
             woken_connections: VecDeque::new(),
@@ -88,7 +88,7 @@ pub struct WakeupQueue<T> {
     state: Arc<Mutex<QueueState<T>>>,
 }
 
-impl<T: Copy> WakeupQueue<T> {
+impl<T: Copy + Send + Sync> WakeupQueue<T> {
     /// Creates a new `WakeupQueue`.
     ///
     /// If a wakeup is triggered, the given [`Waker`] will be notified.
@@ -138,7 +138,7 @@ pub struct WakeupHandle<T> {
     wakeup_queued: AtomicBool,
 }
 
-impl<T: Copy> WakeupHandle<T> {
+impl<T: Copy + Send + Sync> WakeupHandle<T> {
     /// Creates a new [`WakeupHandle`] which delegates wakeups to the given `queue`.
     fn new(queue: Arc<Mutex<QueueState<T>>>, wakeup_handle_id: T) -> Self {
         Self {
@@ -181,7 +181,7 @@ impl<T: Copy> WakeupHandle<T> {
     }
 }
 
-impl<T: Copy> Wake for WakeupHandle<T> {
+impl<T: Copy + Send + Sync> Wake for WakeupHandle<T> {
     fn wake(self: Arc<Self>) {
         self.wakeup()
     }
