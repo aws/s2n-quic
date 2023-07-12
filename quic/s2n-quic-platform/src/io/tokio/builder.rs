@@ -127,7 +127,7 @@ impl Builder {
     /// By default, GRO will be used unless the platform does not support it. If it is known that
     /// GRO is not available, set this option to explicitly disable it.
     pub fn with_gro_disabled(mut self) -> io::Result<Self> {
-        self.gro_enabled = Some(true);
+        self.gro_enabled = Some(false);
         Ok(self)
     }
 
