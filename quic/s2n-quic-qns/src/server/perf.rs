@@ -4,6 +4,7 @@
 use crate::{perf, tls, Result};
 use futures::future::try_join_all;
 use s2n_quic::{
+    provider::event,
     stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection, Server,
 };
@@ -157,16 +158,13 @@ impl Perf {
     fn server(&self) -> Result<Server> {
         let io = self.io.build()?;
 
-        let subscriber = perf::Subscriber::default();
+        let subscriber = if self.stats {
+            event::console_perf::Subscriber::new(core::time::Duration::from_secs(1))
+        } else {
+            event::console_perf::Subscriber::disabled()
+        };
 
-        if self.stats {
-            subscriber.spawn(core::time::Duration::from_secs(1));
-        }
-
-        let subscriber = (
-            subscriber,
-            s2n_quic::provider::event::tracing::Subscriber::default(),
-        );
+        let subscriber = (subscriber, event::tracing::Subscriber::default());
 
         let server = Server::builder()
             .with_limits(self.limits.limits())?

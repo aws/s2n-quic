@@ -32,10 +32,10 @@ url = "2"
 regex = { version = "1", features = ["unicode"] }
 
 [target.'cfg(unix)'.dependencies]
-s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-console-perf", "provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
 
 [target.'cfg(not(unix))'.dependencies]
-s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-console-perf", "provider-event-tracing", "provider-tls-rustls"] }
 
 # the mimalloc build is currently broken on android
 [target.'cfg(not(target_os = "android"))'.dependencies]
