@@ -7,19 +7,22 @@ use crate::{
     application::ServerName,
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
-        tls, CryptoSuite, HeaderKey, Key,
+        tls::{self, encode_transport_parameters},
+        CryptoSuite, HeaderKey, Key,
     },
     endpoint, transport,
+    transport::parameters::{ClientTransportParameters, ServerTransportParameters},
 };
 use alloc::sync::Arc;
 use bytes::Bytes;
 use core::{
     fmt,
+    marker::PhantomData,
     sync::atomic::{AtomicBool, Ordering},
     task::{Poll, Waker},
 };
 use futures_test::task::new_count_waker;
-use s2n_codec::EncoderValue;
+use s2n_codec::{DecoderBuffer, DecoderValue, EncoderValue};
 use std::{collections::VecDeque, fmt::Debug};
 
 pub mod certificates {
@@ -105,13 +108,19 @@ impl CryptoSuite for Session {
 }
 
 #[derive(Debug)]
-pub struct TlsEndpoint<S: tls::Session, State: Debug> {
+pub struct TlsEndpoint<S: tls::Session, State: Debug, Params>
+where
+    for<'a> Params: DecoderValue<'a>,
+{
     pub session: S,
-    pub context: Context<S, State>,
+    pub context: Context<S, State, Params>,
 }
 
-impl<S: tls::Session, State: Debug> TlsEndpoint<S, State> {
-    fn new(session: S, context: Context<S, State>) -> Self {
+impl<S: tls::Session, State: Debug, Params> TlsEndpoint<S, State, Params>
+where
+    for<'a> Params: DecoderValue<'a>,
+{
+    fn new(session: S, context: Context<S, State, Params>) -> Self {
         Self { session, context }
     }
 }
@@ -119,13 +128,26 @@ impl<S: tls::Session, State: Debug> TlsEndpoint<S, State> {
 /// A pair of TLS sessions and contexts being driven to completion
 #[derive(Debug)]
 pub struct Pair<S: tls::Session, C: tls::Session> {
-    pub server: TlsEndpoint<S, ServerState>,
-    pub client: TlsEndpoint<C, ClientState>,
+    pub server: TlsEndpoint<S, ServerState, ClientTransportParameters>,
+    pub client: TlsEndpoint<C, ClientState, ServerTransportParameters>,
     pub server_name: ServerName,
 }
 
-const TEST_SERVER_TRANSPORT_PARAMS: &[u8] = &[1, 2, 3];
-const TEST_CLIENT_TRANSPORT_PARAMS: &[u8] = &[3, 2, 1];
+fn server_params() -> Bytes {
+    let params = ServerTransportParameters {
+        initial_max_data: 123.try_into().unwrap(),
+        ..Default::default()
+    };
+    encode_transport_parameters(&params)
+}
+
+fn client_params() -> Bytes {
+    let params = ClientTransportParameters {
+        initial_max_data: 456.try_into().unwrap(),
+        ..Default::default()
+    };
+    encode_transport_parameters(&params)
+}
 
 impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     pub fn new<SE, CE>(
@@ -139,13 +161,12 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     {
         use crate::crypto::InitialKey;
 
-        let server = server_endpoint.new_server_session(&TEST_SERVER_TRANSPORT_PARAMS);
+        let server = server_endpoint.new_server_session(&&server_params()[..]);
         let mut server_context =
             Context::new(endpoint::Type::Server, ServerState::WaitingClientHello);
         server_context.initial.crypto = Some(S::InitialKey::new_server(server_name.as_bytes()));
 
-        let client =
-            client_endpoint.new_client_session(&TEST_CLIENT_TRANSPORT_PARAMS, server_name.clone());
+        let client = client_endpoint.new_client_session(&&client_params()[..], server_name.clone());
         let mut client_context = Context::new(endpoint::Type::Client, ClientState::ClientHelloSent);
         client_context.initial.crypto = Some(C::InitialKey::new_client(server_name.as_bytes()));
 
@@ -164,8 +185,14 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     /// Continues progress of the handshake
     pub fn poll(
         &mut self,
-        client_hello_cb_done: Option<Arc<AtomicBool>>,
+        client_hello_cb_done: Option<&Arc<AtomicBool>>,
     ) -> Result<(), transport::Error> {
+        self.poll_start()?;
+        self.poll_finish(client_hello_cb_done)?;
+        Ok(())
+    }
+
+    pub fn poll_start(&mut self) -> Result<(), transport::Error> {
         match self.client.session.poll(&mut self.client.context) {
             Poll::Ready(res) => res?,
             Poll::Pending => (),
@@ -174,9 +201,18 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
             Poll::Ready(res) => res?,
             Poll::Pending => (),
         }
+        Ok(())
+    }
+
+    pub fn poll_finish(
+        &mut self,
+        client_hello_cb_done: Option<&Arc<AtomicBool>>,
+    ) -> Result<(), transport::Error> {
         self.client.context.transfer(&mut self.server.context);
 
+        #[cfg(not(fuzzing))]
         eprintln!("1/2 RTT");
+
         if let Some(client_hello_cb_done) = client_hello_cb_done {
             // If the server is processing the async client hello callback, then return early
             // and poll it until it completes
@@ -245,12 +281,12 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
 
         assert_eq!(
             self.client.context.transport_parameters.as_ref().unwrap(),
-            TEST_SERVER_TRANSPORT_PARAMS,
+            &server_params(),
             "client did not receive the server transport parameters"
         );
         assert_eq!(
             self.server.context.transport_parameters.as_ref().unwrap(),
-            TEST_CLIENT_TRANSPORT_PARAMS,
+            &client_params(),
             "server did not receive the client transport parameters"
         );
         assert_eq!(
@@ -331,7 +367,10 @@ impl ServerState {
 }
 
 /// Harness to ensure a TLS implementation adheres to the session contract
-pub struct Context<C: CryptoSuite, State: Debug> {
+pub struct Context<C: CryptoSuite, State: Debug, Params>
+where
+    for<'a> Params: DecoderValue<'a>,
+{
     pub initial: Space<C::InitialKey, C::InitialHeaderKey>,
     pub handshake: Space<C::HandshakeKey, C::HandshakeHeaderKey>,
     pub application: Space<C::OneRttKey, C::OneRttHeaderKey>,
@@ -343,9 +382,13 @@ pub struct Context<C: CryptoSuite, State: Debug> {
     endpoint: endpoint::Type,
     pub state: State,
     waker: Waker,
+    params: PhantomData<Params>,
 }
 
-impl<C: CryptoSuite, State: Debug> fmt::Debug for Context<C, State> {
+impl<C: CryptoSuite, State: Debug, Params> fmt::Debug for Context<C, State, Params>
+where
+    for<'a> Params: DecoderValue<'a>,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Context")
             .field("initial", &self.initial)
@@ -361,7 +404,10 @@ impl<C: CryptoSuite, State: Debug> fmt::Debug for Context<C, State> {
     }
 }
 
-impl<C: CryptoSuite, State: Debug> Context<C, State> {
+impl<C: CryptoSuite, State: Debug, Params> Context<C, State, Params>
+where
+    for<'a> Params: DecoderValue<'a>,
+{
     fn new(endpoint: endpoint::Type, state: State) -> Self {
         let (waker, _wake_counter) = new_count_waker();
         Self {
@@ -376,18 +422,25 @@ impl<C: CryptoSuite, State: Debug> Context<C, State> {
             endpoint,
             state,
             waker,
+            params: PhantomData,
         }
     }
 
     /// Transfers incoming and outgoing buffers between two contexts
-    pub fn transfer<O: CryptoSuite, OS: Debug>(&mut self, other: &mut Context<O, OS>) {
+    pub fn transfer<O: CryptoSuite, OS: Debug, OP>(&mut self, other: &mut Context<O, OS, OP>)
+    where
+        for<'a> OP: DecoderValue<'a>,
+    {
         self.initial.transfer(&mut other.initial);
         self.handshake.transfer(&mut other.handshake);
         self.application.transfer(&mut other.application);
     }
 
     /// Finishes the test and asserts consistency
-    pub fn finish<O: CryptoSuite, OS: Debug>(&self, other: &Context<O, OS>) {
+    pub fn finish<O: CryptoSuite, OS: Debug, OP>(&self, other: &Context<O, OS, OP>)
+    where
+        for<'a> OP: DecoderValue<'a>,
+    {
         self.assert_done();
         other.assert_done();
 
@@ -423,10 +476,21 @@ impl<C: CryptoSuite, State: Debug> Context<C, State> {
         assert!(self.transport_parameters.is_some());
     }
 
-    fn on_application_params(&mut self, params: tls::ApplicationParameters) {
+    fn on_application_params(
+        &mut self,
+        params: tls::ApplicationParameters,
+    ) -> Result<(), transport::Error> {
+        // make sure the parameters parse correctly
+        let buffer = DecoderBuffer::new(params.transport_parameters);
+        let _ = buffer
+            .decode::<Params>()
+            .map_err(|_| transport::Error::FRAME_ENCODING_ERROR)?;
+
         self.transport_parameters = Some(Bytes::copy_from_slice(params.transport_parameters));
+        Ok(())
     }
 
+    #[cfg(not(fuzzing))]
     fn log(&self, event: &str) {
         eprintln!(
             "{:?}: {:?}: {}: {}",
@@ -435,6 +499,11 @@ impl<C: CryptoSuite, State: Debug> Context<C, State> {
             core::any::type_name::<C>(), // rustls or s2n-tls
             event,
         );
+    }
+
+    #[cfg(fuzzing)]
+    fn log(&self, event: &str) {
+        let _ = event;
     }
 }
 
@@ -558,7 +627,10 @@ fn protect_unprotect<P: HeaderKey, U: HeaderKey>(protect: &P, unprotect: &U, tag
     );
 }
 
-impl<C: CryptoSuite, State: Debug> tls::Context<C> for Context<C, State> {
+impl<C: CryptoSuite, State: Debug, Params> tls::Context<C> for Context<C, State, Params>
+where
+    for<'a> Params: DecoderValue<'a>,
+{
     fn on_handshake_keys(
         &mut self,
         key: C::HandshakeKey,
@@ -585,7 +657,7 @@ impl<C: CryptoSuite, State: Debug> tls::Context<C> for Context<C, State> {
         );
         self.log("0-rtt keys");
         self.zero_rtt_crypto = Some((key, header_key));
-        self.on_application_params(params);
+        self.on_application_params(params)?;
         Ok(())
     }
 
@@ -601,7 +673,7 @@ impl<C: CryptoSuite, State: Debug> tls::Context<C> for Context<C, State> {
         );
         self.log("1-rtt keys");
         self.application.crypto = Some((key, header_key));
-        self.on_application_params(params);
+        self.on_application_params(params)?;
 
         Ok(())
     }

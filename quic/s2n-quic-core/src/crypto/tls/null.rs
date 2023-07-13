@@ -12,7 +12,10 @@
 
 use crate::{
     application::{server_name::LOCALHOST, ServerName},
-    crypto::{self, tls},
+    crypto::{
+        self,
+        tls::{self, encode_transport_parameters},
+    },
     transport,
 };
 use bytes::Bytes;
@@ -156,14 +159,6 @@ impl tls::Session for Session {
     }
 }
 
-/// Encodes transport parameters into a byte vec
-fn encode_transport_parameters<Params: s2n_codec::EncoderValue>(params: &Params) -> Bytes {
-    let len = params.encoding_size();
-    let mut buffer = vec![0; len];
-    params.encode(&mut s2n_codec::EncoderBuffer::new(&mut buffer));
-    buffer.into()
-}
-
 static FIN: Bytes = Bytes::from_static(b"FIN");
 static NULL: Bytes = Bytes::from_static(b"NULL");
 
@@ -191,7 +186,7 @@ pub mod client {
                     } => {
                         context.send_initial(core::mem::take(transport_parameters));
 
-                        context.on_server_name(LOCALHOST.clone()).unwrap();
+                        context.on_server_name(LOCALHOST.clone())?;
 
                         *self = Self::WaitingInitial {};
                     }
@@ -201,9 +196,7 @@ pub mod client {
                             None => return Poll::Pending,
                         };
 
-                        context
-                            .on_handshake_keys(key::NoCrypto, key::NoCrypto)
-                            .unwrap();
+                        context.on_handshake_keys(key::NoCrypto, key::NoCrypto)?;
 
                         // notify the server we're done
                         context.send_handshake(FIN.clone());
@@ -215,19 +208,17 @@ pub mod client {
                             return Poll::Pending;
                         }
 
-                        context.on_application_protocol(NULL.clone()).unwrap();
+                        context.on_application_protocol(NULL.clone())?;
 
-                        context
-                            .on_one_rtt_keys(
-                                key::NoCrypto,
-                                key::NoCrypto,
-                                tls::ApplicationParameters {
-                                    transport_parameters: params,
-                                },
-                            )
-                            .unwrap();
+                        context.on_one_rtt_keys(
+                            key::NoCrypto,
+                            key::NoCrypto,
+                            tls::ApplicationParameters {
+                                transport_parameters: params,
+                            },
+                        )?;
 
-                        context.on_handshake_complete().unwrap();
+                        context.on_handshake_complete()?;
 
                         *self = Self::Complete;
 
@@ -267,24 +258,20 @@ pub mod server {
                         };
                         context.send_initial(core::mem::take(transport_parameters));
 
-                        context
-                            .on_handshake_keys(key::NoCrypto, key::NoCrypto)
-                            .unwrap();
+                        context.on_handshake_keys(key::NoCrypto, key::NoCrypto)?;
                         context.send_handshake(FIN.clone());
 
-                        context.on_application_protocol(NULL.clone()).unwrap();
+                        context.on_application_protocol(NULL.clone())?;
 
-                        context
-                            .on_one_rtt_keys(
-                                key::NoCrypto,
-                                key::NoCrypto,
-                                tls::ApplicationParameters {
-                                    transport_parameters: &client_params,
-                                },
-                            )
-                            .unwrap();
+                        context.on_one_rtt_keys(
+                            key::NoCrypto,
+                            key::NoCrypto,
+                            tls::ApplicationParameters {
+                                transport_parameters: &client_params,
+                            },
+                        )?;
 
-                        context.on_server_name(LOCALHOST.clone()).unwrap();
+                        context.on_server_name(LOCALHOST.clone())?;
 
                         *self = Self::WaitingComplete;
                     }
@@ -294,7 +281,7 @@ pub mod server {
                         }
 
                         *self = Self::Complete;
-                        context.on_handshake_complete().unwrap();
+                        context.on_handshake_complete()?;
 
                         return Ok(()).into();
                     }
@@ -446,6 +433,9 @@ mod key {
 mod tests {
     use super::*;
     use crate::crypto::tls::testing::Pair;
+    use bolero::check;
+    use bytes::{BufMut, Bytes, BytesMut};
+    use std::collections::VecDeque;
 
     #[test]
     fn null_test() {
@@ -459,5 +449,47 @@ mod tests {
         }
 
         pair.finish();
+    }
+
+    #[test]
+    fn fuzz_test() {
+        let mut server = Endpoint::default();
+        let mut client = Endpoint::default();
+
+        check!().for_each(|mut bytes| {
+            // replaces a single buffer with fuzz bytes
+            let mut replace_bytes = |chunks: &mut VecDeque<Bytes>| {
+                for chunk in chunks {
+                    let len = chunk.len().min(bytes.len());
+                    let (data, remaining) = bytes.split_at(len);
+                    bytes = remaining;
+                    let mut replacement = BytesMut::with_capacity(chunk.len());
+                    replacement.put_slice(data);
+                    replacement.put_bytes(0, chunk.len() - data.len());
+                    assert_eq!(chunk.len(), replacement.len());
+                    *chunk = replacement.freeze();
+                }
+            };
+
+            let mut pair = Pair::new(&mut server, &mut client, LOCALHOST.clone());
+
+            while pair.is_handshaking() {
+                if pair.poll_start().is_err() {
+                    break;
+                }
+
+                // replace all of the buffers with fuzz bytes
+                replace_bytes(&mut pair.server.context.initial.rx);
+                replace_bytes(&mut pair.server.context.initial.tx);
+                replace_bytes(&mut pair.server.context.handshake.rx);
+                replace_bytes(&mut pair.server.context.handshake.tx);
+                replace_bytes(&mut pair.server.context.application.rx);
+                replace_bytes(&mut pair.server.context.application.tx);
+
+                if pair.poll_finish(None).is_err() {
+                    break;
+                }
+            }
+        });
     }
 }
