@@ -678,3 +678,47 @@ jobs:
           name: "perf / report"
           status: "success"
           url: "${{ steps.s3.outputs.URL }}"
+
+  attack:
+    runs-on: ubuntu-latest
+    needs: [s2n-quic-qns]
+    strategy:
+      matrix:
+        attack: ["udp"]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: s2n-quic-qns-debug
+
+      - name: Run cargo build
+        working-directory: tools/${{ matrix.attack }}-attack
+        run: cargo build --release
+
+      - name: Start client
+        working-directory: tools/${{ matrix.attack }}-attack
+        run: |
+          ./target/release/${{ matrix.attack }}-attack localhost:4433 &
+
+      - name: Start server
+        shell: bash
+        run: |
+          chmod +x ./s2n-quic-qns-debug
+          # disable exiting on errors to capture the timeout status
+          set +e
+
+          timeout 5m ./s2n-quic-qns-debug interop server --port 4433
+          EXIT_CODE="$?"
+
+          set -e
+          # `timeout` exits with `124` if the time limit was reached
+          [[ "$EXIT_CODE" == "124" ]] || exit $EXIT_CODE
