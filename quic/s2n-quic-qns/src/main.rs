@@ -41,6 +41,7 @@ fn main() {
         Ok(args) => {
             if let Err(error) = args.run() {
                 eprintln!("Error: {error:?}");
+                std::process::exit(1);
             }
         }
         Err(error) => {
