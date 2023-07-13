@@ -204,6 +204,7 @@ jobs:
         rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
         os: [ubuntu-latest, macOS-latest, windows-latest]
         target: [native]
+        env: [default]
         include:
           - os: windows-latest
             # s2n-tls doesn't currently build on windows
@@ -214,6 +215,15 @@ jobs:
           - rust: stable
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
+          # test with different platform features
+          - rust: stable
+            os: ubuntu-latest
+            target: native
+            env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=""
+          - rust: stable
+            os: ubuntu-latest
+            target: native
+            env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE="mtu_disc,pktinfo,tos,socket_msg"
     steps:
       - uses: actions/checkout@v3
         with:
@@ -241,6 +251,10 @@ jobs:
         shell: bash
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
+
+      - name: Set environment variables
+        if: ${{ matrix.env != 'default' }}
+        run: echo ${{ matrix.env }} >> $GITHUB_ENV
 
       # Build the tests before running to improve cross compilation speed
       - name: Run cargo build
