@@ -186,6 +186,12 @@ jobs:
           sudo chmod +x bpftrace
           sudo mv bpftrace /usr/bin/
 
+      - name: Setup environment
+        run: |
+          # set larger socket buffers
+          sudo sysctl -w net.core.wmem_default=2000000
+          sudo sysctl -w net.core.rmem_default=2000000
+
       - name: Run server
         run: |
           sudo SCENARIO=$SCENARIO S2N_UNSTABLE_CRYPTO_OPT_TX=1 S2N_UNSTABLE_CRYPTO_OPT_RX=1 ./netbench-collector \
