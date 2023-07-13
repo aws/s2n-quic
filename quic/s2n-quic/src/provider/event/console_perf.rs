@@ -60,7 +60,7 @@ impl Subscriber {
         if !self.spawned {
             self.spawned = true;
             let counters = self.counters.clone();
-            let frequency = self.frequency.clone();
+            let frequency = self.frequency;
             counters.print_header();
             tokio::spawn(async move {
                 loop {
