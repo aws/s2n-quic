@@ -11,7 +11,7 @@ use s2n_quic_core::{event::Timestamp, path::THROTTLED_PORTS_LEN};
 
 pub trait Provider: 'static {
     type Limits: 'static + Limiter;
-    type Error: core::fmt::Display;
+    type Error: core::fmt::Display + Send + Sync;
 
     /// Starts the token provider
     fn start(self) -> Result<Self::Limits, Self::Error>;

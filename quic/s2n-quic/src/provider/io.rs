@@ -8,7 +8,7 @@ use std::io;
 
 pub trait Provider: 'static {
     type PathHandle: PathHandle;
-    type Error: 'static + core::fmt::Display;
+    type Error: 'static + core::fmt::Display + Send + Sync;
 
     fn start<E: Endpoint<PathHandle = Self::PathHandle>>(
         self,

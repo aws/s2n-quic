@@ -14,7 +14,7 @@ pub use s2n_quic_core::datagram::{
 
 pub trait Provider {
     type Endpoint: Endpoint;
-    type Error: 'static + core::fmt::Display;
+    type Error: 'static + core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::Endpoint, Self::Error>;
 }
