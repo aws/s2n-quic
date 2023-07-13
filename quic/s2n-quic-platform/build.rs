@@ -4,6 +4,14 @@
 use std::{fs::read_dir, io::Error, path::Path, process::Command};
 
 fn main() -> Result<(), Error> {
+    // allow overriding the detected features with an env variable
+    if let Some(features) = option_env("S2N_QUIC_PLATFORM_FEATURES_OVERRIDE") {
+        for feature in features.split(',') {
+            supports(feature.trim());
+        }
+        return Ok(());
+    }
+
     let env = Env::new();
 
     for feature in read_dir("features")? {
@@ -108,7 +116,10 @@ impl Env {
 }
 
 fn env(name: &str) -> String {
+    option_env(name).unwrap_or_else(|| panic!("build script missing {name:?} environment variable"))
+}
+
+fn option_env(name: &str) -> Option<String> {
     println!("cargo:rerun-if-env-changed={name}");
-    std::env::var(name)
-        .unwrap_or_else(|_| panic!("build script missing {name:?} environment variable"))
+    std::env::var(name).ok()
 }
