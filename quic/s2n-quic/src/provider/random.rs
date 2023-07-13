@@ -6,7 +6,7 @@ pub use s2n_quic_core::random::Generator;
 /// Provides random number generation support for an endpoint
 pub trait Provider: 'static {
     type Generator: 'static + Generator;
-    type Error: core::fmt::Display;
+    type Error: core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::Generator, Self::Error>;
 }

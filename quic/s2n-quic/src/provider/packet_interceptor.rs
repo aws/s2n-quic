@@ -8,7 +8,7 @@ pub use s2n_quic_core::packet::interceptor::{
 /// Provides packet_interceptor support for an endpoint
 pub trait Provider: 'static {
     type PacketInterceptor: 'static + PacketInterceptor;
-    type Error: core::fmt::Display;
+    type Error: core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::PacketInterceptor, Self::Error>;
 }

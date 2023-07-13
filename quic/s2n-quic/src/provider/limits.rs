@@ -7,7 +7,7 @@ pub use s2n_quic_core::connection::limits::{ConnectionInfo, Limiter, Limits};
 
 pub trait Provider {
     type Limits: 'static + Send + Limiter;
-    type Error: 'static + core::fmt::Display;
+    type Error: 'static + core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::Limits, Self::Error>;
 }
