@@ -7,7 +7,7 @@ pub use s2n_quic_core::recovery::congestion_controller::Endpoint;
 /// Provides congestion controller support for an endpoint
 pub trait Provider {
     type Endpoint: Endpoint;
-    type Error: 'static + core::fmt::Display;
+    type Error: 'static + core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::Endpoint, Self::Error>;
 }

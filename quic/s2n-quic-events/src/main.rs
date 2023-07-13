@@ -4,7 +4,7 @@
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 
-type Error = Box<dyn std::error::Error>;
+type Error = Box<dyn std::error::Error + Send + Sync>;
 type Result<T, E = Error> = core::result::Result<T, E>;
 
 mod parser;

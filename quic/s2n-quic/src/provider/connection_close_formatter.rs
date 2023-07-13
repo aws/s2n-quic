@@ -8,7 +8,7 @@ pub use s2n_quic_core::connection::close::*;
 /// Provider for formatting CONNECTION_CLOSE frames
 pub trait Provider: 'static {
     type Formatter: 'static + Formatter;
-    type Error: core::fmt::Display;
+    type Error: core::fmt::Display + Send + Sync;
 
     /// Starts the token provider
     fn start(self) -> Result<Self::Formatter, Self::Error>;

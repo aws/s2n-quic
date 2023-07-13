@@ -7,7 +7,7 @@ pub use s2n_quic_core::stateless_reset::token::Generator;
 
 pub trait Provider: 'static {
     type Generator: 'static + Generator;
-    type Error: core::fmt::Display;
+    type Error: core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::Generator, Self::Error>;
 }
