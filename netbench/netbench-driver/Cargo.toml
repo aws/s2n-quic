@@ -16,8 +16,8 @@ netbench = { version = "0.1", path = "../netbench" }
 probe = "0.3"
 s2n-quic = { path = "../../quic/s2n-quic", features = ["provider-tls-s2n"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
-s2n-tls = { version = "=0.0.29" }
-s2n-tls-tokio = { version = "=0.0.29" }
+s2n-tls = { version = "=0.0.34" }
+s2n-tls-tokio = { version = "=0.0.34" }
 structopt = "0.3"
 tokio = { version = "1", features = ["io-util", "net", "time", "rt-multi-thread"] }
 tokio-native-tls = "0.3"
