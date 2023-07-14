@@ -23,7 +23,7 @@
 //!   rejected the connection attempt.
 
 use super::*;
-use crate::provider::event::events;
+use crate::provider::event::events::{self, ConnectionInfo, ConnectionMeta, Subscriber};
 use core::task::{Context, Poll, Waker};
 
 struct ClientConfirm;
@@ -129,7 +129,7 @@ impl Subscriber for ClientConfirm {
     }
 }
 
-fn mtl_test<C>(server_cert: &str, f: fn(crate::Connection) -> C)
+fn mtls_test<C>(server_cert: &str, f: fn(crate::Connection) -> C)
 where
     C: 'static + core::future::Future<Output = ()> + Send,
 {
@@ -172,7 +172,7 @@ where
 fn mtls_happy_case() {
     const LEN: usize = 1000;
 
-    mtl_test(certificates::MTLS_CA_CERT, |mut conn| {
+    mtls_test(certificates::MTLS_CA_CERT, |mut conn| {
         async move {
             // make sure we get confirmation of the handshake before opening a stream and sending
             // data
@@ -196,7 +196,7 @@ fn mtls_happy_case() {
 fn mtls_failure_no_wait() {
     const LEN: usize = 1000;
 
-    mtl_test(certificates::UNTRUSTED_CERT_PEM, |mut conn| {
+    mtls_test(certificates::UNTRUSTED_CERT_PEM, |mut conn| {
         async move {
             // We don't use `wait_ready` here to show that we can open a stream that will fail
             // later
@@ -214,7 +214,7 @@ fn mtls_failure_no_wait() {
 
 #[test]
 fn mtls_failure_with_wait() {
-    mtl_test(certificates::UNTRUSTED_CERT_PEM, |mut conn| {
+    mtls_test(certificates::UNTRUSTED_CERT_PEM, |mut conn| {
         async move {
             // make sure we get confirmation of the handshake before opening a stream and sending
             // data
