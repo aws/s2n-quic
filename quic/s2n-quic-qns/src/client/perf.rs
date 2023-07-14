@@ -46,10 +46,17 @@ pub struct Perf {
 
     #[structopt(flatten)]
     tls: tls::Client,
+
+    #[structopt(flatten)]
+    runtime: crate::runtime::Runtime,
 }
 
 impl Perf {
-    pub async fn run(&self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
+        self.runtime.build()?.block_on(self.task())
+    }
+
+    async fn task(&self) -> Result<()> {
         let mut client = self.client()?;
 
         let mut requests = JoinSet::new();
