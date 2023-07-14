@@ -15,7 +15,7 @@ use std::{
 use tokio::{fs::File, io::AsyncWriteExt, spawn};
 use url::Url;
 
-pub async fn create_connection<'a, R: IntoIterator<Item = &'a Url>>(
+pub async fn create_connection<R: IntoIterator<Item = Url>>(
     client: Client,
     connect: Connect,
     requests: R,
