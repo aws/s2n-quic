@@ -45,10 +45,17 @@ pub struct Interop {
 
     #[structopt(flatten)]
     tls: tls::Client,
+
+    #[structopt(flatten)]
+    runtime: crate::runtime::Runtime,
 }
 
 impl Interop {
-    pub async fn run(&self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
+        self.runtime.build()?.block_on(self.task())
+    }
+
+    async fn task(&self) -> Result<()> {
         let mut client = self.client()?;
 
         let download_dir = Arc::new(self.download_dir.clone());
