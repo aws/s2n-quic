@@ -13,6 +13,7 @@ mod io;
 mod perf;
 mod runtime;
 mod server;
+mod task;
 mod tls;
 #[cfg(feature = "xdp")]
 mod xdp;

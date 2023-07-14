@@ -3,17 +3,16 @@
 
 use crate::Result;
 use bytes::Bytes;
-use futures::future::try_join_all;
 use s2n_quic::{client::Connect, connection::Handle, stream::SendStream, Client};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
-use tokio::{fs::File, io::AsyncWriteExt, spawn};
+use tokio::{fs::File, io::AsyncWriteExt, task::JoinSet};
 use url::Url;
 
-pub(crate) async fn create_connection<'a, R: IntoIterator<Item = &'a Url>>(
+pub(crate) async fn create_connection<R: IntoIterator<Item = Url>>(
     client: Client,
     connect: Connect,
     requests: R,
@@ -27,20 +26,18 @@ pub(crate) async fn create_connection<'a, R: IntoIterator<Item = &'a Url>>(
         connection.keep_alive(true)?;
     }
 
-    let mut streams = vec![];
+    let mut streams = JoinSet::new();
     for request in requests {
-        streams.push(spawn(create_stream(
+        streams.spawn(create_stream(
             connection.handle(),
             request.path().to_string(),
             download_dir.clone(),
-        )));
+        ));
     }
 
-    for result in try_join_all(streams).await? {
-        // `try_join_all` should be returning an Err if any stream fails, but it
-        // seems to just include the Err in the Vec of results. This will force
-        // any Error to bubble up so it can be printed in the output.
-        result?;
+    while let Some(result) = streams.join_next().await {
+        // bubble up both task-level errors and stream errors so it can be printed out
+        result??;
     }
 
     if let Some(keep_alive) = keep_alive {
