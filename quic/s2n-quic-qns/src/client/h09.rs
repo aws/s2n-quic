@@ -36,9 +36,7 @@ pub(crate) async fn create_connection<R: IntoIterator<Item = Url>>(
     }
 
     while let Some(result) = streams.join_next().await {
-        // `try_join_all` should be returning an Err if any stream fails, but it
-        // seems to just include the Err in the Vec of results. This will force
-        // any Error to bubble up so it can be printed in the output.
+        // bubble up both task-level errors and stream errors so it can be printed out
         result??;
     }
 

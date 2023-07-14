@@ -21,8 +21,9 @@ pub struct Perf {
     #[structopt(long, default_value = "perf")]
     application_protocols: Vec<String>,
 
-    #[structopt(long)]
-    connections: Option<usize>,
+    /// The total number of connections to open from the client
+    #[structopt(long, default_value = "1")]
+    connections: usize,
 
     /// Defines the number of concurrent connections to open at any given time
     #[structopt(long, default_value = "10")]
@@ -77,7 +78,7 @@ impl Perf {
         }
 
         // TODO support a richer connection strategy
-        for _ in 0..self.connections.unwrap_or(1) {
+        for _ in 0..self.connections {
             let client = client.clone();
             let connect = connect.clone();
 
