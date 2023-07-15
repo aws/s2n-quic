@@ -158,13 +158,14 @@ impl Perf {
     fn server(&self) -> Result<Server> {
         let io = self.io.build()?;
 
-        let subscriber = if self.stats {
-            event::console_perf::Subscriber::new(core::time::Duration::from_secs(1))
-        } else {
-            event::console_perf::Subscriber::disabled()
-        };
+        let mut subscriber =
+            event::console_perf::Builder::default().with_format(event::console_perf::Format::TSV);
 
-        let subscriber = (subscriber, event::tracing::Subscriber::default());
+        if self.stats {
+            subscriber = subscriber.with_frequency(core::time::Duration::from_secs(1));
+        }
+
+        let subscriber = (subscriber.build(), event::tracing::Subscriber::default());
 
         let server = Server::builder()
             .with_limits(self.limits.limits())?

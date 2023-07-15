@@ -3,12 +3,18 @@
 
 use crate::provider::event;
 use core::time::Duration;
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-/// An event subscriber that prints performance metrics to the console
+/// An event subscriber that prints performance metrics to the console via STDOUT
+///
+/// NOTE: The ordering and format of the output is subject to change and
+/// should not be relied on to remain consistent over time.
 ///
 /// # Examples
 ///
@@ -17,55 +23,147 @@ use std::sync::{
 ///
 /// ```rust,ignore
 /// # use std::{error::Error, time::Duration};
-/// use s2n_quic::Server;
+/// # use s2n_quic::Server;
 /// #
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn Error>> {
-/// let server = Server::builder()
-///     .with_event(event::console_perf::Subscriber::new(core::time::Duration::from_secs(10)))?
-///     .start()?;
+/// #
+/// # let subscriber = event::console_perf::Builder::default()
+/// #                   .with_frequency(core::time::Duration::from_secs(10))
+/// #                   .build();
+/// #
+/// # let server = Server::builder()
+/// #   .with_event(subscriber)?
+/// #   .start()?;
 /// #
 /// #    Ok(())
 /// # }
+///
+/// Enables the console perf event subscriber for the server,
+/// with printing handled manually.
+///
+/// ```rust,ignore
+/// # use std::{error::Error, time::Duration};
+/// # use s2n_quic::Server;
+/// #
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn Error>> {
+/// #
+/// # let subscriber = event::console_perf::Builder::default()
+/// #                  .build();
+/// #
+/// # subscriber.print_header();
+/// # let frequency = Duration::from_secs(1);
+/// # let subscriber = subscriber.clone();
+/// # tokio::spawn(async move {
+/// #     loop {
+/// #           tokio::time::sleep(frequency).await;
+/// #           subscriber.print();
+/// #     }
+/// # });
+/// #
+/// # let server = Server::builder()
+/// #   .with_event(subscriber)?
+/// #   .start()?;
+/// #
+/// #    Ok(())
+/// # }
+///
 /// ```
-#[derive(Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Subscriber {
-    pub counters: Arc<Counters>,
-    pub frequency: Duration,
-    pub spawned: bool,
+    counters: Arc<Counters>,
+    frequency: Option<Duration>,
+    format: Format,
+    spawned: bool,
+}
+
+#[non_exhaustive]
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Format {
+    /// Tab separated values with suffixes indicating the data units
+    TSV,
+    /// Tab separated values with no suffixes
+    ///
+    /// Rates are output as bits per second, sizes are output as number of bytes
+    /// and durations are output as microseconds
+    TSV_RAW,
+}
+
+impl Format {
+    fn print_suffix(&self) -> bool {
+        match self {
+            Self::TSV => true,
+            Self::TSV_RAW => false,
+        }
+    }
+}
+
+pub struct Builder {
+    frequency: Option<Duration>,
+    format: Format,
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            frequency: None,
+            format: Format::TSV,
+        }
+    }
+}
+
+impl Builder {
+    /// Sets the frequency at which performance metrics will be printed
+    ///
+    /// This uses `tokio::spawn` to spawn metric printing task,
+    /// and thus must be called within a Tokio runtime
+    ///
+    /// If frequency is not set, the caller is responsible for calling
+    /// `print_header` and `print` at the required frequency.
+    pub fn with_frequency(mut self, frequency: Duration) -> Self {
+        self.frequency = Some(frequency);
+        self
+    }
+
+    /// Sets the format that performance metrics will be printed in
+    pub fn with_format(mut self, format: Format) -> Self {
+        self.format = format;
+        self
+    }
+
+    /// Builds the [`console_perf::Subscriber`]
+    pub fn build(self) -> Subscriber {
+        Subscriber {
+            counters: Default::default(),
+            frequency: self.frequency,
+            format: self.format,
+            spawned: self.frequency.is_none(),
+        }
+    }
 }
 
 impl Subscriber {
-    /// Create a new `console_perf::Subscriber` that
-    /// prints metrics at the given `frequency`
-    pub fn new(frequency: Duration) -> Self {
-        Self {
-            counters: Default::default(),
-            frequency,
-            spawned: false,
-        }
+    /// Prints the current performance metrics to the console via STDOUT
+    pub fn print(&self) {
+        self.counters.print(self.format);
     }
 
-    /// Create a new `console_perf::Subscriber` that
-    /// does not print to the console
-    pub fn disabled() -> Self {
-        Self {
-            counters: Default::default(),
-            frequency: Duration::MAX,
-            spawned: true,
-        }
+    /// Prints the names of each performance metric to the console via STDOUT
+    pub fn print_header(&self) {
+        self.counters.print_header(self.format);
     }
 
     fn spawn(&mut self) {
-        if !self.spawned {
+        if let (false, Some(frequency)) = (self.spawned, self.frequency) {
             self.spawned = true;
-            let counters = self.counters.clone();
-            let frequency = self.frequency;
-            counters.print_header();
+            self.print_header();
+            let subscriber = self.clone();
             tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(frequency).await;
-                    counters.print(frequency);
+                    subscriber.print();
                 }
             });
         }
@@ -81,6 +179,17 @@ impl event::Subscriber for Subscriber {
         _meta: &event::ConnectionMeta,
         _info: &event::ConnectionInfo,
     ) -> Self::ConnectionContext {
+        // Initialize the counters.last_updated_micros with the current
+        // time if it has not already been initialized
+        let _ = self.counters.last_updated_micros.compare_exchange(
+            0,
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Clock may have gone backwards")
+                .as_micros() as u64,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        );
         self.spawn();
     }
 
@@ -192,7 +301,7 @@ impl event::Subscriber for Subscriber {
 }
 
 #[derive(Debug, Default)]
-pub struct Counters {
+struct Counters {
     send_progress: AtomicU64,
     receive_progress: AtomicU64,
     max_cwnd: AtomicU64,
@@ -205,39 +314,52 @@ pub struct Counters {
     pto_count: AtomicU64,
     max_pacing_rate: AtomicU64,
     max_delivery_rate: AtomicU64,
+    last_updated_micros: AtomicU64,
 }
 
 impl Counters {
-    pub fn print_header(&self) {
-        println!(
-            "Tx Rate\t\
-            Rx Rate\t\
-            Max Cwnd\t\
-            Max Inflight\t\
-            Lost Packets\t\
-            Wakeups\t\
-            Duration\t\
-            Max RTT\t\
-            Max SRTT\t\
-            PTO Count\t\
-            Max Pacing Rate\t\
-            Max Delivery Rate"
-        );
+    fn print_header(&self, format: Format) {
+        match format {
+            Format::TSV | Format::TSV_RAW => {
+                // NOTE: this format is subject to change
+                println!(
+                    "Tx Rate\t\
+                    Rx Rate\t\
+                    Max Cwnd\t\
+                    Max Inflight\t\
+                    Lost Packets\t\
+                    Wakeups\t\
+                    Duration\t\
+                    Max RTT\t\
+                    Max SRTT\t\
+                    PTO Count\t\
+                    Max Pacing Rate\t\
+                    Max Delivery Rate"
+                );
+            }
+        }
     }
 
-    pub fn print(&self, duration: Duration) {
+    fn print(&self, format: Format) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Clock may have gone backwards");
+        let last_updated_micros = self
+            .last_updated_micros
+            .swap(now.as_micros() as u64, Ordering::Relaxed);
+        let duration = now - Duration::from_micros(last_updated_micros);
         // The goodput of data transmitted to the peer
         let send_progress = self.send_progress.swap(0, Ordering::Relaxed);
-        let send_rate = rate(send_progress, duration);
+        let send_rate = rate(send_progress, duration, format);
         // The goodput of data received from the peer
         let receive_progress = self.receive_progress.swap(0, Ordering::Relaxed);
-        let receive_rate = rate(receive_progress, duration);
+        let receive_rate = rate(receive_progress, duration, format);
         // The maximum congestion window observed during the interval
         let max_cwnd = self.max_cwnd.swap(0, Ordering::Relaxed);
-        let max_cwnd = bytes(max_cwnd);
+        let max_cwnd = bytes(max_cwnd, format);
         // The maximum amount of unacknowledged data in flight during the interval
         let max_bytes_in_flight = self.max_bytes_in_flight.swap(0, Ordering::Relaxed);
-        let max_bytes_in_flight = bytes(max_bytes_in_flight);
+        let max_bytes_in_flight = bytes(max_bytes_in_flight, format);
         // The maximum round trip time observed during the interval
         let max_rtt = self.max_rtt.swap(0, Ordering::Relaxed);
         let max_rtt = Duration::from_nanos(max_rtt);
@@ -255,42 +377,73 @@ impl Counters {
         let pto_count = self.pto_count.swap(0, Ordering::Relaxed);
         // The maximum rate at which packets are paced out observed during the interval
         let max_pacing_rate = self.max_pacing_rate.swap(0, Ordering::Relaxed);
-        let max_pacing_rate = rate(max_pacing_rate, Duration::from_secs(1));
+        let max_pacing_rate = rate(max_pacing_rate, Duration::from_secs(1), format);
         // The maximum estimate of bandwidth observed during the interval. Only output for BBRv2
         let max_delivery_rate = self.max_delivery_rate.swap(0, Ordering::Relaxed);
-        let max_delivery_rate = rate(max_delivery_rate, Duration::from_secs(1));
-        println!(
-            "{send_rate}\t\
-            {receive_rate}\t\
-            {max_cwnd}\t\
-            {max_bytes_in_flight}\t\
-            {lost_packets}\t\
-            {wakeups}\t\
-            {duration:?}\t\
-            {max_rtt:?}\t\
-            {max_smoothed_rtt:?}\t\
-            {pto_count}\t\
-            {max_pacing_rate}\t\
-            {max_delivery_rate}",
-        );
+        let max_delivery_rate = rate(max_delivery_rate, Duration::from_secs(1), format);
+
+        match format {
+            Format::TSV => {
+                // NOTE: this format is subject to change
+                println!(
+                    "{send_rate}\t\
+                    {receive_rate}\t\
+                    {max_cwnd}\t\
+                    {max_bytes_in_flight}\t\
+                    {lost_packets}\t\
+                    {wakeups}\t\
+                    {duration:?}\t\
+                    {max_rtt:?}\t\
+                    {max_smoothed_rtt:?}\t\
+                    {pto_count}\t\
+                    {max_pacing_rate}\t\
+                    {max_delivery_rate}",
+                );
+            }
+            Format::TSV_RAW => {
+                // NOTE: this format is subject to change
+                println!(
+                    "{send_rate}\t\
+                    {receive_rate}\t\
+                    {max_cwnd}\t\
+                    {max_bytes_in_flight}\t\
+                    {lost_packets}\t\
+                    {wakeups}\t\
+                    {duration_micros}\t\
+                    {max_rtt_micros}\t\
+                    {max_smoothed_rtt_micros}\t\
+                    {pto_count}\t\
+                    {max_pacing_rate}\t\
+                    {max_delivery_rate}",
+                    duration_micros = duration.as_micros(),
+                    max_rtt_micros = max_rtt.as_micros(),
+                    max_smoothed_rtt_micros = max_smoothed_rtt.as_micros()
+                );
+            }
+        }
     }
 }
 
-fn rate(bytes: u64, duration: Duration) -> String {
-    use humansize::{format_size, DECIMAL};
+fn rate(bytes: u64, duration: Duration, format: Format) -> String {
+    let per_second = Duration::from_secs(1).as_nanos() as f64 / duration.as_nanos() as f64;
+    let bits_per_second = (bytes as f64 * 8.0 * per_second) as u64;
 
-    let bits = bytes * 8;
-    let value = format_size(bits, DECIMAL.space_after_value(false));
-    let value = value.trim_end_matches('B');
+    if format.print_suffix() {
+        use humansize::{format_size, DECIMAL};
+        let value = format_size(bits_per_second, DECIMAL.space_after_value(false));
+        let value = value.trim_end_matches('B');
 
-    if duration == Duration::from_secs(1) {
         format!("{value}bps")
     } else {
-        format!("{value}/{duration:?}")
+        format!("{bits_per_second}")
     }
 }
 
-fn bytes(value: u64) -> String {
-    use humansize::{format_size, DECIMAL};
-    format_size(value, DECIMAL.space_after_value(false))
+fn bytes(value: u64, format: Format) -> String {
+    if format.print_suffix() {
+        use humansize::{format_size, DECIMAL};
+        format_size(value, DECIMAL.space_after_value(false))
+    } else {
+        value.to_string()
+    }
 }
