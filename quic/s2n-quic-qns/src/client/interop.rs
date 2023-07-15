@@ -4,7 +4,7 @@
 use crate::{
     client::{h09, h3},
     interop::Testcase,
-    tls, Result,
+    task, tls, Result,
 };
 use core::time::Duration;
 use s2n_quic::{client::Connect, provider::event, Client};
@@ -37,6 +37,9 @@ pub struct Interop {
     #[structopt(long, env = "TESTCASE", possible_values = &Testcase::supported(is_supported_testcase))]
     testcase: Option<Testcase>,
 
+    #[structopt(long, default_value = "10")]
+    concurrency: u64,
+
     #[structopt(min_values = 1, required = true)]
     requests: Vec<Url>,
 
@@ -45,10 +48,17 @@ pub struct Interop {
 
     #[structopt(flatten)]
     tls: tls::Client,
+
+    #[structopt(flatten)]
+    runtime: crate::runtime::Runtime,
 }
 
 impl Interop {
-    pub async fn run(&self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
+        self.runtime.build()?.block_on(self.task())
+    }
+
+    async fn task(&self) -> Result<()> {
         let mut client = self.client()?;
 
         let download_dir = Arc::new(self.download_dir.clone());
@@ -62,22 +72,28 @@ impl Interop {
 
         let endpoints = self.endpoints().await?;
 
+        let mut tasks = task::Limiter::new(self.concurrency);
+
         // https://github.com/marten-seemann/quic-interop-runner#test-cases
         // Handshake Loss (multiconnect): Tests resilience of the handshake to high loss.
         // The client is expected to establish multiple connections, sequential or in parallel,
         // and use each connection to download a single file.
         if let Some(Testcase::Multiconnect) = self.testcase {
-            for request in &self.requests {
+            for request in self.requests.iter().cloned() {
                 let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
                 let requests = core::iter::once(request);
-                h09::create_connection(
+
+                let task = h09::create_connection(
                     client.clone(),
                     connect,
                     requests,
                     download_dir.clone(),
                     self.keep_alive,
-                )
-                .await?;
+                );
+
+                if let Some(task) = tasks.spawn(task).await {
+                    task??;
+                }
             }
         } else {
             // establish a connection per endpoint rather than per request
@@ -88,28 +104,39 @@ impl Interop {
                     .requests
                     .iter()
                     .filter(|req| req.host().as_ref() == Some(&host))
+                    .cloned()
                     .collect::<Vec<_>>();
 
-                if let Some(Testcase::Http3) = self.testcase {
-                    h3::create_connection(
+                let prev = if let Some(Testcase::Http3) = self.testcase {
+                    let task = h3::create_connection(
                         client.clone(),
                         connect,
                         requests,
                         download_dir.clone(),
                         self.keep_alive,
-                    )
-                    .await?;
+                    );
+
+                    tasks.spawn(task).await
                 } else {
-                    h09::create_connection(
+                    let task = h09::create_connection(
                         client.clone(),
                         connect,
                         requests,
                         download_dir.clone(),
                         self.keep_alive,
-                    )
-                    .await?;
+                    );
+
+                    tasks.spawn(task).await
+                };
+
+                if let Some(task) = prev {
+                    task??;
                 }
             }
+        }
+
+        while let Some(task) = tasks.join_next().await {
+            task??;
         }
 
         client.wait_idle().await?;

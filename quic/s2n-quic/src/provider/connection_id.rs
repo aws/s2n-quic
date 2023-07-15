@@ -7,7 +7,7 @@ pub use s2n_quic_core::connection::id::{ConnectionInfo, Format, Generator, Local
 
 pub trait Provider: 'static {
     type Format: 'static + Format;
-    type Error: core::fmt::Display;
+    type Error: core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::Format, Self::Error>;
 }

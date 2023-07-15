@@ -17,7 +17,7 @@ pub use s2n_quic_core::{
 /// Provides event handling support for an endpoint
 pub trait Provider {
     type Subscriber: 'static + Subscriber;
-    type Error: 'static + core::fmt::Display;
+    type Error: 'static + core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::Subscriber, Self::Error>;
 }

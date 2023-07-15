@@ -224,7 +224,7 @@ pub(super) unsafe fn alloc<T: Copy + Sized, F: Fn(&mut T) -> &mut msghdr>(
         // calculate each of the pointers we need to set up a message
         let mut entry_ptr = ptr.add(entry_offset) as *mut T;
         let mut header_ptr = ptr.add(header_offset) as *mut Header;
-        let mut payload_ptr = ptr.add(payload_offset) as *mut u8;
+        let mut payload_ptr = ptr.add(payload_offset);
 
         for _ in 0..entries {
             // for each message update all of the pointers to the correct locations

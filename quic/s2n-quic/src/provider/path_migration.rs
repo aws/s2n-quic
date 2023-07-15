@@ -9,7 +9,7 @@ pub use s2n_quic_core::path::migration::{
 /// Provides limits support for an endpoint
 pub trait Provider {
     type Validator: 'static + Send + Validator;
-    type Error: 'static + core::fmt::Display;
+    type Error: 'static + core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::Validator, Self::Error>;
 }

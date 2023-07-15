@@ -33,10 +33,17 @@ pub struct Perf {
 
     #[structopt(flatten)]
     io: crate::io::Server,
+
+    #[structopt(flatten)]
+    runtime: crate::runtime::Runtime,
 }
 
 impl Perf {
-    pub async fn run(&self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
+        self.runtime.build()?.block_on(self.task())
+    }
+
+    async fn task(&self) -> Result<()> {
         let mut server = self.server()?;
 
         if let Some(limit) = self.connections {

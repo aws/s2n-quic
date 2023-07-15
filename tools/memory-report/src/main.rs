@@ -63,7 +63,7 @@ impl Snapshot {
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-type Error = Box<dyn std::error::Error>;
+type Error = Box<dyn std::error::Error + Send + Sync>;
 type Result<T = (), E = Error> = core::result::Result<T, E>;
 
 fn main() -> Result {

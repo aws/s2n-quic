@@ -375,7 +375,7 @@ mod tests {
         //#    checksum = ~sum;
         //# }
 
-        let mut addr = data.as_ptr() as *const u8;
+        let mut addr = data.as_ptr();
         let mut count = data.len();
 
         unsafe {

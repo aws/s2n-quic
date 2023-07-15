@@ -11,7 +11,9 @@ mod file;
 mod interop;
 mod io;
 mod perf;
+mod runtime;
 mod server;
+mod task;
 mod tls;
 #[cfg(feature = "xdp")]
 mod xdp;
@@ -41,6 +43,7 @@ fn main() {
         Ok(args) => {
             if let Err(error) = args.run() {
                 eprintln!("Error: {error:?}");
+                std::process::exit(1);
             }
         }
         Err(error) => {
@@ -58,41 +61,16 @@ fn main() {
 }
 
 #[derive(Debug, StructOpt)]
-struct Arguments {
-    #[structopt(long, env = "S2N_QUIC_MULTI_THREAD")]
-    multithread: bool,
-
-    #[structopt(flatten)]
-    program: Program,
-}
-
-impl Arguments {
-    pub fn run(&self) -> Result<()> {
-        let runtime = if self.multithread {
-            tokio::runtime::Builder::new_multi_thread()
-        } else {
-            tokio::runtime::Builder::new_current_thread()
-        }
-        .enable_all()
-        .build()?;
-
-        runtime.block_on(self.program.run())?;
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, StructOpt)]
-enum Program {
+enum Arguments {
     Interop(Interop),
     Perf(Perf),
 }
 
-impl Program {
-    pub async fn run(&self) -> Result<()> {
+impl Arguments {
+    pub fn run(&self) -> Result<()> {
         match self {
-            Self::Interop(subject) => subject.run().await,
-            Self::Perf(subject) => subject.run().await,
+            Self::Interop(subject) => subject.run(),
+            Self::Perf(subject) => subject.run(),
         }
     }
 }
@@ -104,10 +82,10 @@ enum Interop {
 }
 
 impl Interop {
-    pub async fn run(&self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
         match self {
-            Self::Server(subject) => subject.run().await,
-            Self::Client(subject) => subject.run().await,
+            Self::Server(subject) => subject.run(),
+            Self::Client(subject) => subject.run(),
         }
     }
 }
@@ -119,10 +97,10 @@ enum Perf {
 }
 
 impl Perf {
-    pub async fn run(&self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
         match self {
-            Self::Server(subject) => subject.run().await,
-            Self::Client(subject) => subject.run().await,
+            Self::Server(subject) => subject.run(),
+            Self::Client(subject) => subject.run(),
         }
     }
 }

@@ -47,12 +47,12 @@ cfg_if!(
 );
 
 /// An error indicating a failure to start an endpoint
-pub struct StartError(Box<dyn 'static + fmt::Display>);
+pub struct StartError(Box<dyn 'static + fmt::Display + Send + Sync>);
 
 impl std::error::Error for StartError {}
 
 impl StartError {
-    pub(crate) fn new<T: 'static + fmt::Display>(error: T) -> Self {
+    pub(crate) fn new<T: 'static + fmt::Display + Send + Sync>(error: T) -> Self {
         Self(Box::new(error))
     }
 }

@@ -9,7 +9,7 @@ use s2n_quic_core::crypto;
 pub trait Provider {
     type Server: 'static + crypto::tls::Endpoint;
     type Client: 'static + crypto::tls::Endpoint;
-    type Error: 'static + core::fmt::Display;
+    type Error: 'static + core::fmt::Display + Send + Sync;
 
     /// Creates a server endpoint for the given provider
     fn start_server(self) -> Result<Self::Server, Self::Error>;
@@ -58,7 +58,7 @@ impl Provider for Default {
 impl Provider for (&std::path::Path, &std::path::Path) {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
-    type Error = Box<dyn std::error::Error>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
         let server = default::Server::builder()
@@ -81,7 +81,7 @@ impl Provider for (&std::path::Path, &std::path::Path) {
 impl Provider for &std::path::Path {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
-    type Error = Box<dyn std::error::Error>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
         let empty_cert: &[u8] = &[];
@@ -102,7 +102,7 @@ impl Provider for &std::path::Path {
 impl Provider for (&[u8], &[u8]) {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
-    type Error = Box<dyn std::error::Error>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
         let server = default::Server::builder()
@@ -125,7 +125,7 @@ impl Provider for (&[u8], &[u8]) {
 impl Provider for &[u8] {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
-    type Error = Box<dyn std::error::Error>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
         let empty_cert = &[][..];
@@ -146,7 +146,7 @@ impl Provider for &[u8] {
 impl Provider for (&str, &str) {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
-    type Error = Box<dyn std::error::Error>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
         let server = default::Server::builder()
@@ -169,7 +169,7 @@ impl Provider for (&str, &str) {
 impl Provider for &str {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
-    type Error = Box<dyn std::error::Error>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
         let empty_cert = "";

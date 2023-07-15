@@ -30,6 +30,11 @@ pub struct Storage {
     layout: Layout,
 }
 
+/// Safety: the ring buffer controls access to the underlying storage
+unsafe impl Send for Storage {}
+/// Safety: the ring buffer controls access to the underlying storage
+unsafe impl Sync for Storage {}
+
 impl Storage {
     #[inline]
     pub fn new(layout: Layout) -> Self {
