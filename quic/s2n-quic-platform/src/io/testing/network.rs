@@ -270,6 +270,8 @@ impl Buffers {
         &self,
         handle: SocketAddress,
         max_mtu: MaxMtu,
+        queue_recv_buffer_size: Option<u32>,
+        queue_send_buffer_size: Option<u32>,
     ) -> (
         impl tx::Tx<PathHandle = PathHandle>,
         impl rx::Rx<PathHandle = PathHandle>,
@@ -286,10 +288,6 @@ impl Buffers {
         lock.host_to_addr.insert(host, vec![handle]);
         lock.tx.insert(host, queue.clone());
         lock.rx.insert(host, queue);
-
-        // TODO allow configuration of this
-        let queue_recv_buffer_size = None;
-        let queue_send_buffer_size = None;
 
         let socket = super::socket::Socket::new(self.clone(), host);
 
@@ -403,12 +401,13 @@ impl Queue {
     }
 
     pub fn enqueue(&mut self, packet: Packet) {
-        if self.packets.len() == self.capacity {
-            // drop old packets if we're at capacity
-            let _ = self.packets.pop_front();
+        if self.packets.len() < self.capacity {
+            // Only enqueue packets if we have capacity.
+            //
+            // This matches the behavior of existing UDP stacks.
+            // See https://github.com/tokio-rs/turmoil/pull/128#issuecomment-1638584711
+            self.packets.push_back(packet);
         }
-
-        self.packets.push_back(packet);
 
         if let Some(w) = self.waker.take() {
             w.wake();
@@ -425,18 +424,13 @@ impl Queue {
     }
 
     pub fn send(&mut self, msgs: &[super::message::Message]) -> usize {
-        let to_drop = self
-            .packets
-            .len()
-            .saturating_add(msgs.len())
-            .saturating_sub(self.capacity);
+        // Only send what capacity we have left. Drop the rest.
+        //
+        // This matches the behavior of existing UDP stacks.
+        // See https://github.com/tokio-rs/turmoil/pull/128#issuecomment-1638584711
+        let remaining_capacity = self.capacity.saturating_sub(self.packets.len());
 
-        // drop the oldest packets, if needed
-        if to_drop > 0 {
-            self.packets.drain(..to_drop);
-        }
-
-        for msg in msgs {
+        for msg in msgs.iter().take(remaining_capacity) {
             let mut path = *msg.handle();
 
             // update the path with the latest address

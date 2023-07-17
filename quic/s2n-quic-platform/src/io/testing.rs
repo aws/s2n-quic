@@ -224,6 +224,8 @@ impl Handle {
             address: None,
             on_socket: None,
             max_mtu: MaxMtu::default(),
+            queue_recv_buffer_size: None,
+            queue_send_buffer_size: None,
         }
     }
 }
@@ -233,6 +235,8 @@ pub struct Builder {
     address: Option<SocketAddress>,
     on_socket: Option<Box<dyn FnOnce(socket::Socket)>>,
     max_mtu: MaxMtu,
+    queue_recv_buffer_size: Option<u32>,
+    queue_send_buffer_size: Option<u32>,
 }
 
 impl Builder {
@@ -248,6 +252,28 @@ impl Builder {
     pub fn on_socket(mut self, f: impl FnOnce(socket::Socket) + 'static) -> Self {
         self.on_socket = Some(Box::new(f));
         self
+    }
+
+    /// Sets the size of the send buffer associated with the transmit side (internal to s2n-quic)
+    pub fn with_internal_send_buffer_size(
+        mut self,
+        send_buffer_size: usize,
+    ) -> std::io::Result<Self> {
+        self.queue_send_buffer_size = Some(send_buffer_size.try_into().map_err(|err| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{err}"))
+        })?);
+        Ok(self)
+    }
+
+    /// Sets the size of the send buffer associated with the receive side (internal to s2n-quic)
+    pub fn with_internal_recv_buffer_size(
+        mut self,
+        recv_buffer_size: usize,
+    ) -> std::io::Result<Self> {
+        self.queue_recv_buffer_size = Some(recv_buffer_size.try_into().map_err(|err| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{err}"))
+        })?);
+        Ok(self)
     }
 }
 
@@ -265,12 +291,19 @@ impl Io {
             address,
             on_socket,
             max_mtu,
+            queue_recv_buffer_size,
+            queue_send_buffer_size,
         } = self.builder;
         endpoint.set_max_mtu(max_mtu);
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());
 
-        let (tx, rx, socket) = buffers.register(handle, self.builder.max_mtu);
+        let (tx, rx, socket) = buffers.register(
+            handle,
+            self.builder.max_mtu,
+            queue_recv_buffer_size,
+            queue_send_buffer_size,
+        );
 
         if let Some(on_socket) = on_socket {
             on_socket(socket);
