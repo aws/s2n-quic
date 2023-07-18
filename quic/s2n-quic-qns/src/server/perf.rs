@@ -165,14 +165,24 @@ impl Perf {
     fn server(&self) -> Result<Server> {
         let io = self.io.build()?;
 
-        let mut subscriber =
-            event::console_perf::Builder::default().with_format(event::console_perf::Format::TSV);
+        let subscriber = event::console_perf::Builder::default()
+            .with_format(event::console_perf::Format::TSV)
+            .with_header(self.stats)
+            .build();
 
         if self.stats {
-            subscriber = subscriber.with_frequency(core::time::Duration::from_secs(1));
+            tokio::spawn({
+                let mut subscriber = subscriber.clone();
+                async move {
+                    loop {
+                        tokio::time::sleep(core::time::Duration::from_secs(1)).await;
+                        subscriber.print();
+                    }
+                }
+            });
         }
 
-        let subscriber = (subscriber.build(), event::tracing::Subscriber::default());
+        let subscriber = (subscriber, event::tracing::Subscriber::default());
 
         let server = Server::builder()
             .with_limits(self.limits.limits())?

@@ -19,63 +19,40 @@ use std::{
 /// # Examples
 ///
 /// Enables the console perf event subscriber for the server,
-/// configured to print metrics every 10 seconds
+/// spawning a tokio task to print the metrics every second.
 ///
 /// ```rust,ignore
-/// # use std::{error::Error, time::Duration};
-/// # use s2n_quic::Server;
-/// #
-/// # #[tokio::main]
-/// # async fn main() -> Result<(), Box<dyn Error>> {
-/// #
-/// # let subscriber = event::console_perf::Builder::default()
-/// #                   .with_frequency(core::time::Duration::from_secs(10))
-/// #                   .build();
-/// #
-/// # let server = Server::builder()
-/// #   .with_event(subscriber)?
-/// #   .start()?;
-/// #
-/// #    Ok(())
-/// # }
+/// use std::{error::Error, time::Duration};
+/// use s2n_quic::Server;
 ///
-/// Enables the console perf event subscriber for the server,
-/// with printing handled manually.
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn Error>> {
+///     let subscriber = event::console_perf::Builder::default()
+///                        .with_format(event::console_perf::Format::TSV)
+///                        .build();
 ///
-/// ```rust,ignore
-/// # use std::{error::Error, time::Duration};
-/// # use s2n_quic::Server;
-/// #
-/// # #[tokio::main]
-/// # async fn main() -> Result<(), Box<dyn Error>> {
-/// #
-/// # let subscriber = event::console_perf::Builder::default()
-/// #                  .build();
-/// #
-/// # subscriber.print_header();
-/// # let frequency = Duration::from_secs(1);
-/// # let subscriber = subscriber.clone();
-/// # tokio::spawn(async move {
-/// #     loop {
-/// #           tokio::time::sleep(frequency).await;
-/// #           subscriber.print();
-/// #     }
-/// # });
-/// #
-/// # let server = Server::builder()
-/// #   .with_event(subscriber)?
-/// #   .start()?;
-/// #
-/// #    Ok(())
-/// # }
+///     let frequency = Duration::from_secs(1);
+///     let subscriber = subscriber.clone();
+///     tokio::spawn(async move {
+///         loop {
+///               tokio::time::sleep(frequency).await;
+///               subscriber.print();
+///         }
+///      });
 ///
+///     let server = Server::builder()
+///       .with_event(subscriber)?
+///       .start()?;
+///
+///     Ok(())
+/// }
 /// ```
 #[derive(Clone, Debug)]
 pub struct Subscriber {
     counters: Arc<Counters>,
-    frequency: Option<Duration>,
     format: Format,
-    spawned: bool,
+    print_header: bool,
+    init: bool,
 }
 
 #[non_exhaustive]
@@ -101,72 +78,53 @@ impl Format {
 }
 
 pub struct Builder {
-    frequency: Option<Duration>,
     format: Format,
+    print_header: bool,
 }
 
 impl Default for Builder {
     fn default() -> Self {
         Self {
-            frequency: None,
             format: Format::TSV,
+            print_header: true,
         }
     }
 }
 
 impl Builder {
-    /// Sets the frequency at which performance metrics will be printed
-    ///
-    /// This uses `tokio::spawn` to spawn metric printing task,
-    /// and thus must be called within a Tokio runtime
-    ///
-    /// If frequency is not set, the caller is responsible for calling
-    /// `print_header` and `print` at the required frequency.
-    pub fn with_frequency(mut self, frequency: Duration) -> Self {
-        self.frequency = Some(frequency);
-        self
-    }
-
     /// Sets the format that performance metrics will be printed in
     pub fn with_format(mut self, format: Format) -> Self {
         self.format = format;
         self
     }
 
-    /// Builds the [`console_perf::Subscriber`]
+    /// Enables or disables printing of a header containing the name of each
+    /// performance metric. By default the header is printed.
+    pub fn with_header(mut self, print_header: bool) -> Self {
+        self.print_header = print_header;
+        self
+    }
+
+    /// Builds the [`Subscriber`]
     pub fn build(self) -> Subscriber {
         Subscriber {
             counters: Default::default(),
-            frequency: self.frequency,
+            print_header: self.print_header,
             format: self.format,
-            spawned: self.frequency.is_none(),
+            init: false,
         }
     }
 }
 
 impl Subscriber {
     /// Prints the current performance metrics to the console via STDOUT
-    pub fn print(&self) {
-        self.counters.print(self.format);
-    }
-
-    /// Prints the names of each performance metric to the console via STDOUT
-    pub fn print_header(&self) {
-        self.counters.print_header(self.format);
-    }
-
-    fn spawn(&mut self) {
-        if let (false, Some(frequency)) = (self.spawned, self.frequency) {
-            self.spawned = true;
-            self.print_header();
-            let subscriber = self.clone();
-            tokio::spawn(async move {
-                loop {
-                    tokio::time::sleep(frequency).await;
-                    subscriber.print();
-                }
-            });
+    pub fn print(&mut self) {
+        if self.print_header {
+            self.counters.print_header(self.format);
+            self.print_header = false;
         }
+
+        self.counters.print(self.format);
     }
 }
 
@@ -179,18 +137,18 @@ impl event::Subscriber for Subscriber {
         _meta: &event::ConnectionMeta,
         _info: &event::ConnectionInfo,
     ) -> Self::ConnectionContext {
-        // Initialize the counters.last_updated_micros with the current
-        // time if it has not already been initialized
-        let _ = self.counters.last_updated_micros.compare_exchange(
-            0,
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Clock may have gone backwards")
-                .as_micros() as u64,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        );
-        self.spawn();
+        if !self.init {
+            // Initialize the counters.last_updated_micros with the current
+            // time if it has not already been initialized
+            self.init = true;
+            self.counters.last_updated_micros.store(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_micros() as u64,
+                Ordering::Relaxed,
+            );
+        }
     }
 
     #[inline]
