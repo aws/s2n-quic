@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{perf, task, tls, Result};
-use s2n_quic::{client, Client, Connection};
+use s2n_quic::{client, provider::event, Client, Connection};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -129,16 +129,24 @@ impl Perf {
     fn client(&self) -> Result<Client> {
         let io = self.io.build()?;
 
-        let subscriber = perf::Subscriber::default();
+        let subscriber = event::console_perf::Builder::default()
+            .with_format(event::console_perf::Format::TSV)
+            .with_header(self.stats)
+            .build();
 
         if self.stats {
-            subscriber.spawn(core::time::Duration::from_secs(1));
+            tokio::spawn({
+                let mut subscriber = subscriber.clone();
+                async move {
+                    loop {
+                        tokio::time::sleep(core::time::Duration::from_secs(1)).await;
+                        subscriber.print();
+                    }
+                }
+            });
         }
 
-        let subscriber = (
-            subscriber,
-            s2n_quic::provider::event::tracing::Subscriber::default(),
-        );
+        let subscriber = (subscriber, event::tracing::Subscriber::default());
 
         let client = Client::builder()
             .with_limits(self.limits.limits())?
