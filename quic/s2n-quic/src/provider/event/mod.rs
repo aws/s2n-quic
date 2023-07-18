@@ -29,6 +29,10 @@ pub mod disabled;
 #[cfg(any(feature = "provider-event-tracing", test))]
 pub mod tracing;
 
+/// Provides an implementation to emit perf metrics to the console
+#[cfg(feature = "provider-event-console-perf")]
+pub mod console_perf;
+
 cfg_if! {
     if #[cfg(any(feature = "provider-event-tracing", test))] {
         pub use self::tracing as default;
