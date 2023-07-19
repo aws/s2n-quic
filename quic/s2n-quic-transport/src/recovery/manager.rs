@@ -300,9 +300,10 @@ impl<Config: endpoint::Config> Manager<Config> {
             return;
         }
 
-        let ack_eliciting_packets_in_flight = self.sent_packets.iter().any(|(_, sent_info)| {
-            sent_info.congestion_controlled && sent_info.ack_elicitation.is_ack_eliciting()
-        });
+        let ack_eliciting_packets_in_flight = self
+            .sent_packets
+            .iter()
+            .any(|(_, sent_info)| sent_info.ack_elicitation.is_ack_eliciting());
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
         //# it is the client's responsibility to send packets to unblock the server
