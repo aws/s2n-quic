@@ -307,6 +307,23 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         }
     }
 
+    /// Called after a burst of one or more packets sent on the active path have finished being transmitted
+    pub fn on_transmit_burst_complete(&mut self, active_path: &Path<Config>, timestamp: Timestamp) {
+        debug_assert!(active_path.is_active());
+
+        if let Some((space, handshake_status)) = self.initial_mut() {
+            space.on_transmit_burst_complete(active_path, timestamp, handshake_status.is_confirmed());
+        }
+
+        if let Some((space, handshake_status)) = self.handshake_mut() {
+            space.on_transmit_burst_complete(active_path, timestamp, handshake_status.is_confirmed());
+        }
+
+        if let Some((space, handshake_status)) = self.application_mut() {
+            space.on_transmit_burst_complete(active_path, timestamp, handshake_status.is_confirmed());
+        }
+    }
+
     pub fn requires_probe(&self) -> bool {
         core::iter::empty()
             .chain(self.initial.iter().map(|space| space.requires_probe()))
