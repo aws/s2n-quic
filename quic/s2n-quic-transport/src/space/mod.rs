@@ -312,15 +312,27 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         debug_assert!(active_path.is_active());
 
         if let Some((space, handshake_status)) = self.initial_mut() {
-            space.on_transmit_burst_complete(active_path, timestamp, handshake_status.is_confirmed());
+            space.on_transmit_burst_complete(
+                active_path,
+                timestamp,
+                handshake_status.is_confirmed(),
+            );
         }
 
         if let Some((space, handshake_status)) = self.handshake_mut() {
-            space.on_transmit_burst_complete(active_path, timestamp, handshake_status.is_confirmed());
+            space.on_transmit_burst_complete(
+                active_path,
+                timestamp,
+                handshake_status.is_confirmed(),
+            );
         }
 
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_transmit_burst_complete(active_path, timestamp, handshake_status.is_confirmed());
+            space.on_transmit_burst_complete(
+                active_path,
+                timestamp,
+                handshake_status.is_confirmed(),
+            );
         }
     }
 

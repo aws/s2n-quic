@@ -240,8 +240,11 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
     ) {
-        self.recovery_manager
-            .on_transmit_burst_complete(active_path, timestamp, is_handshake_confirmed);
+        self.recovery_manager.on_transmit_burst_complete(
+            active_path,
+            timestamp,
+            is_handshake_confirmed,
+        );
     }
 
     pub(super) fn on_transmit_close<'a>(
