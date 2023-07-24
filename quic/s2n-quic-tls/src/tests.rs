@@ -23,8 +23,8 @@ use s2n_tls::callbacks::{PrivateKeyCallback, PrivateKeyOperation};
 use s2n_tls::{
     callbacks::{ConnectionFuture, VerifyHostNameCallback},
     connection::Connection,
+    enums::ClientAuthType,
     error::Error,
-    enums::ClientAuthType
 };
 use std::sync::Arc;
 
