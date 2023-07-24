@@ -24,6 +24,7 @@ use s2n_tls::{
     callbacks::{ConnectionFuture, VerifyHostNameCallback},
     connection::Connection,
     error::Error,
+    enums::ClientAuthType
 };
 use std::sync::Arc;
 
@@ -165,6 +166,24 @@ fn s2n_client_with_client_auth() -> Result<client::Client, Error> {
         .with_empty_trust_store()?
         .with_certificate(CERT_PEM)?
         .with_client_identity(CERT_PEM, KEY_PEM)?
+        .build()
+}
+
+fn s2n_client_with_optional_client_auth() -> Result<client::Client, Error> {
+    client::Builder::default()
+        .with_empty_trust_store()?
+        .with_certificate(CERT_PEM)?
+        .with_client_identity(CERT_PEM, KEY_PEM)?
+        .with_client_auth_type(ClientAuthType::Optional)?
+        .build()
+}
+
+fn s2n_client_with_none_client_auth() -> Result<client::Client, Error> {
+    client::Builder::default()
+        .with_empty_trust_store()?
+        .with_certificate(CERT_PEM)?
+        .with_client_identity(CERT_PEM, KEY_PEM)?
+        .with_client_auth_type(ClientAuthType::None)?
         .build()
 }
 
@@ -343,6 +362,24 @@ fn s2n_client_with_client_auth_s2n_server_does_not_require_client_auth_test() {
     assert!(test_result.is_err());
     let e = test_result.unwrap_err();
     assert_eq!(e.description().unwrap(), "UNEXPECTED_MESSAGE");
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_with_optional_client_auth_s2n_server_test() {
+    let mut client_endpoint = s2n_client_with_optional_client_auth().unwrap();
+    let mut server_endpoint = s2n_server();
+
+    run(&mut server_endpoint, &mut client_endpoint, None);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_with_none_client_auth_s2n_server_test() {
+    let mut client_endpoint = s2n_client_with_none_client_auth().unwrap();
+    let mut server_endpoint = s2n_server();
+
+    run(&mut server_endpoint, &mut client_endpoint, None);
 }
 
 #[test]
