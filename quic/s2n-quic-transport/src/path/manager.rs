@@ -705,11 +705,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                     active_path_connection_id,
                     publisher,
                 )
-                .expect(
-                    "since we are only checking the active path and new id was delivered \
-                    via the new_connection_id frames, there will always be a new id available \
-                    to consume if necessary",
-                );
+                .ok_or(transport::Error::PROTOCOL_VIOLATION.with_reason(
+                    "A NEW_CONNECTION_ID frame was received that retired the active path's \
+                    connection ID and no unused connection IDs remain to replace it",
+                ))?
         }
 
         Ok(())

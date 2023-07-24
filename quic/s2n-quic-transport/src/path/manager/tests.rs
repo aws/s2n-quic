@@ -718,7 +718,7 @@ fn test_adding_new_path() {
             &datagram,
             true,
             &mut Default::default(),
-            &mut migration::default::Validator,
+            &mut migration::allow_all::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut publisher,
         )
@@ -777,7 +777,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         &datagram,
         handshake_confirmed,
         &mut Default::default(),
-        &mut migration::default::Validator,
+        &mut migration::allow_all::Validator::default(),
         DEFAULT_MAX_MTU,
         &mut publisher,
     );
@@ -837,7 +837,7 @@ fn do_not_add_new_path_if_client() {
         &datagram,
         true,
         &mut Default::default(),
-        &mut migration::default::Validator,
+        &mut migration::allow_all::Validator::default(),
         DEFAULT_MAX_MTU,
         &mut publisher,
     );
@@ -926,7 +926,7 @@ fn limit_number_of_connection_migrations() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut migration::default::Validator,
+            &mut migration::allow_all::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut publisher,
         );
@@ -983,7 +983,7 @@ fn connection_migration_challenge_behavior() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut migration::default::Validator,
+            &mut migration::allow_all::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut publisher,
         )
@@ -1077,7 +1077,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut migration::default::Validator,
+            &mut migration::allow_all::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut publisher,
         )
@@ -1154,7 +1154,7 @@ fn connection_migration_new_path_abandon_timer() {
             &new_addr,
             &datagram,
             &mut Default::default(),
-            &mut migration::default::Validator,
+            &mut migration::allow_all::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut publisher,
         )
@@ -1426,7 +1426,7 @@ fn temporary_until_authenticated() {
             &datagram,
             true,
             &mut Default::default(),
-            &mut migration::default::Validator,
+            &mut migration::allow_all::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut publisher,
         )
@@ -1448,7 +1448,7 @@ fn temporary_until_authenticated() {
             &datagram,
             true,
             &mut Default::default(),
-            &mut migration::default::Validator,
+            &mut migration::allow_all::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut publisher,
         )
@@ -1485,7 +1485,7 @@ fn temporary_until_authenticated() {
             &datagram,
             true,
             &mut Default::default(),
-            &mut migration::default::Validator,
+            &mut migration::allow_all::Validator::default(),
             DEFAULT_MAX_MTU,
             &mut publisher,
         )

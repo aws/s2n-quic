@@ -219,3 +219,18 @@ pub mod disabled {
         }
     }
 }
+
+#[cfg(any(test, feature = "testing"))]
+pub mod allow_all {
+    use super::*;
+
+    #[derive(Debug, Default)]
+    pub struct Validator;
+
+    impl super::Validator for Validator {
+        fn on_migration_attempt(&mut self, _attempt: &Attempt) -> Outcome {
+            // allow all migration attempts
+            Outcome::Allow
+        }
+    }
+}

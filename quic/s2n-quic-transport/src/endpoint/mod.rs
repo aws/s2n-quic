@@ -1172,7 +1172,7 @@ pub mod testing {
         type StreamManager = crate::stream::DefaultStreamManager;
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
-        type PathMigrationValidator = path::migration::default::Validator;
+        type PathMigrationValidator = path::migration::allow_all::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
 
@@ -1202,7 +1202,7 @@ pub mod testing {
         type StreamManager = crate::stream::DefaultStreamManager;
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
-        type PathMigrationValidator = path::migration::default::Validator;
+        type PathMigrationValidator = path::migration::allow_all::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
 

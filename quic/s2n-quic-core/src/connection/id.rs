@@ -35,7 +35,7 @@ pub const MAX_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60); // one day
 macro_rules! id {
     ($type:ident, $min_len:expr) => {
         /// Uniquely identifies a QUIC connection between 2 peers
-        #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Copy, Clone, Eq)]
         #[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
         pub struct $type {
             bytes: [u8; MAX_LEN],
@@ -46,6 +46,30 @@ macro_rules! id {
         impl core::fmt::Debug for $type {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 write!(f, "{}({:?})", stringify!($type), self.as_bytes())
+            }
+        }
+
+        impl PartialEq for $type {
+            fn eq(&self, other: &Self) -> bool {
+                self.as_bytes() == other.as_bytes()
+            }
+        }
+
+        impl core::hash::Hash for $type {
+            fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+                self.as_bytes().hash(state);
+            }
+        }
+
+        impl PartialOrd for $type {
+            fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+
+        impl Ord for $type {
+            fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+                self.as_bytes().cmp(&other.as_bytes())
             }
         }
 
