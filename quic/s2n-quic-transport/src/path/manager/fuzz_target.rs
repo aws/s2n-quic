@@ -211,7 +211,7 @@ impl Model {
     ) -> Result<(), transport::Error> {
         // These validations are performed when decoding the `NEW_CONNECTION_ID` frame
         // see s2n-quic-core/src/frame/new_connection_id.rs
-        if !(retire_prior_to <= sequence_number) {
+        if retire_prior_to > sequence_number {
             return Ok(());
         }
 

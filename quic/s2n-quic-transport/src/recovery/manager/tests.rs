@@ -3152,7 +3152,7 @@ fn helper_generate_multi_path_manager(
                 &datagram,
                 true,
                 &mut Endpoint::default(),
-                &mut migration::allow_all::Validator::default(),
+                &mut migration::allow_all::Validator,
                 DEFAULT_MAX_MTU,
                 publisher,
             )
