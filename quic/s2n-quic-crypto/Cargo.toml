@@ -17,7 +17,7 @@ testing = []
 [dependencies]
 cfg-if = "1"
 lazy_static = "1"
-s2n-codec = { version = "=0.6.0", path = "../../common/s2n-codec", default-features = false }
+s2n-codec = { version = "=0.6.1", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.25.0", path = "../s2n-quic-core", default-features = false }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
