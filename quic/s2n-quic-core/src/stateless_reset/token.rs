@@ -20,6 +20,10 @@ pub const LEN: usize = 128 / 8;
 // Hash can still be derived.
 #[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Copy, Clone, Debug, Eq, Hash)]
+#[cfg_attr(
+    any(test, feature = "generator"),
+    derive(bolero_generator::TypeGenerator)
+)]
 pub struct Token([u8; LEN]);
 
 impl Token {
