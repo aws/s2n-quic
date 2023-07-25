@@ -268,7 +268,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
-    /// Invoked after a burst of packets on the active path has completed transmitting
+    /// Invoked after a burst of packets has completed transmitting
     pub fn on_transmit_burst_complete(
         &mut self,
         active_path: &Path<Config>,
