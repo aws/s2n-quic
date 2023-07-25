@@ -23,16 +23,6 @@ static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::vers
 /// The supported version of quic
 const QUIC_VERSION: rustls::quic::Version = rustls::quic::Version::V1;
 
-/// Encodes transport parameters into a byte vec
-pub(crate) fn encode_transport_parameters<Params: s2n_codec::EncoderValue>(
-    params: &Params,
-) -> Vec<u8> {
-    let len = params.encoding_size();
-    let mut buffer = vec![0; len];
-    params.encode(&mut s2n_codec::EncoderBuffer::new(&mut buffer));
-    buffer
-}
-
 #[test]
 fn client_server_test() {
     use s2n_quic_core::crypto::tls::{self, testing::certificates::*};

@@ -46,6 +46,14 @@ pub trait EncoderValue: Sized {
         len.encode(encoder);
         self.encode(encoder);
     }
+
+    #[cfg(feature = "alloc")]
+    fn encode_to_vec(&self) -> alloc::vec::Vec<u8> {
+        let len = self.encoding_size();
+        let mut buffer = alloc::vec![0u8; len];
+        self.encode(&mut crate::EncoderBuffer::new(&mut buffer));
+        buffer
+    }
 }
 
 macro_rules! encoder_value_byte {

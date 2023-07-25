@@ -407,7 +407,7 @@ fn run_result<S: Endpoint, C: Endpoint>(
     let mut pair = tls::testing::Pair::new(server, client, "localhost".into());
 
     while pair.is_handshaking() {
-        pair.poll(client_hello_cb_done.clone())?;
+        pair.poll(client_hello_cb_done.as_ref())?;
     }
 
     pair.finish();
