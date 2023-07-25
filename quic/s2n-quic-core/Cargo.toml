@@ -12,7 +12,7 @@ exclude = ["corpus.tar.gz"]
 
 [features]
 default = ["alloc", "std"]
-alloc = ["atomic-waker", "bytes", "crossbeam-utils"]
+alloc = ["atomic-waker", "bytes", "crossbeam-utils", "s2n-codec/alloc"]
 std = ["alloc", "once_cell"]
 testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta", "futures-test"]
 generator = ["bolero-generator"]

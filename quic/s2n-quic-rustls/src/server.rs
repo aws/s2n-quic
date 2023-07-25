@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{certificate, encode_transport_parameters, session::Session};
+use crate::{certificate, session::Session};
 use rustls::{quic, ServerConfig};
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
@@ -55,7 +55,7 @@ impl tls::Endpoint for Server {
 
         //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# Endpoints MUST send the quic_transport_parameters extension;
-        let transport_parameters = encode_transport_parameters(transport_parameters);
+        let transport_parameters = transport_parameters.encode_to_vec();
 
         let session = rustls::ServerConnection::new_quic(
             self.config.clone(),

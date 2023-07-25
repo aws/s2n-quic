@@ -19,15 +19,6 @@ pub struct ApplicationParameters<'a> {
     pub transport_parameters: &'a [u8],
 }
 
-/// Encodes transport parameters into a byte vec
-#[cfg(feature = "alloc")]
-fn encode_transport_parameters<Params: s2n_codec::EncoderValue>(params: &Params) -> Bytes {
-    let len = params.encoding_size();
-    let mut buffer = alloc::vec![0u8; len];
-    params.encode(&mut s2n_codec::EncoderBuffer::new(&mut buffer));
-    buffer.into()
-}
-
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
 //= type=TODO
 //= tracking-issue=332

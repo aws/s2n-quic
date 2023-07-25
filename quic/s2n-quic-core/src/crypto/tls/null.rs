@@ -12,10 +12,7 @@
 
 use crate::{
     application::{server_name::LOCALHOST, ServerName},
-    crypto::{
-        self,
-        tls::{self, encode_transport_parameters},
-    },
+    crypto::{self, tls},
     transport,
 };
 use bytes::Bytes;
@@ -88,7 +85,7 @@ impl crypto::tls::Endpoint for Endpoint {
         &mut self,
         transport_parameters: &Params,
     ) -> Self::Session {
-        let params = encode_transport_parameters(transport_parameters);
+        let params = transport_parameters.encode_to_vec().into();
         Session::Server(server::Session::Init {
             transport_parameters: params,
         })
@@ -102,7 +99,7 @@ impl crypto::tls::Endpoint for Endpoint {
     ) -> Self::Session {
         assert_eq!(server_name, LOCALHOST);
 
-        let params = encode_transport_parameters(transport_parameters);
+        let params = transport_parameters.encode_to_vec().into();
         Session::Client(client::Session::Init {
             transport_parameters: params,
         })

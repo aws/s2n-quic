@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{certificate, encode_transport_parameters, session::Session};
+use crate::{certificate, session::Session};
 use core::convert::TryFrom;
 use rustls::{quic, ClientConfig};
 use s2n_codec::EncoderValue;
@@ -65,7 +65,7 @@ impl tls::Endpoint for Client {
 
         //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# Endpoints MUST send the quic_transport_parameters extension;
-        let transport_parameters = encode_transport_parameters(transport_parameters);
+        let transport_parameters = transport_parameters.encode_to_vec();
 
         let rustls_server_name =
             rustls::ServerName::try_from(server_name.as_ref()).expect("invalid server name");

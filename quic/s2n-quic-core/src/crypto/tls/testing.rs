@@ -7,8 +7,7 @@ use crate::{
     application::ServerName,
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
-        tls::{self, encode_transport_parameters},
-        CryptoSuite, HeaderKey, Key,
+        tls, CryptoSuite, HeaderKey, Key,
     },
     endpoint, transport,
     transport::parameters::{ClientTransportParameters, ServerTransportParameters},
@@ -134,19 +133,21 @@ pub struct Pair<S: tls::Session, C: tls::Session> {
 }
 
 fn server_params() -> Bytes {
-    let params = ServerTransportParameters {
+    ServerTransportParameters {
         initial_max_data: 123.try_into().unwrap(),
         ..Default::default()
-    };
-    encode_transport_parameters(&params)
+    }
+    .encode_to_vec()
+    .into()
 }
 
 fn client_params() -> Bytes {
-    let params = ClientTransportParameters {
+    ClientTransportParameters {
         initial_max_data: 456.try_into().unwrap(),
         ..Default::default()
-    };
-    encode_transport_parameters(&params)
+    }
+    .encode_to_vec()
+    .into()
 }
 
 impl<S: tls::Session, C: tls::Session> Pair<S, C> {
