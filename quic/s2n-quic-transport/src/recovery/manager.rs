@@ -167,6 +167,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
+        debug_assert!(!self.pto_update_pending);
+
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
                 self.detect_and_remove_lost_packets(

@@ -2664,6 +2664,7 @@ fn on_timeout() {
         &mut context,
         &mut publisher,
     );
+    manager.on_transmit_burst_complete(context.path(), now, true);
 
     // Loss timer is armed and expired, on_packet_loss is called
     manager.loss_timer.set(now - Duration::from_secs(1));
