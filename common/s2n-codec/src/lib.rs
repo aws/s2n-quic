@@ -3,6 +3,9 @@
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 #[cfg(any(feature = "testing", test))]
 #[macro_use]
 pub mod testing;
