@@ -936,6 +936,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     packet_interceptor,
                 );
 
+                // If anything was transmitted, notify the space manager
+                // that a burst of packets has completed transmission
+                if count > 0 {
+                    self.space_manager
+                        .on_transmit_burst_complete(self.path_manager.active_path(), timestamp);
+                }
+
                 let mut publisher = self.event_context.publisher(timestamp, subscriber);
                 if outcome.bytes_progressed > 0 {
                     publisher.on_tx_stream_progress(TxStreamProgress {
