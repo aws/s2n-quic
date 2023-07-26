@@ -60,6 +60,11 @@ pub struct Manager<Config: endpoint::Config> {
 
     // The total ecn counts for outstanding (unacknowledged) packets
     sent_packet_ecn_counts: EcnCounts,
+
+    // An update to the PTO timer is needed.
+    //
+    // Used for updating the PTO timer at the end of a transmission burst.
+    pto_update_pending: bool,
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.1
@@ -124,6 +129,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             time_of_last_ack_eliciting_packet: None,
             baseline_ecn_counts: EcnCounts::default(),
             sent_packet_ecn_counts: EcnCounts::default(),
+            pto_update_pending: false,
         }
     }
 
@@ -161,6 +167,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         context: &mut Ctx,
         publisher: &mut Pub,
     ) {
+        debug_assert!(!self.pto_update_pending);
+
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
                 self.detect_and_remove_lost_packets(
@@ -251,16 +259,27 @@ impl<Config: endpoint::Config> Manager<Config> {
             .on_packet_sent(ecn, path_event!(path, path_id), publisher);
         self.sent_packet_ecn_counts.increment(ecn);
 
-        if outcome.is_congestion_controlled {
-            if outcome.ack_elicitation.is_ack_eliciting() {
-                self.time_of_last_ack_eliciting_packet = Some(time_sent);
-            }
+        if outcome.ack_elicitation.is_ack_eliciting() {
+            self.time_of_last_ack_eliciting_packet = Some(time_sent);
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
             //# A sender SHOULD restart its PTO timer every time an ack-eliciting
             //# packet is sent or acknowledged,
-            let is_handshake_confirmed = context.is_handshake_confirmed();
-            let path = context.path_mut_by_id(context.path_id());
-            self.update_pto_timer(path, time_sent, is_handshake_confirmed);
+            self.pto_update_pending = true;
+        }
+    }
+
+    /// Invoked after a burst of packets has completed transmitting
+    pub fn on_transmit_burst_complete(
+        &mut self,
+        active_path: &Path<Config>,
+        now: Timestamp,
+        is_handshake_confirmed: bool,
+    ) {
+        debug_assert!(active_path.is_active());
+        if self.pto_update_pending {
+            // Update the PTO timer once per transmission burst to reduce CPU cost
+            self.update_pto_timer(active_path, now, is_handshake_confirmed);
+            debug_assert!(!self.pto_update_pending);
         }
     }
 
@@ -271,6 +290,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         now: Timestamp,
         is_handshake_confirmed: bool,
     ) {
+        self.pto_update_pending = false;
+
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
         //# If no additional data can be sent, the server's PTO timer MUST NOT be
         //# armed until datagrams have been received from the client, because
@@ -281,9 +302,10 @@ impl<Config: endpoint::Config> Manager<Config> {
             return;
         }
 
-        let ack_eliciting_packets_in_flight = self.sent_packets.iter().any(|(_, sent_info)| {
-            sent_info.congestion_controlled && sent_info.ack_elicitation.is_ack_eliciting()
-        });
+        let ack_eliciting_packets_in_flight = self
+            .sent_packets
+            .iter()
+            .any(|(_, sent_info)| sent_info.ack_elicitation.is_ack_eliciting());
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
         //# it is the client's responsibility to send packets to unblock the server
