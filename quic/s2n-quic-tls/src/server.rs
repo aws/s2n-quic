@@ -171,6 +171,17 @@ impl Builder {
         Ok(self)
     }
 
+    /**
+     * Sets whether or not a Client Certificate should be required to complete the TLS Connection.
+     *
+     * If this is set to `Optional` or `None` the server will request a client certificate but allow the client to not provide one.
+     * Rejecting a client certificate when using `Optional` or `None` will terminate the handshake.
+     */
+    pub fn with_client_auth_type(mut self, auth_type: ClientAuthType) -> Result<Self, Error> {
+        self.config.set_client_auth_type(auth_type)?;
+        Ok(self)
+    }
+
     /// Set the application level certificate verification handler which will be invoked on this
     /// server instance when a client certificate is presented during the mutual TLS handshake.
     #[deprecated(note = "use `with_verify_host_name_callback` instead")]

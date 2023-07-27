@@ -204,6 +204,26 @@ fn s2n_server_with_client_auth() -> Result<server::Server, Error> {
         .build()
 }
 
+fn s2n_server_with_optional_client_auth() -> Result<server::Server, Error> {
+    server::Builder::default()
+        .with_empty_trust_store()?
+        .with_client_auth_type(ClientAuthType::Optional)?
+        .with_verify_host_name_callback(VerifyHostNameClientCertVerifier::new("qlaws.qlaws"))?
+        .with_certificate(CERT_PEM, KEY_PEM)?
+        .with_trusted_certificate(CERT_PEM)?
+        .build()
+}
+
+fn s2n_server_with_none_client_auth() -> Result<server::Server, Error> {
+    server::Builder::default()
+        .with_empty_trust_store()?
+        .with_client_auth_type(ClientAuthType::None)?
+        .with_verify_host_name_callback(VerifyHostNameClientCertVerifier::new("qlaws.qlaws"))?
+        .with_certificate(CERT_PEM, KEY_PEM)?
+        .with_trusted_certificate(CERT_PEM)?
+        .build()
+}
+
 fn s2n_server_with_client_auth_verifier_rejects_client_certs() -> Result<server::Server, Error> {
     server::Builder::default()
         .with_empty_trust_store()?
@@ -329,6 +349,28 @@ fn s2n_client_no_client_auth_s2n_server_requires_client_auth_test() {
     assert!(test_result.is_err());
     let e = test_result.unwrap_err();
     assert_eq!(e.description().unwrap(), "UNEXPECTED_MESSAGE");
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_no_client_auth_s2n_server_optional_client_auth_test() {
+    let mut client_endpoint = s2n_client();
+    let mut server_endpoint = s2n_server_with_optional_client_auth().unwrap();
+
+    let test_result = run_result(&mut server_endpoint, &mut client_endpoint, None);
+
+    assert!(test_result.is_err());
+    let e = test_result.unwrap_err();
+    assert_eq!(e.description().unwrap(), "UNEXPECTED_MESSAGE");
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_no_client_auth_s2n_server_none_client_auth_test() {
+    let mut client_endpoint = s2n_client();
+    let mut server_endpoint = s2n_server_with_none_client_auth().unwrap();
+
+    run(&mut server_endpoint, &mut client_endpoint, None);
 }
 
 #[test]
