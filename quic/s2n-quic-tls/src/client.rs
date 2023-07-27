@@ -142,13 +142,6 @@ impl Builder {
         Ok(self)
     }
 
-    /// Optionally, use Optional or None on the Client builder. The default auth type
-    /// without calling this method is ClientAuthType::Required
-    pub fn with_client_auth_type(mut self, auth_type: ClientAuthType) -> Result<Self, Error> {
-        self.config.set_client_auth_type(auth_type)?;
-        Ok(self)
-    }
-
     /// Set the host name verification callback.
     ///
     /// This will be invoked when a server certificate is presented during a TLS
