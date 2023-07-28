@@ -36,14 +36,18 @@ pub const UDP_HEADER_LEN: u16 = 8;
 pub const IPV4_MIN_HEADER_LEN: u16 = 20;
 // IPv6 header is always 40 bytes, plus extensions
 pub const IPV6_MIN_HEADER_LEN: u16 = 40;
-#[cfg(feature = "ipv6")]
-const IP_MIN_HEADER_LEN: u16 = IPV6_MIN_HEADER_LEN;
-#[cfg(not(feature = "ipv6"))]
-const IP_MIN_HEADER_LEN: u16 = IPV4_MIN_HEADER_LEN;
 
 // The minimum allowed Max MTU is the minimum UDP datagram size of 1200 bytes plus
 // the UDP header length and minimal IP header length
-const MIN_ALLOWED_MAX_MTU: u16 = MINIMUM_MTU + UDP_HEADER_LEN + IP_MIN_HEADER_LEN;
+const fn const_min(a: u16, b: u16) -> u16 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+const MIN_ALLOWED_MAX_MTU: u16 =
+    MINIMUM_MTU + UDP_HEADER_LEN + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);
 
 // Initial PTO backoff multiplier is 1 indicating no additional increase to the backoff.
 pub const INITIAL_PTO_BACKOFF: u32 = 1;

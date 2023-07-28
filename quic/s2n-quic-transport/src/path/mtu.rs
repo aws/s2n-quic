@@ -135,11 +135,8 @@ impl Controller {
             SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
             SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
         };
-        let max_udp_payload = u16::from(max_mtu) - UDP_HEADER_LEN - min_ip_header_len;
-        debug_assert!(
-            max_udp_payload >= BASE_PLPMTU,
-            "max_udp_payload must be at least {BASE_PLPMTU}"
-        );
+        let max_udp_payload =
+            (u16::from(max_mtu) - UDP_HEADER_LEN - min_ip_header_len).max(BASE_PLPMTU);
 
         // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
         // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
@@ -499,9 +496,11 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
-    fn new_max_mtu_too_small() {
-        new_controller(BASE_PLPMTU + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN - 1);
+    fn min_max_mtu() {
+        // Use an IPv6 address to force a smaller `max_udp_payload`
+        let addr: SocketAddr = "[::1]:123".parse().unwrap();
+        let controller = Controller::new(MaxMtu::MIN, &addr.into());
+        assert_eq!(BASE_PLPMTU, controller.plpmtu);
     }
 
     #[test]
