@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    aead::{self, Aead},
+    aead::{self, scatter, Aead},
     aes::Encrypt,
     aesgcm::{generic::AesGcm, NONCE_LEN, TAG_LEN},
     arch::*,
@@ -21,10 +21,9 @@ macro_rules! impl_target_features {
                 &self,
                 nonce: &[u8; NONCE_LEN],
                 aad: &[u8],
-                input: &mut [u8],
-                tag: &mut [u8; TAG_LEN],
+                payload: &mut scatter::Buffer,
             ) -> aead::Result {
-                self.0.encrypt(nonce, aad, input, tag)
+                self.0.encrypt(nonce, aad, payload)
             }
 
             #[inline]
@@ -48,12 +47,11 @@ macro_rules! impl_target_features {
                 &self,
                 nonce: &[u8; NONCE_LEN],
                 aad: &[u8],
-                input: &mut [u8],
-                tag: &mut [u8; TAG_LEN],
+                payload: &mut scatter::Buffer,
             ) -> aead::Result {
                 unsafe {
                     debug_assert!(Avx2::is_supported());
-                    Self::encrypt(self, nonce, aad, input, tag)
+                    Self::encrypt(self, nonce, aad, payload)
                 }
             }
 

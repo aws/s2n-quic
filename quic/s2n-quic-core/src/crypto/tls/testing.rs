@@ -7,7 +7,7 @@ use crate::{
     application::ServerName,
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
-        tls, CryptoSuite, HeaderKey, Key,
+        scatter, tls, CryptoSuite, HeaderKey, Key,
     },
     endpoint, transport,
     transport::parameters::{ClientTransportParameters, ServerTransportParameters},
@@ -21,7 +21,7 @@ use core::{
     task::{Poll, Waker},
 };
 use futures_test::task::new_count_waker;
-use s2n_codec::{DecoderBuffer, DecoderValue, EncoderValue};
+use s2n_codec::{DecoderBuffer, DecoderValue, Encoder as _, EncoderBuffer, EncoderValue};
 use std::{collections::VecDeque, fmt::Debug};
 
 pub mod certificates {
@@ -584,17 +584,22 @@ fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
 
     let cleartext_payload = (0u16..1200).map(|i| i as u8).collect::<Vec<_>>();
 
-    let mut encrypted_payload = cleartext_payload.clone();
-    encrypted_payload.resize(cleartext_payload.len() + sealer.tag_len(), 0);
+    let mut encrypted_payload = vec![0; cleartext_payload.len() + sealer.tag_len()];
 
     let sealer_name = core::any::type_name::<S>();
     let opener_name = core::any::type_name::<O>();
 
-    sealer
-        .encrypt(packet_number, header, &mut encrypted_payload)
-        .unwrap_or_else(|err| {
-            panic!("encryption error; opener={opener_name}, sealer={sealer_name} - {err:?}")
-        });
+    {
+        let encrypted_payload = EncoderBuffer::new(&mut encrypted_payload);
+        let mut encrypted_payload = scatter::Buffer::new(encrypted_payload);
+        encrypted_payload.write_slice(&cleartext_payload);
+
+        sealer
+            .encrypt(packet_number, header, &mut encrypted_payload)
+            .unwrap_or_else(|err| {
+                panic!("encryption error; opener={opener_name}, sealer={sealer_name} - {err:?}")
+            });
+    }
     opener
         .decrypt(packet_number, header, &mut encrypted_payload)
         .unwrap_or_else(|err| {

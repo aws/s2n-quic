@@ -21,7 +21,7 @@ use crate::{
     transmission::{self, interest::Provider as _},
 };
 use core::{marker::PhantomData, ops::RangeInclusive};
-use s2n_codec::{Encoder, EncoderBuffer};
+use s2n_codec::{encoder::scatter, Encoder};
 use s2n_quic_core::{
     event,
     frame::Padding,
@@ -69,7 +69,7 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
 
     fn encode(
         &mut self,
-        buffer: &mut EncoderBuffer,
+        buffer: &mut scatter::Buffer,
         minimum_len: usize,
         header_len: usize,
         tag_len: usize,

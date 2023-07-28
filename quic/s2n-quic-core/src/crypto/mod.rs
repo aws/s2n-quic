@@ -176,6 +176,7 @@ pub trait CryptoSuite {
 use crate::packet::number::{
     PacketNumber, PacketNumberLen, PacketNumberSpace, TruncatedPacketNumber,
 };
+pub use s2n_codec::encoder::scatter;
 use s2n_codec::{DecoderBufferMut, DecoderError, Encoder, EncoderBuffer};
 
 /// Protects an `EncryptedPayload` into a `ProtectedPayload`
@@ -211,12 +212,21 @@ pub fn encrypt<'a, K: Key>(
     packet_number: PacketNumber,
     packet_number_len: PacketNumberLen,
     header_len: usize,
-    mut payload: EncoderBuffer<'a>,
+    payload: scatter::Buffer<'a>,
 ) -> Result<(EncryptedPayload<'a>, EncoderBuffer<'a>), CryptoError> {
     let header_with_pn_len = packet_number_len.bytesize() + header_len;
 
-    // Make space for the key tag
-    payload.write_repeated(key.tag_len(), 0);
+    let (mut payload, extra) = payload.into_inner();
+
+    let inline_len = payload.len() - header_with_pn_len;
+
+    // reserve bytes for the extra chunk at the end
+    if let Some(extra) = extra.as_ref() {
+        payload.advance_position(extra.len());
+    }
+
+    // reserve bytes for the tag
+    payload.advance_position(key.tag_len());
 
     let (payload, remaining) = payload.split_off();
 
@@ -227,7 +237,10 @@ pub fn encrypt<'a, K: Key>(
         payload.len()
     );
     let (header, body) = payload.split_at_mut(header_with_pn_len);
-    key.encrypt(packet_number.as_crypto_nonce(), header, body)?;
+    let mut body = EncoderBuffer::new(body);
+    body.advance_position(inline_len);
+    let mut body = scatter::Buffer::new_with_extra(body, extra);
+    key.encrypt(packet_number.as_crypto_nonce(), header, &mut body)?;
 
     let encrypted_payload = EncryptedPayload::new(header_len, packet_number_len, payload);
     let remaining = EncoderBuffer::new(remaining);

@@ -9,6 +9,7 @@ use crate::{
 use bolero::{check, generator::*};
 use core::{convert::TryInto, fmt};
 use pretty_hex::{pretty_hex, simple_hex};
+use s2n_codec::{encoder::scatter, EncoderBuffer};
 
 #[derive(TypeGenerator)]
 struct Input<const KEY_LEN: usize> {
@@ -68,9 +69,10 @@ macro_rules! impl_tests {
 
                     // encrypt the payload
                     {
-                        let (payload, tag) = output.split_at_mut(payload.len());
-                        let tag = tag.try_into().unwrap();
-                        key.encrypt(&input.nonce, aad, payload, tag).unwrap();
+                        let mut buffer = EncoderBuffer::new(&mut output);
+                        buffer.advance_position(payload.len());
+                        let mut buffer = scatter::Buffer::new(buffer);
+                        key.encrypt(&input.nonce, aad, &mut buffer).unwrap();
                     }
 
                     let outcome = Outcome {

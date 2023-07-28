@@ -7,7 +7,7 @@ use crate::{
     packet::number::PacketNumber,
     time::Timestamp,
 };
-use s2n_codec::{DecoderBufferMut, EncoderBuffer};
+use s2n_codec::{encoder::scatter, DecoderBufferMut, EncoderBuffer};
 
 pub mod loss;
 pub use loss::Loss;
@@ -70,7 +70,7 @@ pub trait Interceptor: 'static + Send {
         &mut self,
         subject: &Subject,
         packet: &Packet,
-        payload: &mut EncoderBuffer,
+        payload: &mut scatter::Buffer,
     ) {
         let _ = subject;
         let _ = packet;
@@ -126,7 +126,7 @@ where
         &mut self,
         subject: &Subject,
         packet: &Packet,
-        payload: &mut EncoderBuffer,
+        payload: &mut scatter::Buffer,
     ) {
         self.0.intercept_tx_payload(subject, packet, payload);
         self.1.intercept_tx_payload(subject, packet, payload);
@@ -179,8 +179,9 @@ where
         &mut self,
         _subject: &Subject,
         _packet: &Packet,
-        payload: &mut EncoderBuffer,
+        payload: &mut scatter::Buffer,
     ) {
+        let payload = payload.flatten();
         self.tx.havoc(&mut self.random, payload);
     }
 }

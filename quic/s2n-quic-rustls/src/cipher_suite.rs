@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use rustls::{cipher_suite as ciphers, quic, CipherSuite, SupportedCipherSuite};
-use s2n_quic_core::crypto::{self, tls, CryptoError, HeaderProtectionMask, Key};
+use s2n_codec::Encoder;
+use s2n_quic_core::crypto::{self, scatter, tls, CryptoError, HeaderProtectionMask, Key};
 
 pub struct PacketKey {
     key: quic::PacketKey,
@@ -25,6 +26,7 @@ impl PacketKey {
 }
 
 impl crypto::Key for PacketKey {
+    #[inline]
     fn decrypt(
         &self,
         packet_number: u64,
@@ -37,34 +39,40 @@ impl crypto::Key for PacketKey {
         }
     }
 
+    #[inline]
     fn encrypt(
         &self,
         packet_number: u64,
         header: &[u8],
-        payload: &mut [u8],
+        payload: &mut scatter::Buffer,
     ) -> Result<(), CryptoError> {
-        let (payload, tag_storage) = payload.split_at_mut(payload.len() - self.tag_len());
+        let buffer = payload.flatten();
+        let (payload, _) = buffer.split_mut();
         match self.key.encrypt_in_place(packet_number, header, payload) {
             Ok(tag) => {
-                tag_storage.copy_from_slice(tag.as_ref());
+                buffer.write_slice(tag.as_ref());
                 Ok(())
             }
             Err(_) => Err(CryptoError::INTERNAL_ERROR),
         }
     }
 
+    #[inline]
     fn tag_len(&self) -> usize {
         self.key.tag_len()
     }
 
+    #[inline]
     fn aead_confidentiality_limit(&self) -> u64 {
         self.key.confidentiality_limit()
     }
 
+    #[inline]
     fn aead_integrity_limit(&self) -> u64 {
         self.key.integrity_limit()
     }
 
+    #[inline]
     fn cipher_suite(&self) -> tls::CipherSuite {
         self.cipher_suite
     }
@@ -108,6 +116,7 @@ impl PacketKeys {
 }
 
 impl crypto::Key for PacketKeys {
+    #[inline]
     fn decrypt(
         &self,
         packet_number: u64,
@@ -117,27 +126,32 @@ impl crypto::Key for PacketKeys {
         self.opener.decrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn encrypt(
         &self,
         packet_number: u64,
         header: &[u8],
-        payload: &mut [u8],
+        payload: &mut scatter::Buffer,
     ) -> Result<(), CryptoError> {
         self.sealer.encrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn tag_len(&self) -> usize {
         self.sealer.tag_len()
     }
 
+    #[inline]
     fn aead_confidentiality_limit(&self) -> u64 {
         self.sealer.aead_confidentiality_limit()
     }
 
+    #[inline]
     fn aead_integrity_limit(&self) -> u64 {
         self.sealer.aead_integrity_limit()
     }
 
+    #[inline]
     fn cipher_suite(&self) -> tls::CipherSuite {
         self.sealer.cipher_suite()
     }
@@ -242,6 +256,7 @@ impl OneRttKey {
 }
 
 impl crypto::Key for OneRttKey {
+    #[inline]
     fn decrypt(
         &self,
         packet_number: u64,
@@ -251,27 +266,32 @@ impl crypto::Key for OneRttKey {
         self.key.decrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn encrypt(
         &self,
         packet_number: u64,
         header: &[u8],
-        payload: &mut [u8],
+        payload: &mut scatter::Buffer,
     ) -> Result<(), CryptoError> {
         self.key.encrypt(packet_number, header, payload)
     }
 
+    #[inline]
     fn tag_len(&self) -> usize {
         self.key.tag_len()
     }
 
+    #[inline]
     fn aead_confidentiality_limit(&self) -> u64 {
         self.key.aead_confidentiality_limit()
     }
 
+    #[inline]
     fn aead_integrity_limit(&self) -> u64 {
         self.key.aead_integrity_limit()
     }
 
+    #[inline]
     fn cipher_suite(&self) -> tls::CipherSuite {
         self.key.cipher_suite()
     }

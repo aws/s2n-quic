@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    aead,
+    aead::{self, scatter},
     aesgcm::{testing::NONCE_LEN, TAG_LEN},
 };
 use aes_gcm::{AeadInPlace, Aes128Gcm, Aes256Gcm, KeyInit};
+use s2n_codec::Encoder;
 
 macro_rules! impl_aes {
     ($name:ident, $lower:ident) => {
@@ -17,13 +18,15 @@ macro_rules! impl_aes {
                 &self,
                 nonce: &[u8; NONCE_LEN],
                 aad: &[u8],
-                input: &mut [u8],
-                tag_buf: &mut [u8; TAG_LEN],
+                payload: &mut scatter::Buffer,
             ) -> aead::Result {
-                let tag = self
-                    .encrypt_in_place_detached(nonce.into(), aad, input)
-                    .map_err(|_| aead::Error::INTERNAL_ERROR)?;
-                tag_buf.copy_from_slice(&tag);
+                let buffer = payload.flatten();
+                let tag = {
+                    let (input, _) = buffer.split_mut();
+                    self.encrypt_in_place_detached(nonce.into(), aad, input)
+                        .map_err(|_| aead::Error::INTERNAL_ERROR)?
+                };
+                buffer.write_slice(&tag);
                 Ok(())
             }
 
