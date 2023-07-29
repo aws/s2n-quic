@@ -311,7 +311,7 @@ impl Network for Model {
 
                 buffers.rx(*packet.path.local_address, |queue| {
                     model.0.current_inflight.fetch_sub(1, Ordering::SeqCst);
-                    queue.receive(packet);
+                    queue.enqueue(packet);
                 });
             });
 
