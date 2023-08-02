@@ -89,52 +89,16 @@ impl<Config: endpoint::Config> fmt::Debug for PacketSpaceManager<Config> {
 }
 
 macro_rules! packet_space_api {
-    ($ty:ty, $field:ident, $get_mut:ident $(, $discard:ident $(, $assert_discard:ident)? )?) => {
+    ($ty:ty, $field:ident, $get_mut:ident) => {
         #[allow(dead_code)]
         pub fn $field(&self) -> Option<&$ty> {
-            self.$field
-                .as_ref()
-                .map(Box::as_ref)
+            self.$field.as_ref().map(Box::as_ref)
         }
 
         pub fn $get_mut(&mut self) -> Option<(&mut $ty, &mut HandshakeStatus)> {
-            let space = self.$field
-                .as_mut()
-                .map(Box::as_mut)?;
+            let space = self.$field.as_mut().map(Box::as_mut)?;
             Some((space, &mut self.handshake_status))
         }
-
-        $(
-            pub fn $discard<Pub: event::ConnectionPublisher>(
-                &mut self,
-                path: &mut Path<Config>,
-                path_id: path::Id,
-                publisher: &mut Pub,
-            ) {
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2
-                //# When Initial or Handshake keys are discarded, the PTO and loss
-                //# detection timers MUST be reset, because discarding keys indicates
-                //# forward progress and the loss detection timer might have been set for
-                //# a now discarded packet number space.
-                if let Some(mut space) = self.$field.take() {
-                    // reset the PTO backoff value as part of resetting the PTO timer.
-                    path.reset_pto_backoff();
-
-                    space.on_discard(path, path_id, publisher);
-                }
-
-                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.1
-                //# Endpoints MUST NOT send
-                //# Initial packets after this point.
-                // By discarding a space, we are no longer capable of sending packets with those
-                // keys.
-
-                debug_assert!(self.$field.is_none(), "space should have been discarded");
-                $(
-                    debug_assert!(self.$assert_discard.is_none(), "space should have been discarded");
-                )?
-            }
-        )?
     };
 }
 
@@ -174,15 +138,9 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         }
     }
 
-    packet_space_api!(InitialSpace<Config>, initial, initial_mut, discard_initial);
+    packet_space_api!(InitialSpace<Config>, initial, initial_mut);
 
-    packet_space_api!(
-        HandshakeSpace<Config>,
-        handshake,
-        handshake_mut,
-        discard_handshake,
-        initial
-    );
+    packet_space_api!(HandshakeSpace<Config>, handshake, handshake_mut);
 
     packet_space_api!(ApplicationSpace<Config>, application, application_mut);
 
@@ -191,6 +149,86 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         &self,
     ) -> Option<&<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey> {
         self.zero_rtt_crypto.as_ref().map(Box::as_ref)
+    }
+
+    /// Discard the initial packet space
+    pub fn discard_initial<Pub: event::ConnectionPublisher>(
+        &mut self,
+        path: &mut Path<Config>,
+        path_id: path::Id,
+        now: Timestamp,
+        publisher: &mut Pub,
+    ) {
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2
+        //# When Initial or Handshake keys are discarded, the PTO and loss
+        //# detection timers MUST be reset, because discarding keys indicates
+        //# forward progress and the loss detection timer might have been set for
+        //# a now discarded packet number space.
+        if let Some(mut space) = self.initial.take() {
+            path.reset_pto_backoff();
+            space.on_discard(path, path_id, publisher);
+
+            if let Some((handshake, handshake_status)) = self.handshake_mut() {
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+                //# A sender SHOULD restart its PTO timer every time an ack-eliciting
+                //# packet is sent or acknowledged, or when Initial or Handshake keys are
+                //# discarded (Section 4.9 of [QUIC-TLS]).
+
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
+                //# Since the server could be blocked until more datagrams are received
+                //# from the client, it is the client's responsibility to send packets to
+                //# unblock the server until it is certain that the server has finished
+                //# its address validation
+
+                // Arm the PTO timer so the handshake can make progress
+                handshake.update_pto_timer(path, now, handshake_status.is_confirmed());
+            }
+        }
+
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.1
+        //# Endpoints MUST NOT send
+        //# Initial packets after this point.
+        // By discarding a space, we are no longer capable of sending packets with those
+        // keys.
+
+        debug_assert!(
+            self.initial.is_none(),
+            "initial space should have been discarded"
+        );
+    }
+
+    /// Discard the handshake packet space
+    pub fn discard_handshake<Pub: event::ConnectionPublisher>(
+        &mut self,
+        path: &mut Path<Config>,
+        path_id: path::Id,
+        publisher: &mut Pub,
+    ) {
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2
+        //# When Initial or Handshake keys are discarded, the PTO and loss
+        //# detection timers MUST be reset, because discarding keys indicates
+        //# forward progress and the loss detection timer might have been set for
+        //# a now discarded packet number space.
+        if let Some(mut space) = self.handshake.take() {
+            path.reset_pto_backoff();
+            space.on_discard(path, path_id, publisher);
+            // Dropping handshake will clear the PTO timer for the handshake space.
+            // The PTO timer for the application space will be reset when the
+            // handshake is confirmed.
+
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+            //# An endpoint MUST NOT set its PTO timer for the Application Data
+            //# packet number space until the handshake is confirmed.
+        }
+
+        debug_assert!(
+            self.initial.is_none(),
+            "initial space should have been discarded"
+        );
+        debug_assert!(
+            self.handshake.is_none(),
+            "handshake space should have been discarded"
+        );
     }
 
     pub fn discard_zero_rtt_crypto(&mut self) {
@@ -450,11 +488,12 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         error: connection::Error,
         path: &mut path::Path<Config>,
         path_id: path::Id,
+        now: Timestamp,
         publisher: &mut Pub,
     ) {
         self.session_info = None;
         self.retry_cid = None;
-        self.discard_initial(path, path_id, publisher);
+        self.discard_initial(path, path_id, now, publisher);
         self.discard_handshake(path, path_id, publisher);
         self.discard_zero_rtt_crypto();
 

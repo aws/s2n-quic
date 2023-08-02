@@ -120,14 +120,6 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             "the amplification limit should be checked before trying to transmit"
         );
 
-        if Config::ENDPOINT_TYPE.is_client() && space_manager.handshake().is_some() {
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.1
-            //# a client MUST discard Initial keys when it first sends a
-            //# Handshake packet
-            let path = &mut self.context.path_manager[self.context.path_id];
-            space_manager.discard_initial(path, self.context.path_id, self.context.publisher);
-        }
-
         // limit the number of retries to the MAX_BURST_PACKETS
         for _ in 0..MAX_BURST_PACKETS {
             let encoder = EncoderBuffer::new(&mut buffer[..mtu]);
@@ -282,6 +274,12 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                     encoder,
                 ) {
                     Ok((outcome, encoder)) => {
+                        if Config::ENDPOINT_TYPE.is_client() {
+                            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.1
+                            //# a client MUST discard Initial keys when it first sends a
+                            //# Handshake packet
+                            debug_assert!(space_manager.initial().is_none());
+                        }
                         *self.context.outcome += outcome;
                         encoder
                     }
