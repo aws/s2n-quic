@@ -180,7 +180,8 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 //# unblock the server until it is certain that the server has finished
                 //# its address validation
 
-                // Arm the PTO timer so the handshake can make progress
+                // Arm the PTO timer on the handshake space so the handshake can make progress
+                // even if no handshake packets have been transmitted or received yet
                 handshake.update_pto_timer(path, now, handshake_status.is_confirmed());
             }
         }
@@ -213,7 +214,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             path.reset_pto_backoff();
             space.on_discard(path, path_id, publisher);
             // Dropping handshake will clear the PTO timer for the handshake space.
-            // The PTO timer for the application space will be reset when the
+            // The PTO timer for the application space is reset when the
             // handshake is confirmed.
 
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1

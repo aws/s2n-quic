@@ -1219,28 +1219,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet_interceptor,
                 datagram_endpoint,
             )?;
-
-            if Config::ENDPOINT_TYPE.is_client() && self.space_manager.handshake().is_some() {
-                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.1
-                //# Packets protected with Initial secrets (Section 5.2) are not
-                //# authenticated, meaning that an attacker could spoof packets with the
-                //# intent to disrupt a connection. To limit these attacks, Initial
-                //# packet protection keys are discarded more aggressively than other
-                //# keys.
-
-                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.1
-                //# a client MUST discard Initial keys when it first sends a
-                //# Handshake packet
-
-                // We aggressively discard initial keys as soon as we have installed
-                // the handshake keys to prevent the attacks mentioned above.
-                self.space_manager.discard_initial(
-                    &mut self.path_manager[path_id],
-                    path_id,
-                    datagram.timestamp,
-                    &mut self.event_context.publisher(datagram.timestamp, subscriber),
-                );
-            }
         }
 
         Ok(())
