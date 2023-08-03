@@ -53,14 +53,21 @@ fn handshake_pto_timer_is_armed() {
     let pto_events = pto_events.lock().unwrap();
     let pto_count = *pto_events.iter().max().unwrap_or(&0) as usize;
 
-    // Assert that we sent some PTOs
+    // Assert that the client sent some PTOs
     assert!(pto_count > 0);
 
     let packet_sent_events = packet_sent_events.lock().unwrap();
+    let initial_packets_sent = packet_sent_events
+        .iter()
+        .filter(|&packet_sent| matches!(packet_sent.packet_header, PacketHeader::Initial { .. }))
+        .count();
     let handshake_packets_sent = packet_sent_events
         .iter()
         .filter(|&packet_sent| matches!(packet_sent.packet_header, PacketHeader::Handshake { .. }))
         .count();
+
+    // Assert that only 2 initial packets were sent (the Initial[ClientHello] and the Initial[ACK])
+    assert_eq!(2, initial_packets_sent);
 
     // Assert that all handshake packets that were sent were due to the PTO timer firing.
     // The first PTO that fires will send a single packet, since there are no packets
