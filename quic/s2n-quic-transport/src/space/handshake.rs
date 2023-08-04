@@ -274,8 +274,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         //# datagram unblocks it, even if none of the packets in the datagram are
         //# successfully processed.  In such a case, the PTO timer will need to
         //# be re-armed.
-        self.recovery_manager
-            .update_pto_timer(path, timestamp, is_handshake_confirmed);
+        self.update_pto_timer(path, timestamp, is_handshake_confirmed);
     }
 
     /// Called when the connection timer expired
@@ -307,6 +306,17 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         });
         self.recovery_manager
             .on_packet_number_space_discarded(path, path_id, publisher);
+    }
+
+    /// Updates the probe timeout timer
+    pub fn update_pto_timer(
+        &mut self,
+        path: &Path<Config>,
+        now: Timestamp,
+        is_handshake_confirmed: bool,
+    ) {
+        self.recovery_manager
+            .update_pto_timer(path, now, is_handshake_confirmed);
     }
 
     pub fn requires_probe(&self) -> bool {

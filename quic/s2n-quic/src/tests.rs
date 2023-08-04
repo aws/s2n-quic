@@ -31,6 +31,7 @@ mod blackhole;
 mod interceptor;
 mod mtu;
 mod no_tls;
+mod pto;
 mod self_test;
 
 // TODO: https://github.com/aws/s2n-quic/issues/1726

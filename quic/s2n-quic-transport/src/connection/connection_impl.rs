@@ -785,6 +785,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             error,
             self.path_manager.active_path_mut(),
             active_path_id,
+            timestamp,
             &mut publisher,
         );
     }
@@ -1339,6 +1340,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.space_manager.discard_initial(
                     self.path_manager.active_path_mut(),
                     path_id,
+                    datagram.timestamp,
                     &mut publisher,
                 );
             }
