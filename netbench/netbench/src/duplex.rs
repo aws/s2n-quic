@@ -90,16 +90,16 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
                 Poll::Ready(result) => {
                     sent += result? as u64;
                 }
+                Poll::Pending if sent == 0 => {
+                    return Poll::Pending;
+                }
                 Poll::Pending => {
                     break;
                 }
             }
         }
 
-        if sent == 0 {
-            return Poll::Pending;
-        }
-
+        // if the whole buffer was accepted, make sure it's flushed to the socket
         if sent == bytes {
             if let Poll::Ready(res) = self.inner.as_mut().poll_flush(cx) {
                 res?;
@@ -125,20 +125,29 @@ impl<T: AsyncRead + AsyncWrite> super::Connection for Connection<T> {
 
             match self.inner.as_mut().poll_read(cx, &mut buf) {
                 Poll::Ready(_) => {
-                    if buf.filled().is_empty() && self.stream_opened {
-                        self.close_stream()?;
-                        return Ok(0).into();
+                    // we got at least one byte back so loop around and try to get some more
+                    if !buf.filled().is_empty() {
+                        received += buf.filled().len() as u64;
+                        continue;
                     }
-                    received += buf.filled().len() as u64;
+
+                    // when we get 0 bytes, it means we don't have any more data so close the
+                    // stream
+                    if self.stream_opened {
+                        self.close_stream()?;
+                    }
+
+                    break;
                 }
+                // we didn't get any data on any iterations so we're pending
+                Poll::Pending if received == 0 => {
+                    return Poll::Pending;
+                }
+                // we got at least one byte previously so return that
                 Poll::Pending => {
                     break;
                 }
             }
-        }
-
-        if received == 0 {
-            return Poll::Pending;
         }
 
         Ok(received).into()
