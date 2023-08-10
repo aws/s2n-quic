@@ -71,7 +71,7 @@ s2n-quic-tls-default = { version = "=0.25.0", path = "../s2n-quic-tls-default", 
 s2n-quic-transport = { version = "=0.25.0", path = "../s2n-quic-transport" }
 tokio = { version = "1", default-features = false }
 zerocopy = { version = "0.6", optional = true }
-zerocopy-derive = { version = "0.3", optional = true }
+zerocopy-derive = { version = "0.6", optional = true }
 zeroize = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]

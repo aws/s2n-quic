@@ -38,7 +38,7 @@ s2n-codec = { version = "=0.6.1", path = "../../common/s2n-codec", default-featu
 subtle = { version = "2", default-features = false }
 tracing = { version = "0.1", default-features = false, optional = true }
 zerocopy = "0.6"
-zerocopy-derive = "0.3"
+zerocopy-derive = "0.6"
 futures-test = { version = "0.3", optional = true } # For testing Waker interactions
 once_cell = { version = "1", optional = true }
 
