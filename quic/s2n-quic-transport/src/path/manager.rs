@@ -238,20 +238,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) -> Result<(Id, bool), DatagramDropReason> {
         let valid_initial_received = self.valid_initial_received();
 
-        for (idx, path) in self.paths.iter_mut().enumerate() {
-            let is_match = if Config::ENDPOINT_TYPE.is_client() {
-                // only compare remote addresses in the case of a local rebind
-                path.handle.remote_address() == path_handle.remote_address()
-            } else {
-                path.handle.eq(path_handle)
-            };
-
-            if !is_match {
-                continue;
-            }
-
-            let id = path_id(idx as _);
-
+        if let Some((id, path)) = self.path_mut(path_handle) {
             let source_cid_changed = datagram.source_connection_id.map_or(false, |scid| {
                 scid != path.peer_connection_id && valid_initial_received
             });

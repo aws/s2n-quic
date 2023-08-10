@@ -545,13 +545,17 @@ impl<Config: endpoint::Config> Path<Config> {
         cwnd.saturating_sub(bytes_in_flight) < mtu
     }
 
-    // Compare a Path based on its PathHandle.
-    //
-    // Currently the local_address on the Client connection is unknown and set to
-    // a default un-specified value; therefore only the remote_address is used
-    // to compare Paths.
+    /// Compare a Path based on its PathHandle.
+    ///
+    /// In case the local_address on the connection is unknown and set to
+    /// a default un-specified value only the remote_address is used
+    /// to compare Paths.
+    ///
+    /// In the case of the local endpoint being a client, the remote address is only used
+    /// since the client might experience address rebinding.
+    #[inline]
     fn eq_by_handle(&self, handle: &Config::PathHandle) -> bool {
-        if self.handle.local_address().port() == 0 {
+        if Config::ENDPOINT_TYPE.is_client() || self.handle.local_address().port() == 0 {
             // Only compare the remote address if we haven't updated the local yet
             s2n_quic_core::path::Handle::eq(&self.handle.remote_address(), &handle.remote_address())
         } else {
