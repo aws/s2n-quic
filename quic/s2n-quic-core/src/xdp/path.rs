@@ -119,7 +119,7 @@ impl Handle for Tuple {
             return;
         }
 
-        // once we discover our path, or the port changes, update the address full address
+        // once we discover our path, or the port changes, update the address with the new information
         if self.local_address.port != other.local_address.port {
             *self = *other;
         }
