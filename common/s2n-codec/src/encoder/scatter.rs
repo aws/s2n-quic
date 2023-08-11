@@ -156,15 +156,21 @@ impl<'a> Encoder for Buffer<'a> {
     }
 
     #[inline]
+    #[cfg(feature = "bytes")]
     fn len(&self) -> usize {
         let mut len = self.inner.len();
 
         // make sure our len includes the extra bytes if we have them
-        #[cfg(feature = "bytes")]
         if let Some(extra) = self.extra.as_ref() {
             len += extra.len();
         }
 
         len
+    }
+
+    #[inline]
+    #[cfg(not(feature = "bytes"))]
+    fn len(&self) -> usize {
+        self.inner.len()
     }
 }
