@@ -65,7 +65,7 @@ use s2n_quic_core::{
 /// Possible states for handing over a connection from the endpoint to the
 /// application.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum AcceptState {
+pub(crate) enum AcceptState {
     /// The connection is handshaking on the server side and not yet visible
     /// to the application.
     Handshaking,
@@ -553,6 +553,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     fn is_handshaking(&self) -> bool {
         self.accept_state == AcceptState::Handshaking
+    }
+
+    fn is_accepted(&self) -> bool {
+        self.accept_state == AcceptState::Active
     }
 
     /// Creates a new `Connection` instance with the given configuration

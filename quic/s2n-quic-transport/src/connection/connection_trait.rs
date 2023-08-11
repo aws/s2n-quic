@@ -51,6 +51,10 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// Returns whether the connection is in the handshake state
     fn is_handshaking(&self) -> bool;
 
+    /// Returns true if the handshake has completed and the connection
+    /// has been handed off to the application
+    fn is_accepted(&self) -> bool;
+
     /// Initiates closing the connection as described in
     /// https://www.rfc-editor.org/rfc/rfc9000#section-10
     fn close(
