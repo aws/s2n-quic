@@ -44,6 +44,9 @@ pub struct Interop {
     requests: Vec<Url>,
 
     #[structopt(flatten)]
+    limits: crate::limits::Limits,
+
+    #[structopt(flatten)]
     io: crate::io::Client,
 
     #[structopt(flatten)]
@@ -147,8 +150,11 @@ impl Interop {
     fn client(&self) -> Result<Client> {
         let io = self.io.build()?;
 
+        let limits = self.limits.limits();
+
         let client = Client::builder()
             .with_io(io)?
+            .with_limits(limits)?
             .with_event(event::tracing::Subscriber::default())?;
 
         let client = self.tls.build(client, &self.application_protocols)?;

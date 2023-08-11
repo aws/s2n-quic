@@ -316,6 +316,7 @@ impl Io {
             clock,
             tx,
             rx,
+            cooldown: Default::default(),
         };
         let join = executor.spawn(event_loop.start());
         Ok((join, handle))

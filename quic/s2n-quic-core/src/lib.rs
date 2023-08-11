@@ -77,6 +77,7 @@ pub mod slice;
 pub mod stateless_reset;
 pub mod stream;
 pub mod sync;
+pub mod task;
 pub mod time;
 pub mod token;
 pub mod transmission;

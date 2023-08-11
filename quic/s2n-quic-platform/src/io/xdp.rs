@@ -5,7 +5,6 @@ use crate::io::tokio::Clock;
 use s2n_quic_core::{
     endpoint::Endpoint, inet::SocketAddress, io::event_loop::EventLoop, path::MaxMtu,
 };
-
 pub use s2n_quic_core::{
     io::rx,
     sync::{spsc, worker},
@@ -76,7 +75,8 @@ pub mod tx {
         producers.push(producer);
 
         // spawn a task that actually flushes the ring buffer to the socket
-        let task = crate::io::tokio::task::tx(socket, consumer, gso.clone());
+        let cooldown = s2n_quic_core::task::cooldown::Cooldown::default();
+        let task = crate::io::tokio::task::tx(socket, consumer, gso.clone(), cooldown);
 
         // construct the TX side for the endpoint event loop
         let io = crate::socket::io::tx::Tx::new(producers, gso, max_mtu);
@@ -154,6 +154,7 @@ where
             clock,
             rx,
             tx,
+            cooldown: crate::io::tokio::cooldown("ENDPOINT"),
         };
 
         // spawn the event loop on to the tokio handle

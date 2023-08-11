@@ -18,7 +18,7 @@ use std::{io, sync::Arc};
 
 /// A task to receive on a socket
 pub async fn rx(socket: Socket, producer: ring::Producer<Message>) -> io::Result<()> {
-    let result = task::Receiver::new(producer, socket).await;
+    let result = task::Receiver::new(producer, socket, Default::default()).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -28,7 +28,7 @@ pub async fn rx(socket: Socket, producer: ring::Producer<Message>) -> io::Result
 
 /// A task to send on a socket
 pub async fn tx(socket: Socket, consumer: ring::Consumer<Message>, gso: Gso) -> io::Result<()> {
-    let result = task::Sender::new(consumer, socket, gso).await;
+    let result = task::Sender::new(consumer, socket, gso, Default::default()).await;
     if let Some(err) = result {
         Err(err)
     } else {

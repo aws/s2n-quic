@@ -10,6 +10,7 @@ use s2n_quic_core::{
     io::rx,
     slice::zip,
     sync::atomic_waker,
+    task::cooldown::{self, Cooldown},
     xdp::{decoder, path},
 };
 
@@ -28,6 +29,16 @@ pub trait ErrorLogger: Send {
 /// Drives the Rx and Fill rings forward
 pub trait Driver: 'static {
     fn poll(&mut self, rx: &mut ring::Rx, fill: &mut ring::Fill, cx: &mut Context) -> Option<u32>;
+
+    fn with_cooldown(self, cooldown: Cooldown) -> WithCooldown<Self>
+    where
+        Self: Sized,
+    {
+        WithCooldown {
+            driver: self,
+            cooldown,
+        }
+    }
 }
 
 impl Driver for atomic_waker::Handle {
@@ -62,6 +73,30 @@ impl Driver for atomic_waker::Handle {
         }
 
         Some(count)
+    }
+}
+
+pub struct WithCooldown<D: Driver> {
+    driver: D,
+    cooldown: Cooldown,
+}
+
+impl<D: Driver> Driver for WithCooldown<D> {
+    #[inline]
+    fn poll(&mut self, rx: &mut ring::Rx, fill: &mut ring::Fill, cx: &mut Context) -> Option<u32> {
+        let mut count = rx.acquire(u32::MAX);
+        count = fill.acquire(count).min(count);
+
+        // we have items to receive and fill so return
+        if count > 0 {
+            self.cooldown.on_ready();
+            return Some(count);
+        }
+
+        match self.cooldown.on_pending_task(cx) {
+            cooldown::Outcome::Loop => return Some(0),
+            cooldown::Outcome::Sleep => return self.driver.poll(rx, fill, cx),
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use futures::ready;
+use s2n_quic_core::task::cooldown::Cooldown;
 
 pub use events::TxEvents as Events;
 
@@ -30,11 +30,9 @@ pub struct Sender<T: Message, S: Socket<T>> {
     ring: Consumer<T>,
     /// Implementation of a socket that transmits filled slots in the ring buffer
     tx: S,
-    /// The number of messages that have been transmitted but not yet released to the producer.
-    ///
-    /// This value is to avoid calling `release` too much and excessively waking up the producer.
-    pending: u32,
     events: Events,
+    ring_cooldown: Cooldown,
+    io_cooldown: Cooldown,
 }
 
 impl<T, S> Sender<T, S>
@@ -43,46 +41,43 @@ where
     S: Socket<T> + Unpin,
 {
     #[inline]
-    pub fn new(ring: Consumer<T>, tx: S, gso: Gso) -> Self {
+    pub fn new(ring: Consumer<T>, tx: S, gso: Gso, cooldown: Cooldown) -> Self {
         Self {
             ring,
             tx,
-            pending: 0,
             events: Events::new(gso),
+            ring_cooldown: cooldown.clone(),
+            io_cooldown: cooldown.clone(),
         }
     }
 
     #[inline]
     fn poll_ring(&mut self, watermark: u32, cx: &mut Context) -> Poll<Result<(), ()>> {
         loop {
-            let count = match self.ring.poll_acquire(watermark, cx) {
-                Poll::Ready(count) => count,
-                Poll::Pending if self.pending == 0 => {
-                    return if !self.ring.is_open() {
-                        Err(()).into()
-                    } else {
-                        Poll::Pending
-                    };
+            let is_loop = self.ring_cooldown.state().is_loop();
+
+            let count = if is_loop {
+                self.ring.acquire(watermark)
+            } else {
+                match self.ring.poll_acquire(watermark, cx) {
+                    Poll::Ready(count) => count,
+                    Poll::Pending if !self.ring.is_open() => return Err(()).into(),
+                    Poll::Pending => 0,
                 }
-                Poll::Pending => 0,
             };
 
             // if the number of free slots increased since last time then yield
-            if count > self.pending {
+            if count > 0 {
+                self.ring_cooldown.on_ready();
                 return Ok(()).into();
             }
 
-            // If there is no additional capacity available (i.e. we have filled all slots),
-            // then release those filled slots for the consumer to read from. Once
-            // the consumer reads, we will have spare capacity to populate again.
-            self.release();
-        }
-    }
+            if is_loop && self.ring_cooldown.on_pending_task(cx).is_sleep() {
+                continue;
+            }
 
-    #[inline]
-    fn release(&mut self) {
-        let to_release = core::mem::take(&mut self.pending);
-        self.ring.release(to_release);
+            return Poll::Pending;
+        }
     }
 }
 
@@ -97,26 +92,44 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = self.get_mut();
 
+        let mut pending_wake = false;
+
         while !this.events.take_blocked() {
-            if ready!(this.poll_ring(u32::MAX, cx)).is_err() {
-                return None.into();
+            match this.poll_ring(u32::MAX, cx) {
+                Poll::Ready(Ok(_)) => {}
+                Poll::Ready(Err(_)) => return None.into(),
+                Poll::Pending => {
+                    if pending_wake {
+                        this.ring.wake();
+                    }
+                    return Poll::Pending;
+                }
             }
 
             // slice the ring data by the number of items we've already received
-            let entries = &mut this.ring.data()[this.pending as usize..];
+            let entries = this.ring.data();
 
             // perform the send syscall
             match this.tx.send(cx, entries, &mut this.events) {
-                Ok(()) => {
+                Ok(_) => {
                     // increment the number of received messages
-                    this.pending += this.events.take_count() as u32
+                    let count = this.events.take_count() as u32;
+
+                    if count > 0 {
+                        this.ring.release_no_wake(count);
+                        this.io_cooldown.on_ready();
+                        pending_wake = true;
+                    }
                 }
                 Err(err) => return Some(err).into(),
             }
         }
 
-        // release any of the messages we wrote back to the consumer
-        this.release();
+        this.io_cooldown.on_pending_task(cx);
+
+        if pending_wake {
+            this.ring.wake();
+        }
 
         Poll::Pending
     }

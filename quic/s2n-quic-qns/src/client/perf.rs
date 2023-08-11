@@ -39,7 +39,7 @@ pub struct Perf {
     streams: u64,
 
     #[structopt(flatten)]
-    limits: perf::Limits,
+    limits: crate::limits::Limits,
 
     /// Logs statistics for the endpoint
     #[structopt(long)]

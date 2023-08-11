@@ -115,6 +115,7 @@ impl Io {
             rx,
             tx,
             endpoint,
+            cooldown: Default::default(),
         }
         .start();
 

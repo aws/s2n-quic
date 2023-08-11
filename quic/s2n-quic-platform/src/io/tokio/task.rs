@@ -24,20 +24,23 @@ macro_rules! libc_msg {
         mod $message {
             use super::unix;
             use crate::{features::Gso, message::$message::Message, socket::ring};
+            use s2n_quic_core::task::cooldown::Cooldown;
 
             pub async fn rx<S: Into<std::net::UdpSocket>>(
                 socket: S,
                 producer: ring::Producer<Message>,
+                cooldown: Cooldown,
             ) -> std::io::Result<()> {
-                unix::rx(socket, producer).await
+                unix::rx(socket, producer, cooldown).await
             }
 
             pub async fn tx<S: Into<std::net::UdpSocket>>(
                 socket: S,
                 consumer: ring::Consumer<Message>,
                 gso: Gso,
+                cooldown: Cooldown,
             ) -> std::io::Result<()> {
-                unix::tx(socket, consumer, gso).await
+                unix::tx(socket, consumer, gso, cooldown).await
             }
         }
     };

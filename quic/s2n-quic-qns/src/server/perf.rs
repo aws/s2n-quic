@@ -22,7 +22,7 @@ pub struct Perf {
     connections: Option<usize>,
 
     #[structopt(flatten)]
-    limits: perf::Limits,
+    limits: crate::limits::Limits,
 
     /// Logs statistics for the endpoint
     #[structopt(long)]

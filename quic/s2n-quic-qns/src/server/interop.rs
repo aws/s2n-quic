@@ -32,6 +32,9 @@ pub struct Interop {
     testcase: Option<Testcase>,
 
     #[structopt(flatten)]
+    limits: crate::limits::Limits,
+
+    #[structopt(flatten)]
     tls: tls::Server,
 
     #[structopt(flatten)]
@@ -81,15 +84,18 @@ impl Interop {
             max_handshakes = 0;
         }
 
-        let limits = endpoint_limits::Default::builder()
+        let endpoint_limits = endpoint_limits::Default::builder()
             .with_inflight_handshake_limit(max_handshakes)?
             .build()?;
+
+        let limits = self.limits.limits();
 
         let io = self.io.build()?;
 
         let server = Server::builder()
             .with_io(io)?
-            .with_endpoint_limits(limits)?
+            .with_endpoint_limits(endpoint_limits)?
+            .with_limits(limits)?
             .with_event((
                 EventSubscriber(1),
                 s2n_quic::provider::event::tracing::Subscriber::default(),

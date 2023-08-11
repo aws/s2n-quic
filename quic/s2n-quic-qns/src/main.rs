@@ -10,6 +10,7 @@ mod client;
 mod file;
 mod interop;
 mod io;
+mod limits;
 mod perf;
 mod runtime;
 mod server;
