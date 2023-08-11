@@ -28,6 +28,7 @@ mod setup;
 use setup::*;
 
 mod blackhole;
+mod connection_migration;
 mod interceptor;
 mod mtu;
 mod no_tls;

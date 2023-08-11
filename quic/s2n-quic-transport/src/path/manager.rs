@@ -270,7 +270,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# the client MUST discard these packets.
         if Config::ENDPOINT_TYPE.is_client() {
             return Err(DatagramDropReason::UnknownServerAddress);
-        };
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# The design of QUIC relies on endpoints retaining a stable address
