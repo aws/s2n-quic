@@ -5,7 +5,7 @@ use crate::{
     ack::AckManager, contexts::WriteContext, endpoint, recovery, space::CryptoStream, transmission,
 };
 use core::ops::RangeInclusive;
-use s2n_quic_core::{frame::Ping, packet::number::PacketNumberSpace};
+use s2n_quic_core::packet::number::PacketNumberSpace;
 
 pub struct Payload<'a, Config: endpoint::Config> {
     pub ack_manager: &'a mut AckManager,
@@ -30,9 +30,6 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
             "Early transmissions should not be used for MTU probing"
         );
 
-        // record the starting capacity
-        let start_capacity = context.remaining_capacity();
-
         let did_send_ack = self.ack_manager.on_transmit(context);
 
         // Payloads can only transmit and retransmit
@@ -44,20 +41,6 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
             // send PINGs last, since they might not actually be needed if there's an ack-eliciting
             // frame already present in the payload
             self.recovery_manager.on_transmit(context);
-
-            // In order to trigger the loss recovery mechanisms during the handshake make all packets
-            // ack-eliciting. This is especially true for the client in order to give the server more
-            // amplification credits.
-            //
-            // Only send a PING if:
-            // * We're not congestion limited
-            // * The packet isn't already ack-eliciting
-            // * Another frame was written to the context
-            if !context.ack_elicitation().is_ack_eliciting()
-                && start_capacity != context.remaining_capacity()
-            {
-                let _ = context.write_frame(&Ping);
-            }
         }
 
         if did_send_ack {
