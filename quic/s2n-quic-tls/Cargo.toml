@@ -24,7 +24,7 @@ s2n-quic-crypto = { version = "=0.25.0", path = "../s2n-quic-crypto", default-fe
 s2n-tls = { version = "=0.0.35", features = ["quic"] }
 
 [target.'cfg(all(s2n_quic_unstable, s2n_quic_enable_pq_tls))'.dependencies]
-s2n-tls = { version = "=0.0.34", features = ["quic", "pq"] }
+s2n-tls = { version = "=0.0.35", features = ["quic", "pq"] }
 
 [dev-dependencies]
 checkers = "0.6"
