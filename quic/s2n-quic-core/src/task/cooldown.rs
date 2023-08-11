@@ -164,4 +164,15 @@ mod tests {
         assert_eq!(cooldown.on_pending(), Outcome::Sleep);
         assert_eq!(cooldown.on_pending(), Outcome::Sleep);
     }
+
+    #[test]
+    fn disabled_test() {
+        let mut cooldown = Cooldown::new(0);
+
+        // with cooldown disabled, it should always return sleep
+        assert_eq!(cooldown.on_pending(), Outcome::Sleep);
+
+        cooldown.on_ready();
+        assert_eq!(cooldown.on_pending(), Outcome::Sleep);
+    }
 }
