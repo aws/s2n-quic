@@ -115,14 +115,13 @@ impl Handle for Tuple {
 
     #[inline]
     fn maybe_update(&mut self, other: &Self) {
-        // once we discover our path, update the address full address
-        if self.local_address.port == 0 {
+        if other.local_address.port == 0 {
+            return;
+        }
+
+        // once we discover our path, or the port changes, update the address full address
+        if self.local_address.port != other.local_address.port {
             *self = *other;
         }
-    }
-
-    #[inline]
-    fn update_local_address(&mut self, other: &Self) {
-        self.local_address = other.local_address;
     }
 }

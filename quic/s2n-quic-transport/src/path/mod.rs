@@ -556,7 +556,6 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     fn eq_by_handle(&self, handle: &Config::PathHandle) -> bool {
         if Config::ENDPOINT_TYPE.is_client() || self.handle.local_address().port() == 0 {
-            // Only compare the remote address if we haven't updated the local yet
             s2n_quic_core::path::Handle::eq(&self.handle.remote_address(), &handle.remote_address())
         } else {
             self.handle.eq(handle)

@@ -261,11 +261,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             // update the address if it was resolved
             path.handle.maybe_update(path_handle);
 
-            // make sure the client is always using the latest local address
-            if Config::ENDPOINT_TYPE.is_client() {
-                path.handle.update_local_address(path_handle);
-            }
-
             let unblocked = path.on_bytes_received(datagram.payload_len);
             return Ok((id, unblocked));
         }

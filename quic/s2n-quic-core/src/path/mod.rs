@@ -116,9 +116,6 @@ pub trait Handle: 'static + Copy + Send + fmt::Debug {
     /// Implementations should try to limit the cost of updating by checking the current value to
     /// see if it needs updating.
     fn maybe_update(&mut self, other: &Self);
-
-    /// Updates the local address of the handle in the case where the client experienced a rebind
-    fn update_local_address(&mut self, other: &Self);
 }
 
 macro_rules! impl_addr {
@@ -198,11 +195,6 @@ impl Handle for RemoteAddress {
     fn maybe_update(&mut self, _other: &Self) {
         // nothing to update
     }
-
-    #[inline]
-    fn update_local_address(&mut self, _other: &Self) {
-        // we don't keep track of the local address so nothing to do
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq)]
@@ -253,15 +245,14 @@ impl Handle for Tuple {
 
     #[inline]
     fn maybe_update(&mut self, other: &Self) {
-        // once we discover our path, update the address local address
-        if self.local_address.port() == 0 {
+        if other.local_address.port() == 0 {
+            return;
+        }
+
+        // once we discover our path, or the port changes, update the address full address
+        if self.local_address.port() != other.local_address.port() {
             self.local_address = other.local_address;
         }
-    }
-
-    #[inline]
-    fn update_local_address(&mut self, other: &Self) {
-        self.local_address = other.local_address;
     }
 }
 
