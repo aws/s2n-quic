@@ -4,9 +4,9 @@
 use super::*;
 use crate::{
     connection::{
-        self, connection_interests::ConnectionInterests,
+        self, connection_impl::AcceptState, connection_interests::ConnectionInterests,
         internal_connection_id::InternalConnectionId, InternalConnectionIdGenerator,
-        ProcessingError,
+        ProcessingError, Trait,
     },
     endpoint, path, stream,
 };
@@ -36,8 +36,7 @@ use s2n_quic_core::{
 use std::sync::Mutex;
 
 struct TestConnection {
-    is_handshaking: bool,
-    has_been_accepted: bool,
+    accept_state: AcceptState,
     is_closed: bool,
     interests: ConnectionInterests,
     close_timer: Timer,
@@ -46,8 +45,7 @@ struct TestConnection {
 impl Default for TestConnection {
     fn default() -> Self {
         Self {
-            is_handshaking: true,
-            has_been_accepted: false,
+            accept_state: AcceptState::Handshaking,
             is_closed: false,
             interests: ConnectionInterests {
                 transmission: true,
@@ -70,7 +68,11 @@ impl connection::Trait for TestConnection {
     }
 
     fn is_handshaking(&self) -> bool {
-        self.is_handshaking
+        self.accept_state == AcceptState::Handshaking
+    }
+
+    fn is_accepted(&self) -> bool {
+        self.accept_state == AcceptState::Active
     }
 
     fn close(
@@ -88,8 +90,8 @@ impl connection::Trait for TestConnection {
     }
 
     fn mark_as_accepted(&mut self) {
-        assert!(!self.has_been_accepted);
-        self.has_been_accepted = true;
+        assert!(!self.is_accepted());
+        self.accept_state = AcceptState::Active;
         self.interests.accept = false;
     }
 
@@ -391,6 +393,10 @@ enum Operation {
         timeout: Option<u16>,
     },
     CloseApp,
+    HandshakeCompleted {
+        index: usize,
+        closed: bool,
+    },
     Receive,
     Timeout(u16),
     Transmit(u16),
@@ -421,12 +427,6 @@ fn container_test() {
                     let connection = TestConnection::default();
                     container.insert_connection(connection, id);
                     connections.push(id);
-
-                    let mut was_called = false;
-                    container.with_connection(id, |_conn| {
-                        was_called = true;
-                    });
-                    assert!(was_called);
                 }
                 Operation::UpdateInterests {
                     index,
@@ -459,11 +459,8 @@ fn container_test() {
                         }
 
                         i.closing = *closing;
-                        if !conn.has_been_accepted {
+                        if conn.accept_state == AcceptState::HandshakeCompleted {
                             i.accept = *accept;
-                        }
-                        if *accept {
-                            conn.is_handshaking = false;
                         }
                         i.transmission = *transmission;
                         i.new_connection_id = *new_connection_id;
@@ -483,6 +480,34 @@ fn container_test() {
                 }
                 Operation::CloseApp => {
                     handle = None;
+                }
+                Operation::HandshakeCompleted { index, closed } => {
+                    if connections.is_empty() {
+                        continue;
+                    }
+                    let index = index % connections.len();
+                    let id = connections[index];
+
+                    let mut was_called = false;
+                    container.with_connection(id, |conn| {
+                        if conn.is_handshaking() {
+                            conn.accept_state = AcceptState::HandshakeCompleted;
+                            if *closed {
+                                // The connection was closed immediately following the
+                                // handshake being completed and before it could be accepted
+                                conn.is_closed = true;
+                                conn.interests = ConnectionInterests {
+                                    finalization: true,
+                                    ..Default::default()
+                                };
+                                connections.remove(index);
+                            } else {
+                                conn.interests.accept = true;
+                            }
+                        }
+                        was_called = true;
+                    });
+                    assert!(was_called);
                 }
                 Operation::Receive => {
                     if let Some(handle) = handle.as_mut() {
@@ -566,7 +591,7 @@ fn container_test() {
         let mut cursor = container.connection_map.front();
 
         while let Some(conn) = cursor.get() {
-            assert_eq!(conn.internal_connection_id, connections.next().unwrap());
+            assert_eq!(Some(conn.internal_connection_id), connections.next());
             cursor.move_next();
         }
 

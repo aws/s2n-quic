@@ -546,6 +546,13 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
                     }
                 }
 
+                if node.inner.read(|conn| !conn.is_accepted())? {
+                    // Decrement the inflight handshakes because the connection has
+                    // been finalized before it was handed back to the application
+                    // and thus this count was not decremented previously
+                    self.handshake_connections -= 1;
+                }
+
                 insert_interest!(done_connections, push_back);
             } else {
                 unreachable!("Done connections should never report not done later");
@@ -867,39 +874,41 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             self.interest_lists.handshake_connections = self.count_handshaking_connections();
         }
 
-        self.ensure_counter_consistency();
         self.finalize_done_connections();
+        self.ensure_counter_consistency();
 
         Some((result, interests))
     }
 
     /// Removes all Connections in the `done` state from the `ConnectionContainer`.
-    pub fn finalize_done_connections(&mut self) {
+    fn finalize_done_connections(&mut self) {
+        debug_assert_eq!(
+            self.interest_lists.handshake_connections + self.count_done_handshaking_connections(),
+            self.count_handshaking_connections()
+        );
+
         for connection in self.interest_lists.done_connections.take() {
             self.remove_node(&connection);
-
-            // If the connection is still handshaking then it must have timed out.
-            let result = connection.inner.read(|conn| conn.is_handshaking());
-            match result {
-                Ok(true) => {
-                    self.interest_lists.handshake_connections -= 1;
-                    self.ensure_counter_consistency();
-                }
-                Ok(false) => {
-                    // nothing to do
-                }
-                Err(_) => {
-                    // The connection panicked so we need to recompute all of the handshaking
-                    // connections
-                    self.interest_lists.handshake_connections =
-                        self.count_handshaking_connections();
-                }
-            }
         }
+
+        debug_assert_eq!(0, self.count_done_handshaking_connections());
     }
 
     fn count_handshaking_connections(&self) -> usize {
         self.connection_map
+            .iter()
+            .filter(|conn| {
+                conn.inner
+                    .read(|conn| conn.is_handshaking())
+                    .ok()
+                    .unwrap_or(false)
+            })
+            .count()
+    }
+
+    fn count_done_handshaking_connections(&self) -> usize {
+        self.interest_lists
+            .done_connections
             .iter()
             .filter(|conn| {
                 conn.inner
