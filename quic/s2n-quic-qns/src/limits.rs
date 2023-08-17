@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use core::time::Duration;
+
 #[derive(Debug, structopt::StructOpt)]
 pub struct Limits {
     /// The maximum bits/sec for each connection
@@ -16,6 +18,12 @@ pub struct Limits {
 }
 
 impl Limits {
+    // Increase the MaxHandshakeDuration from the default of 10 seconds
+    const MAX_HANDSHAKE_DURATION: Duration = Duration::from_secs(60);
+
+    // Increase MaxIdleTimeout from the default of 30 seconds
+    const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
     pub fn limits(&self) -> s2n_quic::provider::limits::Limits {
         let data_window = self.data_window();
 
@@ -31,6 +39,10 @@ impl Limits {
             .with_bidirectional_remote_data_window(data_window)
             .unwrap()
             .with_unidirectional_data_window(data_window)
+            .unwrap()
+            .with_max_handshake_duration(Self::MAX_HANDSHAKE_DURATION)
+            .unwrap()
+            .with_max_idle_timeout(Self::MAX_IDLE_TIMEOUT)
             .unwrap();
 
         if let Some(size) = self.stream_send_buffer_size {
