@@ -12,9 +12,9 @@ pub use interop::Interop;
 pub use perf::Perf;
 
 use crate::{
-    congestion_control::{CongestionControl, CongestionController},
+    congestion_control::{CongestionControl, CongestionController::*},
     tls,
-    tls::TlsProviders,
+    tls::TlsProviders::*,
     Result,
 };
 use s2n_quic::{
@@ -47,25 +47,13 @@ pub fn build(
     Ok(
         match (tls_server.tls, congestion_control.congestion_controller) {
             #[cfg(unix)]
-            (TlsProviders::S2N, CongestionController::Cubic) => {
-                build!(build_s2n_tls, Cubic, alpns)
-            }
+            (S2N, Cubic) => build!(build_s2n_tls, Cubic, alpns),
             #[cfg(unix)]
-            (TlsProviders::S2N, CongestionController::Bbr) => {
-                build!(build_s2n_tls, Bbr, alpns)
-            }
-            (TlsProviders::Rustls, CongestionController::Cubic) => {
-                build!(build_rustls, Cubic, alpns)
-            }
-            (TlsProviders::Rustls, CongestionController::Bbr) => {
-                build!(build_rustls, Bbr, alpns)
-            }
-            (TlsProviders::Null, CongestionController::Cubic) => {
-                build!(build_null, Cubic)
-            }
-            (TlsProviders::Null, CongestionController::Bbr) => {
-                build!(build_null, Bbr)
-            }
+            (S2N, Bbr) => build!(build_s2n_tls, Bbr, alpns),
+            (Rustls, Cubic) => build!(build_rustls, Cubic, alpns),
+            (Rustls, Bbr) => build!(build_rustls, Bbr, alpns),
+            (Null, Cubic) => build!(build_null, Cubic),
+            (Null, Bbr) => build!(build_null, Bbr),
         },
     )
 }
