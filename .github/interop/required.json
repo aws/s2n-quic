@@ -1,107 +1,198 @@
 {
   "ipv6": {
     "aioquic": [
-      "client"
+      "client",
+      "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "server"
+    ],
     "lsquic": [
-      "client"
+      "client",
+      "server"
     ],
     "msquic": [],
-    "mvfst": [],
+    "mvfst": [
+      "client",
+      "server"
+    ],
     "neqo": [
-      "client"
+      "client",
+      "server"
     ],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
-      "client"
+      "client",
+      "server"
     ],
-    "xquic": []
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
+    "xquic": [
+      "server"
+    ]
   },
   "handshake": {
     "aioquic": [
-      "client"
+      "client",
+      "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "client",
+      "server"
+    ],
     "lsquic": [
-      "client"
+      "client",
+      "server"
     ],
     "msquic": [],
-    "mvfst": [],
+    "mvfst": [
+      "client",
+      "server"
+    ],
     "neqo": [
-      "client"
+      "client",
+      "server"
     ],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
-    "picoquic": [],
+    "picoquic": [
+      "client",
+      "server"
+    ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
-      "client"
+      "client",
+      "server"
     ],
-    "xquic": []
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
+    "xquic": [
+      "server"
+    ]
   },
   "transfer": {
     "aioquic": [
-      "client"
+      "client",
+      "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "server"
+    ],
     "lsquic": [
-      "client"
+      "client",
+      "server"
     ],
     "msquic": [],
-    "mvfst": [],
-    "neqo": [
+    "mvfst": [
       "client"
+    ],
+    "neqo": [
+      "client",
+      "server"
     ],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
-      "client"
+      "client",
+      "server"
+    ],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
     ],
     "xquic": []
   },
   "longrtt": {
     "aioquic": [
-      "client"
+      "client",
+      "server"
     ],
-    "kwik": [],
-    "lsquic": [],
+    "kwik": [
+      "client",
+      "server"
+    ],
+    "lsquic": [
+      "client",
+      "server"
+    ],
     "msquic": [],
-    "mvfst": [],
+    "mvfst": [
+      "client",
+      "server"
+    ],
     "neqo": [
-      "client"
+      "client",
+      "server"
     ],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
-      "client"
+      "client",
+      "server"
     ],
-    "xquic": []
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
+    "xquic": [
+      "server"
+    ]
   },
   "chacha20": {
     "aioquic": [
@@ -120,90 +211,152 @@
     "picoquic": [
       "client"
     ],
-    "quic-go": [],
+    "quic-go": [
+      "client"
+    ],
     "quiche": [],
+    "s2n-quic": [],
     "xquic": []
   },
   "multiplexing": {
     "aioquic": [
-      "client"
+      "client",
+      "server"
     ],
     "kwik": [],
-    "lsquic": [],
+    "lsquic": [
+      "client",
+      "server"
+    ],
     "msquic": [],
-    "mvfst": [],
-    "neqo": [],
+    "mvfst": [
+      "client",
+      "server"
+    ],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
-      "client"
+      "client",
+      "server"
+    ],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
     ],
     "xquic": []
   },
   "retry": {
     "aioquic": [
-      "client"
+      "client",
+      "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "client",
+      "server"
+    ],
     "lsquic": [
-      "client"
+      "client",
+      "server"
     ],
     "msquic": [],
     "mvfst": [],
     "neqo": [
-      "client"
+      "client",
+      "server"
     ],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
-      "client"
+      "client",
+      "server"
+    ],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
     ],
     "xquic": []
   },
   "blackhole": {
     "aioquic": [
-      "client"
+      "client",
+      "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "server"
+    ],
     "lsquic": [
-      "client"
+      "client",
+      "server"
     ],
     "msquic": [],
     "mvfst": [],
     "neqo": [
-      "client"
+      "client",
+      "server"
     ],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
-      "client"
+      "client",
+      "server"
+    ],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
     ],
     "xquic": []
   },
   "keyupdate": {
     "aioquic": [],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [],
     "msquic": [],
     "mvfst": [],
@@ -220,45 +373,84 @@
       "client"
     ],
     "quiche": [],
+    "s2n-quic": [],
     "xquic": []
   },
   "ecn": {
     "aioquic": [],
     "kwik": [],
     "lsquic": [
-      "client"
+      "client",
+      "server"
     ],
     "msquic": [],
     "mvfst": [],
     "neqo": [],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
     "xquic": []
   },
   "amplificationlimit": {
-    "aioquic": [],
-    "kwik": [],
-    "lsquic": [],
+    "aioquic": [
+      "client",
+      "server"
+    ],
+    "kwik": [
+      "client",
+      "server"
+    ],
+    "lsquic": [
+      "client",
+      "server"
+    ],
     "msquic": [],
     "mvfst": [],
     "neqo": [
       "client"
     ],
-    "ngtcp2": [],
+    "ngtcp2": [
+      "client",
+      "server"
+    ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
-    "quiche": [],
-    "xquic": []
+    "quiche": [
+      "client",
+      "server"
+    ],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
+    "xquic": [
+      "server"
+    ]
   },
   "handshakeloss": {
     "aioquic": [],
@@ -271,30 +463,57 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
     "xquic": []
   },
   "transferloss": {
     "aioquic": [
-      "client"
+      "client",
+      "server"
     ],
     "kwik": [],
     "lsquic": [
-      "client"
+      "client",
+      "server"
     ],
     "msquic": [],
-    "mvfst": [],
-    "neqo": [
+    "mvfst": [
       "client"
+    ],
+    "neqo": [
+      "client",
+      "server"
     ],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
-    "picoquic": [],
+    "picoquic": [
+      "client",
+      "server"
+    ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
-      "client"
+      "client",
+      "server"
+    ],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
     ],
     "xquic": []
   },
@@ -309,12 +528,99 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
     "xquic": []
   },
   "transfercorruption": {
     "aioquic": [
+      "client",
+      "server"
+    ],
+    "kwik": [],
+    "lsquic": [
+      "client",
+      "server"
+    ],
+    "msquic": [],
+    "mvfst": [
       "client"
     ],
+    "neqo": [
+      "client",
+      "server"
+    ],
+    "ngtcp2": [
+      "client",
+      "server"
+    ],
+    "picoquic": [
+      "client",
+      "server"
+    ],
+    "quic-go": [
+      "client",
+      "server"
+    ],
+    "quiche": [
+      "client",
+      "server"
+    ],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
+    "xquic": []
+  },
+  "rebind-addr": {
+    "aioquic": [
+      "server"
+    ],
+    "kwik": [],
+    "lsquic": [
+      "client",
+      "server"
+    ],
+    "msquic": [],
+    "mvfst": [],
+    "neqo": [
+      "client"
+    ],
+    "ngtcp2": [
+      "client"
+    ],
+    "picoquic": [
+      "client",
+      "server"
+    ],
+    "quic-go": [
+      "client"
+    ],
+    "quiche": [
+      "client"
+    ],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
+    "xquic": []
+  },
+  "rebind-port": {
+    "aioquic": [],
     "kwik": [],
     "lsquic": [
       "client"
@@ -336,32 +642,14 @@
     "quiche": [
       "client"
     ],
-    "xquic": []
-  },
-  "rebind-addr": {
-    "aioquic": [],
-    "kwik": [],
-    "lsquic": [],
-    "msquic": [],
-    "mvfst": [],
-    "neqo": [],
-    "ngtcp2": [],
-    "picoquic": [],
-    "quic-go": [],
-    "quiche": [],
-    "xquic": []
-  },
-  "rebind-port": {
-    "aioquic": [],
-    "kwik": [],
-    "lsquic": [],
-    "msquic": [],
-    "mvfst": [],
-    "neqo": [],
-    "ngtcp2": [],
-    "picoquic": [],
-    "quic-go": [],
-    "quiche": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
     "xquic": []
   },
   "connectionmigration": {
@@ -375,6 +663,8 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
+    "s2n-quic": [],
+    "s2n-quic-rustls": [],
     "xquic": []
   }
 }
