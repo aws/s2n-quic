@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
-use s2n_quic::{
-    client::{self, ClientProviders},
-    server::{self, ServerProviders},
-};
 use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 
@@ -22,33 +18,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn build(
-        &self,
-        builder: server::Builder<impl ServerProviders>,
-        alpns: &[String],
-    ) -> Result<s2n_quic::Server> {
-        Ok(match self.tls {
-            #[cfg(unix)]
-            TlsProviders::S2N => {
-                let tls = self.build_s2n_tls(alpns)?;
-
-                builder.with_tls(tls)?.start().unwrap()
-            }
-            TlsProviders::Rustls => {
-                let tls = self.build_rustls(alpns)?;
-
-                builder.with_tls(tls)?.start().unwrap()
-            }
-            TlsProviders::Null => {
-                let tls = self.build_null()?;
-
-                builder.with_tls(tls)?.start().unwrap()
-            }
-        })
-    }
-
     #[cfg(unix)]
-    fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server> {
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server> {
         // The server builder defaults to a chain because this allows certs to just work, whether
         // the PEM contains a single cert or a chain
 
@@ -73,7 +44,7 @@ impl Server {
         Ok(tls.build()?)
     }
 
-    fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Server> {
+    pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Server> {
         // The server builder defaults to a chain because this allows certs to just work, whether
         // the PEM contains a single cert or a chain
         let tls = rustls::Server::builder()
@@ -88,7 +59,7 @@ impl Server {
         Ok(tls)
     }
 
-    fn build_null(&self) -> Result<null::Provider> {
+    pub fn build_null(&self) -> Result<null::Provider> {
         Ok(null::Provider)
     }
 }
@@ -103,33 +74,8 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn build(
-        &self,
-        builder: client::Builder<impl ClientProviders>,
-        alpns: &[String],
-    ) -> Result<s2n_quic::Client> {
-        Ok(match self.tls {
-            #[cfg(unix)]
-            TlsProviders::S2N => {
-                let tls = self.build_s2n_tls(alpns)?;
-
-                builder.with_tls(tls)?.start().unwrap()
-            }
-            TlsProviders::Rustls => {
-                let tls = self.build_rustls(alpns)?;
-
-                builder.with_tls(tls)?.start().unwrap()
-            }
-            TlsProviders::Null => {
-                let tls = self.build_null()?;
-
-                builder.with_tls(tls)?.start().unwrap()
-            }
-        })
-    }
-
     #[cfg(unix)]
-    fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Client> {
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Client> {
         let tls = s2n_tls::Client::builder()
             .with_certificate(s2n_tls::ca(self.ca.as_ref())?)?
             // the "amplificationlimit" tests generates a very large chain so bump the limit
@@ -141,7 +87,7 @@ impl Client {
         Ok(tls)
     }
 
-    fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Client> {
+    pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Client> {
         let tls = rustls::Client::builder()
             .with_certificate(rustls::ca(self.ca.as_ref())?)?
             // the "amplificationlimit" tests generates a very large chain so bump the limit
@@ -153,7 +99,7 @@ impl Client {
         Ok(tls)
     }
 
-    fn build_null(&self) -> Result<null::Provider> {
+    pub fn build_null(&self) -> Result<null::Provider> {
         Ok(null::Provider)
     }
 }

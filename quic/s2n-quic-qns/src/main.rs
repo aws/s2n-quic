@@ -7,6 +7,7 @@ pub type Error = Box<dyn 'static + std::error::Error + Send + Sync>;
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 mod client;
+mod congestion_control;
 mod file;
 mod interop;
 mod io;
