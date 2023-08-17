@@ -32,7 +32,7 @@ for commit in $COMMITS; do
   fi
 
   if [ -s $OUT_DIR/$commit.json ]; then
-	  python3 .github/interop/check.py --required .github/interop/required.json $OUT_DIR/$commit.json
+    python3 .github/interop/check.py --required .github/interop/required.json $OUT_DIR/$commit.json
   else
     echo "    report could not be found; skipping"
   fi
