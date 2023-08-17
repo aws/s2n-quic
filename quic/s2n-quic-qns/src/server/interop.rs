@@ -3,6 +3,7 @@
 
 use crate::{
     interop::Testcase,
+    server,
     server::{h09, h3},
     tls, Result,
 };
@@ -42,6 +43,9 @@ pub struct Interop {
 
     #[structopt(flatten)]
     runtime: crate::runtime::Runtime,
+
+    #[structopt(flatten)]
+    congestion_controller: crate::congestion_control::CongestionControl,
 }
 
 impl Interop {
@@ -100,7 +104,12 @@ impl Interop {
                 EventSubscriber(1),
                 s2n_quic::provider::event::tracing::Subscriber::default(),
             ))?;
-        let server = self.tls.build(server, &self.application_protocols)?;
+        let server = server::build(
+            server,
+            &self.application_protocols,
+            &self.tls,
+            &self.congestion_controller,
+        )?;
 
         eprintln!("Server listening on port {}", self.io.port);
 

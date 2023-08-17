@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{perf, task, tls, Result};
-use s2n_quic::{client, provider::event, Client, Connection};
+use crate::{client, perf, task, tls, Result};
+use s2n_quic::{client::Connect, provider::event, Client, Connection};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -53,6 +53,9 @@ pub struct Perf {
 
     #[structopt(flatten)]
     runtime: crate::runtime::Runtime,
+
+    #[structopt(flatten)]
+    congestion_controller: crate::congestion_control::CongestionControl,
 }
 
 impl Perf {
@@ -69,7 +72,7 @@ impl Perf {
         let send = self.send;
         let receive = self.receive;
 
-        let mut connect = client::Connect::new((self.ip, self.port));
+        let mut connect = Connect::new((self.ip, self.port));
         if let Some(server_name) = self.server_name.as_deref() {
             connect = connect.with_server_name(server_name);
         } else {
@@ -153,8 +156,11 @@ impl Perf {
             .with_io(io)?
             .with_event(subscriber)?;
 
-        let client = self.tls.build(client, &self.application_protocols)?;
-
-        Ok(client)
+        client::build(
+            client,
+            &self.application_protocols,
+            &self.tls,
+            &self.congestion_controller,
+        )
     }
 }

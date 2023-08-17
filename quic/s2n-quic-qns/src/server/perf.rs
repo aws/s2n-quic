@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{perf, tls, Result};
+use crate::{perf, server, tls, Result};
 use futures::future::try_join_all;
 use s2n_quic::{
     provider::event,
@@ -36,6 +36,9 @@ pub struct Perf {
 
     #[structopt(flatten)]
     runtime: crate::runtime::Runtime,
+
+    #[structopt(flatten)]
+    congestion_controller: crate::congestion_control::CongestionControl,
 }
 
 impl Perf {
@@ -189,7 +192,12 @@ impl Perf {
             .with_io(io)?
             .with_event(subscriber)?;
 
-        let server = self.tls.build(server, &self.application_protocols)?;
+        let server = server::build(
+            server,
+            &self.application_protocols,
+            &self.tls,
+            &self.congestion_controller,
+        )?;
 
         eprintln!("Server listening on port {}", self.io.port);
 

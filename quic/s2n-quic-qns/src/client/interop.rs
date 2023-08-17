@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    client,
     client::{h09, h3},
     interop::Testcase,
     task, tls, Result,
@@ -54,6 +55,9 @@ pub struct Interop {
 
     #[structopt(flatten)]
     runtime: crate::runtime::Runtime,
+
+    #[structopt(flatten)]
+    congestion_controller: crate::congestion_control::CongestionControl,
 }
 
 impl Interop {
@@ -157,9 +161,12 @@ impl Interop {
             .with_limits(limits)?
             .with_event(event::tracing::Subscriber::default())?;
 
-        let client = self.tls.build(client, &self.application_protocols)?;
-
-        Ok(client)
+        client::build(
+            client,
+            &self.application_protocols,
+            &self.tls,
+            &self.congestion_controller,
+        )
     }
 
     async fn endpoints(&self) -> Result<HashMap<Host<&str>, Connect>> {
