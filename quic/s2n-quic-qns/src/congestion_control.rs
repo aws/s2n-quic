@@ -24,13 +24,11 @@ impl FromStr for CongestionController {
         match s {
             "cubic" => Ok(Self::Cubic),
             "bbr" => Ok(Self::Bbr),
-            _ => {
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("Unsupported congestion controller: {s}"),
-                )
-                .into())
-            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Unsupported congestion controller: {s}"),
+            )
+            .into()),
         }
     }
 }
