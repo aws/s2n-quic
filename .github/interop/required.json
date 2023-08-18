@@ -4,9 +4,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-      "server"
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
@@ -53,10 +51,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-      "client",
-      "server"
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
@@ -103,9 +98,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-      "server"
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
@@ -149,10 +142,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-      "client",
-      "server"
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
@@ -268,9 +258,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-      "server"
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
@@ -312,9 +300,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-      "server"
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
@@ -353,9 +339,7 @@
   },
   "keyupdate": {
     "aioquic": [],
-    "kwik": [
-      "client"
-    ],
+    "kwik": [],
     "lsquic": [],
     "msquic": [],
     "mvfst": [],
@@ -408,10 +392,7 @@
       "client",
       "server"
     ],
-    "kwik": [
-      "client",
-      "server"
-    ],
+    "kwik": [],
     "lsquic": [
       "client",
       "server"
