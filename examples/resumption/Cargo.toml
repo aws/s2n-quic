@@ -1,0 +1,13 @@
+[package]
+name = "resumption"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["provider-tls-s2n", "provider-event-tracing"]}
+s2n-tls = { path="../../../s2n-tls/bindings/rust/s2n-tls"}
+bytes = { version = "1", default-features = false }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["ansi"] }
+tracing-appender = { version = "0.2" }
