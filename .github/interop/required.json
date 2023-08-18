@@ -441,8 +441,14 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
-    "s2n-quic": [],
-    "s2n-quic-rustls": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
     "xquic": []
   },
   "transferloss": {
@@ -500,8 +506,14 @@
     "picoquic": [],
     "quic-go": [],
     "quiche": [],
-    "s2n-quic": [],
-    "s2n-quic-rustls": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
     "xquic": []
   },
   "transfercorruption": {
