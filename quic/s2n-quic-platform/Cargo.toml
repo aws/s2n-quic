@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-platform"
-version = "0.26.0"
+version = "0.27.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -25,8 +25,8 @@ bolero-generator = { version = "0.9", optional = true }
 cfg-if = "1"
 futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 lazy_static = { version = "1", optional = true }
-s2n-quic-core = { version = "=0.25.0", path = "../s2n-quic-core", default-features = false }
-s2n-quic-xdp = { version = "=0.5.0", path = "../../tools/xdp/s2n-quic-xdp", optional = true }
+s2n-quic-core = { version = "=0.26.0", path = "../s2n-quic-core", default-features = false }
+s2n-quic-xdp = { version = "=0.6.0", path = "../../tools/xdp/s2n-quic-xdp", optional = true }
 socket2 = { version = "0.5", features = ["all"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
 turmoil = { version = "0.5.2", optional = true }

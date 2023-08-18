@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-core"
-version = "0.25.0"
+version = "0.26.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -34,7 +34,7 @@ insta = { version = ">=1.12", features = ["json"], optional = true }
 num-rational = { version = "0.4", default-features = false }
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 pin-project-lite = { version = "0.2" }
-s2n-codec = { version = "=0.6.1", path = "../../common/s2n-codec", default-features = false }
+s2n-codec = { version = "=0.6.2", path = "../../common/s2n-codec", default-features = false }
 subtle = { version = "2", default-features = false }
 tracing = { version = "0.1", default-features = false, optional = true }
 zerocopy = "0.6"

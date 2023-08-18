@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-xdp"
-version = "0.5.0"
+version = "0.6.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -18,8 +18,8 @@ aya = { version = "0.11", default-features = false }
 bitflags = "2"
 errno = "0.3"
 libc = "0.2"
-s2n-codec = { version = "=0.6.1", path = "../../../common/s2n-codec" }
-s2n-quic-core = { version = "=0.25.0", path = "../../../quic/s2n-quic-core" }
+s2n-codec = { version = "=0.6.2", path = "../../../common/s2n-codec" }
+s2n-quic-core = { version = "=0.26.0", path = "../../../quic/s2n-quic-core" }
 tokio = { version = "1", features = ["net"], optional = true }
 
 [dev-dependencies]
