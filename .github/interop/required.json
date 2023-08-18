@@ -571,8 +571,14 @@
     "quiche": [
       "client"
     ],
-    "s2n-quic": [],
-    "s2n-quic-rustls": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
+    ],
     "xquic": []
   },
   "rebind-port": {

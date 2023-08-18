@@ -195,7 +195,7 @@ index fbd9515..aa8d6ed 100755
 -    sys.exit(main())
 +    main()
 diff --git a/testcases.py b/testcases.py
-index 6d7ecfb..f2f9dea 100644
+index 6d7ecfb..d7c323c 100644
 --- a/testcases.py
 +++ b/testcases.py
 @@ -90,6 +90,10 @@ class TestCase(abc.ABC):
@@ -209,6 +209,15 @@ index 6d7ecfb..f2f9dea 100644
      @staticmethod
      def scenario() -> str:
          """ Scenario for the ns3 simulator """
+@@ -1181,7 +1185,7 @@ class TestCasePortRebinding(TestCaseTransfer):
+     @staticmethod
+     def scenario() -> str:
+         """ Scenario for the ns3 simulator """
+-        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=1s --rebind-freq=5s"
++        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=2s --rebind-freq=5s"
+
+     def check(self) -> TestResult:
+         if not self._keylog_file():
 @@ -1203,54 +1207,26 @@ class TestCasePortRebinding(TestCaseTransfer):
              logging.info("Server saw only a single client port in use; test broken?")
              return TestResult.FAILED
