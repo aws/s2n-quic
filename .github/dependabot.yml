@@ -16,3 +16,13 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+
+  - package-ecosystem: "cargo"
+    directory: "/netbench"
+    schedule:
+      interval: "daily"
+
+  - package-ecosystem: "cargo"
+    directory: "/tools/xdp"
+    schedule:
+      interval: "daily"
