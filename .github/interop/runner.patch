@@ -49,7 +49,7 @@ index 7541cae..ba1b4da 100644
        - VERSION=$VERSION
      depends_on:
 diff --git a/implementations.json b/implementations.json
-index 9150551..55aaa4a 100644
+index 9150551..fc21610 100644
 --- a/implementations.json
 +++ b/implementations.json
 @@ -9,11 +9,6 @@
@@ -64,7 +64,19 @@ index 9150551..55aaa4a 100644
    "mvfst": {
      "image": "lnicco/mvfst-qns:latest",
      "url": "https://github.com/facebookincubator/mvfst",
-@@ -79,8 +74,13 @@
+@@ -49,11 +44,6 @@
+     "url": "https://quic.nginx.org/",
+     "role": "server"
+   },
+-  "msquic": {
+-    "image": "ghcr.io/microsoft/msquic/qns:main",
+-    "url": "https://github.com/microsoft/msquic",
+-    "role": "both"
+-  },
+   "chrome": {
+     "image": "martenseemann/chrome-quic-interop-runner",
+     "url": "https://github.com/marten-seemann/chrome-quic-interop-runner",
+@@ -79,8 +69,13 @@
      "url": "https://github.com/quinn-rs/quinn",
      "role": "both"
    },
