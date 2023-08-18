@@ -18,7 +18,7 @@ unstable_private_key = []
 bytes = { version = "1", default-features = false }
 errno = "0.3"
 libc = "0.2"
-s2n-codec = { version = "=0.6.1", path = "../../common/s2n-codec", default-features = false }
+s2n-codec = { version = "=0.6.2", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.26.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
 s2n-quic-crypto = { version = "=0.26.0", path = "../s2n-quic-crypto", default-features = false }
 s2n-tls = { version = "=0.0.35", features = ["quic"] }
