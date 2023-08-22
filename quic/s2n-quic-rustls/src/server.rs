@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{certificate, session::Session};
-use rustls::{quic, ServerConfig};
+use rustls::ServerConfig;
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
@@ -51,13 +51,11 @@ impl tls::Endpoint for Server {
         &mut self,
         transport_parameters: &Params,
     ) -> Self::Session {
-        use quic::ServerQuicExt;
-
         //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# Endpoints MUST send the quic_transport_parameters extension;
         let transport_parameters = transport_parameters.encode_to_vec();
 
-        let session = rustls::ServerConnection::new_quic(
+        let session = rustls::quic::ServerConnection::new(
             self.config.clone(),
             crate::QUIC_VERSION,
             transport_parameters,

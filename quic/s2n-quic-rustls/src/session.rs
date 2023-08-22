@@ -6,9 +6,8 @@ use crate::cipher_suite::{
 };
 use bytes::Bytes;
 use core::{fmt, fmt::Debug, task::Poll};
-use rustls::{
-    quic::{self, QuicExt},
-    Connection,
+use rustls::quic::{
+    Connection, {self},
 };
 use s2n_quic_core::{
     application::ServerName,
@@ -119,7 +118,7 @@ impl Session {
         match &self.connection {
             Connection::Client(_) => self.server_name.clone(),
             Connection::Server(server) => {
-                server.sni_hostname().map(|server_name| server_name.into())
+                server.server_name().map(|server_name| server_name.into())
             }
         }
     }
