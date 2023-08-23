@@ -61,6 +61,13 @@ if [ "$QNS_MODE" == "interop" ]; then
       SERVER_PARAMS+=" --max-mtu 1228"
       CLIENT_PARAMS+=" --max-mtu 1228"
     fi
+
+    if [ "$TESTCASE" == "transfer" ]; then
+      # The amplification limit test (one of the "transfer" testcases) creates a certificate chain
+      # larger than what rustls supports. This will disable cert verification for this testcase,
+      # to allow the test to succeed.
+      CLIENT_PARAMS+=" --disable-cert-verification"
+    fi
 fi
 
 if [ "$QNS_MODE" == "interop" ]; then

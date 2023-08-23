@@ -71,6 +71,10 @@ pub struct Client {
 
     #[structopt(long, default_value)]
     pub tls: TlsProviders,
+
+    /// disable verification of the server certificate (rustls only)
+    #[structopt(long)]
+    pub disable_cert_verification: bool,
 }
 
 impl Client {
@@ -88,13 +92,27 @@ impl Client {
     }
 
     pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Client> {
-        let tls = rustls::Client::builder()
-            .with_certificate(rustls::ca(self.ca.as_ref())?)?
-            // the "amplificationlimit" tests generates a very large chain so bump the limit
-            .with_max_cert_chain_depth(10)?
-            .with_application_protocols(alpns.iter().map(String::as_bytes))?
-            .with_key_logging()?
-            .build()?;
+        let tls = if self.disable_cert_verification {
+            use ::rustls::{version, ClientConfig, KeyLogFile};
+            use std::sync::Arc;
+
+            let mut config = ClientConfig::builder()
+                .with_cipher_suites(rustls::DEFAULT_CIPHERSUITES)
+                .with_safe_default_kx_groups()
+                .with_protocol_versions(&[&version::TLS13])?
+                .with_custom_certificate_verifier(Arc::new(rustls::DisabledVerifier))
+                .with_no_client_auth();
+            config.max_fragment_size = None;
+            config.alpn_protocols = alpns.iter().map(|p| p.as_bytes().to_vec()).collect();
+            config.key_log = Arc::new(KeyLogFile::new());
+            rustls::Client::new(config)
+        } else {
+            rustls::Client::builder()
+                .with_certificate(rustls::ca(self.ca.as_ref())?)?
+                .with_application_protocols(alpns.iter().map(String::as_bytes))?
+                .with_key_logging()?
+                .build()?
+        };
 
         Ok(tls)
     }
@@ -191,7 +209,7 @@ pub mod rustls {
     use super::*;
     pub use s2n_quic::provider::tls::rustls::{
         certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
-        Client, Server,
+        Client, Server, DEFAULT_CIPHERSUITES,
     };
 
     pub fn ca(ca: Option<&PathBuf>) -> Result<Certificate> {
@@ -208,6 +226,22 @@ pub mod rustls {
         } else {
             s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
         })
+    }
+
+    pub struct DisabledVerifier;
+
+    impl ::rustls::client::ServerCertVerifier for DisabledVerifier {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &::rustls::Certificate,
+            _intermediates: &[::rustls::Certificate],
+            _server_name: &::rustls::ServerName,
+            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _ocsp_response: &[u8],
+            _now: std::time::SystemTime,
+        ) -> Result<::rustls::client::ServerCertVerified, ::rustls::Error> {
+            Ok(::rustls::client::ServerCertVerified::assertion())
+        }
     }
 }
 

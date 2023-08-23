@@ -1,8 +1,0 @@
-diff --git a/Cargo.toml b/Cargo.toml
-index e71f750d..8c24a4a6 100644
---- a/Cargo.toml
-+++ b/Cargo.toml
-@@ -22,0 +23,3 @@ incremental = false
-+
-+[patch.crates-io]
-+webpki = { git = "https://github.com/WesleyRosenblum/rustls-webpki.git" }

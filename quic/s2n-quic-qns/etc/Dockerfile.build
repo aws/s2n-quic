@@ -16,9 +16,6 @@ COPY quic /app/quic
 COPY tools/xdp /app/tools/xdp
 # Don't include testing crates
 RUN rm -rf quic/s2n-quic-bench quic/s2n-quic-events quic/s2n-quic-sim
-# apply patch to use forked version of the webpki crate
-# see https://github.com/aws/s2n-quic/issues/1836
-RUN git apply quic/s2n-quic-qns/etc/webpki.patch
 
 # create a planner image that forms the dependencies
 FROM sources AS planner
