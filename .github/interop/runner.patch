@@ -49,7 +49,7 @@ index 7541cae..ba1b4da 100644
        - VERSION=$VERSION
      depends_on:
 diff --git a/implementations.json b/implementations.json
-index 9150551..55aaa4a 100644
+index 9150551..fc21610 100644
 --- a/implementations.json
 +++ b/implementations.json
 @@ -9,11 +9,6 @@
@@ -64,7 +64,19 @@ index 9150551..55aaa4a 100644
    "mvfst": {
      "image": "lnicco/mvfst-qns:latest",
      "url": "https://github.com/facebookincubator/mvfst",
-@@ -79,8 +74,13 @@
+@@ -49,11 +44,6 @@
+     "url": "https://quic.nginx.org/",
+     "role": "server"
+   },
+-  "msquic": {
+-    "image": "ghcr.io/microsoft/msquic/qns:main",
+-    "url": "https://github.com/microsoft/msquic",
+-    "role": "both"
+-  },
+   "chrome": {
+     "image": "martenseemann/chrome-quic-interop-runner",
+     "url": "https://github.com/marten-seemann/chrome-quic-interop-runner",
+@@ -79,8 +69,13 @@
      "url": "https://github.com/quinn-rs/quinn",
      "role": "both"
    },
@@ -195,7 +207,7 @@ index fbd9515..aa8d6ed 100755
 -    sys.exit(main())
 +    main()
 diff --git a/testcases.py b/testcases.py
-index 6d7ecfb..f2f9dea 100644
+index 6d7ecfb..d7c323c 100644
 --- a/testcases.py
 +++ b/testcases.py
 @@ -90,6 +90,10 @@ class TestCase(abc.ABC):
@@ -209,6 +221,15 @@ index 6d7ecfb..f2f9dea 100644
      @staticmethod
      def scenario() -> str:
          """ Scenario for the ns3 simulator """
+@@ -1181,7 +1185,7 @@ class TestCasePortRebinding(TestCaseTransfer):
+     @staticmethod
+     def scenario() -> str:
+         """ Scenario for the ns3 simulator """
+-        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=1s --rebind-freq=5s"
++        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=2s --rebind-freq=5s"
+
+     def check(self) -> TestResult:
+         if not self._keylog_file():
 @@ -1203,54 +1207,26 @@ class TestCasePortRebinding(TestCaseTransfer):
              logging.info("Server saw only a single client port in use; test broken?")
              return TestResult.FAILED

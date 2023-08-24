@@ -51,13 +51,17 @@ if [ "$QNS_MODE" == "interop" ]; then
         CLIENT_PARAMS+=" --application-protocols h3"
     fi
 
-    if [ "$TESTCASE" == "ecn" ]; then
+    if [ "$TESTCASE" == "ecn" ] || [ "$TESTCASE" == "multiconnect" ]; then
       # The ECN test requires all packets set an ECT codepoint to pass. s2n-quic temporarily
       # stops setting the ECT codepoint after 10 packets in case faulty equipment drops
       # ECT marked packets (see https://datatracker.ietf.org/doc/html/rfc9000#section-13.4.2)
       # To increase the chance this test completes in 10 packets or less, we disable
       # MTU probing to avoid sending MTU probes that contribute to the 10 packet limit.
       # 1228 is the minimum allowed MaxMtu, see `s2n_quic_core::path::MaxMtu::MIN`
+
+      # multiconnect refers to the HandshakeLoss and HandshakeCorruption tests. Due to the
+      # severe loss/corrupt rates these tests use (30%), we also disable MTU probing for
+      # them to not waste any packets on MTU probes, increasing the chance for success.
       SERVER_PARAMS+=" --max-mtu 1228"
       CLIENT_PARAMS+=" --max-mtu 1228"
     fi

@@ -19,10 +19,10 @@ pub struct Limits {
 
 impl Limits {
     // Increase the MaxHandshakeDuration from the default of 10 seconds
-    const MAX_HANDSHAKE_DURATION: Duration = Duration::from_secs(60);
+    const MAX_HANDSHAKE_DURATION: Duration = Duration::from_secs(300);
 
     // Increase MaxIdleTimeout from the default of 30 seconds
-    const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+    const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
     pub fn limits(&self) -> s2n_quic::provider::limits::Limits {
         let data_window = self.data_window();

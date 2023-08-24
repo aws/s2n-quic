@@ -43,12 +43,20 @@ def format_required_report(report):
                 outcome.setdefault(test['name'], {})
 
                 info = outcome[test['name']]
-                info.setdefault(client, {'client': False, 'server': False})
-                info.setdefault(server, {'client': False, 'server': False})
+                if client == s2n_quic and server == s2n_quic:
+                    info.setdefault('s2n-quic', {})
+                else:
+                    info.setdefault(client, {})
+                    info.setdefault(server, {})
 
                 success = test['result'] == 'succeeded'
-                info[client]['client'] = success
-                info[server]['server'] = success
+                if client == s2n_quic and server == s2n_quic:
+                    info['s2n-quic']['client'] = success
+                    info['s2n-quic']['server'] = success
+                elif client == s2n_quic:
+                    info[server]['server'] = success
+                else:
+                    info[client]['client'] = success
 
     return outcome
 
