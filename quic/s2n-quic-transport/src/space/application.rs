@@ -8,7 +8,10 @@ use crate::{
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{datagram, keep_alive::KeepAlive, HandshakeStatus, PacketSpace, TxPacketNumbers},
+    space::{
+        datagram, keep_alive::KeepAlive, CryptoStream, HandshakeStatus, PacketSpace,
+        TxPacketNumbers,
+    },
     stream::Manager as _,
     sync::flag,
     transmission,
@@ -47,6 +50,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     /// The current state of the Spin bit
     /// TODO: Spin me
     pub spin_bit: SpinBit,
+    pub crypto_stream: CryptoStream,
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
@@ -98,6 +102,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             ack_manager,
             spin_bit: SpinBit::Zero,
             stream_manager,
+            crypto_stream: CryptoStream::new(),
             key_set,
             header_key,
             ping: flag::Ping::default(),
@@ -176,6 +181,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 &mut self.ping,
                 &mut self.stream_manager,
                 &mut self.recovery_manager,
+                &mut self.crypto_stream,
                 &mut self.datagram_manager,
             ),
             timestamp,
@@ -595,9 +601,11 @@ impl<Config: endpoint::Config> transmission::interest::Provider for ApplicationS
     ) -> transmission::interest::Result {
         self.ack_manager.transmission_interest(query)?;
         self.ping.transmission_interest(query)?;
+        self.crypto_stream.transmission_interest(query)?;
         self.recovery_manager.transmission_interest(query)?;
         self.stream_manager.transmission_interest(query)?;
         self.datagram_manager.transmission_interest(query)?;
+
         Ok(())
     }
 }

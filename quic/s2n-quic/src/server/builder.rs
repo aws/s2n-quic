@@ -279,7 +279,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// #
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
-        /// let tls = s2n::tls::Server::builder()
+        /// let tls = s2n_tls::Server::builder()
         ///     .with_certificate(Path::new("./certs/cert.pem"), Path::new("./certs/key.pem"))?
         ///     .with_security_policy(s2n::tls::security_policy::S2N_20190802)?;
         ///

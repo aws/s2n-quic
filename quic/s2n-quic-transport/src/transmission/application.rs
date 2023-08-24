@@ -8,7 +8,7 @@ use crate::{
     endpoint, path,
     path::mtu,
     recovery,
-    space::{datagram, HandshakeStatus},
+    space::{datagram, CryptoStream, HandshakeStatus},
     stream::Manager as _,
     sync::{flag, flag::Ping},
     transmission::{self, Mode},
@@ -37,6 +37,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
         ping: &'a mut flag::Ping,
         stream_manager: &'a mut Config::StreamManager,
         recovery_manager: &'a mut recovery::Manager<Config>,
+        crypto_stream: &'a mut CryptoStream,
         datagram_manager: &'a mut datagram::Manager<Config>,
     ) -> Self {
         if transmission_mode != Mode::PathValidationOnly {
@@ -53,6 +54,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
                     local_id_registry,
                     path_manager,
                     recovery_manager,
+                    crypto_stream,
                     datagram_manager,
                     prioritize_datagrams: false,
                 })
@@ -109,6 +111,7 @@ pub struct Normal<'a, Config: endpoint::Config> {
     local_id_registry: &'a mut connection::LocalIdRegistry,
     path_manager: &'a mut path::Manager<Config>,
     recovery_manager: &'a mut recovery::Manager<Config>,
+    crypto_stream: &'a mut CryptoStream,
     datagram_manager: &'a mut datagram::Manager<Config>,
     prioritize_datagrams: bool,
 }
@@ -174,6 +177,8 @@ impl<'a, Config: endpoint::Config> Normal<'a, Config> {
         // soon as possible
         self.handshake_status.on_transmit(context);
 
+        let _ = self.crypto_stream.tx.on_transmit((), context);
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2
         //# An endpoint MAY include other frames with the PATH_CHALLENGE and
         //# PATH_RESPONSE frames used for path validation.
@@ -197,6 +202,7 @@ impl<'a, Config: endpoint::Config> transmission::interest::Provider for Normal<'
         self.datagram_manager.transmission_interest(query)?;
         self.local_id_registry.transmission_interest(query)?;
         self.path_manager.transmission_interest(query)?;
+        self.crypto_stream.transmission_interest(query)?;
         self.recovery_manager.transmission_interest(query)?;
         self.path_manager
             .active_path()

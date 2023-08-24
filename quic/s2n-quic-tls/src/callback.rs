@@ -223,7 +223,8 @@ where
                     _ => {
                         let (key, header_key) =
                             OneRttKey::new(self.endpoint, aead_algo, pair).expect("invalid cipher");
-
+                        // Transition the tx key. At this point writing can be done with one RTT keys.
+                        self.state.tx_phase.transition();
                         let params = unsafe {
                             // Safety: conn needs to outlive params
                             //
@@ -349,10 +350,12 @@ pub struct State {
 impl State {
     /// Complete the handshake
     pub fn on_handshake_complete(&mut self) {
-        debug_assert_eq!(self.tx_phase, HandshakePhase::Handshake);
-        debug_assert_eq!(self.rx_phase, HandshakePhase::Handshake);
-        self.tx_phase.transition();
-        self.rx_phase.transition();
+        if self.rx_phase == HandshakePhase::Handshake {
+            self.rx_phase.transition();
+        }
+        if self.tx_phase == HandshakePhase::Handshake {
+            self.tx_phase.transition();
+        }
         debug_assert_eq!(self.tx_phase, HandshakePhase::Application);
         debug_assert_eq!(self.rx_phase, HandshakePhase::Application);
     }
