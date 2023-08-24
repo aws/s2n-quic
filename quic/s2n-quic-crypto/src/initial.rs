@@ -6,7 +6,7 @@ use s2n_quic_core::{
     crypto::{
         self,
         label::{CLIENT_IN, SERVER_IN},
-        CryptoError, Key, INITIAL_SALT,
+        scatter, CryptoError, Key, INITIAL_SALT,
     },
     endpoint,
 };
@@ -95,7 +95,7 @@ impl Key for InitialKey {
         &self,
         packet_number: u64,
         header: &[u8],
-        payload: &mut [u8],
+        payload: &mut scatter::Buffer,
     ) -> Result<(), CryptoError> {
         self.sealer.encrypt(packet_number, header, payload)
     }

@@ -23,7 +23,11 @@ impl<'a> EncoderBuffer<'a> {
     /// Panics when `position > capacity`
     #[inline]
     pub fn set_position(&mut self, position: usize) {
-        debug_assert!(position <= self.capacity());
+        debug_assert!(
+            position <= self.capacity(),
+            "position {position} exceeded capacity of {}",
+            self.capacity()
+        );
         self.position = position;
     }
 
@@ -56,7 +60,7 @@ impl<'a> EncoderBuffer<'a> {
     }
 
     #[inline]
-    fn assert_capacity(&self, len: usize) {
+    pub(crate) fn assert_capacity(&self, len: usize) {
         debug_assert!(
             len <= self.remaining_capacity(),
             "not enough buffer capacity. wanted: {}, available: {}",

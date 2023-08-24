@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    aead,
+    aead::{self, scatter},
     aes::Encrypt,
     aesgcm::{
         payload::{DecryptionPayload, Payload},
@@ -16,6 +16,7 @@ use core::{
     marker::PhantomData,
     sync::atomic::{compiler_fence, Ordering},
 };
+use s2n_codec::Encoder;
 use s2n_quic_core::assume;
 use zeroize::Zeroize;
 
@@ -278,10 +279,14 @@ where
         &self,
         nonce: &[u8; NONCE_LEN],
         aad: &[u8],
-        payload: &mut [u8],
-        tag: &mut [u8; TAG_LEN],
+        payload: &mut scatter::Buffer,
     ) -> aead::Result {
-        *tag = Self::aesgcm(self, nonce, aad, payload).into_array();
+        let payload = payload.flatten();
+        let tag = {
+            let (payload, _) = payload.split_mut();
+            Self::aesgcm(self, nonce, aad, payload)
+        };
+        payload.write_slice(&tag.into_array());
         Ok(())
     }
 

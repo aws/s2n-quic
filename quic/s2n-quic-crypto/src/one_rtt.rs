@@ -30,6 +30,7 @@ impl crypto::OneRttHeaderKey for OneRttHeaderKey {}
 mod tests {
     use crate::{cipher_suite::TLS_CHACHA20_POLY1305_SHA256, hkdf};
     use hex_literal::hex;
+    use s2n_codec::{encoder::scatter, EncoderBuffer};
     use s2n_quic_core::crypto::Key;
 
     //= https://www.rfc-editor.org/rfc/rfc9001#appendix-A.5
@@ -88,35 +89,38 @@ mod tests {
 
     #[test]
     fn test_key_update() {
-        let (next_cipher, expected_next_cipher) = generate_ciphers(&SECRET, &KU_SECRET);
+        let tests = [
+            (&SECRET, &KU_SECRET, true),
+            (&INVALID_SECRET, &KU_SECRET, false),
+        ];
 
-        // Encrypt two empty blocks to verify the ciphers are the same
-        let mut next_cipher_output = [0; 32];
-        let mut expected_cipher_output = [0; 32];
-        next_cipher
-            .encrypt(0, &[], &mut next_cipher_output[..])
-            .unwrap();
-        expected_next_cipher
-            .encrypt(0, &[], &mut expected_cipher_output[..])
-            .unwrap();
+        for (secret, ku_secret, should_match) in tests {
+            let (next_cipher, expected_next_cipher) = generate_ciphers(secret, ku_secret);
 
-        assert_eq!(next_cipher_output, expected_cipher_output);
-    }
+            // Encrypt two empty blocks to verify the ciphers are the same
+            let mut next_cipher_output = [0; 32];
+            let mut expected_cipher_output = [0; 32];
 
-    #[test]
-    fn test_key_update_failure() {
-        let (next_cipher, expected_next_cipher) = generate_ciphers(&INVALID_SECRET, &KU_SECRET);
+            {
+                let next_cipher_output = EncoderBuffer::new(&mut next_cipher_output);
+                let mut next_cipher_output = scatter::Buffer::new(next_cipher_output);
 
-        // Encrypt two empty blocks to verify the ciphers are the same
-        let mut next_cipher_output = [0; 32];
-        let mut expected_cipher_output = [0; 32];
-        next_cipher
-            .encrypt(0, &[], &mut next_cipher_output[..])
-            .unwrap();
-        expected_next_cipher
-            .encrypt(0, &[], &mut expected_cipher_output[..])
-            .unwrap();
+                let expected_cipher_output = EncoderBuffer::new(&mut expected_cipher_output);
+                let mut expected_cipher_output = scatter::Buffer::new(expected_cipher_output);
 
-        assert!(next_cipher_output != expected_cipher_output);
+                next_cipher
+                    .encrypt(0, &[], &mut next_cipher_output)
+                    .unwrap();
+                expected_next_cipher
+                    .encrypt(0, &[], &mut expected_cipher_output)
+                    .unwrap();
+            }
+
+            if should_match {
+                assert_eq!(next_cipher_output, expected_cipher_output);
+            } else {
+                assert_ne!(next_cipher_output, expected_cipher_output);
+            }
+        }
     }
 }

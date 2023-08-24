@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::crypto::CryptoError;
+use s2n_codec::encoder::scatter;
 
 /// A trait for crypto keys
 pub trait Key: Send {
@@ -18,7 +19,7 @@ pub trait Key: Send {
         &self,
         packet_number: u64,
         header: &[u8],
-        payload: &mut [u8],
+        payload: &mut scatter::Buffer,
     ) -> Result<(), CryptoError>;
 
     /// Length of the appended tag
@@ -37,7 +38,7 @@ pub trait Key: Send {
 pub mod testing {
     use crate::crypto::{
         retry::{IntegrityTag, INTEGRITY_TAG_LEN},
-        CryptoError, HandshakeHeaderKey, HandshakeKey, HeaderKey as CryptoHeaderKey,
+        scatter, CryptoError, HandshakeHeaderKey, HandshakeKey, HeaderKey as CryptoHeaderKey,
         HeaderProtectionMask, InitialHeaderKey, InitialKey, OneRttHeaderKey, OneRttKey, RetryKey,
         ZeroRttHeaderKey, ZeroRttKey,
     };
@@ -89,8 +90,10 @@ pub mod testing {
             &self,
             _packet_number: u64,
             _header: &[u8],
-            _payload: &mut [u8],
+            payload: &mut scatter::Buffer,
         ) -> Result<(), CryptoError> {
+            // copy any bytes into the final slice
+            payload.flatten();
             Ok(())
         }
 

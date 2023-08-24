@@ -3,6 +3,7 @@
 
 pub mod buffer;
 pub mod estimator;
+pub mod scatter;
 pub mod value;
 
 pub use buffer::*;

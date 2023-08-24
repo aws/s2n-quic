@@ -6,7 +6,7 @@ use crate::{
     SecretPair,
 };
 use s2n_quic_core::{
-    crypto::{CryptoError, Key},
+    crypto::{scatter, CryptoError, Key},
     endpoint,
 };
 
@@ -66,7 +66,7 @@ impl Key for KeyPair {
         &self,
         packet_number: u64,
         header: &[u8],
-        payload: &mut [u8],
+        payload: &mut scatter::Buffer,
     ) -> Result<(), CryptoError> {
         self.sealer.encrypt(packet_number, header, payload)
     }
@@ -153,7 +153,7 @@ macro_rules! negotiated_crypto {
                 &self,
                 packet_number: u64,
                 header: &[u8],
-                payload: &mut [u8],
+                payload: &mut s2n_quic_core::crypto::scatter::Buffer,
             ) -> Result<(), s2n_quic_core::crypto::CryptoError> {
                 self.0.encrypt(packet_number, header, payload)
             }

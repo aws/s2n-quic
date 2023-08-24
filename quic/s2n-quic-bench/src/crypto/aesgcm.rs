@@ -3,6 +3,7 @@
 
 use core::convert::TryInto;
 use criterion::{black_box, BenchmarkId, Criterion, Throughput};
+use s2n_codec::{encoder::scatter, EncoderBuffer};
 use s2n_quic_crypto::testing::{
     self,
     aesgcm::{Key, NONCE_LEN, TAG_LEN},
@@ -52,10 +53,11 @@ pub fn benchmarks(c: &mut Criterion) {
                         let payload_len = input.len();
                         input.extend_from_slice(&[0; TAG_LEN]);
 
-                        let (payload, tag) = input.split_at_mut(payload_len);
-                        let tag: &mut [u8; TAG_LEN] = tag.try_into().unwrap();
                         b.iter(|| {
-                            let _ = key.encrypt(&nonce, &aad, payload, tag);
+                            let mut payload = EncoderBuffer::new(&mut input);
+                            payload.advance_position(payload_len);
+                            let mut payload = scatter::Buffer::new(payload);
+                            let _ = key.encrypt(&nonce, &aad, &mut payload);
                         });
                     },
                 );
@@ -74,11 +76,16 @@ pub fn benchmarks(c: &mut Criterion) {
                     let payload_len = input.len();
                     input.extend_from_slice(&[0; TAG_LEN]);
 
+                    {
+                        let mut payload = EncoderBuffer::new(&mut input);
+                        payload.advance_position(payload_len);
+                        let mut payload = scatter::Buffer::new(payload);
+                        // create a valid encrypted payload
+                        key.encrypt(&nonce, &aad, &mut payload).unwrap();
+                    }
+
                     let (payload, tag) = input.split_at_mut(payload_len);
                     let tag: &mut [u8; TAG_LEN] = tag.try_into().unwrap();
-
-                    // create a valid encrypted payload
-                    key.encrypt(&nonce, &aad, payload, tag).unwrap();
                     let tag = &*tag;
 
                     b.iter_batched(

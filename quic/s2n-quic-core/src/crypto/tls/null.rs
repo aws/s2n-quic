@@ -291,6 +291,7 @@ pub mod server {
 
 mod key {
     use super::*;
+    use crate::crypto::scatter;
 
     #[derive(Debug)]
     pub struct NoCrypto;
@@ -312,9 +313,10 @@ mod key {
             &self,
             _packet_number: u64,
             _header: &[u8],
-            _payload: &mut [u8],
+            payload: &mut scatter::Buffer,
         ) -> Result<(), crypto::CryptoError> {
-            // Do nothing
+            // copy any extra bytes into the slice
+            payload.flatten();
             Ok(())
         }
 

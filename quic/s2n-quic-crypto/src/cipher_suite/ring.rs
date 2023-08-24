@@ -6,6 +6,7 @@ macro_rules! key {
         pub mod $name {
             use super::super::$name::{KEY_LEN, NONCE_LEN, TAG_LEN};
             use crate::ring_aead::{self as aead, LessSafeKey, UnboundKey};
+            use s2n_quic_core::crypto::scatter;
             use zeroize::Zeroize;
 
             pub struct Key {
@@ -58,10 +59,9 @@ macro_rules! key {
                     &self,
                     nonce: &[u8; NONCE_LEN],
                     aad: &[u8],
-                    input: &mut [u8],
-                    tag: &mut [u8; TAG_LEN],
+                    payload: &mut scatter::Buffer,
                 ) -> crate::aead::Result {
-                    self.key.encrypt(nonce, aad, input, tag)
+                    self.key.encrypt(nonce, aad, payload)
                 }
 
                 #[inline]

@@ -3,7 +3,7 @@
 
 use crate::{contexts::WriteContext, endpoint, path, transmission, transmission::Mode};
 use core::marker::PhantomData;
-use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
+use s2n_codec::{encoder::scatter, Encoder, EncoderValue};
 use s2n_quic_core::{
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{ack::AckRanges as AckRangesTrait, ack_elicitation::AckElicitation, Ack, FrameTrait},
@@ -13,7 +13,7 @@ use s2n_quic_core::{
 
 pub struct Context<'a, 'b, 'sub, Config: endpoint::Config> {
     pub outcome: &'a mut transmission::Outcome,
-    pub buffer: &'a mut EncoderBuffer<'b>,
+    pub buffer: &'a mut scatter::Buffer<'b>,
     pub packet_number: PacketNumber,
     pub transmission_constraint: transmission::Constraint,
     pub transmission_mode: transmission::Mode,

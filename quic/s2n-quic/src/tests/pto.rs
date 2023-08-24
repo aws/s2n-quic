@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_codec::EncoderBuffer;
+use s2n_codec::encoder::scatter;
 use s2n_quic_core::{
     event::api::{PacketHeader, Subject},
     packet::interceptor::{Interceptor, Packet},
@@ -85,10 +85,10 @@ impl Interceptor for DropHandshakeTx {
         &mut self,
         _subject: &Subject,
         packet: &Packet,
-        payload: &mut EncoderBuffer,
+        payload: &mut scatter::Buffer,
     ) {
         if packet.number.space().is_handshake() {
-            payload.set_position(0);
+            payload.clear();
         }
     }
 }

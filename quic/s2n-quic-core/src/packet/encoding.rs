@@ -8,7 +8,7 @@ use crate::{
         stateless_reset,
     },
 };
-use s2n_codec::{Encoder, EncoderBuffer, EncoderLenEstimator, EncoderValue};
+use s2n_codec::{encoder::scatter, Encoder, EncoderBuffer, EncoderLenEstimator, EncoderValue};
 
 pub trait PacketPayloadLenCursor: EncoderValue {
     fn new() -> Self;
@@ -17,8 +17,10 @@ pub trait PacketPayloadLenCursor: EncoderValue {
 
 /// used for short packets that don't use a payload len
 impl PacketPayloadLenCursor for () {
+    #[inline]
     fn new() {}
 
+    #[inline]
     fn update(&self, _buffer: &mut EncoderBuffer, _actual_len: usize) {
         // noop
     }
@@ -36,7 +38,7 @@ pub trait PacketPayloadEncoder {
     /// writing will panic.
     fn encode(
         &mut self,
-        buffer: &mut EncoderBuffer,
+        buffer: &mut scatter::Buffer,
         minimum_len: usize,
         header_len: usize,
         tag_len: usize,
@@ -44,6 +46,7 @@ pub trait PacketPayloadEncoder {
 }
 
 impl<T: EncoderValue> PacketPayloadEncoder for T {
+    #[inline]
     fn encoding_size_hint<E: Encoder>(&mut self, encoder: &E, minimum_len: usize) -> usize {
         let len = self.encoding_size_for_encoder(encoder);
         if len < minimum_len {
@@ -53,9 +56,10 @@ impl<T: EncoderValue> PacketPayloadEncoder for T {
         }
     }
 
+    #[inline]
     fn encode(
         &mut self,
-        buffer: &mut EncoderBuffer,
+        buffer: &mut scatter::Buffer,
         _minimum_len: usize,
         _header_len: usize,
         _tag_len: usize,
@@ -216,13 +220,14 @@ pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncode
         // Write the packet number
         truncated_packet_number.encode(&mut buffer);
 
-        let payload_len = {
+        let (payload_len, inline_len, extra) = {
             // Create a temporary buffer for writing the payload
             let (header_buffer, payload_buffer) = buffer.split_mut();
 
             // Payloads should not be able to write into the crypto tag space
             let payload_len = payload_buffer.len() - key.tag_len();
-            let mut payload_buffer = EncoderBuffer::new(&mut payload_buffer[..payload_len]);
+            let payload_buffer = EncoderBuffer::new(&mut payload_buffer[..payload_len]);
+            let mut payload_buffer = scatter::Buffer::new(payload_buffer);
 
             // Try to encode the payload into the buffer
             self.payload().encode(
@@ -233,7 +238,14 @@ pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncode
             );
 
             // read how much was written
-            payload_buffer.len()
+            let payload_len = payload_buffer.len();
+
+            let (inline_buffer, extra) = payload_buffer.into_inner();
+
+            // record the number of bytes that were written to the inline buffer
+            let inline_len = inline_buffer.len();
+
+            (payload_len, inline_len, extra)
         };
 
         // The payload didn't have anything to write so rewind the cursor
@@ -247,12 +259,14 @@ pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncode
             "payloads should write at least the minimum_len"
         );
 
-        // Advance the buffer cursor by what the payload wrote
-        buffer.advance_position(payload_len);
-
         // Update the payload_len cursor with the actual payload len
-        let actual_payload_len = buffer.len() + key.tag_len() - header_len;
+        let actual_payload_len = buffer.len() + payload_len + key.tag_len() - header_len;
         payload_len_cursor.update(&mut buffer, actual_payload_len);
+
+        // Advance the buffer cursor by what the payload wrote inline. We'll recreate the scatter
+        // buffer with the option extra bytes at the end.
+        buffer.advance_position(inline_len);
+        let buffer = scatter::Buffer::new_with_extra(buffer, extra);
 
         // Encrypt the written payload. Note that the tag is appended to the
         // buffer in the `encrypt` function.

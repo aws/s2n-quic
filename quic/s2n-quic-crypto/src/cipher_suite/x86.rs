@@ -11,7 +11,7 @@ macro_rules! aesgcm {
                 ring,
             };
             use crate::{
-                aead,
+                aead::{self, scatter},
                 aes::{
                     x86::$cipher::{EncryptionKey, Key as AesKey},
                     $cipher::Key as Wrapper,
@@ -81,12 +81,11 @@ macro_rules! aesgcm {
                     &self,
                     nonce: &[u8; NONCE_LEN],
                     aad: &[u8],
-                    input: &mut [u8],
-                    tag: &mut [u8; TAG_LEN],
+                    payload: &mut scatter::Buffer,
                 ) -> aead::Result {
                     match self {
-                        Self::Precomputed(key) => key.encrypt(nonce, aad, input, tag),
-                        Self::Ring(key) => key.encrypt(nonce, aad, input, tag),
+                        Self::Precomputed(key) => key.encrypt(nonce, aad, payload),
+                        Self::Ring(key) => key.encrypt(nonce, aad, payload),
                     }
                 }
 
@@ -136,10 +135,9 @@ macro_rules! aesgcm {
                     &self,
                     nonce: &[u8; NONCE_LEN],
                     aad: &[u8],
-                    input: &mut [u8],
-                    tag: &mut [u8; TAG_LEN],
+                    payload: &mut scatter::Buffer,
                 ) -> aead::Result {
-                    aead::Aead::encrypt(&self.key, nonce, aad, input, tag)
+                    aead::Aead::encrypt(&self.key, nonce, aad, payload)
                 }
 
                 #[inline]
@@ -164,12 +162,11 @@ macro_rules! aesgcm {
                     &self,
                     nonce: &[u8; NONCE_LEN],
                     aad: &[u8],
-                    input: &mut [u8],
-                    tag: &mut [u8; TAG_LEN],
+                    payload: &mut scatter::Buffer,
                 ) -> aead::Result {
                     unsafe {
                         debug_assert!(Avx2::is_supported());
-                        self.encrypt_impl(nonce, aad, input, tag)
+                        self.encrypt_impl(nonce, aad, payload)
                     }
                 }
 

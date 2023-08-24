@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{CryptoError, HeaderKey, HeaderProtectionMask, Key, ProtectedPayload},
+    crypto::{scatter, CryptoError, HeaderKey, HeaderProtectionMask, Key, ProtectedPayload},
     packet::number::{PacketNumber, PacketNumberSpace},
     varint::VarInt,
 };
@@ -80,6 +80,7 @@ fn fuzz_protect(
     let payload_len = input.len();
     let mut payload = EncoderBuffer::new(input);
     payload.set_position(payload_len);
+    let payload = scatter::Buffer::new(payload);
 
     let truncated_packet_number = packet_number.truncate(largest_packet_number).unwrap();
     let packet_number_len = truncated_packet_number.len();
@@ -119,12 +120,16 @@ impl Key for FuzzCrypto {
         &self,
         packet_number: u64,
         _header: &[u8],
-        payload: &mut [u8],
+        payload: &mut scatter::Buffer,
     ) -> Result<(), CryptoError> {
+        let payload = payload.flatten();
+        let (payload, _) = payload.split_mut();
+
         let mask = packet_number as u8;
         for byte in payload.iter_mut() {
             *byte ^= mask;
         }
+
         Ok(())
     }
 
