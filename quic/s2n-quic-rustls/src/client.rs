@@ -3,7 +3,7 @@
 
 use crate::{certificate, session::Session};
 use core::convert::TryFrom;
-use rustls::{quic, ClientConfig};
+use rustls::ClientConfig;
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
@@ -61,8 +61,6 @@ impl tls::Endpoint for Client {
         transport_parameters: &Params,
         server_name: ServerName,
     ) -> Self::Session {
-        use quic::ClientQuicExt;
-
         //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# Endpoints MUST send the quic_transport_parameters extension;
         let transport_parameters = transport_parameters.encode_to_vec();
@@ -70,7 +68,7 @@ impl tls::Endpoint for Client {
         let rustls_server_name =
             rustls::ServerName::try_from(server_name.as_ref()).expect("invalid server name");
 
-        let session = rustls::ClientConnection::new_quic(
+        let session = rustls::quic::ClientConnection::new(
             self.config.clone(),
             crate::QUIC_VERSION,
             rustls_server_name,

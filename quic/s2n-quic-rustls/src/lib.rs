@@ -13,6 +13,7 @@ pub mod certificate;
 pub mod client;
 pub mod server;
 
+pub use cipher_suite::DEFAULT_CIPHERSUITES;
 pub use client::Client;
 pub use server::Server;
 
