@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use bytes::Bytes;
 use s2n_quic::provider::tls::s2n_tls::{ConfigLoader, ConnectionContext, Server};
 use std::{error::Error, time::SystemTime};
 
@@ -50,13 +49,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tokio::spawn(async move {
             eprintln!("Connection accepted from {:?}", connection.remote_addr());
 
-            while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
+            while let Ok(Some(stream)) = connection.accept_bidirectional_stream().await {
                 // spawn a new task for the stream
                 tokio::spawn(async move {
                     eprintln!("Stream opened from {:?}", stream.connection().remote_addr());
-
-                    let data = Bytes::from_static(b"hello");
-                    stream.send(data).await.expect("stream should be open");
                 });
             }
         });

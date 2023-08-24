@@ -223,8 +223,10 @@ where
                     _ => {
                         let (key, header_key) =
                             OneRttKey::new(self.endpoint, aead_algo, pair).expect("invalid cipher");
-                        // Transition the tx key. At this point writing can be done with one RTT keys.
-                        self.state.tx_phase.transition();
+                        // At this point the server is done writing Handshake messages
+                        if self.endpoint.is_server() {
+                            self.state.tx_phase.transition();
+                        }
                         let params = unsafe {
                             // Safety: conn needs to outlive params
                             //

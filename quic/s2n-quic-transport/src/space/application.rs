@@ -448,6 +448,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             &mut self.recovery_manager,
             RecoveryContext {
                 ack_manager: &mut self.ack_manager,
+                crypto_stream: &mut self.crypto_stream,
                 handshake_status,
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
@@ -619,6 +620,7 @@ impl<Config: endpoint::Config> connection::finalization::Provider for Applicatio
 struct RecoveryContext<'a, Config: endpoint::Config> {
     ack_manager: &'a mut AckManager,
     handshake_status: &'a mut HandshakeStatus,
+    crypto_stream: &'a mut CryptoStream,
     ping: &'a mut flag::Ping,
     stream_manager: &'a mut Config::StreamManager,
     local_id_registry: &'a mut connection::LocalIdRegistry,
@@ -670,6 +672,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     ) {
         self.handshake_status
             .on_packet_ack(packet_number_range, publisher);
+        self.crypto_stream.on_packet_ack(packet_number_range);
         self.ping.on_packet_ack(packet_number_range);
         self.stream_manager.on_packet_ack(packet_number_range);
         self.local_id_registry.on_packet_ack(packet_number_range);
@@ -687,6 +690,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         publisher: &mut Pub,
     ) {
         self.ack_manager.on_packet_loss(packet_number_range);
+        self.crypto_stream.on_packet_loss(packet_number_range);
         self.handshake_status
             .on_packet_loss(packet_number_range, publisher);
         self.ping.on_packet_loss(packet_number_range);
