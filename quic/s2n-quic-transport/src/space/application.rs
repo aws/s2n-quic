@@ -606,7 +606,6 @@ impl<Config: endpoint::Config> transmission::interest::Provider for ApplicationS
         self.recovery_manager.transmission_interest(query)?;
         self.stream_manager.transmission_interest(query)?;
         self.datagram_manager.transmission_interest(query)?;
-
         Ok(())
     }
 }

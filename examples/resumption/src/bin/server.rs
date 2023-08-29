@@ -17,23 +17,24 @@ pub static TICKET_KEY: [u8; 16] = [0; 16];
 pub static TICKET_KEY_NAME: &[u8] = "keyname".as_bytes();
 
 struct ResumptionConfig;
-impl ConfigLoader for ResumptionConfig {
-    fn load(&mut self, _cx: ConnectionContext) -> s2n_tls::config::Config {
+
+impl ResumptionConfig {
+    fn build() -> Result<s2n_tls::config::Config, s2n_tls::error::Error> {
         let mut config_builder = s2n_tls::config::Builder::new();
         config_builder
-            .enable_session_tickets(true)
-            .unwrap()
-            .add_session_ticket_key(TICKET_KEY_NAME, &TICKET_KEY, SystemTime::now())
-            .unwrap()
-            .load_pem(CERT_PEM.as_bytes(), KEY_PEM.as_bytes())
-            .unwrap()
-            .set_security_policy(&s2n_tls::security::DEFAULT_TLS13)
-            .unwrap()
-            .enable_quic()
-            .unwrap()
-            .set_application_protocol_preference([b"h3"])
-            .unwrap();
-        config_builder.build().unwrap()
+            .enable_session_tickets(true)?
+            .add_session_ticket_key(TICKET_KEY_NAME, &TICKET_KEY, SystemTime::now())?
+            .load_pem(CERT_PEM.as_bytes(), KEY_PEM.as_bytes())?
+            .set_security_policy(&s2n_tls::security::DEFAULT_TLS13)?
+            .enable_quic()?
+            .set_application_protocol_preference([b"h3"])?;
+        config_builder.build()
+    }
+}
+
+impl ConfigLoader for ResumptionConfig {
+    fn load(&mut self, _cx: ConnectionContext) -> s2n_tls::config::Config {
+        Self::build().expect("Config builder failed")
     }
 }
 

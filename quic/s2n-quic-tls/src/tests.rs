@@ -25,7 +25,7 @@ use s2n_tls::{
     connection::Connection,
     error::Error,
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::SystemTime};
 
 pub struct MyCallbackHandler {
     done: Arc<AtomicBool>,
@@ -72,6 +72,31 @@ impl ConnectionFuture for MyConnectionFuture {
         }
 
         Poll::Pending
+    }
+}
+
+pub static TICKET_KEY: [u8; 16] = [0; 16];
+pub static TICKET_KEY_NAME: &[u8] = "keyname".as_bytes();
+
+struct ResumptionConfig;
+
+impl ResumptionConfig {
+    fn build() -> Result<s2n_tls::config::Config, s2n_tls::error::Error> {
+        let mut config_builder = s2n_tls::config::Builder::new();
+        config_builder
+            .enable_session_tickets(true)?
+            .add_session_ticket_key(TICKET_KEY_NAME, &TICKET_KEY, SystemTime::now())?
+            .load_pem(CERT_PEM.as_bytes(), KEY_PEM.as_bytes())?
+            .set_security_policy(&s2n_tls::security::DEFAULT_TLS13)?
+            .enable_quic()?
+            .set_application_protocol_preference([b"h3"])?;
+        config_builder.build()
+    }
+}
+
+impl crate::ConfigLoader for ResumptionConfig {
+    fn load(&mut self, _cx: crate::ConnectionContext) -> s2n_tls::config::Config {
+        Self::build().expect("Config builder failed")
     }
 }
 
@@ -203,6 +228,10 @@ fn s2n_server_with_client_auth() -> Result<server::Server, Error> {
         .build()
 }
 
+fn s2n_server_with_resumption() -> server::Server<ResumptionConfig> {
+    server::Server::from_loader(ResumptionConfig)
+}
+
 fn s2n_server_with_client_auth_verifier_rejects_client_certs() -> Result<server::Server, Error> {
     server::Builder::default()
         .with_empty_trust_store()?
@@ -284,6 +313,24 @@ fn s2n_client_s2n_server_pkey_callback_test() {
 fn s2n_client_s2n_server_test() {
     let mut client_endpoint = s2n_client();
     let mut server_endpoint = s2n_server();
+
+    run(&mut server_endpoint, &mut client_endpoint, None);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_s2n_server_resumption_test() {
+    let mut client_endpoint = s2n_client();
+    let mut server_endpoint = s2n_server_with_resumption();
+
+    run(&mut server_endpoint, &mut client_endpoint, None);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn rustls_client_s2n_server_resumption_test() {
+    let mut client_endpoint = rustls_client();
+    let mut server_endpoint = s2n_server_with_resumption();
 
     run(&mut server_endpoint, &mut client_endpoint, None);
 }

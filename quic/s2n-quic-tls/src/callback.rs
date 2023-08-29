@@ -352,12 +352,8 @@ pub struct State {
 impl State {
     /// Complete the handshake
     pub fn on_handshake_complete(&mut self) {
-        if self.rx_phase == HandshakePhase::Handshake {
-            self.rx_phase.transition();
-        }
-        if self.tx_phase == HandshakePhase::Handshake {
-            self.tx_phase.transition();
-        }
+        self.tx_phase.transition();
+        self.rx_phase.transition();
         debug_assert_eq!(self.tx_phase, HandshakePhase::Application);
         debug_assert_eq!(self.rx_phase, HandshakePhase::Application);
     }
