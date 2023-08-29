@@ -26,7 +26,7 @@ use s2n_quic_core::{
         },
         DEFAULT_INITIAL_RTT,
     },
-    time::{clock::testing as time, timer::Provider as _, Clock, NoopClock},
+    time::{clock::testing as time, Clock, NoopClock},
     varint::VarInt,
 };
 use std::{collections::HashSet, net::SocketAddr};
@@ -2635,11 +2635,14 @@ fn on_timeout() {
     let mut publisher = Publisher::snapshot();
     let random = &mut random::testing::Generator::default();
 
+    // Remove amplification limits
+    context.path_mut().on_handshake_packet();
+
     let mut expected_pto_backoff = context.path().pto_backoff;
 
     // Loss timer is armed but not expired yet, nothing happens
     manager.loss_timer.set(now + Duration::from_secs(10));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(context.on_packet_loss_count, 0);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
     //= type=test
@@ -2668,7 +2671,7 @@ fn on_timeout() {
 
     // Loss timer is armed and expired, on_packet_loss is called
     manager.loss_timer.set(now - Duration::from_secs(1));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(context.on_packet_loss_count, 1);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
     //= type=test
@@ -2679,19 +2682,19 @@ fn on_timeout() {
 
     // Loss timer is not armed, pto timer is not armed
     manager.loss_timer.cancel();
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is armed but not expired
     manager.loss_timer.cancel();
     manager.pto.timer.set(now + Duration::from_secs(5));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is expired without bytes in flight
     expected_pto_backoff *= 2;
     manager.pto.timer.set(now - Duration::from_secs(5));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
     assert_eq!(manager.pto.state, RequiresTransmission(1));
 
@@ -2716,8 +2719,9 @@ fn on_timeout() {
         ),
     );
     manager.pto.timer.set(now - Duration::from_secs(5));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
+    assert!(manager.pto.timer.is_armed());
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
     //= type=test
@@ -2741,6 +2745,109 @@ fn on_timeout() {
         .sent_packets
         .get(space.new_packet_number(VarInt::from_u8(1)))
         .is_some());
+}
+
+// Test that the PTO timer is re-armed after the loss timer has expired
+#[test]
+fn on_timeout_packet_lost() {
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = Manager::new(space);
+    let now = time::now() + Duration::from_secs(10);
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let ecn = ExplicitCongestionNotification::default();
+    let mut context = MockContext::new(&mut path_manager);
+    let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
+
+    // Remove amplification limits
+    context.path_mut().on_handshake_packet();
+
+    manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(2)));
+
+    // Send a packet that will be considered lost
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(1)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+            bytes_progressed: 0,
+        },
+        now - Duration::from_secs(5),
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+    // Send a tail packet
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(3)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+            bytes_progressed: 0,
+        },
+        now - Duration::from_secs(5),
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+    manager.on_transmit_burst_complete(context.path(), now - Duration::from_secs(5), true);
+
+    assert!(manager.pto.timer.is_armed());
+
+    // Loss timer is armed and expired, on_packet_loss is called
+    manager.loss_timer.set(now - Duration::from_secs(5));
+    manager.on_timeout(
+        now - Duration::from_secs(5),
+        random,
+        u32::MAX,
+        &mut context,
+        &mut publisher,
+    );
+
+    // It was too early to declare Packet 1 as lost, so the loss timer is armed
+    assert_eq!(0, context.on_packet_loss_count);
+    assert!(manager.loss_timer.is_armed());
+    assert!(!manager.pto.timer.is_armed());
+
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
+
+    // Now Packet 1 is declared lost. Packet 2 is still outstanding though,
+    // so confirm the PTO timer is armed
+    assert_eq!(1, context.on_packet_loss_count);
+    assert!(!manager.loss_timer.is_armed());
+    assert!(manager.pto.timer.is_armed());
+}
+
+// Test that multiple PTO timeouts only doubles the PTO backoff once
+#[test]
+fn max_pto_backoff() {
+    let mut initial_space = Manager::new(PacketNumberSpace::Initial);
+    let mut handshake_space = Manager::new(PacketNumberSpace::Handshake);
+    let mut application_space = Manager::new(PacketNumberSpace::ApplicationData);
+    let now = time::now();
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let mut context = MockContext::new(&mut path_manager);
+    let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
+
+    initial_space.pto.timer.set(now);
+    handshake_space.pto.timer.set(now);
+    application_space.pto.timer.set(now);
+
+    assert_eq!(INITIAL_PTO_BACKOFF, context.path().pto_backoff);
+    let max_pto_backoff = INITIAL_PTO_BACKOFF * 2;
+
+    initial_space.on_timeout(now, random, max_pto_backoff, &mut context, &mut publisher);
+    handshake_space.on_timeout(now, random, max_pto_backoff, &mut context, &mut publisher);
+    application_space.on_timeout(now, random, max_pto_backoff, &mut context, &mut publisher);
+
+    assert_eq!(max_pto_backoff, context.path().pto_backoff);
 }
 
 #[test]
@@ -3127,6 +3234,7 @@ fn on_transmit_burst_complete() {
 
     // Cancel the PTO timer to validate it isn't re-armed when not needed
     manager.pto.timer.cancel();
+    manager.sent_packets.clear();
     manager.on_transmit_burst_complete(path_manager.active_path(), now, is_handshake_confirmed);
     assert!(!manager.pto.timer.is_armed());
 }

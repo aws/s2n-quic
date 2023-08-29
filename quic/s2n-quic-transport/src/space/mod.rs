@@ -290,7 +290,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         publisher: &mut Pub,
     ) {
         let path_id = path_manager.active_path_id();
-        let path = path_manager.active_path_mut();
+        let path = path_manager.active_path();
 
         // ensure the backoff doesn't grow too quickly
         let max_backoff = path.pto_backoff * 2;
@@ -302,6 +302,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 path_manager,
                 random_generator,
                 timestamp,
+                max_backoff,
                 publisher,
             )
         }
@@ -312,6 +313,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 path_manager,
                 random_generator,
                 timestamp,
+                max_backoff,
                 publisher,
             )
         }
@@ -322,12 +324,12 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 local_id_registry,
                 random_generator,
                 timestamp,
+                max_backoff,
                 publisher,
             )
         }
 
-        let path = path_manager.active_path_mut();
-        path.pto_backoff = path.pto_backoff.min(max_backoff);
+        debug_assert!(path_manager.active_path().pto_backoff <= max_backoff);
     }
 
     /// Signals the connection was previously blocked by anti-amplification limits
