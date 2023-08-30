@@ -683,6 +683,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting
         //# packet is sent or acknowledged,
+
+        // The pseudocode in https://www.rfc-editor.org/rfc/rfc9002.html#section-a.7 does
+        // not distinguish between ack-eliciting packets for determining if the PTO timer should
+        // be restarted. This behavior is preferred, as detect_and_remove_lost_packets() will
+        // cancel the loss timer, and there may still be ack eliciting packets pending that
+        // require a PTO timer for recovery.
+        self.update_pto_timer(context.path_mut(), timestamp, is_handshake_confirmed);
+
         debug_assert!(
             !newly_acked_packets.is_empty(),
             "this method assumes there was at least one newly-acked packet"
@@ -702,9 +710,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             );
         }
 
-        let path = context.path_mut();
-
         if current_path_acked_bytes > 0 {
+            let path = context.path_mut();
             path.congestion_controller.on_ack(
                 largest_newly_acked.time_sent,
                 current_path_acked_bytes,
@@ -714,7 +721,6 @@ impl<Config: endpoint::Config> Manager<Config> {
                 timestamp,
                 &mut congestion_controller::PathPublisher::new(publisher, current_path_id),
             );
-            self.update_pto_timer(path, timestamp, is_handshake_confirmed);
         }
     }
 
