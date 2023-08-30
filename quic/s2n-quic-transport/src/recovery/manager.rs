@@ -288,8 +288,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             // Update the PTO timer once per transmission burst to reduce CPU cost
             self.update_pto_timer(active_path, now, is_handshake_confirmed);
             debug_assert!(!self.pto_update_pending);
+            self.check_consistency(active_path, is_handshake_confirmed);
         }
-        self.check_consistency(active_path, is_handshake_confirmed);
     }
 
     /// Updates the PTO timer

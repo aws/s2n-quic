@@ -2921,9 +2921,9 @@ fn max_pto_backoff() {
     assert_eq!(max_pto_backoff, context.path().pto_backoff);
 }
 
-// Test that calling `on_timeout` on a new client recovery::Manager does nothing
+// Test that calling `on_timeout` and `on_transmit_burst_complete` on a new client recovery::Manager does nothing
 #[test]
-fn on_timeout_new_client_space() {
+fn new_client_space() {
     let space = PacketNumberSpace::Handshake;
     let mut manager = ClientManager::new(space);
     let now = time::now() + Duration::from_secs(10);
@@ -2943,6 +2943,11 @@ fn on_timeout_new_client_space() {
     assert!(!manager.loss_timer.is_armed());
     assert!(!manager.pto.timer.is_armed());
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
+
+    // No PTO update was pending, nothing happens
+    assert!(!manager.pto_update_pending);
+    manager.on_transmit_burst_complete(context.path(), now, false);
+    assert!(!manager.pto_update_pending);
 }
 
 #[test]
