@@ -567,11 +567,24 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     }
 
     fn can_send_application(&self) -> bool {
-        false
+        self.application
+            .as_ref()
+            .map(|space| space.crypto_stream.can_send())
+            .unwrap_or_default()
     }
 
-    fn send_application(&mut self, _transmission: Bytes) {
-        unimplemented!("application level crypto frames cannot currently be sent")
+    fn send_application(&mut self, transmission: Bytes) {
+        if cfg!(any(
+            test,
+            all(s2n_quic_unstable, feature = "unstable_resumption")
+        )) {
+            self.application
+                .as_mut()
+                .expect("can_send_application should be called before sending")
+                .crypto_stream
+                .tx
+                .push(transmission);
+        }
     }
 
     fn waker(&self) -> &Waker {

@@ -37,6 +37,7 @@ provider-tls-s2n = ["s2n-quic-tls"]
 # These depend on experimental behavior in s2n-tls.
 unstable_client_hello = ["s2n-quic-tls/unstable_client_hello"]
 unstable_private_key = ["s2n-quic-tls/unstable_private_key"]
+unstable_resumption = ["s2n-quic-transport/unstable_resumption"]
 # This feature enables the datagram provider
 unstable-provider-datagram = []
 # This feature enables the testing IO provider

@@ -85,6 +85,7 @@ mod tests;
             feature = "unstable-provider-packet-interceptor",
             feature = "unstable-provider-random",
             feature = "unstable-congestion-controller",
+            feature = "unstable_resumption",
         ),
         // any unstable features requires at least one of the following conditions
         not(any(

@@ -8,7 +8,10 @@ use crate::{
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
-    space::{datagram, keep_alive::KeepAlive, HandshakeStatus, PacketSpace, TxPacketNumbers},
+    space::{
+        datagram, keep_alive::KeepAlive, CryptoStream, HandshakeStatus, PacketSpace,
+        TxPacketNumbers,
+    },
     stream::Manager as _,
     sync::flag,
     transmission,
@@ -47,6 +50,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     /// The current state of the Spin bit
     /// TODO: Spin me
     pub spin_bit: SpinBit,
+    pub crypto_stream: CryptoStream,
     /// The crypto suite for application data
     /// TODO: What about ZeroRtt?
     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
@@ -98,6 +102,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             ack_manager,
             spin_bit: SpinBit::Zero,
             stream_manager,
+            crypto_stream: CryptoStream::new(),
             key_set,
             header_key,
             ping: flag::Ping::default(),
@@ -176,6 +181,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 &mut self.ping,
                 &mut self.stream_manager,
                 &mut self.recovery_manager,
+                &mut self.crypto_stream,
                 &mut self.datagram_manager,
             ),
             timestamp,
@@ -442,6 +448,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             &mut self.recovery_manager,
             RecoveryContext {
                 ack_manager: &mut self.ack_manager,
+                crypto_stream: &mut self.crypto_stream,
                 handshake_status,
                 ping: &mut self.ping,
                 stream_manager: &mut self.stream_manager,
@@ -595,6 +602,7 @@ impl<Config: endpoint::Config> transmission::interest::Provider for ApplicationS
     ) -> transmission::interest::Result {
         self.ack_manager.transmission_interest(query)?;
         self.ping.transmission_interest(query)?;
+        self.crypto_stream.transmission_interest(query)?;
         self.recovery_manager.transmission_interest(query)?;
         self.stream_manager.transmission_interest(query)?;
         self.datagram_manager.transmission_interest(query)?;
@@ -611,6 +619,7 @@ impl<Config: endpoint::Config> connection::finalization::Provider for Applicatio
 struct RecoveryContext<'a, Config: endpoint::Config> {
     ack_manager: &'a mut AckManager,
     handshake_status: &'a mut HandshakeStatus,
+    crypto_stream: &'a mut CryptoStream,
     ping: &'a mut flag::Ping,
     stream_manager: &'a mut Config::StreamManager,
     local_id_registry: &'a mut connection::LocalIdRegistry,
@@ -662,6 +671,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     ) {
         self.handshake_status
             .on_packet_ack(packet_number_range, publisher);
+        self.crypto_stream.on_packet_ack(packet_number_range);
         self.ping.on_packet_ack(packet_number_range);
         self.stream_manager.on_packet_ack(packet_number_range);
         self.local_id_registry.on_packet_ack(packet_number_range);
@@ -679,6 +689,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         publisher: &mut Pub,
     ) {
         self.ack_manager.on_packet_loss(packet_number_range);
+        self.crypto_stream.on_packet_loss(packet_number_range);
         self.handshake_status
             .on_packet_loss(packet_number_range, publisher);
         self.ping.on_packet_loss(packet_number_range);

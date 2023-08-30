@@ -13,6 +13,7 @@ exclude = ["corpus.tar.gz"]
 [features]
 default = ["std"]
 std = ["futures-channel/std"]
+unstable_resumption = []
 
 [dependencies]
 bytes = { version = "1", default-features = false }
