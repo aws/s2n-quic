@@ -574,12 +574,17 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     }
 
     fn send_application(&mut self, transmission: Bytes) {
-        self.application
-            .as_mut()
-            .expect("can_send_application should be called before sending")
-            .crypto_stream
-            .tx
-            .push(transmission);
+        if cfg!(any(
+            test,
+            all(s2n_quic_unstable, feature = "unstable_resumption")
+        )) {
+            self.application
+                .as_mut()
+                .expect("can_send_application should be called before sending")
+                .crypto_stream
+                .tx
+                .push(transmission);
+        }
     }
 
     fn waker(&self) -> &Waker {
