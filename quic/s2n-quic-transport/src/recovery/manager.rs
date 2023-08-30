@@ -170,11 +170,6 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         debug_assert!(!self.pto_update_pending);
 
-        if !(self.loss_timer.is_armed() || self.pto.timer.is_armed()) {
-            // No timer was armed, nothing to do
-            return;
-        }
-
         if self.loss_timer.is_armed() {
             if self.loss_timer.poll_expiration(timestamp).is_ready() {
                 self.detect_and_remove_lost_packets(
@@ -288,8 +283,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             // Update the PTO timer once per transmission burst to reduce CPU cost
             self.update_pto_timer(active_path, now, is_handshake_confirmed);
             debug_assert!(!self.pto_update_pending);
-            self.check_consistency(active_path, is_handshake_confirmed);
         }
+        self.check_consistency(active_path, is_handshake_confirmed);
     }
 
     /// Updates the PTO timer
@@ -1096,6 +1091,10 @@ impl<Config: endpoint::Config> Manager<Config> {
             //# An endpoint MUST NOT set its PTO timer for the Application Data
             //# packet number space until the handshake is confirmed.
             timer_required &= !self.space.is_application_data() || is_handshake_confirmed;
+
+            // We haven't transmitted anything in this packet space yet so the
+            // PTO timer would not be armed yet
+            timer_required &= self.time_of_last_ack_eliciting_packet.is_some();
 
             if timer_required {
                 assert!(self.armed_timer_count() > 0);
