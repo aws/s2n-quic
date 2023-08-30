@@ -329,6 +329,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
     }
 
     /// Called when the connection timer expired
+    #[allow(clippy::too_many_arguments)]
     pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         handshake_status: &HandshakeStatus,
@@ -336,13 +337,20 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         path_manager: &mut path::Manager<Config>,
         random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
+        max_pto_backoff: u32,
         publisher: &mut Pub,
     ) {
         self.ack_manager.on_timeout(timestamp);
 
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
-        recovery_manager.on_timeout(timestamp, random_generator, &mut context, publisher);
+        recovery_manager.on_timeout(
+            timestamp,
+            random_generator,
+            max_pto_backoff,
+            &mut context,
+            publisher,
+        );
     }
 
     /// Called before the Initial packet space is discarded

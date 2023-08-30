@@ -6,7 +6,10 @@ use crate::{
     ack::ack_ranges::AckRanges,
     connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
     contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
-    endpoint::{self, testing::Server as Config},
+    endpoint::{
+        self,
+        testing::{Client as ClientConfig, Server as ServerConfig},
+    },
     path::MINIMUM_MTU,
     recovery,
     recovery::manager::PtoState::RequiresTransmission,
@@ -26,14 +29,15 @@ use s2n_quic_core::{
         },
         DEFAULT_INITIAL_RTT,
     },
-    time::{clock::testing as time, timer::Provider as _, Clock, NoopClock},
+    time::{clock::testing as time, Clock, NoopClock},
     varint::VarInt,
 };
 use std::{collections::HashSet, net::SocketAddr};
 
 // alias the manager and paths over the config so we don't have to annotate it everywhere
-type Manager = super::Manager<Config>;
-type Path = super::Path<Config>;
+type ServerManager = super::Manager<ServerConfig>;
+type ClientManager = super::Manager<ClientConfig>;
+type Path = super::Path<ServerConfig>;
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2
 //= type=test
@@ -45,7 +49,7 @@ type Path = super::Path<Config>;
 fn one_second_pto_when_no_previous_rtt_available() {
     let space = PacketNumberSpace::Handshake;
     let max_ack_delay = Duration::from_millis(0);
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let now = time::now();
 
     let path = Path::new(
@@ -199,8 +203,6 @@ fn on_packet_sent_across_multiple_paths() {
     let ecn = ExplicitCongestionNotification::default();
     let mut time_sent = now;
     let mut publisher = Publisher::snapshot();
-    // let mut path_manager = helper_generate_path_manager(Duration::from_millis(100));
-    // let mut context = MockContext::new(&mut path_manager);
     // Call on validated so the path is not amplification limited so we can verify PTO arming
     let space = PacketNumberSpace::ApplicationData;
     let packet_bytes = 128;
@@ -305,7 +307,7 @@ fn on_packet_sent_across_multiple_paths() {
 #[test]
 fn on_ack_frame() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let packet_bytes = 128;
     let ecn = ExplicitCongestionNotification::default();
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
@@ -862,6 +864,73 @@ fn process_new_acked_packets_pto_timer() {
     assert!(manager.pto.timer.is_armed());
 }
 
+// Test that the PTO timer is armed after a non-congestion controlled
+// packet is acked
+#[test]
+fn ack_non_congestion_controlled_acked_packets_pto_timer() {
+    // Setup:
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = ServerManager::new(space);
+    let mut publisher = Publisher::snapshot();
+    let packet_bytes = 128;
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let mut context = MockContext::new(&mut path_manager);
+    let ecn = ExplicitCongestionNotification::default();
+    let time_sent = time::now() + Duration::from_secs(10);
+
+    // Remove amplification limits
+    context.path_mut().on_handshake_packet();
+
+    // Send a non congestion controlled packet
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(1)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: false,
+            bytes_sent: packet_bytes,
+            bytes_progressed: 0,
+        },
+        time_sent,
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+    // Send another packet
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(2)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: packet_bytes,
+            bytes_progressed: 0,
+        },
+        time_sent,
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+
+    // Cancel the PTO timer to verify it is re-armed
+    manager.pto.timer.cancel();
+
+    let ack_receive_time = time_sent + Duration::from_millis(500);
+    ack_packets(
+        1..=1,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        None,
+        &mut publisher,
+    );
+
+    // The PTO timer should be armed
+    assert!(manager.pto.timer.is_armed());
+}
+
 #[test]
 // Increase in ECN CE count should cause congestion event
 // Out of order Ack Frames should not fail ECN validation
@@ -884,7 +953,7 @@ fn process_new_acked_packets_pto_timer() {
 fn process_new_acked_packets_process_ecn() {
     // Setup:
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let packet_bytes = 128;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let mut context = MockContext::new(&mut path_manager);
@@ -986,7 +1055,7 @@ fn process_new_acked_packets_process_ecn() {
 fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_event() {
     // Setup:
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let packet_bytes = 128;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let mut context = MockContext::new(&mut path_manager);
@@ -1043,7 +1112,7 @@ fn process_new_acked_packets_failed_ecn_validation_does_not_cause_congestion_eve
 #[test]
 fn no_rtt_update_when_not_acknowledging_the_largest_acknowledged_packet() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let packet_bytes = 128;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
@@ -1342,7 +1411,7 @@ fn rtt_update_when_receiving_ack_from_multiple_paths() {
 #[test]
 fn detect_and_remove_lost_packets() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let now = time::now();
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
@@ -1385,7 +1454,7 @@ fn detect_and_remove_lost_packets() {
     let expected_time_threshold = Duration::from_secs(9);
     assert_eq!(
         expected_time_threshold,
-        Manager::calculate_loss_time_threshold(&context.path().rtt_estimator)
+        ServerManager::calculate_loss_time_threshold(&context.path().rtt_estimator)
     );
 
     time_sent += Duration::from_secs(10);
@@ -1593,7 +1662,9 @@ fn detect_lost_packets_persistent_congestion_path_aware() {
     let expected_time_threshold = Duration::from_secs(9);
     assert_eq!(
         expected_time_threshold,
-        Manager::calculate_loss_time_threshold(&context.path_by_id(first_path_id).rtt_estimator)
+        ServerManager::calculate_loss_time_threshold(
+            &context.path_by_id(first_path_id).rtt_estimator
+        )
     );
 
     // 1-9 packets packets sent, each size 1 byte
@@ -1759,7 +1830,7 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
 #[test]
 fn detect_and_remove_lost_packets_nothing_lost() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -1812,7 +1883,7 @@ fn detect_and_remove_lost_packets_nothing_lost() {
 #[test]
 fn detect_and_remove_lost_packets_mtu_probe() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -1864,7 +1935,7 @@ fn persistent_congestion() {
     //# across packet number spaces MAY use state for just the packet number
     //# space that was acknowledged.
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -2038,7 +2109,7 @@ fn persistent_congestion() {
 #[test]
 fn persistent_congestion_multiple_periods() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -2173,7 +2244,7 @@ fn persistent_congestion_multiple_periods() {
 #[test]
 fn persistent_congestion_period_does_not_start_until_rtt_sample() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -2251,7 +2322,7 @@ fn persistent_congestion_period_does_not_start_until_rtt_sample() {
 #[test]
 fn persistent_congestion_not_ack_eliciting() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -2339,7 +2410,7 @@ fn persistent_congestion_not_ack_eliciting() {
 #[test]
 fn persistent_congestion_mtu_probe() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -2422,7 +2493,7 @@ fn persistent_congestion_mtu_probe() {
 #[test]
 fn update_pto_timer() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let now = time::now() + Duration::from_secs(10);
     let is_handshake_confirmed = true;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
@@ -2562,7 +2633,7 @@ fn update_pto_timer() {
 #[test]
 fn pto_armed_if_handshake_not_confirmed() {
     let space = PacketNumberSpace::Handshake;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let now = time::now() + Duration::from_secs(10);
     let is_handshake_confirmed = false;
 
@@ -2591,7 +2662,7 @@ fn pto_armed_if_handshake_not_confirmed() {
 fn pto_must_be_at_least_k_granularity() {
     let space = PacketNumberSpace::Handshake;
     let max_ack_delay = Duration::from_millis(0);
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let now = time::now();
 
     let mut path = Path::new(
@@ -2626,7 +2697,7 @@ fn pto_must_be_at_least_k_granularity() {
 #[test]
 fn on_timeout() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let now = time::now() + Duration::from_secs(10);
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
@@ -2635,11 +2706,14 @@ fn on_timeout() {
     let mut publisher = Publisher::snapshot();
     let random = &mut random::testing::Generator::default();
 
+    // Remove amplification limits
+    context.path_mut().on_handshake_packet();
+
     let mut expected_pto_backoff = context.path().pto_backoff;
 
     // Loss timer is armed but not expired yet, nothing happens
     manager.loss_timer.set(now + Duration::from_secs(10));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(context.on_packet_loss_count, 0);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
     //= type=test
@@ -2668,7 +2742,7 @@ fn on_timeout() {
 
     // Loss timer is armed and expired, on_packet_loss is called
     manager.loss_timer.set(now - Duration::from_secs(1));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(context.on_packet_loss_count, 1);
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
     //= type=test
@@ -2679,19 +2753,19 @@ fn on_timeout() {
 
     // Loss timer is not armed, pto timer is not armed
     manager.loss_timer.cancel();
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is armed but not expired
     manager.loss_timer.cancel();
     manager.pto.timer.set(now + Duration::from_secs(5));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is expired without bytes in flight
     expected_pto_backoff *= 2;
     manager.pto.timer.set(now - Duration::from_secs(5));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
     assert_eq!(manager.pto.state, RequiresTransmission(1));
 
@@ -2716,8 +2790,9 @@ fn on_timeout() {
         ),
     );
     manager.pto.timer.set(now - Duration::from_secs(5));
-    manager.on_timeout(now, random, &mut context, &mut publisher);
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
+    assert!(manager.pto.timer.is_armed());
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
     //= type=test
@@ -2743,10 +2818,142 @@ fn on_timeout() {
         .is_some());
 }
 
+// Test that the PTO timer is re-armed after the loss timer has expired
+#[test]
+fn on_timeout_packet_lost() {
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = ServerManager::new(space);
+    let now = time::now() + Duration::from_secs(10);
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let ecn = ExplicitCongestionNotification::default();
+    let mut context = MockContext::new(&mut path_manager);
+    let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
+
+    // Remove amplification limits
+    context.path_mut().on_handshake_packet();
+
+    manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(2)));
+
+    // Send a packet that will be considered lost
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(1)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+            bytes_progressed: 0,
+        },
+        now - Duration::from_secs(5),
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+    // Send a tail packet
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(3)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+            bytes_progressed: 0,
+        },
+        now - Duration::from_secs(5),
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+    manager.on_transmit_burst_complete(context.path(), now - Duration::from_secs(5), true);
+
+    assert!(manager.pto.timer.is_armed());
+
+    // Loss timer is armed and expired, on_packet_loss is called
+    manager.loss_timer.set(now - Duration::from_secs(5));
+    manager.on_timeout(
+        now - Duration::from_secs(5),
+        random,
+        u32::MAX,
+        &mut context,
+        &mut publisher,
+    );
+
+    // It was too early to declare Packet 1 as lost, so the loss timer is armed
+    assert_eq!(0, context.on_packet_loss_count);
+    assert!(manager.loss_timer.is_armed());
+    assert!(!manager.pto.timer.is_armed());
+
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
+
+    // Now Packet 1 is declared lost. Packet 2 is still outstanding though,
+    // so confirm the PTO timer is armed
+    assert_eq!(1, context.on_packet_loss_count);
+    assert!(!manager.loss_timer.is_armed());
+    assert!(manager.pto.timer.is_armed());
+}
+
+// Test that multiple PTO timeouts only doubles the PTO backoff once
+#[test]
+fn max_pto_backoff() {
+    let mut initial_space = ServerManager::new(PacketNumberSpace::Initial);
+    let mut handshake_space = ServerManager::new(PacketNumberSpace::Handshake);
+    let mut application_space = ServerManager::new(PacketNumberSpace::ApplicationData);
+    let now = time::now();
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let mut context = MockContext::new(&mut path_manager);
+    let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
+
+    initial_space.pto.timer.set(now);
+    handshake_space.pto.timer.set(now);
+    application_space.pto.timer.set(now);
+
+    assert_eq!(INITIAL_PTO_BACKOFF, context.path().pto_backoff);
+    let max_pto_backoff = INITIAL_PTO_BACKOFF * 2;
+
+    initial_space.on_timeout(now, random, max_pto_backoff, &mut context, &mut publisher);
+    handshake_space.on_timeout(now, random, max_pto_backoff, &mut context, &mut publisher);
+    application_space.on_timeout(now, random, max_pto_backoff, &mut context, &mut publisher);
+
+    assert_eq!(max_pto_backoff, context.path().pto_backoff);
+}
+
+// Test that calling `on_timeout` and `on_transmit_burst_complete` on a new client recovery::Manager does nothing
+#[test]
+fn new_client_space() {
+    let space = PacketNumberSpace::Handshake;
+    let mut manager = ClientManager::new(space);
+    let now = time::now() + Duration::from_secs(10);
+    manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
+    let mut path_manager =
+        helper_generate_client_path_manager(Duration::from_millis(10), Default::default());
+    let mut context = MockContext::new(&mut path_manager);
+    let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
+
+    let expected_pto_backoff = context.path().pto_backoff;
+
+    // No timers are armed yet, nothing happens
+    assert_eq!(0, manager.armed_timer_count());
+    manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
+    assert_eq!(context.on_packet_loss_count, 0);
+    assert!(!manager.loss_timer.is_armed());
+    assert!(!manager.pto.timer.is_armed());
+    assert_eq!(expected_pto_backoff, context.path().pto_backoff);
+
+    // No PTO update was pending, nothing happens
+    assert!(!manager.pto_update_pending);
+    manager.on_transmit_burst_complete(context.path(), now, false);
+    assert!(!manager.pto_update_pending);
+}
+
 #[test]
 fn timers() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let loss_time = time::now() + Duration::from_secs(5);
     let pto_time = time::now() + Duration::from_secs(10);
 
@@ -2774,7 +2981,7 @@ fn timers() {
 #[test]
 fn on_transmit() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut context = MockWriteContext::new(
         time::now(),
@@ -2840,7 +3047,7 @@ fn on_transmit() {
 #[test]
 fn on_transmit_normal_transmission_mode() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut context = MockWriteContext::new(
         time::now(),
@@ -2860,8 +3067,8 @@ fn on_transmit_normal_transmission_mode() {
 fn helper_ack_packets_on_path(
     range: RangeInclusive<u8>,
     ack_receive_time: Timestamp,
-    context: &mut MockContext,
-    manager: &mut Manager,
+    context: &mut MockContext<ServerConfig>,
+    manager: &mut ServerManager,
     remote_address: RemoteAddress,
     ecn_counts: Option<EcnCounts>,
     publisher: &mut Publisher,
@@ -2920,8 +3127,8 @@ fn helper_ack_packets_on_path(
 fn ack_packets(
     range: RangeInclusive<u8>,
     ack_receive_time: Timestamp,
-    context: &mut MockContext,
-    manager: &mut Manager,
+    context: &mut MockContext<ServerConfig>,
+    manager: &mut ServerManager,
     ecn_counts: Option<EcnCounts>,
     publisher: &mut Publisher,
 ) {
@@ -2940,7 +3147,7 @@ fn ack_packets(
 #[test]
 fn requires_probe() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
 
     manager.pto.state = PtoState::RequiresTransmission(2);
     assert!(manager.requires_probe());
@@ -2957,7 +3164,7 @@ fn requires_probe() {
 #[test]
 fn probe_packets_count_towards_bytes_in_flight() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let ecn = ExplicitCongestionNotification::default();
 
     manager.pto.state = PtoState::RequiresTransmission(2);
@@ -3018,7 +3225,7 @@ fn time_threshold_multiplier_equals_nine_eighths() {
     );
     assert_eq!(
         Duration::from_millis(1125), // 9/8 seconds = 1.125 seconds
-        Manager::calculate_loss_time_threshold(&rtt_estimator)
+        ServerManager::calculate_loss_time_threshold(&rtt_estimator)
     );
 }
 
@@ -3045,13 +3252,13 @@ fn timer_granularity() {
     //# packets as lost too early, this time threshold MUST be set to at
     //# least the local timer granularity, as indicated by the kGranularity
     //# constant.
-    assert!(Manager::calculate_loss_time_threshold(&rtt_estimator) >= K_GRANULARITY);
+    assert!(ServerManager::calculate_loss_time_threshold(&rtt_estimator) >= K_GRANULARITY);
 }
 
 #[test]
 fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
@@ -3076,7 +3283,8 @@ fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
     );
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(2)));
 
-    let loss_time_threshold = Manager::calculate_loss_time_threshold(&context.path().rtt_estimator);
+    let loss_time_threshold =
+        ServerManager::calculate_loss_time_threshold(&context.path().rtt_estimator);
 
     manager.detect_and_remove_lost_packets(
         sent_time + loss_time_threshold - Duration::from_micros(999),
@@ -3091,7 +3299,7 @@ fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
 #[test]
 fn on_transmit_burst_complete() {
     let space = PacketNumberSpace::ApplicationData;
-    let mut manager = Manager::new(space);
+    let mut manager = ServerManager::new(space);
     let now = time::now() + Duration::from_secs(10);
     let is_handshake_confirmed = true;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
@@ -3127,6 +3335,7 @@ fn on_transmit_burst_complete() {
 
     // Cancel the PTO timer to validate it isn't re-armed when not needed
     manager.pto.timer.cancel();
+    manager.sent_packets.clear();
     manager.on_transmit_burst_complete(path_manager.active_path(), now, is_handshake_confirmed);
     assert!(!manager.pto.timer.is_armed());
 }
@@ -3139,10 +3348,10 @@ fn helper_generate_multi_path_manager(
     path::Id,
     RemoteAddress,
     path::Id,
-    Manager,
-    path::Manager<Config>,
+    ServerManager,
+    path::Manager<ServerConfig>,
 ) {
-    let manager = Manager::new(space);
+    let manager = ServerManager::new(space);
     let clock = NoopClock {};
 
     let first_addr: SocketAddr = "127.0.0.1:80".parse().unwrap();
@@ -3219,14 +3428,14 @@ fn helper_generate_multi_path_manager(
     )
 }
 
-fn helper_generate_path_manager(max_ack_delay: Duration) -> path::Manager<Config> {
+fn helper_generate_path_manager(max_ack_delay: Duration) -> path::Manager<ServerConfig> {
     helper_generate_path_manager_with_first_addr(max_ack_delay, Default::default())
 }
 
 fn helper_generate_path_manager_with_first_addr(
     max_ack_delay: Duration,
     first_addr: RemoteAddress,
-) -> path::Manager<Config> {
+) -> path::Manager<ServerConfig> {
     let mut random_generator = random::testing::Generator(123);
 
     let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
@@ -3247,7 +3456,28 @@ fn helper_generate_path_manager_with_first_addr(
     path::Manager::new(path, registry)
 }
 
-struct MockContext<'a> {
+fn helper_generate_client_path_manager(
+    max_ack_delay: Duration,
+    first_addr: RemoteAddress,
+) -> path::Manager<ClientConfig> {
+    let mut random_generator = random::testing::Generator(123);
+
+    let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client)
+        .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
+    let path = super::Path::new(
+        first_addr,
+        connection::PeerId::TEST_ID,
+        connection::LocalId::TEST_ID,
+        RttEstimator::new(max_ack_delay),
+        MockCongestionController::default(),
+        false,
+        DEFAULT_MAX_MTU,
+    );
+
+    path::Manager::new(path, registry)
+}
+
+struct MockContext<'a, Config: endpoint::Config> {
     validate_packet_ack_count: u8,
     on_new_packet_ack_count: u8,
     on_packet_ack_count: u8,
@@ -3258,7 +3488,7 @@ struct MockContext<'a> {
     path_manager: &'a mut path::Manager<Config>,
 }
 
-impl<'a> MockContext<'a> {
+impl<'a, Config: endpoint::Config> MockContext<'a, Config> {
     pub fn new(path_manager: &'a mut path::Manager<Config>) -> Self {
         Self {
             validate_packet_ack_count: 0,
@@ -3277,26 +3507,26 @@ impl<'a> MockContext<'a> {
     }
 }
 
-impl<'a> recovery::Context<Config> for MockContext<'a> {
-    const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Server;
+impl<'a, Config: endpoint::Config> recovery::Context<Config> for MockContext<'a, Config> {
+    const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
         true
     }
 
-    fn path(&self) -> &Path {
+    fn path(&self) -> &super::Path<Config> {
         &self.path_manager[self.path_id]
     }
 
-    fn path_mut(&mut self) -> &mut Path {
+    fn path_mut(&mut self) -> &mut super::Path<Config> {
         &mut self.path_manager[self.path_id]
     }
 
-    fn path_by_id(&self, path_id: path::Id) -> &Path {
+    fn path_by_id(&self, path_id: path::Id) -> &super::Path<Config> {
         &self.path_manager[path_id]
     }
 
-    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut Path {
+    fn path_mut_by_id(&mut self, path_id: path::Id) -> &mut super::Path<Config> {
         &mut self.path_manager[path_id]
     }
 
