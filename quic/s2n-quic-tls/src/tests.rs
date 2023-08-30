@@ -323,7 +323,8 @@ fn s2n_client_s2n_server_resumption_test() {
     let mut client_endpoint = s2n_client();
     let mut server_endpoint = s2n_server_with_resumption();
 
-    run(&mut server_endpoint, &mut client_endpoint, None);
+    let pair = run_result(&mut server_endpoint, &mut client_endpoint, None).unwrap();
+    assert!(!pair.client.context.application.rx.is_empty());
 }
 
 #[test]
@@ -332,7 +333,8 @@ fn rustls_client_s2n_server_resumption_test() {
     let mut client_endpoint = rustls_client();
     let mut server_endpoint = s2n_server_with_resumption();
 
-    run(&mut server_endpoint, &mut client_endpoint, None);
+    let pair = run_result(&mut server_endpoint, &mut client_endpoint, None).unwrap();
+    assert!(!pair.client.context.application.rx.is_empty());
 }
 
 #[test]
@@ -450,7 +452,7 @@ fn run_result<S: Endpoint, C: Endpoint>(
     server: &mut S,
     client: &mut C,
     client_hello_cb_done: Option<Arc<AtomicBool>>,
-) -> Result<(), transport::Error> {
+) -> Result<tls::testing::Pair<S::Session, C::Session>, transport::Error> {
     let mut pair = tls::testing::Pair::new(server, client, "localhost".into());
 
     while pair.is_handshaking() {
@@ -458,7 +460,7 @@ fn run_result<S: Endpoint, C: Endpoint>(
     }
 
     pair.finish();
-    Ok(())
+    Ok(pair)
 }
 
 /// Executes the handshake to completion

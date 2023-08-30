@@ -13,6 +13,7 @@ pub static KEY_PEM: &str = include_str!(concat!(
     "/../../quic/s2n-quic-core/certs/key.pem"
 ));
 
+/// NOTE: this key is for testing and should NOT be used in production!
 pub static TICKET_KEY: [u8; 16] = [0; 16];
 pub static TICKET_KEY_NAME: &[u8] = "keyname".as_bytes();
 
