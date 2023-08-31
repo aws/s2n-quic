@@ -32,6 +32,7 @@ use s2n_quic_core::{
     },
     time::{clock::testing as time, testing::now, Clock, NoopClock},
     transmission::Outcome,
+    time::{clock::testing as time, Clock, NoopClock},
     varint::VarInt,
 };
 use std::{collections::HashSet, net::SocketAddr};
@@ -934,6 +935,73 @@ fn process_new_acked_packets_pto_timer() {
     );
 
     // Expectation 2:
+    assert!(manager.pto.timer.is_armed());
+}
+
+// Test that the PTO timer is armed after a non-congestion controlled
+// packet is acked
+#[test]
+fn ack_non_congestion_controlled_acked_packets_pto_timer() {
+    // Setup:
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = ServerManager::new(space);
+    let mut publisher = Publisher::snapshot();
+    let packet_bytes = 128;
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let mut context = MockContext::new(&mut path_manager);
+    let ecn = ExplicitCongestionNotification::default();
+    let time_sent = time::now() + Duration::from_secs(10);
+
+    // Remove amplification limits
+    context.path_mut().on_handshake_packet();
+
+    // Send a non congestion controlled packet
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(1)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: false,
+            bytes_sent: packet_bytes,
+            bytes_progressed: 0,
+        },
+        time_sent,
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+    // Send another packet
+    manager.on_packet_sent(
+        space.new_packet_number(VarInt::from_u8(2)),
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: packet_bytes,
+            bytes_progressed: 0,
+        },
+        time_sent,
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+
+    // Cancel the PTO timer to verify it is re-armed
+    manager.pto.timer.cancel();
+
+    let ack_receive_time = time_sent + Duration::from_millis(500);
+    ack_packets(
+        1..=1,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        None,
+        &mut publisher,
+    );
+
+    // The PTO timer should be armed
     assert!(manager.pto.timer.is_armed());
 }
 
