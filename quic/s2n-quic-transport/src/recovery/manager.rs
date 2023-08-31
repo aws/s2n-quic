@@ -890,13 +890,9 @@ impl<Config: endpoint::Config> Manager<Config> {
                 }
                 largest_lost_packet = Some(unacked_packet_number);
 
-                if unacked_sent_info.congestion_controlled {
-                    // The packet is "in-flight", ie congestion controlled
-                    // TODO merge contiguous packet numbers
-                    let range =
-                        PacketNumberRange::new(unacked_packet_number, unacked_packet_number);
-                    context.on_packet_loss(&range, publisher);
-                }
+                // TODO merge contiguous packet numbers
+                let range = PacketNumberRange::new(unacked_packet_number, unacked_packet_number);
+                context.on_packet_loss(&range, publisher);
 
                 persistent_congestion_calculator
                     .on_lost_packet(unacked_packet_number, unacked_sent_info);

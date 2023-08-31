@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
 use core::ops::{BitOr, BitOrAssign};
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-2
@@ -10,6 +12,7 @@ use core::ops::{BitOr, BitOrAssign};
 
 /// Describes if a frame or packet requires an ACK from the peer
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub enum AckElicitation {
     NonEliciting,
     Eliciting,
