@@ -14,6 +14,7 @@ use crate::{
     recovery,
     recovery::manager::PtoState::RequiresTransmission,
 };
+use bolero::TypeGenerator;
 use core::{ops::RangeInclusive, time::Duration};
 use s2n_quic_core::{
     connection,
@@ -29,7 +30,8 @@ use s2n_quic_core::{
         },
         DEFAULT_INITIAL_RTT,
     },
-    time::{clock::testing as time, Clock, NoopClock},
+    time::{clock::testing as time, testing::now, Clock, NoopClock},
+    transmission::Outcome,
     varint::VarInt,
 };
 use std::{collections::HashSet, net::SocketAddr};
@@ -497,6 +499,77 @@ fn on_ack_frame() {
         Duration::from_millis(3000)
     );
     assert_eq!(3, context.on_rtt_update_count);
+}
+
+#[derive(Clone, Debug, TypeGenerator)]
+struct Packet {
+    outcome: Outcome,
+    transmission_mode: transmission::Mode,
+    ecn: ExplicitCongestionNotification,
+    congestion_controlled: bool,
+}
+
+#[test]
+fn on_packet_loss_called_for_all_lost_packets() {
+    let space = PacketNumberSpace::ApplicationData;
+    let mut publisher = Publisher::no_snapshot();
+
+    bolero::check!()
+        .with_type::<Vec<Packet>>()
+        .cloned()
+        .for_each(|packets| {
+            let mut manager = ServerManager::new(space);
+            let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+            let mut context = MockContext::new(&mut path_manager);
+            let mut packet_number = space.new_packet_number(VarInt::from_u8(0));
+            let mut now = now();
+            let mut packet_sent_count = 0;
+
+            for packet in packets.iter().filter(|packet| {
+                // Non-congestion controlled packets have 0 bytes sent
+                ((packet.outcome.bytes_sent > 0) == packet.outcome.is_congestion_controlled)
+                    // Ect1 is not used
+                    && packet.ecn != ExplicitCongestionNotification::Ect1
+            }) {
+                manager.on_packet_sent(
+                    packet_number,
+                    packet.outcome,
+                    now,
+                    packet.ecn,
+                    packet.transmission_mode,
+                    None,
+                    &mut context,
+                    &mut publisher,
+                );
+                packet_sent_count += 1;
+                packet_number = packet_number.next().unwrap();
+                now += Duration::from_millis(1);
+            }
+
+            // Send and ack one packet much later to trigger loss recovery
+            manager.on_packet_sent(
+                packet_number,
+                Default::default(),
+                now,
+                Default::default(),
+                transmission::Mode::Normal,
+                None,
+                &mut context,
+                &mut publisher,
+            );
+            ack_packets(
+                packet_number.as_u64()..=packet_number.as_u64(),
+                now + Duration::from_secs(10),
+                &mut context,
+                &mut manager,
+                None,
+                &mut publisher,
+            );
+
+            // Every packet should be lost
+            assert_eq!(packet_sent_count, context.on_packet_loss_count);
+            assert!(manager.sent_packets.is_empty());
+        });
 }
 
 #[test]
@@ -3065,7 +3138,7 @@ fn on_transmit_normal_transmission_mode() {
 
 // Helper function that will call on_ack_frame with the given packet numbers
 fn helper_ack_packets_on_path(
-    range: RangeInclusive<u8>,
+    range: RangeInclusive<u64>,
     ack_receive_time: Timestamp,
     context: &mut MockContext<ServerConfig>,
     manager: &mut ServerManager,
@@ -3083,10 +3156,10 @@ fn helper_ack_packets_on_path(
     let acked_packets = PacketNumberRange::new(
         manager
             .space
-            .new_packet_number(VarInt::from_u8(*range.start())),
+            .new_packet_number(VarInt::new(*range.start()).unwrap()),
         manager
             .space
-            .new_packet_number(VarInt::from_u8(*range.end())),
+            .new_packet_number(VarInt::new(*range.end()).unwrap()),
     );
 
     let datagram = DatagramInfo {
@@ -3125,7 +3198,7 @@ fn helper_ack_packets_on_path(
 
 // Helper function that will call on_ack_frame with the given packet numbers
 fn ack_packets(
-    range: RangeInclusive<u8>,
+    range: RangeInclusive<u64>,
     ack_receive_time: Timestamp,
     context: &mut MockContext<ServerConfig>,
     manager: &mut ServerManager,

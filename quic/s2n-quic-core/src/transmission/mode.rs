@@ -1,7 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub enum Mode {
     /// Loss recovery probing to detect lost packets
     LossRecoveryProbing,

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::frame::ack_elicitation::{AckElicitable, AckElicitation};
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
 use core::ops::AddAssign;
 
 pub mod constraint;
@@ -11,10 +13,13 @@ pub use constraint::Constraint;
 pub use mode::Mode;
 
 #[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub struct Outcome {
     pub ack_elicitation: AckElicitation,
     pub is_congestion_controlled: bool,
+    #[generator(0..=65_535)]
     pub bytes_sent: usize,
+    #[generator(0..=65_535)]
     pub bytes_progressed: usize,
 }
 
