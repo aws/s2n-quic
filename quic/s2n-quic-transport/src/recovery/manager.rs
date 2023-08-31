@@ -296,66 +296,68 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         self.pto_update_pending = false;
 
-        if self.loss_timer.is_armed() {
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-            //# The PTO timer MUST NOT be set if a timer is set for time threshold
-            //# loss detection; see Section 6.1.2.  A timer that is set for time
-            //# threshold loss detection will expire earlier than the PTO timer in
-            //# most cases and is less likely to spuriously retransmit data.
-            self.pto.cancel();
-            return;
-        }
+        (|| {
+            if self.loss_timer.is_armed() {
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+                //# The PTO timer MUST NOT be set if a timer is set for time threshold
+                //# loss detection; see Section 6.1.2.  A timer that is set for time
+                //# threshold loss detection will expire earlier than the PTO timer in
+                //# most cases and is less likely to spuriously retransmit data.
+                self.pto.cancel();
+                return;
+            }
 
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
-        //# If no additional data can be sent, the server's PTO timer MUST NOT be
-        //# armed until datagrams have been received from the client, because
-        //# packets sent on PTO count against the anti-amplification limit.
-        if path.at_amplification_limit() {
-            // The server's timer is not set if nothing can be sent.
-            self.pto.cancel();
-            return;
-        }
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-        //# An endpoint MUST NOT set its PTO timer for the Application Data
-        //# packet number space until the handshake is confirmed.
-        if self.space.is_application_data() && !is_handshake_confirmed {
-            self.pto.cancel();
-            return;
-        }
-
-        let ack_eliciting_packets_in_flight = self
-            .sent_packets
-            .iter()
-            .any(|(_, sent_info)| sent_info.ack_elicitation.is_ack_eliciting());
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
-        //# it is the client's responsibility to send packets to unblock the server
-        //# until it is certain that the server has finished its address validation
-        if !ack_eliciting_packets_in_flight && path.is_peer_validated() {
-            // There is nothing to detect lost, so no timer is set.
-            // However, the client needs to arm the timer if the
-            // server might be blocked by the anti-amplification limit.
-            self.pto.cancel();
-            return;
-        }
-
-        let pto_base_timestamp = if ack_eliciting_packets_in_flight {
-            self.time_of_last_ack_eliciting_packet
-                .expect("there is at least one ack eliciting packet in flight")
-        } else {
-            // Arm PTO from now when there are no inflight packets.
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
-            //# That is,
-            //# the client MUST set the PTO timer if the client has not received an
-            //# acknowledgment for any of its Handshake packets and the handshake is
-            //# not confirmed (see Section 4.1.2 of [QUIC-TLS]), even if there are no
-            //# packets in flight.
-            now
-        };
+            //# If no additional data can be sent, the server's PTO timer MUST NOT be
+            //# armed until datagrams have been received from the client, because
+            //# packets sent on PTO count against the anti-amplification limit.
+            if path.at_amplification_limit() {
+                // The server's timer is not set if nothing can be sent.
+                self.pto.cancel();
+                return;
+            }
 
-        self.pto
-            .update(pto_base_timestamp, path.pto_period(self.space));
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+            //# An endpoint MUST NOT set its PTO timer for the Application Data
+            //# packet number space until the handshake is confirmed.
+            if self.space.is_application_data() && !is_handshake_confirmed {
+                self.pto.cancel();
+                return;
+            }
+
+            let ack_eliciting_packets_in_flight = self
+                .sent_packets
+                .iter()
+                .any(|(_, sent_info)| sent_info.ack_elicitation.is_ack_eliciting());
+
+            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
+            //# it is the client's responsibility to send packets to unblock the server
+            //# until it is certain that the server has finished its address validation
+            if !ack_eliciting_packets_in_flight && path.is_peer_validated() {
+                // There is nothing to detect lost, so no timer is set.
+                // However, the client needs to arm the timer if the
+                // server might be blocked by the anti-amplification limit.
+                self.pto.cancel();
+                return;
+            }
+
+            let pto_base_timestamp = if ack_eliciting_packets_in_flight {
+                self.time_of_last_ack_eliciting_packet
+                    .expect("there is at least one ack eliciting packet in flight")
+            } else {
+                // Arm PTO from now when there are no inflight packets.
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
+                //# That is,
+                //# the client MUST set the PTO timer if the client has not received an
+                //# acknowledgment for any of its Handshake packets and the handshake is
+                //# not confirmed (see Section 4.1.2 of [QUIC-TLS]), even if there are no
+                //# packets in flight.
+                now
+            };
+
+            self.pto
+                .update(pto_base_timestamp, path.pto_period(self.space));
+        })();
 
         self.check_consistency(path, is_handshake_confirmed);
     }
@@ -1097,7 +1099,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             timer_required &= self.time_of_last_ack_eliciting_packet.is_some();
 
             if timer_required {
-                assert!(self.armed_timer_count() > 0);
+                assert_ne!(self.armed_timer_count(), 0);
             }
         }
     }
