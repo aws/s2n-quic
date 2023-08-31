@@ -17,9 +17,9 @@ pub use mode::Mode;
 pub struct Outcome {
     pub ack_elicitation: AckElicitation,
     pub is_congestion_controlled: bool,
-    #[generator(0..=65_535)]
+    #[cfg_attr(any(test, feature = "generator"), generator(0..=65_535))]
     pub bytes_sent: usize,
-    #[generator(0..=65_535)]
+    #[cfg_attr(any(test, feature = "generator"), generator(0..=65_535))]
     pub bytes_progressed: usize,
 }
 
