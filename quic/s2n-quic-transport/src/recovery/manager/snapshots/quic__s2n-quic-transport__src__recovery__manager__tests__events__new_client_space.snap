@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-transport/src/recovery/manager/tests.rs
+expression: ""
+---
+RecoveryMetrics { path: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x5065657249640000000000000000506565724964, id: 0, is_active: true }, min_rtt: 333ms, smoothed_rtt: 333ms, latest_rtt: 333ms, rtt_variance: 166.5ms, max_ack_delay: 10ms, pto_count: 0, congestion_window: 15000, bytes_in_flight: 0, congestion_limited: false }
