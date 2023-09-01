@@ -95,7 +95,7 @@ impl EncoderValue for Token {
     }
 }
 
-/// A generator for a stateless reset token
+// A generator for a stateless reset token
 pub trait Generator: 'static + Send {
     /// If enabled, a stateless reset packet containing the token generated
     /// by this Generator will be sent when a packet is received that cannot
