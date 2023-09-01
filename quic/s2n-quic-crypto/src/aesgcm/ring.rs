@@ -12,6 +12,7 @@ impl aead::Aead for LessSafeKey {
     type Tag = [u8; TAG_LEN];
 
     #[inline]
+    #[cfg(not(target_os = "linux"))]
     fn encrypt(
         &self,
         nonce: &[u8; NONCE_LEN],
@@ -37,11 +38,7 @@ impl aead::Aead for LessSafeKey {
         Ok(())
     }
 
-    /*
-     * TODO: enable this once the scatter API is available in AWS-LC-RS
-     *
-     * https://github.com/aws/aws-lc-rs/pull/206
-     *
+    // use the scatter API if we're using AWS-LC
     #[inline]
     #[cfg(target_os = "linux")]
     fn encrypt(
@@ -63,7 +60,6 @@ impl aead::Aead for LessSafeKey {
 
         Ok(())
     }
-    */
 
     #[inline]
     fn decrypt(
