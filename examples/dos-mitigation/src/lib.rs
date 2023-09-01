@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// Example mitigation for Slowloris-style Denial of Service attacks. For details on this attack,
-/// see [QUIC Transport RFC](https://www.rfc-editor.org/rfc/rfc9000.html#name-slowloris-attacks).
+/// see [QUIC§21.6](https://www.rfc-editor.org/rfc/rfc9000.html#name-slowloris-attacks).
+///
+/// The Connection Supervisor used in this example may also be used to mitigate the more general
+/// Peer Denial of Service attack described in [QUIC§21.9](https://www.rfc-editor.org/rfc/rfc9000.html#name-peer-denial-of-service).
 pub mod slowloris {
     use s2n_quic::provider::{
         event,
