@@ -488,6 +488,13 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         //# a connection is allowed to have, and restricting the length of time
         //# an endpoint is allowed to stay connected.
 
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-21.9
+        //# While there are legitimate uses for all messages, implementations
+        //# SHOULD track cost of processing relative to progress and treat
+        //# excessive quantities of any non-productive packets as indicative of
+        //# an attack.  Endpoints MAY respond to this condition with a connection
+        //# error or by dropping packets.
+
         // Applications may implement the `on_supervisor_timeout` trait function to
         // close the connection based on data in the supervisor context and in the
         // connection and endpoint events.
