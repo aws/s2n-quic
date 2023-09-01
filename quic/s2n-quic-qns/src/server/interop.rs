@@ -127,8 +127,7 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
         // KeyUpdate is client only
         KeyUpdate => false,
         Retry => true,
-        // TODO support issuing tickets
-        Resumption => false,
+        Resumption => true,
         // TODO implement 0rtt
         ZeroRtt => false,
         Http3 => true,

@@ -2,8 +2,60 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
-use std::{path::PathBuf, str::FromStr};
+use s2n_quic::provider::tls::s2n_tls::{keylog::KeyLog, ConfigLoader, ConnectionContext};
+use std::{path::PathBuf, str::FromStr, sync::Arc, time::SystemTime};
 use structopt::StructOpt;
+
+pub static TICKET_KEY: [u8; 16] = [0; 16];
+pub static TICKET_KEY_NAME: &[u8] = "keyname".as_bytes();
+
+pub struct Config {
+    alpns: Vec<String>,
+    certificate: s2n_quic::provider::tls::default::certificate::Certificate,
+    private_key: s2n_quic::provider::tls::default::certificate::PrivateKey,
+}
+
+impl Config {
+    fn build(&self) -> Result<s2n_tls::config::Config, s2n_tls::error::Error> {
+        let mut config_builder = s2n_tls::config::Builder::new();
+        config_builder
+            .enable_session_tickets(true)?
+            .add_session_ticket_key(TICKET_KEY_NAME, &TICKET_KEY, SystemTime::now())?
+            .load_pem(
+                self.certificate.0.as_pem().unwrap(),
+                self.private_key.0.as_pem().unwrap(),
+            )?
+            .set_security_policy(&s2n_tls::security::DEFAULT_TLS13)?
+            .enable_quic()?
+            .set_application_protocol_preference(self.alpns.iter().map(String::as_bytes))?;
+
+        let keylog = KeyLog::try_open();
+        unsafe {
+            if let Some(keylog) = keylog.as_ref() {
+                config_builder
+                    .set_key_log_callback(Some(KeyLog::callback), Arc::as_ptr(keylog) as *mut _)?;
+            }
+        }
+
+        cfg_if::cfg_if! {
+            if #[cfg(all(
+                s2n_quic_unstable,
+                feature = "unstable_client_hello"
+            ))] {
+                use super::unstable::MyClientHelloHandler;
+                config_builder.set_client_hello_callback(MyClientHelloHandler {})?;
+            }
+        }
+
+        config_builder.build()
+    }
+}
+
+impl ConfigLoader for Config {
+    fn load(&mut self, _cx: ConnectionContext) -> s2n_tls::config::Config {
+        Self::build(self).expect("Config builder failed")
+    }
+}
 
 #[derive(Debug, StructOpt)]
 pub struct Server {
@@ -19,29 +71,16 @@ pub struct Server {
 
 impl Server {
     #[cfg(unix)]
-    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server> {
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2ntls::Server<ResumptionConfig>> {
         // The server builder defaults to a chain because this allows certs to just work, whether
         // the PEM contains a single cert or a chain
-
-        let tls = s2n_tls::Server::builder()
-            .with_certificate(
-                s2n_tls::ca(self.certificate.as_ref())?,
-                s2n_tls::private_key(self.private_key.as_ref())?,
-            )?
-            .with_application_protocols(alpns.iter().map(String::as_bytes))?
-            .with_key_logging()?;
-
-        cfg_if::cfg_if! {
-            if #[cfg(all(
-                s2n_quic_unstable,
-                feature = "unstable_client_hello"
-            ))] {
-                use super::unstable::MyClientHelloHandler;
-                let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
-            }
-        }
-
-        Ok(tls.build()?)
+        let resumption_config = ResumptionConfig {
+            alpns: alpns.to_vec(),
+            certificate: s2ntls::ca(self.certificate.as_ref())?,
+            private_key: s2ntls::private_key(self.private_key.as_ref())?,
+        };
+        let server = s2ntls::Server::from_loader(resumption_config);
+        Ok(server)
     }
 
     pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Server> {
@@ -79,9 +118,9 @@ pub struct Client {
 
 impl Client {
     #[cfg(unix)]
-    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Client> {
-        let tls = s2n_tls::Client::builder()
-            .with_certificate(s2n_tls::ca(self.ca.as_ref())?)?
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2ntls::Client> {
+        let tls = s2ntls::Client::builder()
+            .with_certificate(s2ntls::ca(self.ca.as_ref())?)?
             // the "amplificationlimit" tests generates a very large chain so bump the limit
             .with_max_cert_chain_depth(10)?
             .with_application_protocols(alpns.iter().map(String::as_bytes))?
@@ -94,7 +133,6 @@ impl Client {
     pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Client> {
         let tls = if self.disable_cert_verification {
             use ::rustls::{version, ClientConfig, KeyLogFile};
-            use std::sync::Arc;
 
             let mut config = ClientConfig::builder()
                 .with_cipher_suites(rustls::DEFAULT_CIPHERSUITES)
@@ -177,11 +215,11 @@ pub mod default {
     #[cfg(not(unix))]
     pub use super::rustls::*;
     #[cfg(unix)]
-    pub use super::s2n_tls::*;
+    pub use super::s2ntls::*;
 }
 
 #[cfg(unix)]
-pub mod s2n_tls {
+pub mod s2ntls {
     use super::*;
     pub use s2n_quic::provider::tls::s2n_tls::{
         certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},

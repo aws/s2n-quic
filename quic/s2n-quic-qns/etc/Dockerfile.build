@@ -41,6 +41,7 @@ RUN set -eux; \
       cargo build --bin s2n-quic-qns --release; \
     cp target/release/s2n-quic-qns .; \
   else \
+    RUSTFLAGS="--cfg s2n_quic_unstable" \
     cargo build --bin s2n-quic-qns; \
     cp target/debug/s2n-quic-qns .; \
   fi; \

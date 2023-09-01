@@ -23,7 +23,7 @@ impl Format {
     }
 }
 
-pub(crate) enum Format {
+pub enum Format {
     Pem(Bytes),
     Der(Bytes),
     #[allow(dead_code)] // Only used if private key offloading supported
@@ -32,7 +32,7 @@ pub(crate) enum Format {
 
 macro_rules! cert_type {
     ($name:ident, $trait:ident, $method:ident) => {
-        pub struct $name(pub(crate) Format);
+        pub struct $name(pub Format);
 
         pub trait $trait {
             fn $method(self) -> Result<$name, Error>;

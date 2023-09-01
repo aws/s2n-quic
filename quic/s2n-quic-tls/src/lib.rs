@@ -48,7 +48,7 @@ impl ConfigLoader for Box<dyn ConfigLoader> {
 }
 
 mod callback;
-mod keylog;
+pub mod keylog;
 mod params;
 mod session;
 
