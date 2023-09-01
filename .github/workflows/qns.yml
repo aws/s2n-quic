@@ -80,7 +80,7 @@ jobs:
         mode: ["debug", "release"]
     # enable debug information
     env:
-      RUSTFLAGS: "-g --cfg s2n_internal_dev --cfg s2n_quic_dump_on_panic"
+      RUSTFLAGS: "-g --cfg s2n_internal_dev --cfg s2n_quic_dump_on_panic --cfg s2n_quic_unstable"
     steps:
       - uses: actions/checkout@v3
         with:
