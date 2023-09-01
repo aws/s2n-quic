@@ -71,15 +71,15 @@ pub struct Server {
 
 impl Server {
     #[cfg(unix)]
-    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2ntls::Server<ResumptionConfig>> {
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2ntls::Server<Config>> {
         // The server builder defaults to a chain because this allows certs to just work, whether
         // the PEM contains a single cert or a chain
-        let resumption_config = ResumptionConfig {
+        let config = Config {
             alpns: alpns.to_vec(),
             certificate: s2ntls::ca(self.certificate.as_ref())?,
             private_key: s2ntls::private_key(self.private_key.as_ref())?,
         };
-        let server = s2ntls::Server::from_loader(resumption_config);
+        let server = s2ntls::Server::from_loader(config);
         Ok(server)
     }
 
