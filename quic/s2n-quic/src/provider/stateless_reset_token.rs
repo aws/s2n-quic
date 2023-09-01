@@ -12,9 +12,9 @@
 /// does not correspond to any active connection on any endpoint that uses the same static key for
 /// generating stateless reset tokens. This is in accordance with the following requirement:
 ///
-///     More generally, servers MUST NOT generate a stateless reset
-///     if a connection with the corresponding connection ID could
-///     be active on any endpoint using the same static key.
+/// > More generally, servers MUST NOT generate a stateless reset
+/// if a connection with the corresponding connection ID could
+/// be active on any endpoint using the same static key.
 ///
 /// This may require coordination between endpoints and/or careful setup of load balancing and
 /// packet routing, as well as ensuring the connection IDs in use are difficult to guess.
