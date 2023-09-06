@@ -16,8 +16,8 @@ pub struct Config {
 }
 
 impl Config {
-    fn build(&self) -> Result<s2n_tls::config::Config, s2n_tls::error::Error> {
-        let mut config_builder = s2n_tls::config::Builder::new();
+    fn build(&self) -> Result<s2n_tls::Config, s2n_tls::Error> {
+        let mut config_builder = s2n_tls::Builder::new();
         config_builder
             .enable_session_tickets(true)?
             .add_session_ticket_key(TICKET_KEY_NAME, &TICKET_KEY, SystemTime::now())?
@@ -25,7 +25,7 @@ impl Config {
                 self.certificate.0.as_pem().unwrap(),
                 self.private_key.0.as_pem().unwrap(),
             )?
-            .set_security_policy(&s2n_tls::security::DEFAULT_TLS13)?
+            .set_security_policy(&s2n_tls::DEFAULT_TLS13)?
             .enable_quic()?
             .set_application_protocol_preference(self.alpns.iter().map(String::as_bytes))?;
 
@@ -52,7 +52,7 @@ impl Config {
 }
 
 impl ConfigLoader for Config {
-    fn load(&mut self, _cx: ConnectionContext) -> s2n_tls::config::Config {
+    fn load(&mut self, _cx: ConnectionContext) -> s2n_tls::Config {
         Self::build(self).expect("Config builder failed")
     }
 }
@@ -71,15 +71,15 @@ pub struct Server {
 
 impl Server {
     #[cfg(unix)]
-    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2ntls::Server<Config>> {
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server<Config>> {
         // The server builder defaults to a chain because this allows certs to just work, whether
         // the PEM contains a single cert or a chain
         let config = Config {
             alpns: alpns.to_vec(),
-            certificate: s2ntls::ca(self.certificate.as_ref())?,
-            private_key: s2ntls::private_key(self.private_key.as_ref())?,
+            certificate: s2n_tls::ca(self.certificate.as_ref())?,
+            private_key: s2n_tls::private_key(self.private_key.as_ref())?,
         };
-        let server = s2ntls::Server::from_loader(config);
+        let server = s2n_tls::Server::from_loader(config);
         Ok(server)
     }
 
@@ -118,9 +118,9 @@ pub struct Client {
 
 impl Client {
     #[cfg(unix)]
-    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2ntls::Client> {
-        let tls = s2ntls::Client::builder()
-            .with_certificate(s2ntls::ca(self.ca.as_ref())?)?
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Client> {
+        let tls = s2n_tls::Client::builder()
+            .with_certificate(s2n_tls::ca(self.ca.as_ref())?)?
             // the "amplificationlimit" tests generates a very large chain so bump the limit
             .with_max_cert_chain_depth(10)?
             .with_application_protocols(alpns.iter().map(String::as_bytes))?
@@ -215,15 +215,15 @@ pub mod default {
     #[cfg(not(unix))]
     pub use super::rustls::*;
     #[cfg(unix)]
-    pub use super::s2ntls::*;
+    pub use super::s2n_tls::*;
 }
 
 #[cfg(unix)]
-pub mod s2ntls {
+pub mod s2n_tls {
     use super::*;
     pub use s2n_quic::provider::tls::s2n_tls::{
         certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
-        Client, Server,
+        Builder, Client, Config, Error, Server, DEFAULT_TLS13,
     };
 
     pub fn ca(ca: Option<&PathBuf>) -> Result<Certificate> {
