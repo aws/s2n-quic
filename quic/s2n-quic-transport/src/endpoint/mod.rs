@@ -8,7 +8,7 @@ use crate::{
         self,
         limits::{ConnectionInfo as LimitsInfo, Limiter as _},
         ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
-        InternalConnectionId, InternalConnectionIdGenerator, ProcessingError, Trait as _,
+        InternalConnectionId, InternalConnectionIdGenerator, Trait as _,
     },
     endpoint,
     endpoint::close::CloseHandle,
@@ -575,10 +575,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         );
                     })?;
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
-                //# An endpoint
-                //# that is closing is not required to process any received frame.
-
                 if let Err(err) = conn.handle_packet(
                     datagram,
                     path_id,
@@ -587,61 +583,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
                     endpoint_context.datagram,
+                    &mut check_for_stateless_reset,
                 ) {
-                    match err {
-                        ProcessingError::DuplicatePacket => {
-                            // We discard duplicate packets
-                        }
-                        ProcessingError::NonEmptyRetryToken => {
-                            //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2
-                            //# Initial packets sent by the server MUST set the Token Length field
-                            //# to 0; clients that receive an Initial packet with a non-zero Token
-                            //# Length field MUST either discard the packet or generate a
-                            //# connection error of type PROTOCOL_VIOLATION.
-                            //
-                            // We discard server initials with non empty retry tokens instead of closing
-                            // the connection to prevent an attacker that can spoof initial packets
-                            // from gaining the ability to close a connection by setting a retry token.
-                        }
-                        ProcessingError::RetryScidEqualsDcid => {
-                            //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1
-                            //# A client MUST
-                            //# discard a Retry packet that contains a Source Connection ID field
-                            //# that is identical to the Destination Connection ID field of its
-                            //# Initial packet.
-                        }
-                        ProcessingError::ConnectionError(err) => {
-                            conn.close(
-                                err,
-                                endpoint_context.connection_close_formatter,
-                                close_packet_buffer,
-                                datagram.timestamp,
-                                endpoint_context.event_subscriber,
-                                endpoint_context.packet_interceptor,
-                            );
-                            return Err(());
-                        }
-                        ProcessingError::CryptoError(_) => {
-                            // CryptoErrors returned as a result of a packet failing decryption
-                            // will be silently discarded, but are a potential indication of a
-                            // stateless reset from the peer
-
-                            //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
-                            //# Due to packet reordering or loss, a client might receive packets for
-                            //# a connection that are encrypted with a key it has not yet computed.
-                            //# The client MAY drop these packets, or it MAY buffer them in
-                            //# anticipation of later packets that allow it to compute the key.
-                            //
-                            // Packets that fail decryption are discarded rather than buffered.
-
-                            //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
-                            //# Endpoints MAY skip this check if any packet from a datagram is
-                            //# successfully processed.  However, the comparison MUST be performed
-                            //# when the first packet in an incoming datagram either cannot be
-                            //# associated with a connection, or cannot be decrypted.
-                            check_for_stateless_reset = true;
-                        }
-                    }
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
+                    //# An endpoint
+                    //# that is closing is not required to process any received frame.
+                    conn.close(
+                        err,
+                        endpoint_context.connection_close_formatter,
+                        close_packet_buffer,
+                        datagram.timestamp,
+                        endpoint_context.event_subscriber,
+                        endpoint_context.packet_interceptor,
+                    );
                 }
 
                 if let Err(err) = conn.handle_remaining_packets(
@@ -654,7 +608,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
                     endpoint_context.datagram,
+                    &mut check_for_stateless_reset,
                 ) {
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
+                    //# An endpoint
+                    //# that is closing is not required to process any received frame.
                     conn.close(
                         err,
                         endpoint_context.connection_close_formatter,

@@ -362,6 +362,9 @@ pub mod api {
             reason: RetryDiscardReason<'a>,
             path: Path<'a>,
         },
+        #[non_exhaustive]
+        #[doc = " The received Initial packet was not transported in a datagram of at least 1200 bytes"]
+        UndersizedInitialPacket { path: Path<'a> },
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2981,6 +2984,8 @@ pub mod builder {
             reason: RetryDiscardReason<'a>,
             path: Path<'a>,
         },
+        #[doc = " The received Initial packet was not transported in a datagram of at least 1200 bytes"]
+        UndersizedInitialPacket { path: Path<'a> },
     }
     impl<'a> IntoEvent<api::PacketDropReason<'a>> for PacketDropReason<'a> {
         #[inline]
@@ -3020,6 +3025,9 @@ pub mod builder {
                 },
                 Self::RetryDiscarded { reason, path } => RetryDiscarded {
                     reason: reason.into_event(),
+                    path: path.into_event(),
+                },
+                Self::UndersizedInitialPacket { path } => UndersizedInitialPacket {
                     path: path.into_event(),
                 },
             }

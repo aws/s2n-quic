@@ -24,6 +24,7 @@ fn handshake_pto_timer_is_armed() {
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_packet_interceptor(DropHandshakeTx)?
+            .with_event(events())?
             .start()?;
 
         let addr = server.local_addr()?;
@@ -36,7 +37,7 @@ fn handshake_pto_timer_is_armed() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((pto_subscriber, packet_sent_subscriber))?
+            .with_event(((events(), pto_subscriber), packet_sent_subscriber))?
             .start()?;
 
         primary::spawn(async move {

@@ -387,7 +387,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             })?;
 
         if self.is_duplicate(packet.packet_number, path_id, path, publisher) {
-            return Err(ProcessingError::DuplicatePacket);
+            return Err(ProcessingError::Other);
         }
 
         let packet_header =

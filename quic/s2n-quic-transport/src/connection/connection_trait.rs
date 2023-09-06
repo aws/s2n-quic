@@ -223,27 +223,48 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
-    ) -> Result<(), ProcessingError> {
+        check_for_stateless_reset: &mut bool,
+    ) -> Result<(), connection::Error> {
+        macro_rules! emit_drop_reason {
+            (| $path:ident | $reason:expr) => {
+                self.with_event_publisher(
+                    datagram.timestamp,
+                    Some(path_id),
+                    subscriber,
+                    |publisher, $path| {
+                        publisher
+                            .on_packet_dropped(event::builder::PacketDropped { reason: $reason })
+                    },
+                );
+            };
+        }
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
         //# If a client receives a packet that uses a different version than it
         //# initially selected, it MUST discard that packet.
         if let Some(version) = packet.version() {
             if version != self.quic_version() {
-                self.with_event_publisher(
-                    datagram.timestamp,
-                    Some(path_id),
-                    subscriber,
-                    |publisher, path| {
-                        publisher.on_packet_dropped(event::builder::PacketDropped {
-                            reason: event::builder::PacketDropReason::VersionMismatch {
-                                version,
-                                path: path_event!(path, path_id),
-                            },
-                        })
-                    },
-                );
+                emit_drop_reason!(|path| event::builder::PacketDropReason::VersionMismatch {
+                    version,
+                    path: path_event!(path, path_id),
+                });
                 return Ok(());
             }
+        }
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-12.2
+        //# Senders MUST NOT coalesce QUIC packets
+        //# with different connection IDs into a single UDP datagram.  Receivers
+        //# SHOULD ignore any subsequent packets with a different Destination
+        //# Connection ID than the first packet in the datagram.
+        if datagram.destination_connection_id.as_bytes() != packet.destination_connection_id() {
+            emit_drop_reason!(
+                |path| event::builder::PacketDropReason::ConnectionIdMismatch {
+                    packet_cid: packet.destination_connection_id(),
+                    path: path_event!(path, path_id),
+                }
+            );
+            return Ok(());
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.4
@@ -253,7 +274,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         // any special logic required to meet this requirement as each packet is handled
         // independently.
 
-        match packet {
+        let result = match packet {
             ProtectedPacket::Short(packet) => self.handle_short_packet(
                 datagram,
                 path_id,
@@ -297,7 +318,44 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             ProtectedPacket::Retry(packet) => {
                 self.handle_retry_packet(datagram, path_id, packet, subscriber, packet_interceptor)
             }
-        }
+        };
+
+        match result {
+            Ok(()) => {}
+            Err(ProcessingError::ConnectionError(error)) => {
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
+                //# An endpoint
+                //# that is closing is not required to process any received frame.
+                return Err(error);
+            }
+            Err(ProcessingError::CryptoError(_)) => {
+                // NOTE: this reason is emitted by the connection implementation
+
+                // CryptoErrors returned as a result of a packet failing decryption
+                // will be silently discarded, but are a potential indication of a
+                // stateless reset from the peer
+
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
+                //# Due to packet reordering or loss, a client might receive packets for
+                //# a connection that are encrypted with a key it has not yet computed.
+                //# The client MAY drop these packets, or it MAY buffer them in
+                //# anticipation of later packets that allow it to compute the key.
+                //
+                // Packets that fail decryption are discarded rather than buffered.
+
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
+                //# Endpoints MAY skip this check if any packet from a datagram is
+                //# successfully processed.  However, the comparison MUST be performed
+                //# when the first packet in an incoming datagram either cannot be
+                //# associated with a connection, or cannot be decrypted.
+                *check_for_stateless_reset = true;
+            }
+            Err(ProcessingError::Other) => {
+                // All other processing errors are handled by the connection implementation
+            }
+        };
+
+        Ok(())
     }
 
     /// This is called to handle the remaining and yet undecoded packets inside
@@ -314,71 +372,31 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
+        check_for_stateless_reset: &mut bool,
     ) -> Result<(), connection::Error> {
+        macro_rules! emit_drop_reason {
+            (| $path:ident | $reason:expr) => {
+                self.with_event_publisher(
+                    datagram.timestamp,
+                    Some(path_id),
+                    subscriber,
+                    |publisher, $path| {
+                        publisher
+                            .on_packet_dropped(event::builder::PacketDropped { reason: $reason })
+                    },
+                );
+            };
+        }
+
         let remote_address = path_handle.remote_address();
         let connection_info = ConnectionInfo::new(&remote_address);
 
         while !payload.is_empty() {
-            if let Ok((packet, remaining)) =
+            let packet = if let Ok((packet, remaining)) =
                 ProtectedPacket::decode(payload, &connection_info, connection_id_validator)
             {
                 payload = remaining;
-
-                //= https://www.rfc-editor.org/rfc/rfc9000#section-12.2
-                //# Senders MUST NOT coalesce QUIC packets
-                //# with different connection IDs into a single UDP datagram.  Receivers
-                //# SHOULD ignore any subsequent packets with a different Destination
-                //# Connection ID than the first packet in the datagram.
-                if datagram.destination_connection_id.as_bytes()
-                    != packet.destination_connection_id()
-                {
-                    self.with_event_publisher(
-                        datagram.timestamp,
-                        Some(path_id),
-                        subscriber,
-                        |publisher, path| {
-                            publisher.on_packet_dropped(event::builder::PacketDropped {
-                                reason: event::builder::PacketDropReason::ConnectionIdMismatch {
-                                    packet_cid: packet.destination_connection_id(),
-                                    path: path_event!(path, path_id),
-                                },
-                            })
-                        },
-                    );
-                    break;
-                }
-
-                let result = self.handle_packet(
-                    datagram,
-                    path_id,
-                    packet,
-                    random_generator,
-                    subscriber,
-                    packet_interceptor,
-                    datagram_endpoint,
-                );
-
-                if let Err(ProcessingError::ConnectionError(err)) = result {
-                    // CryptoErrors returned as a result of a packet failing decryption will be
-                    // silently discarded, but this method could return an error on protocol
-                    // violations which would result in shutting down the connection anyway. In this
-                    // case this will return early without processing the remaining packets.
-                    if !payload.is_empty() {
-                        self.with_event_publisher(
-                            datagram.timestamp,
-                            Some(path_id),
-                            subscriber,
-                            |publisher, path| {
-                                publisher.on_packet_dropped(event::builder::PacketDropped {
-                                    reason: event::builder::PacketDropReason::ConnectionError {
-                                        path: path_event!(path, path_id),
-                                    },
-                                })
-                            },
-                        );
-                    }
-                    return Err(err);
-                }
+                packet
             } else {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-12.2
                 //# Every QUIC packet that is coalesced into a single UDP datagram is
@@ -392,20 +410,33 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 //
                 // We choose to discard the rest of the datagram on parsing errors since it
                 // would be difficult to recover from an invalid packet.
-                self.with_event_publisher(
-                    datagram.timestamp,
-                    Some(path_id),
-                    subscriber,
-                    |publisher, path| {
-                        publisher.on_packet_dropped(event::builder::PacketDropped {
-                            reason: event::builder::PacketDropReason::DecodingFailed {
-                                path: path_event!(path, path_id),
-                            },
-                        })
-                    },
-                );
+                emit_drop_reason!(|path| event::builder::PacketDropReason::DecodingFailed {
+                    path: path_event!(path, path_id),
+                });
 
                 break;
+            };
+
+            let result = self.handle_packet(
+                datagram,
+                path_id,
+                packet,
+                random_generator,
+                subscriber,
+                packet_interceptor,
+                datagram_endpoint,
+                check_for_stateless_reset,
+            );
+
+            if let Err(err) = result {
+                // emit an event if we still have remaining bytes to process but we got a
+                // connection error
+                if !payload.is_empty() {
+                    emit_drop_reason!(|path| event::builder::PacketDropReason::ConnectionError {
+                        path: path_event!(path, path_id),
+                    });
+                }
+                return Err(err);
             }
         }
 

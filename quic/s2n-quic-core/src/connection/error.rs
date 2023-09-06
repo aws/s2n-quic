@@ -469,12 +469,9 @@ impl From<Error> for std::io::ErrorKind {
 /// enum is used to allow for either error type to be returned as appropriate.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ProcessingError {
-    DuplicatePacket,
-    /// Received a Retry packet with SCID field equal to DCID field.
-    RetryScidEqualsDcid,
     ConnectionError(Error),
     CryptoError(CryptoError),
-    NonEmptyRetryToken,
+    Other,
 }
 
 impl From<Error> for ProcessingError {
