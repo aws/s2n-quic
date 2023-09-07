@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
-use s2n_quic::provider::tls::s2n_tls::{keylog::KeyLog, ConfigLoader, ConnectionContext};
+use s2n_quic::provider::tls::s2n_tls::keylog::KeyLog;
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::SystemTime};
 use structopt::StructOpt;
 
@@ -51,12 +51,6 @@ impl Config {
     }
 }
 
-impl ConfigLoader for Config {
-    fn load(&mut self, _cx: ConnectionContext) -> s2n_tls::Config {
-        Self::build(self).expect("Config builder failed")
-    }
-}
-
 #[derive(Debug, StructOpt)]
 pub struct Server {
     #[structopt(long)]
@@ -71,7 +65,7 @@ pub struct Server {
 
 impl Server {
     #[cfg(unix)]
-    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server<Config>> {
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server> {
         // The server builder defaults to a chain because this allows certs to just work, whether
         // the PEM contains a single cert or a chain
         let config = Config {
@@ -79,7 +73,7 @@ impl Server {
             certificate: s2n_tls::ca(self.certificate.as_ref())?,
             private_key: s2n_tls::private_key(self.private_key.as_ref())?,
         };
-        let server = s2n_tls::Server::from_loader(config);
+        let server = s2n_tls::Server::from_loader(config.build().expect("Config builder failed"));
         Ok(server)
     }
 
