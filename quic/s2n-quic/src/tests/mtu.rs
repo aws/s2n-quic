@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use s2n_codec::encoder::scatter;
+use s2n_quic_core::{
+    event::api::Subject,
+    packet::interceptor::{Interceptor, Packet},
+};
 
 // Construct a simulation where a client sends some data, which the server echos
 // back. The MtuUpdated events that the server experiences are recorded and
@@ -160,4 +165,108 @@ fn mtu_blackhole() {
 
     // MTU dropped to the minimum
     assert_eq!(1200, events.lock().unwrap().last().unwrap().mtu);
+}
+
+// ensure the server enforces the minimum MTU for all initial packets
+#[test]
+fn minimum_initial_packet() {
+    let model = Model::default();
+    let subscriber = recorder::PacketDropped::new();
+    let drop_events = subscriber.events();
+
+    let rtt = Duration::from_millis(100);
+    model.set_delay(rtt / 2);
+
+    test(model.clone(), |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event((events(), subscriber))?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_packet_interceptor((EraseClientHello, TruncatePadding))?
+            .with_event(events())?
+            .start()?;
+
+        let addr = start_server(server)?;
+        start_client(client, addr, Data::new(1_000))?;
+
+        spawn(async move {
+            delay(rtt / 4).await;
+
+            // drop the server's initial ACK
+            model.set_drop_rate(1.0);
+            delay(rtt / 2).await;
+
+            // let everything go through now
+            model.set_drop_rate(0.0);
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    assert_eq!(
+        drop_events.lock().unwrap().as_slice(),
+        &[
+            recorder::PacketDropReason::UndersizedInitialPacket,
+            recorder::PacketDropReason::UndersizedInitialPacket,
+        ]
+    );
+}
+
+/// Truncates paddings
+struct EraseClientHello;
+
+impl Interceptor for EraseClientHello {
+    #[inline]
+    fn intercept_tx_payload(
+        &mut self,
+        _subject: &Subject,
+        packet: &Packet,
+        payload: &mut scatter::Buffer,
+    ) {
+        if packet.number.space().is_initial() && packet.number.as_u64() == 0 {
+            let payload = payload.flatten().as_mut_slice();
+            payload.fill(0);
+            payload[0] = 1;
+        }
+    }
+}
+
+/// Truncates paddings
+struct TruncatePadding;
+
+impl Interceptor for TruncatePadding {
+    #[inline]
+    fn intercept_tx_payload(
+        &mut self,
+        _subject: &Subject,
+        packet: &Packet,
+        payload: &mut scatter::Buffer,
+    ) {
+        if !(packet.number.space().is_initial() && (1..=4).contains(&packet.number.as_u64())) {
+            return;
+        }
+
+        let buffer = payload.flatten();
+
+        let mut pos = None;
+
+        for (idx, v) in buffer.as_mut_slice().iter().copied().enumerate().rev() {
+            if v == 0 && idx > 16 {
+                continue;
+            }
+
+            pos = Some(idx + 1);
+            break;
+        }
+
+        if let Some(pos) = pos {
+            buffer.set_position(pos);
+        }
+    }
 }

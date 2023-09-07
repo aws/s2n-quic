@@ -254,10 +254,10 @@ pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncode
             return Err(PacketEncodingError::EmptyPayload(buffer));
         }
 
-        debug_assert!(
-            payload_len >= minimum_payload_len,
-            "payloads should write at least the minimum_len"
-        );
+        // Ideally we would check that the `paylod_len >= minimum_payload_len`. However, the packet
+        // interceptor may rewrite the packet into something smaller. Instead of preventing that
+        // here, we will rely on the `crate::transmission::Transmission` logic to ensure the
+        // padding is initially written to ensure the minimum is met before interception is applied.
 
         // Update the payload_len cursor with the actual payload len
         let actual_payload_len = buffer.len() + payload_len + key.tag_len() - header_len;

@@ -1249,6 +1249,27 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
+            //# A server MUST discard an Initial packet that is carried
+            //# in a UDP datagram with a payload that is smaller than the
+            //# smallest allowed maximum datagram size of 1200 bytes.
+            if Config::ENDPOINT_TYPE.is_server() && datagram.payload_len < 1200 {
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
+                //= type=exception
+                //= reason=A client may coalesce packets in a single datagram, which could be unintentionally split on path
+                //# A server MAY also immediately close the connection by
+                //# sending a CONNECTION_CLOSE frame with an error code of
+                //# PROTOCOL_VIOLATION; see Section 10.2.3.
+                let path = &self.path_manager[path_id];
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::UndersizedInitialPacket {
+                        path: path_event!(path, path_id),
+                    },
+                });
+
+                return Err(ProcessingError::Other);
+            }
+
             //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2
             //= type=TODO
             //= tracking-issue=336
@@ -1613,7 +1634,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     path: path_event!(path, path_id),
                 },
             });
-            return Err(ProcessingError::RetryScidEqualsDcid);
+            return Err(ProcessingError::Other);
         }
 
         let initial_cid = InitialId::try_from_bytes(path.peer_connection_id.as_ref())

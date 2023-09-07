@@ -754,6 +754,8 @@ enum PacketDropReason<'a> {
         reason: RetryDiscardReason<'a>,
         path: Path<'a>,
     },
+    /// The received Initial packet was not transported in a datagram of at least 1200 bytes
+    UndersizedInitialPacket { path: Path<'a> },
 }
 
 #[deprecated(note = "use on_rx_ack_range_dropped event instead")]

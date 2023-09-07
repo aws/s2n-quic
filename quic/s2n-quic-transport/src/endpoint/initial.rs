@@ -326,24 +326,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         match err {
                             ProcessingError::CryptoError(err) => err.into(),
                             ProcessingError::ConnectionError(err) => err,
-                            // this is the first packet this connection has received
-                            // so getting this error would be incorrect
-                            ProcessingError::DuplicatePacket => {
-                                debug_assert!(false, "got duplicate packet error on first packet");
-                                transport::Error::INTERNAL_ERROR.into()
-                            }
-                            // this error is only raised by the client
-                            ProcessingError::NonEmptyRetryToken => {
-                                debug_assert!(false, "got non empty retry token error on server");
-                                transport::Error::INTERNAL_ERROR.into()
-                            }
-                            // this error is only emitted when processing a Retry packet
-                            ProcessingError::RetryScidEqualsDcid => {
-                                debug_assert!(
-                                    false,
-                                    "got a Retry packet error while processing an Initial packet"
-                                );
-                                transport::Error::INTERNAL_ERROR.into()
+                            ProcessingError::Other => {
+                                // This is the first packet received. If it's invalid, drop the
+                                // connection.
+                                transport::Error::PROTOCOL_VIOLATION.into()
                             }
                         }
                     })?;
@@ -358,6 +344,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
                     endpoint_context.datagram,
+                    &mut false,
                 )?;
 
                 Ok(())

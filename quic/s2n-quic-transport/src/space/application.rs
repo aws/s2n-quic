@@ -546,7 +546,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         // We perform decryption prior to checking for duplicate to avoid short-circuiting
         // and maintain constant-time operation.
         if self.is_duplicate(packet_number, path_id, path, publisher) {
-            return Err(ProcessingError::DuplicatePacket);
+            return Err(ProcessingError::Other);
         }
 
         if decrypted.is_ok() {

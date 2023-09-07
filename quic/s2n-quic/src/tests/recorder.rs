@@ -85,6 +85,17 @@ event_recorder!(
     on_handshake_status_updated
 );
 event_recorder!(
+    PacketDropped,
+    PacketDropped,
+    on_packet_dropped,
+    PacketDropReason,
+    |event: &events::PacketDropped, storage: &mut Vec<PacketDropReason>| {
+        if let Ok(reason) = (&event.reason).try_into() {
+            storage.push(reason);
+        }
+    }
+);
+event_recorder!(
     ActivePathUpdated,
     ActivePathUpdated,
     on_active_path_updated,
@@ -94,3 +105,39 @@ event_recorder!(
         storage.push(addr);
     }
 );
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PacketDropReason {
+    ConnectionError,
+    HandshakeNotComplete,
+    VersionMismatch,
+    ConnectionIdMismatch,
+    UnprotectFailed,
+    DecryptionFailed,
+    DecodingFailed,
+    NonEmptyRetryToken,
+    RetryDiscarded,
+    UndersizedInitialPacket,
+}
+
+impl<'a> TryFrom<&events::PacketDropReason<'a>> for PacketDropReason {
+    type Error = ();
+
+    fn try_from(reason: &events::PacketDropReason<'a>) -> Result<Self, ()> {
+        use events::PacketDropReason::*;
+
+        Ok(match reason {
+            ConnectionError { .. } => Self::ConnectionError,
+            HandshakeNotComplete { .. } => Self::HandshakeNotComplete,
+            VersionMismatch { .. } => Self::VersionMismatch,
+            ConnectionIdMismatch { .. } => Self::ConnectionIdMismatch,
+            UnprotectFailed { .. } => Self::UnprotectFailed,
+            DecryptionFailed { .. } => Self::DecryptionFailed,
+            DecodingFailed { .. } => Self::DecodingFailed,
+            NonEmptyRetryToken { .. } => Self::NonEmptyRetryToken,
+            RetryDiscarded { .. } => Self::RetryDiscarded,
+            UndersizedInitialPacket { .. } => Self::UndersizedInitialPacket,
+            _ => return Err(()),
+        })
+    }
+}

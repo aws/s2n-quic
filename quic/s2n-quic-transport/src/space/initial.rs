@@ -426,7 +426,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             })?;
 
         if self.is_duplicate(packet.packet_number, path_id, path, publisher) {
-            return Err(ProcessingError::DuplicatePacket);
+            return Err(ProcessingError::Other);
         }
 
         let packet_header =
@@ -452,7 +452,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
                     path: path_event!(path, path_id),
                 },
             });
-            return Err(ProcessingError::NonEmptyRetryToken);
+            return Err(ProcessingError::Other);
         }
 
         Ok(decrypted)
