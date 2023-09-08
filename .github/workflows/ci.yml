@@ -38,7 +38,7 @@ jobs:
       examples: ${{ steps.definitions.outputs.examples }}
       crates: ${{ steps.definitions.outputs.crates }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       # examples is populated by
       # find all child folders in the examples directory
       # jq -R - raw content is passed in (not json, just strings)
@@ -70,7 +70,7 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -99,7 +99,7 @@ jobs:
             args: "-D warnings"
           - toolchain: beta
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -128,7 +128,7 @@ jobs:
   udeps:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -153,7 +153,7 @@ jobs:
   doc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -225,7 +225,7 @@ jobs:
             target: native
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE="mtu_disc,pktinfo,tos,socket_msg"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           lfs: true
           submodules: true
@@ -280,7 +280,7 @@ jobs:
       matrix:
         crate: [quic/s2n-quic-core, quic/s2n-quic-platform]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -305,7 +305,7 @@ jobs:
   no_std:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -324,7 +324,7 @@ jobs:
   compliance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - uses: ./.github/actions/duvet
@@ -340,7 +340,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           lfs: true
           submodules: true
@@ -402,7 +402,7 @@ jobs:
       matrix:
         crate: ${{ fromJson(needs.env.outputs.crates) }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -428,7 +428,7 @@ jobs:
         example: ${{ fromJson(needs.env.outputs.examples) }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -468,7 +468,7 @@ jobs:
   recovery-simulations:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -511,7 +511,7 @@ jobs:
   sims:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -560,7 +560,7 @@ jobs:
   copyright:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Check
         run: |
@@ -570,7 +570,7 @@ jobs:
   events:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -597,7 +597,7 @@ jobs:
   snapshots:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -629,7 +629,7 @@ jobs:
   timing:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -671,7 +671,7 @@ jobs:
   typos:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -700,7 +700,7 @@ jobs:
       matrix:
         crate: [quic/s2n-quic-core, quic/s2n-quic-platform, tools/xdp/s2n-quic-xdp]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -713,7 +713,7 @@ jobs:
   dhat:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
@@ -773,7 +773,7 @@ jobs:
       matrix:
         crate: [quic/s2n-quic-core]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -797,7 +797,7 @@ jobs:
   xdp:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           lfs: true
 
