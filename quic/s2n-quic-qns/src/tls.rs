@@ -3,24 +3,24 @@
 
 use crate::Result;
 use s2n_quic::provider::tls::s2n_tls::keylog::KeyLog;
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::SystemTime};
+use std::{num::ParseIntError, path::PathBuf, str::FromStr, sync::Arc, time::SystemTime};
 use structopt::StructOpt;
 
-pub static TICKET_KEY: [u8; 16] = [0; 16];
 pub static TICKET_KEY_NAME: &[u8] = "keyname".as_bytes();
 
-pub struct Config {
+pub struct Config<'a> {
     alpns: Vec<String>,
     certificate: s2n_quic::provider::tls::default::certificate::Certificate,
     private_key: s2n_quic::provider::tls::default::certificate::PrivateKey,
+    ticket_key: &'a TicketKey,
 }
 
-impl Config {
+impl Config<'_> {
     fn build(&self) -> Result<s2n_tls::Config, s2n_tls::Error> {
         let mut config_builder = s2n_tls::Builder::new();
         config_builder
             .enable_session_tickets(true)?
-            .add_session_ticket_key(TICKET_KEY_NAME, &TICKET_KEY, SystemTime::now())?
+            .add_session_ticket_key(TICKET_KEY_NAME, &self.ticket_key.0, SystemTime::now())?
             .load_pem(
                 self.certificate.0.as_pem().unwrap(),
                 self.private_key.0.as_pem().unwrap(),
@@ -51,6 +51,23 @@ impl Config {
     }
 }
 
+#[derive(Debug)]
+struct TicketKey(Vec<u8>);
+impl FromStr for TicketKey {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let v = s
+            .split(",")
+            .map(|x| x.trim().parse::<u8>())
+            .collect::<Result<Vec<u8>, ParseIntError>>();
+        match v {
+            Ok(vec) => return Ok(TicketKey(vec)),
+            Err(err) => return Err(err),
+        }
+    }
+}
+
 #[derive(Debug, StructOpt)]
 pub struct Server {
     #[structopt(long)]
@@ -61,6 +78,9 @@ pub struct Server {
 
     #[structopt(long, default_value)]
     pub tls: TlsProviders,
+
+    #[structopt(long)]
+    ticket_key: TicketKey,
 }
 
 impl Server {
@@ -72,6 +92,7 @@ impl Server {
             alpns: alpns.to_vec(),
             certificate: s2n_tls::ca(self.certificate.as_ref())?,
             private_key: s2n_tls::private_key(self.private_key.as_ref())?,
+            ticket_key: &self.ticket_key,
         };
         let server = s2n_tls::Server::from_loader(config.build().expect("Config builder failed"));
         Ok(server)
