@@ -710,6 +710,7 @@ fn test_adding_new_path() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
     let (path_id, unblocked) = manager
@@ -769,6 +770,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
     let handshake_confirmed = false;
@@ -830,6 +832,7 @@ fn do_not_add_new_path_if_client() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
     let on_datagram_result = manager.on_datagram_received(
@@ -919,6 +922,7 @@ fn limit_number_of_connection_migrations() {
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
+            destination_connection_id_classification: connection::id::Classification::Local,
             source_connection_id: None,
         };
 
@@ -975,6 +979,7 @@ fn connection_migration_challenge_behavior() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
 
@@ -1068,6 +1073,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
 
@@ -1146,6 +1152,7 @@ fn connection_migration_new_path_abandon_timer() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
 
@@ -1397,6 +1404,7 @@ fn temporary_until_authenticated() {
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
 

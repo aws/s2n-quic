@@ -175,7 +175,10 @@ fn connection_mapper_test() {
             .unwrap()
             .retirement_time
     );
-    assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_1));
+    assert_eq!(
+        Some((id1, connection::id::Classification::Local,)),
+        mapper.lookup_internal_connection_id(&ext_id_1)
+    );
     assert_eq!(
         TEST_TOKEN_1,
         reg1.get_connection_id_info(&ext_id_1)
@@ -202,15 +205,27 @@ fn connection_mapper_test() {
     assert!(reg2
         .register_connection_id(&ext_id_4, None, TEST_TOKEN_4)
         .is_ok());
-    assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_2));
-    assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_3));
-    assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
+    assert_eq!(
+        Some((id1, connection::id::Classification::Local,)),
+        mapper.lookup_internal_connection_id(&ext_id_2)
+    );
+    assert_eq!(
+        Some((id2, connection::id::Classification::Local,)),
+        mapper.lookup_internal_connection_id(&ext_id_3)
+    );
+    assert_eq!(
+        Some((id2, connection::id::Classification::Local,)),
+        mapper.lookup_internal_connection_id(&ext_id_4)
+    );
 
     // Unregister id 3 (sequence number 0)
     reg2.get_connection_id_info_mut(&ext_id_3).unwrap().status = PendingRemoval(now);
     reg2.unregister_expired_ids(now);
     assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_3));
-    assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
+    assert_eq!(
+        Some((id2, connection::id::Classification::Local,)),
+        mapper.lookup_internal_connection_id(&ext_id_4)
+    );
 
     reg2.get_connection_id_info_mut(&ext_id_4).unwrap().status =
         PendingRetirementConfirmation(Some(now));
@@ -224,15 +239,24 @@ fn connection_mapper_test() {
     assert!(reg2
         .register_connection_id(&ext_id_4, None, TEST_TOKEN_4)
         .is_ok());
-    assert_eq!(Some(id1), mapper.lookup_internal_connection_id(&ext_id_3));
-    assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
+    assert_eq!(
+        Some((id1, connection::id::Classification::Local,)),
+        mapper.lookup_internal_connection_id(&ext_id_3)
+    );
+    assert_eq!(
+        Some((id2, connection::id::Classification::Local,)),
+        mapper.lookup_internal_connection_id(&ext_id_4)
+    );
 
     // If a registration is dropped all entries are removed
     drop(reg1);
     assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_1));
     assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_2));
     assert_eq!(None, mapper.lookup_internal_connection_id(&ext_id_3));
-    assert_eq!(Some(id2), mapper.lookup_internal_connection_id(&ext_id_4));
+    assert_eq!(
+        Some((id2, connection::id::Classification::Local,)),
+        mapper.lookup_internal_connection_id(&ext_id_4)
+    );
 }
 
 #[test]

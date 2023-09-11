@@ -527,11 +527,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .source_connection_id()
             .and_then(PeerId::try_from_bytes);
 
-        let datagram = &DatagramInfo {
+        let mut datagram = DatagramInfo {
             timestamp,
             payload_len,
             ecn: header.ecn,
             destination_connection_id,
+            destination_connection_id_classification: connection::id::Classification::Initial,
             source_connection_id,
         };
 
@@ -540,12 +541,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         // Try to lookup the internal connection ID and dispatch the packet
         // to the Connection
-        if let Some(internal_id) = self
+        if let Some((internal_id, dcid_classification)) = self
             .connection_id_mapper
-            .lookup_internal_connection_id(&datagram.destination_connection_id)
+            .lookup_internal_connection_id(&destination_connection_id)
         {
             let mut check_for_stateless_reset = false;
             let max_mtu = self.max_mtu;
+
+            datagram.destination_connection_id_classification = dcid_classification;
 
             let _ = self.connections.with_connection(internal_id, |conn| {
                 // The path `Id` needs to be passed around instead of the path to get around `&mut self` and
@@ -553,7 +556,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 let path_id = conn
                     .on_datagram_received(
                         &header.path,
-                        datagram,
+                        &datagram,
                         endpoint_context.congestion_controller,
                         endpoint_context.path_migration,
                         max_mtu,
@@ -576,7 +579,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     })?;
 
                 if let Err(err) = conn.handle_packet(
-                    datagram,
+                    &datagram,
                     path_id,
                     packet,
                     endpoint_context.random_generator,
@@ -600,7 +603,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 if let Err(err) = conn.handle_remaining_packets(
                     &header.path,
-                    datagram,
+                    &datagram,
                     path_id,
                     endpoint_context.connection_id_format,
                     remaining,
@@ -724,7 +727,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 if let Err(err) = self.handle_initial_packet(
                     header,
-                    datagram,
+                    &datagram,
                     packet,
                     remaining,
                     retry_token_dcid,
@@ -781,7 +784,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     && Cfg::StatelessResetTokenGenerator::ENABLED
                     && is_short_header_packet
                 {
-                    self.enqueue_stateless_reset(header, datagram, &destination_connection_id);
+                    self.enqueue_stateless_reset(header, &datagram, &destination_connection_id);
                 }
             }
         }

@@ -19,6 +19,7 @@ pub struct DatagramInfo {
     pub payload_len: usize,
     pub ecn: ExplicitCongestionNotification,
     pub destination_connection_id: connection::LocalId,
+    pub destination_connection_id_classification: connection::id::Classification,
     pub source_connection_id: Option<connection::PeerId>,
 }
 

@@ -234,22 +234,27 @@ impl ConnectionIdMapper {
     pub fn lookup_internal_connection_id(
         &self,
         connection_id: &connection::LocalId,
-    ) -> Option<InternalConnectionId> {
+    ) -> Option<(InternalConnectionId, connection::id::Classification)> {
         let guard = self
             .state
             .lock()
             .expect("should succeed unless the lock is poisoned");
-        guard.local_id_map.get(connection_id).or_else(|| {
-            if self.endpoint_type.is_server() {
-                // The ID wasn't in the local ID map, so we'll check the initial ID
-                // map in case this ID was from a duplicate initial packet
-                connection::InitialId::try_from(*connection_id)
-                    .ok()
-                    .and_then(|initial_id| guard.initial_id_map.get(&initial_id))
-            } else {
-                None
-            }
-        })
+        guard
+            .local_id_map
+            .get(connection_id)
+            .map(|id| (id, connection::id::Classification::Local))
+            .or_else(|| {
+                if self.endpoint_type.is_server() {
+                    // The ID wasn't in the local ID map, so we'll check the initial ID
+                    // map in case this ID was from a duplicate initial packet
+                    connection::InitialId::try_from(*connection_id)
+                        .ok()
+                        .and_then(|initial_id| guard.initial_id_map.get(&initial_id))
+                        .map(|id| (id, connection::id::Classification::Initial))
+                } else {
+                    None
+                }
+            })
     }
 
     /// Inserts the given `InitialId` into the map if it is not already in the map,
@@ -418,7 +423,7 @@ mod tests {
             .is_err());
 
         assert_eq!(
-            Some(internal_id),
+            Some((internal_id, connection::id::Classification::Initial,)),
             mapper.lookup_internal_connection_id(&local_id)
         );
 

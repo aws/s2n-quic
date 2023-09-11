@@ -1335,6 +1335,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# receiving a server response, so servers SHOULD ignore any such
         //# packets.
 
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-21.2
+        //# Except for Initial and Stateless Resets, an endpoint only accepts
+        //# packets that include a Destination Connection ID field that matches
+        //# a value the endpoint previously chose.
+        if datagram
+            .destination_connection_id_classification
+            .is_initial()
+        {
+            return Err(ProcessingError::Other);
+        }
+
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1448,6 +1459,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             return Ok(());
         }
 
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-21.2
+        //# Except for Initial and Stateless Resets, an endpoint only accepts
+        //# packets that include a Destination Connection ID field that matches
+        //# a value the endpoint previously chose.
+        if datagram
+            .destination_connection_id_classification
+            .is_initial()
+        {
+            return Err(ProcessingError::Other);
+        }
+
         if let Some((space, handshake_status)) = self.space_manager.application_mut() {
             let packet = space.validate_and_decrypt_packet(
                 packet,
@@ -1531,6 +1553,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //= tracking-issue=349
         //# A client MUST discard a Version Negotiation packet that
         //# lists the QUIC version selected by the client.
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-21.2
+        //# Except for Initial and Stateless Resets, an endpoint only accepts
+        //# packets that include a Destination Connection ID field that matches
+        //# a value the endpoint previously chose.
+        if datagram
+            .destination_connection_id_classification
+            .is_initial()
+        {
+            return Err(ProcessingError::Other);
+        }
 
         Ok(())
     }
