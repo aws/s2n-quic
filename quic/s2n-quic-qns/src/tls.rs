@@ -2,58 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
-use s2n_quic::provider::tls::s2n_tls::keylog::KeyLog;
 use s2n_quic_core::random;
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::SystemTime};
 use structopt::StructOpt;
-
-pub static TICKET_KEY_NAME: &[u8] = "keyname".as_bytes();
-
-pub struct Config {
-    alpns: Vec<String>,
-    certificate: s2n_quic::provider::tls::default::certificate::Certificate,
-    private_key: s2n_quic::provider::tls::default::certificate::PrivateKey,
-}
-
-impl Config {
-    fn build(&self) -> Result<s2n_tls::Config, s2n_tls::Error> {
-        let mut config_builder = s2n_tls::Builder::new();
-        let mut generator = random::testing::Generator(200);
-        let mut ticket_key = [0u8; 16];
-        random::Generator::public_random_fill(&mut generator, &mut ticket_key);
-
-        config_builder
-            .enable_session_tickets(true)?
-            .add_session_ticket_key(TICKET_KEY_NAME, &ticket_key, SystemTime::now())?
-            .load_pem(
-                self.certificate.0.as_pem().unwrap(),
-                self.private_key.0.as_pem().unwrap(),
-            )?
-            .set_security_policy(&s2n_tls::DEFAULT_TLS13)?
-            .enable_quic()?
-            .set_application_protocol_preference(self.alpns.iter().map(String::as_bytes))?;
-
-        let keylog = KeyLog::try_open();
-        unsafe {
-            if let Some(keylog) = keylog.as_ref() {
-                config_builder
-                    .set_key_log_callback(Some(KeyLog::callback), Arc::as_ptr(keylog) as *mut _)?;
-            }
-        }
-
-        cfg_if::cfg_if! {
-            if #[cfg(all(
-                s2n_quic_unstable,
-                feature = "unstable_client_hello"
-            ))] {
-                use super::unstable::MyClientHelloHandler;
-                config_builder.set_client_hello_callback(MyClientHelloHandler {})?;
-            }
-        }
-
-        config_builder.build()
-    }
-}
 
 #[derive(Debug, StructOpt)]
 pub struct Server {
@@ -69,15 +20,35 @@ pub struct Server {
 
 impl Server {
     #[cfg(unix)]
-    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server> {
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server<s2n_tls::Server>> {
         // The server builder defaults to a chain because this allows certs to just work, whether
         // the PEM contains a single cert or a chain
-        let config = Config {
-            alpns: alpns.to_vec(),
-            certificate: s2n_tls::ca(self.certificate.as_ref())?,
-            private_key: s2n_tls::private_key(self.private_key.as_ref())?,
-        };
-        let server = s2n_tls::Server::from_loader(config.build().expect("Config builder failed"));
+        let mut tls = s2n_tls::Server::builder()
+            .with_certificate(
+                s2n_tls::ca(self.certificate.as_ref())?,
+                s2n_tls::private_key(self.private_key.as_ref())?,
+            )?
+            .with_application_protocols(alpns.iter().map(String::as_bytes))?
+            .with_key_logging()?;
+
+        cfg_if::cfg_if! {
+            if #[cfg(all(
+                s2n_quic_unstable,
+                feature = "unstable_client_hello"
+            ))] {
+                use super::unstable::MyClientHelloHandler;
+                let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
+            }
+        }
+
+        let config = tls.mut_config();
+        let mut generator = random::testing::Generator(200);
+        let mut ticket_key = [0u8; 16];
+        random::Generator::public_random_fill(&mut generator, &mut ticket_key);
+        config.enable_session_tickets(true)?;
+        config.add_session_ticket_key("keyname".as_bytes(), &ticket_key, SystemTime::now())?;
+
+        let server = s2n_tls::Server::from_loader(tls.build()?);
         Ok(server)
     }
 
