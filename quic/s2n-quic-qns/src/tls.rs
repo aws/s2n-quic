@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::SystemTime};
+use std::{path::PathBuf, str::FromStr, time::SystemTime};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -108,6 +108,7 @@ impl Client {
     pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Client> {
         let tls = if self.disable_cert_verification {
             use ::rustls::{version, ClientConfig, KeyLogFile};
+            use std::sync::Arc;
 
             let mut config = ClientConfig::builder()
                 .with_cipher_suites(rustls::DEFAULT_CIPHERSUITES)
@@ -198,7 +199,7 @@ pub mod s2n_tls {
     use super::*;
     pub use s2n_quic::provider::tls::s2n_tls::{
         certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
-        Builder, Client, Config, Error, Server, DEFAULT_TLS13,
+        Client, Server,
     };
 
     pub fn ca(ca: Option<&PathBuf>) -> Result<Certificate> {

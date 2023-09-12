@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic_core::application::ServerName;
-pub use s2n_tls::{
-    config::{Builder, Config},
-    error::Error,
-    security::DEFAULT_TLS13,
-};
+use s2n_tls::config::Config;
 
 /// Ensure memory is correctly managed in tests
 #[cfg(test)]
