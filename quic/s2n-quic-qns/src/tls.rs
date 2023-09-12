@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
-use s2n_quic_core::random;
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::SystemTime};
 use structopt::StructOpt;
 
@@ -16,6 +15,10 @@ pub struct Server {
 
     #[structopt(long, default_value)]
     pub tls: TlsProviders,
+
+    /// Must be at least 16 bytes
+    #[structopt(long)]
+    pub ticket_key: Option<String>,
 }
 
 impl Server {
@@ -41,12 +44,15 @@ impl Server {
             }
         }
 
-        let config = tls.mut_config();
-        let mut generator = random::testing::Generator(200);
-        let mut ticket_key = [0u8; 16];
-        random::Generator::public_random_fill(&mut generator, &mut ticket_key);
-        config.enable_session_tickets(true)?;
-        config.add_session_ticket_key("keyname".as_bytes(), &ticket_key, SystemTime::now())?;
+        if let Some(ticket_key) = &self.ticket_key {
+            let config = tls.mut_config();
+            config.enable_session_tickets(true)?;
+            config.add_session_ticket_key(
+                "keyname".as_bytes(),
+                ticket_key.as_bytes(),
+                SystemTime::now(),
+            )?;
+        }
 
         let server = s2n_tls::Server::from_loader(tls.build()?);
         Ok(server)
