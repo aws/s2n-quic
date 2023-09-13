@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
-use std::{path::PathBuf, str::FromStr, time::SystemTime};
+use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -16,6 +16,8 @@ pub struct Server {
     #[structopt(long, default_value)]
     pub tls: TlsProviders,
 
+    /// The key to use for session tickets/PSKs
+    ///
     /// Must be at least 16 bytes
     #[structopt(long)]
     pub ticket_key: Option<String>,
@@ -45,12 +47,12 @@ impl Server {
         }
 
         if let Some(ticket_key) = &self.ticket_key {
-            let config = tls.mut_config();
+            let config = tls.config_mut();
             config.enable_session_tickets(true)?;
             config.add_session_ticket_key(
                 "keyname".as_bytes(),
                 ticket_key.as_bytes(),
-                SystemTime::now(),
+                std::time::SystemTime::now(),
             )?;
         }
 

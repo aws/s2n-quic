@@ -94,7 +94,7 @@ impl Default for Builder {
 }
 
 impl Builder {
-    pub fn mut_config(&mut self) -> &mut s2n_tls::config::Builder {
+    pub fn config_mut(&mut self) -> &mut s2n_tls::config::Builder {
         &mut self.config
     }
 
