@@ -96,6 +96,12 @@ where
     B: Interceptor,
 {
     #[inline(always)]
+    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
+        self.0.intercept_rx_remote_port(subject, port);
+        self.1.intercept_rx_remote_port(subject, port);
+    }
+
+    #[inline(always)]
     fn intercept_rx_datagram<'a>(
         &mut self,
         subject: &Subject,
@@ -205,6 +211,13 @@ where
 }
 
 impl<T: Interceptor> Interceptor for Option<T> {
+    #[inline]
+    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
+        if let Some(inner) = self.as_mut() {
+            inner.intercept_rx_remote_port(subject, port)
+        }
+    }
+
     #[inline]
     fn intercept_rx_payload<'a>(
         &mut self,
