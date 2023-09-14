@@ -119,6 +119,11 @@ pub trait Strategy: Sized {
     fn while_has_capacity(self) -> WhileHasCapacity<Self> {
         WhileHasCapacity { strategy: self }
     }
+
+    /// Applies the strategy and holds the result `count` times
+    fn hold(self, count: Range<usize>) -> Hold<Self> {
+        Hold::new(self, count)
+    }
 }
 
 impl<T: Strategy> Strategy for Option<T> {
@@ -368,6 +373,38 @@ pub struct Disabled;
 impl Strategy for Disabled {
     #[inline]
     fn havoc<R: Random>(&mut self, _rand: &mut R, _buffer: &mut EncoderBuffer) {}
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Hold<S: Strategy> {
+    strategy: S,
+    min: u64,
+    max: u64,
+    remaining: u64,
+}
+
+impl<S: Strategy> Hold<S> {
+    pub fn new(strategy: S, range: Range<usize>) -> Self {
+        debug_assert!(range.start <= range.end);
+        Self {
+            strategy,
+            min: range.start as _,
+            max: range.end as _,
+            remaining: 0,
+        }
+    }
+}
+
+impl<S: Strategy> Strategy for Hold<S> {
+    #[inline]
+    fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
+        if self.remaining == 0 {
+            self.strategy.havoc(rand, buffer);
+            self.remaining = rand.gen_range(self.min..self.max);
+        } else {
+            self.remaining -= 1;
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -675,4 +712,5 @@ mod tests {
     test!(while_has_capacity_test, Frame.while_has_capacity());
     test!(toggle_test, Disabled.toggle(1..5));
     test!(randomly_test, Disabled.randomly());
+    test!(hold_test, Disabled.hold(0..5));
 }
