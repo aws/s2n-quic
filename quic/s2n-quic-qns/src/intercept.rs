@@ -6,7 +6,7 @@ use rand::prelude::*;
 use s2n_codec::encoder::scatter;
 use s2n_quic_core::{
     event::api::Subject,
-    havoc::{self, *},
+    havoc::{self, Strategy as _, *},
     packet,
     packet::interceptor::{DecoderBufferMut, Havoc},
 };
@@ -41,7 +41,7 @@ impl havoc::Random for Random {
     }
 }
 
-type Strat = Toggle<
+type Strategy = Toggle<
     Alternate<
         AndThen<
             AndThen<AndThen<Disabled, Toggle<Shuffle>>, Toggle<Repeat<Swap>>>,
@@ -54,11 +54,11 @@ type Strat = Toggle<
 pub struct Interceptor {
     rx: bool,
     tx: bool,
-    strategies: LruCache<Option<u64>, Havoc<Strat, Strat, Random>>,
+    strategies: LruCache<Option<u64>, Havoc<Strategy, Strategy, Random>>,
 }
 
 impl Interceptor {
-    fn strategy_for(&mut self, subject: &Subject) -> &mut Havoc<Strat, Strat, Random> {
+    fn strategy_for(&mut self, subject: &Subject) -> &mut Havoc<Strategy, Strategy, Random> {
         let id = match subject {
             Subject::Connection { id, .. } => Some(*id),
             _ => None,
@@ -79,7 +79,7 @@ impl Interceptor {
         self.strategies.get_mut(&id).unwrap()
     }
 
-    fn strategy(toggle: core::ops::Range<usize>) -> Strat {
+    fn strategy(toggle: core::ops::Range<usize>) -> Strategy {
         Disabled
             .and_then(Shuffle.toggle(toggle.clone()))
             .and_then(Swap.repeat(1..16).toggle(toggle.clone()))
