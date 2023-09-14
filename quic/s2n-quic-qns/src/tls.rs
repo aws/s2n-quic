@@ -15,15 +15,20 @@ pub struct Server {
 
     #[structopt(long, default_value)]
     pub tls: TlsProviders,
+
+    /// The key to use for session tickets/PSKs
+    ///
+    /// Must be at least 16 bytes
+    #[structopt(long)]
+    pub ticket_key: Option<String>,
 }
 
 impl Server {
     #[cfg(unix)]
-    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server> {
+    pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Server<s2n_tls::Server>> {
         // The server builder defaults to a chain because this allows certs to just work, whether
         // the PEM contains a single cert or a chain
-
-        let tls = s2n_tls::Server::builder()
+        let mut tls = s2n_tls::Server::builder()
             .with_certificate(
                 s2n_tls::ca(self.certificate.as_ref())?,
                 s2n_tls::private_key(self.private_key.as_ref())?,
@@ -41,7 +46,18 @@ impl Server {
             }
         }
 
-        Ok(tls.build()?)
+        if let Some(ticket_key) = &self.ticket_key {
+            let config = tls.config_mut();
+            config.enable_session_tickets(true)?;
+            config.add_session_ticket_key(
+                "keyname".as_bytes(),
+                ticket_key.as_bytes(),
+                std::time::SystemTime::now(),
+            )?;
+        }
+
+        let server = s2n_tls::Server::from_loader(tls.build()?);
+        Ok(server)
     }
 
     pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Server> {
