@@ -72,6 +72,11 @@ if [ "$QNS_MODE" == "interop" ]; then
       # to allow the test to succeed.
       CLIENT_PARAMS+=" --disable-cert-verification"
     fi
+
+    if [ "$TESTCASE" == "resumption" ]; then
+      # Just a random string so that the server can do resumption
+      SERVER_PARAMS+=" --ticket-key 3459876988345835"
+    fi
 fi
 
 if [ "$QNS_MODE" == "interop" ]; then

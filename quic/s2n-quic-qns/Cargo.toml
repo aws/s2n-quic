@@ -52,4 +52,4 @@ normal = [ "openssl-sys" ]
 
 # Use unstable s2n-quic features
 [target.'cfg(any(s2n_quic_unstable, s2n_internal_dev))'.dependencies]
-s2n-quic = { path = "../s2n-quic", features = ["unstable_client_hello", "unstable-provider-packet-interceptor"] }
+s2n-quic = { path = "../s2n-quic", features = ["unstable_client_hello", "unstable_resumption", "unstable-provider-packet-interceptor"] }
