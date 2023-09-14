@@ -121,6 +121,14 @@ pub trait Strategy: Sized {
     }
 }
 
+impl<T: Strategy> Strategy for Option<T> {
+    fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
+        if let Some(strategy) = self.as_mut() {
+            strategy.havoc(rand, buffer);
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Alternate<A: Strategy, B: Strategy> {
     a: A,
@@ -129,6 +137,7 @@ pub struct Alternate<A: Strategy, B: Strategy> {
     max: u64,
     is_a: bool,
     remaining: u64,
+    init: bool,
 }
 
 impl<A: Strategy, B: Strategy> Alternate<A, B> {
@@ -142,6 +151,7 @@ impl<A: Strategy, B: Strategy> Alternate<A, B> {
             max: range.end as _,
             is_a: false,
             remaining: 0,
+            init: false,
         }
     }
 }
@@ -149,6 +159,12 @@ impl<A: Strategy, B: Strategy> Alternate<A, B> {
 impl<A: Strategy, B: Strategy> Strategy for Alternate<A, B> {
     #[inline]
     fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
+        // initialize the strategy to a random arm
+        if !self.init {
+            self.init = true;
+            self.is_a = rand.gen_bool();
+        }
+
         loop {
             if let Some(remaining) = self.remaining.checked_sub(1) {
                 self.remaining = remaining;
@@ -492,6 +508,8 @@ impl Strategy for Frame {
                 rand.fill(stateless_reset_token);
                 let stateless_reset_token = (&*stateless_reset_token).try_into().unwrap();
 
+                // connection ID lengths are encoded with a u8
+                let cap = cap.min(u8::MAX as usize);
                 let connection_id = rand.gen_slice(&mut data[..cap]);
 
                 frame::NewConnectionId {
@@ -549,7 +567,7 @@ impl Strategy for Frame {
         ];
 
         let index = rand.gen_range(0..frames.len() as u64) as usize;
-        let mut payload = [0u8; 1500];
+        let mut payload = [0u8; 16_000];
         let frame = frames[index](rand, &mut payload, buffer.remaining_capacity());
 
         if frame.encoding_size() <= buffer.remaining_capacity() {

@@ -86,6 +86,11 @@ impl path::Handle for Handle {
     }
 
     #[inline]
+    fn set_remote_port(&mut self, port: u16) {
+        self.remote_address.0.set_port(port);
+    }
+
+    #[inline]
     fn local_address(&self) -> LocalAddress {
         self.local_address
     }

@@ -248,8 +248,9 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
         //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
         //# An endpoint MUST NOT send data on a stream at or beyond the final
         //# size.
-        debug_assert!(
-            self.state == State::Sending,
+        debug_assert_eq!(
+            self.state,
+            State::Sending,
             "Data transmission is not allowed after finish() was called"
         );
         debug_assert!(

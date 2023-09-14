@@ -7,8 +7,9 @@ use crate::{
     packet::number::PacketNumber,
     time::Timestamp,
 };
-use s2n_codec::{encoder::scatter, DecoderBufferMut, EncoderBuffer};
+use s2n_codec::encoder::scatter;
 
+pub use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 pub mod loss;
 pub use loss::Loss;
 
@@ -29,6 +30,12 @@ pub struct Datagram<'a> {
 
 /// Trait which enables an application to intercept packets that are transmitted and received
 pub trait Interceptor: 'static + Send {
+    #[inline(always)]
+    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
+        let _ = subject;
+        let _ = port;
+    }
+
     #[inline(always)]
     fn intercept_rx_datagram<'a>(
         &mut self,
@@ -152,6 +159,17 @@ where
     R: 'static + Send + havoc::Random,
 {
     #[inline]
+    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
+        let mut new_port = port.to_le_bytes();
+        let mut new_port = EncoderBuffer::new(&mut new_port);
+        self.rx.havoc(&mut self.random, &mut new_port);
+
+        if let Ok(new_port) = new_port.as_mut_slice().try_into().map(u16::from_le_bytes) {
+            *port = new_port
+        }
+    }
+
+    #[inline]
     fn intercept_rx_payload<'a>(
         &mut self,
         _subject: &Subject,
@@ -183,5 +201,33 @@ where
     ) {
         let payload = payload.flatten();
         self.tx.havoc(&mut self.random, payload);
+    }
+}
+
+impl<T: Interceptor> Interceptor for Option<T> {
+    #[inline]
+    fn intercept_rx_payload<'a>(
+        &mut self,
+        subject: &Subject,
+        packet: &Packet,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        if let Some(inner) = self.as_mut() {
+            inner.intercept_rx_payload(subject, packet, payload)
+        } else {
+            payload
+        }
+    }
+
+    #[inline]
+    fn intercept_tx_payload(
+        &mut self,
+        subject: &Subject,
+        packet: &Packet,
+        payload: &mut scatter::Buffer,
+    ) {
+        if let Some(inner) = self.as_mut() {
+            inner.intercept_tx_payload(subject, packet, payload)
+        }
     }
 }
