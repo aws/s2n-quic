@@ -94,6 +94,10 @@ impl Default for Builder {
 }
 
 impl Builder {
+    pub fn config_mut(&mut self) -> &mut s2n_tls::config::Builder {
+        &mut self.config
+    }
+
     #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
     pub fn with_client_hello_handler<T: 'static + ClientHelloCallback>(
         mut self,
