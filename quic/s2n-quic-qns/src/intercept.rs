@@ -65,15 +65,15 @@ impl Interceptor {
         };
 
         if !self.strategies.contains(&id) {
-            let strat = Self::strategy(1..100);
+            let strategy = Self::strategy(1..100);
 
-            let strat = Havoc {
-                rx: strat.clone(),
-                tx: strat,
+            let strategy = Havoc {
+                rx: strategy.clone(),
+                tx: strategy,
                 random: Random,
             };
 
-            self.strategies.push(id, strat);
+            self.strategies.push(id, strategy);
         }
 
         self.strategies.get_mut(&id).unwrap()
