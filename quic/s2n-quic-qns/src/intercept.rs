@@ -19,6 +19,9 @@ pub struct Intercept {
 
     #[structopt(long)]
     havoc_tx: bool,
+
+    #[structopt(long)]
+    havoc_port: bool,
 }
 
 struct Random;
@@ -51,14 +54,20 @@ type Strategy = Toggle<
     >,
 >;
 
+type PortStrategy = Hold<Toggle<Mutate>>;
+
 pub struct Interceptor {
     rx: bool,
     tx: bool,
-    strategies: LruCache<Option<u64>, Havoc<Strategy, Strategy, Random>>,
+    port: bool,
+    strategies: LruCache<Option<u64>, Havoc<Strategy, Strategy, PortStrategy, Random>>,
 }
 
 impl Interceptor {
-    fn strategy_for(&mut self, subject: &Subject) -> &mut Havoc<Strategy, Strategy, Random> {
+    fn strategy_for(
+        &mut self,
+        subject: &Subject,
+    ) -> &mut Havoc<Strategy, Strategy, PortStrategy, Random> {
         let id = match subject {
             Subject::Connection { id, .. } => Some(*id),
             _ => None,
@@ -66,10 +75,12 @@ impl Interceptor {
 
         if !self.strategies.contains(&id) {
             let strategy = Self::strategy(1..100);
+            let port_strategy = Self::port_strategy(1..100);
 
             let strategy = Havoc {
                 rx: strategy.clone(),
                 tx: strategy,
+                port: port_strategy,
                 random: Random,
             };
 
@@ -92,12 +103,18 @@ impl Interceptor {
             )
             .toggle(toggle)
     }
+
+    fn port_strategy(toggle: core::ops::Range<usize>) -> PortStrategy {
+        // Hold the mutated port for a period to allow the
+        // receiver to response to the new port
+        Mutate.toggle(toggle).hold(10..20)
+    }
 }
 
 impl packet::interceptor::Interceptor for Interceptor {
     #[inline]
     fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
-        if self.rx {
+        if self.port {
             self.strategy_for(subject)
                 .intercept_rx_remote_port(subject, port)
         }
@@ -138,6 +155,7 @@ impl Intercept {
         Interceptor {
             rx: self.havoc_rx,
             tx: self.havoc_tx,
+            port: self.havoc_port,
             strategies: LruCache::new(unsafe { core::num::NonZeroUsize::new_unchecked(10_000) }),
         }
     }

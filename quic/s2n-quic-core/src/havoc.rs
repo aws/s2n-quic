@@ -90,6 +90,22 @@ pub trait Strategy: Sized {
         buffer.len()
     }
 
+    /// Applies the havoc strategy to the given `u16` value and returns the new `u16` result
+    #[inline]
+    fn havoc_u16<R: Random>(&mut self, rand: &mut R, input: u16) -> u16 {
+        let buffer = &mut [0; 2];
+        let mut buffer = EncoderBuffer::new(buffer);
+        buffer.encode(&input);
+
+        self.havoc(rand, &mut buffer);
+
+        buffer
+            .as_mut_slice()
+            .try_into()
+            .map(u16::from_be_bytes)
+            .unwrap_or(input)
+    }
+
     /// Alternate between two strategies with the supplied `period`
     fn alternate<B: Strategy>(self, b: B, period: Range<usize>) -> Alternate<Self, B> {
         Alternate::new(self, b, period)

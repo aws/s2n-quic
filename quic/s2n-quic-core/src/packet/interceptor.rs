@@ -147,32 +147,29 @@ where
 }
 
 #[derive(Debug, Default)]
-pub struct Havoc<Rx, Tx, R>
+pub struct Havoc<Rx, Tx, P, R>
 where
     Rx: 'static + Send + havoc::Strategy,
     Tx: 'static + Send + havoc::Strategy,
+    P: 'static + Send + havoc::Strategy,
     R: 'static + Send + havoc::Random,
 {
     pub rx: Rx,
     pub tx: Tx,
+    pub port: P,
     pub random: R,
 }
 
-impl<Rx, Tx, R> Interceptor for Havoc<Rx, Tx, R>
+impl<Rx, Tx, P, R> Interceptor for Havoc<Rx, Tx, P, R>
 where
     Rx: 'static + Send + havoc::Strategy,
     Tx: 'static + Send + havoc::Strategy,
+    P: 'static + Send + havoc::Strategy,
     R: 'static + Send + havoc::Random,
 {
     #[inline]
     fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
-        let mut new_port = port.to_le_bytes();
-        let mut new_port = EncoderBuffer::new(&mut new_port);
-        self.rx.havoc(&mut self.random, &mut new_port);
-
-        if let Ok(new_port) = new_port.as_mut_slice().try_into().map(u16::from_le_bytes) {
-            *port = new_port
-        }
+        *port = self.port.havoc_u16(&mut self.random, *port);
     }
 
     #[inline]
