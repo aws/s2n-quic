@@ -433,8 +433,9 @@ mod hold {
                 self.remaining = rand.gen_range(self.min..self.max);
             } else {
                 // restore the value from the first application of the strategy
+                let capacity = buffer.capacity();
                 buffer.set_position(0);
-                buffer.write_slice(self.value.as_mut_slice());
+                buffer.write_slice(&self.value.as_mut_slice()[..capacity]);
                 self.remaining -= 1;
             }
         }
