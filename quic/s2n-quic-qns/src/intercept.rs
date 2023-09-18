@@ -106,7 +106,7 @@ impl Interceptor {
 
     fn port_strategy(toggle: core::ops::Range<usize>) -> PortStrategy {
         // Hold the mutated port for a period to allow the
-        // receiver to response to the new port
+        // receiver to respond to the new port
         Mutate.toggle(toggle).hold(10..20)
     }
 }
