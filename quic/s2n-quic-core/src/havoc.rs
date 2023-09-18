@@ -137,6 +137,7 @@ pub trait Strategy: Sized {
     }
 
     /// Applies the strategy and holds the result `count` times
+    #[cfg(feature = "alloc")]
     fn hold(self, count: Range<usize>) -> Hold<Self> {
         Hold::new(self, count)
     }
@@ -391,42 +392,51 @@ impl Strategy for Disabled {
     fn havoc<R: Random>(&mut self, _rand: &mut R, _buffer: &mut EncoderBuffer) {}
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct Hold<S: Strategy> {
-    strategy: S,
-    min: u64,
-    max: u64,
-    value: Vec<u8>,
-    remaining: u64,
-}
+#[cfg(feature = "alloc")]
+pub use hold::Hold;
 
-impl<S: Strategy> Hold<S> {
-    pub fn new(strategy: S, range: Range<usize>) -> Self {
-        debug_assert!(range.start <= range.end);
-        Self {
-            strategy,
-            min: range.start as _,
-            max: range.end as _,
-            value: Vec::new(),
-            remaining: 0,
+#[cfg(feature = "alloc")]
+mod hold {
+    use super::*;
+    use alloc::vec::Vec;
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Hold<S: Strategy> {
+        strategy: S,
+        min: u64,
+        max: u64,
+        value: Vec<u8>,
+        remaining: u64,
+    }
+
+    impl<S: Strategy> Hold<S> {
+        pub fn new(strategy: S, range: Range<usize>) -> Self {
+            debug_assert!(range.start <= range.end);
+            Self {
+                strategy,
+                min: range.start as _,
+                max: range.end as _,
+                value: Vec::new(),
+                remaining: 0,
+            }
         }
     }
-}
 
-impl<S: Strategy> Strategy for Hold<S> {
-    #[inline]
-    fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
-        if self.remaining == 0 {
-            self.strategy.havoc(rand, buffer);
-            // store the value after the strategy has been applied
-            self.value.clear();
-            self.value.extend_from_slice(buffer.as_mut_slice());
-            self.remaining = rand.gen_range(self.min..self.max);
-        } else {
-            // restore the value from the first application of the strategy
-            buffer.set_position(0);
-            buffer.write_slice(self.value.as_mut_slice());
-            self.remaining -= 1;
+    impl<S: Strategy> Strategy for Hold<S> {
+        #[inline]
+        fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
+            if self.remaining == 0 {
+                self.strategy.havoc(rand, buffer);
+                // store the value after the strategy has been applied
+                self.value.clear();
+                self.value.extend_from_slice(buffer.as_mut_slice());
+                self.remaining = rand.gen_range(self.min..self.max);
+            } else {
+                // restore the value from the first application of the strategy
+                buffer.set_position(0);
+                buffer.write_slice(self.value.as_mut_slice());
+                self.remaining -= 1;
+            }
         }
     }
 }
