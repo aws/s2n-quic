@@ -154,6 +154,13 @@ impl tls::Session for Session {
         };
         Ok(Some(offsets))
     }
+
+    fn process_post_handshake_message<C: tls::Context<Self>>(
+        &mut self,
+        _context: &mut C,
+    ) -> Result<(), crate::transport::Error> {
+        Ok(())
+    }
 }
 
 static FIN: Bytes = Bytes::from_static(b"FIN");

@@ -271,8 +271,16 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
             match session_info.session.poll(&mut context)? {
                 Poll::Ready(_success) => {
-                    // The TLS session and retry_cid is no longer needed
-                    self.session_info = None;
+                    // The server currently doesn't process post-handshake messages and
+                    // therefore can throw away the TLS info. Additionally clients that
+                    // aren't doing resumption throw this struct away.
+                    //
+                    // TODO: We don't want to gate on the resumption flag as it is unstable and
+                    // will go away eventually. We need a way to check if the user enabled resumption.
+                    if Config::ENDPOINT_TYPE.is_server() || !cfg!(feature = "unstable_resumption") {
+                        self.discard_session();
+                    }
+
                     self.retry_cid = None;
                 }
                 Poll::Pending => return Poll::Pending,
@@ -280,6 +288,58 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         }
 
         Poll::Ready(Ok(()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn post_handshake_crypto<Pub: event::ConnectionPublisher>(
+        &mut self,
+        path_manager: &mut path::Manager<Config>,
+        local_id_registry: &mut connection::LocalIdRegistry,
+        limits: &mut Limits,
+        now: Timestamp,
+        waker: &Waker,
+        publisher: &mut Pub,
+        datagram: &mut Config::DatagramEndpoint,
+    ) -> Result<(), transport::Error> {
+        if let Some(session_info) = self.session_info.as_mut() {
+            let mut context: SessionContext<Config, Pub> = SessionContext {
+                now,
+                initial_cid: &session_info.initial_cid,
+                retry_cid: self.retry_cid.as_deref(),
+                initial: &mut self.initial,
+                handshake: &mut self.handshake,
+                application: &mut self.application,
+                zero_rtt_crypto: &mut self.zero_rtt_crypto,
+                path_manager,
+                handshake_status: &mut self.handshake_status,
+                local_id_registry,
+                limits,
+                server_name: &mut self.server_name,
+                application_protocol: &mut self.application_protocol,
+                waker,
+                publisher,
+                datagram,
+            };
+
+            let result = session_info
+                .session
+                .process_post_handshake_message(&mut context);
+            // Once the client has received a session ticket successfully, we can throw away
+            // the session_info object as we don't expect more post-handshake messages. Additionally
+            // we throw away any errors that occur during post-handshake processing.
+            if result.is_ok() {
+                self.discard_session();
+            }
+        }
+
+        Ok(())
+    }
+
+    fn discard_session(&mut self) {
+        self.session_info = None;
+        if let Some((application_space, _status)) = self.application_mut() {
+            application_space.buffer_crypto_frames = false;
+        }
     }
 
     /// Called when the connection timer expired
@@ -765,6 +825,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
         packet_interceptor: &mut Config::PacketInterceptor,
+        contains_crypto: &mut bool,
     ) -> Result<ProcessedPacket<'a>, connection::Error> {
         use s2n_quic_core::frame::{Frame, FrameMut};
 
@@ -860,6 +921,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                         publisher,
                     )
                     .map_err(on_error)?;
+                    *contains_crypto = true;
                 }
                 Frame::Ack(frame) => {
                     let on_error = on_frame_processed!(frame);

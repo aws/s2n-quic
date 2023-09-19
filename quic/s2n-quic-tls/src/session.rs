@@ -139,4 +139,42 @@ impl tls::Session for Session {
             Poll::Pending => Poll::Pending,
         }
     }
+
+    fn process_post_handshake_message<W>(&mut self, context: &mut W) -> Result<(), transport::Error>
+    where
+        W: tls::Context<Self>,
+    {
+        let mut callback: Callback<W, Self> = Callback {
+            context,
+            endpoint: self.endpoint,
+            state: &mut self.state,
+            suite: PhantomData,
+            err: None,
+            send_buffer: &mut self.send_buffer,
+            emitted_server_name: &mut self.emitted_server_name,
+            server_name: &self.server_name,
+        };
+
+        unsafe {
+            // Safety: the callback struct must live as long as the callbacks are
+            // set on on the connection
+            callback.set(&mut self.connection);
+        }
+
+        let result = self
+            .connection
+            .quic_process_post_handshake_message()
+            .map(|_| ());
+
+        callback.unset(&mut self.connection)?;
+
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e
+                .alert()
+                .map(CryptoError::new)
+                .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
+                .into()),
+        }
+    }
 }

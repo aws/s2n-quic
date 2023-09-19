@@ -246,5 +246,88 @@ mod mtls {
     }
 }
 
+#[cfg(feature = "s2n-quic-tls")]
+mod resumption {
+    use super::*;
+    use crate::provider::tls::{
+        self,
+        s2n_tls::{
+            callbacks::{ConnectionFuture, SessionTicket, SessionTicketCallback},
+            config::ConnectionInitializer,
+            connection::Connection,
+            error::Error,
+            Server,
+        },
+    };
+    use std::{
+        pin::Pin,
+        sync::{Arc, Mutex},
+    };
+
+    pub static TICKET_KEY: [u8; 16] = [0; 16];
+    #[derive(Default, Clone)]
+    pub struct SessionTicketHandler {
+        stored_ticket: Arc<Mutex<Option<Vec<u8>>>>,
+    }
+
+    impl SessionTicketCallback for SessionTicketHandler {
+        fn on_session_ticket(&self, _connection: &mut Connection, session_ticket: &SessionTicket) {
+            let size = session_ticket.len().unwrap();
+            let mut data = vec![0; size];
+            session_ticket.data(&mut data).unwrap();
+            let mut ticket = (*self.stored_ticket).lock().unwrap();
+            if ticket.is_none() {
+                *ticket = Some(data);
+            }
+        }
+    }
+
+    impl ConnectionInitializer for SessionTicketHandler {
+        fn initialize_connection(
+            &self,
+            connection: &mut Connection,
+        ) -> Result<Option<Pin<Box<(dyn ConnectionFuture)>>>, Error> {
+            if let Some(ticket) = (*self.stored_ticket).lock().unwrap().as_deref() {
+                connection.set_session_ticket(ticket)?;
+            }
+            Ok(None)
+        }
+    }
+
+    pub fn build_server_resumption_provider(
+        cert: &str,
+        key: &str,
+    ) -> Result<tls::default::Server<s2n_quic_tls_default::Server>> {
+        let mut tls = Server::builder().with_certificate(cert, key)?;
+
+        let config = tls.config_mut();
+        config.enable_session_tickets(true)?;
+        config.add_session_ticket_key(
+            "keyname".as_bytes(),
+            &TICKET_KEY,
+            std::time::SystemTime::now(),
+        )?;
+
+        let tls = Server::from_loader(tls.build()?);
+        Ok(tls)
+    }
+
+    pub fn build_client_resumption_provider(
+        cert: &str,
+        handler: &SessionTicketHandler,
+    ) -> Result<tls::default::Client> {
+        let mut tls = tls::s2n_tls::Client::builder().with_certificate(cert)?;
+        let config = tls.config_mut();
+        config
+            .enable_session_tickets(true)?
+            .set_session_ticket_callback(handler.clone())?
+            .set_connection_initializer(handler.clone())?;
+        Ok(tls.build()?)
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 pub use mtls::*;
+
+#[cfg(feature = "s2n-quic-tls")]
+pub use resumption::*;

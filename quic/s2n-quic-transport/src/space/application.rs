@@ -77,6 +77,9 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     pub datagram_manager: datagram::Manager<Config>,
     /// Counter used for detecting an Optimistic Ack attack
     skip_counter: Option<Counter<u32, Saturating>>,
+    /// Keeps track of if the TLS session still exists. If it does, we buffer
+    /// the crypto frames received. If not there's no chance that these messages will be read.
+    pub buffer_crypto_frames: bool,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
@@ -120,6 +123,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             recovery_manager: recovery::Manager::new(PacketNumberSpace::ApplicationData),
             datagram_manager,
             skip_counter: None,
+            buffer_crypto_frames: true,
         }
     }
 
@@ -863,18 +867,15 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
 
     fn handle_crypto_frame<Pub: event::ConnectionPublisher>(
         &mut self,
-        _frame: CryptoRef,
+        frame: CryptoRef,
         _datagram: &DatagramInfo,
         _path: &mut Path<Config>,
         _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
-        //# Once the handshake completes, if an endpoint is unable to buffer all
-        //# data in a CRYPTO frame, it MAY discard that CRYPTO frame and all
-        //# CRYPTO frames received in the future, or it MAY close the connection
-        //# with a CRYPTO_BUFFER_EXCEEDED error code.
+        if self.buffer_crypto_frames {
+            self.crypto_stream.on_crypto_frame(frame)?;
+        }
 
-        // we currently just discard CRYPTO frames post-handshake
         Ok(())
     }
 

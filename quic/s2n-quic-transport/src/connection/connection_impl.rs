@@ -1294,7 +1294,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // This can be checked on the server side by setting a value in the connection if a
             // token is received in the first Initial Packet. If that value is set, it should be
             // verified in all subsequent packets.
-
+            let mut contains_crypto = false;
             let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1306,6 +1306,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 random_generator,
                 &mut publisher,
                 packet_interceptor,
+                &mut contains_crypto,
             )?;
 
             // try to move the crypto state machine forward
@@ -1377,7 +1378,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     packet.version,
                 ),
             });
-
+            let mut contains_crypto = false;
             let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1389,6 +1390,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 random_generator,
                 &mut publisher,
                 packet_interceptor,
+                &mut contains_crypto,
             )?;
 
             if Self::Config::ENDPOINT_TYPE.is_server() {
@@ -1427,6 +1429,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
+        datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1517,7 +1520,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &datagram.destination_connection_id,
                 &mut publisher,
             );
-
+            let mut contains_crypto = false;
             let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1529,8 +1532,22 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 random_generator,
                 &mut publisher,
                 packet_interceptor,
+                &mut contains_crypto,
             )?;
 
+            // try to process any post-handshake messages
+            if Config::ENDPOINT_TYPE.is_client() && contains_crypto {
+                let space_manager = &mut self.space_manager;
+                space_manager.post_handshake_crypto(
+                    &mut self.path_manager,
+                    &mut self.local_id_registry,
+                    &mut self.limits,
+                    datagram.timestamp,
+                    &self.waker,
+                    &mut publisher,
+                    datagram_endpoint,
+                )?;
+            }
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
         }
