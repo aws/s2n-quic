@@ -432,10 +432,12 @@ mod hold {
                 self.value.extend_from_slice(buffer.as_mut_slice());
                 self.remaining = rand.gen_range(self.min..self.max);
             } else {
-                // restore the value from the first application of the strategy
-                let capacity = buffer.capacity();
-                buffer.set_position(0);
-                buffer.write_slice(&self.value.as_mut_slice()[..capacity]);
+                if !self.value.is_empty() {
+                    // restore the value from the first application of the strategy
+                    let len = buffer.capacity().min(self.value.len());
+                    buffer.set_position(0);
+                    buffer.write_slice(&self.value.as_mut_slice()[..len]);
+                }
                 self.remaining -= 1;
             }
         }
