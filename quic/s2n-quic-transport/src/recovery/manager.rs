@@ -1072,9 +1072,9 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     #[inline]
     fn check_consistency(&self, active_path: &Path<Config>, is_handshake_confirmed: bool) {
-        debug_assert!(active_path.is_active());
-
         if cfg!(debug_assertions) {
+            assert!(active_path.is_active());
+
             let ack_eliciting_packets_in_flight = self
                 .sent_packets
                 .iter()
