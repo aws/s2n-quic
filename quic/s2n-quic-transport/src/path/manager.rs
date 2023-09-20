@@ -603,7 +603,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// update the active path for the connection.
     ///
     /// Returns `Ok(true)` if the packet caused the active path to change from a path
-    /// previously blocked by amplification limits
+    /// blocked by amplification limits to a path not blocked by amplification limits.
     pub fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         path_id: Id,
@@ -730,8 +730,8 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Called when the connection timer expired
     ///
     /// Returns `Ok(true)` if the timeout caused the active path to change from a path
-    /// previously blocked by amplification limits. This can occur if the active path
-    /// was amplification limited and failed path validation.
+    /// blocked by amplification limits to a path not blocked by amplification limits.
+    /// This can occur if the active path was amplification limited and failed path validation.
     pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
