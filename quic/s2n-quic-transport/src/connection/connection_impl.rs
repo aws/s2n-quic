@@ -1322,6 +1322,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet_interceptor: &mut Config::PacketInterceptor,
         datagram_endpoint: &mut Config::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
         //= type=TODO
         //= tracking-issue=337
@@ -1343,12 +1345,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .destination_connection_id_classification
             .is_initial()
         {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::InitialConnectionIdInvalidSpace {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::Handshake,
+                },
+            });
             return Err(ProcessingError::Other);
         }
 
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
-            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
@@ -1414,6 +1421,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), ProcessingError> {
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
         //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
         //# their peer prior to completing the handshake.
@@ -1428,7 +1437,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# process incoming 1-RTT protected packets before the TLS handshake is
         //# complete.
 
-        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if !self.space_manager.is_handshake_complete() {
             let path = &self.path_manager[path_id];
             publisher.on_packet_dropped(event::builder::PacketDropped {
@@ -1467,6 +1475,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .destination_connection_id_classification
             .is_initial()
         {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::InitialConnectionIdInvalidSpace {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::OneRtt,
+                },
+            });
             return Err(ProcessingError::Other);
         }
 
@@ -1520,7 +1535,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn handle_version_negotiation_packet(
         &mut self,
         datagram: &DatagramInfo,
-        _path_id: path::Id,
+        path_id: path::Id,
         _packet: ProtectedVersionNegotiation,
         subscriber: &mut Config::EventSubscriber,
         _packet_interceptor: &mut Config::PacketInterceptor,
@@ -1562,6 +1577,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .destination_connection_id_classification
             .is_initial()
         {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::InitialConnectionIdInvalidSpace {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::VersionNegotiation,
+                },
+            });
             return Err(ProcessingError::Other);
         }
 
