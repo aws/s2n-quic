@@ -575,7 +575,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# on which the PATH_CHALLENGE was sent.
 
         for (id, path) in self.paths.iter_mut().enumerate() {
-            let unblocked = path.at_amplification_limit();
+            let was_amplification_limited = path.at_amplification_limit();
             if path.on_path_response(response.data) {
                 let id = id as u64;
                 publisher.on_path_challenge_updated(event::builder::PathChallengeUpdated {
@@ -588,7 +588,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                 if path.is_activated() {
                     self.last_known_active_validated_path = Some(id as u8);
                 }
-                return unblocked;
+                // The path is now validated, so it is unblocked if it was
+                // previously amplification limited
+                debug_assert!(!path.at_amplification_limit());
+                return was_amplification_limited;
             }
         }
         false
