@@ -620,6 +620,16 @@ impl builder::PacketHeader {
     }
 }
 
+enum PacketType {
+    Initial,
+    Handshake,
+    ZeroRtt,
+    OneRtt,
+    Retry,
+    VersionNegotiation,
+    StatelessReset,
+}
+
 enum KeyType {
     Initial,
     Handshake,
@@ -756,6 +766,12 @@ enum PacketDropReason<'a> {
     },
     /// The received Initial packet was not transported in a datagram of at least 1200 bytes
     UndersizedInitialPacket { path: Path<'a> },
+    /// The destination connection ID in the packet was the initial connection ID but was in
+    /// a non-initial packet.
+    InitialConnectionIdInvalidSpace {
+        path: Path<'a>,
+        packet_type: PacketType,
+    },
 }
 
 #[deprecated(note = "use on_rx_ack_range_dropped event instead")]

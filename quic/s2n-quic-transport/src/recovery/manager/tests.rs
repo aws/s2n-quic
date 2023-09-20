@@ -3167,6 +3167,7 @@ fn helper_ack_packets_on_path(
         payload_len: 0,
         ecn: Default::default(),
         destination_connection_id: connection::LocalId::TEST_ID,
+        destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
 
@@ -3452,6 +3453,7 @@ fn helper_generate_multi_path_manager(
             payload_len: 0,
             ecn: ExplicitCongestionNotification::default(),
             destination_connection_id: connection::LocalId::TEST_ID,
+            destination_connection_id_classification: connection::id::Classification::Local,
             source_connection_id: None,
         };
         let _ = path_manager

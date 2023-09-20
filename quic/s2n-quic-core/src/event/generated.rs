@@ -228,6 +228,24 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub enum PacketType {
+        #[non_exhaustive]
+        Initial {},
+        #[non_exhaustive]
+        Handshake {},
+        #[non_exhaustive]
+        ZeroRtt {},
+        #[non_exhaustive]
+        OneRtt {},
+        #[non_exhaustive]
+        Retry {},
+        #[non_exhaustive]
+        VersionNegotiation {},
+        #[non_exhaustive]
+        StatelessReset {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub enum KeyType {
         #[non_exhaustive]
         Initial {},
@@ -365,6 +383,13 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " The received Initial packet was not transported in a datagram of at least 1200 bytes"]
         UndersizedInitialPacket { path: Path<'a> },
+        #[non_exhaustive]
+        #[doc = " The destination connection ID in the packet was the initial connection ID but was in"]
+        #[doc = " a non-initial packet."]
+        InitialConnectionIdInvalidSpace {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2817,6 +2842,31 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub enum PacketType {
+        Initial,
+        Handshake,
+        ZeroRtt,
+        OneRtt,
+        Retry,
+        VersionNegotiation,
+        StatelessReset,
+    }
+    impl IntoEvent<api::PacketType> for PacketType {
+        #[inline]
+        fn into_event(self) -> api::PacketType {
+            use api::PacketType::*;
+            match self {
+                Self::Initial => Initial {},
+                Self::Handshake => Handshake {},
+                Self::ZeroRtt => ZeroRtt {},
+                Self::OneRtt => OneRtt {},
+                Self::Retry => Retry {},
+                Self::VersionNegotiation => VersionNegotiation {},
+                Self::StatelessReset => StatelessReset {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub enum KeyType {
         Initial,
         Handshake,
@@ -2986,6 +3036,12 @@ pub mod builder {
         },
         #[doc = " The received Initial packet was not transported in a datagram of at least 1200 bytes"]
         UndersizedInitialPacket { path: Path<'a> },
+        #[doc = " The destination connection ID in the packet was the initial connection ID but was in"]
+        #[doc = " a non-initial packet."]
+        InitialConnectionIdInvalidSpace {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
     }
     impl<'a> IntoEvent<api::PacketDropReason<'a>> for PacketDropReason<'a> {
         #[inline]
@@ -3030,6 +3086,12 @@ pub mod builder {
                 Self::UndersizedInitialPacket { path } => UndersizedInitialPacket {
                     path: path.into_event(),
                 },
+                Self::InitialConnectionIdInvalidSpace { path, packet_type } => {
+                    InitialConnectionIdInvalidSpace {
+                        path: path.into_event(),
+                        packet_type: packet_type.into_event(),
+                    }
+                }
             }
         }
     }

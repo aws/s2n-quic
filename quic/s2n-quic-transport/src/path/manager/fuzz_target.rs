@@ -161,6 +161,7 @@ impl Model {
             payload_len: payload_len as usize,
             ecn: ExplicitCongestionNotification::NotEct,
             destination_connection_id: local_id,
+            destination_connection_id_classification: connection::id::Classification::Local,
             source_connection_id: None,
         };
         let mut migration_validator = path::migration::allow_all::Validator;

@@ -276,6 +276,26 @@ impl TryFrom<LocalId> for InitialId {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Classification {
+    /// The connection ID was chosen by the client
+    Initial,
+    /// The connection ID was chosen by the local endpoint
+    Local,
+}
+
+impl Classification {
+    #[inline]
+    pub fn is_initial(&self) -> bool {
+        matches!(self, Self::Initial)
+    }
+
+    #[inline]
+    pub fn is_local(&self) -> bool {
+        matches!(self, Self::Local)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
     InvalidLength,

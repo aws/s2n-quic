@@ -430,6 +430,7 @@ mod tests {
             payload_len: 1200,
             timestamp: NoopClock {}.get_time(),
             destination_connection_id: connection::LocalId::TEST_ID,
+            destination_connection_id_classification: connection::id::Classification::Local,
             source_connection_id: None,
         };
         let mut processed_packet = ProcessedPacket::new(pn, &datagram);
@@ -531,6 +532,7 @@ mod tests {
             payload_len: 1200,
             timestamp: NoopClock {}.get_time(),
             destination_connection_id: connection::LocalId::TEST_ID,
+            destination_connection_id_classification: connection::id::Classification::Local,
             source_connection_id: None,
         }
     }

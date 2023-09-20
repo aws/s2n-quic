@@ -56,6 +56,7 @@ impl Endpoint {
             payload_len: 1200,
             timestamp: self.env.current_time,
             destination_connection_id: connection::LocalId::TEST_ID,
+            destination_connection_id_classification: connection::id::Classification::Local,
             source_connection_id: None,
         };
 
