@@ -794,8 +794,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         self.space_manager.close(
             error,
-            self.path_manager.active_path_mut(),
-            active_path_id,
+            &mut self.path_manager,
             timestamp,
             &mut publisher,
         );
@@ -1026,8 +1025,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
 
-        self.path_manager
-            .on_timeout(timestamp, random_generator, &mut publisher)?;
+        let unblocked =
+            self.path_manager
+                .on_timeout(timestamp, random_generator, &mut publisher)?;
+        if unblocked {
+            self.space_manager
+                .on_amplification_unblocked(&self.path_manager, timestamp);
+        }
         self.local_id_registry.on_timeout(timestamp);
         self.space_manager.on_timeout(
             &mut self.local_id_registry,
@@ -1166,14 +1170,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.close_sender
                     .on_datagram_received(rtt, datagram.timestamp);
             }
-        } else if unblocked {
+        } else if unblocked && self.path_manager[id].is_active() {
             //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.6
             //# When a server is blocked by anti-amplification limits, receiving a
             //# datagram unblocks it, even if none of the packets in the datagram are
             //# successfully processed.  In such a case, the PTO timer will need to
             //# be re-armed.
             self.space_manager
-                .on_amplification_unblocked(&self.path_manager[id], datagram.timestamp);
+                .on_amplification_unblocked(&self.path_manager, datagram.timestamp);
         }
 
         Ok(id)
@@ -1388,8 +1392,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# a server MUST discard Initial keys when it first
                 //# successfully processes a Handshake packet.
                 self.space_manager.discard_initial(
-                    self.path_manager.active_path_mut(),
-                    path_id,
+                    &mut self.path_manager,
                     datagram.timestamp,
                     &mut publisher,
                 );

@@ -90,7 +90,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         new_path_id: Id,
         random_generator: &mut dyn random::Generator,
         publisher: &mut Pub,
-    ) -> Result<(), transport::Error> {
+    ) -> Result<bool, transport::Error> {
         debug_assert!(new_path_id != path_id(self.active));
 
         let prev_path_id = self.active_path_id();
@@ -130,13 +130,13 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(self.active_path_id(), random_generator);
         }
 
-        self.activate_path(publisher, prev_path_id, new_path_id);
+        let unblocked = self.activate_path(publisher, prev_path_id, new_path_id);
 
         // Restart ECN validation to check that the path still supports ECN
         let path = self.active_path_mut();
         path.ecn_controller
             .restart(path_event!(path, new_path_id), publisher);
-        Ok(())
+        Ok(unblocked)
     }
 
     /// Return the active path
@@ -165,17 +165,19 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
-    pub fn activate_path<Pub: event::ConnectionPublisher>(
+    fn activate_path<Pub: event::ConnectionPublisher>(
         &mut self,
         publisher: &mut Pub,
         prev_path_id: Id,
         new_path_id: Id,
-    ) {
+    ) -> bool {
         self.check_active_path_is_synced();
         self.active = new_path_id.as_u8();
         self[prev_path_id].is_active = false;
         self[new_path_id].is_active = true;
         self[new_path_id].on_activated();
+        let unblocked = self[prev_path_id].at_amplification_limit()
+            && !self[new_path_id].at_amplification_limit();
         self.check_active_path_is_synced();
 
         let prev_path = &self[prev_path_id];
@@ -184,6 +186,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             previous: path_event!(prev_path, prev_path_id),
             active: path_event!(new_path, new_path_id),
         });
+
+        unblocked
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
@@ -551,7 +555,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         response: &frame::PathResponse,
         publisher: &mut Pub,
-    ) {
+    ) -> bool {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE frame was received.
@@ -571,6 +575,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         //# on which the PATH_CHALLENGE was sent.
 
         for (id, path) in self.paths.iter_mut().enumerate() {
+            let unblocked = path.at_amplification_limit();
             if path.on_path_response(response.data) {
                 let id = id as u64;
                 publisher.on_path_challenge_updated(event::builder::PathChallengeUpdated {
@@ -583,15 +588,19 @@ impl<Config: endpoint::Config> Manager<Config> {
                 if path.is_activated() {
                     self.last_known_active_validated_path = Some(id as u8);
                 }
-                break;
+                return unblocked;
             }
         }
+        false
     }
 
     /// Process a packet and update internal state.
     ///
     /// Check if the packet is a non-probing (path validation) packet and attempt to
     /// update the active path for the connection.
+    ///
+    /// Returns `Ok(true)` if the packet caused the active path to change from a path
+    /// previously blocked by amplification limits
     pub fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         path_id: Id,
@@ -599,7 +608,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         path_validation_probing: path_validation::Probe,
         random_generator: &mut dyn random::Generator,
         publisher: &mut Pub,
-    ) -> Result<(), transport::Error> {
+    ) -> Result<bool, transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //# A client MUST change the Destination Connection ID it uses for
         //# sending packets in response to only the first received Initial or
@@ -628,12 +637,13 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(path_id, random_generator);
         }
 
+        let mut unblocked = false;
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9.2
         //# An endpoint can migrate a connection to a new local address by
         //# sending packets containing non-probing frames from that address.
         if !path_validation_probing.is_probing() && self.active_path_id() != path_id {
-            self.update_active_path(path_id, random_generator, publisher)?;
-
+            unblocked = self.update_active_path(path_id, random_generator, publisher)?;
             //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
             //# After changing the address to which it sends non-probing packets, an
             //# endpoint can abandon any path validation for other addresses.
@@ -651,7 +661,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 self.set_challenge(self.active_path_id(), random_generator);
             }
         }
-        Ok(())
+        Ok(unblocked)
     }
 
     #[inline]
@@ -714,15 +724,22 @@ impl<Config: endpoint::Config> Manager<Config> {
         Ok(())
     }
 
+    /// Called when the connection timer expired
+    ///
+    /// Returns `Ok(true)` if the timeout caused the active path to change from a path
+    /// previously blocked by amplification limits. This can occur if the active path
+    /// was amplification limited and failed path validation.
     pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         timestamp: Timestamp,
         random_generator: &mut dyn random::Generator,
         publisher: &mut Pub,
-    ) -> Result<(), connection::Error> {
+    ) -> Result<bool, connection::Error> {
         for (id, path) in self.paths.iter_mut().enumerate() {
             path.on_timeout(timestamp, path_id(id as u8), random_generator, publisher);
         }
+
+        let mut unblocked = false;
 
         if self.active_path().failed_validation() {
             match self.last_known_active_validated_path {
@@ -733,7 +750,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //# address when validation of a new peer address fails.
                     let prev_path_id = path_id(self.active);
                     let new_path_id = path_id(last_known_active_validated_path);
-                    self.activate_path(publisher, prev_path_id, new_path_id);
+                    unblocked = self.activate_path(publisher, prev_path_id, new_path_id);
                     self.last_known_active_validated_path = None;
                 }
                 None => {
@@ -761,7 +778,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
         }
 
-        Ok(())
+        Ok(unblocked)
     }
 
     /// Notifies the path manager of the connection closing event
@@ -810,6 +827,13 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         value
+    }
+
+    #[cfg(test)]
+    pub(crate) fn activate_path_for_test(&mut self, path_id: Id) {
+        self[path_id].activated = true;
+        self[path_id].is_active = true;
+        self.active = path_id.as_u8();
     }
 }
 

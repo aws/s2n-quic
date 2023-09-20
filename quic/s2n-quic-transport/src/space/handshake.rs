@@ -256,27 +256,6 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         Ok((outcome, buffer))
     }
 
-    /// Signals the connection was previously blocked by anti-amplification limits
-    /// but is now no longer limited.
-    pub fn on_amplification_unblocked(
-        &mut self,
-        path: &Path<Config>,
-        timestamp: Timestamp,
-        is_handshake_confirmed: bool,
-    ) {
-        debug_assert!(
-            Config::ENDPOINT_TYPE.is_server(),
-            "Clients are never in an anti-amplification state"
-        );
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.6
-        //# When a server is blocked by anti-amplification limits, receiving a
-        //# datagram unblocks it, even if none of the packets in the datagram are
-        //# successfully processed.  In such a case, the PTO timer will need to
-        //# be re-armed.
-        self.update_pto_timer(path, timestamp, is_handshake_confirmed);
-    }
-
     /// Called when the connection timer expired
     #[allow(clippy::too_many_arguments)]
     pub fn on_timeout<Pub: event::ConnectionPublisher>(
@@ -319,12 +298,15 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     /// Updates the probe timeout timer
     pub fn update_pto_timer(
         &mut self,
-        path: &Path<Config>,
+        path_manager: &path::Manager<Config>,
         now: Timestamp,
         is_handshake_confirmed: bool,
     ) {
-        self.recovery_manager
-            .update_pto_timer(path, now, is_handshake_confirmed);
+        self.recovery_manager.update_pto_timer(
+            path_manager.active_path(),
+            now,
+            is_handshake_confirmed,
+        );
     }
 
     pub fn requires_probe(&self) -> bool {
@@ -452,6 +434,14 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         self.handshake_status.is_confirmed()
     }
 
+    fn active_path(&self) -> &Path<Config> {
+        self.path_manager.active_path()
+    }
+
+    fn active_path_mut(&mut self) -> &mut Path<Config> {
+        self.path_manager.active_path_mut()
+    }
+
     fn path(&self) -> &Path<Config> {
         &self.path_manager[self.path_id]
     }
@@ -513,6 +503,25 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
 //# of Handshake packets with other frames as a connection error.
 impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
     const INVALID_FRAME_ERROR: &'static str = "invalid frame in handshake space";
+
+    fn on_amplification_unblocked(
+        &mut self,
+        path_manager: &path::Manager<Config>,
+        timestamp: Timestamp,
+        is_handshake_confirmed: bool,
+    ) {
+        debug_assert!(
+            Config::ENDPOINT_TYPE.is_server(),
+            "Clients are never in an anti-amplification state"
+        );
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.6
+        //# When a server is blocked by anti-amplification limits, receiving a
+        //# datagram unblocks it, even if none of the packets in the datagram are
+        //# successfully processed.  In such a case, the PTO timer will need to
+        //# be re-armed.
+        self.update_pto_timer(path_manager, timestamp, is_handshake_confirmed);
+    }
 
     fn handle_crypto_frame<Pub: event::ConnectionPublisher>(
         &mut self,

@@ -154,8 +154,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     /// Discard the initial packet space
     pub fn discard_initial<Pub: event::ConnectionPublisher>(
         &mut self,
-        path: &mut Path<Config>,
-        path_id: path::Id,
+        path_manager: &mut path::Manager<Config>,
         now: Timestamp,
         publisher: &mut Pub,
     ) {
@@ -165,8 +164,9 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         //# forward progress and the loss detection timer might have been set for
         //# a now discarded packet number space.
         if let Some(mut space) = self.initial.take() {
-            path.reset_pto_backoff();
-            space.on_discard(path, path_id, publisher);
+            path_manager.active_path_mut().reset_pto_backoff();
+            let path_id = path_manager.active_path_id();
+            space.on_discard(path_manager.active_path_mut(), path_id, publisher);
 
             if let Some((handshake, handshake_status)) = self.handshake_mut() {
                 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
@@ -182,7 +182,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
                 // Arm the PTO timer on the handshake space so the handshake can make progress
                 // even if no handshake packets have been transmitted or received yet
-                handshake.update_pto_timer(path, now, handshake_status.is_confirmed());
+                handshake.update_pto_timer(path_manager, now, handshake_status.is_confirmed());
             }
         }
 
@@ -201,8 +201,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     /// Discard the handshake packet space
     pub fn discard_handshake<Pub: event::ConnectionPublisher>(
         &mut self,
-        path: &mut Path<Config>,
-        path_id: path::Id,
+        path_manager: &mut path::Manager<Config>,
         publisher: &mut Pub,
     ) {
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2
@@ -211,8 +210,9 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         //# forward progress and the loss detection timer might have been set for
         //# a now discarded packet number space.
         if let Some(mut space) = self.handshake.take() {
-            path.reset_pto_backoff();
-            space.on_discard(path, path_id, publisher);
+            path_manager.active_path_mut().reset_pto_backoff();
+            let path_id = path_manager.active_path_id();
+            space.on_discard(path_manager.active_path_mut(), path_id, publisher);
             // Dropping handshake will clear the PTO timer for the handshake space.
             // The PTO timer for the application space is reset when the
             // handshake is confirmed.
@@ -334,17 +334,33 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
     /// Signals the connection was previously blocked by anti-amplification limits
     /// but is now no longer limited.
-    pub fn on_amplification_unblocked(&mut self, path: &Path<Config>, timestamp: Timestamp) {
+    pub fn on_amplification_unblocked(
+        &mut self,
+        path_manager: &path::Manager<Config>,
+        timestamp: Timestamp,
+    ) {
         if let Some((space, handshake_status)) = self.initial_mut() {
-            space.on_amplification_unblocked(path, timestamp, handshake_status.is_confirmed());
+            space.on_amplification_unblocked(
+                path_manager,
+                timestamp,
+                handshake_status.is_confirmed(),
+            );
         }
 
         if let Some((space, handshake_status)) = self.handshake_mut() {
-            space.on_amplification_unblocked(path, timestamp, handshake_status.is_confirmed());
+            space.on_amplification_unblocked(
+                path_manager,
+                timestamp,
+                handshake_status.is_confirmed(),
+            );
         }
 
         if let Some((space, handshake_status)) = self.application_mut() {
-            space.on_amplification_unblocked(path, timestamp, handshake_status.is_confirmed());
+            space.on_amplification_unblocked(
+                path_manager,
+                timestamp,
+                handshake_status.is_confirmed(),
+            );
         }
     }
 
@@ -489,15 +505,14 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn close<Pub: event::ConnectionPublisher>(
         &mut self,
         error: connection::Error,
-        path: &mut path::Path<Config>,
-        path_id: path::Id,
+        path_manager: &mut path::Manager<Config>,
         now: Timestamp,
         publisher: &mut Pub,
     ) {
         self.session_info = None;
         self.retry_cid = None;
-        self.discard_initial(path, path_id, now, publisher);
-        self.discard_handshake(path, path_id, publisher);
+        self.discard_initial(path_manager, now, publisher);
+        self.discard_handshake(path_manager, publisher);
         self.discard_zero_rtt_crypto();
 
         // Don't discard the application space until the application has read the error
@@ -598,6 +613,13 @@ macro_rules! default_frame_handler {
 pub trait PacketSpace<Config: endpoint::Config> {
     const INVALID_FRAME_ERROR: &'static str;
 
+    fn on_amplification_unblocked(
+        &mut self,
+        path_manager: &path::Manager<Config>,
+        timestamp: Timestamp,
+        is_handshake_confirmed: bool,
+    );
+
     fn handle_crypto_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: CryptoRef,
@@ -668,7 +690,10 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn handle_path_response_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: PathResponse,
+        _timestamp: Timestamp,
+        _path_id: path::Id,
         _path_manager: &mut path::Manager<Config>,
+        _handshake_status: &mut HandshakeStatus,
         _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
@@ -923,8 +948,15 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 Frame::PathResponse(frame) => {
                     let on_error = on_frame_processed!(frame);
 
-                    self.handle_path_response_frame(frame, path_manager, publisher)
-                        .map_err(on_error)?;
+                    self.handle_path_response_frame(
+                        frame,
+                        datagram.timestamp,
+                        path_id,
+                        path_manager,
+                        handshake_status,
+                        publisher,
+                    )
+                    .map_err(on_error)?;
                 }
                 Frame::HandshakeDone(frame) => {
                     let on_error = on_frame_processed!(frame);
@@ -954,13 +986,21 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .into());
         }
 
-        path_manager.on_processed_packet(
+        let unblocked = path_manager.on_processed_packet(
             path_id,
             datagram.source_connection_id,
             processed_packet.path_validation_probing,
             random_generator,
             publisher,
         )?;
+
+        if unblocked {
+            self.on_amplification_unblocked(
+                path_manager,
+                datagram.timestamp,
+                handshake_status.is_confirmed(),
+            );
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-13.1
         //# A packet MUST NOT be acknowledged until packet protection has been

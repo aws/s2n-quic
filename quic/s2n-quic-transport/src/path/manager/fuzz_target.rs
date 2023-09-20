@@ -186,7 +186,7 @@ impl Model {
                         *probe,
                         &mut random_generator,
                         &mut publisher,
-                    )?
+                    )?;
                 }
             }
             Err(datagram_drop_reason) => {
