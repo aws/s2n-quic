@@ -792,12 +792,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# sufficient information to identify packets for a closing connection;
         //# the endpoint MAY discard all other connection state.
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
-        self.space_manager.close(
-            error,
-            &mut self.path_manager,
-            timestamp,
-            &mut publisher,
-        );
+        self.space_manager
+            .close(error, &mut self.path_manager, timestamp, &mut publisher);
     }
 
     /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
