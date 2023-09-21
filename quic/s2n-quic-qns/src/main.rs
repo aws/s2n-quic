@@ -9,6 +9,7 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 mod client;
 mod congestion_control;
 mod file;
+mod intercept;
 mod interop;
 mod io;
 mod limits;

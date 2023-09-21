@@ -71,10 +71,11 @@ pub async fn read_stream_size(stream: &mut ReceiveStream) -> Result<(u64, Bytes)
     let mut id = [0u8; core::mem::size_of::<u64>()];
 
     while offset < id.len() {
-        chunk = stream
-            .receive()
-            .await?
-            .expect("every stream should be prefixed with the scenario ID");
+        if let Some(c) = stream.receive().await? {
+            chunk = c;
+        } else {
+            return Err("every stream should be prefixed with a u64 length".into());
+        }
 
         let needed_len = id.len() - offset;
         let len = chunk.len().min(needed_len);

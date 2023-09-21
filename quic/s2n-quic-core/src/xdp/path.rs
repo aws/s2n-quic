@@ -97,6 +97,11 @@ impl Handle for Tuple {
     }
 
     #[inline]
+    fn set_remote_port(&mut self, port: u16) {
+        self.remote_address.port = port;
+    }
+
+    #[inline]
     fn local_address(&self) -> path::LocalAddress {
         self.local_address.into()
     }

@@ -102,7 +102,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     {
         let mut now: Option<Timestamp> = None;
 
-        queue.for_each(|header, payload| {
+        queue.for_each(|mut header, payload| {
             let timestamp = match now {
                 Some(time) => time,
                 None => {
@@ -111,7 +111,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                 }
             };
 
-            self.receive_datagram(&header, payload, timestamp)
+            self.receive_datagram(&mut header, payload, timestamp)
         });
     }
 
@@ -417,13 +417,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
     /// Ingests a single datagram
     fn receive_datagram(
         &mut self,
-        header: &datagram::Header<Cfg::PathHandle>,
+        header: &mut datagram::Header<Cfg::PathHandle>,
         payload: &mut [u8],
         timestamp: Timestamp,
     ) {
         let endpoint_context = self.config.context();
-
-        let remote_address = header.path.remote_address();
 
         // Try to decode the first packet in the datagram
         let payload_len = payload.len();
@@ -431,6 +429,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         let buffer = {
             let subject = event::builder::Subject::Endpoint {}.into_event();
+
+            let mut port = header.path.remote_address().port();
+            endpoint_context
+                .packet_interceptor
+                .intercept_rx_remote_port(&subject, &mut port);
+            header.path.set_remote_port(port);
+
             let remote_address = header.path.remote_address();
             let local_address = header.path.local_address();
 
@@ -445,6 +450,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 .intercept_rx_datagram(&subject, &datagram, buffer)
         };
 
+        let remote_address = header.path.remote_address();
         let connection_info = ConnectionInfo::new(&remote_address);
         let (packet, remaining) = if let Ok((packet, remaining)) = ProtectedPacket::decode(
             buffer,

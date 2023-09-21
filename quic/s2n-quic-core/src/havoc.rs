@@ -90,6 +90,22 @@ pub trait Strategy: Sized {
         buffer.len()
     }
 
+    /// Applies the havoc strategy to the given `u16` value and returns the new `u16` result
+    #[inline]
+    fn havoc_u16<R: Random>(&mut self, rand: &mut R, input: u16) -> u16 {
+        let buffer = &mut [0; 2];
+        let mut buffer = EncoderBuffer::new(buffer);
+        buffer.encode(&input);
+
+        self.havoc(rand, &mut buffer);
+
+        buffer
+            .as_mut_slice()
+            .try_into()
+            .map(u16::from_be_bytes)
+            .unwrap_or(input)
+    }
+
     /// Alternate between two strategies with the supplied `period`
     fn alternate<B: Strategy>(self, b: B, period: Range<usize>) -> Alternate<Self, B> {
         Alternate::new(self, b, period)
@@ -119,6 +135,20 @@ pub trait Strategy: Sized {
     fn while_has_capacity(self) -> WhileHasCapacity<Self> {
         WhileHasCapacity { strategy: self }
     }
+
+    /// Applies the strategy and holds the result `count` times
+    #[cfg(feature = "alloc")]
+    fn hold(self, count: Range<usize>) -> Hold<Self> {
+        Hold::new(self, count)
+    }
+}
+
+impl<T: Strategy> Strategy for Option<T> {
+    fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
+        if let Some(strategy) = self.as_mut() {
+            strategy.havoc(rand, buffer);
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -129,6 +159,7 @@ pub struct Alternate<A: Strategy, B: Strategy> {
     max: u64,
     is_a: bool,
     remaining: u64,
+    init: bool,
 }
 
 impl<A: Strategy, B: Strategy> Alternate<A, B> {
@@ -142,6 +173,7 @@ impl<A: Strategy, B: Strategy> Alternate<A, B> {
             max: range.end as _,
             is_a: false,
             remaining: 0,
+            init: false,
         }
     }
 }
@@ -149,6 +181,12 @@ impl<A: Strategy, B: Strategy> Alternate<A, B> {
 impl<A: Strategy, B: Strategy> Strategy for Alternate<A, B> {
     #[inline]
     fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
+        // initialize the strategy to a random arm
+        if !self.init {
+            self.init = true;
+            self.is_a = rand.gen_bool();
+        }
+
         loop {
             if let Some(remaining) = self.remaining.checked_sub(1) {
                 self.remaining = remaining;
@@ -354,6 +392,58 @@ impl Strategy for Disabled {
     fn havoc<R: Random>(&mut self, _rand: &mut R, _buffer: &mut EncoderBuffer) {}
 }
 
+#[cfg(feature = "alloc")]
+pub use hold::Hold;
+
+#[cfg(feature = "alloc")]
+mod hold {
+    use super::*;
+    use alloc::vec::Vec;
+
+    #[derive(Clone, Debug, Default)]
+    pub struct Hold<S: Strategy> {
+        strategy: S,
+        min: u64,
+        max: u64,
+        value: Vec<u8>,
+        remaining: u64,
+    }
+
+    impl<S: Strategy> Hold<S> {
+        pub fn new(strategy: S, range: Range<usize>) -> Self {
+            debug_assert!(range.start <= range.end);
+            Self {
+                strategy,
+                min: range.start as _,
+                max: range.end as _,
+                value: Vec::new(),
+                remaining: 0,
+            }
+        }
+    }
+
+    impl<S: Strategy> Strategy for Hold<S> {
+        #[inline]
+        fn havoc<R: Random>(&mut self, rand: &mut R, buffer: &mut EncoderBuffer) {
+            if self.remaining == 0 {
+                self.strategy.havoc(rand, buffer);
+                // store the value after the strategy has been applied
+                self.value.clear();
+                self.value.extend_from_slice(buffer.as_mut_slice());
+                self.remaining = rand.gen_range(self.min..self.max);
+            } else {
+                if !self.value.is_empty() {
+                    // restore the value from the first application of the strategy
+                    let len = buffer.capacity().min(self.value.len());
+                    buffer.set_position(0);
+                    buffer.write_slice(&self.value.as_mut_slice()[..len]);
+                }
+                self.remaining -= 1;
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VarInt {
     min: u64,
@@ -492,6 +582,8 @@ impl Strategy for Frame {
                 rand.fill(stateless_reset_token);
                 let stateless_reset_token = (&*stateless_reset_token).try_into().unwrap();
 
+                // connection ID lengths are encoded with a u8
+                let cap = cap.min(u8::MAX as usize);
                 let connection_id = rand.gen_slice(&mut data[..cap]);
 
                 frame::NewConnectionId {
@@ -549,7 +641,7 @@ impl Strategy for Frame {
         ];
 
         let index = rand.gen_range(0..frames.len() as u64) as usize;
-        let mut payload = [0u8; 1500];
+        let mut payload = [0u8; 16_000];
         let frame = frames[index](rand, &mut payload, buffer.remaining_capacity());
 
         if frame.encoding_size() <= buffer.remaining_capacity() {
@@ -657,4 +749,5 @@ mod tests {
     test!(while_has_capacity_test, Frame.while_has_capacity());
     test!(toggle_test, Disabled.toggle(1..5));
     test!(randomly_test, Disabled.randomly());
+    test!(hold_test, Disabled.hold(0..5));
 }
