@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    intercept::Intercept,
     interop::Testcase,
     server,
     server::{h09, h3},
@@ -46,6 +47,9 @@ pub struct Interop {
 
     #[structopt(flatten)]
     congestion_controller: crate::congestion_control::CongestionControl,
+
+    #[structopt(flatten)]
+    intercept: Intercept,
 }
 
 impl Interop {
@@ -104,6 +108,11 @@ impl Interop {
                 EventSubscriber(1),
                 s2n_quic::provider::event::tracing::Subscriber::default(),
             ))?;
+
+        // setup the packet interceptor if internal dev
+        #[cfg(s2n_internal_dev)]
+        let server = server.with_packet_interceptor(self.intercept.interceptor())?;
+
         let server = server::build(
             server,
             &self.application_protocols,

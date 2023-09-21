@@ -4,6 +4,7 @@
 use crate::{
     client,
     client::{h09, h3},
+    intercept::Intercept,
     interop::Testcase,
     task, tls, Result,
 };
@@ -58,6 +59,9 @@ pub struct Interop {
 
     #[structopt(flatten)]
     congestion_controller: crate::congestion_control::CongestionControl,
+
+    #[structopt(flatten)]
+    intercept: Intercept,
 }
 
 impl Interop {
@@ -160,6 +164,10 @@ impl Interop {
             .with_io(io)?
             .with_limits(limits)?
             .with_event(event::tracing::Subscriber::default())?;
+
+        // setup the packet interceptor if internal dev
+        #[cfg(s2n_internal_dev)]
+        let client = client.with_packet_interceptor(self.intercept.interceptor())?;
 
         client::build(
             client,

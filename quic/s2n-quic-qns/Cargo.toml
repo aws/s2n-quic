@@ -21,9 +21,12 @@ cfg-if = "1"
 futures = "0.3"
 http = "0.2"
 humansize = "2"
+lru = "0.10"
 openssl-sys = { version = "0.9", features = ["vendored"] }
+rand = "0.8"
 # dangerous_configuration is used to allow for cert verification to be disabled for the amplification limit interop test
 rustls = { version = "0.21", features = ["dangerous_configuration", "quic"] }
+s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-h3 = { path = "../s2n-quic-h3" }
 structopt = "0.3"
@@ -48,5 +51,8 @@ mimalloc = { version = "0.1", default-features = false }
 normal = [ "openssl-sys" ]
 
 # Use unstable s2n-quic features
-[target.'cfg(s2n_quic_unstable)'.dependencies]
+# unstable_client_hello and unstable_resumption use s2n-tls, and thus are only enabled for unix platforms
+[target.'cfg(all(any(s2n_quic_unstable, s2n_internal_dev), unix))'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["unstable_client_hello", "unstable_resumption"] }
+[target.'cfg(any(s2n_quic_unstable, s2n_internal_dev))'.dependencies]
+s2n-quic = { path = "../s2n-quic", features = ["unstable-provider-packet-interceptor"] }

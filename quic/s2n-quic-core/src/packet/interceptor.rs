@@ -7,8 +7,9 @@ use crate::{
     packet::number::PacketNumber,
     time::Timestamp,
 };
-use s2n_codec::{encoder::scatter, DecoderBufferMut, EncoderBuffer};
+use s2n_codec::encoder::scatter;
 
+pub use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 pub mod loss;
 pub use loss::Loss;
 
@@ -29,6 +30,12 @@ pub struct Datagram<'a> {
 
 /// Trait which enables an application to intercept packets that are transmitted and received
 pub trait Interceptor: 'static + Send {
+    #[inline(always)]
+    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
+        let _ = subject;
+        let _ = port;
+    }
+
     #[inline(always)]
     fn intercept_rx_datagram<'a>(
         &mut self,
@@ -89,6 +96,12 @@ where
     B: Interceptor,
 {
     #[inline(always)]
+    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
+        self.0.intercept_rx_remote_port(subject, port);
+        self.1.intercept_rx_remote_port(subject, port);
+    }
+
+    #[inline(always)]
     fn intercept_rx_datagram<'a>(
         &mut self,
         subject: &Subject,
@@ -134,23 +147,31 @@ where
 }
 
 #[derive(Debug, Default)]
-pub struct Havoc<Rx, Tx, R>
+pub struct Havoc<Rx, Tx, P, R>
 where
     Rx: 'static + Send + havoc::Strategy,
     Tx: 'static + Send + havoc::Strategy,
+    P: 'static + Send + havoc::Strategy,
     R: 'static + Send + havoc::Random,
 {
     pub rx: Rx,
     pub tx: Tx,
+    pub port: P,
     pub random: R,
 }
 
-impl<Rx, Tx, R> Interceptor for Havoc<Rx, Tx, R>
+impl<Rx, Tx, P, R> Interceptor for Havoc<Rx, Tx, P, R>
 where
     Rx: 'static + Send + havoc::Strategy,
     Tx: 'static + Send + havoc::Strategy,
+    P: 'static + Send + havoc::Strategy,
     R: 'static + Send + havoc::Random,
 {
+    #[inline]
+    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
+        *port = self.port.havoc_u16(&mut self.random, *port);
+    }
+
     #[inline]
     fn intercept_rx_payload<'a>(
         &mut self,
@@ -183,5 +204,40 @@ where
     ) {
         let payload = payload.flatten();
         self.tx.havoc(&mut self.random, payload);
+    }
+}
+
+impl<T: Interceptor> Interceptor for Option<T> {
+    #[inline]
+    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
+        if let Some(inner) = self.as_mut() {
+            inner.intercept_rx_remote_port(subject, port)
+        }
+    }
+
+    #[inline]
+    fn intercept_rx_payload<'a>(
+        &mut self,
+        subject: &Subject,
+        packet: &Packet,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        if let Some(inner) = self.as_mut() {
+            inner.intercept_rx_payload(subject, packet, payload)
+        } else {
+            payload
+        }
+    }
+
+    #[inline]
+    fn intercept_tx_payload(
+        &mut self,
+        subject: &Subject,
+        packet: &Packet,
+        payload: &mut scatter::Buffer,
+    ) {
+        if let Some(inner) = self.as_mut() {
+            inner.intercept_tx_payload(subject, packet, payload)
+        }
     }
 }

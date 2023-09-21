@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{client, perf, task, tls, Result};
+use crate::{client, intercept::Intercept, perf, task, tls, Result};
 use s2n_quic::{client::Connect, provider::event, Client, Connection};
 use structopt::StructOpt;
 
@@ -56,6 +56,9 @@ pub struct Perf {
 
     #[structopt(flatten)]
     congestion_controller: crate::congestion_control::CongestionControl,
+
+    #[structopt(flatten)]
+    intercept: Intercept,
 }
 
 impl Perf {
@@ -155,6 +158,10 @@ impl Perf {
             .with_limits(self.limits.limits())?
             .with_io(io)?
             .with_event(subscriber)?;
+
+        // setup the packet interceptor if internal dev
+        #[cfg(s2n_internal_dev)]
+        let client = client.with_packet_interceptor(self.intercept.interceptor())?;
 
         client::build(
             client,
