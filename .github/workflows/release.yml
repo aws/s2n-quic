@@ -52,5 +52,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           tags: ${{ steps.tags.outputs.tags }}
-          file: quic/s2n-quic-qns/etc/Dockerfile.build
+          file: quic/s2n-quic-qns/etc/Dockerfile
+          target: default
           push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}

@@ -15,6 +15,7 @@ if command -v "perf" &> /dev/null; then
     echo "folding perf events"
 
     perf script \
+      --no-inline \
       --input $TMP_DIR/$TEST.$PS.perf \
       2>/dev/null \
       > $OUT_DIR/$TEST.$PS.script

@@ -38,7 +38,26 @@ RUN set -eux; \
      cp target/release/perf_client .; \
      rm -rf target
 
-FROM martenseemann/quic-network-simulator-endpoint:latest
+#######################
+# Endpoint base image #
+#######################
+FROM ubuntu:latest AS endpoint-base
+
+ENV RUST_BACKTRACE="1"
+
+ARG sim_hash="1f569016bcd9f7076fc9fd932c1415d28d3020f7"
+
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y wget net-tools iputils-ping tcpdump ethtool iperf3 iproute2; \
+  wget https://raw.githubusercontent.com/marten-seemann/quic-network-simulator/${sim_hash}/endpoint/setup.sh; \
+  chmod +x setup.sh; \
+  wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh; \
+  chmod +x wait-for-it.sh;
+
+ENTRYPOINT [ "/run_endpoint.sh" ]
+
+FROM endpoint-base
 
 ENV RUST_BACKTRACE="1"
 
