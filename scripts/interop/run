@@ -11,11 +11,11 @@ INTEROP_DIR=target/quic-interop-runner
 
 # Setup the s2n-quic docker image
 if [[ "$*" == *'s2n-quic'* ]]; then
-  sudo docker build . --file quic/s2n-quic-qns/etc/Dockerfile.build --tag aws/s2n-quic-qns --build-arg tls=s2n-tls
+  sudo DOCKER_BUILDKIT=1 docker build . --file quic/s2n-quic-qns/etc/Dockerfile --target default --tag aws/s2n-quic-qns --build-arg tls=s2n-tls
 fi
 
 if [[ "$*" == *'s2n-quic-rustls'* ]]; then
-  sudo docker build . --file quic/s2n-quic-qns/etc/Dockerfile.build --tag aws/s2n-quic-qns-rustls --build-arg tls=rustls
+  sudo DOCKER_BUILDKIT=1 docker build . --file quic/s2n-quic-qns/etc/Dockerfile --target default --tag aws/s2n-quic-qns-rustls --build-arg tls=rustls
 fi
 
 if [ ! -d $INTEROP_DIR ]; then
