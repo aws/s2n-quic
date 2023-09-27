@@ -304,13 +304,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.2
                 //# An endpoint MUST discard its handshake keys when the TLS handshake is
                 //# confirmed (Section 4.1.2).
-                if space_manager.is_handshake_confirmed() {
-                    space_manager.discard_handshake(
-                        &mut self.context.path_manager[self.context.path_id],
-                        self.context.path_id,
-                        self.context.publisher,
-                    );
-                }
+                debug_assert!(!space_manager.is_handshake_confirmed());
 
                 encoder
             } else {
