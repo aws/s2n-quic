@@ -25,7 +25,7 @@ pub struct Endpoint {
     #[generator(constant(TestEnvironment::new()))]
     pub env: TestEnvironment,
 
-    #[generator(gen_ack_settings().map(new_ack_manager))]
+    #[generator(gen_ack_settings().map_gen(new_ack_manager))]
     pub ack_manager: AckManager,
 }
 

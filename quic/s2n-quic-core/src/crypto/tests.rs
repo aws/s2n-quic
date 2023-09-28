@@ -17,8 +17,8 @@ fn round_trip() {
     check!()
         .with_generator((
             gen()
-                .map(VarInt::from_u32)
-                .map(|value| PacketNumberSpace::Initial.new_packet_number(value)),
+                .map_gen(VarInt::from_u32)
+                .map_gen(|value| PacketNumberSpace::Initial.new_packet_number(value)),
             gen::<Vec<u8>>(),
         ))
         .for_each(|(largest_packet_number, input)| {

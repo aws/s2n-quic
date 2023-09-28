@@ -23,7 +23,7 @@ unstable-congestion-controller = []
 
 [dependencies]
 atomic-waker = { version = "1", optional = true }
-bolero-generator = { version = "0.9", optional = true }
+bolero-generator = { version = "0.10", optional = true }
 byteorder = { version = "1", default-features = false }
 bytes = { version = "1", optional = true, default-features = false }
 crossbeam-utils = { version = "0.8", optional = true }
@@ -43,8 +43,8 @@ futures-test = { version = "0.3", optional = true } # For testing Waker interact
 once_cell = { version = "1", optional = true }
 
 [dev-dependencies]
-bolero = "0.9"
-bolero-generator = "0.9"
+bolero = "0.10"
+bolero-generator = "0.10"
 insta = { version = "1", features = ["json"] }
 futures = "0.3"
 futures-test = "0.3"

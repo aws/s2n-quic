@@ -77,7 +77,7 @@ zeroize = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
 backtrace = { version = "=0.3.68" } # pin backtrace to avoid bumping MSRV
-bolero = { version = "0.9" }
+bolero = { version = "0.10" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing", "event-tracing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }

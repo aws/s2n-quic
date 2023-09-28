@@ -30,7 +30,7 @@ ring = { version = "0.16", default-features = false }
 [dev-dependencies]
 aes = "0.8"
 aes-gcm = "0.10"
-bolero = "0.9"
+bolero = "0.10"
 ghash = "0.5"
 hex-literal = "0.4"
 insta = { version = "1", features = ["json"] }

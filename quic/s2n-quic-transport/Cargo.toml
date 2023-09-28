@@ -28,7 +28,7 @@ siphasher = "1.0"
 smallvec = { version = "1", default-features = false }
 
 [dev-dependencies]
-bolero = "0.9"
+bolero = "0.10"
 futures-test = "0.3" # For testing Waker interactions
 insta = { version = "1", features = ["json"] }
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
