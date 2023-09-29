@@ -381,6 +381,18 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             })
         }
 
+        if self.space_manager.handshake().is_some() && self.space_manager.is_handshake_confirmed() {
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.2
+            //# An endpoint MUST discard its handshake keys when the TLS handshake is
+            //# confirmed (Section 4.1.2).
+            let path_id = self.path_manager.active_path_id();
+            self.space_manager.discard_handshake(
+                self.path_manager.active_path_mut(),
+                path_id,
+                &mut publisher,
+            );
+        }
+
         // check to see if we're flushing and should now close the connection
         if self.poll_flush().is_ready() {
             self.error?;
