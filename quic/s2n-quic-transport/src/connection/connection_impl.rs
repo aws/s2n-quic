@@ -385,12 +385,8 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.2
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
-            let path_id = self.path_manager.active_path_id();
-            self.space_manager.discard_handshake(
-                self.path_manager.active_path_mut(),
-                path_id,
-                &mut publisher,
-            );
+            self.space_manager
+                .discard_handshake(&mut self.path_manager, &mut publisher);
         }
 
         // check to see if we're flushing and should now close the connection
