@@ -19,19 +19,32 @@ pub async fn handle_connection(connection: Connection, www_dir: Arc<Path>) {
         .await
         .unwrap();
 
-    while let Ok(Some((req, stream))) = conn.accept().await {
-        if let Some(amount) = req
-            .uri()
-            .path()
-            .strip_prefix("/_perf/")
-            .and_then(|v| v.parse().ok())
-        {
-            tokio::spawn(async move {
-                if let Err(err) = handle_perf_stream(amount, stream).await {
-                    eprintln!("Stream error: {err:?}");
+    while let Ok(Some((req, mut stream))) = conn.accept().await {
+        match req.uri().path() {
+            "" | "/" => {
+                tokio::spawn(async move {
+                    let resp = http::Response::builder().status(StatusCode::OK).body(())?;
+                    stream.send_response(resp).await?;
+
+                    stream
+                        .send_data(Bytes::from_static(b"Hello from s2n-quic!\n"))
+                        .await?;
+
+                    <crate::Result<()>>::Ok(())
+                });
+                continue;
+            }
+            path if path.starts_with("/_perf/") => {
+                if let Some(amount) = path.strip_prefix("/_perf/").and_then(|v| v.parse().ok()) {
+                    tokio::spawn(async move {
+                        if let Err(err) = handle_perf_stream(amount, stream).await {
+                            eprintln!("Stream error: {err:?}");
+                        }
+                    });
+                    continue;
                 }
-            });
-            continue;
+            }
+            _ => {}
         }
 
         let www_dir = www_dir.clone();

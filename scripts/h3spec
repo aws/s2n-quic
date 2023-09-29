@@ -1,0 +1,50 @@
+#/usr/bin/env bash
+
+VERSION=${1:-"v0.1.8"}
+PORT=${2:4433}
+
+BIN="target/tools/h3spec-${VERSION}"
+
+if [ ! -f $BIN ]; then
+  mkdir -p target/tools
+  curl -L -o $BIN \
+    https://github.com/kazu-yamamoto/h3spec/releases/download/$VERSION/h3spec-linux-x86_64
+  chmod +x $BIN
+fi
+
+# the skipped tests here require modifications to the TLS library
+# TODO remove the skips once these are fixed
+#      https://github.com/aws/s2n-quic/issues/858
+#      https://github.com/aws/s2n-quic/issues/859
+
+ARGS=""
+
+# h3spec appends the KeyUpdate message to the end of the valid Handshake data.
+# s2n-quic considers the handshake "done" before it receives the bad message,
+# and instead fails because the bad message is considered leftover data. See:
+# https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/space/crypto_stream.rs#L64-L73
+ARGS+=" --skip \"MUST send unexpected_message TLS alert if KeyUpdate in Handshake is received [TLS 6]\""
+
+# s2n-quic chooses to ignore CRYPTO frames in application data. See:
+# https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/space/application.rs#L625-L630
+ARGS+=" --skip \"MUST send unexpected_message TLS alert if KeyUpdate in 1-RTT is received [TLS 6]\""
+
+# The quic_transport_parameters are part of the ClientHello.
+# s2n-quic currently does not respond to malformed ClientHellos. See:
+# https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/endpoint/mod.rs#L725
+ARGS+=" --skip \"MUST send missing_extension TLS alert if the quic_transport_parameters extension does not included [TLS 8.2]\""
+
+# The quic_transport_parameters are part of the ClientHello.
+# s2n-quic currently does not respond to malformed ClientHellos. See:
+# https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/endpoint/mod.rs#L725
+ARGS+=" --skip \"MUST send TRANSPORT_PARAMETER_ERROR if initial_source_connection_id is missing [Transport 7.3]\""
+ARGS+=" --skip \"MUST send TRANSPORT_PARAMETER_ERROR if original_destination_connection_id is received [Transport 18.2]\""
+ARGS+=" --skip \"MUST send TRANSPORT_PARAMETER_ERROR if preferred_address, is received [Transport 18.2]\""
+ARGS+=" --skip \"MUST send TRANSPORT_PARAMETER_ERROR if retry_source_connection_id is received [Transport 18.2]\""
+ARGS+=" --skip \"MUST send TRANSPORT_PARAMETER_ERROR if stateless_reset_token is received [Transport 18.2]\""
+ARGS+=" --skip \"MUST send TRANSPORT_PARAMETER_ERROR if max_udp_payload_size < 1200 [Transport 7.4 and 18.2]\""
+ARGS+=" --skip \"MUST send TRANSPORT_PARAMETER_ERROR if ack_delay_exponen > 20 [Transport 7.4 and 18.2]\""
+ARGS+=" --skip \"MUST send TRANSPORT_PARAMETER_ERROR if max_ack_delay >= 2^14 [Transport 7.4 and 18.2]\""
+ARGS+=" --skip \"MUST send no_application_protocol TLS alert if no application protocols are supported [TLS 8.1]\""
+
+eval $BIN localhost 4433 $ARGS

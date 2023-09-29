@@ -128,7 +128,8 @@ services:
   iperf_server:
     build:
       context: ${ROOT_DIR}
-      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/benchmark/iperf/Dockerfile.build
+      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/etc/Dockerfile
+      target: iperf
     container_name: iperf_server
     stdin_open: true
     tty: true
@@ -151,7 +152,8 @@ services:
   iperf_client:
     build:
       context: ${ROOT_DIR}
-      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/benchmark/iperf/Dockerfile.build
+      dockerfile: ${ROOT_DIR}/quic/s2n-quic-qns/etc/Dockerfile
+      target: iperf
     container_name: iperf_client
     stdin_open: true
     tty: true
