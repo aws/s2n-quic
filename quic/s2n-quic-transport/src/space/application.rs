@@ -949,13 +949,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         &mut self,
         frame: PathResponse,
         timestamp: Timestamp,
-        path_id: path::Id,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        let unblocked = path_manager.on_path_response(&frame, publisher);
-        if unblocked && path_manager[path_id].is_active() {
+        let amplification_outcome = path_manager.on_path_response(&frame, publisher);
+        if amplification_outcome.is_active_path_unblocked() {
             self.on_amplification_unblocked(
                 path_manager,
                 timestamp,

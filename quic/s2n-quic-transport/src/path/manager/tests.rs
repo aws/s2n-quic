@@ -127,13 +127,14 @@ fn test_invalid_path_fallback() {
     assert_eq!(manager.active, 0);
     assert!(manager.paths[0].is_validated());
 
-    manager
+    let amplification_outcome = manager
         .update_active_path(
             path_id(1),
             &mut random::testing::Generator(123),
             &mut publisher,
         )
         .unwrap();
+    assert!(amplification_outcome.is_unchanged());
     assert_eq!(manager.active, 1);
     assert_eq!(manager.last_known_active_validated_path, Some(0));
 
@@ -149,13 +150,14 @@ fn test_invalid_path_fallback() {
     manager[path_id(1)].on_transmit(&mut context);
 
     // After a validation times out, the path should revert to the previous
-    manager
+    let amplification_outcome = manager
         .on_timeout(
             now + expiration + Duration::from_millis(100),
             &mut random::testing::Generator(123),
             &mut publisher,
         )
         .unwrap();
+    assert!(amplification_outcome.is_active_path_unblocked());
     assert_eq!(manager.active, 0);
     assert!(manager.last_known_active_validated_path.is_none());
 }
@@ -172,7 +174,7 @@ fn promote_validated_path_to_last_known_validated_path() {
     // simulate receiving a handshake packet to force path validation
     helper.manager.paths[helper.first_path_id.as_u8() as usize].on_handshake_packet();
     assert!(helper.manager.paths[helper.first_path_id.as_u8() as usize].is_validated());
-    helper
+    let amplification_outcome = helper
         .manager
         .update_active_path(
             helper.second_path_id,
@@ -182,6 +184,7 @@ fn promote_validated_path_to_last_known_validated_path() {
         .unwrap();
 
     // Expectation:
+    assert!(amplification_outcome.is_unchanged());
     assert_eq!(helper.manager.last_known_active_validated_path, Some(1));
 }
 
@@ -194,7 +197,7 @@ fn dont_promote_non_validated_path_to_last_known_validated_path() {
     assert!(!helper.manager.paths[helper.first_path_id.as_u8() as usize].is_validated());
 
     // Trigger:
-    helper
+    let amplification_outcome = helper
         .manager
         .update_active_path(
             helper.second_path_id,
@@ -204,6 +207,7 @@ fn dont_promote_non_validated_path_to_last_known_validated_path() {
         .unwrap();
 
     // Expectation:
+    assert!(amplification_outcome.is_unchanged());
     assert_eq!(helper.manager.last_known_active_validated_path, Some(0));
 }
 
@@ -216,7 +220,7 @@ fn update_path_to_active_path() {
     assert_eq!(helper.manager.active, helper.first_path_id.as_u8());
 
     // Trigger:
-    helper
+    let amplification_outcome = helper
         .manager
         .update_active_path(
             helper.second_path_id,
@@ -226,6 +230,7 @@ fn update_path_to_active_path() {
         .unwrap();
 
     // Expectation:
+    assert!(amplification_outcome.is_unchanged());
     assert_eq!(helper.manager.active, helper.second_path_id.as_u8());
 }
 
@@ -264,7 +269,7 @@ fn set_path_challenge_on_active_path_on_connection_migration() {
     );
 
     // Trigger:
-    helper
+    let amplification_outcome = helper
         .manager
         .update_active_path(
             helper.second_path_id,
@@ -274,6 +279,7 @@ fn set_path_challenge_on_active_path_on_connection_migration() {
         .unwrap();
 
     // Expectation:
+    assert!(amplification_outcome.is_unchanged());
     assert!(helper.manager[helper.first_path_id].is_challenge_pending());
 }
 
@@ -318,7 +324,7 @@ fn validate_path_before_challenge_expiration() {
 
     // Trigger 1:
     // A response 100ms before the challenge is abandoned
-    helper
+    let amplification_outcome = helper
         .manager
         .on_timeout(
             helper.now + helper.challenge_expiration - Duration::from_millis(100),
@@ -328,6 +334,7 @@ fn validate_path_before_challenge_expiration() {
         .unwrap();
 
     // Expectation 1:
+    assert!(amplification_outcome.is_unchanged());
     assert!(helper.manager[helper.second_path_id].is_challenge_pending(),);
     assert!(!helper.manager[helper.second_path_id].is_validated());
 
@@ -348,9 +355,10 @@ fn validate_path_before_challenge_expiration() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &helper.second_expected_data,
     };
-    helper.manager.on_path_response(&frame, &mut publisher);
+    let amplification_outcome = helper.manager.on_path_response(&frame, &mut publisher);
 
     // Expectation 2:
+    assert!(amplification_outcome.is_inactivate_path_unblocked());
     assert!(helper.manager[helper.second_path_id].is_validated());
 }
 
@@ -398,7 +406,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
     //= type=test
     //# Endpoints SHOULD abandon path validation based on a timer.
     // A response 100ms after the challenge should fail
-    helper
+    let amplification_outcome = helper
         .manager
         .on_timeout(
             helper.now + helper.challenge_expiration + Duration::from_millis(100),
@@ -408,6 +416,7 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
         .unwrap();
 
     // Expectation 1:
+    assert!(amplification_outcome.is_unchanged());
     assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
     assert!(!helper.manager[helper.second_path_id].is_validated());
 
@@ -415,9 +424,10 @@ fn dont_validate_path_if_path_challenge_is_abandoned() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &helper.second_expected_data,
     };
-    helper.manager.on_path_response(&frame, &mut publisher);
+    let amplification_outcome = helper.manager.on_path_response(&frame, &mut publisher);
 
     // Expectation 2:
+    assert!(amplification_outcome.is_unchanged());
     assert!(!helper.manager[helper.second_path_id].is_validated());
 }
 
@@ -440,7 +450,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
     assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
 
     // Trigger:
-    helper
+    let amplification_outcome = helper
         .manager
         .on_processed_packet(
             helper.second_path_id,
@@ -452,6 +462,7 @@ fn initiate_path_challenge_if_new_path_is_not_validated() {
         .unwrap();
 
     // Expectation:
+    assert!(amplification_outcome.is_unchanged());
     assert!(!helper.manager[helper.second_path_id].is_validated());
     assert_eq!(helper.manager.active_path_id(), helper.second_path_id);
     assert!(helper.manager[helper.second_path_id].is_challenge_pending());
@@ -544,7 +555,7 @@ fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
     assert_eq!(helper.manager.active_path_id(), helper.first_path_id);
 
     // Trigger:
-    helper
+    let amplification_outcome = helper
         .manager
         .on_processed_packet(
             helper.second_path_id,
@@ -556,6 +567,7 @@ fn dont_abandon_path_challenge_if_new_path_is_not_validated() {
         .unwrap();
 
     // Expectation:
+    assert!(amplification_outcome.is_unchanged());
     assert!(!helper.manager[helper.second_path_id].is_validated());
     assert_eq!(helper.manager.active_path_id(), helper.second_path_id);
     assert!(helper.manager[helper.second_path_id].is_challenge_pending());
@@ -575,7 +587,7 @@ fn abandon_path_challenges_if_new_path_is_validated() {
     assert!(helper.manager[helper.second_path_id].is_validated());
 
     // Trigger:
-    helper
+    let amplification_outcome = helper
         .manager
         .on_processed_packet(
             helper.second_path_id,
@@ -587,6 +599,7 @@ fn abandon_path_challenges_if_new_path_is_validated() {
         .unwrap();
 
     // Expectation:
+    assert!(amplification_outcome.is_active_path_unblocked());
     assert_eq!(helper.manager.active_path_id(), helper.second_path_id);
     assert!(!helper.manager[helper.first_path_id].is_challenge_pending());
     assert!(!helper.manager[helper.second_path_id].is_challenge_pending());
@@ -624,7 +637,7 @@ fn non_probing_should_update_path_to_active_path() {
     assert_eq!(helper.manager.active, helper.first_path_id.as_u8());
 
     // Trigger:
-    helper
+    let amplification_outcome = helper
         .manager
         .on_processed_packet(
             helper.second_path_id,
@@ -636,6 +649,7 @@ fn non_probing_should_update_path_to_active_path() {
         .unwrap();
 
     // Expectation:
+    assert!(amplification_outcome.is_unchanged());
     assert_eq!(helper.manager.active, helper.second_path_id.as_u8());
 }
 
@@ -653,7 +667,7 @@ fn probing_should_not_update_path_to_active_path() {
     assert_eq!(helper.manager.active, helper.first_path_id.as_u8());
 
     // Trigger:
-    helper
+    let amplification_outcome = helper
         .manager
         .on_processed_packet(
             helper.second_path_id,
@@ -665,6 +679,7 @@ fn probing_should_not_update_path_to_active_path() {
         .unwrap();
 
     // Expectation:
+    assert!(amplification_outcome.is_unchanged());
     assert_eq!(helper.manager.active, helper.first_path_id.as_u8());
 }
 
@@ -713,7 +728,7 @@ fn test_adding_new_path() {
         destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
-    let (path_id, unblocked) = manager
+    let (path_id, amplification_outcome) = manager
         .on_datagram_received(
             &new_addr,
             &datagram,
@@ -727,7 +742,7 @@ fn test_adding_new_path() {
 
     // Expectation:
     assert_eq!(path_id.as_u8(), 1);
-    assert!(!unblocked);
+    assert!(amplification_outcome.is_unchanged());
     assert!(manager.path(&new_addr).is_some());
     assert_eq!(manager.paths.len(), 2);
 }
@@ -983,7 +998,7 @@ fn connection_migration_challenge_behavior() {
         source_connection_id: None,
     };
 
-    let (path_id, _unblocked) = manager
+    let (path_id, _amplification_outcome) = manager
         .handle_connection_migration(
             &new_addr,
             &datagram,
@@ -1078,7 +1093,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
     };
 
     // Trigger 1:
-    let (second_path_id, _unblocked) = manager
+    let (second_path_id, _amplification_outcome) = manager
         .handle_connection_migration(
             &new_addr,
             &datagram,
@@ -1156,7 +1171,7 @@ fn connection_migration_new_path_abandon_timer() {
         source_connection_id: None,
     };
 
-    let (second_path_id, _unblocked) = manager
+    let (second_path_id, _amplification_outcome) = manager
         .handle_connection_migration(
             &new_addr,
             &datagram,
@@ -1296,7 +1311,8 @@ fn amplification_limited_false_if_any_paths_amplificaiton_limited() {
     let fp = &helper.manager[helper.first_path_id];
     assert!(fp.at_amplification_limit());
     let sp = &mut helper.manager[helper.second_path_id];
-    sp.on_bytes_received(1200);
+    let amplification_outcome = sp.on_bytes_received(1200);
+    assert!(amplification_outcome.is_inactivate_path_unblocked());
     assert!(!sp.at_amplification_limit());
 
     // Expectation:
@@ -1332,10 +1348,11 @@ fn can_transmit_true_if_any_path_can_transmit() {
     assert!(!interest.can_transmit(fp.transmission_constraint()));
 
     let sp = &mut helper.manager[helper.second_path_id];
-    sp.on_bytes_received(1200);
+    let amplification_outcome = sp.on_bytes_received(1200);
     assert!(interest.can_transmit(sp.transmission_constraint()));
 
     // Expectation:
+    assert!(amplification_outcome.is_inactivate_path_unblocked());
     assert!(helper.manager.can_transmit(interest));
 }
 
@@ -1428,7 +1445,7 @@ fn temporary_until_authenticated() {
     let second_addr = RemoteAddress::from(second_addr);
 
     // create a second path without calling on_processed_packet
-    let (second_path_id, _unblocked) = manager
+    let (second_path_id, _amplification_outcome) = manager
         .on_datagram_received(
             &second_addr,
             &datagram,
@@ -1450,7 +1467,7 @@ fn temporary_until_authenticated() {
     let third_addr = RemoteAddress::from(third_addr);
 
     // create a third path
-    let (third_path_id, _unblocked) = manager
+    let (third_path_id, _amplification_outcome) = manager
         .on_datagram_received(
             &third_addr,
             &datagram,
@@ -1648,8 +1665,9 @@ fn last_known_validated_path_should_update_on_path_response() {
     let frame = s2n_quic_core::frame::PathResponse {
         data: &first_expected_data,
     };
-    manager.on_path_response(&frame, &mut publisher);
+    let amplification_outcome = manager.on_path_response(&frame, &mut publisher);
     // Expectation 1:
+    assert!(amplification_outcome.is_inactivate_path_unblocked());
     assert_eq!(manager.active_path_id(), second_path_id);
     // second
     assert!(manager[second_path_id].is_challenge_pending());
@@ -1665,7 +1683,7 @@ fn last_known_validated_path_should_update_on_path_response() {
 
     // Trigger 2:
     // - timeout for path 2 challenge
-    manager
+    let amplification_outcome = manager
         .on_timeout(
             now + challenge_expiration + Duration::from_millis(100),
             &mut random::testing::Generator(123),
@@ -1674,6 +1692,7 @@ fn last_known_validated_path_should_update_on_path_response() {
         .unwrap();
 
     // Expectation 2:
+    assert!(amplification_outcome.is_active_path_unblocked());
     assert_eq!(manager.active_path_id(), first_path_id);
     // second
     assert!(!manager[second_path_id].is_challenge_pending());

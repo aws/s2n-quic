@@ -1021,10 +1021,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
 
-        let unblocked =
+        let amplification_outcome =
             self.path_manager
                 .on_timeout(timestamp, random_generator, &mut publisher)?;
-        if unblocked {
+        if amplification_outcome.is_active_path_unblocked() {
             self.space_manager
                 .on_amplification_unblocked(&self.path_manager, timestamp);
         }
@@ -1139,7 +1139,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# size of packets it receives from that address.
         let handshake_confirmed = self.space_manager.is_handshake_confirmed();
 
-        let (id, unblocked) = self.path_manager.on_datagram_received(
+        let (id, amplification_outcome) = self.path_manager.on_datagram_received(
             path_handle,
             datagram,
             handshake_confirmed,
@@ -1166,7 +1166,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.close_sender
                     .on_datagram_received(rtt, datagram.timestamp);
             }
-        } else if unblocked && self.path_manager[id].is_active() {
+        } else if amplification_outcome.is_active_path_unblocked() {
             //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.6
             //# When a server is blocked by anti-amplification limits, receiving a
             //# datagram unblocks it, even if none of the packets in the datagram are

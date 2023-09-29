@@ -2591,7 +2591,8 @@ fn update_pto_timer() {
         space,
     );
     // The path will be at the anti-amplification limit
-    context.path_mut().on_bytes_received(1200);
+    let amplification_outcome = context.path_mut().on_bytes_received(1200);
+    assert!(amplification_outcome.is_active_path_unblocked());
     context.path_mut().on_bytes_transmitted((1200 * 3) + 1);
     // Arm the PTO so we can verify it is cancelled
     manager.pto.timer.set(now + Duration::from_secs(10));

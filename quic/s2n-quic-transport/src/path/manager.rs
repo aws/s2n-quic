@@ -90,7 +90,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         new_path_id: Id,
         random_generator: &mut dyn random::Generator,
         publisher: &mut Pub,
-    ) -> Result<bool, transport::Error> {
+    ) -> Result<AmplificationOutcome, transport::Error> {
         debug_assert!(new_path_id != path_id(self.active));
 
         let prev_path_id = self.active_path_id();
@@ -130,13 +130,13 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(self.active_path_id(), random_generator);
         }
 
-        let unblocked = self.activate_path(publisher, prev_path_id, new_path_id);
+        let amplification_outcome = self.activate_path(publisher, prev_path_id, new_path_id);
 
         // Restart ECN validation to check that the path still supports ECN
         let path = self.active_path_mut();
         path.ecn_controller
             .restart(path_event!(path, new_path_id), publisher);
-        Ok(unblocked)
+        Ok(amplification_outcome)
     }
 
     /// Return the active path
@@ -170,14 +170,19 @@ impl<Config: endpoint::Config> Manager<Config> {
         publisher: &mut Pub,
         prev_path_id: Id,
         new_path_id: Id,
-    ) -> bool {
+    ) -> AmplificationOutcome {
         self.check_active_path_is_synced();
         self.active = new_path_id.as_u8();
         self[prev_path_id].is_active = false;
         self[new_path_id].is_active = true;
         self[new_path_id].on_activated();
-        let unblocked = self[prev_path_id].at_amplification_limit()
-            && !self[new_path_id].at_amplification_limit();
+        let amplification_outcome = if self[prev_path_id].at_amplification_limit()
+            && !self[new_path_id].at_amplification_limit()
+        {
+            AmplificationOutcome::ActivePathUnblocked
+        } else {
+            AmplificationOutcome::Unchanged
+        };
         self.check_active_path_is_synced();
 
         let prev_path = &self[prev_path_id];
@@ -187,7 +192,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             active: path_event!(new_path, new_path_id),
         });
 
-        unblocked
+        amplification_outcome
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
@@ -222,9 +227,9 @@ impl<Config: endpoint::Config> Manager<Config> {
     }
 
     /// Called when a datagram is received on a connection
-    /// Upon success, returns a `(Id, bool)` containing the path ID and a boolean that is
-    /// true if the path had been amplification limited prior to receiving the datagram
-    /// and is now no longer amplification limited.
+    /// Upon success, returns a `(Id, AmplificationOutcome)` containing the path ID and an
+    /// `AmplificationOutcome` value that indicates if the path had been amplification limited
+    /// prior to receiving the datagram and is now no longer amplification limited.
     ///
     /// This function is called prior to packet authentication. If possible add business
     /// logic to [`Self::on_processed_packet`], which is called after the packet has been
@@ -239,7 +244,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
-    ) -> Result<(Id, bool), DatagramDropReason> {
+    ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
         let valid_initial_received = self.valid_initial_received();
 
         if let Some((id, path)) = self.path_mut(path_handle) {
@@ -265,8 +270,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             // update the address if it was resolved
             path.handle.maybe_update(path_handle);
 
-            let unblocked = path.on_bytes_received(datagram.payload_len);
-            return Ok((id, unblocked));
+            let amplification_outcome = path.on_bytes_received(datagram.payload_len);
+            return Ok((id, amplification_outcome));
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9
@@ -313,7 +318,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
         publisher: &mut Pub,
-    ) -> Result<(Id, bool), DatagramDropReason> {
+    ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9
         //# Clients are responsible for initiating all migrations.
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
@@ -440,7 +445,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             max_mtu,
         );
 
-        let unblocked = path.on_bytes_received(datagram.payload_len);
+        let amplification_outcome = path.on_bytes_received(datagram.payload_len);
 
         let active_path = self.active_path();
         let active_path_id = self.active_path_id();
@@ -462,7 +467,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.paths.push(path);
         }
 
-        Ok((new_path_id, unblocked))
+        Ok((new_path_id, amplification_outcome))
     }
 
     fn set_challenge(&mut self, path_id: Id, random_generator: &mut dyn random::Generator) {
@@ -555,7 +560,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         response: &frame::PathResponse,
         publisher: &mut Pub,
-    ) -> bool {
+    ) -> AmplificationOutcome {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2.2
         //# A PATH_RESPONSE frame MUST be sent on the network path where the
         //# PATH_CHALLENGE frame was received.
@@ -591,10 +596,14 @@ impl<Config: endpoint::Config> Manager<Config> {
                 // The path is now validated, so it is unblocked if it was
                 // previously amplification limited
                 debug_assert!(!path.at_amplification_limit());
-                return was_amplification_limited;
+                return match (was_amplification_limited, path.is_active()) {
+                    (true, true) => AmplificationOutcome::ActivePathUnblocked,
+                    (true, false) => AmplificationOutcome::InactivePathUnblocked,
+                    _ => AmplificationOutcome::Unchanged,
+                };
             }
         }
-        false
+        AmplificationOutcome::Unchanged
     }
 
     /// Process a packet and update internal state.
@@ -611,7 +620,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         path_validation_probing: path_validation::Probe,
         random_generator: &mut dyn random::Generator,
         publisher: &mut Pub,
-    ) -> Result<bool, transport::Error> {
+    ) -> Result<AmplificationOutcome, transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //# A client MUST change the Destination Connection ID it uses for
         //# sending packets in response to only the first received Initial or
@@ -640,13 +649,14 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.set_challenge(path_id, random_generator);
         }
 
-        let mut unblocked = false;
+        let mut amplification_outcome = AmplificationOutcome::Unchanged;
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9.2
         //# An endpoint can migrate a connection to a new local address by
         //# sending packets containing non-probing frames from that address.
         if !path_validation_probing.is_probing() && self.active_path_id() != path_id {
-            unblocked = self.update_active_path(path_id, random_generator, publisher)?;
+            amplification_outcome =
+                self.update_active_path(path_id, random_generator, publisher)?;
             //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
             //# After changing the address to which it sends non-probing packets, an
             //# endpoint can abandon any path validation for other addresses.
@@ -664,7 +674,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 self.set_challenge(self.active_path_id(), random_generator);
             }
         }
-        Ok(unblocked)
+        Ok(amplification_outcome)
     }
 
     #[inline]
@@ -737,12 +747,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         timestamp: Timestamp,
         random_generator: &mut dyn random::Generator,
         publisher: &mut Pub,
-    ) -> Result<bool, connection::Error> {
+    ) -> Result<AmplificationOutcome, connection::Error> {
         for (id, path) in self.paths.iter_mut().enumerate() {
             path.on_timeout(timestamp, path_id(id as u8), random_generator, publisher);
         }
 
-        let mut unblocked = false;
+        let mut amplification_outcome = AmplificationOutcome::Unchanged;
 
         if self.active_path().failed_validation() {
             match self.last_known_active_validated_path {
@@ -753,7 +763,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                     //# address when validation of a new peer address fails.
                     let prev_path_id = path_id(self.active);
                     let new_path_id = path_id(last_known_active_validated_path);
-                    unblocked = self.activate_path(publisher, prev_path_id, new_path_id);
+                    amplification_outcome =
+                        self.activate_path(publisher, prev_path_id, new_path_id);
                     self.last_known_active_validated_path = None;
                 }
                 None => {
@@ -781,7 +792,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
         }
 
-        Ok(unblocked)
+        Ok(amplification_outcome)
     }
 
     /// Notifies the path manager of the connection closing event
@@ -922,6 +933,34 @@ impl<Config: endpoint::Config> core::ops::IndexMut<Id> for Manager<Config> {
     #[inline]
     fn index_mut(&mut self, id: Id) -> &mut Self::Output {
         &mut self.paths[id.as_u8() as usize]
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+#[must_use]
+pub enum AmplificationOutcome {
+    /// The active path was amplification limited and is now not amplification limited
+    ActivePathUnblocked,
+    /// A path other than the active path was amplification limited and is now not amplification limited
+    InactivePathUnblocked,
+    /// The path has remained amplification limited or unblocked
+    Unchanged,
+}
+
+impl AmplificationOutcome {
+    /// The active path was amplification limited and is now not amplification limited
+    pub fn is_active_path_unblocked(&self) -> bool {
+        matches!(self, AmplificationOutcome::ActivePathUnblocked)
+    }
+
+    /// A path other than the active path was amplification limited and is now not amplification limited
+    pub fn is_inactivate_path_unblocked(&self) -> bool {
+        matches!(self, AmplificationOutcome::InactivePathUnblocked)
+    }
+
+    /// The path has remained amplification limited or unblocked
+    pub fn is_unchanged(&self) -> bool {
+        matches!(self, AmplificationOutcome::Unchanged)
     }
 }
 

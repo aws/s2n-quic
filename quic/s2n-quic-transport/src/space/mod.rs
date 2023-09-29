@@ -691,7 +691,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
         &mut self,
         frame: PathResponse,
         _timestamp: Timestamp,
-        _path_id: path::Id,
         _path_manager: &mut path::Manager<Config>,
         _handshake_status: &mut HandshakeStatus,
         _publisher: &mut Pub,
@@ -951,7 +950,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     self.handle_path_response_frame(
                         frame,
                         datagram.timestamp,
-                        path_id,
                         path_manager,
                         handshake_status,
                         publisher,
@@ -986,7 +984,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .into());
         }
 
-        let unblocked = path_manager.on_processed_packet(
+        let amplification_outcome = path_manager.on_processed_packet(
             path_id,
             datagram.source_connection_id,
             processed_packet.path_validation_probing,
@@ -994,7 +992,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             publisher,
         )?;
 
-        if unblocked {
+        if amplification_outcome.is_active_path_unblocked() {
             self.on_amplification_unblocked(
                 path_manager,
                 datagram.timestamp,
