@@ -22,11 +22,6 @@ env:
   WIRESHARK_VERSION: 3.7.1
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
-  H3_SPEC_VERSION: v0.1.8
-  QUINN_REF: 6e4bcbb2fcb57ced2ef261c9662521c5baf37f3c
-  # enable unstable features for testing
-  S2N_UNSTABLE_CRYPTO_OPT_TX: 100
-  S2N_UNSTABLE_CRYPTO_OPT_RX: 100
 
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
@@ -38,7 +33,7 @@ permissions:
 
 jobs:
   env:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
@@ -74,7 +69,7 @@ jobs:
           echo "::set-output name=matrix::$MATRIX"
 
   s2n-quic-qns:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         mode: ["debug", "release"]
@@ -113,53 +108,8 @@ jobs:
           name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
 
-  quinn:
-    runs-on: ubuntu-20.04
-    # enable debug information
-    env:
-      RUSTFLAGS: "-g"
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: quinn-rs/quinn
-          ref: ${{ env.QUINN_REF }}
-
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - uses: camshaft/rust-cache@v1
-
-      - name: Cache quinn
-        id: cache
-        uses: actions/cache@v3.3.2
-        continue-on-error: true
-        with:
-          path: |
-            target/release/perf_client
-            target/release/perf_server
-          key: ${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ github.job }}-quinn-${{ hashFiles('**/Cargo.*') }}-${{ hashFiles('**/*.rs') }}
-
-      - name: Build quinn
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: cargo build --bin perf_client --bin perf_server --release
-
-      - name: Prepare artifact
-        run: |
-          mkdir -p quinn
-          cp target/release/perf_client quinn/perf_client
-          cp target/release/perf_server quinn/perf_server
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: quinn
-          path: quinn/
-
   interop:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [env, s2n-quic-qns]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
@@ -181,14 +131,16 @@ jobs:
       - name: Setup dockerfile
         working-directory: s2n-quic-qns
         run: |
-          cp ../s2n-quic/.github/interop/Dockerfile .
+          cp ../s2n-quic/quic/s2n-quic-qns/etc/Dockerfile .
           cp ../s2n-quic/quic/s2n-quic-qns/etc/run_endpoint.sh .
 
       - name: Run docker build
         working-directory: s2n-quic-qns
+        env:
+          DOCKER_BUILDKIT: 1
         run: |
-          docker build . --file Dockerfile --tag aws/s2n-quic-qns --build-arg tls=s2n-tls
-          docker build . --file Dockerfile --tag aws/s2n-quic-qns-rustls --build-arg tls=rustls
+          docker build . --file Dockerfile --target prebuilt --tag aws/s2n-quic-qns --build-arg tls=s2n-tls
+          docker build . --file Dockerfile --target prebuilt --tag aws/s2n-quic-qns-rustls --build-arg tls=rustls
 
       - uses: actions/checkout@v4
         with:
@@ -288,7 +240,7 @@ jobs:
           ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' results
 
   interop-report:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [interop]
     steps:
       - uses: actions/checkout@v4
@@ -386,7 +338,7 @@ jobs:
             web/logs/latest/result.json
 
   bench:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: [env, s2n-quic-qns]
     steps:
       - uses: actions/checkout@v4
@@ -439,13 +391,15 @@ jobs:
       - name: Setup dockerfile
         working-directory: s2n-quic-qns-build
         run: |
-          cp ../.github/interop/Dockerfile .
+          cp ../quic/s2n-quic-qns/etc/Dockerfile .
           cp ../quic/s2n-quic-qns/etc/run_endpoint.sh .
 
       - name: Run docker build
         working-directory: s2n-quic-qns-build
+        env:
+          DOCKER_BUILDKIT: 1
         run: |
-          docker build . --file Dockerfile --tag aws/s2n-quic-qns
+          docker build . --file Dockerfile --target prebuilt --tag aws/s2n-quic-qns
 
       - name: Run script for pull request
         if: github.event.pull_request
@@ -483,71 +437,33 @@ jobs:
           ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' target/benchmark/results
 
   h3spec:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: [s2n-quic-qns]
     strategy:
       matrix:
         tls: ["s2n-tls", "rustls"]
 
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v3
         with:
           name: s2n-quic-qns-debug
 
-      - name: Install h3spec
+      - name: Run test
         run: |
-          curl -L -o h3spec https://github.com/kazu-yamamoto/h3spec/releases/download/$H3_SPEC_VERSION/h3spec-linux-x86_64
-          chmod +x h3spec
           chmod +x s2n-quic-qns-debug
-
-      - name: Run test (${{ matrix.tls }})
-        # the skipped tests here require modifications to the TLS library
-        # TODO remove the skips once these are fixed
-        #      https://github.com/aws/s2n-quic/issues/858
-        #      https://github.com/aws/s2n-quic/issues/859
-        if: ${{ matrix.tls == 'rustls' }}
-        run: |
           ./s2n-quic-qns-debug interop server --port 4433 --tls ${{ matrix.tls }} &
           # wait for the server to boot
           sleep 3
-          ./h3spec localhost 4433 \
-            ` h3spec appends the KeyUpdate message to the end of the valid Handshake data. `\
-            ` s2n-quic considers the handshake "done" before it receives the bad message,  `\
-            ` and instead fails because the bad message is considered leftover data. See:  `\
-            ` https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/space/crypto_stream.rs#L64-L73 `\
-            --skip "MUST send unexpected_message TLS alert if KeyUpdate in Handshake is received [TLS 6]" \
-            \
-            ` s2n-quic chooses to ignore CRYPTO frames in application data. See:           `\
-            ` https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/space/application.rs#L625-L630 `\
-            --skip "MUST send unexpected_message TLS alert if KeyUpdate in 1-RTT is received [TLS 6]" \
-            \
-            ` The quic_transport_parameters are part of the ClientHello.                   `\
-            ` s2n-quic currently does not respond to malformed ClientHellos. See:          `\
-            ` https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/endpoint/mod.rs#L725 `\
-            --skip "MUST send missing_extension TLS alert if the quic_transport_parameters extension does not included [TLS 8.2]" \
-            \
-            ` RUSTLS specific failures.                                                    `\
-            ` The quic_transport_parameters are part of the ClientHello.                   `\
-            ` s2n-quic currently does not respond to malformed ClientHellos. See:          `\
-            ` https://github.com/aws/s2n-quic/blob/bb74c8e98adf12d805d26987fad02ffe45df97a7/quic/s2n-quic-transport/src/endpoint/mod.rs#L725 `\
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if initial_source_connection_id is missing [Transport 7.3]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if original_destination_connection_id is received [Transport 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if preferred_address, is received [Transport 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if retry_source_connection_id is received [Transport 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if stateless_reset_token is received [Transport 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if max_udp_payload_size < 1200 [Transport 7.4 and 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if ack_delay_exponen > 20 [Transport 7.4 and 18.2]" \
-            --skip "MUST send TRANSPORT_PARAMETER_ERROR if max_ack_delay >= 2^14 [Transport 7.4 and 18.2]" \
-            --skip "MUST send no_application_protocol TLS alert if no application protocols are supported [TLS 8.1]" \
+          ./scripts/h3spec
 
   perf:
-    runs-on: ubuntu-20.04
-    needs: [quinn, s2n-quic-qns]
+    runs-on: ubuntu-22.04
+    needs: [s2n-quic-qns]
     strategy:
       matrix:
         include:
-          - client: "quinn"
-            server: "s2n-quic"
           - client: "s2n-quic"
             server: "s2n-quic"
           - client: "s2n-quic-null"
@@ -565,7 +481,10 @@ jobs:
           profile: minimal
           override: true
 
-      - uses: camshaft/gha-perf@v0.1
+      - name: Install perf
+        run: |
+          sudo apt-get -y update
+          sudo apt-get install -y linux-tools-$(uname -r) linux-tools-generic
 
       - name: Install inferno
         uses: camshaft/install@v1
@@ -583,17 +502,10 @@ jobs:
           name: s2n-quic-qns-release
           path: target/release/
 
-      - uses: actions/download-artifact@v3
-        with:
-          name: quinn
-          path: target/perf/quinn/bin/
-
       - name: Setup artifacts
         run: |
           mv target/release/s2n-quic-qns-release target/release/s2n-quic-qns
           chmod +x target/release/s2n-quic-qns
-          chmod +x target/perf/quinn/bin/perf_client
-          chmod +x target/perf/quinn/bin/perf_server
 
       - name: Run script
         env:
@@ -626,16 +538,12 @@ jobs:
           path: target/perf/results
 
   perf-report:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [perf]
     steps:
       - uses: actions/checkout@v4
 
       # add any additional perf tests here
-      - uses: actions/download-artifact@v3
-        with:
-          name: perf-results-s2n-quic-quinn
-          path: perf-results/
       - uses: actions/download-artifact@v3
         with:
           name: perf-results-s2n-quic-s2n-quic
@@ -674,7 +582,7 @@ jobs:
           url: "${{ steps.s3.outputs.URL }}"
 
   attack:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [s2n-quic-qns]
     strategy:
       matrix:
