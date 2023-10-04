@@ -457,6 +457,17 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         Ok(())
     }
 
+    fn on_tls_exporter_ready(
+        &mut self,
+        session: &impl tls::TlsSession,
+    ) -> Result<(), transport::Error> {
+        self.publisher
+            .on_tls_exporter_ready(event::builder::TlsExporterReady {
+                session: s2n_quic_core::event::TlsSession::new(session),
+            });
+        Ok(())
+    }
+
     fn on_handshake_complete(&mut self) -> Result<(), transport::Error> {
         // After the handshake is complete, the handshake crypto stream should be completely
         // finished

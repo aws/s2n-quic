@@ -19,6 +19,29 @@ pub struct ApplicationParameters<'a> {
     pub transport_parameters: &'a [u8],
 }
 
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum TlsExportError {
+    #[non_exhaustive]
+    Failure,
+}
+
+impl TlsExportError {
+    pub fn failure() -> Self {
+        TlsExportError::Failure
+    }
+}
+
+pub trait TlsSession: Send + Sync {
+    /// See <https://datatracker.ietf.org/doc/html/rfc5705> and <https://www.rfc-editor.org/rfc/rfc8446>.
+    fn tls_exporter(
+        &self,
+        label: &[u8],
+        context: &[u8],
+        output: &mut [u8],
+    ) -> Result<(), TlsExportError>;
+}
+
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
 //= type=TODO
 //= tracking-issue=332
@@ -63,6 +86,11 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     //# when the TLS stack has both sent a Finished message and verified the
     //# peer's Finished message.
     fn on_handshake_complete(&mut self) -> Result<(), crate::transport::Error>;
+
+    fn on_tls_exporter_ready(
+        &mut self,
+        session: &impl TlsSession,
+    ) -> Result<(), crate::transport::Error>;
 
     /// Receives data from the initial packet space
     ///
