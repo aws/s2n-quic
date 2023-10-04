@@ -1161,6 +1161,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             len: datagram.payload_len as u16,
         });
 
+        if amplification_outcome.is_active_path_unblocked() {
+            //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.6
+            //# When a server is blocked by anti-amplification limits, receiving a
+            //# datagram unblocks it, even if none of the packets in the datagram are
+            //# successfully processed.  In such a case, the PTO timer will need to
+            //# be re-armed.
+            self.space_manager
+                .on_amplification_unblocked(&self.path_manager, datagram.timestamp);
+        }
+
         if matches!(self.state, ConnectionState::Closing) {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
             //# An endpoint in the closing
@@ -1174,14 +1184,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.close_sender
                     .on_datagram_received(rtt, datagram.timestamp);
             }
-        } else if amplification_outcome.is_active_path_unblocked() {
-            //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.6
-            //# When a server is blocked by anti-amplification limits, receiving a
-            //# datagram unblocks it, even if none of the packets in the datagram are
-            //# successfully processed.  In such a case, the PTO timer will need to
-            //# be re-armed.
-            self.space_manager
-                .on_amplification_unblocked(&self.path_manager, datagram.timestamp);
         }
 
         Ok(id)
