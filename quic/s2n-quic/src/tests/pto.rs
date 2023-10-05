@@ -19,7 +19,7 @@ fn handshake_pto_timer_is_armed() {
     let pto_events = pto_subscriber.events();
     let packet_sent_events = packet_sent_subscriber.events();
 
-    test(model.clone(), |handle| {
+    test(model, |handle| {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?

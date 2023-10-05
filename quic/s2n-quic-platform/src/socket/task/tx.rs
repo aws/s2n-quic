@@ -47,7 +47,7 @@ where
             tx,
             events: Events::new(gso),
             ring_cooldown: cooldown.clone(),
-            io_cooldown: cooldown.clone(),
+            io_cooldown: cooldown,
         }
     }
 

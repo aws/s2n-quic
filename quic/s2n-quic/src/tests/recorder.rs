@@ -84,6 +84,18 @@ event_recorder!(
     HandshakeStatusUpdated,
     on_handshake_status_updated
 );
+
+event_recorder!(
+    ActivePathUpdated,
+    ActivePathUpdated,
+    on_active_path_updated,
+    SocketAddr,
+    |event: &events::ActivePathUpdated, storage: &mut Vec<SocketAddr>| {
+        let addr = (&event.active.remote_addr).into();
+        storage.push(addr);
+    }
+);
+
 event_recorder!(
     PacketDropped,
     PacketDropped,
@@ -93,16 +105,6 @@ event_recorder!(
         if let Ok(reason) = (&event.reason).try_into() {
             storage.push(reason);
         }
-    }
-);
-event_recorder!(
-    ActivePathUpdated,
-    ActivePathUpdated,
-    on_active_path_updated,
-    SocketAddr,
-    |event: &events::ActivePathUpdated, storage: &mut Vec<SocketAddr>| {
-        let addr = (&event.active.remote_addr).into();
-        storage.push(addr);
     }
 );
 
@@ -137,6 +139,37 @@ impl<'a> TryFrom<&events::PacketDropReason<'a>> for PacketDropReason {
             NonEmptyRetryToken { .. } => Self::NonEmptyRetryToken,
             RetryDiscarded { .. } => Self::RetryDiscarded,
             UndersizedInitialPacket { .. } => Self::UndersizedInitialPacket,
+            _ => return Err(()),
+        })
+    }
+}
+
+event_recorder!(
+    PacketSkipped,
+    PacketSkipped,
+    on_packet_skipped,
+    PacketSkipReason,
+    |event: &events::PacketSkipped, storage: &mut Vec<PacketSkipReason>| {
+        if let Ok(reason) = (&event.reason).try_into() {
+            storage.push(reason);
+        }
+    }
+);
+
+pub enum PacketSkipReason {
+    PtoProbe,
+    OptimisticAckMitigation,
+}
+
+impl TryFrom<&events::PacketSkipReason> for PacketSkipReason {
+    type Error = ();
+
+    fn try_from(reason: &events::PacketSkipReason) -> Result<Self, ()> {
+        use events::PacketSkipReason::*;
+
+        Ok(match reason {
+            PtoProbe { .. } => Self::PtoProbe,
+            OptimisticAckMitigation { .. } => Self::OptimisticAckMitigation,
             _ => return Err(()),
         })
     }

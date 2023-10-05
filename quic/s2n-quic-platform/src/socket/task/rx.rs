@@ -44,7 +44,7 @@ where
             ring,
             rx,
             ring_cooldown: cooldown.clone(),
-            io_cooldown: cooldown.clone(),
+            io_cooldown: cooldown,
         }
     }
 

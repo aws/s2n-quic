@@ -335,6 +335,16 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub enum PacketSkipReason {
+        #[non_exhaustive]
+        #[doc = " Skipped a packet number to elicit a quicker PTO acknowledgment"]
+        PtoProbe {},
+        #[non_exhaustive]
+        #[doc = " Skipped a packet number to detect an Optimistic Ack attack"]
+        OptimisticAckMitigation {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub enum PacketDropReason<'a> {
         #[non_exhaustive]
         #[doc = " A connection error occurred and is no longer able to process packets."]
@@ -585,6 +595,17 @@ pub mod api {
     }
     impl<'a> Event for ServerNameInformation<'a> {
         const NAME: &'static str = "transport:server_name_information";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Packet was skipped with a given reason"]
+    pub struct PacketSkipped {
+        pub number: u64,
+        pub space: KeySpace,
+        pub reason: PacketSkipReason,
+    }
+    impl Event for PacketSkipped {
+        const NAME: &'static str = "transport:packet_skipped";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1658,6 +1679,21 @@ pub mod tracing {
             let id = context.id();
             let api::ServerNameInformation { chosen_server_name } = event;
             tracing :: event ! (target : "server_name_information" , parent : id , tracing :: Level :: DEBUG , chosen_server_name = tracing :: field :: debug (chosen_server_name));
+        }
+        #[inline]
+        fn on_packet_skipped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::PacketSkipped,
+        ) {
+            let id = context.id();
+            let api::PacketSkipped {
+                number,
+                space,
+                reason,
+            } = event;
+            tracing :: event ! (target : "packet_skipped" , parent : id , tracing :: Level :: DEBUG , number = tracing :: field :: debug (number) , space = tracing :: field :: debug (space) , reason = tracing :: field :: debug (reason));
         }
         #[inline]
         fn on_packet_sent(
@@ -2998,6 +3034,23 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub enum PacketSkipReason {
+        #[doc = " Skipped a packet number to elicit a quicker PTO acknowledgment"]
+        PtoProbe,
+        #[doc = " Skipped a packet number to detect an Optimistic Ack attack"]
+        OptimisticAckMitigation,
+    }
+    impl IntoEvent<api::PacketSkipReason> for PacketSkipReason {
+        #[inline]
+        fn into_event(self) -> api::PacketSkipReason {
+            use api::PacketSkipReason::*;
+            match self {
+                Self::PtoProbe => PtoProbe {},
+                Self::OptimisticAckMitigation => OptimisticAckMitigation {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub enum PacketDropReason<'a> {
         #[doc = " A connection error occurred and is no longer able to process packets."]
         ConnectionError { path: Path<'a> },
@@ -3386,6 +3439,28 @@ pub mod builder {
             let ServerNameInformation { chosen_server_name } = self;
             api::ServerNameInformation {
                 chosen_server_name: chosen_server_name.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Packet was skipped with a given reason"]
+    pub struct PacketSkipped {
+        pub number: u64,
+        pub space: KeySpace,
+        pub reason: PacketSkipReason,
+    }
+    impl IntoEvent<api::PacketSkipped> for PacketSkipped {
+        #[inline]
+        fn into_event(self) -> api::PacketSkipped {
+            let PacketSkipped {
+                number,
+                space,
+                reason,
+            } = self;
+            api::PacketSkipped {
+                number: number.into_event(),
+                space: space.into_event(),
+                reason: reason.into_event(),
             }
         }
     }
@@ -4572,6 +4647,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `PacketSkipped` event is triggered"]
+        #[inline]
+        fn on_packet_skipped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &PacketSkipped,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PacketSent` event is triggered"]
         #[inline]
         fn on_packet_sent(
@@ -5261,6 +5348,16 @@ mod traits {
             (self.1).on_server_name_information(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_packet_skipped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &PacketSkipped,
+        ) {
+            (self.0).on_packet_skipped(&mut context.0, meta, event);
+            (self.1).on_packet_skipped(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_packet_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -5946,6 +6043,8 @@ mod traits {
         );
         #[doc = "Publishes a `ServerNameInformation` event to the publisher's subscriber"]
         fn on_server_name_information(&mut self, event: builder::ServerNameInformation);
+        #[doc = "Publishes a `PacketSkipped` event to the publisher's subscriber"]
+        fn on_packet_skipped(&mut self, event: builder::PacketSkipped);
         #[doc = "Publishes a `PacketSent` event to the publisher's subscriber"]
         fn on_packet_sent(&mut self, event: builder::PacketSent);
         #[doc = "Publishes a `PacketReceived` event to the publisher's subscriber"]
@@ -6075,6 +6174,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_server_name_information(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_packet_skipped(&mut self, event: builder::PacketSkipped) {
+            let event = event.into_event();
+            self.subscriber
+                .on_packet_skipped(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -6444,6 +6552,7 @@ pub mod testing {
         output: Vec<String>,
         pub application_protocol_information: u32,
         pub server_name_information: u32,
+        pub packet_skipped: u32,
         pub packet_sent: u32,
         pub packet_received: u32,
         pub active_path_updated: u32,
@@ -6522,6 +6631,7 @@ pub mod testing {
                 output: Default::default(),
                 application_protocol_information: 0,
                 server_name_information: 0,
+                packet_skipped: 0,
                 packet_sent: 0,
                 packet_received: 0,
                 active_path_updated: 0,
@@ -6603,6 +6713,17 @@ pub mod testing {
             event: &api::ServerNameInformation,
         ) {
             self.server_name_information += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+        }
+        fn on_packet_skipped(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketSkipped,
+        ) {
+            self.packet_skipped += 1;
             if self.location.is_some() {
                 self.output.push(format!("{meta:?} {event:?}"));
             }
@@ -7129,6 +7250,7 @@ pub mod testing {
         output: Vec<String>,
         pub application_protocol_information: u32,
         pub server_name_information: u32,
+        pub packet_skipped: u32,
         pub packet_sent: u32,
         pub packet_received: u32,
         pub active_path_updated: u32,
@@ -7197,6 +7319,7 @@ pub mod testing {
                 output: Default::default(),
                 application_protocol_information: 0,
                 server_name_information: 0,
+                packet_skipped: 0,
                 packet_sent: 0,
                 packet_received: 0,
                 active_path_updated: 0,
@@ -7343,6 +7466,13 @@ pub mod testing {
         }
         fn on_server_name_information(&mut self, event: builder::ServerNameInformation) {
             self.server_name_information += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{event:?}"));
+            }
+        }
+        fn on_packet_skipped(&mut self, event: builder::PacketSkipped) {
+            self.packet_skipped += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{event:?}"));

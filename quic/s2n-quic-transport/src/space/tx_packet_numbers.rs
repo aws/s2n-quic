@@ -14,6 +14,8 @@ use s2n_quic_core::{
 pub struct TxPacketNumbers {
     largest_sent_acked: (PacketNumber, Timestamp),
     next: PacketNumber,
+    // skipped packet number used for detecting an Optimistic Ack attack
+    skip_pn: Option<PacketNumber>,
 }
 
 impl TxPacketNumbers {
@@ -22,6 +24,7 @@ impl TxPacketNumbers {
         Self {
             largest_sent_acked: (initial_packet_number, now),
             next: initial_packet_number,
+            skip_pn: None,
         }
     }
 
@@ -30,6 +33,7 @@ impl TxPacketNumbers {
         &mut self,
         timestamp: Timestamp,
         ack_set: &A,
+        lowest_tracking_pn: PacketNumber,
     ) -> Result<(), transport::Error> {
         let largest = ack_set.largest();
 
@@ -41,6 +45,60 @@ impl TxPacketNumbers {
         if largest >= self.next {
             return Err(transport::Error::PROTOCOL_VIOLATION
                 .with_reason("received an ACK for a packet that was not sent"));
+        }
+
+        if let Some(skip_pn) = self.skip_pn {
+            debug_assert_eq!(
+                skip_pn.space(),
+                PacketNumberSpace::ApplicationData,
+                "only start skipping packets after the handshake is complete"
+            );
+
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-21.4
+            //# An endpoint that acknowledges packets it has not received might cause
+            //# a congestion controller to permit sending at rates beyond what the
+            //# network supports.  An endpoint MAY skip packet numbers when sending
+            //# packets to detect this behavior.  An endpoint can then immediately
+            //# close the connection with a connection error of type PROTOCOL_VIOLATION
+            if ack_set.contains(skip_pn) {
+                return Err(transport::Error::PROTOCOL_VIOLATION
+                    .with_reason("received an ACK for a packet that was not sent"));
+            }
+
+            // Verify the peer didn't send the skipped packet number before clearing it.
+            //
+            // Packet skipping is implemented to mitigate the Optimistic Ack attack. To
+            // correctly detect an attack, we track a skipped packet until all packets
+            // <= skip_pn + 1 have been marked as acknowledged or lost. The assumption
+            // is that the attacker gains little from ACKing a packet less than the
+            // largest packet ACKed.
+            //
+            // For example:
+            // Assume we are initially tracking packets 2-9 and have skipped
+            // packet 4 (s). The skip_pn + 1 packet is calculated as packet 5 (p).
+            // We validate the peer behavior and can clear skip_pn once we stop
+            // tracking packet 5.
+            //
+            // ```
+            // Initial tracking state: skipped packet 4 (s = 4)
+            //    [ 2 3 5 6 7 8 9 ]
+            //          p
+            //
+            //    RX: AckRange(2..4)
+            //
+            // Not verified: still tracking (p)
+            //    [ 5 6 7 8 9 ]
+            //      p
+            //
+            //    RX: AckRange(5)
+            //
+            // Verified: peer did not send an ack for (s)
+            //    [ 6 7 8 9 ]
+            // ```
+            let skip_plus_one = skip_pn.next().expect("expect next pn");
+            if lowest_tracking_pn > skip_plus_one {
+                self.skip_pn = None;
+            }
         }
 
         // record the largest packet acked
@@ -77,5 +135,69 @@ impl TxPacketNumbers {
     /// was ACKed by the peer
     pub fn largest_sent_packet_number_acked(&self) -> PacketNumber {
         self.largest_sent_acked.0
+    }
+
+    // Only skip a packet number after verifying the peer did not send
+    // the previous one.
+    pub fn generate_new_skip_pn(&self) -> bool {
+        self.skip_pn.is_none()
+    }
+
+    pub fn set_skip_pn(&mut self, skip_pn: PacketNumber) {
+        debug_assert_eq!(
+            skip_pn.space(),
+            PacketNumberSpace::ApplicationData,
+            "only start skipping packets after the handshake is complete"
+        );
+        self.skip_pn = Some(skip_pn);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::time::Duration;
+    use s2n_quic_core::packet::number::PacketNumberRange;
+
+    // Test behavior around tracking and clearing skip_pn value.
+    //
+    // Test setup:
+    //   ack_set: [ 2 3 4 5 6]
+    //   skip_pn: 3
+    //   skip_plus_one: 4
+    #[test]
+    fn test_err_on_skip_pn() {
+        let skip_pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(3));
+        let mut skip_plus_one =
+            PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(4));
+        let start = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(2));
+        let end = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(6));
+        let mut ack_set = PacketNumberRange::new(start, end);
+
+        let timestamp = unsafe { Timestamp::from_duration(Duration::from_millis(10)) };
+        let mut tx = TxPacketNumbers::new(PacketNumberSpace::ApplicationData, timestamp);
+        // Set initial tx state. `tx.next` needs to be > than the largest ack received
+        tx.next = end.next().unwrap();
+
+        // Happy case: skip_pn = None
+        assert!(tx.on_packet_ack(timestamp, &ack_set, skip_plus_one).is_ok());
+
+        // Error if ack_set contains skip_pn
+        tx.set_skip_pn(skip_pn);
+        assert!(tx
+            .on_packet_ack(timestamp, &ack_set, skip_plus_one)
+            .is_err());
+
+        // Pass if ack_set doesn't contain skip_pn
+        ack_set = PacketNumberRange::new(skip_plus_one, end);
+        assert!(tx.on_packet_ack(timestamp, &ack_set, skip_plus_one).is_ok());
+
+        // Assert that skip_pn has not been cleared since it has not been verified.
+        assert!(tx.skip_pn.is_some());
+
+        // Assert skip_pn is cleared once we stop tracking the skip_plus_one packet number
+        skip_plus_one = skip_plus_one.next().unwrap();
+        assert!(tx.on_packet_ack(timestamp, &ack_set, skip_plus_one).is_ok());
+        assert!(tx.skip_pn.is_none());
     }
 }
