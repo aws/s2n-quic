@@ -294,8 +294,7 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 //# Handshake packet
                 if Config::ENDPOINT_TYPE.is_client() {
                     space_manager.discard_initial(
-                        &mut self.context.path_manager[self.context.path_id],
-                        self.context.path_id,
+                        self.context.path_manager,
                         self.context.timestamp,
                         self.context.publisher,
                     );

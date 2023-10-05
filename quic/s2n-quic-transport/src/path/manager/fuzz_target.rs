@@ -135,7 +135,8 @@ impl Model {
         // timestamp should be monotonically increasing
         self.timestamp += Duration::from_millis(*millis as u64);
 
-        self.subject
+        let _ = self
+            .subject
             .on_timeout(
                 self.timestamp,
                 &mut Generator::default(),
@@ -180,13 +181,13 @@ impl Model {
             Ok(_) => {
                 if let Some(probe) = probing {
                     let (path_id, _path) = self.subject.path(&handle).unwrap();
-                    self.subject.on_processed_packet(
+                    let _ = self.subject.on_processed_packet(
                         path_id,
                         None,
                         *probe,
                         &mut random_generator,
                         &mut publisher,
-                    )?
+                    )?;
                 }
             }
             Err(datagram_drop_reason) => {

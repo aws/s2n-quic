@@ -431,7 +431,8 @@ fn on_ack_frame() {
     assert_eq!(2, context.on_rtt_update_count);
 
     // Ack packet 10, but with a path that is not peer validated
-    context.path_manager[unsafe { path::Id::new(0) }] = Path::new(
+    let path_id = unsafe { path::Id::new(0) };
+    context.path_manager[path_id] = Path::new(
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
@@ -440,6 +441,7 @@ fn on_ack_frame() {
         false,
         DEFAULT_MAX_MTU,
     );
+    context.path_manager.activate_path_for_test(path_id);
     context.path_mut().pto_backoff = 2;
     let ack_receive_time = ack_receive_time + Duration::from_millis(500);
     ack_packets(
@@ -2589,7 +2591,8 @@ fn update_pto_timer() {
         space,
     );
     // The path will be at the anti-amplification limit
-    context.path_mut().on_bytes_received(1200);
+    let amplification_outcome = context.path_mut().on_bytes_received(1200);
+    assert!(amplification_outcome.is_active_path_unblocked());
     context.path_mut().on_bytes_transmitted((1200 * 3) + 1);
     // Arm the PTO so we can verify it is cancelled
     manager.pto.timer.set(now + Duration::from_secs(10));
@@ -2619,7 +2622,8 @@ fn update_pto_timer() {
     assert!(!manager.pto_update_pending);
 
     // Reset the path back to not peer validated
-    context.path_manager[unsafe { path::Id::new(0) }] = Path::new(
+    let path_id = unsafe { path::Id::new(0) };
+    context.path_manager[path_id] = Path::new(
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
@@ -2628,6 +2632,7 @@ fn update_pto_timer() {
         false,
         DEFAULT_MAX_MTU,
     );
+    context.path_manager.activate_path_for_test(path_id);
     // simulate receiving a handshake packet to force path validation
     context.path_mut().on_handshake_packet();
     context.path_mut().pto_backoff = 2;
@@ -2709,8 +2714,9 @@ fn pto_armed_if_handshake_not_confirmed() {
     let mut manager = ServerManager::new(space);
     let now = time::now() + Duration::from_secs(10);
     let is_handshake_confirmed = false;
-
-    let mut path = Path::new(
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let path_id = unsafe { path::Id::new(0) };
+    path_manager[path_id] = Path::new(
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
@@ -2719,11 +2725,12 @@ fn pto_armed_if_handshake_not_confirmed() {
         false,
         DEFAULT_MAX_MTU,
     );
+    path_manager.activate_path_for_test(path_id);
 
     // simulate receiving a handshake packet to force path validation
-    path.on_handshake_packet();
+    path_manager[path_id].on_handshake_packet();
 
-    manager.update_pto_timer(&path, now, is_handshake_confirmed);
+    manager.update_pto_timer(&path_manager[path_id], now, is_handshake_confirmed);
 
     assert!(manager.pto.timer.is_armed());
 }
@@ -3587,6 +3594,14 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for MockContext<'a,
 
     fn is_handshake_confirmed(&self) -> bool {
         true
+    }
+
+    fn active_path(&self) -> &path::Path<Config> {
+        self.path_manager.active_path()
+    }
+
+    fn active_path_mut(&mut self) -> &mut path::Path<Config> {
+        self.path_manager.active_path_mut()
     }
 
     fn path(&self) -> &super::Path<Config> {

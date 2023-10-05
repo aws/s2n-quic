@@ -385,12 +385,8 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.2
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
             //# confirmed (Section 4.1.2).
-            let path_id = self.path_manager.active_path_id();
-            self.space_manager.discard_handshake(
-                self.path_manager.active_path_mut(),
-                path_id,
-                &mut publisher,
-            );
+            self.space_manager
+                .discard_handshake(&mut self.path_manager, &mut publisher);
         }
 
         // check to see if we're flushing and should now close the connection
@@ -804,13 +800,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# sufficient information to identify packets for a closing connection;
         //# the endpoint MAY discard all other connection state.
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
-        self.space_manager.close(
-            error,
-            self.path_manager.active_path_mut(),
-            active_path_id,
-            timestamp,
-            &mut publisher,
-        );
+        self.space_manager
+            .close(error, &mut self.path_manager, timestamp, &mut publisher);
     }
 
     /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
@@ -1038,8 +1029,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
 
-        self.path_manager
-            .on_timeout(timestamp, random_generator, &mut publisher)?;
+        let amplification_outcome =
+            self.path_manager
+                .on_timeout(timestamp, random_generator, &mut publisher)?;
+        if amplification_outcome.is_active_path_unblocked() {
+            self.space_manager
+                .on_amplification_unblocked(&self.path_manager, timestamp);
+        }
         self.local_id_registry.on_timeout(timestamp);
         self.space_manager.on_timeout(
             &mut self.local_id_registry,
@@ -1151,7 +1147,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# size of packets it receives from that address.
         let handshake_confirmed = self.space_manager.is_handshake_confirmed();
 
-        let (id, unblocked) = self.path_manager.on_datagram_received(
+        let (id, amplification_outcome) = self.path_manager.on_datagram_received(
             path_handle,
             datagram,
             handshake_confirmed,
@@ -1164,6 +1160,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         publisher.on_datagram_received(event::builder::DatagramReceived {
             len: datagram.payload_len as u16,
         });
+
+        if amplification_outcome.is_active_path_unblocked() {
+            //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.6
+            //# When a server is blocked by anti-amplification limits, receiving a
+            //# datagram unblocks it, even if none of the packets in the datagram are
+            //# successfully processed.  In such a case, the PTO timer will need to
+            //# be re-armed.
+            self.space_manager
+                .on_amplification_unblocked(&self.path_manager, datagram.timestamp);
+        }
 
         if matches!(self.state, ConnectionState::Closing) {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
@@ -1178,14 +1184,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 self.close_sender
                     .on_datagram_received(rtt, datagram.timestamp);
             }
-        } else if unblocked {
-            //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.6
-            //# When a server is blocked by anti-amplification limits, receiving a
-            //# datagram unblocks it, even if none of the packets in the datagram are
-            //# successfully processed.  In such a case, the PTO timer will need to
-            //# be re-armed.
-            self.space_manager
-                .on_amplification_unblocked(&self.path_manager[id], datagram.timestamp);
         }
 
         Ok(id)
@@ -1400,8 +1398,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# a server MUST discard Initial keys when it first
                 //# successfully processes a Handshake packet.
                 self.space_manager.discard_initial(
-                    self.path_manager.active_path_mut(),
-                    path_id,
+                    &mut self.path_manager,
                     datagram.timestamp,
                     &mut publisher,
                 );
