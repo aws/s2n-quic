@@ -28,7 +28,7 @@ impl<T> Number<T> {
     where
         T: ConditionallySelectable + Default,
     {
-        self.0.unwrap_or_else(Default::default)
+        self.0.unwrap_or_else(T::default)
     }
 
     pub fn and_then<U, F, C>(self, f: F) -> Number<U>
