@@ -1156,31 +1156,28 @@ struct SkippedPacketNumber {
 mod tests {
     use super::*;
     use crate::path::testing::helper_path_server;
+    use bolero::check;
     use s2n_quic_core::random;
 
-    // TODO replace with a bolero test
     #[test]
-    fn test_arm_skip_counter() {
+    fn fuzz_arm_skip_counter() {
         let mut skip_counter = None;
-        let random = &mut random::testing::Generator::default();
 
         let mut path = helper_path_server();
         assert_eq!(path.mtu(transmission::Mode::Normal), 1200);
         let mtu = path.mtu(transmission::Mode::Normal) as u32;
 
-        for cwnd_multiplier in (1..10_000).step_by(300) {
-            for _i in 0..50 {
-                let cwnd = mtu * cwnd_multiplier;
-                path.congestion_controller.congestion_window = cwnd;
-                // calculate the bounds
-                let pkt_per_cwnd = cwnd / mtu;
-                let lower = pkt_per_cwnd / 2;
-                let upper = pkt_per_cwnd * 2;
-                ApplicationSpace::arm_skip_counter(&mut skip_counter, &path, random);
+        check!().with_type().cloned().for_each(|cwnd| {
+            let random = &mut random::testing::Generator::default();
+            path.congestion_controller.congestion_window = cwnd;
+            // calculate the bounds
+            let pkt_per_cwnd = cwnd / mtu;
+            let lower = pkt_per_cwnd / 2;
+            let upper = pkt_per_cwnd * 2;
+            ApplicationSpace::arm_skip_counter(&mut skip_counter, &path, random);
 
-                assert!(lower + MIN_SKIP_COUNTER_VALUE <= *skip_counter.unwrap(),);
-                assert!(*skip_counter.unwrap() <= upper + MIN_SKIP_COUNTER_VALUE,);
-            }
-        }
+            assert!(lower + MIN_SKIP_COUNTER_VALUE <= *skip_counter.unwrap(),);
+            assert!(*skip_counter.unwrap() <= upper + MIN_SKIP_COUNTER_VALUE,);
+        })
     }
 }
