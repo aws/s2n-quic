@@ -380,6 +380,7 @@ fn create_wakeup_queue_and_handle() -> (
 }
 
 /// Asserts that a given number of wakeups had been enqueued
+#[track_caller]
 fn assert_wakeups(wakeup_queue: &mut WakeupQueue<InternalConnectionId>, expected_wakeups: usize) {
     let mut dequeued_wakeups = VecDeque::new();
     let (waker, _counter) = new_count_waker();
@@ -2823,7 +2824,7 @@ fn forwards_poll_pop() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_wakeups(&mut wakeup_queue, 0);
+    assert_wakeups(&mut wakeup_queue, 1);
     assert_matches!(
         manager.poll_request(
             stream_1,
@@ -2837,7 +2838,7 @@ fn forwards_poll_pop() {
         transmission::Interest::NewData,
         manager.get_transmission_interest()
     );
-    assert_wakeups(&mut wakeup_queue, 1);
+    assert_wakeups(&mut wakeup_queue, 0);
 
     // Check invalid stream ID
     assert_matches!(
@@ -2875,7 +2876,7 @@ fn forwards_stop_sending() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_wakeups(&mut wakeup_queue, 0);
+    assert_wakeups(&mut wakeup_queue, 1);
     assert_matches!(
         manager.poll_request(
             stream_1,
@@ -2889,7 +2890,7 @@ fn forwards_stop_sending() {
         transmission::Interest::NewData,
         manager.get_transmission_interest()
     );
-    assert_wakeups(&mut wakeup_queue, 1);
+    assert_wakeups(&mut wakeup_queue, 0);
 
     // Check invalid stream ID
     assert_matches!(
@@ -2929,7 +2930,7 @@ fn forwards_poll_push() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_wakeups(&mut wakeup_queue, 0);
+    assert_wakeups(&mut wakeup_queue, 1);
     assert_matches!(
         manager.poll_request(
             stream_1,
@@ -2943,7 +2944,7 @@ fn forwards_poll_push() {
         transmission::Interest::NewData,
         manager.get_transmission_interest()
     );
-    assert_wakeups(&mut wakeup_queue, 1);
+    assert_wakeups(&mut wakeup_queue, 0);
 
     // Check invalid stream ID
     assert_matches!(
@@ -2982,7 +2983,7 @@ fn forwards_poll_finish() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_wakeups(&mut wakeup_queue, 0);
+    assert_wakeups(&mut wakeup_queue, 1);
     assert_matches!(
         manager.poll_request(
             stream_1,
@@ -2996,7 +2997,7 @@ fn forwards_poll_finish() {
         transmission::Interest::NewData,
         manager.get_transmission_interest()
     );
-    assert_wakeups(&mut wakeup_queue, 1);
+    assert_wakeups(&mut wakeup_queue, 0);
 
     // Check invalid stream ID
     assert_matches!(
@@ -3034,7 +3035,7 @@ fn forwards_reset() {
         stream.api_call_requires_transmission = true;
     });
 
-    assert_wakeups(&mut wakeup_queue, 0);
+    assert_wakeups(&mut wakeup_queue, 1);
     assert_matches!(
         manager.poll_request(
             stream_1,
@@ -3048,7 +3049,7 @@ fn forwards_reset() {
         transmission::Interest::NewData,
         manager.get_transmission_interest()
     );
-    assert_wakeups(&mut wakeup_queue, 1);
+    assert_wakeups(&mut wakeup_queue, 0);
 
     // Check invalid stream ID
     assert_matches!(

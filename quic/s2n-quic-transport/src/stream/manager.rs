@@ -16,7 +16,7 @@ use crate::{
         stream_impl::StreamConfig,
         StreamError, StreamTrait,
     },
-    transmission::{self, interest::Provider as _},
+    transmission,
 };
 use core::{
     task::{Context, Poll, Waker},
@@ -515,6 +515,7 @@ impl<S: 'static + StreamTrait> AbstractStreamManager<S> {
     ///
     /// If the application call requires transmission of data, the QUIC connection
     /// thread will be notified through the [`WakeHandle`] in the provided [`ConnectionApiCallContext`].
+    #[inline]
     fn perform_api_call<F, R>(
         &mut self,
         stream_id: StreamId,
@@ -525,8 +526,6 @@ impl<S: 'static + StreamTrait> AbstractStreamManager<S> {
     where
         F: FnOnce(&mut S) -> R,
     {
-        let had_transmission_interest = self.inner.streams.has_transmission_interest();
-
         let result = self
             .inner
             .streams
@@ -535,17 +534,9 @@ impl<S: 'static + StreamTrait> AbstractStreamManager<S> {
             })
             .unwrap_or(unknown_stream_result);
 
-        // A wakeup is only triggered if the the transmission list is
-        // now empty, but was previously not. The edge triggered behavior
-        // minimizes the amount of necessary wakeups.
-        let require_wakeup =
-            !had_transmission_interest && self.inner.streams.has_transmission_interest();
-
         // TODO: This currently wakes the connection task while inside the connection Mutex.
         // It will be better if we return the `Waker` instead and perform the wakeup afterwards.
-        if require_wakeup {
-            api_call_context.wakeup_handle().wakeup();
-        }
+        api_call_context.wakeup_handle().wakeup();
 
         result
     }
