@@ -75,7 +75,7 @@ impl Interceptor {
 
         if !self.strategies.contains(&id) {
             let strategy = Self::strategy(1..100);
-            let port_strategy = Self::port_strategy(1..100);
+            let port_strategy = Self::port_strategy(1..5);
 
             let strategy = Havoc {
                 rx: strategy.clone(),

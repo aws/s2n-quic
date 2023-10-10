@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set -e
+
+# ensure s2n-quic-qns is built
+if [ ! -f target/release/s2n-quic-qns ]; then
+  RUSTFLAGS="--cfg debug_assertions --cfg s2n_internal_dev -g" cargo +stable build --release --bin s2n-quic-qns
+fi
+
+# ensure ultraman is installed
+if ! command -v ultraman &> /dev/null; then
+    cargo install ultraman
+fi
+
+# The different types of fuzzing supported by quic-attack
+#    *-port will fuzz the remote port on datagrams
+#    *-tx-rx will fuzz the payloads of incoming and outgoing packets
+#    *-all will fuzz both the remote port and payloads
+#    *-none will not use fuzzing
+FUZZ_TYPES=("all" "tx-rx" "port" "none")
+
+# Build a list of processes to run
+# 4 servers will be spawned, 1 for each fuzz type
+# 16 clients will be spawned, 2 for each fuzz type, for each server
+PROCESSES=""
+for server in ${FUZZ_TYPES[@]}
+do
+   PROCESSES+=server-$server=1,
+   for client in ${FUZZ_TYPES[@]}
+   do
+      PROCESSES+=client-$client-server-$server=2,
+   done
+done
+
+# Remove the trailing comma
+PROCESSES=${PROCESSES%?}
+
+# Set a timeout for running quic-attack
+if [ -z "$1" ]
+   then
+     # If no value is provided, set a 30 second timeout
+     TIMEOUT="timeout 30s"
+elif [ $1 -eq 0 ]
+   then
+     # If 0 is provided, don't set a timeout
+     TIMEOUT=""
+else
+    # Otherwise, use the value provided
+    TIMEOUT="timeout $1s"
+fi
+
+COMMON_ARGS="--max-throughput 10000 --max-handshake-duration 10 --max-idle-timeout 10 --tls null"
+PERF_APP="./target/release/s2n-quic-qns perf"
+
+RUST_BACKTRACE=1 \
+SERVER="$PERF_APP server $COMMON_ARGS" \
+CLIENT="$PERF_APP client $COMMON_ARGS --ip 127.0.0.1 --local-ip 127.0.0.1 --connections 100000000000000000 --send 100000 --receive 100000 --streams 10000 --concurrency 1000" \
+$TIMEOUT ultraman start --no-timestamp true -f ./scripts/quic-attack/Procfile -m $PROCESSES
