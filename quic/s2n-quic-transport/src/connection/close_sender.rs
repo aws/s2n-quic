@@ -357,7 +357,6 @@ mod tests {
                     let _ = path.on_bytes_received(MINIMUM_MTU as usize);
                 }
 
-                path.on_closing();
                 sender.close(PACKET.clone(), *close_time, clock.get_time());
 
                 // transmit an initial packet

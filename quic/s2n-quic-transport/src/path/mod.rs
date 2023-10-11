@@ -517,21 +517,6 @@ impl<Config: endpoint::Config> Path<Config> {
         self.pto_backoff = INITIAL_PTO_BACKOFF;
     }
 
-    /// Marks the path as closing
-    pub fn on_closing(&mut self) {
-        // Revert the path state to AmplificationLimited so we can control the number
-        // of packets sent back with anti-amplification limits
-        match &self.state {
-            // keep the current amplification limits
-            State::AmplificationLimited { .. } => {}
-            State::Validated => {
-                self.state = State::AmplificationLimited {
-                    tx_allowance: Counter::new(MINIMUM_MTU as u32 * 3),
-                };
-            }
-        }
-    }
-
     #[inline]
     pub fn max_mtu(&self) -> MaxMtu {
         self.mtu_controller.max_mtu()
@@ -1188,42 +1173,6 @@ mod tests {
             path.transmission_constraint(),
             transmission::Constraint::None
         );
-    }
-
-    #[test]
-    fn on_closing_validated_path() {
-        let mut path = testing::helper_path_server();
-        path.on_validated();
-        assert!(path.is_validated());
-
-        // Trigger:
-        path.on_closing();
-
-        // Expectation:
-        match path.state {
-            path::State::Validated => panic!("transition to AmplificationLimited when closing"),
-            path::State::AmplificationLimited { tx_allowance } => {
-                assert_eq!(*tx_allowance, (MINIMUM_MTU * 3) as u32)
-            }
-        }
-    }
-
-    // Maintain amplification limits if already in AmplificationLimited state
-    #[test]
-    fn on_closing_not_validated_path() {
-        let mut path = testing::helper_path_server();
-        assert!(!path.is_validated());
-
-        // Trigger:
-        path.on_closing();
-
-        // Expectation:
-        match path.state {
-            path::State::Validated => panic!("transition to AmplificationLimited when closing"),
-            path::State::AmplificationLimited { tx_allowance } => {
-                assert_eq!(*tx_allowance, 0)
-            }
-        }
     }
 
     #[test]
