@@ -18,6 +18,7 @@ fn optimistic_ack_mitigation() {
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_event((events(), server_subscriber))?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         let addr = server.local_addr()?;
@@ -32,6 +33,7 @@ fn optimistic_ack_mitigation() {
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
             .with_event((events(), client_subscriber))?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         primary::spawn(async move {
@@ -75,11 +77,6 @@ fn optimistic_ack_mitigation() {
 
     // Verify that both client and server are skipping packets for Optimistic
     // Ack attack mitigation.
-    //
-    // The skip rate is influenced by the send rate, which can vary
-    // across machines, so use a buffer for the upper bound.
-    assert!(server_skip_count > 0);
-    assert!(server_skip_count < 8);
-    assert!(client_skip_count > 0);
-    assert!(client_skip_count < 8);
+    assert_eq!(server_skip_count, 5);
+    assert_eq!(client_skip_count, 5);
 }
