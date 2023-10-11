@@ -15,7 +15,7 @@ use std::net::SocketAddr;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
 
-pub fn events() -> event::tracing::Subscriber {
+pub fn tracing_events() -> event::tracing::Subscriber {
     use std::sync::Once;
 
     static TRACING: Once = Once::new();
@@ -82,7 +82,7 @@ pub fn build_server(handle: &Handle) -> Result<Server> {
     Ok(Server::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(SERVER_CERTS)?
-        .with_event(events())?
+        .with_event(tracing_events())?
         .with_random(Random::with_seed(123))?
         .start()?)
 }
@@ -127,7 +127,7 @@ pub fn build_client(handle: &Handle) -> Result<Client> {
     Ok(Client::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(certificates::CERT_PEM)?
-        .with_event(events())?
+        .with_event(tracing_events())?
         .with_random(Random::with_seed(123))?
         .start()?)
 }
