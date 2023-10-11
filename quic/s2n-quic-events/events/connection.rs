@@ -258,6 +258,11 @@ struct HandshakeStatusUpdated {
     status: HandshakeStatus,
 }
 
+#[event("connectivity:tls_exporter_ready")]
+struct TlsExporterReady<'a> {
+    session: crate::event::TlsSession<'a>,
+}
+
 #[event("connectivity:path_challenge_updated")]
 /// Path challenge updated
 struct PathChallengeUpdated<'a> {

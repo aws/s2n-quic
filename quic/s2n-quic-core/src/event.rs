@@ -127,3 +127,37 @@ impl IntoEvent<Timestamp> for crate::time::Timestamp {
         Timestamp(self)
     }
 }
+
+#[derive(Clone)]
+pub struct TlsSession<'a> {
+    session: &'a dyn crate::crypto::tls::TlsSession,
+}
+
+impl<'a> TlsSession<'a> {
+    #[doc(hidden)]
+    pub fn new(session: &'a dyn crate::crypto::tls::TlsSession) -> TlsSession<'a> {
+        TlsSession { session }
+    }
+
+    pub fn tls_exporter(
+        &self,
+        label: &[u8],
+        context: &[u8],
+        output: &mut [u8],
+    ) -> Result<(), crate::crypto::tls::TlsExportError> {
+        self.session.tls_exporter(label, context, output)
+    }
+}
+
+impl<'a> crate::event::IntoEvent<TlsSession<'a>> for TlsSession<'a> {
+    #[inline]
+    fn into_event(self) -> Self {
+        self
+    }
+}
+
+impl core::fmt::Debug for TlsSession<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TlsSession").finish_non_exhaustive()
+    }
+}

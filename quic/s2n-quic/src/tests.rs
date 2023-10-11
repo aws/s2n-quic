@@ -46,6 +46,7 @@ mod client_handshake_confirm;
 #[cfg(not(target_os = "windows"))]
 mod mtls;
 
+mod exporter;
 mod issue_1361;
 mod issue_1427;
 mod issue_1464;

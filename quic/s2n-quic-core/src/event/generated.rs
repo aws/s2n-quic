@@ -905,6 +905,14 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct TlsExporterReady<'a> {
+        pub session: crate::event::TlsSession<'a>,
+    }
+    impl<'a> Event for TlsExporterReady<'a> {
+        const NAME: &'static str = "connectivity:tls_exporter_ready";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Path challenge updated"]
     pub struct PathChallengeUpdated<'a> {
         pub path_challenge_status: PathChallengeStatus,
@@ -2046,6 +2054,17 @@ pub mod tracing {
             let id = context.id();
             let api::HandshakeStatusUpdated { status } = event;
             tracing :: event ! (target : "handshake_status_updated" , parent : id , tracing :: Level :: DEBUG , status = tracing :: field :: debug (status));
+        }
+        #[inline]
+        fn on_tls_exporter_ready(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::TlsExporterReady,
+        ) {
+            let id = context.id();
+            let api::TlsExporterReady { session } = event;
+            tracing :: event ! (target : "tls_exporter_ready" , parent : id , tracing :: Level :: DEBUG , session = tracing :: field :: debug (session));
         }
         #[inline]
         fn on_path_challenge_updated(
@@ -3985,6 +4004,19 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct TlsExporterReady<'a> {
+        pub session: crate::event::TlsSession<'a>,
+    }
+    impl<'a> IntoEvent<api::TlsExporterReady<'a>> for TlsExporterReady<'a> {
+        #[inline]
+        fn into_event(self) -> api::TlsExporterReady<'a> {
+            let TlsExporterReady { session } = self;
+            api::TlsExporterReady {
+                session: session.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Path challenge updated"]
     pub struct PathChallengeUpdated<'a> {
         pub path_challenge_status: PathChallengeStatus,
@@ -4985,6 +5017,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `TlsExporterReady` event is triggered"]
+        #[inline]
+        fn on_tls_exporter_ready(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TlsExporterReady,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PathChallengeUpdated` event is triggered"]
         #[inline]
         fn on_path_challenge_updated(
@@ -5629,6 +5673,16 @@ mod traits {
             (self.1).on_handshake_status_updated(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_tls_exporter_ready(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &TlsExporterReady,
+        ) {
+            (self.0).on_tls_exporter_ready(&mut context.0, meta, event);
+            (self.1).on_tls_exporter_ready(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_path_challenge_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -6099,6 +6153,8 @@ mod traits {
         fn on_connection_migration_denied(&mut self, event: builder::ConnectionMigrationDenied);
         #[doc = "Publishes a `HandshakeStatusUpdated` event to the publisher's subscriber"]
         fn on_handshake_status_updated(&mut self, event: builder::HandshakeStatusUpdated);
+        #[doc = "Publishes a `TlsExporterReady` event to the publisher's subscriber"]
+        fn on_tls_exporter_ready(&mut self, event: builder::TlsExporterReady);
         #[doc = "Publishes a `PathChallengeUpdated` event to the publisher's subscriber"]
         fn on_path_challenge_updated(&mut self, event: builder::PathChallengeUpdated);
         #[doc = "Publishes a `TlsClientHello` event to the publisher's subscriber"]
@@ -6435,6 +6491,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_tls_exporter_ready(&mut self, event: builder::TlsExporterReady) {
+            let event = event.into_event();
+            self.subscriber
+                .on_tls_exporter_ready(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_path_challenge_updated(&mut self, event: builder::PathChallengeUpdated) {
             let event = event.into_event();
             self.subscriber
@@ -6580,6 +6645,7 @@ pub mod testing {
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
         pub handshake_status_updated: u32,
+        pub tls_exporter_ready: u32,
         pub path_challenge_updated: u32,
         pub tls_client_hello: u32,
         pub tls_server_hello: u32,
@@ -6659,6 +6725,7 @@ pub mod testing {
                 ecn_state_changed: 0,
                 connection_migration_denied: 0,
                 handshake_status_updated: 0,
+                tls_exporter_ready: 0,
                 path_challenge_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
@@ -7026,6 +7093,17 @@ pub mod testing {
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
+        fn on_tls_exporter_ready(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsExporterReady,
+        ) {
+            self.tls_exporter_ready += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+        }
         fn on_path_challenge_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -7278,6 +7356,7 @@ pub mod testing {
         pub ecn_state_changed: u32,
         pub connection_migration_denied: u32,
         pub handshake_status_updated: u32,
+        pub tls_exporter_ready: u32,
         pub path_challenge_updated: u32,
         pub tls_client_hello: u32,
         pub tls_server_hello: u32,
@@ -7347,6 +7426,7 @@ pub mod testing {
                 ecn_state_changed: 0,
                 connection_migration_denied: 0,
                 handshake_status_updated: 0,
+                tls_exporter_ready: 0,
                 path_challenge_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
@@ -7666,6 +7746,13 @@ pub mod testing {
         }
         fn on_handshake_status_updated(&mut self, event: builder::HandshakeStatusUpdated) {
             self.handshake_status_updated += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{event:?}"));
+            }
+        }
+        fn on_tls_exporter_ready(&mut self, event: builder::TlsExporterReady) {
+            self.tls_exporter_ready += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{event:?}"));

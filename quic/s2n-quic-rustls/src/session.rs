@@ -26,6 +26,23 @@ pub struct Session {
     server_name: Option<ServerName>,
 }
 
+impl tls::TlsSession for Session {
+    fn tls_exporter(
+        &self,
+        label: &[u8],
+        context: &[u8],
+        output: &mut [u8],
+    ) -> Result<(), tls::TlsExportError> {
+        match self
+            .connection
+            .export_keying_material(output, label, Some(context))
+        {
+            Ok(_) => Ok(()),
+            Err(_) => Err(tls::TlsExportError::failure()),
+        }
+    }
+}
+
 impl fmt::Debug for Session {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Session")
@@ -149,6 +166,7 @@ impl Session {
             if !self.emitted_handshake_complete {
                 self.rx_phase.transition();
                 context.on_handshake_complete()?;
+                context.on_tls_exporter_ready(self)?;
             }
 
             self.emitted_handshake_complete = true;

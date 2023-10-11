@@ -716,6 +716,13 @@ where
         Ok(())
     }
 
+    fn on_tls_exporter_ready(
+        &mut self,
+        _: &impl super::TlsSession,
+    ) -> Result<(), crate::transport::Error> {
+        Ok(())
+    }
+
     fn receive_initial(&mut self, max_len: Option<usize>) -> Option<Bytes> {
         self.log("rx initial");
         self.initial.rx(max_len)
