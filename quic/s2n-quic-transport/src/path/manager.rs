@@ -795,12 +795,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         Ok(amplification_outcome)
     }
 
-    /// Notifies the path manager of the connection closing event
-    pub fn on_closing(&mut self) {
-        self.active_path_mut().on_closing();
-        // TODO clean up other paths
-    }
-
     /// true if ALL paths are amplification_limited
     #[inline]
     pub fn is_amplification_limited(&self) -> bool {

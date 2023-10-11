@@ -718,8 +718,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         // We don't need any timers anymore
         self.timers.cancel();
-        // Let the path manager know we're closing
-        self.path_manager.on_closing();
         // Update the connection state based on the type of error
         self.state = error.into();
         self.error = Err(error);
