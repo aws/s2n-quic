@@ -8,9 +8,7 @@
 set -e
 
 # ensure s2n-quic-qns is built
-if [ ! -f target/release/s2n-quic-qns ]; then
-  RUSTFLAGS="--cfg debug_assertions --cfg s2n_internal_dev -g" cargo +stable build --release --bin s2n-quic-qns
-fi
+RUSTFLAGS="--cfg debug_assertions --cfg s2n_internal_dev -g" cargo +stable build --release --bin s2n-quic-qns
 
 # ensure ultraman is installed
 if ! command -v ultraman &> /dev/null; then
