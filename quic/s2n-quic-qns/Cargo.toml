@@ -21,7 +21,6 @@ cfg-if = "1"
 futures = "0.3"
 http = "0.2"
 humansize = "2"
-jobserver = "=0.1.26" # newer versions require rust 1.66, see https://github.com/aws/s2n-quic/issues/1991
 lru = "0.10"
 openssl-sys = { version = "0.9", features = ["vendored"] }
 rand = "0.8"
@@ -48,9 +47,8 @@ s2n-quic = { path = "../s2n-quic", features = ["provider-event-console-perf", "p
 mimalloc = { version = "0.1", default-features = false }
 
 # we don't use openssl-sys directly; it's just here to pin and vendor in dev
-# jobserver is just here to pin as well, it is a dependency of openssl-sys
 [package.metadata.cargo-udeps.ignore]
-normal = [ "openssl-sys", "jobserver" ]
+normal = [ "openssl-sys" ]
 
 # Use unstable s2n-quic features
 # unstable_client_hello and unstable_resumption use s2n-tls, and thus are only enabled for unix platforms
