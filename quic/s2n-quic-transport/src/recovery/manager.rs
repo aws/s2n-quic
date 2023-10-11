@@ -517,7 +517,11 @@ impl<Config: endpoint::Config> Manager<Config> {
                 ack_range: pn_range.into_event(),
             });
 
-            context.validate_packet_ack(timestamp, &pn_range)?;
+            context.validate_packet_ack(
+                timestamp,
+                &pn_range,
+                self.sent_packets.get_range().start(),
+            )?;
             // notify components of packets acked
             context.on_packet_ack(timestamp, &pn_range);
 
@@ -1151,6 +1155,7 @@ pub trait Context<Config: endpoint::Config> {
         &mut self,
         timestamp: Timestamp,
         packet_number_range: &PacketNumberRange,
+        lowest_tracking_packet_number: PacketNumber,
     ) -> Result<(), transport::Error>;
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(

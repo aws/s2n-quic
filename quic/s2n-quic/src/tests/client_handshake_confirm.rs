@@ -141,7 +141,8 @@ where
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
-            .with_event(events())?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         let addr = start_server(server)?;
@@ -150,7 +151,8 @@ where
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
-            .with_event((ClientConfirm, events()))?
+            .with_event((ClientConfirm, tracing_events()))?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         // show it working for several connections

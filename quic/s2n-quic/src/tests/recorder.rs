@@ -84,6 +84,18 @@ event_recorder!(
     HandshakeStatusUpdated,
     on_handshake_status_updated
 );
+
+event_recorder!(
+    ActivePathUpdated,
+    ActivePathUpdated,
+    on_active_path_updated,
+    SocketAddr,
+    |event: &events::ActivePathUpdated, storage: &mut Vec<SocketAddr>| {
+        let addr = (&event.active.remote_addr).into();
+        storage.push(addr);
+    }
+);
+
 event_recorder!(
     PacketDropped,
     PacketDropped,
@@ -93,16 +105,6 @@ event_recorder!(
         if let Ok(reason) = (&event.reason).try_into() {
             storage.push(reason);
         }
-    }
-);
-event_recorder!(
-    ActivePathUpdated,
-    ActivePathUpdated,
-    on_active_path_updated,
-    SocketAddr,
-    |event: &events::ActivePathUpdated, storage: &mut Vec<SocketAddr>| {
-        let addr = (&event.active.remote_addr).into();
-        storage.push(addr);
     }
 );
 
@@ -141,3 +143,13 @@ impl<'a> TryFrom<&events::PacketDropReason<'a>> for PacketDropReason {
         })
     }
 }
+
+event_recorder!(
+    PacketSkipped,
+    PacketSkipped,
+    on_packet_skipped,
+    events::PacketSkipReason,
+    |event: &events::PacketSkipped, storage: &mut Vec<events::PacketSkipReason>| {
+        storage.push(event.reason.clone());
+    }
+);

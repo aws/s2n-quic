@@ -34,6 +34,7 @@ mod mtu;
 mod no_tls;
 mod pto;
 mod self_test;
+mod skip_packets;
 
 // TODO: https://github.com/aws/s2n-quic/issues/1726
 //

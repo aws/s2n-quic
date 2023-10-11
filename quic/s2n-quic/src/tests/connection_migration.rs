@@ -44,7 +44,8 @@ where
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((events(), active_path_sub))?
+            .with_event((tracing_events(), active_path_sub))?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         let client_io = handle.builder().on_socket(on_socket).build()?;
@@ -52,7 +53,8 @@ where
         let client = Client::builder()
             .with_io(client_io)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(events())?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         let addr = start_server(server)?;
@@ -105,14 +107,16 @@ fn rebind_after_handshake_confirmed() {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(events())?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
             .with_packet_interceptor(RebindPortBeforeLastHandshakePacket::default())?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(events())?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         let addr = start_server(server)?;

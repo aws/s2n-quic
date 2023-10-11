@@ -109,6 +109,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         let mut packet_number = self.tx_packet_numbers.next();
 
         if self.recovery_manager.requires_probe() {
+            context
+                .publisher
+                .on_packet_skipped(event::builder::PacketSkipped {
+                    number: packet_number.into_event(),
+                    space: event::builder::KeySpace::Handshake,
+                    reason: event::builder::PacketSkipReason::PtoProbe,
+                });
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
@@ -466,9 +473,13 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         &mut self,
         timestamp: Timestamp,
         packet_number_range: &PacketNumberRange,
+        lowest_tracking_packet_number: PacketNumber,
     ) -> Result<(), transport::Error> {
-        self.tx_packet_numbers
-            .on_packet_ack(timestamp, packet_number_range)
+        self.tx_packet_numbers.on_packet_ack(
+            timestamp,
+            packet_number_range,
+            lowest_tracking_packet_number,
+        )
     }
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(

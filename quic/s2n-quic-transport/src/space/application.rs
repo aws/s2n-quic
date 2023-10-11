@@ -8,6 +8,7 @@ use crate::{
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
+    recovery::CongestionController,
     space::{
         datagram, keep_alive::KeepAlive, CryptoStream, HandshakeStatus, PacketSpace,
         TxPacketNumbers,
@@ -21,6 +22,7 @@ use core::{convert::TryInto, fmt, marker::PhantomData};
 use once_cell::sync::OnceCell;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
+    counter::{Counter, Saturating},
     crypto::{application::KeySet, limited, tls, CryptoSuite},
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
@@ -36,9 +38,14 @@ use s2n_quic_core::{
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
     path::MaxMtu,
+    random::Generator,
+    recovery::MAX_BURST_PACKETS,
     time::{timer, Timestamp},
     transport,
 };
+
+// Ensure there is a gap between skipped packet numbers
+const MIN_SKIP_COUNTER_VALUE: u32 = MAX_BURST_PACKETS * 3;
 
 pub struct ApplicationSpace<Config: endpoint::Config> {
     /// Transmission Packet numbers
@@ -68,6 +75,8 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager<Config>,
     pub datagram_manager: datagram::Manager<Config>,
+    /// Counter used for detecting an Optimistic Ack attack
+    skip_counter: Option<Counter<u32, Saturating>>,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
@@ -110,6 +119,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::ApplicationData),
             datagram_manager,
+            skip_counter: None,
         }
     }
 
@@ -147,7 +157,13 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     ) -> Result<(transmission::Outcome, EncoderBuffer<'a>), PacketEncodingError<'a>> {
         let mut packet_number = self.tx_packet_numbers.next();
 
+        // This function can return early and not transmit a packet for various reasons
+        // enumerated in PacketEncodingError. Record the intent to skip (de-duping, if
+        // necessary) and record only if a packet is transmitted.
+        let mut skipped_packet_number = SkippedPacketNumber::default();
+
         if self.recovery_manager.requires_probe() {
+            skipped_packet_number.pto = Some(packet_number);
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
@@ -157,12 +173,32 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             packet_number = packet_number.next().unwrap();
         }
 
-        let packet_number_encoder = self.packet_number_encoder();
+        if let Some(skip_counter) = &mut self.skip_counter {
+            if *skip_counter == 0 && self.tx_packet_numbers.should_skip_packet_number() {
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-21.4
+                //# An endpoint that acknowledges packets it has not received might cause
+                //# a congestion controller to permit sending at rates beyond what the
+                //# network supports.  An endpoint MAY skip packet numbers when sending
+                //# packets to detect this behavior.  An endpoint can then immediately
+                //# close the connection with a connection error of type PROTOCOL_VIOLATION
+                //
+                // TODO Does this interact negatively with persistent congestion detection, which
+                //      relies on consecutive packet numbers?
 
+                // dont skip an additional packet if already skipping a packet for PTO probing
+                if let Some(skip_packet_number) = skipped_packet_number.pto {
+                    skipped_packet_number.opt_ack = Some(skip_packet_number);
+                } else {
+                    skipped_packet_number.opt_ack = Some(packet_number);
+                    packet_number = packet_number.next().unwrap();
+                }
+            }
+        }
+
+        let packet_number_encoder = self.packet_number_encoder();
         let mut outcome = transmission::Outcome::default();
 
         let destination_connection_id = context.path().peer_connection_id;
-        let timestamp = context.timestamp;
         let transmission_mode = context.transmission_mode;
         let min_packet_len = context.min_packet_len;
         let bytes_progressed = self.stream_manager.outgoing_bytes_progressed();
@@ -184,7 +220,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 &mut self.crypto_stream,
                 &mut self.datagram_manager,
             ),
-            timestamp,
+            timestamp: context.timestamp,
             transmission_constraint,
             transmission_mode,
             tx_packet_numbers: &mut self.tx_packet_numbers,
@@ -217,6 +253,25 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         outcome.bytes_progressed +=
             (self.stream_manager.outgoing_bytes_progressed() - bytes_progressed).as_u64() as usize;
 
+        self.on_packet_sent(
+            context,
+            packet_number,
+            outcome,
+            handshake_status,
+            skipped_packet_number,
+        );
+
+        Ok((outcome, buffer))
+    }
+
+    fn on_packet_sent(
+        &mut self,
+        context: &mut ConnectionTransmissionContext<Config>,
+        packet_number: PacketNumber,
+        outcome: transmission::Outcome,
+        handshake_status: &mut HandshakeStatus,
+        skipped_packet_number: SkippedPacketNumber,
+    ) {
         let app_limited = self.is_app_limited(context.path(), outcome.bytes_sent);
 
         let (recovery_manager, mut recovery_context) = self.recovery(
@@ -238,7 +293,12 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         // reset the keep alive timer after sending an ack-eliciting packet
         if outcome.ack_elicitation.is_ack_eliciting() {
-            self.keep_alive.reset(timestamp);
+            self.keep_alive.reset(context.timestamp);
+        }
+
+        // Decrement the skip_counter on each transmit
+        if let Some(skip_counter) = &mut self.skip_counter {
+            *skip_counter -= 1_u32;
         }
 
         context
@@ -251,7 +311,37 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 packet_len: outcome.bytes_sent,
             });
 
-        Ok((outcome, buffer))
+        if let Some(skip_packet_number) = skipped_packet_number.pto {
+            Self::packet_skipped_event(
+                context,
+                skip_packet_number,
+                event::builder::PacketSkipReason::PtoProbe,
+            );
+        }
+
+        if let Some(skip_packet_number) = skipped_packet_number.opt_ack {
+            self.tx_packet_numbers
+                .set_skip_packet_number(skip_packet_number);
+            Self::packet_skipped_event(
+                context,
+                skip_packet_number,
+                event::builder::PacketSkipReason::OptimisticAckMitigation,
+            );
+        }
+    }
+
+    fn packet_skipped_event(
+        context: &mut ConnectionTransmissionContext<Config>,
+        skip_packet_number: PacketNumber,
+        reason: event::builder::PacketSkipReason,
+    ) {
+        context
+            .publisher
+            .on_packet_skipped(event::builder::PacketSkipped {
+                number: skip_packet_number.into_event(),
+                space: event::builder::KeySpace::OneRtt,
+                reason,
+            });
     }
 
     pub(super) fn on_transmit_burst_complete(
@@ -389,6 +479,24 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             publisher,
         );
 
+        match self.skip_counter {
+            Some(skip_counter) if skip_counter == 0 => {
+                if self.tx_packet_numbers.should_skip_packet_number() {
+                    Self::arm_skip_counter(
+                        &mut self.skip_counter,
+                        path_manager.active_path(),
+                        random_generator,
+                    );
+                }
+            }
+            None => Self::arm_skip_counter(
+                &mut self.skip_counter,
+                path_manager.active_path(),
+                random_generator,
+            ),
+            _ => (),
+        }
+
         self.stream_manager.on_timeout(timestamp);
 
         if self.keep_alive.on_timeout(timestamp).is_ready() {
@@ -399,6 +507,26 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             // send a ping after timing out
             self.ping();
         }
+    }
+
+    fn arm_skip_counter(
+        skip_counter: &mut Option<Counter<u32, Saturating>>,
+        path: &Path<Config>,
+        random_generator: &mut Config::RandomGenerator,
+    ) {
+        let mut dest = [0; core::mem::size_of::<u32>()];
+        random_generator.public_random_fill(&mut dest);
+        let mut rand = u32::from_le_bytes(dest);
+
+        // bound the random value
+        let pkt_per_cwnd = path.congestion_controller.congestion_window()
+            / path.mtu(transmission::Mode::Normal) as u32;
+        let lower = pkt_per_cwnd / 2;
+        let upper = pkt_per_cwnd.saturating_mul(2);
+        let cardinality = upper - lower + 1;
+        rand = (lower + MIN_SKIP_COUNTER_VALUE).saturating_add(rand % cardinality);
+
+        *skip_counter = Some(Counter::new(rand));
     }
 
     /// Returns `true` if the recovery manager for this packet space requires a probe
@@ -653,9 +781,13 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         &mut self,
         timestamp: Timestamp,
         packet_number_range: &PacketNumberRange,
+        lowest_tracking_packet_number: PacketNumber,
     ) -> Result<(), transport::Error> {
-        self.tx_packet_numbers
-            .on_packet_ack(timestamp, packet_number_range)
+        self.tx_packet_numbers.on_packet_ack(
+            timestamp,
+            packet_number_range,
+            lowest_tracking_packet_number,
+        )
     }
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
@@ -1012,5 +1144,43 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             .expect("packet number was already checked");
 
         Ok(())
+    }
+}
+
+#[derive(Default)]
+struct SkippedPacketNumber {
+    // skipped for PTO probe
+    pto: Option<PacketNumber>,
+    // skipped for Optimistic Ack mitigation
+    opt_ack: Option<PacketNumber>,
+}
+
+#[cfg(any(test, feature = "testing"))]
+mod tests {
+    use super::*;
+    use crate::path::testing::helper_path_server;
+    use bolero::check;
+    use s2n_quic_core::random;
+
+    #[test]
+    fn fuzz_arm_skip_counter() {
+        let mut skip_counter = None;
+
+        let mut path = helper_path_server();
+        assert_eq!(path.mtu(transmission::Mode::Normal), 1200);
+        let mtu = path.mtu(transmission::Mode::Normal) as u32;
+
+        check!().with_type().cloned().for_each(|(seed, cwnd)| {
+            let random = &mut random::testing::Generator(seed);
+            path.congestion_controller.congestion_window = cwnd;
+            // calculate the bounds
+            let pkt_per_cwnd = cwnd / mtu;
+            let lower = pkt_per_cwnd / 2;
+            let upper = pkt_per_cwnd * 2;
+            ApplicationSpace::arm_skip_counter(&mut skip_counter, &path, random);
+
+            assert!(lower + MIN_SKIP_COUNTER_VALUE <= *skip_counter.unwrap(),);
+            assert!(*skip_counter.unwrap() <= upper + MIN_SKIP_COUNTER_VALUE,);
+        })
     }
 }

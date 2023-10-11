@@ -16,6 +16,14 @@ struct ServerNameInformation<'a> {
     chosen_server_name: &'a str,
 }
 
+#[event("transport:packet_skipped")]
+/// Packet was skipped with a given reason
+struct PacketSkipped {
+    number: u64,
+    space: KeySpace,
+    reason: PacketSkipReason,
+}
+
 #[event("transport:packet_sent")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.5
 /// Packet was sent by a connection

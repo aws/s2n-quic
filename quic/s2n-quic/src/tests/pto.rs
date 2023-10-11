@@ -19,12 +19,13 @@ fn handshake_pto_timer_is_armed() {
     let pto_events = pto_subscriber.events();
     let packet_sent_events = packet_sent_subscriber.events();
 
-    test(model.clone(), |handle| {
+    test(model, |handle| {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_packet_interceptor(DropHandshakeTx)?
-            .with_event(events())?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         let addr = server.local_addr()?;
@@ -37,7 +38,8 @@ fn handshake_pto_timer_is_armed() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(((events(), pto_subscriber), packet_sent_subscriber))?
+            .with_event(((tracing_events(), pto_subscriber), packet_sent_subscriber))?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         primary::spawn(async move {

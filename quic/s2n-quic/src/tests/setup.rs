@@ -15,7 +15,7 @@ use std::net::SocketAddr;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
 
-pub fn events() -> event::tracing::Subscriber {
+pub fn tracing_events() -> event::tracing::Subscriber {
     use std::sync::Once;
 
     static TRACING: Once = Once::new();
@@ -82,7 +82,8 @@ pub fn build_server(handle: &Handle) -> Result<Server> {
     Ok(Server::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(SERVER_CERTS)?
-        .with_event(events())?
+        .with_event(tracing_events())?
+        .with_random(Random::with_seed(123))?
         .start()?)
 }
 
@@ -126,7 +127,8 @@ pub fn build_client(handle: &Handle) -> Result<Client> {
     Ok(Client::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(certificates::CERT_PEM)?
-        .with_event(events())?
+        .with_event(tracing_events())?
+        .with_random(Random::with_seed(123))?
         .start()?)
 }
 
@@ -174,6 +176,26 @@ impl RngCore for Random {
 
     fn next_u64(&mut self) -> u64 {
         self.inner.next_u64()
+    }
+}
+
+impl crate::provider::random::Provider for Random {
+    type Generator = Self;
+
+    type Error = core::convert::Infallible;
+
+    fn start(self) -> Result<Self::Generator, Self::Error> {
+        Ok(self)
+    }
+}
+
+impl crate::provider::random::Generator for Random {
+    fn public_random_fill(&mut self, dest: &mut [u8]) {
+        self.fill_bytes(dest);
+    }
+
+    fn private_random_fill(&mut self, dest: &mut [u8]) {
+        self.fill_bytes(dest);
     }
 }
 

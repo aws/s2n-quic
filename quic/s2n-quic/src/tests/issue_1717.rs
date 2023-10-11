@@ -26,6 +26,8 @@ fn increasing_pto_count_under_loss() {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         let addr = server.local_addr()?;
@@ -39,7 +41,8 @@ fn increasing_pto_count_under_loss() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(subscriber)?
+            .with_event((tracing_events(), subscriber))?
+            .with_random(Random::with_seed(456))?
             .start()?;
 
         primary::spawn(async move {
