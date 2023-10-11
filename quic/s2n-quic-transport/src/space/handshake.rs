@@ -473,10 +473,13 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         &mut self,
         timestamp: Timestamp,
         packet_number_range: &PacketNumberRange,
-        lowest_tracking_pn: PacketNumber,
+        lowest_tracking_packet_number: PacketNumber,
     ) -> Result<(), transport::Error> {
-        self.tx_packet_numbers
-            .on_packet_ack(timestamp, packet_number_range, lowest_tracking_pn)
+        self.tx_packet_numbers.on_packet_ack(
+            timestamp,
+            packet_number_range,
+            lowest_tracking_packet_number,
+        )
     }
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(

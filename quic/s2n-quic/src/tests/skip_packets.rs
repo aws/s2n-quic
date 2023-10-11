@@ -54,13 +54,23 @@ fn optimistic_ack_mitigation() {
         .lock()
         .unwrap()
         .iter()
-        .filter(|reason| matches!(reason, recorder::PacketSkipReason::OptimisticAckMitigation))
+        .filter(|reason| {
+            matches!(
+                reason,
+                events::PacketSkipReason::OptimisticAckMitigation { .. }
+            )
+        })
         .count();
     let client_skip_count = client_events
         .lock()
         .unwrap()
         .iter()
-        .filter(|reason| matches!(reason, recorder::PacketSkipReason::OptimisticAckMitigation))
+        .filter(|reason| {
+            matches!(
+                reason,
+                events::PacketSkipReason::OptimisticAckMitigation { .. }
+            )
+        })
         .count();
 
     // Verify that both client and server are skipping packets for Optimistic

@@ -148,29 +148,8 @@ event_recorder!(
     PacketSkipped,
     PacketSkipped,
     on_packet_skipped,
-    PacketSkipReason,
-    |event: &events::PacketSkipped, storage: &mut Vec<PacketSkipReason>| {
-        if let Ok(reason) = (&event.reason).try_into() {
-            storage.push(reason);
-        }
+    events::PacketSkipReason,
+    |event: &events::PacketSkipped, storage: &mut Vec<events::PacketSkipReason>| {
+        storage.push(event.reason.clone());
     }
 );
-
-pub enum PacketSkipReason {
-    PtoProbe,
-    OptimisticAckMitigation,
-}
-
-impl TryFrom<&events::PacketSkipReason> for PacketSkipReason {
-    type Error = ();
-
-    fn try_from(reason: &events::PacketSkipReason) -> Result<Self, ()> {
-        use events::PacketSkipReason::*;
-
-        Ok(match reason {
-            PtoProbe { .. } => Self::PtoProbe,
-            OptimisticAckMitigation { .. } => Self::OptimisticAckMitigation,
-            _ => return Err(()),
-        })
-    }
-}

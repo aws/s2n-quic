@@ -161,10 +161,10 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         // This function can return early and not transmit a packet for various reasons
         // enumerated in PacketEncodingError. Record the intent to skip (de-duping, if
         // necessary) and record only if a packet is transmitted.
-        let mut skipped_pn = SkippedPacketNumber::default();
+        let mut skipped_packet_number = SkippedPacketNumber::default();
 
         if self.recovery_manager.requires_probe() {
-            skipped_pn.pto = Some(packet_number);
+            skipped_packet_number.pto = Some(packet_number);
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can
             //# skip a packet number to eliminate the acknowledgment delay.
@@ -175,7 +175,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         }
 
         if let Some(skip_counter) = &mut self.skip_counter {
-            if *skip_counter == 0 && self.tx_packet_numbers.generate_new_skip_pn() {
+            if *skip_counter == 0 && self.tx_packet_numbers.should_skip_packet_number() {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-21.4
                 //# An endpoint that acknowledges packets it has not received might cause
                 //# a congestion controller to permit sending at rates beyond what the
@@ -187,10 +187,10 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 //      relies on consecutive packet numbers?
 
                 // dont skip an additional packet if already skipping a packet for PTO probing
-                if let Some(skip_pn) = skipped_pn.pto {
-                    skipped_pn.opt_ack = Some(skip_pn);
+                if let Some(skip_packet_number) = skipped_packet_number.pto {
+                    skipped_packet_number.opt_ack = Some(skip_packet_number);
                 } else {
-                    skipped_pn.opt_ack = Some(packet_number);
+                    skipped_packet_number.opt_ack = Some(packet_number);
                     packet_number = packet_number.next().unwrap();
                 }
             }
@@ -259,7 +259,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             packet_number,
             outcome,
             handshake_status,
-            skipped_pn,
+            skipped_packet_number,
         );
 
         Ok((outcome, buffer))
@@ -271,7 +271,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         packet_number: PacketNumber,
         outcome: transmission::Outcome,
         handshake_status: &mut HandshakeStatus,
-        skipped_pn: SkippedPacketNumber,
+        skipped_packet_number: SkippedPacketNumber,
     ) {
         let app_limited = self.is_app_limited(context.path(), outcome.bytes_sent);
 
@@ -312,19 +312,20 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 packet_len: outcome.bytes_sent,
             });
 
-        if let Some(skip_pn) = skipped_pn.pto {
+        if let Some(skip_packet_number) = skipped_packet_number.pto {
             Self::packet_skipped_event(
                 context,
-                skip_pn,
+                skip_packet_number,
                 event::builder::PacketSkipReason::PtoProbe,
             );
         }
 
-        if let Some(skip_pn) = skipped_pn.opt_ack {
-            self.tx_packet_numbers.set_skip_pn(skip_pn);
+        if let Some(skip_packet_number) = skipped_packet_number.opt_ack {
+            self.tx_packet_numbers
+                .set_skip_packet_number(skip_packet_number);
             Self::packet_skipped_event(
                 context,
-                skip_pn,
+                skip_packet_number,
                 event::builder::PacketSkipReason::OptimisticAckMitigation,
             );
         }
@@ -332,13 +333,13 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
     fn packet_skipped_event(
         context: &mut ConnectionTransmissionContext<Config>,
-        skip_pn: PacketNumber,
+        skip_packet_number: PacketNumber,
         reason: event::builder::PacketSkipReason,
     ) {
         context
             .publisher
             .on_packet_skipped(event::builder::PacketSkipped {
-                number: skip_pn.into_event(),
+                number: skip_packet_number.into_event(),
                 space: event::builder::KeySpace::OneRtt,
                 reason,
             });
@@ -481,7 +482,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         match self.skip_counter {
             Some(skip_counter) if skip_counter == 0 => {
-                if self.tx_packet_numbers.generate_new_skip_pn() {
+                if self.tx_packet_numbers.should_skip_packet_number() {
                     Self::arm_skip_counter(
                         &mut self.skip_counter,
                         path_manager.active_path(),
@@ -781,10 +782,13 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         &mut self,
         timestamp: Timestamp,
         packet_number_range: &PacketNumberRange,
-        lowest_tracking_pn: PacketNumber,
+        lowest_tracking_packet_number: PacketNumber,
     ) -> Result<(), transport::Error> {
-        self.tx_packet_numbers
-            .on_packet_ack(timestamp, packet_number_range, lowest_tracking_pn)
+        self.tx_packet_numbers.on_packet_ack(
+            timestamp,
+            packet_number_range,
+            lowest_tracking_packet_number,
+        )
     }
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
@@ -1167,8 +1171,8 @@ mod tests {
         assert_eq!(path.mtu(transmission::Mode::Normal), 1200);
         let mtu = path.mtu(transmission::Mode::Normal) as u32;
 
-        check!().with_type().cloned().for_each(|cwnd| {
-            let random = &mut random::testing::Generator::default();
+        check!().with_type().cloned().for_each(|(seed, cwnd)| {
+            let random = &mut random::testing::Generator(seed);
             path.congestion_controller.congestion_window = cwnd;
             // calculate the bounds
             let pkt_per_cwnd = cwnd / mtu;
