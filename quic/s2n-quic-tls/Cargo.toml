@@ -25,6 +25,7 @@ s2n-tls = { version = "=0.0.36", features = ["quic"] }
 
 [dev-dependencies]
 checkers = "0.6"
+jobserver = "=0.1.26" # newer versions require rust 1.66, see https://github.com/aws/s2n-quic/issues/1991
 pin-project = { version = "1" }
 openssl = { version = "0.10" }
 # Build the vendored version to make it easy to test in dev
@@ -36,5 +37,6 @@ s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-rustls = { path = "../s2n-quic-rustls" }
 
 # we don't use openssl-sys directly; it's just here to pin and vendor in dev
+# jobserver is just here to pin as well, it is a dependency of openssl-sys
 [package.metadata.cargo-udeps.ignore]
-development = [ "openssl-sys" ]
+development = [ "openssl-sys", "jobserver" ]
