@@ -1155,7 +1155,7 @@ pub trait Context<Config: endpoint::Config> {
         &mut self,
         timestamp: Timestamp,
         packet_number_range: &PacketNumberRange,
-        lowest_tracking_pn: PacketNumber,
+        lowest_tracking_packet_number: PacketNumber,
     ) -> Result<(), transport::Error>;
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(

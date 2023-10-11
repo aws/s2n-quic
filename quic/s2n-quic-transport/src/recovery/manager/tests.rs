@@ -3628,7 +3628,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for MockContext<'a,
         &mut self,
         _timestamp: Timestamp,
         _packet_number_range: &PacketNumberRange,
-        _lowest_pending_ack: PacketNumber,
+        _lowest_tracking_packet_number: PacketNumber,
     ) -> Result<(), transport::Error> {
         self.validate_packet_ack_count += 1;
         Ok(())

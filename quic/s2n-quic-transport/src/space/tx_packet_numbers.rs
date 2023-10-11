@@ -75,7 +75,7 @@ impl TxPacketNumbers {
             //
             // For example:
             // Assume we are initially tracking packets 2-9 and have skipped
-            // packet 4 (s). The skip_packet_number + 1 packet is calculated as packet 5 (p).
+            // packet 4. The skip_packet_number + 1 packet is calculated as packet 5 (p).
             // We validate the peer behavior and can clear skip_packet_number once we stop
             // tracking packet 5.
             //
@@ -92,7 +92,7 @@ impl TxPacketNumbers {
             //
             //    RX: AckRange(5)
             //
-            // Verified: peer did not send an ack for (s)
+            // Verified: peer did not send an ack for packet 4
             //    [ 6 7 8 9 ]
             // ```
             let skip_plus_one = skip_packet_number

@@ -43,7 +43,6 @@ use s2n_quic_core::{
     time::{timer, Timestamp},
     transport,
 };
-use std::ops::SubAssign;
 
 // Ensure there is a gap between skipped packet numbers
 const MIN_SKIP_COUNTER_VALUE: u32 = MAX_BURST_PACKETS * 3;
@@ -299,7 +298,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         // Decrement the skip_counter on each transmit
         if let Some(skip_counter) = &mut self.skip_counter {
-            skip_counter.sub_assign(1_u32);
+            *skip_counter -= 1_u32;
         }
 
         context
