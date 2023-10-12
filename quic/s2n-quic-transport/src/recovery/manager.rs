@@ -439,9 +439,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
         };
 
-        let mut newly_acked_packets = SmallVec::<
-            [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
-        >::new();
+        let mut newly_acked_packets =
+            SmallVec::<[PacketDetails<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
         let (largest_newly_acked, includes_ack_eliciting) = self.process_ack_range(
             &mut newly_acked_packets,
             timestamp,
@@ -469,10 +468,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                 publisher,
             );
 
-            let (_, largest_newly_acked_info) = largest_newly_acked;
             self.process_new_acked_packets(
                 &newly_acked_packets,
-                largest_newly_acked_info,
                 acked_new_largest_packet,
                 timestamp,
                 ecn_counts,
@@ -493,7 +490,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     fn process_ack_range<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         newly_acked_packets: &mut SmallVec<
-            [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
+            [PacketDetails<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
         >,
         timestamp: Timestamp,
         packet_number: PacketNumber,
@@ -528,7 +525,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             let mut newly_acked_range: Option<(PacketNumber, PacketNumber)> = None;
 
             for (packet_number, acked_packet_info) in self.sent_packets.remove_range(pn_range) {
-                newly_acked_packets.push(acked_packet_info);
+                newly_acked_packets.push((packet_number, acked_packet_info));
 
                 if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
                     largest_newly_acked = Some((packet_number, acked_packet_info));
@@ -629,9 +626,8 @@ impl<Config: endpoint::Config> Manager<Config> {
     fn process_new_acked_packets<Ctx: Context<Config>, Pub: event::ConnectionPublisher>(
         &mut self,
         newly_acked_packets: &SmallVec<
-            [SentPacketInfo<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
+            [PacketDetails<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY],
         >,
-        largest_newly_acked: SentPacketInfo<packet_info_type!()>,
         new_largest_packet: bool,
         timestamp: Timestamp,
         ecn_counts: Option<EcnCounts>,
@@ -648,9 +644,10 @@ impl<Config: endpoint::Config> Manager<Config> {
         let current_path_id = context.path_id();
         let is_handshake_confirmed = context.is_handshake_confirmed();
         let mut current_path_acked_bytes = 0;
+        let mut current_path_largest_newly_acked = None;
         let mut newly_acked_ecn_counts = EcnCounts::default();
 
-        for acked_packet_info in newly_acked_packets {
+        for (packet_number, acked_packet_info) in newly_acked_packets {
             let path = context.path_mut_by_id(acked_packet_info.path_id);
 
             let sent_bytes = acked_packet_info.sent_bytes as usize;
@@ -658,6 +655,10 @@ impl<Config: endpoint::Config> Manager<Config> {
 
             if acked_packet_info.path_id == current_path_id {
                 current_path_acked_bytes += sent_bytes;
+
+                if current_path_largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
+                    current_path_largest_newly_acked = Some((packet_number, acked_packet_info));
+                }
             } else if sent_bytes > 0 {
                 path.congestion_controller.on_ack(
                     acked_packet_info.time_sent,
@@ -718,6 +719,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
 
         if current_path_acked_bytes > 0 {
+            let (_, largest_newly_acked) = current_path_largest_newly_acked
+                .expect("At least some bytes were acknowledged on the current path");
             let path = context.path_mut();
             path.congestion_controller.on_ack(
                 largest_newly_acked.time_sent,

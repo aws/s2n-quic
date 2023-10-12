@@ -692,25 +692,18 @@ fn process_new_acked_packets_update_pto_timer() {
 #[test]
 // congestion_controller.on_packet_ack should be updated for the path the packet was sent on
 //
-// Setup 1:
+// Setup:
 // - create path manager with two validated paths
 // - send a packet on each path
 //  - packet 1 on path 1
 //  - packet 2 on path 2
 //
-// Trigger 1:
-// - send ack for packet 1 on path 1
+// Trigger:
+// - send ack for packet 1 and 2 on path 1
 //
-// Expectation 1:
-// - cc.on_packet_ack should be updated for first_path
-// - cc.on_packet_ack should not be updated for second_path
-//
-// Trigger 2:
-// - send ack for packet 2 on path 2
-//
-// Expectation 2:
-// - cc.on_packet_ack should not be updated for first_path
-// - cc.on_packet_ack should be updated for second_path
+// Expectation:
+// - cc.on_packet_ack should be incremented once for the first_path
+// - cc.on_packet_ack should be incremented once for the second_path
 fn process_new_acked_packets_congestion_controller() {
     // Setup:
     let space = PacketNumberSpace::ApplicationData;
@@ -757,11 +750,11 @@ fn process_new_acked_packets_congestion_controller() {
         &mut publisher,
     );
 
-    // Trigger 1:
-    // Ack packet 1 on path 1
+    // Trigger:
+    // Ack packets 1 and 2 on path 1
     let ack_receive_time = time_sent + Duration::from_millis(500);
     helper_ack_packets_on_path(
-        1..=1,
+        1..=2,
         ack_receive_time,
         &mut context,
         &mut manager,
@@ -770,36 +763,7 @@ fn process_new_acked_packets_congestion_controller() {
         &mut publisher,
     );
 
-    // Expectation 1:
-    assert_eq!(
-        context
-            .path_by_id(first_path_id)
-            .congestion_controller
-            .on_packet_ack,
-        1
-    );
-    assert_eq!(
-        context
-            .path_by_id(second_path_id)
-            .congestion_controller
-            .on_packet_ack,
-        0
-    );
-
-    // Trigger 2:
-    // Ack packet 2 on path 1
-    let ack_receive_time = time_sent + Duration::from_millis(500);
-    helper_ack_packets_on_path(
-        2..=2,
-        ack_receive_time,
-        &mut context,
-        &mut manager,
-        first_addr,
-        None,
-        &mut publisher,
-    );
-
-    // Expectation 2:
+    // Expectation:
     assert_eq!(
         context
             .path_by_id(first_path_id)
@@ -1837,31 +1801,37 @@ fn remove_lost_packets_persistent_congestion_path_aware() {
         space.new_packet_number(VarInt::from_u8(9)),
         space.new_packet_number(VarInt::from_u8(10)),
     );
-    manager.sent_packets.insert(
-        space.new_packet_number(VarInt::from_u8(9)),
-        SentPacketInfo::new(
-            true,
-            1,
-            now,
-            AckElicitation::Eliciting,
-            first_path_id,
-            ecn,
-            transmission::Mode::Normal,
-            Default::default(),
-        ),
+    context.set_path_id(first_path_id);
+    manager.on_packet_sent(
+        sent_packets_to_remove.start(),
+        Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+            bytes_progressed: 0,
+        },
+        now,
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
     );
-    manager.sent_packets.insert(
-        space.new_packet_number(VarInt::from_u8(10)),
-        SentPacketInfo::new(
-            true,
-            1,
-            now,
-            AckElicitation::Eliciting,
-            second_path_id,
-            ecn,
-            transmission::Mode::Normal,
-            Default::default(),
-        ),
+    context.set_path_id(second_path_id);
+    manager.on_packet_sent(
+        sent_packets_to_remove.end(),
+        Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: 1,
+            bytes_progressed: 0,
+        },
+        now,
+        ecn,
+        transmission::Mode::Normal,
+        None,
+        &mut context,
+        &mut publisher,
     );
 
     // Trigger:
@@ -3530,7 +3500,7 @@ fn helper_generate_path_manager_with_first_addr(
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
         RttEstimator::new(max_ack_delay),
-        MockCongestionController::default(),
+        MockCongestionController::new(first_addr),
         true,
         DEFAULT_MAX_MTU,
     );
@@ -3551,7 +3521,7 @@ fn helper_generate_client_path_manager(
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
         RttEstimator::new(max_ack_delay),
-        MockCongestionController::default(),
+        MockCongestionController::new(first_addr),
         false,
         DEFAULT_MAX_MTU,
     );

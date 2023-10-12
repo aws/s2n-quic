@@ -3,7 +3,7 @@
 
 use crate::{
     event,
-    inet::{SocketAddress, SocketAddressV4, SocketAddressV6},
+    inet::{IpV4Address, IpV6Address, SocketAddress, SocketAddressV4, SocketAddressV6},
 };
 use core::{
     convert::{TryFrom, TryInto},
@@ -126,6 +126,20 @@ macro_rules! impl_addr {
         #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
         #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
         pub struct $name(pub SocketAddress);
+
+        impl From<event::api::SocketAddress<'_>> for $name {
+            #[inline]
+            fn from(value: event::api::SocketAddress<'_>) -> Self {
+                match value {
+                    event::api::SocketAddress::IpV4 { ip, port } => {
+                        $name(IpV4Address::new(*ip).with_port(port).into())
+                    }
+                    event::api::SocketAddress::IpV6 { ip, port } => {
+                        $name(IpV6Address::new(*ip).with_port(port).into())
+                    }
+                }
+            }
+        }
 
         impl From<SocketAddress> for $name {
             #[inline]
