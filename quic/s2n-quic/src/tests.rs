@@ -34,6 +34,7 @@ mod mtu;
 mod no_tls;
 mod pto;
 mod self_test;
+mod skip_packets;
 
 // TODO: https://github.com/aws/s2n-quic/issues/1726
 //
@@ -45,6 +46,7 @@ mod client_handshake_confirm;
 #[cfg(not(target_os = "windows"))]
 mod mtls;
 
+mod exporter;
 mod issue_1361;
 mod issue_1427;
 mod issue_1464;

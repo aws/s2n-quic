@@ -15,15 +15,17 @@ pub struct Limits {
 
     #[structopt(long)]
     pub stream_send_buffer_size: Option<u32>,
+
+    /// The maximum time (in seconds) the handshake may take to complete
+    #[structopt(long, default_value = "300")]
+    pub max_handshake_duration: u64,
+
+    /// The maximum time (in seconds) a connection will remain open without contact from the peer
+    #[structopt(long, default_value = "300")]
+    pub max_idle_timeout: u64,
 }
 
 impl Limits {
-    // Increase the MaxHandshakeDuration from the default of 10 seconds
-    const MAX_HANDSHAKE_DURATION: Duration = Duration::from_secs(300);
-
-    // Increase MaxIdleTimeout from the default of 30 seconds
-    const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
-
     pub fn limits(&self) -> s2n_quic::provider::limits::Limits {
         let data_window = self.data_window();
 
@@ -40,9 +42,9 @@ impl Limits {
             .unwrap()
             .with_unidirectional_data_window(data_window)
             .unwrap()
-            .with_max_handshake_duration(Self::MAX_HANDSHAKE_DURATION)
+            .with_max_handshake_duration(Duration::from_secs(self.max_handshake_duration))
             .unwrap()
-            .with_max_idle_timeout(Self::MAX_IDLE_TIMEOUT)
+            .with_max_idle_timeout(Duration::from_secs(self.max_idle_timeout))
             .unwrap();
 
         if let Some(size) = self.stream_send_buffer_size {

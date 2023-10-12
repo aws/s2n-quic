@@ -354,10 +354,9 @@ mod tests {
                     path.on_handshake_packet();
                 } else {
                     // give the path some initial credits
-                    path.on_bytes_received(MINIMUM_MTU as usize);
+                    let _ = path.on_bytes_received(MINIMUM_MTU as usize);
                 }
 
-                path.on_closing();
                 sender.close(PACKET.clone(), *close_time, clock.get_time());
 
                 // transmit an initial packet
@@ -377,7 +376,7 @@ mod tests {
 
                     // notify that we've received an incoming packet
                     sender.on_datagram_received(*rtt, clock.get_time());
-                    path.on_bytes_received(*packet_size);
+                    let _ = path.on_bytes_received(*packet_size);
 
                     // try to send multiple times to ensure we only
                     // send a single packet

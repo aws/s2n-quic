@@ -22,6 +22,8 @@ impl<T> Number<T> {
         self.0.is_some()
     }
 
+    // See https://github.com/rust-lang/rust-clippy/issues/11390
+    #[allow(clippy::unwrap_or_default)]
     pub fn unwrap_or_default(&self) -> T
     where
         T: ConditionallySelectable + Default,

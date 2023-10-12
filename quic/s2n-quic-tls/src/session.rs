@@ -77,6 +77,19 @@ impl CryptoSuite for Session {
     type RetryKey = <Suite as CryptoSuite>::RetryKey;
 }
 
+impl tls::TlsSession for Session {
+    fn tls_exporter(
+        &self,
+        label: &[u8],
+        context: &[u8],
+        output: &mut [u8],
+    ) -> Result<(), tls::TlsExportError> {
+        self.connection
+            .tls_exporter(label, context, output)
+            .map_err(|_| tls::TlsExportError::failure())
+    }
+}
+
 impl tls::Session for Session {
     fn poll<W>(&mut self, context: &mut W) -> Poll<Result<(), transport::Error>>
     where
@@ -109,6 +122,7 @@ impl tls::Session for Session {
                 if !self.handshake_complete {
                     self.state.on_handshake_complete();
                     context.on_handshake_complete()?;
+                    context.on_tls_exporter_ready(self)?;
                     self.handshake_complete = true;
                 }
                 Poll::Ready(Ok(()))

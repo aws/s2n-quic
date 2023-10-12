@@ -9,7 +9,8 @@ fn intercept_loss(loss: Loss<Random>) {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event(events())?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
             .with_packet_interceptor(loss)?
             .start()?;
         let server_address = start_server(server)?;

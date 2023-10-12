@@ -201,7 +201,7 @@ impl<Config: endpoint::Config> Path<Config> {
     /// Returns true if receiving these bytes unblocked the
     /// path from being amplification limited
     #[inline]
-    pub fn on_bytes_received(&mut self, bytes: usize) -> bool {
+    pub fn on_bytes_received(&mut self, bytes: usize) -> AmplificationOutcome {
         let was_at_amplification_limit = self.at_amplification_limit();
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
@@ -219,7 +219,13 @@ impl<Config: endpoint::Config> Path<Config> {
             *tx_allowance += bytes.saturating_mul(3) as u32;
         }
 
-        was_at_amplification_limit && !self.at_amplification_limit()
+        let unblocked = was_at_amplification_limit && !self.at_amplification_limit();
+
+        match (unblocked, self.is_active()) {
+            (true, true) => AmplificationOutcome::ActivePathUnblocked,
+            (true, false) => AmplificationOutcome::InactivePathUnblocked,
+            _ => AmplificationOutcome::Unchanged,
+        }
     }
 
     #[inline]
@@ -509,21 +515,6 @@ impl<Config: endpoint::Config> Path<Config> {
     #[inline]
     pub fn reset_pto_backoff(&mut self) {
         self.pto_backoff = INITIAL_PTO_BACKOFF;
-    }
-
-    /// Marks the path as closing
-    pub fn on_closing(&mut self) {
-        // Revert the path state to AmplificationLimited so we can control the number
-        // of packets sent back with anti-amplification limits
-        match &self.state {
-            // keep the current amplification limits
-            State::AmplificationLimited { .. } => {}
-            State::Validated => {
-                self.state = State::AmplificationLimited {
-                    tx_allowance: Counter::new(MINIMUM_MTU as u32 * 3),
-                };
-            }
-        }
     }
 
     #[inline]
@@ -923,8 +914,8 @@ mod tests {
 
         // Verify we enforce the amplification limit if we can't send
         // at least 1 minimum sized packet
-        let mut unblocked = path.on_bytes_received(1200);
-        assert!(unblocked);
+        let mut amplification_outcome = path.on_bytes_received(1200);
+        assert!(amplification_outcome.is_inactivate_path_unblocked());
         path.on_bytes_transmitted((1200 * 2) + 1);
 
         // we round up to the nearest mtu
@@ -934,7 +925,7 @@ mod tests {
             transmission::Constraint::None
         );
 
-        unblocked = path.on_bytes_received(1200);
+        amplification_outcome = path.on_bytes_received(1200);
         assert!(!path.at_amplification_limit());
         assert_eq!(
             path.transmission_constraint(),
@@ -942,7 +933,7 @@ mod tests {
         );
         // If we were not amplification limited previously, receiving
         // more bytes doesn't unblock
-        assert!(!unblocked);
+        assert!(amplification_outcome.is_unchanged());
 
         path.on_bytes_transmitted((1200 * 6) + 1);
         assert!(path.at_amplification_limit());
@@ -950,8 +941,8 @@ mod tests {
             path.transmission_constraint(),
             transmission::Constraint::AmplificationLimited
         );
-        unblocked = path.on_bytes_received(1200);
-        assert!(unblocked);
+        amplification_outcome = path.on_bytes_received(1200);
+        assert!(amplification_outcome.is_inactivate_path_unblocked());
 
         path.on_validated();
         path.on_bytes_transmitted(24);
@@ -964,8 +955,8 @@ mod tests {
 
         // If we were already not amplification limited, receiving
         // more bytes doesn't unblock
-        unblocked = path.on_bytes_received(1200);
-        assert!(!unblocked);
+        amplification_outcome = path.on_bytes_received(1200);
+        assert!(amplification_outcome.is_unchanged());
 
         // Clients are not amplification limited
         let path = helper_path_client();
@@ -1010,9 +1001,10 @@ mod tests {
             // Verify we can transmit up to the mtu
             let mtu = path.mtu(transmission_mode);
 
-            path.on_bytes_received(3);
+            let amplification_outcome = path.on_bytes_received(3);
             path.on_bytes_transmitted(8);
 
+            assert!(amplification_outcome.is_inactivate_path_unblocked());
             assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
             assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
             assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
@@ -1021,8 +1013,9 @@ mod tests {
             // Verify we can't transmit any more bytes
             assert!(path.at_amplification_limit());
 
-            path.on_bytes_received(1);
+            let amplification_outcome = path.on_bytes_received(1);
             // Verify we can transmit up to 3 more bytes
+            assert!(amplification_outcome.is_inactivate_path_unblocked());
             assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
             assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
             assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
@@ -1062,7 +1055,9 @@ mod tests {
     #[test]
     fn path_mtu() {
         let mut path = testing::helper_path_server();
-        path.on_bytes_received(1);
+        let amplification_outcome = path.on_bytes_received(1);
+        assert!(amplification_outcome.is_inactivate_path_unblocked());
+
         let mtu = 1472;
         let probed_size = 1500;
         path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
@@ -1178,42 +1173,6 @@ mod tests {
             path.transmission_constraint(),
             transmission::Constraint::None
         );
-    }
-
-    #[test]
-    fn on_closing_validated_path() {
-        let mut path = testing::helper_path_server();
-        path.on_validated();
-        assert!(path.is_validated());
-
-        // Trigger:
-        path.on_closing();
-
-        // Expectation:
-        match path.state {
-            path::State::Validated => panic!("transition to AmplificationLimited when closing"),
-            path::State::AmplificationLimited { tx_allowance } => {
-                assert_eq!(*tx_allowance, (MINIMUM_MTU * 3) as u32)
-            }
-        }
-    }
-
-    // Maintain amplification limits if already in AmplificationLimited state
-    #[test]
-    fn on_closing_not_validated_path() {
-        let mut path = testing::helper_path_server();
-        assert!(!path.is_validated());
-
-        // Trigger:
-        path.on_closing();
-
-        // Expectation:
-        match path.state {
-            path::State::Validated => panic!("transition to AmplificationLimited when closing"),
-            path::State::AmplificationLimited { tx_allowance } => {
-                assert_eq!(*tx_allowance, 0)
-            }
-        }
     }
 
     #[test]

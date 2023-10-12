@@ -415,9 +415,7 @@
       "client",
       "server"
     ],
-    "xquic": [
-      "server"
-    ]
+    "xquic": []
   },
   "handshakeloss": {
     "aioquic": [],

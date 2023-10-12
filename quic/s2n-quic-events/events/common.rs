@@ -728,6 +728,22 @@ enum KeySpace {
     OneRtt {},
 }
 
+enum PacketSkipReason {
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
+    //# If the sender wants to elicit a faster acknowledgement on PTO, it can
+    //# skip a packet number to eliminate the acknowledgment delay.
+    /// Skipped a packet number to elicit a quicker PTO acknowledgment
+    PtoProbe {},
+
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-21.4
+    //# An endpoint that acknowledges packets it has not received might cause
+    //# a congestion controller to permit sending at rates beyond what the
+    //# network supports.  An endpoint MAY skip packet numbers when sending
+    //# packets to detect this behavior.
+    /// Skipped a packet number to detect an Optimistic Ack attack
+    OptimisticAckMitigation {},
+}
+
 enum PacketDropReason<'a> {
     /// A connection error occurred and is no longer able to process packets.
     ConnectionError { path: Path<'a> },
