@@ -15,7 +15,7 @@ fn round_trip() {
     check!()
         .with_generator(
             gen_packet_number_space()
-                .and_then(|space| (gen_packet_number(space), gen_packet_number(space))),
+                .and_then_gen(|space| (gen_packet_number(space), gen_packet_number(space))),
         )
         .cloned()
         .for_each(|(packet_number, largest_acked_packet_number)| {
@@ -41,7 +41,7 @@ fn gen_packet_number_space() -> impl ValueGenerator<Output = PacketNumberSpace> 
 }
 
 fn gen_packet_number(space: PacketNumberSpace) -> impl ValueGenerator<Output = PacketNumber> {
-    gen().map(move |packet_number| {
+    gen().map_gen(move |packet_number| {
         space.new_packet_number(match VarInt::new(packet_number) {
             Ok(packet_number) => packet_number,
             Err(_) => VarInt::from_u32(packet_number as u32),
