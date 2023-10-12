@@ -4,9 +4,11 @@
 use crate::{
     event::api::{SocketAddress, Subject},
     havoc,
-    packet::number::PacketNumber,
+    packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
+    varint::VarInt,
 };
+use core::cmp::max;
 use s2n_codec::encoder::scatter;
 
 pub use s2n_codec::{DecoderBufferMut, EncoderBuffer};
@@ -30,6 +32,13 @@ pub struct Datagram<'a> {
 
 /// Trait which enables an application to intercept packets that are transmitted and received
 pub trait Interceptor: 'static + Send {
+    // Inject an ACK frame for a packet number
+    #[inline(always)]
+    fn intercept_rx_inject_ack(&mut self, space: PacketNumberSpace) -> Option<VarInt> {
+        let _ = space;
+        None
+    }
+
     #[inline(always)]
     fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
         let _ = subject;
@@ -95,6 +104,19 @@ where
     A: Interceptor,
     B: Interceptor,
 {
+    // Return the largest packet number given multiple composed Interceptor implementations.
+    #[inline(always)]
+    fn intercept_rx_inject_ack(&mut self, space: PacketNumberSpace) -> Option<VarInt> {
+        let pn_map = self.0.intercept_rx_inject_ack(space);
+        let pn_map2 = self.1.intercept_rx_inject_ack(space);
+        match (pn_map, pn_map2) {
+            (None, None) => None,
+            (None, Some(pn)) => Some(pn),
+            (Some(pn), None) => Some(pn),
+            (Some(pn1), Some(pn2)) => Some(max(pn1, pn2)),
+        }
+    }
+
     #[inline(always)]
     fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
         self.0.intercept_rx_remote_port(subject, port);
