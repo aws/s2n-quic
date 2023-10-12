@@ -385,6 +385,7 @@ pub mod testing {
 
     pub mod mock {
         use super::*;
+        use crate::path::RemoteAddress;
 
         #[derive(Debug, Default)]
         pub struct Endpoint {}
@@ -394,15 +395,16 @@ pub mod testing {
 
             fn new_congestion_controller(
                 &mut self,
-                _path_info: super::PathInfo,
+                path_info: super::PathInfo,
             ) -> Self::CongestionController {
-                CongestionController::default()
+                CongestionController::new(path_info.remote_address.into())
             }
         }
 
-        /// Returning this instead of a `()` ensures the information gets passed back in testing
         #[derive(Clone, Copy, Debug, Default)]
-        pub struct PacketInfo(());
+        pub struct PacketInfo {
+            remote_address: RemoteAddress,
+        }
 
         #[derive(Clone, Copy, Debug, PartialEq)]
         pub struct CongestionController {
@@ -419,6 +421,7 @@ pub mod testing {
             pub loss_bursts: u32,
             pub app_limited: Option<bool>,
             pub slow_start: bool,
+            pub remote_address: RemoteAddress,
         }
 
         impl Default for CongestionController {
@@ -437,6 +440,16 @@ pub mod testing {
                     loss_bursts: 0,
                     app_limited: None,
                     slow_start: true,
+                    remote_address: RemoteAddress::default(),
+                }
+            }
+        }
+
+        impl CongestionController {
+            pub fn new(remote_address: RemoteAddress) -> Self {
+                Self {
+                    remote_address,
+                    ..Default::default()
                 }
             }
         }
@@ -471,7 +484,9 @@ pub mod testing {
                 self.bytes_in_flight += bytes_sent as u32;
                 self.requires_fast_retransmission = false;
                 self.app_limited = app_limited;
-                PacketInfo(())
+                PacketInfo {
+                    remote_address: self.remote_address,
+                }
             }
 
             fn on_rtt_update<Pub: Publisher>(
@@ -488,25 +503,29 @@ pub mod testing {
                 &mut self,
                 _newest_acked_time_sent: Timestamp,
                 _sent_bytes: usize,
-                _newest_acked_packet_info: Self::PacketInfo,
+                newest_acked_packet_info: Self::PacketInfo,
                 _rtt_estimator: &RttEstimator,
                 _random_generator: &mut dyn random::Generator,
                 _ack_receive_time: Timestamp,
                 _publisher: &mut Pub,
             ) {
+                assert_eq!(self.remote_address, newest_acked_packet_info.remote_address);
+
                 self.on_packet_ack += 1;
             }
 
             fn on_packet_lost<Pub: Publisher>(
                 &mut self,
                 lost_bytes: u32,
-                _packet_info: Self::PacketInfo,
+                packet_info: Self::PacketInfo,
                 persistent_congestion: bool,
                 new_loss_burst: bool,
                 _random_generator: &mut dyn random::Generator,
                 _timestamp: Timestamp,
                 _publisher: &mut Pub,
             ) {
+                assert_eq!(self.remote_address, packet_info.remote_address);
+
                 self.bytes_in_flight = self.bytes_in_flight.saturating_sub(lost_bytes);
                 self.lost_bytes += lost_bytes;
                 self.persistent_congestion = Some(persistent_congestion);
