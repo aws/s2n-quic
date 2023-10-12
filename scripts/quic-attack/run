@@ -12,7 +12,7 @@ RUSTFLAGS="-C debug_assertions --cfg s2n_internal_dev -g" cargo +stable build --
 
 # ensure ultraman is installed
 if ! command -v ultraman &> /dev/null; then
-    cargo install ultraman
+    cargo +stable install ultraman
 fi
 
 # The different types of fuzzing supported by quic-attack
