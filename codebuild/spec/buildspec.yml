@@ -1,0 +1,26 @@
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    # ultraman requires $SHELL be set
+    SHELL: "/bin/bash"
+
+phases:
+  install:
+    commands:
+      - echo "Installing Rust ..."
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - source $HOME/.cargo/env
+      - echo "Installing cmake ..."
+      - apt-get update -y
+      - apt-get install -y cmake
+  build:
+    commands:
+      - printenv
+      - echo "Running quic-attack for $RUNTIME seconds"
+      - ./scripts/quic-attack/run $RUNTIME
