@@ -7,8 +7,11 @@
 
 set -e
 
-# ensure s2n-quic-qns is built #TODO: put --release back
-RUSTFLAGS="-C debug_assertions --cfg s2n_internal_dev -g" cargo +stable build --bin s2n-quic-qns
+# ensure s2n-quic-qns is built
+# -C debug_assertions turns on debug assertions and overflow checks in the release build
+# -g include debug information
+# -C panic=abort will cause spawned tasks that panic to exit the process
+RUSTFLAGS="-C debug_assertions --cfg s2n_internal_dev -g -C panic=abort" cargo +stable build --release --bin s2n-quic-qns
 
 # ensure ultraman is installed
 if ! command -v ultraman &> /dev/null; then
@@ -53,9 +56,19 @@ else
 fi
 
 COMMON_ARGS="--max-throughput 10000 --max-handshake-duration 10 --max-idle-timeout 10"
-PERF_APP="./target/debug/s2n-quic-qns perf"
+PERF_APP="./target/release/s2n-quic-qns perf"
 
+# disable exiting on errors to capture the timeout status
+set +e
 RUST_BACKTRACE=1 \
 SERVER="$PERF_APP server $COMMON_ARGS" \
 CLIENT="$PERF_APP client $COMMON_ARGS --ip 127.0.0.1 --local-ip 127.0.0.1 --connections 100000000000000000 --send 100000 --receive 100000 --streams 10000 --concurrency 1000" \
 $TIMEOUT ultraman start --no-timestamp true -f ./scripts/quic-attack/Procfile -m $PROCESSES
+EXIT_CODE="$?"
+# cleanup any zombie processes
+pkill s2n-quic-qns
+# re-enable exiting on errors
+set -e
+# `timeout` exits with `124` if the time limit was reached
+# only exit with a success code if the time limit was reached
+[[ "$EXIT_CODE" == "124" ]] || exit 1
