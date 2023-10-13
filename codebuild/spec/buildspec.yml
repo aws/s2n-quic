@@ -22,4 +22,4 @@ phases:
   build:
     commands:
       - printenv
-      - ./scripts/quic-attack/run 10
+      - ./scripts/quic-attack/run $RUNTIME
