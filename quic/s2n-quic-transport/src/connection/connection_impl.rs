@@ -381,6 +381,10 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             })
         }
 
+        if packet.packet_number.as_u64() > 100 && Config::ENDPOINT_TYPE.is_client() {
+            panic!("fail");
+        }
+
         if self.space_manager.handshake().is_some() && self.space_manager.is_handshake_confirmed() {
             //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.2
             //# An endpoint MUST discard its handshake keys when the TLS handshake is
