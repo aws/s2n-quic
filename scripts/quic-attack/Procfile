@@ -1,20 +1,20 @@
-server-all:                 eval $SERVER --port 5000 --havoc-tx --havoc-rx --havoc-port
-server-tx-rx:               eval $SERVER --port 6000 --havoc-tx --havoc-rx
-server-port:                eval $SERVER --port 7000 --havoc-port
-server-none:                eval $SERVER --port 8000
-client-all-server-all:      eval $CLIENT --port 5000 --havoc-tx --havoc-rx --havoc-port
-client-tx-rx-server-all:    eval $CLIENT --port 5000 --havoc-tx --havoc-rx
-client-port-server-all:     eval $CLIENT --port 5000 --havoc-port
-client-none-server-all:     eval $CLIENT --port 5000
-client-all-server-tx-rx:    eval $CLIENT --port 6000 --havoc-tx --havoc-rx --havoc-port
-client-tx-rx-server-tx-rx:  eval $CLIENT --port 6000 --havoc-tx --havoc-rx
-client-port-server-tx-rx:   eval $CLIENT --port 6000 --havoc-port
-client-none-server-tx-rx:   eval $CLIENT --port 6000
-client-all-server-port:     eval $CLIENT --port 7000 --havoc-tx --havoc-rx --havoc-port
-client-tx-rx-server-port:   eval $CLIENT --port 7000 --havoc-tx --havoc-rx
-client-port-server-port:    eval $CLIENT --port 7000 --havoc-port
-client-none-server-port:    eval $CLIENT --port 7000
-client-all-server-none:     eval $CLIENT --port 8000 --havoc-tx --havoc-rx --havoc-port
-client-tx-rx-server-none:   eval $CLIENT --port 8000 --havoc-tx --havoc-rx
-client-port-server-none:    eval $CLIENT --port 8000 --havoc-port
-client-none-server-none:    eval $CLIENT --port 8000
+server-all:                 $SERVER --port 5000 --havoc-tx --havoc-rx --havoc-port
+server-tx-rx:               $SERVER --port 6000 --havoc-tx --havoc-rx
+server-port:                $SERVER --port 7000 --havoc-port
+server-none:                $SERVER --port 8000
+client-all-server-all:      $CLIENT --port 5000 --havoc-tx --havoc-rx --havoc-port
+client-tx-rx-server-all:    $CLIENT --port 5000 --havoc-tx --havoc-rx
+client-port-server-all:     $CLIENT --port 5000 --havoc-port
+client-none-server-all:     $CLIENT --port 5000
+client-all-server-tx-rx:    $CLIENT --port 6000 --havoc-tx --havoc-rx --havoc-port
+client-tx-rx-server-tx-rx:  $CLIENT --port 6000 --havoc-tx --havoc-rx
+client-port-server-tx-rx:   $CLIENT --port 6000 --havoc-port
+client-none-server-tx-rx:   $CLIENT --port 6000
+client-all-server-port:     $CLIENT --port 7000 --havoc-tx --havoc-rx --havoc-port
+client-tx-rx-server-port:   $CLIENT --port 7000 --havoc-tx --havoc-rx
+client-port-server-port:    $CLIENT --port 7000 --havoc-port
+client-none-server-port:    $CLIENT --port 7000
+client-all-server-none:     $CLIENT --port 8000 --havoc-tx --havoc-rx --havoc-port
+client-tx-rx-server-none:   $CLIENT --port 8000 --havoc-tx --havoc-rx
+client-port-server-none:    $CLIENT --port 8000 --havoc-port
+client-none-server-none:    $CLIENT --port 8000
