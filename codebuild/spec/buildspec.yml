@@ -22,4 +22,5 @@ phases:
   build:
     commands:
       - printenv
+      - echo "Running quic-attack for $RUNTIME seconds"
       - ./scripts/quic-attack/run $RUNTIME
