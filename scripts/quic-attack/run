@@ -66,7 +66,7 @@ CLIENT="$PERF_APP client $COMMON_ARGS --ip 127.0.0.1 --local-ip 127.0.0.1 --conn
 $TIMEOUT ultraman start --no-timestamp true -f ./scripts/quic-attack/Procfile -m $PROCESSES
 EXIT_CODE="$?"
 # cleanup any zombie processes
-pkill s2n-quic-qns
+pkill -f $PERF_APP
 # re-enable exiting on errors
 set -e
 # `timeout` exits with `124` if the time limit was reached
