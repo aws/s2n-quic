@@ -6,6 +6,9 @@ version: 0.2
 
 env:
   shell: bash
+  variables:
+    # ultraman requires $SHELL be set
+    SHELL: "/bin/bash"
 
 phases:
   install:
