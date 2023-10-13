@@ -53,7 +53,7 @@ else
 fi
 
 COMMON_ARGS="--max-throughput 10000 --max-handshake-duration 10 --max-idle-timeout 10"
-PERF_APP="./target/release/s2n-quic-qns perf"
+PERF_APP="./target/debug/s2n-quic-qns perf"
 
 RUST_BACKTRACE=1 \
 SERVER="$PERF_APP server $COMMON_ARGS" \
