@@ -8,12 +8,17 @@ use crate::{
     time::Timestamp,
     varint::VarInt,
 };
-use core::cmp::max;
+use core::ops::RangeInclusive;
 use s2n_codec::encoder::scatter;
 
 pub use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 pub mod loss;
 pub use loss::Loss;
+
+pub trait Ack {
+    fn space(&self) -> PacketNumberSpace;
+    fn set_range(&mut self, range: RangeInclusive<VarInt>);
+}
 
 /// TODO add `non_exhaustive` once/if this feature is stable
 #[derive(Debug)]
@@ -34,9 +39,8 @@ pub struct Datagram<'a> {
 pub trait Interceptor: 'static + Send {
     // Inject an ACK frame for a packet number
     #[inline(always)]
-    fn intercept_rx_inject_ack(&mut self, space: PacketNumberSpace) -> Option<VarInt> {
-        let _ = space;
-        None
+    fn intercept_rx_ack<A: Ack>(&mut self, ack: &mut A) {
+        let _ = ack;
     }
 
     #[inline(always)]
@@ -99,22 +103,16 @@ pub struct Disabled(());
 
 impl Interceptor for Disabled {}
 
-impl<A, B> Interceptor for (A, B)
+impl<X, Y> Interceptor for (X, Y)
 where
-    A: Interceptor,
-    B: Interceptor,
+    X: Interceptor,
+    Y: Interceptor,
 {
     // Return the largest packet number given multiple composed Interceptor implementations.
     #[inline(always)]
-    fn intercept_rx_inject_ack(&mut self, space: PacketNumberSpace) -> Option<VarInt> {
-        let pn_map = self.0.intercept_rx_inject_ack(space);
-        let pn_map2 = self.1.intercept_rx_inject_ack(space);
-        match (pn_map, pn_map2) {
-            (None, None) => None,
-            (None, Some(pn)) => Some(pn),
-            (Some(pn), None) => Some(pn),
-            (Some(pn1), Some(pn2)) => Some(max(pn1, pn2)),
-        }
+    fn intercept_rx_ack<A: Ack>(&mut self, ack: &mut A) {
+        self.0.intercept_rx_ack(ack);
+        self.1.intercept_rx_ack(ack);
     }
 
     #[inline(always)]

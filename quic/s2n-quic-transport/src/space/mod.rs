@@ -640,6 +640,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), transport::Error>;
 
     fn handle_connection_close_frame(
@@ -841,37 +842,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                     .map_err(on_error)?;
                 }
                 Frame::Ack(frame) => {
-                    use s2n_quic_core::packet::interceptor::Interceptor;
-
                     let on_error = on_frame_processed!(frame);
-
-                    if let Some(pn) =
-                        packet_interceptor.intercept_rx_inject_ack(packet_number.space())
-                    {
-                        let mut ack_range = ack::ack_ranges::AckRanges::default();
-                        ack_range
-                            .insert_packet_number(packet_number.space().new_packet_number(pn))
-                            .unwrap();
-
-                        // TODO possibly source ack_delay and ecn_counts values from the interceptor
-                        let insert_frame = Ack {
-                            ack_delay: VarInt::default(),
-                            ack_ranges: &ack_range,
-                            ecn_counts: None,
-                        };
-                        self.handle_ack_frame(
-                            insert_frame,
-                            datagram.timestamp,
-                            path_id,
-                            path_manager,
-                            packet_number,
-                            handshake_status,
-                            local_id_registry,
-                            random_generator,
-                            publisher,
-                        )
-                        .map_err(on_error)?;
-                    }
 
                     self.handle_ack_frame(
                         frame,
@@ -883,6 +854,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         local_id_registry,
                         random_generator,
                         publisher,
+                        packet_interceptor,
                     )
                     .map_err(on_error)?;
                 }

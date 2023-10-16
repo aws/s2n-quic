@@ -178,14 +178,14 @@ struct SkipInterceptor {
 }
 
 impl Interceptor for SkipInterceptor {
-    fn intercept_rx_inject_ack(&mut self, space: PacketNumberSpace) -> Option<VarInt> {
-        if let Some(pn) = *self.skip_packet_number.lock().unwrap() {
-            assert!(matches!(space, PacketNumberSpace::ApplicationData));
-            // clear the packet_number to ack
-            *self.skip_packet_number.lock().unwrap() = None;
-            Some(VarInt::new(pn).unwrap())
-        } else {
-            None
+    fn intercept_rx_ack<A: s2n_quic_core::packet::interceptor::Ack>(&mut self, ack: &mut A) {
+        if !matches!(ack.space(), PacketNumberSpace::ApplicationData) {
+            return;
+        }
+        let skip_packet_number = self.skip_packet_number.lock().unwrap().take();
+        if let Some(skip_packet_number) = skip_packet_number {
+            let skip_packet_number = VarInt::new(skip_packet_number).unwrap();
+            ack.set_range(skip_packet_number..=skip_packet_number);
         }
     }
 }

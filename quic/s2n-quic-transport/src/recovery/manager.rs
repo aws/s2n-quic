@@ -10,16 +10,21 @@ use crate::{
     },
     transmission,
 };
-use core::{cmp::max, time::Duration};
+use core::{cmp::max, ops::RangeInclusive, time::Duration};
 use s2n_quic_core::{
     event::{self, builder::CongestionSource, IntoEvent},
     frame,
     frame::ack::EcnCounts,
     inet::ExplicitCongestionNotification,
-    packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
+    packet::{
+        interceptor,
+        interceptor::Interceptor,
+        number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
+    },
     recovery::{congestion_controller, CongestionController, RttEstimator, K_GRANULARITY},
     time::{timer, timer::Provider, Timer, Timestamp},
     transport,
+    varint::VarInt,
 };
 use smallvec::SmallVec;
 
@@ -380,6 +385,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Process ACK frame.
     ///
     /// Update congestion controller, timers and meta data around acked packet ranges.
+    #[allow(clippy::too_many_arguments)]
     pub fn on_ack_frame<
         A: frame::ack::AckRanges,
         Ctx: Context<Config>,
@@ -392,6 +398,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         random_generator: &mut Config::RandomGenerator,
         context: &mut Ctx,
         publisher: &mut Pub,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), transport::Error> {
         let space = self.space;
         let largest_acked_packet_number = space.new_packet_number(frame.largest_acknowledged());
@@ -399,7 +406,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         self.process_acks(
             timestamp,
             frame.ack_ranges().map(|ack_range| {
-                let (start, end) = ack_range.into_inner();
+                let mut intercept_ack_range = InterceptAckRange { space, ack_range };
+                packet_interceptor.intercept_rx_ack(&mut intercept_ack_range);
+                let (start, end) = intercept_ack_range.ack_range.into_inner();
                 PacketNumberRange::new(space.new_packet_number(start), space.new_packet_number(end))
             }),
             largest_acked_packet_number,
@@ -1321,6 +1330,21 @@ impl transmission::interest::Provider for Pto {
         }
 
         Ok(())
+    }
+}
+
+struct InterceptAckRange {
+    space: PacketNumberSpace,
+    ack_range: RangeInclusive<VarInt>,
+}
+
+impl interceptor::Ack for InterceptAckRange {
+    fn space(&self) -> PacketNumberSpace {
+        self.space
+    }
+
+    fn set_range(&mut self, range: RangeInclusive<VarInt>) {
+        self.ack_range = range;
     }
 }
 

@@ -889,6 +889,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), transport::Error> {
         let path = &mut path_manager[path_id];
         path.on_peer_validated();
@@ -902,6 +903,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             random_generator,
             &mut context,
             publisher,
+            packet_interceptor,
         )
     }
 
