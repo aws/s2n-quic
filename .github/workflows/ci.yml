@@ -416,7 +416,7 @@ jobs:
       - name: build
         uses: actions-rs/cargo@v1.0.3
         with:
-          command: build
+          command: package
           args: --manifest-path ${{ matrix.crate }}
 
   examples:
