@@ -434,7 +434,7 @@ jobs:
   # package will not be able to locate unpublished dependencies.
   crates-package:
     needs: env
-    if: ${{ env.new-release == 'false' }}
+    if: ${{ needs.env.outputs.new-release == 'false' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
