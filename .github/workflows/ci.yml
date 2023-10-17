@@ -37,6 +37,8 @@ jobs:
       msrv: ${{ steps.definitions.outputs.msrv }}
       examples: ${{ steps.definitions.outputs.examples }}
       crates: ${{ steps.definitions.outputs.crates }}
+      published-crates: ${{ steps.definitions.outputs.published-crates }}
+      new-release: ${{ steps.definitions.outputs.new-release }}
     steps:
       - uses: actions/checkout@v4
       # examples is populated by
@@ -66,6 +68,12 @@ jobs:
           export CRATES=$(find quic common -name *Cargo.toml | jq -R | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]' | jq -c)
           echo "crates=$CRATES"
           echo "crates=$CRATES" >> $GITHUB_OUTPUT
+          export PUBLISHED_CRATES=$(cargo metadata --no-deps --format-version 1 | jq -c '.packages[] | select(.name | contains("s2n-")) | select(.publish == null).manifest_path' | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]' | jq -c)
+          echo "published-crates=$PUBLISHED_CRATES"
+          echo "published-crates=$PUBLISHED_CRATES" >> $GITHUB_OUTPUT
+          export NEW_RELEASE=$(if $(./scripts/detect-new-release); then echo "true"; else echo "false"; fi)
+          echo "new-release=$NEW_RELEASE"
+          echo "new-release=$NEW_RELEASE" >> $GITHUB_OUTPUT
 
   rustfmt:
     runs-on: ubuntu-latest
@@ -394,13 +402,44 @@ jobs:
   # useful because it sidesteps the feature resolution that normally occurs in a
   # workspace build. We make sure that the crates build with default features,
   # otherwise release to crates.io will be blocked
-  crates:
+  crates-build:
     needs: env
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         crate: ${{ fromJson(needs.env.outputs.crates) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions-rs/toolchain@v1.0.7
+        id: toolchain
+        with:
+          toolchain: ${{ needs.env.outputs.msrv }}
+          profile: minimal
+          override: true
+
+      - name: build
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: build
+          args: --manifest-path ${{ matrix.crate }}
+
+  # This CI step will run the cargo package command for each crate in common/ and quic/
+  # that is published to crates.io. cargo package more closely matches the verification
+  # command that cargo publish executes, so we can be sure that cargo publish will succeed.
+  # This step does not run if the version of s2n-quic has been changed in a PR as cargo
+  # package will not be able to locate unpublished dependencies.
+  crates-package:
+    needs: env
+    if: ${{ env.new-release == 'false' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJson(needs.env.outputs.published-crates) }}
     steps:
       - uses: actions/checkout@v4
         with:
