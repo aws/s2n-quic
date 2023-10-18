@@ -452,7 +452,7 @@ jobs:
           profile: minimal
           override: true
 
-      - name: build
+      - name: package
         uses: actions-rs/cargo@v1.0.3
         with:
           command: package
