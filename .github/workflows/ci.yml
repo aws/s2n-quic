@@ -68,11 +68,7 @@ jobs:
           export CRATES=$(find quic common -name *Cargo.toml | jq -R | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]' | jq -c)
           echo "crates=$CRATES"
           echo "crates=$CRATES" >> $GITHUB_OUTPUT
-          export PUBLISHED_CRATES=$(cargo metadata --no-deps --format-version 1 | \
-            jq --arg PWD "$PWD/" -c '.packages[] | \
-            select(.name | contains("s2n-")) | \
-            select(.publish == null).manifest_path | \
-            sub($PWD; "")' | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]' | jq -c)
+          export PUBLISHED_CRATES=$(cargo metadata --no-deps --format-version 1 | jq --arg PWD "$PWD/" -c '.packages[] | select(.name | contains("s2n-")) | select(.publish == null).manifest_path | sub($PWD; "")' | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]' | jq -c)
           echo "published-crates=$PUBLISHED_CRATES"
           echo "published-crates=$PUBLISHED_CRATES" >> $GITHUB_OUTPUT
           export NEW_RELEASE=$(if $(./scripts/detect-new-release); then echo "true"; else echo "false"; fi)
