@@ -37,6 +37,7 @@ jobs:
       msrv: ${{ steps.definitions.outputs.msrv }}
       examples: ${{ steps.definitions.outputs.examples }}
       crates: ${{ steps.definitions.outputs.crates }}
+      new-release: ${{ steps.definitions.outputs.new-release }}
     steps:
       - uses: actions/checkout@v4
       # examples is populated by
@@ -63,9 +64,12 @@ jobs:
           export EXAMPLES=$(find examples/ -maxdepth 1 -mindepth 1 -type d | jq -R | jq -sc)
           echo "examples=$EXAMPLES"
           echo "examples=$EXAMPLES" >> $GITHUB_OUTPUT
-          export CRATES=$(find quic common -name *Cargo.toml | jq -R | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]' | jq -c)
+          export CRATES=$(cargo metadata --no-deps --format-version 1 | jq --arg PWD "$PWD/" '.packages[] | select(.publish == null).manifest_path | sub($PWD; "")' | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]' | jq -c)
           echo "crates=$CRATES"
           echo "crates=$CRATES" >> $GITHUB_OUTPUT
+          export NEW_RELEASE=$(if $(./scripts/detect-new-release); then echo "true"; else echo "false"; fi)
+          echo "new-release=$NEW_RELEASE"
+          echo "new-release=$NEW_RELEASE" >> $GITHUB_OUTPUT
 
   rustfmt:
     runs-on: ubuntu-latest
@@ -390,10 +394,12 @@ jobs:
           status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
-  # This CI step will directly build each crate in common/ and quic/ which is
+  # This CI step will directly build each published crate in common/ and quic/ which is
   # useful because it sidesteps the feature resolution that normally occurs in a
   # workspace build. We make sure that the crates build with default features,
-  # otherwise release to crates.io will be blocked
+  # otherwise release to crates.io will be blocked. If the current PR is not for a new
+  # release, the cargo package command is used instead of cargo build, as this more closely
+  # matches the verification command that cargo publish executes.
   crates:
     needs: env
     runs-on: ubuntu-latest
@@ -414,9 +420,17 @@ jobs:
           override: true
 
       - name: build
+        if: ${{ needs.env.outputs.new-release == 'true' }}
         uses: actions-rs/cargo@v1.0.3
         with:
           command: build
+          args: --manifest-path ${{ matrix.crate }}
+
+      - name: package
+        if: ${{ needs.env.outputs.new-release == 'false' }}
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: package
           args: --manifest-path ${{ matrix.crate }}
 
   examples:
