@@ -78,7 +78,11 @@ zeroize = { version = "1", optional = true, default-features = false }
 [dev-dependencies]
 backtrace = { version = "=0.3.68" } # pin backtrace to avoid bumping MSRV
 bolero = { version = "0.10" }
-jobserver = "=0.1.26" # newer versions require rust 1.66, see https://github.com/aws/s2n-quic/issues/1991
+# newer versions of jobserver require rust 1.66, see https://github.com/aws/s2n-quic/issues/1991
+# this version pin is only needed to prevent verification failures when using
+# cargo package / cargo publish, as those commands do not respect the version pin
+# in downstream dev-dependencies (in s2n-quic-tls, in this case)
+jobserver = "=0.1.26"
 regex = "=1.9.6" # newer versions require rust 1.65, see https://github.com/aws/s2n-quic/issues/1993
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing", "event-tracing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
