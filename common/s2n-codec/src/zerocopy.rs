@@ -297,6 +297,13 @@ macro_rules! zerocopy_network_integer {
             }
         }
 
+        #[cfg(kani)]
+        impl kani::Arbitrary for $name {
+            fn any() -> Self {
+                Self::new(kani::any())
+            }
+        }
+
         zerocopy_value_codec!($name);
     };
 }

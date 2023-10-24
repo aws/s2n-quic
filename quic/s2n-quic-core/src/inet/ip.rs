@@ -111,6 +111,7 @@ impl<'a> From<&'a IpV6Address> for IpAddressRef<'a> {
 /// The size is also consistent across target operating systems.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
+#[cfg_attr(kani, derive(kani::Arbitrary))]
 pub enum SocketAddress {
     IpV4(SocketAddressV4),
     IpV6(SocketAddressV6),
