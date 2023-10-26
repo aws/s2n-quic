@@ -25,6 +25,7 @@ pub struct DatagramInfo {
 
 /// Additional metadata for a datagram sent/received over the network
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[cfg_attr(kani, derive(kani::Arbitrary))]
 pub struct AncillaryData {
     pub ecn: ExplicitCongestionNotification,
     pub local_address: LocalAddress,

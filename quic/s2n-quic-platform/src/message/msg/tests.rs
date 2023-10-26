@@ -40,11 +40,7 @@ mod stubs {
     use s2n_quic_core::inet::AncillaryData;
 
     pub fn decode(_msghdr: &libc::msghdr) -> AncillaryData {
-        let mut ancillary_data = AncillaryData::default();
-        ancillary_data.ecn = kani::any();
-        ancillary_data.local_address = kani::any();
-        ancillary_data.local_interface = Some(kani::any());
-        ancillary_data.segment_size = kani::any();
+        let ancillary_data = kani::any();
 
         ancillary_data
     }
@@ -71,6 +67,7 @@ fn address_inverse_pair_test() {
     kani::proof,
     kani::solver(cadical),
     kani::unwind(65),
+    // it's safe to stub out cmsg::decode since the cmsg result isn't actually checked in this particular test
     kani::stub(cmsg::decode, stubs::decode)
 )]
 fn handle_get_set_test() {
