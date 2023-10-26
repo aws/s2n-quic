@@ -14,6 +14,7 @@ macro_rules! define_inet_type {
 
         #[derive(Clone, Copy, Default, Eq, PartialEq, PartialOrd, Ord, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
         #[cfg_attr(any(test, feature = "generator"), derive(bolero_generator::TypeGenerator))]
+        #[cfg_attr(kani, derive(kani::Arbitrary))]
         #[repr(C)]
         $($vis)? struct $name {
             $(

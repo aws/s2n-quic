@@ -722,7 +722,7 @@ jobs:
         uses: model-checking/kani-github-action@v1.0
         with:
           working-directory: ${{ matrix.crate }}
-          args: --tests
+          args: --tests -Z stubbing
 
   dhat:
     runs-on: ubuntu-latest

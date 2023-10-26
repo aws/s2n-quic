@@ -125,6 +125,7 @@ macro_rules! impl_addr {
     ($name:ident) => {
         #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
         #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
+        #[cfg_attr(kani, derive(kani::Arbitrary))]
         pub struct $name(pub SocketAddress);
 
         impl From<event::api::SocketAddress<'_>> for $name {
