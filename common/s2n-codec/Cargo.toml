@@ -22,5 +22,4 @@ generator = ["bolero-generator"]
 bolero-generator = { version = "0.10", default-features = false, optional = true }
 byteorder = { version = "1.1", default-features = false }
 bytes = { version = "1", default-features = false, optional = true }
-zerocopy = "0.7"
-zerocopy-derive = "0.6"
+zerocopy = { version = "0.7", features = ["derive"] }
