@@ -241,7 +241,7 @@ macro_rules! impl_cipher_suite {
 
                 assert_eq!(
                     compute_vec_label(
-                        $digest.hmac_algorithm().digest_algorithm().output_len,
+                        $digest.hmac_algorithm().digest_algorithm().output_len(),
                         b"quic ku"
                     ),
                     $key_update_label,
