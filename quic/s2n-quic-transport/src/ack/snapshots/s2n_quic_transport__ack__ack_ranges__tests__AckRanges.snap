@@ -1,7 +1,0 @@
----
-source: quic/s2n-quic-transport/src/ack/ack_ranges.rs
-assertion_line: 235
-expression: "size_of::<AckRanges>()"
-
----
-40

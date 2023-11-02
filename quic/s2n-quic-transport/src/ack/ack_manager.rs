@@ -4,7 +4,6 @@
 use crate::{
     ack::{
         ack_eliciting_transmission::{AckElicitingTransmission, AckElicitingTransmissionSet},
-        ack_ranges::{AckRanges, AckRangesError},
         ack_transmission_state::AckTransmissionState,
     },
     contexts::WriteContext,
@@ -50,7 +49,7 @@ pub struct AckManager {
     ack_eliciting_transmissions: AckElicitingTransmissionSet,
 
     /// All of the processed AckRanges that need to be ACKed
-    pub(super) ack_ranges: AckRanges,
+    pub(super) ack_ranges: ack::Ranges,
 
     /// Locally configured AckSettings
     pub ack_settings: ack::Settings,
@@ -80,7 +79,7 @@ impl AckManager {
             ack_delay_timer: Timer::default(),
             ack_eliciting_transmissions: AckElicitingTransmissionSet::default(),
             ack_settings,
-            ack_ranges: AckRanges::new(ack_settings.ack_ranges_limit as usize),
+            ack_ranges: ack::Ranges::new(ack_settings.ack_ranges_limit as usize),
             largest_received_packet_number_acked: packet_space
                 .new_packet_number(VarInt::from_u8(0)),
             largest_received_packet_number_at: None,
@@ -235,8 +234,8 @@ impl AckManager {
         // been retransmitted by the peer.
         if let Err(err) = self.ack_ranges.insert_packet_number(packet_number) {
             match err {
-                AckRangesError::RangeInsertionFailed { min, max }
-                | AckRangesError::LowestRangeDropped { min, max } => {
+                ack::ranges::Error::RangeInsertionFailed { min, max }
+                | ack::ranges::Error::LowestRangeDropped { min, max } => {
                     let start = self
                         .ack_ranges
                         .min_value()
@@ -550,7 +549,7 @@ mod tests {
             endpoint::Type::Server,
         );
 
-        manager.ack_ranges = AckRanges::default();
+        manager.ack_ranges = ack::Ranges::default();
         assert!(manager
             .ack_ranges
             .insert_packet_number(
@@ -617,7 +616,7 @@ mod tests {
         );
         write_context.transmission_constraint = transmission::Constraint::CongestionLimited;
 
-        manager.ack_ranges = AckRanges::default();
+        manager.ack_ranges = ack::Ranges::default();
         assert!(manager
             .ack_ranges
             .insert_packet_number(

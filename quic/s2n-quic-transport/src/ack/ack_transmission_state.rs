@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ack::ack_ranges::AckRanges, transmission};
+use crate::transmission;
+use s2n_quic_core::ack;
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub enum AckTransmissionState {
@@ -64,7 +65,7 @@ impl AckTransmissionState {
     }
 
     /// Notify the transmission state that pending ack ranges has updated
-    pub fn on_update(&mut self, ack_ranges: &AckRanges) -> &mut Self {
+    pub fn on_update(&mut self, ack_ranges: &ack::Ranges) -> &mut Self {
         // no need to transmit anything now
         if ack_ranges.is_empty() {
             *self = AckTransmissionState::Disabled;
@@ -256,7 +257,7 @@ mod tests {
 
     #[test]
     fn update_test() {
-        let mut ack_ranges = AckRanges::new(10);
+        let mut ack_ranges = ack::Ranges::new(10);
         let mut packet_numbers = packet_numbers_iter().step_by(2); // skip every other packet number
 
         assert_eq!(
