@@ -248,6 +248,15 @@ macro_rules! impl_from_lesser {
                 Self(value.into())
             }
         }
+
+        impl TryInto<$ty> for VarInt {
+            type Error = <$ty as TryFrom<u64>>::Error;
+
+            #[inline]
+            fn try_into(self) -> Result<$ty, Self::Error> {
+                self.0.try_into()
+            }
+        }
     };
 }
 

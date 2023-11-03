@@ -30,6 +30,16 @@ macro_rules! assume {
     };
 }
 
+/// Checks that the first argument is true, otherwise returns the second value
+#[macro_export]
+macro_rules! ensure {
+    ($cond:expr, $ret:expr) => {
+        if !($cond) {
+            return $ret;
+        }
+    };
+}
+
 /// Implements a future that wraps `T::poll_ready` and yields after ready
 macro_rules! impl_ready_future {
     ($name:ident, $fut:ident, $output:ty) => {
