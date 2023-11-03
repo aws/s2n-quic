@@ -20,6 +20,7 @@ pub enum KeyPhase {
 }
 
 impl Default for KeyPhase {
+    #[inline]
     fn default() -> Self {
         Self::Zero
     }
@@ -27,6 +28,7 @@ impl Default for KeyPhase {
 
 const PHASES: [KeyPhase; 2] = [KeyPhase::Zero, KeyPhase::One];
 impl From<u8> for KeyPhase {
+    #[inline]
     fn from(v: u8) -> Self {
         // Will only be 0 or 1. Invalid phases may result in a failed decryption, still in constant
         // time.
@@ -35,11 +37,13 @@ impl From<u8> for KeyPhase {
 }
 
 impl KeyPhase {
+    #[inline]
     pub fn from_tag(tag: Tag) -> Self {
         let phase = (tag & KEY_PHASE_MASK) >> 2;
         PHASES[phase as usize]
     }
 
+    #[inline]
     pub fn into_packet_tag_mask(self) -> u8 {
         match self {
             Self::One => KEY_PHASE_MASK,
@@ -48,6 +52,7 @@ impl KeyPhase {
     }
 
     #[must_use]
+    #[inline]
     pub fn next_phase(self) -> Self {
         PHASES[(((self as u8) + 1) % 2) as usize]
     }

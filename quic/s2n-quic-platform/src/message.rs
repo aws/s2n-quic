@@ -5,7 +5,7 @@ use core::{alloc::Layout, ptr::NonNull};
 use s2n_quic_core::{inet::datagram, io::tx, path};
 
 #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))]
-mod cmsg;
+pub mod cmsg;
 #[cfg(s2n_quic_platform_socket_mmsg)]
 pub mod mmsg;
 #[cfg(s2n_quic_platform_socket_msg)]
