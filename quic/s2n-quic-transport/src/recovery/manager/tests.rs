@@ -3,7 +3,6 @@
 
 use super::*;
 use crate::{
-    ack::ack_ranges::AckRanges,
     connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
     contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
     endpoint::{
@@ -17,7 +16,7 @@ use crate::{
 use bolero::TypeGenerator;
 use core::{ops::RangeInclusive, time::Duration};
 use s2n_quic_core::{
-    connection,
+    ack, connection,
     event::testing::Publisher,
     frame::ack_elicitation::AckElicitation,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
@@ -3148,7 +3147,7 @@ fn helper_ack_packets_on_path(
         source_connection_id: None,
     };
 
-    let mut ack_range = AckRanges::new(acked_packets.count());
+    let mut ack_range = ack::Ranges::new(acked_packets.count());
 
     for acked_packet in acked_packets {
         assert!(ack_range.insert_packet_number(acked_packet).is_ok());

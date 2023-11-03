@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-core/src/ack/ranges.rs
+expression: "size_of::<Ranges>()"
+---
+40

@@ -1,29 +1,31 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{
-    convert::TryInto,
-    num::NonZeroUsize,
-    ops::{Bound, Deref, DerefMut, RangeInclusive},
-};
-use s2n_quic_core::{
+use crate::{
     ack::Settings,
     frame::ack,
     interval_set::{IntervalSet, RangeInclusiveIter},
     packet::number::{PacketNumber, PacketNumberRange},
     varint::VarInt,
 };
+use core::{
+    convert::TryInto,
+    num::NonZeroUsize,
+    ops::{Bound, Deref, DerefMut, RangeInclusive},
+};
 
 #[derive(Clone, Debug)]
-pub struct AckRanges(IntervalSet<PacketNumber>);
+pub struct Ranges(IntervalSet<PacketNumber>);
 
-impl Default for AckRanges {
+impl Default for Ranges {
+    #[inline]
     fn default() -> Self {
         Self::new(Settings::default().ack_ranges_limit as usize)
     }
 }
 
-impl AckRanges {
+impl Ranges {
+    #[inline]
     pub fn new(limit: usize) -> Self {
         let limit = NonZeroUsize::new(limit).expect("limit should be nonzero");
         Self(IntervalSet::with_limit(limit))
@@ -31,10 +33,7 @@ impl AckRanges {
 
     /// Inserts a packet number; dropping smaller values if needed
     #[inline]
-    pub fn insert_packet_number_range(
-        &mut self,
-        pn_range: PacketNumberRange,
-    ) -> Result<(), AckRangesError> {
+    pub fn insert_packet_number_range(&mut self, pn_range: PacketNumberRange) -> Result<(), Error> {
         let interval = (
             Bound::Included(pn_range.start()),
             Bound::Included(pn_range.end()),
@@ -52,19 +51,19 @@ impl AckRanges {
                         insert_res.is_ok(),
                         "min range was removed, so it should be possible to insert another range",
                     );
-                    insert_res.map_err(|_| AckRangesError::RangeInsertionFailed {
+                    insert_res.map_err(|_| Error::RangeInsertionFailed {
                         min: pn_range.start(),
                         max: pn_range.end(),
                     })?;
 
-                    Err(AckRangesError::LowestRangeDropped {
+                    Err(Error::LowestRangeDropped {
                         min: min.start_inclusive(),
                         max: min.end_inclusive(),
                     })
                 } else {
                     // new value is smaller than min so inset it back in the front
                     let _ = self.0.insert_front(min);
-                    Err(AckRangesError::RangeInsertionFailed {
+                    Err(Error::RangeInsertionFailed {
                         min: pn_range.start(),
                         max: pn_range.end(),
                     })
@@ -75,7 +74,7 @@ impl AckRanges {
                     false,
                     "IntervalSet should have capacity and return lowest entry"
                 );
-                Err(AckRangesError::RangeInsertionFailed {
+                Err(Error::RangeInsertionFailed {
                     min: pn_range.start(),
                     max: pn_range.end(),
                 })
@@ -85,10 +84,7 @@ impl AckRanges {
 
     /// Inserts a packet number; dropping smaller values if needed
     #[inline]
-    pub fn insert_packet_number(
-        &mut self,
-        packet_number: PacketNumber,
-    ) -> Result<(), AckRangesError> {
+    pub fn insert_packet_number(&mut self, packet_number: PacketNumber) -> Result<(), Error> {
         self.insert_packet_number_range(PacketNumberRange::new(packet_number, packet_number))
     }
 
@@ -106,14 +102,15 @@ impl AckRanges {
     }
 }
 
-type AckRangesIter<'a> = core::iter::Map<
+type Iter<'a> = core::iter::Map<
     core::iter::Rev<RangeInclusiveIter<'a, PacketNumber>>,
     fn(RangeInclusive<PacketNumber>) -> RangeInclusive<VarInt>,
 >;
 
-impl<'a> ack::AckRanges for &'a AckRanges {
-    type Iter = AckRangesIter<'a>;
+impl<'a> ack::AckRanges for &'a Ranges {
+    type Iter = Iter<'a>;
 
+    #[inline]
     fn ack_ranges(&self) -> Self::Iter {
         self.0.inclusive_ranges().rev().map(|range| {
             let (start, end) = range.into_inner();
@@ -122,22 +119,24 @@ impl<'a> ack::AckRanges for &'a AckRanges {
     }
 }
 
-impl Deref for AckRanges {
+impl Deref for Ranges {
     type Target = IntervalSet<PacketNumber>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for AckRanges {
+impl DerefMut for Ranges {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum AckRangesError {
+pub enum Error {
     RangeInsertionFailed {
         min: PacketNumber,
         max: PacketNumber,
@@ -150,15 +149,17 @@ pub enum AckRangesError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::{
+        packet::number::{testing::iter as packet_numbers_iter, PacketNumberSpace},
+        varint,
+    };
     use bolero::check;
-    use s2n_quic_core::{packet::number::PacketNumberSpace, varint};
-
-    use super::{super::tests::packet_numbers_iter, *};
 
     #[test]
     fn insert_value_test() {
-        let mut ack_ranges = AckRanges::new(3);
-        let mut packet_numbers = packet_numbers_iter().step_by(2); // skip every other packet number
+        let mut ack_ranges = Ranges::new(3);
+        let mut packet_numbers = packet_numbers_iter(PacketNumberSpace::ApplicationData).step_by(2); // skip every other packet number
 
         // insert gaps up to the limit
         let pn_a = packet_numbers.next().unwrap();
@@ -180,7 +181,7 @@ mod tests {
         let pn_d = packet_numbers.next().unwrap();
         assert_eq!(
             ack_ranges.insert_packet_number(pn_d).err().unwrap(),
-            AckRangesError::LowestRangeDropped {
+            Error::LowestRangeDropped {
                 min: pn_a,
                 max: pn_a
             }
@@ -196,7 +197,7 @@ mod tests {
         // ensure smaller values are not recorded
         assert_eq!(
             ack_ranges.insert_packet_number(pn_a).err().unwrap(),
-            AckRangesError::RangeInsertionFailed {
+            Error::RangeInsertionFailed {
                 min: pn_a,
                 max: pn_a
             }
@@ -210,8 +211,8 @@ mod tests {
 
     #[test]
     fn overlapping_range_test() {
-        let mut packet_numbers = packet_numbers_iter().step_by(2); // skip every other packet number
-        let mut ack_ranges = AckRanges::new(3);
+        let mut packet_numbers = packet_numbers_iter(PacketNumberSpace::ApplicationData).step_by(2); // skip every other packet number
+        let mut ack_ranges = Ranges::new(3);
 
         // |---a---b---c---d---e---f---g---h---i---|
         //     ^0
@@ -275,7 +276,7 @@ mod tests {
         let pn_a = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u32(1));
         let pn_b = PacketNumberSpace::ApplicationData
             .new_packet_number(VarInt::new(varint::MAX_VARINT_VALUE).unwrap());
-        let mut ack_ranges = AckRanges::new(3);
+        let mut ack_ranges = Ranges::new(3);
 
         let range_1 = PacketNumberRange::new(pn_a, pn_b);
 
@@ -284,12 +285,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     #[cfg(target_pointer_width = "64")]
     fn size_of_snapshots() {
         use core::mem::size_of;
         use insta::assert_debug_snapshot;
 
-        assert_debug_snapshot!("AckRanges", size_of::<AckRanges>());
+        assert_debug_snapshot!("Ranges", size_of::<Ranges>());
     }
 
     #[test]
@@ -298,7 +300,7 @@ mod tests {
             .with_type::<(u32, u32)>()
             .map(|(a, b)| (a.min(b), a.max(b))) // ensure valid range
             .for_each(|(a, b)| {
-                let mut ack_ranges = AckRanges::new(1);
+                let mut ack_ranges = Ranges::new(1);
 
                 let pn_a = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*a));
                 let pn_b = PacketNumberSpace::Initial.new_packet_number(VarInt::from_u32(*b));
