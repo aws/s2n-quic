@@ -11,7 +11,7 @@ use crate::{
     },
     contexts::{ConnectionApiCallContext, OnTransmitError, WriteContext},
     endpoint,
-    recovery::RttEstimator,
+    recovery::{RttEstimator, DEFAULT_INITIAL_RTT},
     stream::{
         controller::MAX_STREAMS_SYNC_FRACTION,
         manager_api::Manager as _,
@@ -44,7 +44,7 @@ use s2n_quic_core::{
     time::{
         clock::testing as time,
         timer::{self, Provider as _},
-        Timestamp,
+        Clock as _, Timestamp,
     },
     transport::{
         parameters::{InitialFlowControlLimits, InitialStreamLimits},
@@ -380,6 +380,7 @@ fn create_wakeup_queue_and_handle() -> (
 }
 
 /// Asserts that a given number of wakeups had been enqueued
+#[track_caller]
 fn assert_wakeups(wakeup_queue: &mut WakeupQueue<InternalConnectionId>, expected_wakeups: usize) {
     let mut dequeued_wakeups = VecDeque::new();
     let (waker, _counter) = new_count_waker();
@@ -404,6 +405,7 @@ fn create_stream_manager(local_ep_type: endpoint::Type) -> AbstractStreamManager
         local_ep_type,
         initial_local_limits,
         initial_peer_limits,
+        DEFAULT_INITIAL_RTT,
     )
 }
 
@@ -1013,7 +1015,7 @@ where
     assert!(manager.on_transmit(&mut write_context).is_ok());
 
     let rtt_estimator = RttEstimator::new(Duration::from_millis(100));
-    manager.on_rtt_update(&rtt_estimator);
+    manager.on_rtt_update(&rtt_estimator, time::now());
     manager.on_packet_ack(&PacketNumberRange::new(packet_number, packet_number));
 
     let expected_transmission_backoff = 2;
@@ -1339,6 +1341,7 @@ fn asymmetric_stream_limits_remote_initiated() {
                     endpoint::Type::Server,
                     initial_local_limits,
                     initial_peer_limits,
+                    DEFAULT_INITIAL_RTT,
                 );
 
                 // The peer opens streams up to the limit we have given them
@@ -1347,7 +1350,7 @@ fn asymmetric_stream_limits_remote_initiated() {
                         StreamId::nth(endpoint::Type::Client, stream_type, i as u64).unwrap();
                     assert_eq!(
                         Ok(()),
-                        manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], false))
+                        manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], true))
                     );
                 }
 
@@ -1417,6 +1420,7 @@ fn asymmetric_stream_limits_local_initiated() {
                     endpoint::Type::Server,
                     initial_local_limits,
                     initial_peer_limits,
+                    DEFAULT_INITIAL_RTT,
                 );
 
                 // Local endpoint opens streams up to the limit
@@ -1467,6 +1471,80 @@ fn asymmetric_stream_limits_local_initiated() {
                     stream_type
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn rate_limited_stream_credits() {
+    let mut initial_local_limits = create_default_initial_flow_control_limits();
+    let mut initial_peer_limits = create_default_initial_flow_control_limits();
+    let limit = 2u32;
+
+    for stream_type in [StreamType::Unidirectional, StreamType::Bidirectional] {
+        for timeout in [
+            Duration::ZERO,
+            Duration::from_millis(2),
+            DEFAULT_INITIAL_RTT,
+        ] {
+            dbg!(stream_type, timeout);
+
+            let mut clock = time::Clock::default();
+            let limits = ConnectionLimits::default()
+                .with_max_open_local_bidirectional_streams(limit as u64)
+                .unwrap()
+                .with_max_open_local_unidirectional_streams(limit as u64)
+                .unwrap();
+
+            initial_local_limits.max_open_remote_bidirectional_streams = VarInt::from_u32(limit);
+            initial_peer_limits.max_open_remote_bidirectional_streams = VarInt::from_u32(limit);
+            initial_local_limits.max_open_remote_unidirectional_streams = VarInt::from_u32(limit);
+            initial_peer_limits.max_open_remote_unidirectional_streams = VarInt::from_u32(limit);
+
+            let mut manager = AbstractStreamManager::<MockStream>::new(
+                &limits,
+                endpoint::Type::Server,
+                initial_local_limits,
+                initial_peer_limits,
+                DEFAULT_INITIAL_RTT,
+            );
+
+            let mut stream_ids =
+                (0..).map(|id| StreamId::nth(endpoint::Type::Client, stream_type, id).unwrap());
+
+            // The peer opens streams up to the limit we have given them, once for the initial
+            // limits, next for the first MAX_STREAMS frame
+            for stream_id in (&mut stream_ids).take(limit as usize * 2) {
+                assert_eq!(
+                    Ok(()),
+                    manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], true))
+                );
+
+                // have the application clean up the stream state
+                manager.with_asserted_stream(stream_id, |stream| {
+                    stream.interests.retained = false;
+                });
+
+                manager.on_timeout(clock.get_time());
+            }
+
+            // apply the configured timeout
+            clock.inc_by(timeout);
+            manager.on_timeout(clock.get_time());
+
+            // if the peer didn't wait enough time, then an error should occur
+            let expected = if timeout >= DEFAULT_INITIAL_RTT {
+                Ok(())
+            } else {
+                Err(transport::Error::STREAM_LIMIT_ERROR)
+            };
+
+            // The peer tries to open one more beyond the limit
+            let stream_id = stream_ids.next().unwrap();
+            assert_eq!(
+                expected,
+                manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], true))
+            );
         }
     }
 }
@@ -2625,7 +2703,7 @@ fn forwards_on_rtt_update() {
     });
 
     let rtt_estimator = RttEstimator::new(Duration::from_millis(100));
-    manager.on_rtt_update(&rtt_estimator);
+    manager.on_rtt_update(&rtt_estimator, time::now());
 
     // Check call count
     manager.with_asserted_stream(stream_1, |stream| {

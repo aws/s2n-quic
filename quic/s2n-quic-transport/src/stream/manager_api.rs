@@ -8,7 +8,10 @@ use crate::{
     stream::StreamError,
     transmission,
 };
-use core::task::{Context, Poll};
+use core::{
+    task::{Context, Poll},
+    time::Duration,
+};
 use s2n_quic_core::{
     ack, endpoint,
     frame::{
@@ -35,6 +38,7 @@ pub trait Manager:
         local_endpoint_type: endpoint::Type,
         initial_local_limits: InitialFlowControlLimits,
         initial_peer_limits: InitialFlowControlLimits,
+        min_rtt: Duration,
     ) -> Self;
 
     /// The number of bytes of forward progress the peer has made on incoming streams
@@ -65,7 +69,7 @@ pub trait Manager:
     fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A);
 
     /// This method gets called when the RTT estimate is updated for the active path
-    fn on_rtt_update(&mut self, rtt_estimator: &RttEstimator);
+    fn on_rtt_update(&mut self, rtt_estimator: &RttEstimator, now: Timestamp);
 
     /// Called when the connection timer expires
     fn on_timeout(&mut self, now: Timestamp);

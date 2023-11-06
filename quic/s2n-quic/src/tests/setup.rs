@@ -7,6 +7,7 @@ use crate::{
         event,
         io::testing::{primary, spawn, Handle, Result},
     },
+    stream::PeerStream,
     Client, Server,
 };
 use rand::{Rng, RngCore};
@@ -58,13 +59,24 @@ pub fn start_server(mut server: Server) -> Result<SocketAddr> {
         while let Some(mut connection) = server.accept().await {
             tracing::debug!("accepted server connection: {}", connection.id());
             spawn(async move {
-                while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
+                while let Ok(Some(stream)) = connection.accept().await {
                     tracing::debug!("accepted server stream: {}", stream.id());
-                    spawn(async move {
-                        while let Ok(Some(chunk)) = stream.receive().await {
-                            let _ = stream.send(chunk).await;
+                    match stream {
+                        PeerStream::Receive(mut stream) => {
+                            spawn(async move {
+                                while let Ok(Some(_)) = stream.receive().await {
+                                    // noop
+                                }
+                            });
                         }
-                    });
+                        PeerStream::Bidirectional(mut stream) => {
+                            spawn(async move {
+                                while let Ok(Some(chunk)) = stream.receive().await {
+                                    let _ = stream.send(chunk).await;
+                                }
+                            });
+                        }
+                    }
                 }
             });
         }

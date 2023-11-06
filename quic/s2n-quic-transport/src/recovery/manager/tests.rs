@@ -3625,7 +3625,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for MockContext<'a,
         self.lost_packets.insert(packet_number_range.start());
     }
 
-    fn on_rtt_update(&mut self) {
+    fn on_rtt_update(&mut self, _now: Timestamp) {
         self.on_rtt_update_count += 1;
     }
 }

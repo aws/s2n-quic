@@ -420,6 +420,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
 pub struct AbstractStreamManager<S> {
     pub(super) inner: StreamManagerState<S>,
     last_blocked_sync_period: Duration,
+    last_min_rtt: Duration,
 }
 
 // Sending the `AbstractStreamManager` between threads is safe, since we never expose the `Rc`s
@@ -525,7 +526,7 @@ impl<S: 'static + StreamTrait> AbstractStreamManager<S> {
     where
         F: FnOnce(&mut S) -> R,
     {
-        let had_transmission_interest = self.inner.streams.has_transmission_interest();
+        let transmission_snapshot = self.transmission_snapshot();
 
         let result = self
             .inner
@@ -538,8 +539,7 @@ impl<S: 'static + StreamTrait> AbstractStreamManager<S> {
         // A wakeup is only triggered if the the transmission list is
         // now empty, but was previously not. The edge triggered behavior
         // minimizes the amount of necessary wakeups.
-        let require_wakeup =
-            !had_transmission_interest && self.inner.streams.has_transmission_interest();
+        let require_wakeup = transmission_snapshot != self.transmission_snapshot();
 
         // TODO: This currently wakes the connection task while inside the connection Mutex.
         // It will be better if we return the `Waker` instead and perform the wakeup afterwards.
@@ -549,6 +549,14 @@ impl<S: 'static + StreamTrait> AbstractStreamManager<S> {
 
         result
     }
+
+    #[inline]
+    fn transmission_snapshot(&self) -> (bool, bool) {
+        (
+            self.has_transmission_interest(),
+            self.inner.streams.has_transmission_interest(),
+        )
+    }
 }
 
 impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
@@ -557,6 +565,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
         local_endpoint_type: endpoint::Type,
         initial_local_limits: InitialFlowControlLimits,
         initial_peer_limits: InitialFlowControlLimits,
+        min_rtt: Duration,
     ) -> Self {
         // We limit the initial data limit to u32::MAX (4GB), which far
         // exceeds the reasonable amount of data a connection is
@@ -583,6 +592,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
                     initial_peer_limits,
                     initial_local_limits,
                     connection_limits.stream_limits(),
+                    min_rtt,
                 ),
                 streams: StreamContainer::new(),
                 next_stream_ids: StreamIdSet::initial(),
@@ -594,6 +604,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
                 stream_limits: connection_limits.stream_limits(),
             },
             last_blocked_sync_period: Duration::ZERO,
+            last_min_rtt: min_rtt,
         }
     }
 
@@ -730,7 +741,17 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
         );
     }
 
-    fn on_rtt_update(&mut self, rtt_estimator: &RttEstimator) {
+    fn on_rtt_update(&mut self, rtt_estimator: &RttEstimator, now: Timestamp) {
+        {
+            let new_min_rtt = rtt_estimator.min_rtt();
+            if new_min_rtt != self.last_min_rtt {
+                self.inner
+                    .stream_controller
+                    .update_min_rtt(new_min_rtt, now);
+                self.last_min_rtt = new_min_rtt;
+            }
+        }
+
         let blocked_sync_period = self.blocked_sync_period(rtt_estimator);
 
         {
