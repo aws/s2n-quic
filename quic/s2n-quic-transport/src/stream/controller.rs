@@ -66,6 +66,7 @@ impl Controller {
         initial_peer_limits: InitialFlowControlLimits,
         initial_local_limits: InitialFlowControlLimits,
         stream_limits: stream::Limits,
+        min_rtt: Duration,
     ) -> Self {
         Self {
             local_endpoint_type,
@@ -75,6 +76,7 @@ impl Controller {
             ),
             remote_bidi_controller: RemoteInitiated::new(
                 initial_local_limits.max_open_remote_bidirectional_streams,
+                min_rtt,
             ),
             local_uni_controller: LocalInitiated::new(
                 initial_peer_limits.max_open_remote_unidirectional_streams,
@@ -82,6 +84,7 @@ impl Controller {
             ),
             remote_uni_controller: RemoteInitiated::new(
                 initial_local_limits.max_open_remote_unidirectional_streams,
+                min_rtt,
             ),
         }
     }
@@ -235,6 +238,11 @@ impl Controller {
             .update_sync_period(blocked_sync_period);
     }
 
+    pub fn update_min_rtt(&mut self, min_rtt: Duration, now: Timestamp) {
+        self.remote_uni_controller.update_min_rtt(min_rtt, now);
+        self.remote_bidi_controller.update_min_rtt(min_rtt, now);
+    }
+
     /// Queries the component for any local_initiated frames that need to get sent
     #[inline]
     pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) -> Result<(), OnTransmitError> {
@@ -286,7 +294,9 @@ impl Controller {
     /// Called when the connection timer expires
     pub fn on_timeout(&mut self, now: Timestamp) {
         self.local_bidi_controller.on_timeout(now);
+        self.remote_bidi_controller.on_timeout(now);
         self.local_uni_controller.on_timeout(now);
+        self.remote_uni_controller.on_timeout(now);
     }
 
     #[inline]
@@ -305,7 +315,9 @@ impl timer::Provider for Controller {
     #[inline]
     fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
         self.local_bidi_controller.timers(query)?;
+        self.remote_bidi_controller.timers(query)?;
         self.local_uni_controller.timers(query)?;
+        self.remote_uni_controller.timers(query)?;
         Ok(())
     }
 }

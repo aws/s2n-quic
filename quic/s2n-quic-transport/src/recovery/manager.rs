@@ -618,7 +618,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             );
 
             // Notify components the RTT estimate was updated
-            context.on_rtt_update();
+            context.on_rtt_update(timestamp);
         }
     }
 
@@ -1172,7 +1172,7 @@ pub trait Context<Config: endpoint::Config> {
         packet_number_range: &PacketNumberRange,
         publisher: &mut Pub,
     );
-    fn on_rtt_update(&mut self);
+    fn on_rtt_update(&mut self, now: Timestamp);
 }
 
 impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Config> {

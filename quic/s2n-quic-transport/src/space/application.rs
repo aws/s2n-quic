@@ -824,11 +824,11 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         self.path_manager.on_packet_loss(packet_number_range);
     }
 
-    fn on_rtt_update(&mut self) {
+    fn on_rtt_update(&mut self, now: Timestamp) {
         // Update the stream manager if this RTT update was for the active path
         if self.path_manager.active_path_id() == self.path_id {
             self.stream_manager
-                .on_rtt_update(&self.path_manager.active_path().rtt_estimator)
+                .on_rtt_update(&self.path_manager.active_path().rtt_estimator, now)
         }
     }
 }

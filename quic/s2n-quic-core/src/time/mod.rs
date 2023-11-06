@@ -4,6 +4,7 @@
 pub mod clock;
 pub mod timer;
 mod timestamp;
+pub mod token_bucket;
 
 pub use clock::*;
 pub use core::time::Duration;
