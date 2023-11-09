@@ -87,6 +87,7 @@ pub struct Ack<AckRanges> {
 }
 
 impl<AckRanges> Ack<AckRanges> {
+    #[inline]
     pub fn tag(&self) -> u8 {
         if self.ecn_counts.is_some() {
             ACK_W_ECN_TAG
@@ -97,14 +98,17 @@ impl<AckRanges> Ack<AckRanges> {
 }
 
 impl<A: AckRanges> Ack<A> {
+    #[inline]
     pub fn ack_delay(&self) -> core::time::Duration {
         core::time::Duration::from_micros(self.ack_delay.as_u64())
     }
 
+    #[inline]
     pub fn ack_ranges(&self) -> A::Iter {
         self.ack_ranges.ack_ranges()
     }
 
+    #[inline]
     pub fn largest_acknowledged(&self) -> VarInt {
         self.ack_ranges.largest_acknowledged()
     }
@@ -146,6 +150,7 @@ decoder_parameterized_value!(
 );
 
 impl<A: AckRanges> EncoderValue for Ack<A> {
+    #[inline]
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
 
@@ -187,6 +192,7 @@ pub trait AckRanges {
 
     fn ack_ranges(&self) -> Self::Iter;
 
+    #[inline]
     fn largest_acknowledged(&self) -> VarInt {
         *self
             .ack_ranges()
@@ -206,6 +212,7 @@ pub struct AckRangesDecoder<'a> {
 impl<'a> AckRanges for AckRangesDecoder<'a> {
     type Iter = AckRangesIter<'a>;
 
+    #[inline]
     fn ack_ranges(&self) -> Self::Iter {
         AckRangesIter {
             largest_acknowledged: self.largest_acknowledged,
@@ -214,12 +221,14 @@ impl<'a> AckRanges for AckRangesDecoder<'a> {
         }
     }
 
+    #[inline]
     fn largest_acknowledged(&self) -> VarInt {
         self.largest_acknowledged
     }
 }
 
 impl<'a> PartialEq for AckRangesDecoder<'a> {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.ack_ranges().eq(other.ack_ranges())
     }
@@ -330,6 +339,7 @@ decoder_parameterized_value!(
 //#
 //# largest = previous_smallest - gap - 2
 
+#[inline]
 fn encode_ack_range<E: Encoder>(
     range: RangeInclusive<VarInt>,
     smallest: VarInt,
@@ -355,6 +365,7 @@ pub struct AckRangesIter<'a> {
 impl<'a> Iterator for AckRangesIter<'a> {
     type Item = RangeInclusive<VarInt>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.ack_range_count = self.ack_range_count.checked_sub(VarInt::from_u8(1))?;
 
@@ -379,6 +390,7 @@ impl<'a> Iterator for AckRangesIter<'a> {
         Some(start..=end)
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let ack_range_count = *self.ack_range_count as usize;
         (ack_range_count, Some(ack_range_count))
@@ -451,6 +463,7 @@ pub struct EcnCounts {
 
 impl EcnCounts {
     /// Increment the count for the given `ExplicitCongestionNotification`
+    #[inline]
     pub fn increment(&mut self, ecn: ExplicitCongestionNotification) {
         match ecn {
             ExplicitCongestionNotification::Ect0 => {
@@ -468,6 +481,7 @@ impl EcnCounts {
 
     /// Gets the `EcnCounts` as an Option that will be `None` if none of the `EcnCounts` have
     /// been incremented.
+    #[inline]
     pub fn as_option(&self) -> Option<EcnCounts> {
         if *self == Default::default() {
             return None;
@@ -478,6 +492,7 @@ impl EcnCounts {
 
     /// Return `EcnCounts` containing the maximum of each individual ECN count
     #[must_use]
+    #[inline]
     pub fn max(self, other: Self) -> Self {
         EcnCounts {
             ect_0_count: self.ect_0_count.max(other.ect_0_count),
@@ -488,6 +503,7 @@ impl EcnCounts {
 }
 
 impl SubAssign for EcnCounts {
+    #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         self.ect_0_count = self.ect_0_count.saturating_sub(rhs.ect_0_count);
         self.ect_1_count = self.ect_1_count.saturating_sub(rhs.ect_1_count);
@@ -498,6 +514,7 @@ impl SubAssign for EcnCounts {
 impl CheckedSub for EcnCounts {
     type Output = EcnCounts;
 
+    #[inline]
     fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
         let ect_0_count = self.ect_0_count.checked_sub(rhs.ect_0_count)?;
         let ect_1_count = self.ect_1_count.checked_sub(rhs.ect_1_count)?;
@@ -530,6 +547,7 @@ decoder_value!(
 );
 
 impl EncoderValue for EcnCounts {
+    #[inline]
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.ect_0_count);
         buffer.encode(&self.ect_1_count);

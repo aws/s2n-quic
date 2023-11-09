@@ -1,11 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{message::Message as _, socket};
+use crate::message::Message as _;
 use core::task::{Context, Waker};
 use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
-    io::{rx, tx},
     path::{LocalAddress, MaxMtu, Tuple},
 };
 use std::{
@@ -16,11 +15,7 @@ use std::{
         Arc, Mutex,
     },
 };
-
-// This constant is used to size the buffer for packet payloads
-// we use 10_000 since there are unit tests for jumbo frames, which
-// have MTU's up to approximately 9_001
-const MAX_TESTED_MTU: u16 = 10_000;
+use tracing::{debug, debug_span, trace};
 
 pub type PathHandle = Tuple;
 
@@ -111,7 +106,7 @@ impl Buffers {
             lock.tx.get_mut(&host).unwrap().local_address = addr.into();
             lock.rx.get_mut(&host).unwrap().local_address = addr.into();
 
-            eprintln!("{prev} -> {addr}");
+            debug!("rebind {prev} -> {addr}");
         }
     }
 
@@ -266,92 +261,20 @@ impl Buffers {
     }
 
     /// Register an address on the network
-    pub fn register(
-        &self,
-        handle: SocketAddress,
-        max_mtu: MaxMtu,
-        queue_recv_buffer_size: Option<u32>,
-        queue_send_buffer_size: Option<u32>,
-    ) -> (
-        impl tx::Tx<PathHandle = PathHandle>,
-        impl rx::Rx<PathHandle = PathHandle>,
-        super::socket::Socket,
-    ) {
+    pub fn register(&self, handle: SocketAddress, max_mtu: MaxMtu) -> super::socket::Socket {
         let mut lock = self.inner.lock().unwrap();
 
         let host = HostId(lock.next_host);
         lock.next_host += 1;
 
-        let queue = Queue::new(handle);
+        let queue = Queue::new(handle, max_mtu.into());
 
         lock.addr_to_host.insert(handle, host);
         lock.host_to_addr.insert(host, vec![handle]);
         lock.tx.insert(host, queue.clone());
         lock.rx.insert(host, queue);
 
-        let socket = super::socket::Socket::new(self.clone(), host);
-
-        let rx = {
-            let payload_len = {
-                let max_mtu: u16 = max_mtu.into();
-                max_mtu as u32
-            };
-
-            let rx_buffer_size = queue_recv_buffer_size.unwrap_or(8u32 * (1 << 20));
-            let entries = rx_buffer_size / payload_len;
-            let entries = if entries.is_power_of_two() {
-                entries
-            } else {
-                // round up to the nearest power of two, since the ring buffers require it
-                entries.next_power_of_two()
-            };
-
-            let mut consumers = vec![];
-
-            let (producer, consumer) = socket::ring::pair(entries, payload_len);
-            consumers.push(consumer);
-
-            // spawn a task that actually reads from the socket into the ring buffer
-            super::spawn(super::socket::rx(socket.clone(), producer));
-
-            // construct the RX side for the endpoint event loop
-            let max_mtu = MaxMtu::try_from(payload_len as u16).unwrap();
-            socket::io::rx::Rx::new(consumers, max_mtu, handle.into())
-        };
-
-        let tx = {
-            let gso = crate::features::Gso::default();
-            gso.disable();
-
-            // compute the payload size for each message from the number of GSO segments we can
-            // fill
-            let payload_len = {
-                let max_mtu: u16 = max_mtu.into();
-                (max_mtu as u32 * gso.max_segments() as u32).min(u16::MAX as u32)
-            };
-
-            let tx_buffer_size = queue_send_buffer_size.unwrap_or(128 * 1024);
-            let entries = tx_buffer_size / payload_len;
-            let entries = if entries.is_power_of_two() {
-                entries
-            } else {
-                // round up to the nearest power of two, since the ring buffers require it
-                entries.next_power_of_two()
-            };
-
-            let mut producers = vec![];
-
-            let (producer, consumer) = socket::ring::pair(entries, payload_len);
-            producers.push(producer);
-
-            // spawn a task that actually flushes the ring buffer to the socket
-            super::spawn(super::socket::tx(socket.clone(), consumer, gso.clone()));
-
-            // construct the TX side for the endpoint event loop
-            socket::io::tx::Tx::new(producers, gso, max_mtu)
-        };
-
-        (tx, rx, socket)
+        super::socket::Socket::new(self.clone(), host)
     }
 }
 
@@ -388,8 +311,7 @@ pub struct Queue {
 }
 
 impl Queue {
-    fn new(addr: SocketAddress) -> Self {
-        let mtu = MAX_TESTED_MTU;
+    fn new(addr: SocketAddress, mtu: u16) -> Self {
         let local_address = addr.into();
         Self {
             capacity: 1024,
@@ -401,12 +323,23 @@ impl Queue {
     }
 
     pub fn enqueue(&mut self, packet: Packet) {
+        let _span = debug_span!(
+            "packet",
+            dest = %packet.path.local_address.0,
+            src = %packet.path.remote_address.0,
+            len = packet.payload.len()
+        )
+        .entered();
+
         if self.packets.len() < self.capacity {
             // Only enqueue packets if we have capacity.
             //
             // This matches the behavior of existing UDP stacks.
             // See https://github.com/tokio-rs/turmoil/pull/128#issuecomment-1638584711
             self.packets.push_back(packet);
+            trace!("packet::enqueue");
+        } else {
+            debug!("packet::enqueue::drop capacity={}", self.capacity);
         }
 
         if let Some(w) = self.waker.take() {
@@ -428,27 +361,65 @@ impl Queue {
         //
         // This matches the behavior of existing UDP stacks.
         // See https://github.com/tokio-rs/turmoil/pull/128#issuecomment-1638584711
-        let remaining_capacity = self.capacity.saturating_sub(self.packets.len());
+        let accept_len = self
+            .capacity
+            .saturating_sub(self.packets.len())
+            .min(msgs.len());
 
-        for msg in msgs.iter().take(remaining_capacity) {
-            let mut path = *msg.handle();
+        let (accepted, dropped) = msgs.split_at(accept_len);
 
-            // update the path with the latest address
-            path.local_address = self.local_address;
-
+        for msg in accepted {
+            let path = *msg.handle();
             let ecn = msg.ecn();
-
-            let msg_payload = msg.payload();
-            let payload_len = msg_payload.len().min(self.mtu as _);
-            let mut payload = vec![0u8; payload_len];
-            payload.copy_from_slice(&msg_payload[..payload_len]);
-
+            let payload = msg.payload().to_vec();
             let packet = Packet { path, ecn, payload };
+            self.send_packet(packet);
+        }
 
-            self.packets.push_back(packet);
+        // log all of the dropped packets
+        for msg in dropped {
+            let _span = debug_span!(
+                "packet",
+                dest = %msg.handle().local_address.0,
+                src = %msg.handle().remote_address.0,
+                len = msg.payload().len()
+            )
+            .entered();
+            debug!("packet::enqueue::drop capacity={}", self.capacity);
         }
 
         msgs.len()
+    }
+
+    pub fn send_packet(&mut self, mut packet: Packet) {
+        // update the path with the latest address
+        packet.path.local_address = self.local_address;
+
+        let _span = debug_span!(
+            "packet",
+            dest = %packet.path.remote_address.0,
+            src = %packet.path.local_address.0,
+            len = packet.payload.len()
+        )
+        .entered();
+
+        // Only send what capacity we have left. Drop the rest.
+        //
+        // This matches the behavior of existing UDP stacks.
+        // See https://github.com/tokio-rs/turmoil/pull/128#issuecomment-1638584711
+        if self.capacity <= self.packets.len() {
+            trace!("packet::send::drop capacity={}", self.capacity);
+            return;
+        }
+
+        if packet.payload.len() > self.mtu as usize {
+            trace!("packet::send::truncate mtu={}", self.mtu);
+            packet.payload.truncate(self.mtu as usize);
+        }
+
+        trace!("packet::send");
+
+        self.packets.push_back(packet);
     }
 
     pub fn recv(&mut self, cx: &mut Context, msgs: &mut [super::message::Message]) -> usize {
@@ -462,6 +433,14 @@ impl Queue {
         self.waker.take();
 
         for (packet, msg) in self.packets.drain(..to_remove).zip(msgs) {
+            let _span = debug_span!(
+                "packet",
+                dest = %packet.path.remote_address.0,
+                src = %packet.path.local_address.0,
+                len = packet.payload.len()
+            )
+            .entered();
+
             *msg.handle_mut() = packet.path;
             *msg.ecn_mut() = packet.ecn;
             let payload = msg.payload_mut();
@@ -471,9 +450,45 @@ impl Queue {
             unsafe {
                 msg.set_payload_len(to_copy);
             }
+
+            if to_copy != packet.payload.len() {
+                debug!("packet::truncate");
+            }
+
+            trace!("packet::recv");
         }
 
         to_remove
+    }
+
+    pub fn recv_packet(&mut self, cx: Option<&mut Context>) -> core::task::Poll<Packet> {
+        if let Some(packet) = self.packets.pop_front() {
+            let _span = debug_span!(
+                "packet",
+                dest = %packet.path.remote_address.0,
+                src = %packet.path.local_address.0,
+                len = packet.payload.len()
+            )
+            .entered();
+
+            trace!("packet::recv");
+
+            self.waker.take();
+            packet.into()
+        } else {
+            if let Some(cx) = cx {
+                self.waker = Some(cx.waker().clone());
+            }
+            core::task::Poll::Pending
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.packets.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.packets.is_empty()
     }
 }
 

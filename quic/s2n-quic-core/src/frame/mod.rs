@@ -150,6 +150,7 @@ macro_rules! frames {
                 fn $handler(&mut self, frame: $module::$ty $(<$($generics)*>)?) -> Result<Self::Output, DecoderError>;
             )*
 
+            #[inline]
             fn handle_extension_frame(&mut self, buffer: DecoderBufferMut<'a>) -> DecoderBufferMutResult<'a, Self::Output> {
                 let _ = buffer;
 

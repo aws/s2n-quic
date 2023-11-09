@@ -72,6 +72,7 @@ pub struct ConnectionClose<'a> {
 }
 
 impl<'a> ConnectionClose<'a> {
+    #[inline]
     pub fn tag(&self) -> u8 {
         if self.frame_type.is_some() {
             QUIC_ERROR_TAG
@@ -84,6 +85,7 @@ impl<'a> ConnectionClose<'a> {
 // If a `ConnectionClose` contains no frame type it was sent by an application and contains
 // an `ApplicationErrorCode`. Otherwise it is an error on the QUIC layer.
 impl<'a> application::error::TryInto for ConnectionClose<'a> {
+    #[inline]
     fn application_error(&self) -> Option<application::Error> {
         if self.frame_type.is_none() {
             Some(self.error_code.into())
@@ -128,6 +130,7 @@ decoder_parameterized_value!(
 );
 
 impl<'a> EncoderValue for ConnectionClose<'a> {
+    #[inline]
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
 
