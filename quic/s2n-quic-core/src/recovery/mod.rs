@@ -13,6 +13,7 @@ pub mod congestion_controller;
 pub mod cubic;
 mod hybrid_slow_start;
 mod pacing;
+pub mod persistent_congestion;
 mod pto;
 mod rtt_estimator;
 mod sent_packets;

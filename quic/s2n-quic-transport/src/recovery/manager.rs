@@ -5,9 +5,7 @@ use crate::{
     contexts::WriteContext,
     endpoint,
     path::{self, ecn::ValidationOutcome, path_event, Path},
-    recovery::{
-        manager::persistent_congestion::PersistentCongestionCalculator, SentPacketInfo, SentPackets,
-    },
+    recovery::{SentPacketInfo, SentPackets},
     transmission::{self, interest::Provider as _, Provider as _},
 };
 use core::time::Duration;
@@ -17,11 +15,14 @@ use s2n_quic_core::{
     frame::ack::EcnCounts,
     inet::ExplicitCongestionNotification,
     packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
-    recovery::{congestion_controller, CongestionController, Pto},
+    recovery::{congestion_controller, persistent_congestion, CongestionController, Pto},
     time::{timer, timer::Provider, Timer, Timestamp},
     transport,
 };
 use smallvec::SmallVec;
+
+#[cfg(test)]
+mod tests;
 
 type PacketDetails<PacketInfo> = (PacketNumber, SentPacketInfo<PacketInfo>);
 
@@ -859,7 +860,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
-        let mut persistent_congestion_calculator = PersistentCongestionCalculator::new(
+        let mut persistent_congestion_calculator = persistent_congestion::Calculator::new(
             context.path().rtt_estimator.first_rtt_sample(),
             context.path_id(),
         );
@@ -1164,7 +1165,3 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Conf
         self.pto.transmission_interest(query)
     }
 }
-
-mod persistent_congestion;
-#[cfg(test)]
-mod tests;
