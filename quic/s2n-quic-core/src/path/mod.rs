@@ -15,6 +15,7 @@ use core::{
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
+pub mod ecn;
 pub mod migration;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-14

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 use super::*;
-use s2n_quic_core::{
+use crate::{
     event::{builder::Path, testing::Publisher},
     time::{clock::testing as time, timer::Provider},
     varint::VarInt,

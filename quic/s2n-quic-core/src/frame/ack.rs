@@ -430,11 +430,11 @@ const ACK_RANGE_DECODING_ERROR: DecoderError =
 //# number space of the ACK frame.
 //#
 //# ECN counts are maintained separately for each packet number space.
-#[cfg(feature = "generator")]
+#[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "generator", derive(TypeGenerator))]
+#[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
 pub struct EcnCounts {
     /// A variable-length integer representing the total number of packets
     /// received with the ECT(0) codepoint.
