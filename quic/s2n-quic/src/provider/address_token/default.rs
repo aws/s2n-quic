@@ -16,7 +16,7 @@ use s2n_quic_core::{
 };
 use s2n_quic_crypto::{constant_time, digest, hmac};
 use std::hash::{Hash, Hasher};
-use zerocopy::{AsBytes, FromBytes, Unaligned};
+use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 use zeroize::Zeroizing;
 
 struct BaseKey {
@@ -355,7 +355,7 @@ impl super::Format for Format {
     }
 }
 
-#[derive(Clone, Copy, Debug, FromBytes, AsBytes, Unaligned)]
+#[derive(Clone, Copy, Debug, FromBytes, FromZeroes, AsBytes, Unaligned)]
 #[repr(C)]
 pub(crate) struct Header(u8);
 
@@ -415,7 +415,7 @@ impl Header {
 //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
 //#   There is no need for a single well-defined format for the token
 //#   because the server that generates the token also consumes it.
-#[derive(Copy, Clone, Debug, FromBytes, AsBytes, Unaligned)]
+#[derive(Copy, Clone, Debug, FromBytes, FromZeroes, AsBytes, Unaligned)]
 #[repr(C)]
 struct Token {
     header: Header,
