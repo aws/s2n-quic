@@ -290,6 +290,32 @@ impl RttEstimator {
         )
     }
 
+    #[inline]
+    pub fn loss_time_threshold(&self) -> Duration {
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
+        //# The time threshold is:
+        //#
+        //# max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
+        let mut time_threshold = max(
+            self.smoothed_rtt().as_nanos() as u64,
+            self.latest_rtt().as_nanos() as u64,
+        );
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
+        //# The RECOMMENDED time threshold (kTimeThreshold), expressed as an
+        //# RTT multiplier, is 9/8.
+        time_threshold += time_threshold / 8;
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
+        //# To avoid declaring
+        //# packets as lost too early, this time threshold MUST be set to at
+        //# least the local timer granularity, as indicated by the kGranularity
+        //# constant.
+        let time_threshold = max(time_threshold, K_GRANULARITY.as_nanos() as u64);
+
+        Duration::from_nanos(time_threshold)
+    }
+
     /// Allows min_rtt and smoothed_rtt to be overwritten on the next RTT sample
     /// after persistent congestion is established.
     #[inline]
@@ -747,5 +773,51 @@ mod test {
                     actual
                 );
             })
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
+    //= type=test
+    //# The RECOMMENDED time threshold (kTimeThreshold), expressed as an
+    //# RTT multiplier, is 9/8.
+    #[test]
+    fn time_threshold_multiplier_equals_nine_eighths() {
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
+        rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            Duration::from_secs(1),
+            NoopClock.get_time(),
+            true,
+            PacketNumberSpace::Initial,
+        );
+        assert_eq!(
+            Duration::from_millis(1125), // 9/8 seconds = 1.125 seconds
+            rtt_estimator.loss_time_threshold()
+        );
+    }
+
+    #[test]
+    fn timer_granularity() {
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
+        //= type=test
+        //# The RECOMMENDED value of the
+        //# timer granularity (kGranularity) is 1 millisecond.
+        assert_eq!(Duration::from_millis(1), K_GRANULARITY);
+
+        let mut rtt_estimator = RttEstimator::default();
+        rtt_estimator.update_rtt(
+            Duration::from_millis(0),
+            Duration::from_nanos(1),
+            NoopClock.get_time(),
+            true,
+            PacketNumberSpace::Initial,
+        );
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
+        //= type=test
+        //# To avoid declaring
+        //# packets as lost too early, this time threshold MUST be set to at
+        //# least the local timer granularity, as indicated by the kGranularity
+        //# constant.
+        assert!(rtt_estimator.loss_time_threshold() >= K_GRANULARITY);
     }
 }

@@ -4,14 +4,12 @@
 use super::*;
 use crate::{
     connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
-    contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
     endpoint::{
         self,
         testing::{Client as ClientConfig, Server as ServerConfig},
     },
     path::MINIMUM_MTU,
     recovery,
-    recovery::manager::PtoState::RequiresTransmission,
 };
 use bolero::TypeGenerator;
 use core::{ops::RangeInclusive, time::Duration};
@@ -27,7 +25,7 @@ use s2n_quic_core::{
         congestion_controller::testing::mock::{
             CongestionController as MockCongestionController, Endpoint,
         },
-        DEFAULT_INITIAL_RTT,
+        RttEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY,
     },
     time::{clock::testing as time, testing::now, Clock, NoopClock},
     transmission::Outcome,
@@ -67,9 +65,9 @@ fn one_second_pto_when_no_previous_rtt_available() {
         .pto
         .update(now, path.rtt_estimator.pto_period(path.pto_backoff, space));
 
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
     assert_eq!(
-        manager.pto.timer.next_expiration(),
+        manager.pto.next_expiration(),
         Some(now + Duration::from_millis(999))
     );
 }
@@ -848,7 +846,7 @@ fn process_new_acked_packets_pto_timer() {
         &mut publisher,
     );
 
-    manager.pto.timer.cancel();
+    manager.pto.cancel();
 
     // Trigger 1:
     // Ack packet 1 on path 1
@@ -864,10 +862,10 @@ fn process_new_acked_packets_pto_timer() {
     );
 
     // Expectation 1:
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
 
     // Setup 2:
-    manager.pto.timer.cancel();
+    manager.pto.cancel();
     // Send packets 3 on first path so that sent_packets is non-empty
     manager.on_packet_sent(
         space.new_packet_number(VarInt::from_u8(3)),
@@ -899,7 +897,7 @@ fn process_new_acked_packets_pto_timer() {
     );
 
     // Expectation 2:
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
 }
 
 // Test that the PTO timer is armed after a non-congestion controlled
@@ -953,7 +951,7 @@ fn ack_non_congestion_controlled_acked_packets_pto_timer() {
     );
 
     // Cancel the PTO timer to verify it is re-armed
-    manager.pto.timer.cancel();
+    manager.pto.cancel();
 
     let ack_receive_time = time_sent + Duration::from_millis(500);
     ack_packets(
@@ -966,7 +964,7 @@ fn ack_non_congestion_controlled_acked_packets_pto_timer() {
     );
 
     // The PTO timer should be armed
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
 }
 
 #[test]
@@ -1492,7 +1490,7 @@ fn detect_and_remove_lost_packets() {
     let expected_time_threshold = Duration::from_secs(9);
     assert_eq!(
         expected_time_threshold,
-        ServerManager::calculate_loss_time_threshold(&context.path().rtt_estimator)
+        context.path().rtt_estimator.loss_time_threshold(),
     );
 
     time_sent += Duration::from_secs(10);
@@ -1700,9 +1698,10 @@ fn detect_lost_packets_persistent_congestion_path_aware() {
     let expected_time_threshold = Duration::from_secs(9);
     assert_eq!(
         expected_time_threshold,
-        ServerManager::calculate_loss_time_threshold(
-            &context.path_by_id(first_path_id).rtt_estimator
-        )
+        context
+            .path_by_id(first_path_id)
+            .rtt_estimator
+            .loss_time_threshold(),
     );
 
     // 1-9 packets packets sent, each size 1 byte
@@ -2564,7 +2563,7 @@ fn update_pto_timer() {
     assert!(amplification_outcome.is_active_path_unblocked());
     context.path_mut().on_bytes_transmitted((1200 * 3) + 1);
     // Arm the PTO so we can verify it is cancelled
-    manager.pto.timer.set(now + Duration::from_secs(10));
+    manager.pto.update(now, Duration::from_secs(10));
     manager.pto_update_pending = true;
     manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
@@ -2573,11 +2572,11 @@ fn update_pto_timer() {
     //# If no additional data can be sent, the server's PTO timer MUST NOT be
     //# armed until datagrams have been received from the client, because
     //# packets sent on PTO count against the anti-amplification limit.
-    assert!(!manager.pto.timer.is_armed());
+    assert!(!manager.pto.is_armed());
     assert!(!manager.pto_update_pending);
 
     // Arm the PTO so we can verify it is cancelled
-    manager.pto.timer.set(now + Duration::from_secs(10));
+    manager.pto.update(now, Duration::from_secs(10));
     manager.pto_update_pending = true;
     // Validate the path so it is not at the anti-amplification limit
     //
@@ -2587,7 +2586,7 @@ fn update_pto_timer() {
     manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
     // Since the path is peer validated and sent packets is empty, PTO is cancelled
-    assert!(!manager.pto.timer.is_armed());
+    assert!(!manager.pto.is_armed());
     assert!(!manager.pto_update_pending);
 
     // Reset the path back to not peer validated
@@ -2613,7 +2612,7 @@ fn update_pto_timer() {
     //= type=test
     //# An endpoint MUST NOT set its PTO timer for the Application Data
     //# packet number space until the handshake is confirmed.
-    assert!(!manager.pto.timer.is_armed());
+    assert!(!manager.pto.is_armed());
     assert!(!manager.pto_update_pending);
 
     // Set is handshake confirmed back to true
@@ -2622,7 +2621,7 @@ fn update_pto_timer() {
     manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
 
     // Now the PTO is armed
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
     assert!(!manager.pto_update_pending);
 
     // Send a packet to validate behavior when sent_packets is not empty
@@ -2662,9 +2661,9 @@ fn update_pto_timer() {
     //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
     // Including the pto backoff (2) =:
     // PTO = (2000 + max(4*1000, 1) + 10) * 2 = 12020
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
     assert_eq!(
-        manager.pto.timer.next_expiration().unwrap(),
+        manager.pto.next_expiration().unwrap(),
         expected_pto_base_timestamp + Duration::from_millis(12020)
     );
     assert!(!manager.pto_update_pending);
@@ -2701,7 +2700,7 @@ fn pto_armed_if_handshake_not_confirmed() {
 
     manager.update_pto_timer(&path_manager[path_id], now, is_handshake_confirmed);
 
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
 }
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
 //= type=test
@@ -2737,8 +2736,8 @@ fn pto_must_be_at_least_k_granularity() {
         .pto
         .update(now, path.rtt_estimator.pto_period(path.pto_backoff, space));
 
-    assert!(manager.pto.timer.is_armed());
-    assert!(manager.pto.timer.next_expiration().unwrap() >= now + K_GRANULARITY);
+    assert!(manager.pto.is_armed());
+    assert!(manager.pto.next_expiration().unwrap() >= now + K_GRANULARITY);
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
@@ -2768,7 +2767,7 @@ fn on_timeout() {
     //= type=test
     //# The PTO timer MUST NOT be set if a timer is set for time threshold
     //# loss detection; see Section 6.1.2.
-    assert!(!manager.pto.timer.is_armed());
+    assert!(!manager.pto.is_armed());
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Send a packet that will be considered lost
@@ -2797,7 +2796,7 @@ fn on_timeout() {
     //= type=test
     //# The PTO timer MUST NOT be set if a timer is set for time threshold
     //# loss detection; see Section 6.1.2.
-    assert!(!manager.pto.timer.is_armed());
+    assert!(!manager.pto.is_armed());
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is not armed
@@ -2807,16 +2806,18 @@ fn on_timeout() {
 
     // Loss timer is not armed, pto timer is armed but not expired
     manager.loss_timer.cancel();
-    manager.pto.timer.set(now + Duration::from_secs(5));
+    manager.pto.update(now, Duration::from_secs(5));
     manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // Loss timer is not armed, pto timer is expired without bytes in flight
     expected_pto_backoff *= 2;
-    manager.pto.timer.set(now - Duration::from_secs(5));
+    manager
+        .pto
+        .update(now - Duration::from_secs(5), Duration::ZERO);
     manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
-    assert_eq!(manager.pto.state, RequiresTransmission(1));
+    assert_eq!(manager.pto.transmissions(), 1);
 
     // Loss timer is not armed, pto timer is expired with bytes in flight
 
@@ -2838,10 +2839,12 @@ fn on_timeout() {
             Default::default(),
         ),
     );
-    manager.pto.timer.set(now - Duration::from_secs(5));
+    manager
+        .pto
+        .update(now - Duration::from_secs(5), Duration::ZERO);
     manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
     //= type=test
@@ -2855,7 +2858,7 @@ fn on_timeout() {
     //# packets to avoid an expensive consecutive PTO expiration due to a
     //# single lost datagram or to transmit data from multiple packet number
     //# spaces.
-    assert_eq!(manager.pto.state, RequiresTransmission(2));
+    assert_eq!(manager.pto.transmissions(), 2);
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2
     //= type=test
@@ -2918,7 +2921,7 @@ fn on_timeout_packet_lost() {
     );
     manager.on_transmit_burst_complete(context.path(), now - Duration::from_secs(5), true);
 
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
 
     // Loss timer is armed and expired, on_packet_loss is called
     manager.loss_timer.set(now - Duration::from_secs(5));
@@ -2933,7 +2936,7 @@ fn on_timeout_packet_lost() {
     // It was too early to declare Packet 1 as lost, so the loss timer is armed
     assert_eq!(0, context.on_packet_loss_count);
     assert!(manager.loss_timer.is_armed());
-    assert!(!manager.pto.timer.is_armed());
+    assert!(!manager.pto.is_armed());
 
     manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
 
@@ -2941,7 +2944,7 @@ fn on_timeout_packet_lost() {
     // so confirm the PTO timer is armed
     assert_eq!(1, context.on_packet_loss_count);
     assert!(!manager.loss_timer.is_armed());
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
 }
 
 // Test that multiple PTO timeouts only doubles the PTO backoff once
@@ -2956,9 +2959,9 @@ fn max_pto_backoff() {
     let mut publisher = Publisher::snapshot();
     let random = &mut random::testing::Generator::default();
 
-    initial_space.pto.timer.set(now);
-    handshake_space.pto.timer.set(now);
-    application_space.pto.timer.set(now);
+    initial_space.pto.update(now, Duration::ZERO);
+    handshake_space.pto.update(now, Duration::ZERO);
+    application_space.pto.update(now, Duration::ZERO);
 
     assert_eq!(INITIAL_PTO_BACKOFF, context.path().pto_backoff);
     let max_pto_backoff = INITIAL_PTO_BACKOFF * 2;
@@ -2990,7 +2993,7 @@ fn new_client_space() {
     manager.on_timeout(now, random, u32::MAX, &mut context, &mut publisher);
     assert_eq!(context.on_packet_loss_count, 0);
     assert!(!manager.loss_timer.is_armed());
-    assert!(!manager.pto.timer.is_armed());
+    assert!(!manager.pto.is_armed());
     assert_eq!(expected_pto_backoff, context.path().pto_backoff);
 
     // No PTO update was pending, nothing happens
@@ -3016,100 +3019,15 @@ fn timers() {
 
     // PTO timer is armed
     manager.loss_timer.cancel();
-    manager.pto.timer.set(pto_time);
+    manager.pto.update(pto_time, Duration::ZERO);
     assert_eq!(manager.armed_timer_count(), 1);
     assert_eq!(manager.next_expiration(), Some(pto_time));
 
     // Both timers are armed, only loss time is returned
     manager.loss_timer.set(loss_time);
-    manager.pto.timer.set(pto_time);
+    manager.pto.update(pto_time, Duration::ZERO);
     assert_eq!(manager.armed_timer_count(), 1);
     assert_eq!(manager.next_expiration(), Some(loss_time));
-}
-
-#[test]
-fn on_transmit() {
-    let space = PacketNumberSpace::ApplicationData;
-    let mut manager = ServerManager::new(space);
-    let mut frame_buffer = OutgoingFrameBuffer::new();
-    let mut context = MockWriteContext::new(
-        time::now(),
-        &mut frame_buffer,
-        transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
-        transmission::Mode::LossRecoveryProbing,
-        endpoint::Type::Client,
-    );
-
-    // Already idle
-    manager.pto.state = PtoState::Idle;
-    manager.on_transmit(&mut context);
-    assert_eq!(manager.pto.state, PtoState::Idle);
-
-    // No transmissions required
-    manager.pto.state = RequiresTransmission(0);
-    manager.on_transmit(&mut context);
-    assert_eq!(manager.pto.state, PtoState::Idle);
-
-    // One transmission required, not ack eliciting
-    manager.pto.state = RequiresTransmission(1);
-    context.write_frame_forced(&frame::Padding { length: 1 });
-    assert!(!context.ack_elicitation().is_ack_eliciting());
-    manager.on_transmit(&mut context);
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-    //= type=test
-    //# All probe packets sent on a PTO MUST be ack-eliciting.
-
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-    //= type=test
-    //# When a PTO timer expires, a sender MUST send at least one ack-
-    //# eliciting packet in the packet number space as a probe.
-
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-    //= type=test
-    //# When there is no data to send, the sender SHOULD send
-    //# a PING or other ack-eliciting frame in a single packet, re-arming the
-    //# PTO timer.
-    assert!(context.ack_elicitation().is_ack_eliciting());
-    assert_eq!(manager.pto.state, PtoState::Idle);
-
-    // One transmission required, ack eliciting
-    manager.pto.state = RequiresTransmission(1);
-    context.write_frame_forced(&frame::Ping);
-    manager.on_transmit(&mut context);
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-    //= type=test
-    //# All probe packets sent on a PTO MUST be ack-eliciting.
-
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-    //= type=test
-    //# When a PTO timer expires, a sender MUST send at least one ack-
-    //# eliciting packet in the packet number space as a probe.
-    assert!(context.ack_elicitation().is_ack_eliciting());
-    assert_eq!(manager.pto.state, PtoState::Idle);
-
-    // Two transmissions required
-    manager.pto.state = RequiresTransmission(2);
-    manager.on_transmit(&mut context);
-    assert_eq!(manager.pto.state, RequiresTransmission(1));
-}
-
-#[test]
-fn on_transmit_normal_transmission_mode() {
-    let space = PacketNumberSpace::ApplicationData;
-    let mut manager = ServerManager::new(space);
-    let mut frame_buffer = OutgoingFrameBuffer::new();
-    let mut context = MockWriteContext::new(
-        time::now(),
-        &mut frame_buffer,
-        transmission::Constraint::CongestionLimited, // Recovery manager ignores constraints
-        transmission::Mode::Normal,
-        endpoint::Type::Client,
-    );
-
-    manager.pto.state = RequiresTransmission(2);
-    manager.on_transmit(&mut context);
-    assert_eq!(0, frame_buffer.frames.len());
-    assert_eq!(manager.pto.state, RequiresTransmission(2));
 }
 
 // Helper function that will call on_ack_frame with the given packet numbers
@@ -3194,18 +3112,6 @@ fn ack_packets(
     )
 }
 
-#[test]
-fn requires_probe() {
-    let space = PacketNumberSpace::ApplicationData;
-    let mut manager = ServerManager::new(space);
-
-    manager.pto.state = PtoState::RequiresTransmission(2);
-    assert!(manager.requires_probe());
-
-    manager.pto.state = PtoState::Idle;
-    assert!(!manager.requires_probe());
-}
-
 //= https://www.rfc-editor.org/rfc/rfc9002#section-7.5
 //= type=test
 //# A sender MUST however count these packets as being additionally in
@@ -3217,7 +3123,8 @@ fn probe_packets_count_towards_bytes_in_flight() {
     let mut manager = ServerManager::new(space);
     let ecn = ExplicitCongestionNotification::default();
 
-    manager.pto.state = PtoState::RequiresTransmission(2);
+    manager.pto.update(time::now(), Duration::ZERO);
+    let _ = manager.pto.on_timeout(true, time::now());
 
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
     let mut context = MockContext::new(&mut path_manager);
@@ -3259,52 +3166,6 @@ fn packet_reorder_threshold_at_least_three() {
     assert!(K_PACKET_THRESHOLD >= 3);
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
-//= type=test
-//# The RECOMMENDED time threshold (kTimeThreshold), expressed as an
-//# RTT multiplier, is 9/8.
-#[test]
-fn time_threshold_multiplier_equals_nine_eighths() {
-    let mut rtt_estimator = RttEstimator::new(Duration::from_millis(10));
-    rtt_estimator.update_rtt(
-        Duration::from_millis(10),
-        Duration::from_secs(1),
-        time::now(),
-        true,
-        PacketNumberSpace::Initial,
-    );
-    assert_eq!(
-        Duration::from_millis(1125), // 9/8 seconds = 1.125 seconds
-        ServerManager::calculate_loss_time_threshold(&rtt_estimator)
-    );
-}
-
-#[test]
-fn timer_granularity() {
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
-    //= type=test
-    //# The RECOMMENDED value of the
-    //# timer granularity (kGranularity) is 1 millisecond.
-    assert_eq!(Duration::from_millis(1), K_GRANULARITY);
-
-    let mut rtt_estimator = RttEstimator::default();
-    rtt_estimator.update_rtt(
-        Duration::from_millis(0),
-        Duration::from_nanos(1),
-        time::now(),
-        true,
-        PacketNumberSpace::Initial,
-    );
-
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
-    //= type=test
-    //# To avoid declaring
-    //# packets as lost too early, this time threshold MUST be set to at
-    //# least the local timer granularity, as indicated by the kGranularity
-    //# constant.
-    assert!(ServerManager::calculate_loss_time_threshold(&rtt_estimator) >= K_GRANULARITY);
-}
-
 #[test]
 fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
     let space = PacketNumberSpace::ApplicationData;
@@ -3333,8 +3194,7 @@ fn packet_declared_lost_less_than_1_ms_from_loss_threshold() {
     );
     manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(2)));
 
-    let loss_time_threshold =
-        ServerManager::calculate_loss_time_threshold(&context.path().rtt_estimator);
+    let loss_time_threshold = context.path().rtt_estimator.loss_time_threshold();
 
     manager.detect_and_remove_lost_packets(
         sent_time + loss_time_threshold - Duration::from_micros(999),
@@ -3380,14 +3240,14 @@ fn on_transmit_burst_complete() {
 
     assert!(manager.pto_update_pending);
     manager.on_transmit_burst_complete(path_manager.active_path(), now, is_handshake_confirmed);
-    assert!(manager.pto.timer.is_armed());
+    assert!(manager.pto.is_armed());
     assert!(!manager.pto_update_pending);
 
     // Cancel the PTO timer to validate it isn't re-armed when not needed
-    manager.pto.timer.cancel();
+    manager.pto.cancel();
     manager.sent_packets.clear();
     manager.on_transmit_burst_complete(path_manager.active_path(), now, is_handshake_confirmed);
-    assert!(!manager.pto.timer.is_armed());
+    assert!(!manager.pto.is_armed());
 }
 
 fn helper_generate_multi_path_manager(

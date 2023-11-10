@@ -7,10 +7,8 @@ use context::Context;
 pub mod application;
 pub mod connection_close;
 pub mod early;
-pub mod interest;
 
 pub use crate::contexts::WriteContext;
-pub use interest::Interest;
 
 /// re-export core
 pub use s2n_quic_core::transmission::*;
