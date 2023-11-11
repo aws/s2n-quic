@@ -33,6 +33,11 @@ macro_rules! assume {
 /// Checks that the first argument is true, otherwise returns the second value
 #[macro_export]
 macro_rules! ensure {
+    ($cond:expr) => {
+        if !($cond) {
+            return;
+        }
+    };
     ($cond:expr, $ret:expr) => {
         if !($cond) {
             return $ret;

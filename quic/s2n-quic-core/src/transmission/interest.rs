@@ -11,14 +11,8 @@ pub enum Interest {
     Forced,
 }
 
-#[test]
-fn ordering_test() {
-    assert!(Interest::None < Interest::NewData);
-    assert!(Interest::NewData < Interest::LostData);
-    assert!(Interest::LostData < Interest::Forced);
-}
-
 impl Default for Interest {
+    #[inline]
     fn default() -> Self {
         Self::None
     }
@@ -116,22 +110,6 @@ impl Query for Interest {
     }
 }
 
-#[test]
-fn interest_query_test() {
-    use Interest::*;
-
-    let levels = [None, NewData, LostData, Forced];
-    for a in levels.iter().copied() {
-        for b in levels.iter().copied() {
-            let mut query = a;
-            let result = query.on_interest(b);
-
-            assert_eq!(query, a.max(b));
-            assert_eq!(matches!(a, Forced) || matches!(b, Forced), result.is_err());
-        }
-    }
-}
-
 impl Query for Constraint {
     #[inline]
     fn on_interest(&mut self, interest: Interest) -> Result {
@@ -174,8 +152,10 @@ impl Query for HasTransmissionInterestQuery {
     }
 }
 
+#[cfg(feature = "std")]
 pub struct Debugger;
 
+#[cfg(feature = "std")]
 impl Query for Debugger {
     #[inline]
     #[track_caller]
@@ -225,10 +205,32 @@ pub type Result<T = (), E = QueryBreak> = core::result::Result<T, E>;
 #[cfg(test)]
 mod test {
     use crate::transmission::{
+        interest::Query,
         Constraint,
         Constraint::*,
         Interest::{None, *},
     };
+
+    #[test]
+    fn ordering_test() {
+        assert!(None < NewData);
+        assert!(NewData < LostData);
+        assert!(LostData < Forced);
+    }
+
+    #[test]
+    fn interest_query_test() {
+        let levels = [None, NewData, LostData, Forced];
+        for a in levels.iter().copied() {
+            for b in levels.iter().copied() {
+                let mut query = a;
+                let result = query.on_interest(b);
+
+                assert_eq!(query, a.max(b));
+                assert_eq!(matches!(a, Forced) || matches!(b, Forced), result.is_err());
+            }
+        }
+    }
 
     #[test]
     fn can_transmit() {
