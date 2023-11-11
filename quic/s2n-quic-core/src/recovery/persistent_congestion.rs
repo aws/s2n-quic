@@ -15,7 +15,7 @@ pub struct Calculator {
 }
 
 impl Calculator {
-    /// Create a new PersistentCongestionCalculator for the given `path_id`
+    /// Create a new `Calculator` for the given `path_id`
     #[inline]
     pub fn new(first_rtt_sample: Option<Timestamp>, path_id: path::Id) -> Self {
         Self {
@@ -107,7 +107,7 @@ struct Period {
 }
 
 impl Period {
-    /// Creates a new `PersistentCongestionPeriod`
+    /// Creates a new `Period`
     #[inline]
     fn new(start: Timestamp, packet_number: PacketNumber) -> Self {
         Self {
