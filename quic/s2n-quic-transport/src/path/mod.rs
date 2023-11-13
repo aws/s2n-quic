@@ -21,7 +21,6 @@ use s2n_quic_core::{
 mod challenge;
 pub(crate) mod ecn;
 mod manager;
-pub(crate) mod mtu;
 
 pub use challenge::Challenge;
 pub use manager::*;

@@ -16,6 +16,7 @@ use core::{
 use bolero_generator::*;
 
 pub mod migration;
+pub mod mtu;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-14
 //# QUIC MUST NOT be used if the network path cannot support a
