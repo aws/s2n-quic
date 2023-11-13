@@ -84,6 +84,10 @@ impl Default for Builder {
 }
 
 impl Builder {
+    pub fn config_mut(&mut self) -> &mut s2n_tls::config::Builder {
+        &mut self.config
+    }
+
     pub fn with_application_protocols<P: IntoIterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,
