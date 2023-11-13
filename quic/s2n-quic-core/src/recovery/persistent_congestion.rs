@@ -1,19 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{path, recovery::SentPacketInfo};
+use crate::{
+    ensure, packet::number::PacketNumber, path, recovery::SentPacketInfo, time::Timestamp,
+};
 use core::time::Duration;
-use s2n_quic_core::{packet::number::PacketNumber, time::Timestamp};
 
-pub(crate) struct PersistentCongestionCalculator {
-    current_period: Option<PersistentCongestionPeriod>,
+#[derive(Debug)]
+pub struct Calculator {
+    current_period: Option<Period>,
     max_duration: Duration,
     first_rtt_sample: Option<Timestamp>,
     path_id: path::Id,
 }
 
-impl PersistentCongestionCalculator {
-    /// Create a new PersistentCongestionCalculator for the given `path_id`
+impl Calculator {
+    /// Create a new `Calculator` for the given `path_id`
+    #[inline]
     pub fn new(first_rtt_sample: Option<Timestamp>, path_id: path::Id) -> Self {
         Self {
             current_period: None,
@@ -24,31 +27,28 @@ impl PersistentCongestionCalculator {
     }
 
     /// Gets the longest persistent congestion period calculated
+    #[inline]
     pub fn persistent_congestion_duration(&self) -> Duration {
         self.max_duration
     }
 
     /// Called for each packet detected as lost
+    #[inline]
     pub fn on_lost_packet<PacketInfo>(
         &mut self,
         packet_number: PacketNumber,
         packet_info: &SentPacketInfo<PacketInfo>,
     ) {
-        if self
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
+        //# The persistent congestion period SHOULD NOT start until there is at
+        //# least one RTT sample.  Before the first RTT sample, a sender arms its
+        //# PTO timer based on the initial RTT (Section 6.2.2), which could be
+        //# substantially larger than the actual RTT.  Requiring a prior RTT
+        //# sample prevents a sender from establishing persistent congestion with
+        //# potentially too few probes.
+        ensure!(self
             .first_rtt_sample
-            .map_or(true, |ts| packet_info.time_sent < ts)
-        {
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-7.6.2
-            //# The persistent congestion period SHOULD NOT start until there is at
-            //# least one RTT sample.  Before the first RTT sample, a sender arms its
-            //# PTO timer based on the initial RTT (Section 6.2.2), which could be
-            //# substantially larger than the actual RTT.  Requiring a prior RTT
-            //# sample prevents a sender from establishing persistent congestion with
-            //# potentially too few probes.
-
-            // The packet was sent prior to the first RTT sample, ignore it
-            return;
-        }
+            .map_or(false, |ts| packet_info.time_sent >= ts));
 
         // Check that this lost packet was sent on the same path
         //
@@ -56,19 +56,13 @@ impl PersistentCongestionCalculator {
         // an ack. Managing state for multiple paths requires extra allocations
         // but is only necessary when also attempting connection_migration; which
         // should not be very common.
-        if packet_info.path_id != self.path_id {
-            // The packet was sent on a different path, ignore it
-            return;
-        }
+        ensure!(packet_info.path_id == self.path_id);
 
-        // Check if this lost packet was an MTU probe
-        if packet_info.transmission_mode.is_mtu_probing() {
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-14.4
-            //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
-            //# reliable indication of congestion and SHOULD NOT trigger a congestion
-            //# control reaction; see Item 7 in Section 3 of [DPLPMTUD].
-            return;
-        }
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-14.4
+        //# Loss of a QUIC packet that is carried in a PMTU probe is therefore not a
+        //# reliable indication of congestion and SHOULD NOT trigger a congestion
+        //# control reaction; see Item 7 in Section 3 of [DPLPMTUD].
+        ensure!(!packet_info.transmission_mode.is_mtu_probing());
 
         if let Some(current_period) = &mut self.current_period {
             // We are currently tracking a persistent congestion period
@@ -100,22 +94,21 @@ impl PersistentCongestionCalculator {
             //# These two packets MUST be ack-eliciting, since a receiver is required
             //# to acknowledge only ack-eliciting packets within its maximum
             //# acknowledgment delay; see Section 13.2 of [QUIC-TRANSPORT].
-            self.current_period = Some(PersistentCongestionPeriod::new(
-                packet_info.time_sent,
-                packet_number,
-            ));
+            self.current_period = Some(Period::new(packet_info.time_sent, packet_number));
         }
     }
 }
 
-struct PersistentCongestionPeriod {
+#[derive(Debug)]
+struct Period {
     start: Timestamp,
     end: Timestamp,
     prev_packet: PacketNumber,
 }
 
-impl PersistentCongestionPeriod {
-    /// Creates a new `PersistentCongestionPeriod`
+impl Period {
+    /// Creates a new `Period`
+    #[inline]
     fn new(start: Timestamp, packet_number: PacketNumber) -> Self {
         Self {
             start,
@@ -125,11 +118,13 @@ impl PersistentCongestionPeriod {
     }
 
     /// True if the given packet number is 1 more than the last packet in this period
+    #[inline]
     fn is_contiguous(&self, packet_number: PacketNumber) -> bool {
         packet_number.checked_distance(self.prev_packet) == Some(1)
     }
 
     /// Extends this persistent congestion period
+    #[inline]
     fn extend<PacketInfo>(
         &mut self,
         packet_number: PacketNumber,
@@ -150,6 +145,7 @@ impl PersistentCongestionPeriod {
     }
 
     /// Gets the duration of this persistent congestion period
+    #[inline]
     fn duration(&self) -> Duration {
         self.end - self.start
     }
