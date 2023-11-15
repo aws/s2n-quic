@@ -11,6 +11,7 @@ use std::{
         Arc, Mutex,
     },
 };
+use tracing::{debug, debug_span};
 
 #[derive(Clone, Default)]
 pub struct TxRecorder {
@@ -246,16 +247,20 @@ impl Network for Model {
         let mut transmit = |packet: Cow<Packet>| {
             // drop the packet if it's over the current MTU
             if packet.payload.len() > max_udp_payload {
+                debug!("model::drop::mtu mtu={}", max_udp_payload);
                 return 0;
             }
 
             // drop packets that exceed the maximum number of inflight packets for the network
-            if self.inflight() >= self.max_inflight() {
+            let max_inflight = self.max_inflight();
+            if self.inflight() >= max_inflight {
+                debug!("model::drop::inflight max_inflight={}", max_inflight);
                 return 0;
             }
 
             // drop the packet if enabled
             if gen_rate(drop_rate) {
+                debug!("model::drop::rate");
                 return 0;
             }
 
@@ -320,6 +325,14 @@ impl Network for Model {
 
         let mut transmission_count = 0;
         buffers.drain_pending_transmissions(|packet| {
+            let _span = debug_span!(
+                "packet",
+                dest = %packet.path.remote_address.0,
+                src = %packet.path.local_address.0,
+                len = packet.payload.len()
+            )
+            .entered();
+
             // retransmit the packet until the rate fails or we retransmit 5
             //
             // We limit retransmissions to 5 just so we don't endlessly iterate when the
@@ -327,6 +340,7 @@ impl Network for Model {
             // retransmission coverage without needlessly saturating the network.
             let mut count = 0;
             while count < 5 && gen_rate(retransmit_rate) {
+                debug!("model::retransmit::rate count={count}");
                 transmission_count += transmit(Cow::Borrowed(&packet));
                 count += 1;
             }

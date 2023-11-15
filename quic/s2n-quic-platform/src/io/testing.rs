@@ -282,6 +282,31 @@ pub struct Io {
 }
 
 impl Io {
+    /// Returns a socket handle for the Io endpoint
+    pub fn socket(self) -> Socket {
+        let Builder {
+            handle: Handle {
+                executor: _,
+                buffers,
+            },
+            address,
+            on_socket,
+            max_mtu,
+            queue_recv_buffer_size: _,
+            queue_send_buffer_size: _,
+        } = self.builder;
+
+        let handle = address.unwrap_or_else(|| buffers.generate_addr());
+
+        let socket = buffers.register(handle, max_mtu);
+
+        if let Some(on_socket) = on_socket {
+            on_socket(socket.clone());
+        }
+
+        socket
+    }
+
     pub fn start<E: Endpoint<PathHandle = network::PathHandle>>(
         self,
         mut endpoint: E,
@@ -298,12 +323,9 @@ impl Io {
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());
 
-        let (tx, rx, socket) = buffers.register(
-            handle,
-            self.builder.max_mtu,
-            queue_recv_buffer_size,
-            queue_send_buffer_size,
-        );
+        let socket = buffers.register(handle, max_mtu);
+        let tx = socket.tx_task(max_mtu, queue_send_buffer_size);
+        let rx = socket.rx_task(max_mtu, queue_recv_buffer_size);
 
         if let Some(on_socket) = on_socket {
             on_socket(socket);
