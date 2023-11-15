@@ -1,8 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::ops::RangeInclusive;
-use s2n_quic_core::{
+use crate::{
     counter::{Counter, Saturating},
     event,
     event::IntoEvent,
@@ -14,6 +13,10 @@ use s2n_quic_core::{
     transmission,
     varint::VarInt,
 };
+use core::ops::RangeInclusive;
+
+#[cfg(test)]
+mod tests;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2
 //# If an endpoint has cause to expect that IP packets with an ECT codepoint
@@ -68,6 +71,7 @@ impl IntoEvent<event::builder::EcnState> for &State {
 }
 
 impl Default for State {
+    #[inline]
     fn default() -> Self {
         State::Testing(0)
     }
@@ -86,6 +90,7 @@ pub struct Controller {
 
 impl Controller {
     /// Restart testing of ECN capability
+    #[inline]
     pub fn restart<Pub: event::ConnectionPublisher>(
         &mut self,
         path: event::builder::Path,
@@ -98,6 +103,7 @@ impl Controller {
     }
 
     /// Called when the connection timer expires
+    #[inline]
     pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
@@ -121,6 +127,7 @@ impl Controller {
     }
 
     /// Gets the ECN marking to use on packets sent to the peer
+    #[inline]
     pub fn ecn(
         &mut self,
         transmission_mode: transmission::Mode,
@@ -170,6 +177,7 @@ impl Controller {
     /// bias in the resulting count, but does not result in any reduction in security for this
     /// usage. Other usages that require uniform sampling should implement rejection sampling or
     /// other methodologies and not copy this implementation.
+    #[inline]
     fn next_ce_packet_duration(
         random_generator: &mut dyn random::Generator,
         rtt: Duration,
@@ -186,6 +194,7 @@ impl Controller {
     }
 
     /// Returns true if the path has been determined to be capable of handling ECN marked packets
+    #[inline]
     pub fn is_capable(&self) -> bool {
         matches!(self.state, State::Capable(_))
     }
@@ -203,6 +212,7 @@ impl Controller {
     /// * `ack_frame_ecn_counts` - the ECN counts present in the current Ack frame (if any)
     /// * `now` - the time the Ack frame was received
     #[allow(clippy::too_many_arguments)]
+    #[inline]
     pub fn validate<Pub: event::ConnectionPublisher>(
         &mut self,
         newly_acked_ecn_counts: EcnCounts,
@@ -326,6 +336,7 @@ impl Controller {
     }
 
     /// This method gets called when a packet has been sent
+    #[inline]
     pub fn on_packet_sent<Pub: event::ConnectionPublisher>(
         &mut self,
         ecn: ExplicitCongestionNotification,
@@ -347,6 +358,7 @@ impl Controller {
     }
 
     /// This method gets called when a packet delivery got acknowledged
+    #[inline]
     pub fn on_packet_ack(&mut self, time_sent: Timestamp, ecn: ExplicitCongestionNotification) {
         if self.ecn_packet_sent_after_last_acked_ecn_packet(time_sent, ecn) {
             // Reset the black hole counter since a packet with ECN marking
@@ -357,6 +369,7 @@ impl Controller {
     }
 
     /// This method gets called when a packet loss is reported
+    #[inline]
     pub fn on_packet_loss<Pub: event::ConnectionPublisher>(
         &mut self,
         time_sent: Timestamp,
@@ -383,6 +396,7 @@ impl Controller {
     /// Returns true if a packet sent at the given `time_sent` with the given ECN marking
     /// was marked as using ECN and was sent after the last time an ECN marked packet had
     /// been acknowledged.
+    #[inline]
     fn ecn_packet_sent_after_last_acked_ecn_packet(
         &mut self,
         time_sent: Timestamp,
@@ -395,6 +409,7 @@ impl Controller {
     }
 
     /// Set the state to Failed and arm the retest timer
+    #[inline]
     fn fail<Pub: event::ConnectionPublisher>(
         &mut self,
         now: Timestamp,
@@ -410,6 +425,7 @@ impl Controller {
         self.black_hole_counter = Default::default();
     }
 
+    #[inline]
     fn change_state<Pub: event::ConnectionPublisher>(
         &mut self,
         state: State,
@@ -440,6 +456,3 @@ impl timer::Provider for Controller {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;
