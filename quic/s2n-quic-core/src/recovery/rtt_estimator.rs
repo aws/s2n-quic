@@ -53,7 +53,14 @@ impl Default for RttEstimator {
 
 impl RttEstimator {
     /// Creates a new RTT Estimator with default initial values using the given `max_ack_delay`.
+    #[inline]
     pub fn new(max_ack_delay: Duration) -> Self {
+        Self::new_with_initial(max_ack_delay, DEFAULT_INITIAL_RTT)
+    }
+
+    /// Creates a new RTT Estimator with the provided initial values using the given `max_ack_delay`.
+    #[inline]
+    pub fn new_with_initial(max_ack_delay: Duration, initial_rtt: Duration) -> Self {
         //= https://www.rfc-editor.org/rfc/rfc9002#section-5.3
         //# Before any RTT samples are available for a new path or when the
         //# estimator is reset, the estimator is initialized using the initial RTT;
@@ -64,12 +71,12 @@ impl RttEstimator {
         //
         //# smoothed_rtt = kInitialRtt
         //# rttvar = kInitialRtt / 2
-        let smoothed_rtt = DEFAULT_INITIAL_RTT;
-        let rttvar = DEFAULT_INITIAL_RTT / 2;
+        let smoothed_rtt = initial_rtt;
+        let rttvar = initial_rtt / 2;
 
         Self {
-            latest_rtt: DEFAULT_INITIAL_RTT,
-            min_rtt: DEFAULT_INITIAL_RTT,
+            latest_rtt: initial_rtt,
+            min_rtt: initial_rtt,
             smoothed_rtt,
             rttvar,
             max_ack_delay,
