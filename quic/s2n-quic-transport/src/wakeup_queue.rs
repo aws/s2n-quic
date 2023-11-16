@@ -258,9 +258,9 @@ mod tests {
         check_state!(state, 0, false);
 
         // clone and call wake
-        waker1.clone().wake();
+        waker1.wake_by_ref();
         check_state!(state, 1, true);
-        waker2.clone().wake();
+        waker2.wake_by_ref();
         check_state!(state, 2, true);
 
         // drop handle

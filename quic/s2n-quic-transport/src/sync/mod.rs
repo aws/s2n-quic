@@ -12,11 +12,12 @@ mod incremental_value_sync;
 mod once_sync;
 mod periodic_sync;
 
-pub use data_sender::DataSender;
-pub use flag::Flag;
 pub use incremental_value_sync::IncrementalValueSync;
 pub use once_sync::OnceSync;
-pub use periodic_sync::{PeriodicSync, DEFAULT_SYNC_PERIOD};
+pub use periodic_sync::PeriodicSync;
+
+#[cfg(test)]
+pub use periodic_sync::DEFAULT_SYNC_PERIOD;
 
 /// Carries information about the packet in which a frame is transmitted
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

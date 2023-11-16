@@ -26,6 +26,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
+#[cfg(test)]
 pub use remote_initiated::MAX_STREAMS_SYNC_FRACTION;
 
 /// This component manages stream concurrency limits.
