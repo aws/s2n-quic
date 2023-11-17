@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// this functionality isn't publicly but should be assumed that it
-// eventually will
+// this functionality isn't public but should be assumed that it
+// eventually will be
 #[allow(unused_imports)]
 pub use s2n_quic_core::path::migration::{
     default::{self, Validator as Default},
