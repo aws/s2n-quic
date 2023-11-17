@@ -211,6 +211,10 @@ where
     fn stop_sending(&mut self, error_code: u64) {
         self.recv.stop_sending(error_code)
     }
+
+    fn recv_id(&self) -> StreamId {
+        self.recv.recv_id()
+    }
 }
 
 impl<B> quic::SendStream<B> for BidiStream<B>
@@ -235,8 +239,8 @@ where
         self.send.send_data(data)
     }
 
-    fn id(&self) -> StreamId {
-        self.send.id()
+    fn send_id(&self) -> StreamId {
+        self.send.send_id()
     }
 }
 
@@ -280,6 +284,10 @@ impl quic::RecvStream for RecvStream {
             s2n_quic::application::Error::new(error_code)
                 .expect("s2n-quic supports error codes up to 2^62-1"),
         );
+    }
+
+    fn recv_id(&self) -> StreamId {
+        self.stream.id().try_into().expect("invalid stream id")
     }
 }
 
@@ -432,7 +440,7 @@ where
             .reset(reset_code.try_into().unwrap_or_else(|_| VarInt::MAX.into()));
     }
 
-    fn id(&self) -> StreamId {
+    fn send_id(&self) -> StreamId {
         self.stream.id().try_into().expect("invalid stream id")
     }
 }
