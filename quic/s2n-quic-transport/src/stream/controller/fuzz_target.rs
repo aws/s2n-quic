@@ -273,7 +273,7 @@ impl Model {
         };
         let frame = MaxStreams {
             stream_type,
-            maximum_streams: VarInt::from_u32(maximum_streams.try_into().unwrap()),
+            maximum_streams: VarInt::from_u8(maximum_streams),
         };
         self.subject.on_max_streams(&frame);
         self.oracle.on_max_stream_local(maximum_streams, direction);

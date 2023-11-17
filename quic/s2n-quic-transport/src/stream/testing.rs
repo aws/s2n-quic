@@ -74,8 +74,7 @@ pub fn assert_is_transport_error<T: core::fmt::Debug>(
 /// us to do some simple validation checking whether a receiver received the
 /// expected data without exactly knowing the actual sent data.
 pub fn gen_pattern_test_data(offset: VarInt, len: usize) -> Vec<u8> {
-    let mut data = Vec::new();
-    data.reserve(len);
+    let mut data = Vec::with_capacity(len);
 
     fn data_for_offset(offset: u64) -> u8 {
         (offset % 256) as u8

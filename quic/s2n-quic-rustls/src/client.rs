@@ -110,7 +110,7 @@ impl Builder {
         certificate: C,
     ) -> Result<Self, rustls::Error> {
         let certificates = certificate.into_certificate()?;
-        let root_certificate = certificates.0.get(0).ok_or_else(|| {
+        let root_certificate = certificates.0.first().ok_or_else(|| {
             rustls::Error::General("Certificate chain needs to have at least one entry".to_string())
         })?;
         self.cert_store
