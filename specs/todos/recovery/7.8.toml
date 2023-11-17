@@ -7,13 +7,3 @@ would have fully utilized the congestion window without pacing delay.
 '''
 feature = "Packet pacing"
 tracking-issue = "146"
-
-[[TODO]]
-quote = '''
-A sender MAY implement alternative mechanisms to update its
-congestion window after periods of under-utilization, such as those
-proposed for TCP in [RFC7661].
-'''
-feature = "Under-utilization"
-tracking-issue = "247"
-
