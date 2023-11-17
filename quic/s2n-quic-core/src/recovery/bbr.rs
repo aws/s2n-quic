@@ -1002,6 +1002,10 @@ impl BbrCongestionController {
     /// Handles when the connection resumes transmitting after an idle period
     #[inline]
     fn handle_restart_from_idle<Pub: Publisher>(&mut self, now: Timestamp, publisher: &mut Pub) {
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7.8
+        //# A sender MAY implement alternative mechanisms to update its congestion window
+        //# after periods of underutilization, such as those proposed for TCP in [RFC7661].
+
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.4.3
         //# BBRHandleRestartFromIdle():
         //#   if (packets_in_flight == 0 and C.app_limited)
