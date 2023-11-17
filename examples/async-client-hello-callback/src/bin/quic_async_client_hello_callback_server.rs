@@ -5,12 +5,10 @@ use moka::sync::Cache;
 use rand::{distributions::WeightedIndex, prelude::*};
 use s2n_quic::{
     provider::tls::s2n_tls::{
-        s2n_tls::{
-            callbacks::{ConfigResolver, ConnectionFuture},
-            config::Config,
-            error::Error as S2nError,
-        },
-        ClientHelloCallback, Connection,
+        callbacks::{ClientHelloCallback, ConfigResolver, ConnectionFuture},
+        config::Config,
+        connection::Connection,
+        error::Error as S2nError,
     },
     Server,
 };

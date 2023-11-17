@@ -5,5 +5,4 @@ edition = "2021"
 
 [dependencies]
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["provider-tls-s2n", "unstable_resumption"]}
-s2n-tls = { version = "=0.0.39", features = ["quic"] }
 tokio = { version = "1", features = ["full"] }
