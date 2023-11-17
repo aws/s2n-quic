@@ -137,7 +137,16 @@ pub fn recv<Sock: AsRawFd, E: SocketEvents>(
     //
     // > On success, recvmmsg() returns the number of messages received in
     // > msgvec; on error, -1 is returned, and errno is set to indicate the error.
-    let res = libc!(recvmmsg(sockfd, msgvec, vlen, flags, timeout));
+    //
+    // on linux musl, type of paramter flags is c_uint,
+    // MSG_WAITFORONE will never be nagative, just unwarp it.
+    let res = libc!(recvmmsg(
+        sockfd,
+        msgvec,
+        vlen,
+        flags.try_into().unwrap(),
+        timeout
+    ));
 
     let _ = match res {
         Ok(count) => events.on_complete(count as _),
