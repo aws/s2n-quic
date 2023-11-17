@@ -15,6 +15,10 @@ use core::{
 //# starting with a PTO of 1 second, as recommended for TCP's initial
 //# RTO; see Section 2 of [RFC6298].
 pub const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(333);
+
+/// The lowest initial RTT value that the RTT Estimator is capable of tracking
+pub const MIN_INITIAL_RTT: Duration = Duration::from_micros(1);
+
 const ZERO_DURATION: Duration = Duration::from_millis(0);
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
@@ -61,6 +65,9 @@ impl RttEstimator {
     /// Creates a new RTT Estimator with the provided initial values using the given `max_ack_delay`.
     #[inline]
     pub fn new_with_initial(max_ack_delay: Duration, initial_rtt: Duration) -> Self {
+        debug_assert!(initial_rtt >= MIN_INITIAL_RTT);
+        let initial_rtt = initial_rtt.max(MIN_INITIAL_RTT);
+
         //= https://www.rfc-editor.org/rfc/rfc9002#section-5.3
         //# Before any RTT samples are available for a new path or when the
         //# estimator is reset, the estimator is initialized using the initial RTT;
