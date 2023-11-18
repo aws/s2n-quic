@@ -15,6 +15,10 @@ use core::{
 //# starting with a PTO of 1 second, as recommended for TCP's initial
 //# RTO; see Section 2 of [RFC6298].
 pub const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(333);
+
+/// The lowest RTT value that the RTT Estimator is capable of tracking
+pub const MIN_RTT: Duration = Duration::from_micros(1);
+
 const ZERO_DURATION: Duration = Duration::from_millis(0);
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
@@ -53,7 +57,17 @@ impl Default for RttEstimator {
 
 impl RttEstimator {
     /// Creates a new RTT Estimator with default initial values using the given `max_ack_delay`.
+    #[inline]
     pub fn new(max_ack_delay: Duration) -> Self {
+        Self::new_with_initial(max_ack_delay, DEFAULT_INITIAL_RTT)
+    }
+
+    /// Creates a new RTT Estimator with the provided initial values using the given `max_ack_delay`.
+    #[inline]
+    pub fn new_with_initial(max_ack_delay: Duration, initial_rtt: Duration) -> Self {
+        debug_assert!(initial_rtt >= MIN_RTT);
+        let initial_rtt = initial_rtt.max(MIN_RTT);
+
         //= https://www.rfc-editor.org/rfc/rfc9002#section-5.3
         //# Before any RTT samples are available for a new path or when the
         //# estimator is reset, the estimator is initialized using the initial RTT;
@@ -64,12 +78,12 @@ impl RttEstimator {
         //
         //# smoothed_rtt = kInitialRtt
         //# rttvar = kInitialRtt / 2
-        let smoothed_rtt = DEFAULT_INITIAL_RTT;
-        let rttvar = DEFAULT_INITIAL_RTT / 2;
+        let smoothed_rtt = initial_rtt;
+        let rttvar = initial_rtt / 2;
 
         Self {
-            latest_rtt: DEFAULT_INITIAL_RTT,
-            min_rtt: DEFAULT_INITIAL_RTT,
+            latest_rtt: initial_rtt,
+            min_rtt: initial_rtt,
             smoothed_rtt,
             rttvar,
             max_ack_delay,
@@ -174,7 +188,7 @@ impl RttEstimator {
         is_handshake_confirmed: bool,
         space: PacketNumberSpace,
     ) {
-        self.latest_rtt = rtt_sample.max(Duration::from_micros(1));
+        self.latest_rtt = rtt_sample.max(MIN_RTT);
 
         if self.first_rtt_sample.is_none() {
             self.first_rtt_sample = Some(timestamp);
@@ -359,10 +373,10 @@ fn weighted_average(a: Duration, b: Duration, weight: u64) -> Duration {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::{
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
-        recovery::{RttEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY},
         time::{Clock, Duration, NoopClock},
         transport::parameters::MaxAckDelay,
         varint::VarInt,
@@ -402,8 +416,8 @@ mod test {
             false,
             PacketNumberSpace::ApplicationData,
         );
-        assert_eq!(rtt_estimator.min_rtt, Duration::from_micros(1));
-        assert_eq!(rtt_estimator.latest_rtt(), Duration::from_micros(1));
+        assert_eq!(rtt_estimator.min_rtt, MIN_RTT);
+        assert_eq!(rtt_estimator.latest_rtt(), MIN_RTT);
         assert_eq!(rtt_estimator.first_rtt_sample(), Some(now));
         assert_eq!(
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::Initial),
