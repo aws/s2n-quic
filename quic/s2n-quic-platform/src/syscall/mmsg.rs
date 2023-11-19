@@ -112,7 +112,7 @@ pub fn recv<Sock: AsRawFd, E: SocketEvents>(
         SocketType::Blocking => libc::MSG_WAITFORONE,
         SocketType::NonBlocking => libc::MSG_DONTWAIT,
     };
-    
+
     // some platforms have a mismatch in types for the flag values and the actual parameter so cast
     // it to whatever type the syscall expects.
     let flags = flags as _;
@@ -141,7 +141,6 @@ pub fn recv<Sock: AsRawFd, E: SocketEvents>(
     //
     // > On success, recvmmsg() returns the number of messages received in
     // > msgvec; on error, -1 is returned, and errno is set to indicate the error.
-    //
 
     let res = libc!(recvmmsg(sockfd, msgvec, vlen, flags, timeout));
 
