@@ -30,7 +30,7 @@ s2n-quic-xdp = { version = "=0.31.0", path = "../../tools/xdp/s2n-quic-xdp", opt
 socket2 = { version = "0.5", features = ["all"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
 tracing = { version = "0.1", optional = true }
-turmoil = { version = "0.5.2", optional = true }
+turmoil = { version = "0.6.0", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
