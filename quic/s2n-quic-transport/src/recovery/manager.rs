@@ -68,14 +68,6 @@ pub struct Manager<Config: endpoint::Config> {
     pto_update_pending: bool,
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.1
-//# The RECOMMENDED initial value for the packet reordering threshold
-//# (kPacketThreshold) is 3, based on best practices for TCP loss
-//# detection [RFC5681] [RFC6675].  In order to remain similar to TCP,
-//# implementations SHOULD NOT use a packet threshold less than 3; see
-//# [RFC5681].
-const K_PACKET_THRESHOLD: u64 = 3;
-
 /// Initial capacity of the SmallVec used for keeping track of packets
 /// acked in an ack frame
 // TODO: Determine if there is a more appropriate default
@@ -861,8 +853,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
-        let loss_detector = loss::Detector::default();
-
         let mut persistent_congestion_calculator = persistent_congestion::Calculator::new(
             context.path().rtt_estimator.first_rtt_sample(),
             context.path_id(),
@@ -881,7 +871,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             // Calculate how long we wait until a packet is declared lost
             let time_threshold = path.rtt_estimator.loss_time_threshold();
 
-            let loss_outcome = loss_detector.check(
+            let loss_outcome = loss::detect(
                 time_threshold,
                 unacked_sent_info.time_sent,
                 unacked_packet_number,
@@ -904,7 +894,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     persistent_congestion_calculator
                         .on_lost_packet(unacked_packet_number, unacked_sent_info);
                 }
-                loss::Outcome::NotLost { lost_time } => {
+                loss::Outcome::NotLostYet { lost_time } => {
                     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
                     //# If packets sent prior to the largest acknowledged packet cannot yet
                     //# be declared lost, then a timer SHOULD be set for the remaining time.
