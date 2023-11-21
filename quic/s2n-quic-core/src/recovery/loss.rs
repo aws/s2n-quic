@@ -1,11 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    packet::number::{PacketNumber, PacketNumberRange},
-    recovery::SentPacketInfo,
-    time::Timestamp,
-};
+use crate::{packet::number::PacketNumber, time::Timestamp};
 use core::time::Duration;
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.1
@@ -25,12 +21,6 @@ pub enum Outcome {
 pub struct Detector {}
 
 impl Detector {
-    pub fn check_iter<'a, P: 'a>(
-        sent_packets: impl Iterator<Item = &'a SentPacketInfo<P>>,
-    ) -> Option<PacketNumberRange> {
-        None
-    }
-
     pub fn check(
         &self,
         time_threshold: Duration,
