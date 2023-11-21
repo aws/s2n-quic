@@ -106,6 +106,7 @@ macro_rules! recovery_event {
 }
 
 pub(crate) use recovery_event;
+use s2n_quic_core::recovery::loss;
 
 // Since `SentPacketInfo` is generic over a type supplied by the Congestion Controller implementation,
 // the type definition is particularly lengthy, especially since rust requires the fully-qualified
@@ -860,6 +861,8 @@ impl<Config: endpoint::Config> Manager<Config> {
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
+        let loss_detector = loss::Detector::default();
+
         let mut persistent_congestion_calculator = persistent_congestion::Calculator::new(
             context.path().rtt_estimator.first_rtt_sample(),
             context.path_id(),
@@ -877,60 +880,51 @@ impl<Config: endpoint::Config> Manager<Config> {
             let path = &context.path_by_id(unacked_path_id);
             // Calculate how long we wait until a packet is declared lost
             let time_threshold = path.rtt_estimator.loss_time_threshold();
-            // Calculate at what time this particular packet is considered lost based on the
-            // current path `time_threshold`
-            let packet_lost_time = unacked_sent_info.time_sent + time_threshold;
 
-            // If the `packet_lost_time` exceeds the current time, it's lost
-            let time_threshold_exceeded = packet_lost_time.has_elapsed(now);
+            let loss_outcome = loss_detector.check(
+                time_threshold,
+                unacked_sent_info.time_sent,
+                unacked_packet_number,
+                largest_acked_packet,
+                now,
+            );
 
-            let packet_number_threshold_exceeded = largest_acked_packet
-                .checked_distance(unacked_packet_number)
-                .expect("largest_acked_packet >= unacked_packet_number")
-                >= K_PACKET_THRESHOLD;
+            match loss_outcome {
+                loss::Outcome::Lost => {
+                    if smallest_lost_packet.is_none() {
+                        smallest_lost_packet = Some(unacked_packet_number);
+                    }
+                    largest_lost_packet = Some(unacked_packet_number);
 
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1
-            //# A packet is declared lost if it meets all of the following
-            //# conditions:
-            //#
-            //#     *  The packet is unacknowledged, in flight, and was sent prior to an
-            //#        acknowledged packet.
-            //#
-            //#     *  The packet was sent kPacketThreshold packets before an
-            //#        acknowledged packet (Section 6.1.1), or it was sent long enough in
-            //#        the past (Section 6.1.2).
-            if time_threshold_exceeded || packet_number_threshold_exceeded {
-                if smallest_lost_packet.is_none() {
-                    smallest_lost_packet = Some(unacked_packet_number);
+                    // TODO merge contiguous packet numbers
+                    let range =
+                        PacketNumberRange::new(unacked_packet_number, unacked_packet_number);
+                    context.on_packet_loss(&range, publisher);
+
+                    persistent_congestion_calculator
+                        .on_lost_packet(unacked_packet_number, unacked_sent_info);
                 }
-                largest_lost_packet = Some(unacked_packet_number);
+                loss::Outcome::NotLost { lost_time } => {
+                    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
+                    //# If packets sent prior to the largest acknowledged packet cannot yet
+                    //# be declared lost, then a timer SHOULD be set for the remaining time.
+                    self.loss_timer.set(lost_time);
+                    debug_assert!(
+                        !self.loss_timer.is_expired(now),
+                        "loss timer was not armed in the future; now: {now}, threshold: {time_threshold:?}\nmanager: {self:#?}"
+                    );
 
-                // TODO merge contiguous packet numbers
-                let range = PacketNumberRange::new(unacked_packet_number, unacked_packet_number);
-                context.on_packet_loss(&range, publisher);
+                    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+                    //# The PTO timer MUST NOT be set if a timer is set for time threshold
+                    //# loss detection; see Section 6.1.2.  A timer that is set for time
+                    //# threshold loss detection will expire earlier than the PTO timer in
+                    //# most cases and is less likely to spuriously retransmit data.
+                    self.pto.cancel();
 
-                persistent_congestion_calculator
-                    .on_lost_packet(unacked_packet_number, unacked_sent_info);
-            } else {
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
-                //# If packets sent prior to the largest acknowledged packet cannot yet
-                //# be declared lost, then a timer SHOULD be set for the remaining time.
-                self.loss_timer.set(packet_lost_time);
-                debug_assert!(
-                    !self.loss_timer.is_expired(now),
-                    "loss timer was not armed in the future; now: {now}, threshold: {time_threshold:?}\nmanager: {self:#?}"
-                );
-
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-                //# The PTO timer MUST NOT be set if a timer is set for time threshold
-                //# loss detection; see Section 6.1.2.  A timer that is set for time
-                //# threshold loss detection will expire earlier than the PTO timer in
-                //# most cases and is less likely to spuriously retransmit data.
-                self.pto.cancel();
-
-                // assuming sent_packets is ordered by packet number and sent time, all remaining
-                // packets will have a larger packet number and sent time, and are thus not lost.
-                break;
+                    // assuming sent_packets is ordered by packet number and sent time, all remaining
+                    // packets will have a larger packet number and sent time, and are thus not lost.
+                    break;
+                }
             }
         }
 

@@ -12,6 +12,7 @@ pub mod bbr;
 pub mod congestion_controller;
 pub mod cubic;
 mod hybrid_slow_start;
+pub mod loss;
 mod pacing;
 pub mod persistent_congestion;
 mod pto;
