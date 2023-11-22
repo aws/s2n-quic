@@ -1157,7 +1157,7 @@ fn connection_migration_new_path_abandon_timer() {
         new_addr,
         connection::PeerId::try_from_bytes(&[1]).unwrap(),
         connection::LocalId::TEST_ID,
-        RttEstimator::new(Duration::from_millis(30)),
+        RttEstimator::default(),
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
@@ -1214,8 +1214,8 @@ fn connection_migration_new_path_abandon_timer() {
     let first_path_pto = manager[first_path_id].pto_period(PacketNumberSpace::ApplicationData);
     let second_path_pto = manager[second_path_id].pto_period(PacketNumberSpace::ApplicationData);
 
-    assert_eq!(first_path_pto, Duration::from_millis(330));
-    assert_eq!(second_path_pto, Duration::from_millis(1_029));
+    assert_eq!(first_path_pto, Duration::from_millis(300));
+    assert_eq!(second_path_pto, Duration::from_millis(999));
     assert!(second_path_pto > first_path_pto);
 
     // Setup 2:
