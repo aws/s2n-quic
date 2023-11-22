@@ -4,9 +4,7 @@
 use crate::{
     ack,
     event::{api::SocketAddress, IntoEvent},
-    inet, recovery,
-    recovery::MIN_RTT,
-    stream,
+    inet, recovery, stream,
     transport::parameters::{
         AckDelayExponent, ActiveConnectionIdLimit, InitialFlowControlLimits, InitialMaxData,
         InitialMaxStreamDataBidiLocal, InitialMaxStreamDataBidiRemote, InitialMaxStreamDataUni,
@@ -232,8 +230,10 @@ impl Limits {
         mut self,
         value: Duration,
     ) -> Result<Self, ValidationError> {
-        if value < MIN_RTT {
-            return Err(INVALID_MIN_RTT);
+        if value < recovery::MIN_RTT {
+            return Err(ValidationError(
+                "provided value must be at least 1 microsecond",
+            ));
         }
 
         self.initial_round_trip_time = value;

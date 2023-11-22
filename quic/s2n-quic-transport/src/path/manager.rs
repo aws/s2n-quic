@@ -9,6 +9,7 @@ use crate::{
     path::{challenge, Path},
     transmission,
 };
+use core::time::Duration;
 use s2n_quic_core::{
     ack,
     connection::{self, PeerId},
@@ -22,10 +23,7 @@ use s2n_quic_core::{
         Handle as _, Id, MaxMtu,
     },
     random,
-    recovery::{
-        congestion_controller::{self, Endpoint as _},
-        RttEstimator,
-    },
+    recovery::congestion_controller::{self, Endpoint as _},
     stateless_reset,
     time::{timer, Timestamp},
     transport,
@@ -243,6 +241,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
+        initial_rtt: Duration,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
         let valid_initial_received = self.valid_initial_received();
@@ -305,6 +304,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             congestion_controller_endpoint,
             migration_validator,
             max_mtu,
+            initial_rtt,
             publisher,
         )
     }
@@ -317,6 +317,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
         max_mtu: MaxMtu,
+        initial_rtt: Duration,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9
@@ -398,7 +399,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         // estimator for the new path, and they are initialized with initial values,
         // we do not need to reset congestion controller and round-trip time estimator
         // again on confirming the peer's ownership of its new address.
-        let rtt = RttEstimator::new(self.active_path().rtt_estimator.max_ack_delay());
+        let rtt = self.active_path().rtt_estimator.for_new_path(initial_rtt);
         let path_info = congestion_controller::PathInfo::new(&remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
