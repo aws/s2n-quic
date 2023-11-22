@@ -49,6 +49,7 @@ pub struct RttEstimator {
     first_rtt_sample: Option<Timestamp>,
 }
 
+#[cfg(test)]
 impl Default for RttEstimator {
     /// Creates a new RTT Estimator with default initial values
     fn default() -> Self {
