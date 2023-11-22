@@ -874,6 +874,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             let loss_outcome = loss::detect(
                 time_threshold,
                 unacked_sent_info.time_sent,
+                loss::K_PACKET_THRESHOLD,
                 unacked_packet_number,
                 largest_acked_packet,
                 now,

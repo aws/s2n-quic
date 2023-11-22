@@ -26,11 +26,18 @@ pub enum Outcome {
 pub fn detect(
     time_threshold: Duration,
     time_sent: Timestamp,
+    packet_number_threshold: u64,
     packet_number: PacketNumber,
     largest_acked_packet_number: PacketNumber,
     now: Timestamp,
 ) -> Outcome {
-    debug_assert!(largest_acked_packet_number >= packet_number);
+    // Tail packets are not considered lost until an acknowledgement is received for a packet sent
+    // after the tail packets. Therefore the `detect` method must only be called for packets sent
+    // prior to the largest acknowledged that could possibly be considered lost.
+    debug_assert!(
+        largest_acked_packet_number > packet_number,
+        "only packets sent before the largest acknowledged packet may be considered lost"
+    );
 
     // Calculate at what time this particular packet is considered
     // lost based on the `time_threshold`
@@ -41,8 +48,8 @@ pub fn detect(
 
     let packet_number_threshold_exceeded = largest_acked_packet_number
         .checked_distance(packet_number)
-        .expect("largest_acked_packet_number >= packet_number")
-        >= K_PACKET_THRESHOLD;
+        .expect("largest_acked_packet_number > packet_number")
+        >= packet_number_threshold;
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1
     //# A packet is declared lost if it meets all of the following
@@ -99,6 +106,7 @@ mod tests {
         let outcome = detect(
             time_threshold,
             time_sent,
+            K_PACKET_THRESHOLD,
             packet_number,
             largest_acked_packet_number,
             current_time,
@@ -112,6 +120,7 @@ mod tests {
         let outcome = detect(
             time_threshold,
             time_sent,
+            K_PACKET_THRESHOLD,
             packet_number,
             largest_acked_packet_number,
             current_time,
@@ -140,6 +149,7 @@ mod tests {
         let outcome = detect(
             time_threshold,
             time_sent,
+            K_PACKET_THRESHOLD,
             packet_number,
             largest_acked_packet_number,
             current_time,
@@ -154,6 +164,7 @@ mod tests {
         let outcome = detect(
             time_threshold,
             time_sent,
+            K_PACKET_THRESHOLD,
             packet_number,
             largest_acked_packet_number,
             current_time,
