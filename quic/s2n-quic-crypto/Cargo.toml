@@ -21,10 +21,10 @@ s2n-codec = { version = "=0.31.0", path = "../../common/s2n-codec", default-feat
 s2n-quic-core = { version = "=0.31.0", path = "../s2n-quic-core", default-features = false }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-aws-lc-rs = { version = "1.3", default-features = false, features = ["aws-lc-sys"] }
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+aws-lc-rs = { version = "1.5" }
 
-[target.'cfg(not(target_os = "linux"))'.dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
 ring = { version = "0.16", default-features = false }
 
 [dev-dependencies]
