@@ -215,7 +215,7 @@ where
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct ValidationError(&'static str);
+pub struct ValidationError(pub &'static str);
 
 const MAX_ENCODABLE_VALUE: ValidationError =
     ValidationError("provided value exceeds maximum encodable value");

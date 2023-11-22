@@ -9,7 +9,7 @@ use crate::{
         AckDelayExponent, ActiveConnectionIdLimit, InitialFlowControlLimits, InitialMaxData,
         InitialMaxStreamDataBidiLocal, InitialMaxStreamDataBidiRemote, InitialMaxStreamDataUni,
         InitialMaxStreamsBidi, InitialMaxStreamsUni, InitialStreamLimits, MaxAckDelay,
-        MaxDatagramFrameSize, MaxIdleTimeout, TransportParameters, INVALID_MIN_RTT,
+        MaxDatagramFrameSize, MaxIdleTimeout, TransportParameters,
     },
 };
 use core::{convert::TryInto, time::Duration};
