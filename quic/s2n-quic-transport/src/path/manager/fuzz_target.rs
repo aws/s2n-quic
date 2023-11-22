@@ -15,6 +15,7 @@ use s2n_quic_core::{
     inet::{DatagramInfo, ExplicitCongestionNotification},
     random,
     random::testing::Generator,
+    recovery::DEFAULT_INITIAL_RTT,
     time::{testing::Clock, Clock as _},
     transport,
 };
@@ -176,6 +177,7 @@ impl Model {
             &mut Default::default(),
             &mut migration_validator,
             MaxMtu::default(),
+            DEFAULT_INITIAL_RTT,
             &mut publisher,
         ) {
             Ok(_) => {

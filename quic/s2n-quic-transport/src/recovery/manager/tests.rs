@@ -3300,6 +3300,7 @@ fn helper_generate_multi_path_manager(
                 &mut Endpoint::default(),
                 &mut migration::allow_all::Validator,
                 DEFAULT_MAX_MTU,
+                DEFAULT_INITIAL_RTT,
                 publisher,
             )
             .unwrap();

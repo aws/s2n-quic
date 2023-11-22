@@ -18,7 +18,7 @@ use s2n_quic_core::{
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     path::{migration, RemoteAddress},
     random::{self, Generator},
-    recovery::RttEstimator,
+    recovery::{RttEstimator, DEFAULT_INITIAL_RTT},
     stateless_reset::token::testing::*,
     time::{Clock, NoopClock},
 };
@@ -736,6 +736,7 @@ fn test_adding_new_path() {
             &mut Default::default(),
             &mut migration::allow_all::Validator,
             DEFAULT_MAX_MTU,
+            DEFAULT_INITIAL_RTT,
             &mut publisher,
         )
         .unwrap();
@@ -796,6 +797,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         &mut Default::default(),
         &mut migration::allow_all::Validator,
         DEFAULT_MAX_MTU,
+        DEFAULT_INITIAL_RTT,
         &mut publisher,
     );
 
@@ -857,6 +859,7 @@ fn do_not_add_new_path_if_client() {
         &mut Default::default(),
         &mut migration::allow_all::Validator,
         DEFAULT_MAX_MTU,
+        DEFAULT_INITIAL_RTT,
         &mut publisher,
     );
 
@@ -947,6 +950,7 @@ fn limit_number_of_connection_migrations() {
             &mut Default::default(),
             &mut migration::allow_all::Validator,
             DEFAULT_MAX_MTU,
+            DEFAULT_INITIAL_RTT,
             &mut publisher,
         );
         match res {
@@ -1005,6 +1009,7 @@ fn connection_migration_challenge_behavior() {
             &mut Default::default(),
             &mut migration::allow_all::Validator,
             DEFAULT_MAX_MTU,
+            DEFAULT_INITIAL_RTT,
             &mut publisher,
         )
         .unwrap();
@@ -1100,6 +1105,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &mut Default::default(),
             &mut migration::allow_all::Validator,
             DEFAULT_MAX_MTU,
+            DEFAULT_INITIAL_RTT,
             &mut publisher,
         )
         .unwrap();
@@ -1178,6 +1184,7 @@ fn connection_migration_new_path_abandon_timer() {
             &mut Default::default(),
             &mut migration::allow_all::Validator,
             DEFAULT_MAX_MTU,
+            DEFAULT_INITIAL_RTT,
             &mut publisher,
         )
         .unwrap();
@@ -1453,6 +1460,7 @@ fn temporary_until_authenticated() {
             &mut Default::default(),
             &mut migration::allow_all::Validator,
             DEFAULT_MAX_MTU,
+            DEFAULT_INITIAL_RTT,
             &mut publisher,
         )
         .unwrap();
@@ -1475,6 +1483,7 @@ fn temporary_until_authenticated() {
             &mut Default::default(),
             &mut migration::allow_all::Validator,
             DEFAULT_MAX_MTU,
+            DEFAULT_INITIAL_RTT,
             &mut publisher,
         )
         .unwrap();
@@ -1512,6 +1521,7 @@ fn temporary_until_authenticated() {
             &mut Default::default(),
             &mut migration::allow_all::Validator,
             DEFAULT_MAX_MTU,
+            DEFAULT_INITIAL_RTT,
             &mut publisher,
         )
         .unwrap();
