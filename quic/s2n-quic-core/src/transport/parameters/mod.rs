@@ -220,6 +220,9 @@ pub struct ValidationError(&'static str);
 const MAX_ENCODABLE_VALUE: ValidationError =
     ValidationError("provided value exceeds maximum encodable value");
 
+pub const INVALID_MIN_RTT: ValidationError =
+    ValidationError("provided value must be at least 1 microsecond");
+
 impl core::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "{}", self.0)

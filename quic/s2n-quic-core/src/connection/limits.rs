@@ -4,12 +4,14 @@
 use crate::{
     ack,
     event::{api::SocketAddress, IntoEvent},
-    inet, stream,
+    inet, recovery,
+    recovery::MIN_RTT,
+    stream,
     transport::parameters::{
         AckDelayExponent, ActiveConnectionIdLimit, InitialFlowControlLimits, InitialMaxData,
         InitialMaxStreamDataBidiLocal, InitialMaxStreamDataBidiRemote, InitialMaxStreamDataUni,
         InitialMaxStreamsBidi, InitialMaxStreamsUni, InitialStreamLimits, MaxAckDelay,
-        MaxDatagramFrameSize, MaxIdleTimeout, TransportParameters,
+        MaxDatagramFrameSize, MaxIdleTimeout, TransportParameters, INVALID_MIN_RTT,
     },
 };
 use core::{convert::TryInto, time::Duration};
@@ -65,6 +67,7 @@ pub struct Limits {
     pub(crate) max_handshake_duration: Duration,
     pub(crate) max_keep_alive_period: Duration,
     pub(crate) max_datagram_frame_size: MaxDatagramFrameSize,
+    pub(crate) initial_round_trip_time: Duration,
 }
 
 impl Default for Limits {
@@ -107,6 +110,7 @@ impl Limits {
             max_handshake_duration: MAX_HANDSHAKE_DURATION_DEFAULT,
             max_keep_alive_period: MAX_KEEP_ALIVE_PERIOD_DEFAULT,
             max_datagram_frame_size: MaxDatagramFrameSize::DEFAULT,
+            initial_round_trip_time: recovery::DEFAULT_INITIAL_RTT,
         }
     }
 
@@ -219,6 +223,23 @@ impl Limits {
     );
     setter!(with_max_keep_alive_period, max_keep_alive_period, Duration);
 
+    /// Sets the initial round trip time (RTT) for use in recovery mechanisms prior to
+    /// measuring an actual RTT sample.
+    ///
+    /// This is useful for environments where RTTs are mostly predictable (e.g. data centers)
+    /// and are much lower than the default 333 milliseconds.
+    pub fn with_initial_round_trip_time(
+        mut self,
+        value: Duration,
+    ) -> Result<Self, ValidationError> {
+        if value < MIN_RTT {
+            return Err(INVALID_MIN_RTT);
+        }
+
+        self.initial_round_trip_time = value;
+        Ok(self)
+    }
+
     // internal APIs
 
     #[doc(hidden)]
@@ -290,6 +311,12 @@ impl Limits {
     #[inline]
     pub fn max_keep_alive_period(&self) -> Duration {
         self.max_keep_alive_period
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn initial_round_trip_time(&self) -> Duration {
+        self.initial_round_trip_time
     }
 }
 
