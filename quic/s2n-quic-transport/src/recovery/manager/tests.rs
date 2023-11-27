@@ -25,6 +25,7 @@ use s2n_quic_core::{
         congestion_controller::testing::mock::{
             CongestionController as MockCongestionController, Endpoint,
         },
+        loss::K_PACKET_THRESHOLD,
         RttEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY,
     },
     time::{clock::testing as time, testing::now, Clock, NoopClock},
@@ -3147,23 +3148,6 @@ fn probe_packets_count_towards_bytes_in_flight() {
     );
 
     assert_eq!(context.path().congestion_controller.bytes_in_flight, 100);
-}
-
-//= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.1
-//= type=test
-//# The RECOMMENDED initial value for the packet reordering threshold
-//# (kPacketThreshold) is 3, based on best practices for TCP loss
-//# detection [RFC5681] [RFC6675].
-
-//= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.1
-//= type=test
-//# In order to remain similar to TCP,
-//# implementations SHOULD NOT use a packet threshold less than 3; see
-//# [RFC5681].
-#[allow(clippy::assertions_on_constants)]
-#[test]
-fn packet_reorder_threshold_at_least_three() {
-    assert!(K_PACKET_THRESHOLD >= 3);
 }
 
 #[test]
