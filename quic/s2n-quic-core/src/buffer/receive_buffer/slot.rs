@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::Request;
-use bytes::BytesMut;
+use bytes::{Buf, BufMut, BytesMut};
 use core::fmt;
 
 /// Possible states for slots in the [`ReceiveBuffer`]s queue
@@ -17,7 +17,8 @@ impl fmt::Debug for Slot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Slot")
             .field("start", &self.start)
-            .field("end", &self.end)
+            .field("end", &self.end())
+            .field("end_allocated", &self.end_allocated())
             .field("len", &self.data.len())
             .field("capacity", &self.data.capacity())
             .finish()
@@ -32,8 +33,11 @@ pub struct Outcome<'a> {
 }
 
 impl Slot {
+    #[inline]
     pub fn new(start: u64, end: u64, data: BytesMut) -> Self {
-        Self { start, end, data }
+        let v = Self { start, end, data };
+        v.invariants();
+        v
     }
 
     #[inline(always)]
@@ -73,6 +77,8 @@ impl Slot {
             }
         }
 
+        self.invariants();
+
         Outcome { lower, mid, upper }
     }
 
@@ -82,6 +88,7 @@ impl Slot {
         debug_assert_eq!(self.end(), next.start());
         self.data.unsplit(next.data);
         self.end = next.end;
+        self.invariants();
     }
 
     #[inline]
@@ -117,6 +124,7 @@ impl Slot {
     #[inline]
     pub fn add_start(&mut self, len: usize) {
         self.start += len as u64;
+        self.invariants()
     }
 
     #[inline]
@@ -127,6 +135,44 @@ impl Slot {
     #[inline]
     pub fn end_allocated(&self) -> u64 {
         self.end
+    }
+
+    #[inline]
+    pub fn skip(&mut self, len: u64) {
+        // trim off the data buffer
+        unsafe {
+            let len = len.min(usize::MAX as u64) as usize;
+
+            // extend the write cursor if the length extends beyond the initialized offset
+            if let Some(to_advance) = len.checked_sub(self.data.len()) {
+                assume!(to_advance <= self.data.remaining_mut());
+                self.data.advance_mut(to_advance);
+            }
+
+            // consume `len` bytes
+            let to_advance = self.data.remaining().min(len);
+            self.data.advance(to_advance);
+        }
+
+        // advance the start position
+        self.start += len;
+
+        self.invariants();
+    }
+
+    /// Indicates the slot isn't capable of storing any more data and should be dropped
+    #[inline]
+    pub fn should_drop(&self) -> bool {
+        self.start() == self.end_allocated()
+    }
+
+    #[inline]
+    fn invariants(&self) {
+        if cfg!(debug_assertions) {
+            assert!(self.start() <= self.end(), "{:?}", self);
+            assert!(self.start() <= self.end_allocated(), "{:?}", self);
+            assert!(self.end() <= self.end_allocated(), "{:?}", self);
+        }
     }
 }
 

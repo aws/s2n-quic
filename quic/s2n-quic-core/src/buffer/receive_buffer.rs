@@ -7,6 +7,7 @@
 use crate::varint::VarInt;
 use alloc::collections::{vec_deque, VecDeque};
 use bytes::BytesMut;
+use core::fmt;
 
 mod request;
 mod slot;
@@ -24,6 +25,21 @@ pub enum ReceiveBufferError {
     OutOfRange,
     /// The provided final size was invalid for the buffer's state
     InvalidFin,
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for ReceiveBufferError {}
+
+impl fmt::Display for ReceiveBufferError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::OutOfRange => write!(f, "write extends out of the maximum possible offset"),
+            Self::InvalidFin => write!(
+                f,
+                "write modifies the final offset in a non-compliant manner"
+            ),
+        }
+    }
 }
 
 /// The default buffer size for slots that the [`ReceiveBuffer`] uses.
@@ -181,14 +197,18 @@ impl ReceiveBuffer {
         //# final size for the stream, an endpoint SHOULD respond with an error
         //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
         //# handling.
-        if self.final_offset != UNKNOWN_FINAL_SIZE && self.final_offset != final_offset {
-            return Err(ReceiveBufferError::InvalidFin);
+        if let Some(final_size) = self.final_size() {
+            ensure!(
+                final_size == final_offset,
+                Err(ReceiveBufferError::InvalidFin)
+            );
         }
 
         // make sure that we didn't see any previous chunks greater than the final size
-        if self.max_recv_offset > final_offset {
-            return Err(ReceiveBufferError::InvalidFin);
-        }
+        ensure!(
+            self.max_recv_offset <= final_offset,
+            Err(ReceiveBufferError::InvalidFin)
+        );
 
         self.final_offset = final_offset;
 
@@ -211,9 +231,7 @@ impl ReceiveBuffer {
         //# final size for the stream, an endpoint SHOULD respond with an error
         //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
         //# handling.
-        if !excess.is_empty() {
-            return Err(ReceiveBufferError::InvalidFin);
-        }
+        ensure!(excess.is_empty(), Err(ReceiveBufferError::InvalidFin));
 
         // if the request is empty we're done
         if request.is_empty() {
@@ -243,10 +261,9 @@ impl ReceiveBuffer {
                         if let Some(next) = self.slots.remove(idx + 1) {
                             self.slots[idx].unsplit(next);
                         } else {
-                            debug_assert!(false, "slot should be available");
                             unsafe {
                                 // Safety: we've already checked that `idx + 1` exists
-                                core::hint::unreachable_unchecked();
+                                assume!(false, "slot should be available");
                             }
                         }
                     }
@@ -269,7 +286,67 @@ impl ReceiveBuffer {
 
         self.allocate_request(0, request);
 
-        self.check_consistency();
+        self.invariants();
+
+        Ok(())
+    }
+
+    /// Advances the read and write cursors and discards any held data
+    ///
+    /// This can be used for copy-avoidance applications where a packet is received in order and
+    /// doesn't need to be stored temporarily for future packets to unblock the stream.
+    #[inline]
+    pub fn skip(&mut self, len: usize) -> Result<(), ReceiveBufferError> {
+        // zero-length skip is a no-op
+        if len == 0 {
+            return Ok(());
+        }
+
+        let new_start_offset = self
+            .start_offset
+            .checked_add(len as u64)
+            .ok_or(ReceiveBufferError::OutOfRange)?;
+
+        if let Some(final_size) = self.final_size() {
+            ensure!(
+                final_size >= new_start_offset,
+                Err(ReceiveBufferError::InvalidFin)
+            );
+        }
+
+        // record the maximum offset that we've seen
+        self.max_recv_offset = self.max_recv_offset.max(new_start_offset);
+
+        // update the current start offset
+        self.start_offset = new_start_offset;
+
+        // clear out the slots to the new start offset
+        while let Some(mut slot) = self.slots.pop_front() {
+            // the new offset consumes the slot so drop and continue
+            if slot.end_allocated() < new_start_offset {
+                continue;
+            }
+
+            match new_start_offset.checked_sub(slot.start()) {
+                None | Some(0) => {
+                    // the slot starts after/on the new offset so put it back and break out
+                    self.slots.push_front(slot);
+                }
+                Some(len) => {
+                    // the slot overlaps with the new boundary so modify it and put it back if
+                    // needed
+                    slot.skip(len);
+
+                    if !slot.should_drop() {
+                        self.slots.push_front(slot);
+                    }
+                }
+            }
+
+            break;
+        }
+
+        self.invariants();
 
         Ok(())
     }
@@ -344,14 +421,14 @@ impl ReceiveBuffer {
 
         slot.add_start(out.len());
 
-        if slot.start() == slot.end_allocated() {
+        if slot.should_drop() {
             // remove empty buffers
             self.slots.pop_front();
         }
 
         self.start_offset += out.len() as u64;
 
-        self.check_consistency();
+        self.invariants();
 
         Some(out)
     }
@@ -427,10 +504,21 @@ impl ReceiveBuffer {
         &mut self,
         idx: &mut usize,
         request: Request<'a>,
-        offset: u64,
-        size: usize,
+        mut offset: u64,
+        mut size: usize,
     ) -> Request<'a> {
+        // don't allocate for data we've already consumed
+        if let Some(diff) = self.start_offset.checked_sub(offset) {
+            debug_assert!(
+                request.start() >= self.start_offset,
+                "requests should be split before allocating slots"
+            );
+            offset = self.start_offset;
+            size -= diff as usize;
+        }
+
         let buffer = BytesMut::with_capacity(size);
+
         let end = offset + size as u64;
         let mut slot = Slot::new(offset, end, buffer);
 
@@ -439,11 +527,13 @@ impl ReceiveBuffer {
         debug_assert!(lower.is_empty(), "lower requests should always be empty");
 
         // first insert the newly-created Slot
+        debug_assert!(!slot.should_drop());
         self.insert(*idx, slot);
         *idx += 1;
 
         // check if we have a mid-slot and insert that as well
         if let Some(mid) = mid {
+            debug_assert!(!mid.should_drop());
             self.insert(*idx, mid);
             *idx += 1;
         }
@@ -489,12 +579,13 @@ impl ReceiveBuffer {
     }
 
     #[inline]
-    fn check_consistency(&self) {
+    fn invariants(&self) {
         if cfg!(debug_assertions) {
             let mut prev_end = self.start_offset;
 
             for slot in &self.slots {
                 assert!(slot.start() >= prev_end, "{self:#?}");
+                assert!(!slot.should_drop(), "slot range should be non-empty");
                 prev_end = slot.end_allocated();
             }
         }

@@ -2,21 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::varint::{VarInt, MAX_VARINT_VALUE};
+use crate::{
+    stream::testing::Data,
+    varint::{VarInt, MAX_VARINT_VALUE},
+};
 use bolero::{check, generator::*};
-
-static BYTES: &[u8] = &[42u8; 9000];
 
 #[derive(Copy, Clone, Debug, TypeGenerator)]
 enum Op {
     Write {
         offset: VarInt,
-        #[generator(0..=BYTES.len())]
+        #[generator(0..=Data::MAX_CHUNK_LEN)]
         len: usize,
         is_fin: bool,
     },
     Pop {
         watermark: Option<u16>,
+    },
+    Skip {
+        len: usize,
     },
 }
 
@@ -25,6 +29,7 @@ enum Op {
 fn model_test() {
     check!().with_type::<Vec<Op>>().for_each(|ops| {
         let mut buffer = ReceiveBuffer::new();
+        let mut recv = Data::new(u64::MAX);
         for op in ops {
             match *op {
                 Op::Write {
@@ -32,19 +37,30 @@ fn model_test() {
                     len,
                     is_fin,
                 } => {
+                    let chunk = Data::send_one_at(offset.as_u64(), len);
                     if is_fin {
-                        let _ = buffer.write_at_fin(offset, &BYTES[..len]);
+                        let _ = buffer.write_at_fin(offset, &chunk);
                     } else {
-                        let _ = buffer.write_at(offset, &BYTES[..len]);
+                        let _ = buffer.write_at(offset, &chunk);
                     }
                 }
                 Op::Pop { watermark } => {
                     if let Some(watermark) = watermark {
                         if let Some(chunk) = buffer.pop_watermarked(watermark as _) {
                             assert!(chunk.len() <= watermark as usize);
+                            recv.receive(&[&chunk]);
                         }
                     } else if let Some(chunk) = buffer.pop() {
                         assert!(!chunk.is_empty(), "popped chunks should never be empty");
+                        recv.receive(&[&chunk]);
+                    }
+                }
+                Op::Skip { len } => {
+                    let consumed_len = buffer.consumed_len();
+                    if buffer.skip(len).is_ok() {
+                        let new_consumed_len = buffer.consumed_len();
+                        assert_eq!(new_consumed_len, consumed_len + len as u64);
+                        recv.seek_forward(len);
                     }
                 }
             }
@@ -61,10 +77,11 @@ fn model_test() {
 fn write_and_pop() {
     let mut buffer = ReceiveBuffer::new();
     let mut offset = VarInt::default();
+    let chunk = Data::send_one_at(0, 9000);
     let mut popped_bytes = 0;
     for _ in 0..10000 {
-        buffer.write_at(offset, BYTES).unwrap();
-        offset += BYTES.len();
+        buffer.write_at(offset, &chunk).unwrap();
+        offset += chunk.len();
         while let Some(chunk) = buffer.pop() {
             popped_bytes += chunk.len();
         }
