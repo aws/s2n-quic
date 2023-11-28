@@ -48,7 +48,6 @@ type Path = super::Path<ServerConfig>;
 #[test]
 fn one_second_pto_when_no_previous_rtt_available() {
     let space = PacketNumberSpace::Handshake;
-    let max_ack_delay = Duration::from_millis(0);
     let mut manager = ServerManager::new(space);
     let now = time::now();
 
@@ -56,7 +55,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
-        RttEstimator::new(max_ack_delay),
+        RttEstimator::default(),
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
@@ -2592,11 +2591,13 @@ fn update_pto_timer() {
 
     // Reset the path back to not peer validated
     let path_id = unsafe { path::Id::new(0) };
+    let mut rtt_estimator = RttEstimator::default();
+    rtt_estimator.on_max_ack_delay(Duration::from_millis(10).try_into().unwrap());
     context.path_manager[path_id] = Path::new(
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
-        RttEstimator::new(Duration::from_millis(10)),
+        rtt_estimator,
         MockCongestionController::default(),
         false,
         DEFAULT_MAX_MTU,
@@ -2710,7 +2711,6 @@ fn pto_armed_if_handshake_not_confirmed() {
 #[test]
 fn pto_must_be_at_least_k_granularity() {
     let space = PacketNumberSpace::Handshake;
-    let max_ack_delay = Duration::from_millis(0);
     let mut manager = ServerManager::new(space);
     let now = time::now();
 
@@ -2718,7 +2718,7 @@ fn pto_must_be_at_least_k_granularity() {
         Default::default(),
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
-        RttEstimator::new(max_ack_delay),
+        RttEstimator::default(),
         Default::default(),
         false,
         DEFAULT_MAX_MTU,
@@ -3284,6 +3284,7 @@ fn helper_generate_multi_path_manager(
                 &mut Endpoint::default(),
                 &mut migration::allow_all::Validator,
                 DEFAULT_MAX_MTU,
+                DEFAULT_INITIAL_RTT,
                 publisher,
             )
             .unwrap();
@@ -3338,11 +3339,13 @@ fn helper_generate_path_manager_with_first_addr(
             InternalConnectionIdGenerator::new().generate_id(),
             connection::PeerId::TEST_ID,
         );
+    let mut rtt_estimator = RttEstimator::default();
+    rtt_estimator.on_max_ack_delay(max_ack_delay.try_into().unwrap());
     let path = Path::new(
         first_addr,
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
-        RttEstimator::new(max_ack_delay),
+        rtt_estimator,
         MockCongestionController::new(first_addr),
         true,
         DEFAULT_MAX_MTU,
@@ -3359,11 +3362,13 @@ fn helper_generate_client_path_manager(
 
     let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client)
         .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
+    let mut rtt_estimator = RttEstimator::default();
+    rtt_estimator.on_max_ack_delay(max_ack_delay.try_into().unwrap());
     let path = super::Path::new(
         first_addr,
         connection::PeerId::TEST_ID,
         connection::LocalId::TEST_ID,
-        RttEstimator::new(max_ack_delay),
+        rtt_estimator,
         MockCongestionController::new(first_addr),
         false,
         DEFAULT_MAX_MTU,
