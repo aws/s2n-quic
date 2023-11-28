@@ -230,11 +230,12 @@ impl Limits {
         mut self,
         value: Duration,
     ) -> Result<Self, ValidationError> {
-        if value < recovery::MIN_RTT {
-            return Err(ValidationError(
+        ensure!(
+            value >= recovery::MIN_RTT,
+            Err(ValidationError(
                 "provided value must be at least 1 microsecond",
-            ));
-        }
+            ))
+        );
 
         self.initial_round_trip_time = value;
         Ok(self)
