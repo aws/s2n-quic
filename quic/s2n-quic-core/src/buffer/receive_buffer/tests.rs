@@ -769,20 +769,38 @@ const INTERESTING_CHUNK_SIZES: &[u32] = &[4, 4095, 4096, 4097];
 #[cfg_attr(miri, ignore)] // this allocates too many bytes for miri
 fn write_start_fin_test() {
     for size in INTERESTING_CHUNK_SIZES.iter().copied() {
-        let bytes: Vec<u8> = Iterator::map(0..size, |v| v as u8).collect();
-        let mut buffer = ReceiveBuffer::new();
+        for pre_empty_fin in [false, true] {
+            let bytes: Vec<u8> = Iterator::map(0..size, |v| v as u8).collect();
+            let mut buffer = ReceiveBuffer::new();
 
-        buffer.write_at_fin(0u32.into(), &bytes).unwrap();
+            // write the fin offset first
+            if pre_empty_fin {
+                buffer.write_at_fin(size.into(), &[]).unwrap();
+                buffer.write_at(0u32.into(), &bytes).unwrap();
+            } else {
+                buffer.write_at_fin(0u32.into(), &bytes).unwrap();
+            }
 
-        let chunk = buffer.pop().expect("buffer should pop final chunk");
+            let expected = if size > 4096 {
+                let chunk = buffer.pop().expect("buffer should pop chunk");
+                assert_eq!(chunk.len(), 4096);
+                let (first, rest) = bytes.split_at(4096);
+                assert_eq!(&chunk[..], first);
+                rest.to_vec()
+            } else {
+                bytes
+            };
 
-        assert_eq!(&chunk[..], &bytes);
+            let chunk = buffer.pop().expect("buffer should pop final chunk");
 
-        assert_eq!(
-            chunk.capacity(),
-            bytes.len(),
-            "final chunk should only allocate what is needed"
-        );
+            assert_eq!(
+                chunk.capacity(),
+                expected.len(),
+                "final chunk should only allocate what is needed"
+            );
+
+            assert_eq!(&chunk[..], &expected);
+        }
     }
 }
 

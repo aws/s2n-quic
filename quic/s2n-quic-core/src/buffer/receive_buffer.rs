@@ -175,8 +175,15 @@ impl ReceiveBuffer {
     /// Pushes a slice at a certain offset
     #[inline]
     pub fn write_at(&mut self, offset: VarInt, data: &[u8]) -> Result<(), ReceiveBufferError> {
+        // set the `fin` flag if this write ends at the known final size
+        let is_fin = if let Some(final_size) = self.final_size() {
+            offset + data.len() == final_size
+        } else {
+            false
+        };
+
         // create a request
-        let request = Request::new(offset, data, false)?;
+        let request = Request::new(offset, data, is_fin)?;
         self.write_request(request)?;
         Ok(())
     }
@@ -234,9 +241,7 @@ impl ReceiveBuffer {
         ensure!(excess.is_empty(), Err(ReceiveBufferError::InvalidFin));
 
         // if the request is empty we're done
-        if request.is_empty() {
-            return Ok(());
-        }
+        ensure!(!request.is_empty(), Ok(()));
 
         // record the maximum offset that we've seen
         self.max_recv_offset = self.max_recv_offset.max(request.end_exclusive());
@@ -298,9 +303,7 @@ impl ReceiveBuffer {
     #[inline]
     pub fn skip(&mut self, len: usize) -> Result<(), ReceiveBufferError> {
         // zero-length skip is a no-op
-        if len == 0 {
-            return Ok(());
-        }
+        ensure!(len > 0, Ok(()));
 
         let new_start_offset = self
             .start_offset
@@ -384,9 +387,7 @@ impl ReceiveBuffer {
             let watermark = watermark.min(buffer.len());
 
             // if the watermark is 0 then don't needlessly increment refcounts
-            if watermark == 0 {
-                return BytesMut::new();
-            }
+            ensure!(watermark > 0, BytesMut::new());
 
             if watermark == buffer.len() && is_final_offset {
                 return core::mem::take(buffer);
@@ -405,9 +406,8 @@ impl ReceiveBuffer {
     ) -> Option<BytesMut> {
         let slot = self.slots.front_mut()?;
 
-        if !slot.is_occupied(self.start_offset) {
-            return None;
-        }
+        // make sure the slot has some data
+        ensure!(slot.is_occupied(self.start_offset), None);
 
         let is_final_offset = self.final_offset == slot.end();
         let buffer = slot.data_mut();
@@ -415,9 +415,7 @@ impl ReceiveBuffer {
         let out = transform(buffer, is_final_offset);
 
         // filter out empty buffers
-        if out.is_empty() {
-            return None;
-        }
+        ensure!(!out.is_empty(), None);
 
         slot.add_start(out.len());
 
@@ -472,27 +470,19 @@ impl ReceiveBuffer {
 
     #[inline]
     fn allocate_request(&mut self, mut idx: usize, mut request: Request) {
-        if request.is_empty() {
-            return;
-        }
-
-        if request.is_fin() {
-            let start = request.start();
-            let offset = Self::align_offset(start, Self::allocation_size(start));
-            let size = (start - offset) as usize + request.len();
-            request = self.allocate_slot(&mut idx, request, offset, size);
-
-            debug_assert!(
-                request.is_empty(),
-                "fin requests should allocate a single chunk"
-            );
-
-            return;
-        }
-
         while !request.is_empty() {
-            let size = Self::allocation_size(request.start());
-            let offset = Self::align_offset(request.start(), size);
+            let start = request.start();
+            let mut size = Self::allocation_size(start);
+            let offset = Self::align_offset(start, size);
+
+            // if this is a fin request and the write is under the allocation size, then no need to
+            // do a full allocation that doesn't end up getting used.
+            if request.is_fin() {
+                let size_candidate = (start - offset) as usize + request.len();
+                if size_candidate < size {
+                    size = size_candidate;
+                }
+            }
 
             // set the current request to the upper slot and loop
             request = self.allocate_slot(&mut idx, request, offset, size);
@@ -614,9 +604,7 @@ impl<'a> Iterator for Iter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let slot = self.inner.next()?;
 
-        if !slot.is_occupied(self.prev_end) {
-            return None;
-        }
+        ensure!(slot.is_occupied(self.prev_end), None);
 
         self.prev_end = slot.end();
         Some(slot.as_slice())

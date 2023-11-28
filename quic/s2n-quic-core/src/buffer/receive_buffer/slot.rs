@@ -141,7 +141,8 @@ impl Slot {
     pub fn skip(&mut self, len: u64) {
         // trim off the data buffer
         unsafe {
-            let len = len.min(usize::MAX as u64) as usize;
+            debug_assert!(len <= 1 << 16, "slot length should never exceed 2^16");
+            let len = len as usize;
 
             // extend the write cursor if the length extends beyond the initialized offset
             if let Some(to_advance) = len.checked_sub(self.data.len()) {
@@ -169,6 +170,7 @@ impl Slot {
     #[inline]
     fn invariants(&self) {
         if cfg!(debug_assertions) {
+            assert!(self.data.capacity() <= 1 << 16, "{:?}", self);
             assert!(self.start() <= self.end(), "{:?}", self);
             assert!(self.start() <= self.end_allocated(), "{:?}", self);
             assert!(self.end() <= self.end_allocated(), "{:?}", self);
