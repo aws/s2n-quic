@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic_core::application::ServerName;
-use s2n_tls::config::Config;
 
 /// Ensure memory is correctly managed in tests
 #[cfg(test)]
@@ -23,26 +22,26 @@ pub struct ConnectionContext<'a> {
 ///
 /// This trait can be implemented to override the default config loading for a QUIC endpoint
 pub trait ConfigLoader: 'static + Send {
-    fn load(&mut self, cx: ConnectionContext) -> Config;
+    fn load(&mut self, cx: ConnectionContext) -> config::Config;
 }
 
-impl ConfigLoader for Config {
+impl ConfigLoader for config::Config {
     #[inline]
-    fn load(&mut self, _cx: ConnectionContext) -> Config {
+    fn load(&mut self, _cx: ConnectionContext) -> config::Config {
         self.clone()
     }
 }
 
-impl<T: FnMut(ConnectionContext) -> Config + Send + 'static> ConfigLoader for T {
+impl<T: FnMut(ConnectionContext) -> config::Config + Send + 'static> ConfigLoader for T {
     #[inline]
-    fn load(&mut self, cx: ConnectionContext) -> Config {
+    fn load(&mut self, cx: ConnectionContext) -> config::Config {
         (self)(cx)
     }
 }
 
 impl ConfigLoader for Box<dyn ConfigLoader> {
     #[inline]
-    fn load(&mut self, cx: ConnectionContext) -> Config {
+    fn load(&mut self, cx: ConnectionContext) -> config::Config {
         (**self).load(cx)
     }
 }
@@ -57,12 +56,8 @@ pub mod client;
 pub mod server;
 
 pub use client::Client;
+pub use s2n_tls::*;
 pub use server::Server;
-
-// Re-export the `ClientHelloHandler` and `Connection` to make it easier for users
-// to consume. This depends on experimental behavior in s2n-tls.
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
-pub use s2n_tls::{self, callbacks::ClientHelloCallback, connection::Connection};
 
 #[cfg(test)]
 mod tests;

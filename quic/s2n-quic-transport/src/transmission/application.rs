@@ -11,7 +11,7 @@ use crate::{
     space::{datagram, CryptoStream, HandshakeStatus},
     stream::Manager as _,
     sync::{flag, flag::Ping},
-    transmission::{self, Mode},
+    transmission::{self, Mode, Provider as _},
 };
 use core::ops::RangeInclusive;
 use s2n_quic_core::packet::number::PacketNumberSpace;

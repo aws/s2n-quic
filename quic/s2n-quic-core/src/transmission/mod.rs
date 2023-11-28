@@ -7,10 +7,18 @@ use bolero_generator::*;
 use core::ops::AddAssign;
 
 pub mod constraint;
+pub mod interest;
 pub mod mode;
+pub mod writer;
 
 pub use constraint::Constraint;
+pub use interest::Interest;
 pub use mode::Mode;
+pub use writer::Writer;
+
+pub trait Provider {
+    fn on_transmit<W: Writer>(&mut self, context: &mut W);
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]

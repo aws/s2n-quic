@@ -113,6 +113,10 @@ pub fn recv<Sock: AsRawFd, E: SocketEvents>(
         SocketType::NonBlocking => libc::MSG_DONTWAIT,
     };
 
+    // some platforms have a mismatch in types for the flag values and the actual parameter so cast
+    // it to whatever type the syscall expects.
+    let flags = flags as _;
+
     // > The timeout argument points to a struct timespec defining a timeout
     // > (seconds plus nanoseconds) for the receive operation.
     //
@@ -137,6 +141,7 @@ pub fn recv<Sock: AsRawFd, E: SocketEvents>(
     //
     // > On success, recvmmsg() returns the number of messages received in
     // > msgvec; on error, -1 is returned, and errno is set to indicate the error.
+
     let res = libc!(recvmmsg(sockfd, msgvec, vlen, flags, timeout));
 
     let _ = match res {

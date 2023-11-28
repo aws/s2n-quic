@@ -34,6 +34,18 @@ fn test_msghdr<F: FnOnce(&mut msghdr)>(f: F) {
     f(&mut msghdr);
 }
 
+#[cfg(kani)]
+#[allow(dead_code)] // Avoid warning when using stubs.
+mod stubs {
+    use s2n_quic_core::inet::AncillaryData;
+
+    pub fn decode(_msghdr: &libc::msghdr) -> AncillaryData {
+        let ancillary_data = kani::any();
+
+        ancillary_data
+    }
+}
+
 #[test]
 #[cfg_attr(kani, kani::proof, kani::solver(cadical), kani::unwind(17))]
 fn address_inverse_pair_test() {
@@ -50,8 +62,14 @@ fn address_inverse_pair_test() {
 }
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::solver(cadical), kani::unwind(65))]
-#[cfg(any(not(kani), kani_slow))] // this test isn't able to terminate
+#[cfg_attr(
+    kani,
+    kani::proof,
+    kani::solver(cadical),
+    kani::unwind(65),
+    // it's safe to stub out cmsg::decode since the cmsg result isn't actually checked in this particular test
+    kani::stub(cmsg::decode, stubs::decode)
+)]
 fn handle_get_set_test() {
     check!()
         .with_generator((
@@ -71,8 +89,14 @@ fn handle_get_set_test() {
 
                 assert_eq!(header.path.remote_address, handle.remote_address);
 
-                if cfg!(s2n_quic_platform_pktinfo) && !handle.local_address.ip().is_unspecified() {
-                    assert_eq!(header.path.local_address.ip(), handle.local_address.ip());
+                // no need to check this on kani since we abstract the decode() function to avoid performance issues
+                #[cfg(not(kani))]
+                {
+                    if cfg!(s2n_quic_platform_pktinfo)
+                        && !handle.local_address.ip().is_unspecified()
+                    {
+                        assert_eq!(header.path.local_address.ip(), handle.local_address.ip());
+                    }
                 }
 
                 // reset the message and ensure everything is zeroed
@@ -80,12 +104,8 @@ fn handle_get_set_test() {
                     message.reset(0);
                 }
 
-                // no need to check this on kani since it has to unwind the loop again
-                #[cfg(not(kani))]
-                {
-                    let (header, _cmsg) = message.header().unwrap();
-                    assert!(header.path.remote_address.is_unspecified());
-                }
+                let (header, _cmsg) = message.header().unwrap();
+                assert!(header.path.remote_address.is_unspecified());
             });
         });
 }

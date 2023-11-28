@@ -1,9 +1,20 @@
 ---
-source: quic/s2n-quic-core/src/varint/mod.rs
-expression: read_table(2u64.pow(i))
+source: quic/s2n-quic-core/src/varint/tests.rs
+expression: "table::Entry::read(2u64.pow(i))"
 ---
-(
-    3,
-    8,
-    62,
-)
+Entry {
+    two_bit: 3,
+    two_bit_be: [
+        192,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ],
+    len: 8,
+    usable_bits: 62,
+    shift: 0,
+}

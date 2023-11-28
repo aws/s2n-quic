@@ -47,6 +47,7 @@ mod client_handshake_confirm;
 mod mtls;
 
 mod exporter;
+mod initial_rtt;
 mod issue_1361;
 mod issue_1427;
 mod issue_1464;

@@ -41,11 +41,11 @@ fn packet_sent_event_test() {
         .lock()
         .unwrap()
         .iter()
-        .cloned()
         .filter(|p| {
             let local_socket: SocketAddr = p.path.local_address.0.into();
             local_socket == server_socket
         })
+        .cloned()
         .collect();
 
     // transmitted quic packets may be coalesced into a single datagram (network packet)

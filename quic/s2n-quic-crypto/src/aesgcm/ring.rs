@@ -12,7 +12,7 @@ impl aead::Aead for LessSafeKey {
     type Tag = [u8; TAG_LEN];
 
     #[inline]
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
     fn encrypt(
         &self,
         nonce: &[u8; NONCE_LEN],
@@ -40,7 +40,7 @@ impl aead::Aead for LessSafeKey {
 
     // use the scatter API if we're using AWS-LC
     #[inline]
-    #[cfg(target_os = "linux")]
+    #[cfg(not(target_os = "windows"))]
     fn encrypt(
         &self,
         nonce: &[u8; NONCE_LEN],

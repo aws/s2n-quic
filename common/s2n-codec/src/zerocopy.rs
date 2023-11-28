@@ -183,6 +183,7 @@ macro_rules! zerocopy_network_integer {
             Default,
             Eq,
             $crate::zerocopy::FromBytes,
+            $crate::zerocopy::FromZeroes,
             $crate::zerocopy::AsBytes,
             $crate::zerocopy::Unaligned,
         )]
@@ -297,6 +298,13 @@ macro_rules! zerocopy_network_integer {
             }
         }
 
+        #[cfg(kani)]
+        impl kani::Arbitrary for $name {
+            fn any() -> Self {
+                Self::new(kani::any())
+            }
+        }
+
         zerocopy_value_codec!($name);
     };
 }
@@ -314,7 +322,9 @@ zerocopy_network_integer!(u128, U128);
 fn zerocopy_struct_test() {
     use crate::DecoderBuffer;
 
-    #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, FromBytes, AsBytes, Unaligned)]
+    #[derive(
+        Copy, Clone, Debug, PartialEq, PartialOrd, FromZeroes, FromBytes, AsBytes, Unaligned,
+    )]
     #[repr(C)]
     struct UdpHeader {
         source_port: U16,

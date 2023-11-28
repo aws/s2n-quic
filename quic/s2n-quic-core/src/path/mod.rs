@@ -15,7 +15,9 @@ use core::{
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
 
+pub mod ecn;
 pub mod migration;
+pub mod mtu;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-14
 //# QUIC MUST NOT be used if the network path cannot support a
@@ -125,6 +127,7 @@ macro_rules! impl_addr {
     ($name:ident) => {
         #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
         #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
+        #[cfg_attr(kani, derive(kani::Arbitrary))]
         pub struct $name(pub SocketAddress);
 
         impl From<event::api::SocketAddress<'_>> for $name {

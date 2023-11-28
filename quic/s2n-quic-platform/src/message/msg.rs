@@ -21,8 +21,7 @@ mod handle;
 #[cfg(test)]
 mod tests;
 
-use ext::Ext as _;
-
+pub use ext::Ext;
 pub use handle::Handle;
 pub use libc::msghdr as Message;
 

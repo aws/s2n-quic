@@ -210,6 +210,27 @@ fn s2n_client_with_fixed_hostname_auth(host_name: &str) -> Result<client::Client
         .build()
 }
 
+fn s2n_client_with_resumption() -> Result<client::Client, Error> {
+    let mut builder = client::Builder::default().with_certificate(CERT_PEM)?;
+
+    struct TicketCallback;
+
+    impl s2n_tls::callbacks::SessionTicketCallback for TicketCallback {
+        fn on_session_ticket(
+            &self,
+            _connection: &mut Connection,
+            _session_ticket: &s2n_tls::callbacks::SessionTicket,
+        ) {
+        }
+    }
+
+    let cb = TicketCallback;
+    builder.config_mut().set_session_ticket_callback(cb)?;
+    builder.config_mut().enable_session_tickets(true)?;
+
+    builder.build()
+}
+
 fn s2n_server() -> server::Server {
     server::Builder::default()
         .with_certificate(CERT_PEM, KEY_PEM)
@@ -320,11 +341,14 @@ fn s2n_client_s2n_server_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn s2n_client_s2n_server_resumption_test() {
-    let mut client_endpoint = s2n_client();
+    let mut client_endpoint = s2n_client_with_resumption().unwrap();
     let mut server_endpoint = s2n_server_with_resumption();
 
     let pair = run_result(&mut server_endpoint, &mut client_endpoint, None).unwrap();
-    assert!(!pair.client.context.application.rx.is_empty());
+    assert!(
+        !pair.client.context.application.rx.is_empty(),
+        "expected session ticket message in RX"
+    );
 }
 
 #[test]
@@ -334,7 +358,10 @@ fn rustls_client_s2n_server_resumption_test() {
     let mut server_endpoint = s2n_server_with_resumption();
 
     let pair = run_result(&mut server_endpoint, &mut client_endpoint, None).unwrap();
-    assert!(!pair.client.context.application.rx.is_empty());
+    assert!(
+        !pair.client.context.application.rx.is_empty(),
+        "expected session ticket message in RX"
+    );
 }
 
 #[test]

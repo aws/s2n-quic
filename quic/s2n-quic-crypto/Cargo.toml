@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-crypto"
-version = "0.30.0"
+version = "0.31.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -17,14 +17,14 @@ testing = []
 [dependencies]
 cfg-if = "1"
 lazy_static = "1"
-s2n-codec = { version = "=0.30.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.30.0", path = "../s2n-quic-core", default-features = false }
+s2n-codec = { version = "=0.31.0", path = "../../common/s2n-codec", default-features = false }
+s2n-quic-core = { version = "=0.31.0", path = "../s2n-quic-core", default-features = false }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-aws-lc-rs = { version = "1.3", default-features = false, features = ["aws-lc-sys"] }
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+aws-lc-rs = { version = "1.5" }
 
-[target.'cfg(not(target_os = "linux"))'.dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
 ring = { version = "0.16", default-features = false }
 
 [dev-dependencies]
@@ -34,5 +34,5 @@ bolero = "0.10"
 ghash = "0.5"
 hex-literal = "0.4"
 insta = { version = "1", features = ["json"] }
-pretty-hex = "0.3"
+pretty-hex = "0.4"
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }

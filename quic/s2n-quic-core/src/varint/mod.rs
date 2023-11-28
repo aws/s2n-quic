@@ -13,6 +13,7 @@ use bolero_generator::*;
 
 use crate::event::IntoEvent;
 
+mod table;
 #[cfg(test)]
 mod tests;
 
@@ -25,23 +26,6 @@ mod tests;
 //# significant bits of the first byte to encode the base 2 logarithm of
 //# the integer encoding length in bytes.  The integer value is encoded
 //# on the remaining bits, in network byte order.
-
-//= https://www.rfc-editor.org/rfc/rfc9000#section-16
-//# This means that integers are encoded on 1, 2, 4, or 8 bytes and can
-//# encode 6-, 14-, 30-, or 62-bit values, respectively.  Table 4
-//# summarizes the encoding properties.
-//#
-//#        +======+========+=============+=======================+
-//#        | 2MSB | Length | Usable Bits | Range                 |
-//#        +======+========+=============+=======================+
-//#        | 00   | 1      | 6           | 0-63                  |
-//#        +------+--------+-------------+-----------------------+
-//#        | 01   | 2      | 14          | 0-16383               |
-//#        +------+--------+-------------+-----------------------+
-//#        | 10   | 4      | 30          | 0-1073741823          |
-//#        +------+--------+-------------+-----------------------+
-//#        | 11   | 8      | 62          | 0-4611686018427387903 |
-//#        +------+--------+-------------+-----------------------+
 
 pub const MAX_VARINT_VALUE: u64 = 4_611_686_018_427_387_903;
 
@@ -56,65 +40,6 @@ impl fmt::Display for VarIntError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for VarIntError {}
-
-// https://godbolt.org/z/ToTvPD
-#[inline(always)]
-fn read_table(x: u64) -> (u64, usize, u64) {
-    debug_assert!(x <= MAX_VARINT_VALUE);
-
-    macro_rules! table {
-        ($(($two_bit:expr, $length:expr, $usable_bits:expr, $max_value:expr);)*) => {{
-            let mut two_bit = 0;
-            let leading_zeros = x.leading_zeros();
-            $(
-                two_bit += if leading_zeros < (64 - $usable_bits) {
-                    1
-                } else {
-                    0
-                };
-            )*
-
-            let len = 1 << two_bit;
-            let usable_bits = len * 8 - 2;
-
-            debug_assert_eq!(len as usize, encoding_size(x));
-
-            (two_bit, len as usize, usable_bits)
-        }};
-    }
-
-    table! {
-        (0b00, 1, 6 , 63);
-        (0b01, 2, 14, 16_383);
-        (0b10, 4, 30, 1_073_741_823);
-    }
-}
-
-#[inline(always)]
-fn encoding_size(x: u64) -> usize {
-    debug_assert!(x <= MAX_VARINT_VALUE);
-
-    macro_rules! table {
-        ($(($two_bit:expr, $length:expr, $usable_bits:expr, $max_value:expr);)*) => {{
-            let leading_zeros = x.leading_zeros();
-            let mut len = 1;
-
-            $(
-                if leading_zeros < (64 - $usable_bits) {
-                    len = $length * 2;
-                };
-            )*
-
-            len
-        }};
-    }
-
-    table! {
-        (0b00, 1, 6 , 63);
-        (0b01, 2, 14, 16_383);
-        (0b10, 4, 30, 1_073_741_823);
-    }
-}
 
 // === API ===
 
@@ -136,6 +61,7 @@ impl VarInt {
     #[cfg(any(feature = "generator", test))]
     const GENERATOR: core::ops::RangeInclusive<u64> = 0..=MAX_VARINT_VALUE;
 
+    #[inline(always)]
     pub fn new(v: u64) -> Result<Self, VarIntError> {
         if v > MAX_VARINT_VALUE {
             return Err(VarIntError);
@@ -148,22 +74,27 @@ impl VarInt {
     /// # Safety
     ///
     /// Callers need to ensure the value is less than or equal to VarInt::MAX
+    #[inline(always)]
     pub const unsafe fn new_unchecked(value: u64) -> Self {
         Self(value)
     }
 
+    #[inline(always)]
     pub const fn from_u8(v: u8) -> Self {
         Self(v as u64)
     }
 
+    #[inline(always)]
     pub const fn from_u16(v: u16) -> Self {
         Self(v as u64)
     }
 
+    #[inline(always)]
     pub const fn from_u32(v: u32) -> Self {
         Self(v as u64)
     }
 
+    #[inline(always)]
     pub const fn as_u64(self) -> u64 {
         self.0
     }
@@ -216,92 +147,41 @@ impl VarInt {
     #[inline]
     pub fn encode_updated<E: Encoder>(self, replacement: Self, encoder: &mut E) {
         debug_assert!(
-            self.encoding_table_entry().1 >= replacement.encoding_table_entry().1,
+            self.table_entry().len >= replacement.table_entry().len,
             "the replacement encoding_size should not be greater than the previous value"
         );
 
-        replacement.encode_with_table_entry(self.encoding_table_entry(), encoder);
+        // don't use the basic version to avoid overwriting things
+        self.table_entry()
+            .format(replacement.0)
+            .encode_maybe_undersized(encoder)
     }
 
-    #[inline]
-    fn encode_with_table_entry<E: Encoder>(
-        self,
-        (two_bit, len, usable_bits): (u64, usize, u64),
-        encoder: &mut E,
-    ) {
-        encoder.write_sized(len, |buffer| {
-            let bytes = (two_bit << usable_bits | self.0).to_be_bytes();
-
-            unsafe {
-                // Safety: the encoder will have checked the buffer size
-                //         before passing it so we don't need to pay the bounds
-                //         check cost twice.
-
-                // This code looks a little scary so here's some comments describing what
-                // is happening.
-
-                // We bitwise-and the two bit value to ensure the compiler can prove the
-                // `unreachable` is actually unreachable.
-                match two_bit & 0b11 {
-                    0b00 => {
-                        // If the two bit value is 0b00 it means we only have 1 byte to
-                        // encode so we copy the last byte from our big endian encoded value
-                        // into the first byte of the buffer
-                        debug_assert_eq!(buffer.len(), 1);
-                        *buffer.get_unchecked_mut(0) = *bytes.get_unchecked(7);
-                    }
-                    0b01 => {
-                        // If the two bit value is 0b01 it means we have a 2 byte value to
-                        // encode so we copy the last 2 bytes from our big endian encoded value
-                        // into the first 2 bytes of the buffer
-                        debug_assert_eq!(buffer.len(), 2);
-                        buffer
-                            .get_unchecked_mut(..2)
-                            .copy_from_slice(bytes.get_unchecked(6..));
-                    }
-                    0b10 => {
-                        // If the two bit value is 0b10 it means we have a 4 byte value to
-                        // encode so we copy the last 4 bytes from our big endian encoded value
-                        // into the first 4 bytes of the buffer
-                        debug_assert_eq!(buffer.len(), 4);
-                        buffer
-                            .get_unchecked_mut(..4)
-                            .copy_from_slice(bytes.get_unchecked(4..));
-                    }
-                    0b11 => {
-                        // If the two bit value is 0b11 it means we have a 8 byte value to
-                        // encode so we copy all of the bytes into the buffer
-                        debug_assert_eq!(buffer.len(), 8);
-                        buffer
-                            .get_unchecked_mut(..8)
-                            .copy_from_slice(bytes.get_unchecked(..8));
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        })
+    #[inline(always)]
+    fn table_entry(self) -> table::Entry {
+        table::Entry::read(self.0)
     }
 
-    #[inline]
-    fn encoding_table_entry(self) -> (u64, usize, u64) {
-        read_table(self.0)
+    #[inline(always)]
+    fn format(self) -> table::Formatted {
+        table::Formatted::new(self.0)
     }
 }
 
 impl EncoderValue for VarInt {
-    #[inline]
+    #[inline(always)]
     fn encode<E: Encoder>(&self, encoder: &mut E) {
-        self.encode_with_table_entry(self.encoding_table_entry(), encoder);
+        self.format().encode(encoder);
     }
 
-    #[inline]
+    #[inline(always)]
     fn encoding_size(&self) -> usize {
-        encoding_size(self.0)
+        self.format().encoding_size()
     }
 
-    #[inline]
-    fn encoding_size_for_encoder<E: Encoder>(&self, _encoder: &E) -> usize {
-        encoding_size(self.0)
+    #[inline(always)]
+    fn encoding_size_for_encoder<E: Encoder>(&self, encoder: &E) -> usize {
+        self.format().encoding_size_for_encoder(encoder)
     }
 }
 
@@ -338,7 +218,7 @@ decoder_value!(
                     let value = value & (2u64.pow(62) - 1);
                     (Self(value), buffer)
                 }
-                _ => unreachable!(),
+                _ => unsafe { core::hint::unreachable_unchecked() },
             })
         }
     }
@@ -366,6 +246,15 @@ macro_rules! impl_from_lesser {
             #[inline]
             fn from(value: $ty) -> Self {
                 Self(value.into())
+            }
+        }
+
+        impl TryInto<$ty> for VarInt {
+            type Error = <$ty as TryFrom<u64>>::Error;
+
+            #[inline]
+            fn try_into(self) -> Result<$ty, Self::Error> {
+                self.0.try_into()
             }
         }
     };

@@ -628,7 +628,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         self.ack_manager.on_packet_loss(packet_number_range);
     }
 
-    fn on_rtt_update(&mut self) {}
+    fn on_rtt_update(&mut self, _now: Timestamp) {}
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2

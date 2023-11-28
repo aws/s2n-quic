@@ -37,7 +37,10 @@ fn table_snapshot_test() {
 
     // These values are derived from the "usable bits" column in the table: V and V-1
     for i in [0, 1, 5, 6, 13, 14, 29, 30, 61] {
-        assert_debug_snapshot!(format!("table_2_pow_{}_", i), read_table(2u64.pow(i)));
+        assert_debug_snapshot!(
+            format!("table_2_pow_{}_", i),
+            table::Entry::read(2u64.pow(i))
+        );
     }
 }
 
@@ -247,22 +250,8 @@ fn table_differential_test() {
         .with_generator(0..=MAX_VARINT_VALUE)
         .cloned()
         .for_each(|v| {
-            let actual = read_table(v);
-
-            // make sure the encoding_size function matches the table
-            assert_eq!(actual.1, encoding_size(v));
-
-            // write the table from the RFC in a non-optimized format and make sure the
-            // actual results match
-            #[allow(clippy::match_overlapping_arm)]
-            let expected = match v {
-                0..=63 => (0b00, 1, 6),
-                0..=16383 => (0b01, 2, 14),
-                0..=1073741823 => (0b10, 4, 30),
-                0..=4611686018427387903 => (0b11, 8, 62),
-                _ => unreachable!(),
-            };
-
+            let expected = table::Entry::read_rfc(v);
+            let actual = table::Entry::read_optimized(v);
             assert_eq!(actual, expected);
         })
 }

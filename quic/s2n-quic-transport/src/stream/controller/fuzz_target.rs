@@ -1,13 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::ops::RangeInclusive;
-
 use super::*;
 use bolero::{check, generator::*};
 use futures_test::task::new_count_waker;
 use hashbrown::HashSet;
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::{
+    recovery::DEFAULT_INITIAL_RTT,
+    time::{testing::Clock, Clock as _},
+    varint::VarInt,
+};
+use std::ops::RangeInclusive;
 
 #[derive(Debug)]
 struct Oracle {
@@ -219,6 +222,7 @@ impl Model {
                 initial_remote_limits,
                 initial_local_limits,
                 stream_limits,
+                DEFAULT_INITIAL_RTT,
             ),
         }
     }
@@ -269,7 +273,7 @@ impl Model {
         };
         let frame = MaxStreams {
             stream_type,
-            maximum_streams: VarInt::from_u32(maximum_streams.try_into().unwrap()),
+            maximum_streams: VarInt::from_u8(maximum_streams),
         };
         self.subject.on_max_streams(&frame);
         self.oracle.on_max_stream_local(maximum_streams, direction);
@@ -542,8 +546,11 @@ fn model_test() {
             let local_endpoint_type = endpoint::Type::Server;
 
             let mut model = Model::new(local_endpoint_type, *limits);
+            let mut clock = Clock::default();
             for operation in operations.iter() {
                 model.apply(operation);
+                model.subject.on_timeout(clock.get_time());
+                clock.inc_by(DEFAULT_INITIAL_RTT);
             }
 
             model.invariants();

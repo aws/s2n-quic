@@ -1,6 +1,6 @@
 [package]
 name = "s2n-codec"
-version = "0.30.0"
+version = "0.31.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -22,5 +22,4 @@ generator = ["bolero-generator"]
 bolero-generator = { version = "0.10", default-features = false, optional = true }
 byteorder = { version = "1.1", default-features = false }
 bytes = { version = "1", default-features = false, optional = true }
-zerocopy = "0.6"
-zerocopy-derive = "0.6"
+zerocopy = { version = "0.7", features = ["derive"] }

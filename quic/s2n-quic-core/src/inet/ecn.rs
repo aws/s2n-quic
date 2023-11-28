@@ -51,6 +51,7 @@ use bolero_generator::*;
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
+#[cfg_attr(kani, derive(kani::Arbitrary))]
 pub enum ExplicitCongestionNotification {
     /// The not-ECT codepoint '00' indicates a packet that is not using ECN.
     NotEct = 0b00,
@@ -69,6 +70,7 @@ pub enum ExplicitCongestionNotification {
 }
 
 impl Default for ExplicitCongestionNotification {
+    #[inline]
     fn default() -> Self {
         Self::NotEct
     }
@@ -76,6 +78,7 @@ impl Default for ExplicitCongestionNotification {
 
 impl ExplicitCongestionNotification {
     /// Create a ExplicitCongestionNotification from the ECN field in the IP header
+    #[inline]
     pub fn new(ecn_field: u8) -> Self {
         match ecn_field & 0b11 {
             0b00 => ExplicitCongestionNotification::NotEct,
@@ -87,11 +90,13 @@ impl ExplicitCongestionNotification {
     }
 
     /// Returns true if congestion was experienced by the peer
+    #[inline]
     pub fn congestion_experienced(self) -> bool {
         self == Self::Ce
     }
 
     /// Returns true if ECN is in use
+    #[inline]
     pub fn using_ecn(self) -> bool {
         self != Self::NotEct
     }

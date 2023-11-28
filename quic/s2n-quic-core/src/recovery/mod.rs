@@ -3,6 +3,7 @@
 
 pub use congestion_controller::CongestionController;
 pub use cubic::CubicCongestionController;
+pub use pto::Pto;
 pub use rtt_estimator::*;
 pub use sent_packets::*;
 
@@ -11,7 +12,10 @@ pub mod bbr;
 pub mod congestion_controller;
 pub mod cubic;
 mod hybrid_slow_start;
+pub mod loss;
 mod pacing;
+pub mod persistent_congestion;
+mod pto;
 mod rtt_estimator;
 mod sent_packets;
 

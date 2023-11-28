@@ -387,6 +387,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             Config::ENDPOINT_TYPE,
             self.limits.initial_flow_control_limits(),
             peer_flow_control_limits,
+            self.path_manager.active_path().rtt_estimator.min_rtt(),
         );
 
         let ack_manager = AckManager::new(

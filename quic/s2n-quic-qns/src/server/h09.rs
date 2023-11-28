@@ -12,7 +12,7 @@ use s2n_quic::{
     stream::{BidirectionalStream, ReceiveStream, SendStream},
     Connection,
 };
-use std::{convert::TryInto, path::Path, sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 use tokio::time::timeout;
 use tracing::debug;
 
@@ -76,7 +76,7 @@ async fn handle_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Resul
             }
             Ok(Some(Err(err))) => {
                 eprintln!("error opening {abs_path:?}");
-                tx_stream.reset(1u32.try_into()?)?;
+                tx_stream.reset(1u32.into())?;
                 return Err(err.into());
             }
             Ok(None) => {

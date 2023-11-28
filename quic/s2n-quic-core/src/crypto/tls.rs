@@ -4,7 +4,7 @@
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::{convert::TryFrom, fmt::Debug};
-use zerocopy::{AsBytes, FromBytes, Unaligned};
+use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -328,7 +328,7 @@ handshake_type!(
 //#         case finished:            Finished;
 //#   } body;
 //# } Handshake;
-#[derive(Clone, Copy, Debug, AsBytes, FromBytes, Unaligned)]
+#[derive(Clone, Copy, Debug, AsBytes, FromBytes, FromZeroes, Unaligned)]
 #[repr(C)]
 pub struct HandshakeHeader {
     msg_type: u8,

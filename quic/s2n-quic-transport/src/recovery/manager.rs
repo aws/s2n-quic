@@ -5,12 +5,10 @@ use crate::{
     contexts::WriteContext,
     endpoint,
     path::{self, ecn::ValidationOutcome, path_event, Path},
-    recovery::{
-        manager::persistent_congestion::PersistentCongestionCalculator, SentPacketInfo, SentPackets,
-    },
-    transmission,
+    recovery::{SentPacketInfo, SentPackets},
+    transmission::{self, interest::Provider as _, Provider as _},
 };
-use core::{cmp::max, ops::RangeInclusive, time::Duration};
+use core::{ops::RangeInclusive, time::Duration};
 use s2n_quic_core::{
     event::{self, builder::CongestionSource, IntoEvent},
     frame,
@@ -21,12 +19,15 @@ use s2n_quic_core::{
         interceptor::Interceptor,
         number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     },
-    recovery::{congestion_controller, CongestionController, RttEstimator, K_GRANULARITY},
+    recovery::{congestion_controller, persistent_congestion, CongestionController, Pto},
     time::{timer, timer::Provider, Timer, Timestamp},
     transport,
     varint::VarInt,
 };
 use smallvec::SmallVec;
+
+#[cfg(test)]
+mod tests;
 
 type PacketDetails<PacketInfo> = (PacketNumber, SentPacketInfo<PacketInfo>);
 
@@ -72,14 +73,6 @@ pub struct Manager<Config: endpoint::Config> {
     pto_update_pending: bool,
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.1
-//# The RECOMMENDED initial value for the packet reordering threshold
-//# (kPacketThreshold) is 3, based on best practices for TCP loss
-//# detection [RFC5681] [RFC6675].  In order to remain similar to TCP,
-//# implementations SHOULD NOT use a packet threshold less than 3; see
-//# [RFC5681].
-const K_PACKET_THRESHOLD: u64 = 3;
-
 /// Initial capacity of the SmallVec used for keeping track of packets
 /// acked in an ack frame
 // TODO: Determine if there is a more appropriate default
@@ -110,6 +103,7 @@ macro_rules! recovery_event {
 }
 
 pub(crate) use recovery_event;
+use s2n_quic_core::recovery::loss;
 
 // Since `SentPacketInfo` is generic over a type supplied by the Congestion Controller implementation,
 // the type definition is particularly lengthy, especially since rust requires the fully-qualified
@@ -192,7 +186,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         } else {
             let pto_expired = self
                 .pto
-                .on_timeout(!self.sent_packets.is_empty(), timestamp);
+                .on_timeout(!self.sent_packets.is_empty(), timestamp)
+                .is_ready();
 
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2
             //# A PTO timer expiration event does not indicate packet loss and MUST
@@ -627,7 +622,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             );
 
             // Notify components the RTT estimate was updated
-            context.on_rtt_update();
+            context.on_rtt_update(timestamp);
         }
     }
 
@@ -793,7 +788,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Returns `true` if the recovery manager requires a probe packet to be sent.
     #[inline]
     pub fn requires_probe(&self) -> bool {
-        matches!(self.pto.state, PtoState::RequiresTransmission(_))
+        self.pto.has_transmission_interest()
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002#appendix-B.9
@@ -867,7 +862,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             .largest_acked_packet
             .expect("This function is only called after an ack has been received");
 
-        let mut persistent_congestion_calculator = PersistentCongestionCalculator::new(
+        let mut persistent_congestion_calculator = persistent_congestion::Calculator::new(
             context.path().rtt_estimator.first_rtt_sample(),
             context.path_id(),
         );
@@ -883,61 +878,53 @@ impl<Config: endpoint::Config> Manager<Config> {
             let unacked_path_id = unacked_sent_info.path_id;
             let path = &context.path_by_id(unacked_path_id);
             // Calculate how long we wait until a packet is declared lost
-            let time_threshold = Self::calculate_loss_time_threshold(&path.rtt_estimator);
-            // Calculate at what time this particular packet is considered lost based on the
-            // current path `time_threshold`
-            let packet_lost_time = unacked_sent_info.time_sent + time_threshold;
+            let time_threshold = path.rtt_estimator.loss_time_threshold();
 
-            // If the `packet_lost_time` exceeds the current time, it's lost
-            let time_threshold_exceeded = packet_lost_time.has_elapsed(now);
+            let loss_outcome = loss::detect(
+                time_threshold,
+                unacked_sent_info.time_sent,
+                loss::K_PACKET_THRESHOLD,
+                unacked_packet_number,
+                largest_acked_packet,
+                now,
+            );
 
-            let packet_number_threshold_exceeded = largest_acked_packet
-                .checked_distance(unacked_packet_number)
-                .expect("largest_acked_packet >= unacked_packet_number")
-                >= K_PACKET_THRESHOLD;
+            match loss_outcome {
+                loss::Outcome::Lost => {
+                    if smallest_lost_packet.is_none() {
+                        smallest_lost_packet = Some(unacked_packet_number);
+                    }
+                    largest_lost_packet = Some(unacked_packet_number);
 
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1
-            //# A packet is declared lost if it meets all of the following
-            //# conditions:
-            //#
-            //#     *  The packet is unacknowledged, in flight, and was sent prior to an
-            //#        acknowledged packet.
-            //#
-            //#     *  The packet was sent kPacketThreshold packets before an
-            //#        acknowledged packet (Section 6.1.1), or it was sent long enough in
-            //#        the past (Section 6.1.2).
-            if time_threshold_exceeded || packet_number_threshold_exceeded {
-                if smallest_lost_packet.is_none() {
-                    smallest_lost_packet = Some(unacked_packet_number);
+                    // TODO merge contiguous packet numbers
+                    let range =
+                        PacketNumberRange::new(unacked_packet_number, unacked_packet_number);
+                    context.on_packet_loss(&range, publisher);
+
+                    persistent_congestion_calculator
+                        .on_lost_packet(unacked_packet_number, unacked_sent_info);
                 }
-                largest_lost_packet = Some(unacked_packet_number);
+                loss::Outcome::NotLostYet { lost_time } => {
+                    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
+                    //# If packets sent prior to the largest acknowledged packet cannot yet
+                    //# be declared lost, then a timer SHOULD be set for the remaining time.
+                    self.loss_timer.set(lost_time);
+                    debug_assert!(
+                        !self.loss_timer.is_expired(now),
+                        "loss timer was not armed in the future; now: {now}, threshold: {time_threshold:?}\nmanager: {self:#?}"
+                    );
 
-                // TODO merge contiguous packet numbers
-                let range = PacketNumberRange::new(unacked_packet_number, unacked_packet_number);
-                context.on_packet_loss(&range, publisher);
+                    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+                    //# The PTO timer MUST NOT be set if a timer is set for time threshold
+                    //# loss detection; see Section 6.1.2.  A timer that is set for time
+                    //# threshold loss detection will expire earlier than the PTO timer in
+                    //# most cases and is less likely to spuriously retransmit data.
+                    self.pto.cancel();
 
-                persistent_congestion_calculator
-                    .on_lost_packet(unacked_packet_number, unacked_sent_info);
-            } else {
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
-                //# If packets sent prior to the largest acknowledged packet cannot yet
-                //# be declared lost, then a timer SHOULD be set for the remaining time.
-                self.loss_timer.set(packet_lost_time);
-                debug_assert!(
-                    !self.loss_timer.is_expired(now),
-                    "loss timer was not armed in the future; now: {now}, threshold: {time_threshold:?}\nmanager: {self:#?}"
-                );
-
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-                //# The PTO timer MUST NOT be set if a timer is set for time threshold
-                //# loss detection; see Section 6.1.2.  A timer that is set for time
-                //# threshold loss detection will expire earlier than the PTO timer in
-                //# most cases and is less likely to spuriously retransmit data.
-                self.pto.cancel();
-
-                // assuming sent_packets is ordered by packet number and sent time, all remaining
-                // packets will have a larger packet number and sent time, and are thus not lost.
-                break;
+                    // assuming sent_packets is ordered by packet number and sent time, all remaining
+                    // packets will have a larger packet number and sent time, and are thus not lost.
+                    break;
+                }
             }
         }
 
@@ -1066,26 +1053,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         }
     }
 
-    fn calculate_loss_time_threshold(rtt_estimator: &RttEstimator) -> Duration {
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
-        //# The time threshold is:
-        //#
-        //# max(kTimeThreshold * max(smoothed_rtt, latest_rtt), kGranularity)
-        let mut time_threshold = max(rtt_estimator.smoothed_rtt(), rtt_estimator.latest_rtt());
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
-        //# The RECOMMENDED time threshold (kTimeThreshold), expressed as an
-        //# RTT multiplier, is 9/8.
-        time_threshold = (time_threshold * 9) / 8;
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.1.2
-        //# To avoid declaring
-        //# packets as lost too early, this time threshold MUST be set to at
-        //# least the local timer granularity, as indicated by the kGranularity
-        //# constant.
-        max(time_threshold, K_GRANULARITY)
-    }
-
     #[inline]
     fn check_consistency(&self, active_path: &Path<Config>, is_handshake_confirmed: bool) {
         if cfg!(debug_assertions) {
@@ -1181,7 +1148,7 @@ pub trait Context<Config: endpoint::Config> {
         packet_number_range: &PacketNumberRange,
         publisher: &mut Pub,
     );
-    fn on_rtt_update(&mut self);
+    fn on_rtt_update(&mut self, now: Timestamp);
 }
 
 impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Config> {
@@ -1190,146 +1157,6 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Conf
         query: &mut Q,
     ) -> transmission::interest::Result {
         self.pto.transmission_interest(query)
-    }
-}
-
-/// Manages the probe time out calculation and probe packet transmission
-#[derive(Debug, Default)]
-struct Pto {
-    timer: Timer,
-    state: PtoState,
-}
-
-#[derive(Debug, PartialEq)]
-enum PtoState {
-    Idle,
-    RequiresTransmission(u8),
-}
-
-impl Default for PtoState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
-
-impl Pto {
-    /// Called when a timeout has occurred. Returns true if the PTO timer had expired.
-    pub fn on_timeout(&mut self, packets_in_flight: bool, timestamp: Timestamp) -> bool {
-        if self.timer.poll_expiration(timestamp).is_ready() {
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-            //# When a PTO timer expires, a sender MUST send at least one ack-
-            //# eliciting packet in the packet number space as a probe.
-
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
-            //# Since the server could be blocked until more datagrams are received
-            //# from the client, it is the client's responsibility to send packets to
-            //# unblock the server until it is certain that the server has finished
-            //# its address validation
-
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-            //# An endpoint
-            //# MAY send up to two full-sized datagrams containing ack-eliciting
-            //# packets to avoid an expensive consecutive PTO expiration due to a
-            //# single lost datagram or to transmit data from multiple packet number
-            //# spaces.
-
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-            //# Sending two packets on PTO
-            //# expiration increases resilience to packet drops, thus reducing the
-            //# probability of consecutive PTO events.
-            let transmission_count = if packets_in_flight { 2 } else { 1 };
-
-            self.state = PtoState::RequiresTransmission(transmission_count);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Queries the component for any outgoing frames that need to get sent
-    pub fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        if !context.transmission_mode().is_loss_recovery_probing() {
-            // If we aren't currently in loss recovery probing mode, don't
-            // send a probe. We could be in this state even if PtoState is
-            // RequiresTransmission if we are just transmitting a ConnectionClose
-            // frame.
-            return;
-        }
-
-        match self.state {
-            PtoState::RequiresTransmission(0) => self.state = PtoState::Idle,
-            PtoState::RequiresTransmission(remaining) => {
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-                //# When there is no data to send, the sender SHOULD send
-                //# a PING or other ack-eliciting frame in a single packet, re-arming the
-                //# PTO timer.
-
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
-                //# When the PTO fires, the client MUST send a Handshake packet if it
-                //# has Handshake keys, otherwise it MUST send an Initial packet in a
-                //# UDP datagram with a payload of at least 1200 bytes.
-
-                //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.9
-                //# // Client sends an anti-deadlock packet: Initial is padded
-                //# // to earn more anti-amplification credit,
-                //# // a Handshake packet proves address ownership.
-
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-                //# All probe packets sent on a PTO MUST be ack-eliciting.
-
-                //= https://www.rfc-editor.org/rfc/rfc9002#section-7.5
-                //# Probe packets MUST NOT be blocked by the congestion controller.
-
-                // The early transmission will automatically ensure all initial packets sent by the
-                // client are padded to 1200 bytes
-                if context.ack_elicitation().is_ack_eliciting()
-                    || context.write_frame_forced(&frame::Ping).is_some()
-                {
-                    let remaining = remaining - 1;
-                    self.state = if remaining == 0 {
-                        PtoState::Idle
-                    } else {
-                        PtoState::RequiresTransmission(remaining)
-                    };
-                }
-            }
-            _ => {}
-        }
-    }
-
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-    //# A sender SHOULD restart its PTO timer every time an ack-eliciting
-    //# packet is sent or acknowledged, or when Initial or Handshake keys are
-    //# discarded (Section 4.9 of [QUIC-TLS]).
-    pub fn update(&mut self, base_timestamp: Timestamp, pto_period: Duration) {
-        self.timer.set(base_timestamp + pto_period);
-    }
-
-    /// Cancels the PTO timer
-    pub fn cancel(&mut self) {
-        self.timer.cancel();
-    }
-}
-
-impl timer::Provider for Pto {
-    #[inline]
-    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
-        self.timer.timers(query)?;
-        Ok(())
-    }
-}
-
-impl transmission::interest::Provider for Pto {
-    #[inline]
-    fn transmission_interest<Q: transmission::interest::Query>(
-        &self,
-        query: &mut Q,
-    ) -> transmission::interest::Result {
-        if matches!(self.state, PtoState::RequiresTransmission(_)) {
-            query.on_forced()?;
-        }
-
-        Ok(())
     }
 }
 
@@ -1347,7 +1174,3 @@ impl interceptor::Ack for InterceptAckRange {
         self.ack_range = range;
     }
 }
-
-mod persistent_congestion;
-#[cfg(test)]
-mod tests;

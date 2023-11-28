@@ -582,12 +582,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             quic_version: parameters.quic_version,
         };
 
-        // The path manager always starts with a single path containing the known peer and local
-        // connection ids.
-        let rtt_estimator = RttEstimator::default();
+        let rtt_estimator = RttEstimator::new(parameters.limits.initial_round_trip_time());
         // Assume clients validate the server's address implicitly.
         let peer_validated = Self::Config::ENDPOINT_TYPE.is_server();
-
+        // The path manager always starts with a single path containing the known peer and local
+        // connection ids.
         let initial_path = path::Path::new(
             parameters.path_handle,
             parameters.peer_connection_id,
@@ -1152,6 +1151,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             congestion_controller_endpoint,
             path_migration,
             max_mtu,
+            self.limits.initial_round_trip_time(),
             &mut publisher,
         )?;
 

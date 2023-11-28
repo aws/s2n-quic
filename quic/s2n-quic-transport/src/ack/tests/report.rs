@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ack::ack_ranges::AckRanges;
+use s2n_quic_core::ack;
 
 #[derive(Debug, Default)]
 pub struct Report {
@@ -13,7 +13,7 @@ pub struct Report {
 #[derive(Debug, Default)]
 pub struct EndpointReport {
     /// Final state of the pending AckRanges
-    pub pending_ack_ranges: AckRanges,
+    pub pending_ack_ranges: ack::Ranges,
     /// Total number of transmissions sent
     pub total_transmissions: usize,
     /// Number of transmissions that elicited an ACK

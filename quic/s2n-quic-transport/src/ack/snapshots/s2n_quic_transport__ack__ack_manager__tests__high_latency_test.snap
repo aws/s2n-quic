@@ -1,11 +1,10 @@
 ---
 source: quic/s2n-quic-transport/src/ack/ack_manager.rs
-assertion_line: 711
-expression: "Simulation{network:\n               Network{client:\n                           Application::new(Endpoint::new(ack::Settings{max_ack_delay:\n                                                                            Duration::from_millis(25),\n                                                                        ack_delay_exponent:\n                                                                            1,\n                                                                                 ..Default::default()}),\n                                            [Duration::from_millis(5)].iter().cycle().take(100).cloned()).into(),\n                       server:\n                           Application::new(Endpoint::new(ack::Settings{max_ack_delay:\n                                                                            Duration::from_millis(100),\n                                                                        ack_delay_exponent:\n                                                                            1,\n                                                                                 ..Default::default()}),\n                                            [Duration::from_millis(5)].iter().cycle().take(100).cloned()).into(),},\n           events: empty().collect(),\n           delay: Duration::from_millis(1000),}.run()"
+expression: "Simulation {\n        network: Network {\n            client: Application::new(Endpoint::new(ack::Settings {\n                            max_ack_delay: Duration::from_millis(25),\n                            ack_delay_exponent: 1,\n                            ..Default::default()\n                        }),\n                    [Duration::from_millis(5)].iter().cycle().take(100).cloned()).into(),\n            server: Application::new(Endpoint::new(ack::Settings {\n                            max_ack_delay: Duration::from_millis(100),\n                            ack_delay_exponent: 1,\n                            ..Default::default()\n                        }),\n                    [Duration::from_millis(5)].iter().cycle().take(100).cloned()).into(),\n        },\n        events: empty().collect(),\n        delay: Duration::from_millis(1000),\n    }.run()"
 ---
 Report {
     client: EndpointReport {
-        pending_ack_ranges: AckRanges(
+        pending_ack_ranges: Ranges(
             {
                 PacketNumber(
                     ApplicationData,
@@ -25,7 +24,7 @@ Report {
         processed_transmissions: 119,
     },
     server: EndpointReport {
-        pending_ack_ranges: AckRanges(
+        pending_ack_ranges: Ranges(
             {
                 PacketNumber(
                     ApplicationData,

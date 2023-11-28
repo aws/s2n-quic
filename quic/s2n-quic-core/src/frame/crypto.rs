@@ -50,11 +50,13 @@ pub struct Crypto<Data> {
 }
 
 impl<Data> Crypto<Data> {
+    #[inline]
     pub const fn tag(&self) -> u8 {
         crypto_tag!()
     }
 
     /// Converts the crypto data from one type to another
+    #[inline]
     pub fn map_data<F: FnOnce(Data) -> Out, Out>(self, map: F) -> Crypto<Out> {
         Crypto {
             offset: self.offset,
@@ -68,6 +70,7 @@ impl<Data: EncoderValue> Crypto<Data> {
     ///
     /// If ok, the new payload length is returned, otherwise the frame cannot
     /// fit.
+    #[inline]
     pub fn try_fit(&self, capacity: usize) -> Result<usize, FitError> {
         let mut fixed_len = 0;
         fixed_len += size_of::<Tag>();
@@ -108,6 +111,7 @@ decoder_parameterized_value!(
 );
 
 impl<Data: EncoderValue> EncoderValue for Crypto<Data> {
+    #[inline]
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
         buffer.encode(&self.offset);
@@ -116,18 +120,21 @@ impl<Data: EncoderValue> EncoderValue for Crypto<Data> {
 }
 
 impl<'a> From<Crypto<DecoderBuffer<'a>>> for CryptoRef<'a> {
+    #[inline]
     fn from(s: Crypto<DecoderBuffer<'a>>) -> Self {
         s.map_data(|data| data.into_less_safe_slice())
     }
 }
 
 impl<'a> From<Crypto<DecoderBufferMut<'a>>> for CryptoRef<'a> {
+    #[inline]
     fn from(s: Crypto<DecoderBufferMut<'a>>) -> Self {
         s.map_data(|data| &*data.into_less_safe_slice())
     }
 }
 
 impl<'a> From<Crypto<DecoderBufferMut<'a>>> for CryptoMut<'a> {
+    #[inline]
     fn from(s: Crypto<DecoderBufferMut<'a>>) -> Self {
         s.map_data(|data| data.into_less_safe_slice())
     }
