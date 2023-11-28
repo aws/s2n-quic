@@ -177,7 +177,10 @@ impl ReceiveBuffer {
     pub fn write_at(&mut self, offset: VarInt, data: &[u8]) -> Result<(), ReceiveBufferError> {
         // set the `fin` flag if this write ends at the known final size
         let is_fin = if let Some(final_size) = self.final_size() {
-            offset + data.len() == final_size
+            let end_exclusive = offset
+                .checked_add_usize(data.len())
+                .ok_or(ReceiveBufferError::OutOfRange)?;
+            end_exclusive == final_size
         } else {
             false
         };
