@@ -21,7 +21,6 @@ use s2n_quic_core::{
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
     event::{self, IntoEvent},
-    frame,
     frame::{
         ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
         ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
@@ -794,9 +793,13 @@ pub trait PacketSpace<Config: endpoint::Config> {
             }};
         }
 
+        #[cfg(feature = "alloc")]
         {
             // allow for an ACK frame to be injected by the packet interceptor
-            use s2n_quic_core::packet::interceptor::{Ack, Interceptor};
+            use s2n_quic_core::{
+                frame,
+                packet::interceptor::{Ack, Interceptor},
+            };
             let mut ack = Ack::new(packet_number.space());
             packet_interceptor.intercept_rx_ack(&publisher.subject(), &mut ack);
 

@@ -31,12 +31,14 @@ pub struct Datagram<'a> {
     pub timestamp: Timestamp,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Debug)]
 pub struct Ack {
     space: PacketNumberSpace,
     ranges: ack::Ranges,
 }
 
+#[cfg(feature = "alloc")]
 impl Ack {
     pub fn new(space: PacketNumberSpace) -> Self {
         Self {
@@ -65,6 +67,7 @@ impl Ack {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> From<&'a Ack> for frame::Ack<&'a ack::Ranges> {
     fn from(value: &'a Ack) -> Self {
         frame::Ack {
