@@ -20,6 +20,8 @@ incremental = false
 lto = true
 codegen-units = 1
 incremental = false
+# improve flamegraph information
+debug = true
 
 [profile.fuzz]
 inherits = "dev"
