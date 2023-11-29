@@ -18,7 +18,7 @@ use s2n_quic_core::{
     event::testing::Publisher,
     frame::ack_elicitation::AckElicitation,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
-    packet::{interceptor::Disabled, number::PacketNumberSpace},
+    packet::number::PacketNumberSpace,
     path::{migration, RemoteAddress, DEFAULT_MAX_MTU, INITIAL_PTO_BACKOFF},
     random,
     recovery::{
@@ -3085,7 +3085,6 @@ fn helper_ack_packets_on_path(
         random,
         context,
         publisher,
-        &mut Disabled::default(),
     );
 
     for packet in acked_packets {

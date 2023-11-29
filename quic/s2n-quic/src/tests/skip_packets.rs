@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use crate::connection::error;
 use s2n_quic_core::{
-    event::Subscriber,
-    packet::{interceptor::Interceptor, number::PacketNumberSpace},
+    connection::Error,
+    event::{api::Subject, Subscriber},
+    packet::{
+        interceptor::{Ack, Interceptor},
+        number::PacketNumberSpace,
+    },
+    stream::StreamError,
     varint::VarInt,
 };
 
@@ -86,7 +92,8 @@ fn optimistic_ack_mitigation() {
     assert_eq!(client_skip_count, 5);
 }
 
-// Mimic an Optimistic Ack attack and confirm the connection is closed.
+// Mimic an Optimistic Ack attack and confirm the connection is closed with
+// the appropriate error.
 //
 // Use the SkipSubscriber to record the skipped packet_number and then use
 // the SkipInterceptor to inject an ACK for that packet.
@@ -119,7 +126,16 @@ fn detect_optimistic_ack() {
             stream.send(vec![42; LEN].into()).await.unwrap();
             let send_result = stream.flush().await;
             // connection should abort since we inject a skip packet number
-            assert!(send_result.is_err());
+            match send_result.err() {
+                Some(StreamError::ConnectionError {
+                    error: Error::Transport { code, reason, .. },
+                    ..
+                }) => {
+                    assert_eq!(code, error::Code::PROTOCOL_VIOLATION);
+                    assert_eq!(reason, "received an ACK for a packet that was not sent")
+                }
+                result => assert!(false, "Unexpected result: {:?}", result),
+            }
         });
 
         let client = Client::builder()
@@ -178,14 +194,15 @@ struct SkipInterceptor {
 }
 
 impl Interceptor for SkipInterceptor {
-    fn intercept_rx_ack<A: s2n_quic_core::packet::interceptor::Ack>(&mut self, ack: &mut A) {
+    fn intercept_rx_ack(&mut self, _subject: &Subject, ack: &mut Ack) {
         if !matches!(ack.space(), PacketNumberSpace::ApplicationData) {
             return;
         }
         let skip_packet_number = self.skip_packet_number.lock().unwrap().take();
         if let Some(skip_packet_number) = skip_packet_number {
             let skip_packet_number = VarInt::new(skip_packet_number).unwrap();
-            ack.set_range(skip_packet_number..=skip_packet_number);
+            ack.insert_range(skip_packet_number..=skip_packet_number)
+                .unwrap();
         }
     }
 }

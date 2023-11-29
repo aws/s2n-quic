@@ -21,6 +21,7 @@ use s2n_quic_core::{
     connection::{limits::Limits, InitialId, PeerId},
     crypto::{tls, tls::Session, CryptoSuite, Key},
     event::{self, IntoEvent},
+    frame,
     frame::{
         ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
         ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
@@ -640,7 +641,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
         local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
-        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), transport::Error>;
 
     fn handle_connection_close_frame(
@@ -794,6 +794,30 @@ pub trait PacketSpace<Config: endpoint::Config> {
             }};
         }
 
+        {
+            // allow for an ACK frame to be injected by the packet interceptor
+            use s2n_quic_core::packet::interceptor::{Ack, Interceptor};
+            let mut ack = Ack::new(packet_number.space());
+            packet_interceptor.intercept_rx_ack(&publisher.subject(), &mut ack);
+
+            if !ack.is_empty() {
+                let ack: frame::Ack<&ack::Ranges> = (&ack).into();
+                let on_error = on_frame_processed!(ack);
+                self.handle_ack_frame(
+                    ack,
+                    datagram.timestamp,
+                    path_id,
+                    path_manager,
+                    packet_number,
+                    handshake_status,
+                    local_id_registry,
+                    random_generator,
+                    publisher,
+                )
+                .map_err(on_error)?;
+            }
+        }
+
         while !payload.is_empty() {
             let (frame, remaining) = payload
                 .decode::<FrameMut>()
@@ -843,7 +867,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 }
                 Frame::Ack(frame) => {
                     let on_error = on_frame_processed!(frame);
-
                     self.handle_ack_frame(
                         frame,
                         datagram.timestamp,
@@ -854,7 +877,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
                         local_id_registry,
                         random_generator,
                         publisher,
-                        packet_interceptor,
                     )
                     .map_err(on_error)?;
                 }

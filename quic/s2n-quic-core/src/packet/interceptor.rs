@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    ack,
     event::api::{SocketAddress, Subject},
-    havoc,
-    packet::number::{PacketNumber, PacketNumberSpace},
+    frame, havoc,
+    packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
     time::Timestamp,
     varint::VarInt,
 };
@@ -14,11 +15,6 @@ use s2n_codec::encoder::scatter;
 pub use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 pub mod loss;
 pub use loss::Loss;
-
-pub trait Ack {
-    fn space(&self) -> PacketNumberSpace;
-    fn set_range(&mut self, range: RangeInclusive<VarInt>);
-}
 
 /// TODO add `non_exhaustive` once/if this feature is stable
 #[derive(Debug)]
@@ -35,11 +31,55 @@ pub struct Datagram<'a> {
     pub timestamp: Timestamp,
 }
 
+#[derive(Debug)]
+pub struct Ack {
+    space: PacketNumberSpace,
+    ranges: ack::Ranges,
+}
+
+impl Ack {
+    pub fn new(space: PacketNumberSpace) -> Self {
+        Self {
+            space,
+            ranges: Default::default(),
+        }
+    }
+
+    pub fn space(&self) -> PacketNumberSpace {
+        self.space
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty()
+    }
+
+    pub fn insert_range(
+        &mut self,
+        range: RangeInclusive<VarInt>,
+    ) -> Result<(), ack::ranges::Error> {
+        let pn_range = PacketNumberRange::new(
+            self.space.new_packet_number(*range.start()),
+            self.space.new_packet_number(*range.end()),
+        );
+        self.ranges.insert_packet_number_range(pn_range)
+    }
+}
+
+impl<'a> From<&'a Ack> for frame::Ack<&'a ack::Ranges> {
+    fn from(value: &'a Ack) -> Self {
+        frame::Ack {
+            ack_delay: Default::default(), // TODO: Allow setting ack_delay
+            ack_ranges: &value.ranges,
+            ecn_counts: None, // TODO: Allow setting ecn_counts
+        }
+    }
+}
+
 /// Trait which enables an application to intercept packets that are transmitted and received
 pub trait Interceptor: 'static + Send {
-    // Inject an ACK frame for a packet number
     #[inline(always)]
-    fn intercept_rx_ack<A: Ack>(&mut self, ack: &mut A) {
+    fn intercept_rx_ack(&mut self, subject: &Subject, ack: &mut Ack) {
+        let _ = subject;
         let _ = ack;
     }
 
@@ -103,16 +143,15 @@ pub struct Disabled(());
 
 impl Interceptor for Disabled {}
 
-impl<X, Y> Interceptor for (X, Y)
+impl<A, B> Interceptor for (A, B)
 where
-    X: Interceptor,
-    Y: Interceptor,
+    A: Interceptor,
+    B: Interceptor,
 {
-    // Return the largest packet number given multiple composed Interceptor implementations.
     #[inline(always)]
-    fn intercept_rx_ack<A: Ack>(&mut self, ack: &mut A) {
-        self.0.intercept_rx_ack(ack);
-        self.1.intercept_rx_ack(ack);
+    fn intercept_rx_ack(&mut self, subject: &Subject, ack: &mut Ack) {
+        self.0.intercept_rx_ack(subject, ack);
+        self.1.intercept_rx_ack(subject, ack);
     }
 
     #[inline(always)]

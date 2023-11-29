@@ -697,7 +697,6 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         _local_id_registry: &mut connection::LocalIdRegistry,
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
-        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), transport::Error> {
         let (recovery_manager, mut context) =
             self.recovery(handshake_status, path_id, path_manager);
@@ -708,7 +707,6 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
             random_generator,
             &mut context,
             publisher,
-            packet_interceptor,
         )
     }
 
