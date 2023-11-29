@@ -793,7 +793,6 @@ pub trait PacketSpace<Config: endpoint::Config> {
             }};
         }
 
-        #[cfg(feature = "alloc")]
         {
             // allow for an ACK frame to be injected by the packet interceptor
             use s2n_quic_core::{
@@ -804,7 +803,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
             packet_interceptor.intercept_rx_ack(&publisher.subject(), &mut ack);
 
             if !ack.is_empty() {
-                let ack: frame::Ack<&ack::Ranges> = (&ack).into();
+                let ack: frame::Ack<_> = (&ack).into();
                 let on_error = on_frame_processed!(ack);
                 self.handle_ack_frame(
                     ack,
