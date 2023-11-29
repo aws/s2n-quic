@@ -80,6 +80,7 @@ impl<'a> From<&'a Ack> for frame::Ack<&'a ack::Ranges> {
 
 /// Trait which enables an application to intercept packets that are transmitted and received
 pub trait Interceptor: 'static + Send {
+    #[cfg(feature = "alloc")]
     #[inline(always)]
     fn intercept_rx_ack(&mut self, subject: &Subject, ack: &mut Ack) {
         let _ = subject;
@@ -151,6 +152,7 @@ where
     A: Interceptor,
     B: Interceptor,
 {
+    #[cfg(feature = "alloc")]
     #[inline(always)]
     fn intercept_rx_ack(&mut self, subject: &Subject, ack: &mut Ack) {
         self.0.intercept_rx_ack(subject, ack);
