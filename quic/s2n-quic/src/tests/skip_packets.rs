@@ -134,7 +134,7 @@ fn detect_optimistic_ack() {
                     assert_eq!(code, error::Code::PROTOCOL_VIOLATION);
                     assert_eq!(reason, "received an ACK for a packet that was not sent")
                 }
-                result => assert!(false, "Unexpected result: {:?}", result),
+                result => unreachable!("Unexpected result: {:?}", result),
             }
         });
 
