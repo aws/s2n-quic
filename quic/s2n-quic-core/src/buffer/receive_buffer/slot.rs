@@ -60,7 +60,10 @@ impl Slot {
 
                 // create a new mid slot
                 let start = to_write.start();
-                let mut data = self.data.split_off(len as usize);
+                let mut data = unsafe {
+                    assume!(self.data.len() < len as usize);
+                    self.data.split_off(len as usize)
+                };
 
                 // copy the data to the buffer
                 to_write.write(&mut data);
@@ -84,8 +87,15 @@ impl Slot {
 
     #[inline]
     pub fn unsplit(&mut self, next: Self) {
-        debug_assert_eq!(self.end(), self.end_allocated());
-        debug_assert_eq!(self.end(), next.start());
+        unsafe {
+            assume!(self.end() == self.end_allocated());
+            assume!(self.end() == next.start());
+            assume!(!self.data.is_empty());
+            assume!(self.data.capacity() > 0);
+            assume!(!next.data.is_empty());
+            assume!(next.data.capacity() > 0);
+            assume!(self.data.as_ptr().add(self.data.len()) == next.data.as_ptr());
+        }
         self.data.unsplit(next.data);
         self.end = next.end;
         self.invariants();
@@ -200,7 +210,7 @@ mod tests {
     }
 
     fn req(offset: u64, data: &[u8]) -> Request {
-        Request::new(VarInt::new(offset).unwrap(), data, false).unwrap()
+        Request::new(VarInt::new(offset).unwrap(), data).unwrap()
     }
 
     macro_rules! assert_write {
