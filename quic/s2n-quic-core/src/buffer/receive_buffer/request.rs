@@ -10,7 +10,6 @@ use core::fmt;
 pub struct Request<'a> {
     offset: u64,
     data: &'a [u8],
-    is_fin: bool,
 }
 
 impl<'a> fmt::Debug for Request<'a> {
@@ -18,21 +17,19 @@ impl<'a> fmt::Debug for Request<'a> {
         f.debug_struct("Request")
             .field("offset", &self.offset)
             .field("len", &self.data.len())
-            .field("is_fin", &self.is_fin)
             .finish()
     }
 }
 
 impl<'a> Request<'a> {
     #[inline]
-    pub fn new(offset: VarInt, data: &'a [u8], is_fin: bool) -> Result<Self, ReceiveBufferError> {
+    pub fn new(offset: VarInt, data: &'a [u8]) -> Result<Self, ReceiveBufferError> {
         offset
             .checked_add_usize(data.len())
             .ok_or(ReceiveBufferError::OutOfRange)?;
         Ok(Self {
             offset: offset.as_u64(),
             data,
-            is_fin,
         })
     }
 
@@ -40,31 +37,25 @@ impl<'a> Request<'a> {
     pub fn split(self, offset: u64) -> (Self, Self) {
         let mid = offset.saturating_sub(self.offset);
         let mid = self.data.len().min(mid as _);
+        unsafe {
+            assume!(mid <= self.data.len());
+        }
         let (a, b) = self.data.split_at(mid);
 
-        let a_offset = self.offset.min(offset);
-        let b_offset = self.offset.max(offset);
+        let (a_offset, b_offset) = if self.offset < offset {
+            (self.offset, offset)
+        } else {
+            (offset, self.offset)
+        };
 
-        let mut a = Self {
+        let a = Self {
             offset: a_offset,
             data: a,
-            is_fin: false,
         };
-        let mut b = Self {
+        let b = Self {
             offset: b_offset,
             data: b,
-            is_fin: false,
         };
-
-        if self.is_fin {
-            let fin_offset = self.end_exclusive();
-
-            if b.offset == fin_offset {
-                a.is_fin = true;
-            } else if b.end_exclusive() == fin_offset {
-                b.is_fin = true;
-            }
-        }
 
         (a, b)
     }
@@ -74,12 +65,14 @@ impl<'a> Request<'a> {
         let chunk = buffer.chunk_mut();
         unsafe {
             let len = self.data.len();
-            debug_assert!(len <= chunk.len(), "{:?} <= {:?}", len, chunk.len());
+            assume!(len <= chunk.len(), "{:?} <= {:?}", len, chunk.len());
 
             // Safety: `chunk` is always going to be uninitialized memory which is allocated through `BytesMut`.
             //         Since the receive buffer owns this allocation, it's impossible for the request to overlap
             //         with this `chunk`.
             core::ptr::copy_nonoverlapping(self.data.as_ptr(), chunk.as_mut_ptr(), len);
+
+            assume!(buffer.len() + len <= buffer.capacity());
             buffer.advance_mut(len);
         }
     }
@@ -92,11 +85,6 @@ impl<'a> Request<'a> {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
-    }
-
-    #[inline]
-    pub fn is_fin(&self) -> bool {
-        self.is_fin
     }
 
     #[inline]
