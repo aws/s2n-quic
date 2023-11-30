@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ack,
     event::api::{SocketAddress, Subject},
-    frame, havoc,
-    packet::number::{PacketNumber, PacketNumberRange, PacketNumberSpace},
+    havoc,
+    packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
     varint::VarInt,
 };
@@ -31,58 +30,16 @@ pub struct Datagram<'a> {
     pub timestamp: Timestamp,
 }
 
-#[cfg(feature = "alloc")]
-#[derive(Debug)]
-pub struct Ack {
-    space: PacketNumberSpace,
-    ranges: ack::Ranges,
-}
+pub trait Ack {
+    fn space(&self) -> PacketNumberSpace;
 
-#[cfg(feature = "alloc")]
-impl Ack {
-    pub fn new(space: PacketNumberSpace) -> Self {
-        Self {
-            space,
-            ranges: Default::default(),
-        }
-    }
-
-    pub fn space(&self) -> PacketNumberSpace {
-        self.space
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.ranges.is_empty()
-    }
-
-    pub fn insert_range(
-        &mut self,
-        range: RangeInclusive<VarInt>,
-    ) -> Result<(), ack::ranges::Error> {
-        let pn_range = PacketNumberRange::new(
-            self.space.new_packet_number(*range.start()),
-            self.space.new_packet_number(*range.end()),
-        );
-        self.ranges.insert_packet_number_range(pn_range)
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl<'a> From<&'a Ack> for frame::Ack<&'a ack::Ranges> {
-    fn from(value: &'a Ack) -> Self {
-        frame::Ack {
-            ack_delay: Default::default(), // TODO: Allow setting ack_delay
-            ack_ranges: &value.ranges,
-            ecn_counts: None, // TODO: Allow setting ecn_counts
-        }
-    }
+    fn insert_range(&mut self, range: RangeInclusive<VarInt>);
 }
 
 /// Trait which enables an application to intercept packets that are transmitted and received
 pub trait Interceptor: 'static + Send {
-    #[cfg(feature = "alloc")]
     #[inline(always)]
-    fn intercept_rx_ack(&mut self, subject: &Subject, ack: &mut Ack) {
+    fn intercept_rx_ack<A: Ack>(&mut self, subject: &Subject, ack: &mut A) {
         let _ = subject;
         let _ = ack;
     }
@@ -147,14 +104,13 @@ pub struct Disabled(());
 
 impl Interceptor for Disabled {}
 
-impl<A, B> Interceptor for (A, B)
+impl<X, Y> Interceptor for (X, Y)
 where
-    A: Interceptor,
-    B: Interceptor,
+    X: Interceptor,
+    Y: Interceptor,
 {
-    #[cfg(feature = "alloc")]
     #[inline(always)]
-    fn intercept_rx_ack(&mut self, subject: &Subject, ack: &mut Ack) {
+    fn intercept_rx_ack<A: Ack>(&mut self, subject: &Subject, ack: &mut A) {
         self.0.intercept_rx_ack(subject, ack);
         self.1.intercept_rx_ack(subject, ack);
     }

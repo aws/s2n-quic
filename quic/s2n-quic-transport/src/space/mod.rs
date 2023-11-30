@@ -13,6 +13,7 @@ use crate::{
 use bytes::Bytes;
 use core::{
     fmt,
+    ops::RangeInclusive,
     task::{Poll, Waker},
 };
 use s2n_codec::DecoderBufferMut;
@@ -31,6 +32,7 @@ use s2n_quic_core::{
     packet::number::{PacketNumber, PacketNumberSpace},
     time::{timer, Timestamp},
     transport,
+    varint::VarInt,
 };
 
 mod application;
@@ -610,7 +612,7 @@ macro_rules! default_frame_handler {
     };
 }
 
-pub trait PacketSpace<Config: endpoint::Config> {
+pub trait PacketSpace<Config: endpoint::Config>: Sized {
     const INVALID_FRAME_ERROR: &'static str;
 
     fn on_amplification_unblocked(
@@ -764,10 +766,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         publisher: &mut Pub,
         packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<ProcessedPacket<'a>, connection::Error> {
-        use s2n_quic_core::{
-            frame::{Frame, FrameMut},
-            varint::VarInt,
-        };
+        use s2n_quic_core::frame::{Frame, FrameMut};
 
         let mut payload = {
             use s2n_quic_core::packet::interceptor::{Interceptor, Packet};
@@ -795,28 +794,23 @@ pub trait PacketSpace<Config: endpoint::Config> {
 
         {
             // allow for an ACK frame to be injected by the packet interceptor
-            use s2n_quic_core::{
-                frame,
-                packet::interceptor::{Ack, Interceptor},
+            use s2n_quic_core::packet::interceptor::Interceptor;
+            let mut ack_context = AckInterceptContext {
+                packet_space: self,
+                timestamp: datagram.timestamp,
+                path_id,
+                path_manager,
+                packet_number,
+                handshake_status,
+                local_id_registry,
+                random_generator,
+                publisher,
+                on_processed_frame: |ack_frame| processed_packet.on_processed_frame(ack_frame),
+                error: None,
             };
-            let mut ack = Ack::new(packet_number.space());
-            packet_interceptor.intercept_rx_ack(&publisher.subject(), &mut ack);
-
-            if !ack.is_empty() {
-                let ack: frame::Ack<_> = (&ack).into();
-                let on_error = on_frame_processed!(ack);
-                self.handle_ack_frame(
-                    ack,
-                    datagram.timestamp,
-                    path_id,
-                    path_manager,
-                    packet_number,
-                    handshake_status,
-                    local_id_registry,
-                    random_generator,
-                    publisher,
-                )
-                .map_err(on_error)?;
+            packet_interceptor.intercept_rx_ack(&ack_context.publisher.subject(), &mut ack_context);
+            if let Some(error) = ack_context.error {
+                Err(error)?;
             }
         }
 
@@ -1041,5 +1035,82 @@ pub trait PacketSpace<Config: endpoint::Config> {
         self.on_processed_packet(processed_packet, path_id, &path_manager[path_id], publisher)?;
 
         Ok(processed_packet)
+    }
+}
+
+struct AckInterceptContext<
+    'a,
+    Config: endpoint::Config,
+    Pub: event::ConnectionPublisher,
+    Space: PacketSpace<Config>,
+    OnProcessedFrame: FnMut(&Ack<&ack::Ranges>),
+> {
+    packet_space: &'a mut Space,
+    timestamp: Timestamp,
+    path_id: path::Id,
+    path_manager: &'a mut path::Manager<Config>,
+    packet_number: PacketNumber,
+    handshake_status: &'a mut HandshakeStatus,
+    local_id_registry: &'a mut connection::LocalIdRegistry,
+    random_generator: &'a mut Config::RandomGenerator,
+    publisher: &'a mut Pub,
+    on_processed_frame: OnProcessedFrame,
+    error: Option<transport::Error>,
+}
+
+impl<
+        'a,
+        Config: endpoint::Config,
+        Pub: event::ConnectionPublisher,
+        Space: PacketSpace<Config>,
+        OnProcessedFrame: FnMut(&Ack<&ack::Ranges>),
+    > s2n_quic_core::packet::interceptor::Ack
+    for AckInterceptContext<'a, Config, Pub, Space, OnProcessedFrame>
+{
+    fn space(&self) -> PacketNumberSpace {
+        self.packet_number.space()
+    }
+
+    fn insert_range(&mut self, range: RangeInclusive<VarInt>) {
+        use s2n_quic_core::packet::number::PacketNumberRange;
+
+        let mut ack_ranges = ack::Ranges::default();
+        let pn_range = PacketNumberRange::new(
+            self.space().new_packet_number(*range.start()),
+            self.space().new_packet_number(*range.end()),
+        );
+        if ack_ranges.insert_packet_number_range(pn_range).is_err() {
+            self.error = Some(
+                transport::Error::INTERNAL_ERROR
+                    .with_reason("Ack interceptor inserted an invalid packet range"),
+            );
+            return;
+        }
+        let ack_frame = Ack {
+            ack_delay: Default::default(),
+            ack_ranges: &ack_ranges,
+            ecn_counts: None,
+        };
+        (self.on_processed_frame)(&ack_frame);
+
+        let on_error = {
+            let frame_type = ack_frame.tag();
+            move |err: transport::Error| err.with_frame_type(frame_type.into())
+        };
+        self.error = self
+            .packet_space
+            .handle_ack_frame(
+                ack_frame,
+                self.timestamp,
+                self.path_id,
+                self.path_manager,
+                self.packet_number,
+                self.handshake_status,
+                self.local_id_registry,
+                self.random_generator,
+                self.publisher,
+            )
+            .map_err(on_error)
+            .err();
     }
 }

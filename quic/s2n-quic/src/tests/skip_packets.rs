@@ -194,15 +194,14 @@ struct SkipInterceptor {
 }
 
 impl Interceptor for SkipInterceptor {
-    fn intercept_rx_ack(&mut self, _subject: &Subject, ack: &mut Ack) {
+    fn intercept_rx_ack<A: Ack>(&mut self, _subject: &Subject, ack: &mut A) {
         if !matches!(ack.space(), PacketNumberSpace::ApplicationData) {
             return;
         }
         let skip_packet_number = self.skip_packet_number.lock().unwrap().take();
         if let Some(skip_packet_number) = skip_packet_number {
             let skip_packet_number = VarInt::new(skip_packet_number).unwrap();
-            ack.insert_range(skip_packet_number..=skip_packet_number)
-                .unwrap();
+            ack.insert_range(skip_packet_number..=skip_packet_number);
         }
     }
 }
