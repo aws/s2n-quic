@@ -49,6 +49,9 @@ impl Default for Data {
 }
 
 impl Data {
+    /// The maximum length of a chunk of data for the stream
+    pub const MAX_CHUNK_LEN: usize = DATA_LEN;
+
     pub const fn new(len: u64) -> Self {
         Self { len, offset: 0 }
     }
@@ -119,20 +122,23 @@ impl Data {
             return None;
         }
 
-        let offset = (self.offset % DATA_MOD as u64) as usize;
-        let to_send = ((self.len - self.offset) as usize)
-            .min(amount)
-            .min(DATA.len() - offset);
+        let amount = ((self.len - self.offset) as usize).min(amount);
+        let chunk = Self::send_one_at(self.offset, amount);
 
-        if to_send == 0 {
-            return Some(Bytes::new());
-        }
-
-        let chunk = DATA.slice(offset..offset + to_send);
-
-        self.seek_forward(to_send);
+        self.seek_forward(chunk.len());
 
         Some(chunk)
+    }
+
+    pub fn send_one_at(offset: u64, amount: usize) -> Bytes {
+        let offset = (offset % DATA_MOD as u64) as usize;
+        let to_send = amount.min(DATA.len() - offset);
+
+        if to_send == 0 {
+            return Bytes::new();
+        }
+
+        DATA.slice(offset..offset + to_send)
     }
 
     /// Returns the current offset being received or sent

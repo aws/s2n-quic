@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::Request;
-use bytes::BytesMut;
+use bytes::{Buf, BufMut, BytesMut};
 use core::fmt;
 
 /// Possible states for slots in the [`ReceiveBuffer`]s queue
@@ -17,7 +17,8 @@ impl fmt::Debug for Slot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Slot")
             .field("start", &self.start)
-            .field("end", &self.end)
+            .field("end", &self.end())
+            .field("end_allocated", &self.end_allocated())
             .field("len", &self.data.len())
             .field("capacity", &self.data.capacity())
             .finish()
@@ -32,8 +33,11 @@ pub struct Outcome<'a> {
 }
 
 impl Slot {
+    #[inline]
     pub fn new(start: u64, end: u64, data: BytesMut) -> Self {
-        Self { start, end, data }
+        let v = Self { start, end, data };
+        v.invariants();
+        v
     }
 
     #[inline(always)]
@@ -56,7 +60,10 @@ impl Slot {
 
                 // create a new mid slot
                 let start = to_write.start();
-                let mut data = self.data.split_off(len as usize);
+                let mut data = unsafe {
+                    assume!(self.data.len() < len as usize);
+                    self.data.split_off(len as usize)
+                };
 
                 // copy the data to the buffer
                 to_write.write(&mut data);
@@ -73,15 +80,25 @@ impl Slot {
             }
         }
 
+        self.invariants();
+
         Outcome { lower, mid, upper }
     }
 
     #[inline]
     pub fn unsplit(&mut self, next: Self) {
-        debug_assert_eq!(self.end(), self.end_allocated());
-        debug_assert_eq!(self.end(), next.start());
+        unsafe {
+            assume!(self.end() == self.end_allocated());
+            assume!(self.end() == next.start());
+            assume!(!self.data.is_empty());
+            assume!(self.data.capacity() > 0);
+            assume!(!next.data.is_empty());
+            assume!(next.data.capacity() > 0);
+            assume!(self.data.as_ptr().add(self.data.len()) == next.data.as_ptr());
+        }
         self.data.unsplit(next.data);
         self.end = next.end;
+        self.invariants();
     }
 
     #[inline]
@@ -117,6 +134,7 @@ impl Slot {
     #[inline]
     pub fn add_start(&mut self, len: usize) {
         self.start += len as u64;
+        self.invariants()
     }
 
     #[inline]
@@ -127,6 +145,46 @@ impl Slot {
     #[inline]
     pub fn end_allocated(&self) -> u64 {
         self.end
+    }
+
+    #[inline]
+    pub fn skip(&mut self, len: u64) {
+        // trim off the data buffer
+        unsafe {
+            debug_assert!(len <= 1 << 16, "slot length should never exceed 2^16");
+            let len = len as usize;
+
+            // extend the write cursor if the length extends beyond the initialized offset
+            if let Some(to_advance) = len.checked_sub(self.data.len()) {
+                assume!(to_advance <= self.data.remaining_mut());
+                self.data.advance_mut(to_advance);
+            }
+
+            // consume `len` bytes
+            let to_advance = self.data.remaining().min(len);
+            self.data.advance(to_advance);
+        }
+
+        // advance the start position
+        self.start += len;
+
+        self.invariants();
+    }
+
+    /// Indicates the slot isn't capable of storing any more data and should be dropped
+    #[inline]
+    pub fn should_drop(&self) -> bool {
+        self.start() == self.end_allocated()
+    }
+
+    #[inline]
+    fn invariants(&self) {
+        if cfg!(debug_assertions) {
+            assert!(self.data.capacity() <= 1 << 16, "{:?}", self);
+            assert!(self.start() <= self.end(), "{:?}", self);
+            assert!(self.start() <= self.end_allocated(), "{:?}", self);
+            assert!(self.end() <= self.end_allocated(), "{:?}", self);
+        }
     }
 }
 
@@ -152,7 +210,7 @@ mod tests {
     }
 
     fn req(offset: u64, data: &[u8]) -> Request {
-        Request::new(VarInt::new(offset).unwrap(), data, false).unwrap()
+        Request::new(VarInt::new(offset).unwrap(), data).unwrap()
     }
 
     macro_rules! assert_write {
