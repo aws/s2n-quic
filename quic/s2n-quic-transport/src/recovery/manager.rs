@@ -425,15 +425,6 @@ impl<Config: endpoint::Config> Manager<Config> {
         context: &mut Ctx,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        // Update the largest acked packet if the largest packet acked in this frame is larger
-        let acked_new_largest_packet = match self.largest_acked_packet {
-            Some(current_largest) if current_largest > largest_acked_packet_number => false,
-            _ => {
-                self.largest_acked_packet = Some(largest_acked_packet_number);
-                true
-            }
-        };
-
         let mut newly_acked_packets =
             SmallVec::<[PacketDetails<packet_info_type!()>; ACKED_PACKETS_INITIAL_CAPACITY]>::new();
         let (largest_newly_acked, includes_ack_eliciting) = self.process_ack_range(
@@ -444,6 +435,15 @@ impl<Config: endpoint::Config> Manager<Config> {
             context,
             publisher,
         )?;
+
+        // Update the largest acked packet if the largest packet acked in this frame is larger
+        let acked_new_largest_packet = match self.largest_acked_packet {
+            Some(current_largest) if current_largest > largest_acked_packet_number => false,
+            _ => {
+                self.largest_acked_packet = Some(largest_acked_packet_number);
+                true
+            }
+        };
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-5.1
         //# An endpoint generates an RTT sample on receiving an ACK frame that
