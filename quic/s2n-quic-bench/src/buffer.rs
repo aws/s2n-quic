@@ -25,7 +25,7 @@ pub fn benchmarks(c: &mut Criterion) {
             let len = VarInt::new(input.len() as _).unwrap();
             b.iter(move || {
                 buffer.write_at(offset, input).unwrap();
-                while buffer.pop().is_some() {}
+                buffer.copy_into_buf(&mut NoOpBuf);
                 offset += len;
             });
         });
@@ -44,10 +44,34 @@ pub fn benchmarks(c: &mut Criterion) {
                     buffer.write_at(first_offset, input).unwrap();
                     let second_offset = offset;
                     buffer.write_at(second_offset, input).unwrap();
-                    while buffer.pop().is_some() {}
+                    buffer.copy_into_buf(&mut NoOpBuf);
                     offset = first_offset + len;
                 });
             },
         );
+    }
+}
+
+/// A BufMut implementation that doesn't actually copy data into it
+///
+/// This is used to avoid oversampling the `pop` implementation for
+/// `write_at` benchmarks.
+struct NoOpBuf;
+
+unsafe impl bytes::BufMut for NoOpBuf {
+    #[inline]
+    fn remaining_mut(&self) -> usize {
+        usize::MAX
+    }
+
+    #[inline]
+    unsafe fn advance_mut(&mut self, _cnt: usize) {}
+
+    #[inline]
+    fn put_slice(&mut self, _slice: &[u8]) {}
+
+    #[inline]
+    fn chunk_mut(&mut self) -> &mut bytes::buf::UninitSlice {
+        unimplemented!()
     }
 }

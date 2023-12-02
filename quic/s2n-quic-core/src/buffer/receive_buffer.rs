@@ -157,7 +157,11 @@ impl ReceiveBuffer {
     /// Returns true if no bytes are available for reading
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        if let Some(slot) = self.slots.front() {
+            !slot.is_occupied(self.start_offset)
+        } else {
+            true
+        }
     }
 
     /// Returns the number of bytes and chunks available for consumption
@@ -364,11 +368,13 @@ impl ReceiveBuffer {
     #[inline]
     pub fn pop(&mut self) -> Option<BytesMut> {
         self.pop_transform(|buffer, is_final_offset| {
-            if is_final_offset || buffer.len() == buffer.capacity() {
+            let chunk = if is_final_offset || buffer.len() == buffer.capacity() {
                 core::mem::take(buffer)
             } else {
                 buffer.split()
-            }
+            };
+            let len = chunk.len();
+            (chunk, len)
         })
     }
 
@@ -381,23 +387,65 @@ impl ReceiveBuffer {
             let watermark = watermark.min(buffer.len());
 
             // if the watermark is 0 then don't needlessly increment refcounts
-            ensure!(watermark > 0, BytesMut::new());
+            ensure!(watermark > 0, (BytesMut::new(), 0));
 
             if watermark == buffer.len() && is_final_offset {
-                return core::mem::take(buffer);
+                return (core::mem::take(buffer), watermark);
             }
 
-            buffer.split_to(watermark)
+            (buffer.split_to(watermark), watermark)
         })
+    }
+
+    /// Copies all the available buffered data into the provided `buf`'s remaining capacity.
+    ///
+    /// This method is slightly more efficient than [`Self::pop`] when the caller ends up copying
+    /// the buffered data into another slice, since it avoids a refcount increment/decrement on
+    /// the contained [`BytesMut`].
+    ///
+    /// The total number of bytes copied is returned.
+    #[inline]
+    pub fn copy_into_buf<B: bytes::BufMut>(&mut self, buf: &mut B) -> usize {
+        use bytes::Buf;
+
+        let mut total = 0;
+
+        loop {
+            let remaining = buf.remaining_mut();
+            // ensure we have enough capacity in the destination buf
+            ensure!(remaining > 0, total);
+
+            let transform = |buffer: &mut BytesMut, is_final_offset| {
+                let watermark = buffer.len().min(remaining);
+
+                // copy bytes into the destination buf
+                buf.put_slice(&buffer[..watermark]);
+                // advance the chunk rather than splitting to avoid refcount churn
+                buffer.advance(watermark);
+                total += watermark;
+
+                (is_final_offset, watermark)
+            };
+
+            match self.pop_transform(transform) {
+                // if we're at the final offset, then no need to keep iterating
+                Some(true) => break,
+                Some(false) => continue,
+                // no more available chunks
+                None => break,
+            }
+        }
+
+        total
     }
 
     /// Pops a buffer from the front of the receive queue as long as the `transform` function returns a
     /// non-empty buffer.
     #[inline]
-    fn pop_transform<F: Fn(&mut BytesMut, bool) -> BytesMut>(
+    fn pop_transform<F: FnOnce(&mut BytesMut, bool) -> (O, usize), O>(
         &mut self,
         transform: F,
-    ) -> Option<BytesMut> {
+    ) -> Option<O> {
         let slot = self.slots.front_mut()?;
 
         // make sure the slot has some data
@@ -406,19 +454,19 @@ impl ReceiveBuffer {
         let is_final_offset = self.final_offset == slot.end();
         let buffer = slot.data_mut();
 
-        let out = transform(buffer, is_final_offset);
+        let (out, len) = transform(buffer, is_final_offset);
 
         // filter out empty buffers
-        ensure!(!out.is_empty(), None);
+        ensure!(len > 0, None);
 
-        slot.add_start(out.len());
+        slot.add_start(len);
 
         if slot.should_drop() {
             // remove empty buffers
             self.slots.pop_front();
         }
 
-        self.start_offset += out.len() as u64;
+        self.start_offset += len as u64;
 
         self.invariants();
 
@@ -438,7 +486,14 @@ impl ReceiveBuffer {
     /// buffered and available for consumption.
     #[inline]
     pub fn total_received_len(&self) -> u64 {
-        self.consumed_len() + self.len() as u64
+        let mut offset = self.start_offset;
+
+        for slot in &self.slots {
+            ensure!(slot.is_occupied(offset), offset);
+            offset = slot.end();
+        }
+
+        offset
     }
 
     /// Resets the receive buffer.
@@ -581,6 +636,16 @@ impl ReceiveBuffer {
     #[inline(always)]
     fn invariants(&self) {
         if cfg!(debug_assertions) {
+            assert_eq!(
+                self.total_received_len(),
+                self.consumed_len() + self.len() as u64
+            );
+
+            let (actual_len, chunks) = self.report();
+
+            assert_eq!(actual_len == 0, self.is_empty());
+            assert_eq!(self.iter().count(), chunks);
+
             let mut prev_end = self.start_offset;
 
             for slot in &self.slots {

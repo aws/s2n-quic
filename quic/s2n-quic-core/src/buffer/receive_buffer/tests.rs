@@ -89,6 +89,23 @@ fn write_and_pop() {
     assert_eq!(offset, popped_bytes);
 }
 
+#[test]
+#[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
+fn write_and_copy_into_buf() {
+    let mut buffer = ReceiveBuffer::new();
+    let mut offset = VarInt::default();
+    let mut output = vec![];
+    for len in 0..10000 {
+        let chunk = Data::send_one_at(offset.as_u64(), len);
+        buffer.write_at(offset, &chunk).unwrap();
+        offset += chunk.len();
+        let copied_len = buffer.copy_into_buf(&mut output);
+        assert_eq!(copied_len, chunk.len());
+        assert_eq!(&output[..], &chunk[..]);
+        output.clear();
+    }
+}
+
 fn new_receive_buffer() -> ReceiveBuffer {
     let buffer = ReceiveBuffer::new();
     assert_eq!(buffer.len(), 0);
@@ -849,9 +866,11 @@ fn write_partial_fin_test() {
                     let mut allocated_len = 0;
 
                     // use pop_transform so we can take the entire buffer and get an accurate `capacity` value
-                    while let Some(chunk) =
-                        buf.pop_transform(|chunk, _is_final_chunk| core::mem::take(chunk))
-                    {
+                    while let Some(chunk) = buf.pop_transform(|chunk, _is_final_chunk| {
+                        let chunk = core::mem::take(chunk);
+                        let len = chunk.len();
+                        (chunk, len)
+                    }) {
                         actual_len += chunk.len();
                         allocated_len += chunk.capacity();
                         chunks.push(chunk);

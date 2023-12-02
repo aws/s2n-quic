@@ -27,8 +27,8 @@ if [ ! -f target/perf/quinn/bin/perf_client ] || [ ! -f target/perf/quinn/bin/pe
     perf
 fi
 
-RUSTFLAGS="-g --cfg s2n_quic_unstable" cargo \
+cargo \
   +stable \
   build \
   --bin s2n-quic-qns \
-  --release
+  --profile bench
