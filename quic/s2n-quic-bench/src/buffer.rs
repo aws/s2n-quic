@@ -72,6 +72,6 @@ unsafe impl bytes::BufMut for NoOpBuf {
 
     #[inline]
     fn chunk_mut(&mut self) -> &mut bytes::buf::UninitSlice {
-        todo!()
+        unimplemented!()
     }
 }
