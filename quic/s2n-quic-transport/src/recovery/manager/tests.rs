@@ -500,6 +500,77 @@ fn on_ack_frame() {
     assert_eq!(3, context.on_rtt_update_count);
 }
 
+// Test that receiving an invalid ack frame still allows for `on_timeout`
+// to be invoked without panicking
+#[test]
+fn on_invalid_ack_frame() {
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = ServerManager::new(space);
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let mut context = MockContext::new(&mut path_manager);
+    let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
+
+    let time_sent = time::now() + Duration::from_secs(10);
+
+    // Send packets 1 to 5, skipping packet 3
+    for i in [1, 2, 4, 5] {
+        manager.on_packet_sent(
+            space.new_packet_number(VarInt::from_u8(i)),
+            transmission::Outcome {
+                ack_elicitation: AckElicitation::Eliciting,
+                is_congestion_controlled: true,
+                bytes_sent: 128,
+                bytes_progressed: 0,
+            },
+            time_sent,
+            ExplicitCongestionNotification::default(),
+            transmission::Mode::Normal,
+            None,
+            &mut context,
+            &mut publisher,
+        );
+    }
+    manager.on_transmit_burst_complete(context.active_path(), time_sent, true);
+
+    // Ack packet 2, arming the loss timer for packet 1
+    let ack_receive_time = time_sent + Duration::from_millis(10);
+    ack_packets(
+        2..=2,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        None,
+        &mut publisher,
+    );
+    assert!(manager.loss_timer.is_armed());
+
+    // Receive an ACK that fails validation (packet 3 was never sent)
+    context.fail_validation = true;
+    ack_packets(
+        1..=5,
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        None,
+        &mut publisher,
+    );
+
+    // Call on_timeout to verify there is no panic
+    manager.on_timeout(
+        manager.next_expiration().unwrap(),
+        random,
+        0,
+        &mut context,
+        &mut publisher,
+    );
+
+    // Verify packet 1 is lost
+    assert!(context
+        .lost_packets
+        .contains(&space.new_packet_number(1_u8.into())));
+}
+
 #[derive(Clone, Debug, TypeGenerator)]
 struct Packet {
     outcome: Outcome,
@@ -3078,7 +3149,7 @@ fn helper_ack_packets_on_path(
         ecn_counts,
     };
 
-    let _ = manager.on_ack_frame(
+    let result = manager.on_ack_frame(
         datagram.timestamp,
         frame,
         acked_packets.start(),
@@ -3087,8 +3158,13 @@ fn helper_ack_packets_on_path(
         publisher,
     );
 
-    for packet in acked_packets {
-        assert!(manager.sent_packets.get(packet).is_none());
+    if context.fail_validation {
+        assert!(result.is_err());
+    } else {
+        assert!(result.is_ok());
+        for packet in acked_packets {
+            assert!(manager.sent_packets.get(packet).is_none());
+        }
     }
 }
 
@@ -3386,6 +3462,7 @@ struct MockContext<'a, Config: endpoint::Config> {
     path_id: path::Id,
     lost_packets: HashSet<PacketNumber>,
     path_manager: &'a mut path::Manager<Config>,
+    fail_validation: bool,
 }
 
 impl<'a, Config: endpoint::Config> MockContext<'a, Config> {
@@ -3399,6 +3476,7 @@ impl<'a, Config: endpoint::Config> MockContext<'a, Config> {
             path_id: path_manager.active_path_id(),
             lost_packets: HashSet::default(),
             path_manager,
+            fail_validation: false,
         }
     }
 
@@ -3449,7 +3527,12 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for MockContext<'a,
         _lowest_tracking_packet_number: PacketNumber,
     ) -> Result<(), transport::Error> {
         self.validate_packet_ack_count += 1;
-        Ok(())
+
+        if self.fail_validation {
+            Err(transport::Error::PROTOCOL_VIOLATION)
+        } else {
+            Ok(())
+        }
     }
 
     fn on_new_packet_ack<Pub: event::ConnectionPublisher>(
