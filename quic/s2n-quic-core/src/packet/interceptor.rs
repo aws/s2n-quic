@@ -4,9 +4,11 @@
 use crate::{
     event::api::{SocketAddress, Subject},
     havoc,
-    packet::number::PacketNumber,
+    packet::number::{PacketNumber, PacketNumberSpace},
     time::Timestamp,
+    varint::VarInt,
 };
+use core::ops::RangeInclusive;
 use s2n_codec::encoder::scatter;
 
 pub use s2n_codec::{DecoderBufferMut, EncoderBuffer};
@@ -28,8 +30,20 @@ pub struct Datagram<'a> {
     pub timestamp: Timestamp,
 }
 
+pub trait Ack {
+    fn space(&self) -> PacketNumberSpace;
+
+    fn insert_range(&mut self, range: RangeInclusive<VarInt>);
+}
+
 /// Trait which enables an application to intercept packets that are transmitted and received
 pub trait Interceptor: 'static + Send {
+    #[inline(always)]
+    fn intercept_rx_ack<A: Ack>(&mut self, subject: &Subject, ack: &mut A) {
+        let _ = subject;
+        let _ = ack;
+    }
+
     #[inline(always)]
     fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
         let _ = subject;
@@ -90,11 +104,17 @@ pub struct Disabled(());
 
 impl Interceptor for Disabled {}
 
-impl<A, B> Interceptor for (A, B)
+impl<X, Y> Interceptor for (X, Y)
 where
-    A: Interceptor,
-    B: Interceptor,
+    X: Interceptor,
+    Y: Interceptor,
 {
+    #[inline(always)]
+    fn intercept_rx_ack<A: Ack>(&mut self, subject: &Subject, ack: &mut A) {
+        self.0.intercept_rx_ack(subject, ack);
+        self.1.intercept_rx_ack(subject, ack);
+    }
+
     #[inline(always)]
     fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
         self.0.intercept_rx_remote_port(subject, port);
