@@ -186,7 +186,10 @@ pub mod api {
             stream_limit: u64,
         },
         #[non_exhaustive]
-        NewConnectionId {},
+        NewConnectionId {
+            sequence_number: u64,
+            retire_prior_to: u64,
+        },
         #[non_exhaustive]
         RetireConnectionId {},
         #[non_exhaustive]
@@ -1478,7 +1481,10 @@ pub mod api {
     impl<'a> IntoEvent<builder::Frame> for &crate::frame::NewConnectionId<'a> {
         #[inline]
         fn into_event(self) -> builder::Frame {
-            builder::Frame::NewConnectionId {}
+            builder::Frame::NewConnectionId {
+                sequence_number: self.sequence_number.as_u64(),
+                retire_prior_to: self.retire_prior_to.as_u64(),
+            }
         }
     }
     impl IntoEvent<builder::Frame> for &crate::frame::RetireConnectionId {
@@ -2743,7 +2749,10 @@ pub mod builder {
             stream_type: StreamType,
             stream_limit: u64,
         },
-        NewConnectionId,
+        NewConnectionId {
+            sequence_number: u64,
+            retire_prior_to: u64,
+        },
         RetireConnectionId,
         PathChallenge,
         PathResponse,
@@ -2831,7 +2840,13 @@ pub mod builder {
                     stream_type: stream_type.into_event(),
                     stream_limit: stream_limit.into_event(),
                 },
-                Self::NewConnectionId => NewConnectionId {},
+                Self::NewConnectionId {
+                    sequence_number,
+                    retire_prior_to,
+                } => NewConnectionId {
+                    sequence_number: sequence_number.into_event(),
+                    retire_prior_to: retire_prior_to.into_event(),
+                },
                 Self::RetireConnectionId => RetireConnectionId {},
                 Self::PathChallenge => PathChallenge {},
                 Self::PathResponse => PathResponse {},
