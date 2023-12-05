@@ -395,6 +395,15 @@ pub trait Generator {
     fn lifetime(&self) -> Option<core::time::Duration> {
         None
     }
+
+    /// If true (default), the connection ID used during the the handshake
+    /// will be requested to be retired following confirmation of the handshake
+    /// completing. This reduces linkability between information exchanged
+    /// during and after the handshake.
+    #[inline]
+    fn rotate_handshake_connection_id(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]

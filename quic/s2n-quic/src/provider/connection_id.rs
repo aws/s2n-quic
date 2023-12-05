@@ -58,6 +58,7 @@ pub mod default {
     pub struct Format {
         len: usize,
         lifetime: Option<Duration>,
+        rotate_handshake_connection_id: bool,
     }
 
     impl Default for Format {
@@ -65,6 +66,7 @@ pub mod default {
             Self {
                 len: DEFAULT_LEN,
                 lifetime: None,
+                rotate_handshake_connection_id: true,
             }
         }
     }
@@ -81,6 +83,7 @@ pub mod default {
     pub struct Builder {
         len: usize,
         lifetime: Option<Duration>,
+        rotate_handshake_connection_id: bool,
     }
 
     impl Default for Builder {
@@ -88,6 +91,7 @@ pub mod default {
             Self {
                 len: DEFAULT_LEN,
                 lifetime: None,
+                rotate_handshake_connection_id: true,
             }
         }
     }
@@ -111,11 +115,25 @@ pub mod default {
             Ok(self)
         }
 
+        /// Disables rotation of the connection Id used during the handshake
+        ///
+        /// By default the connection ID used during the the handshake
+        /// will be requested to be retired following confirmation of the handshake
+        /// completing. This reduces linkability between information exchanged
+        /// during and after the handshake.
+        pub fn with_handshake_connection_id_rotation_disabled(
+            mut self,
+        ) -> Result<Self, connection::id::Error> {
+            self.rotate_handshake_connection_id = false;
+            Ok(self)
+        }
+
         /// Builds the [`Format`] into a provider
         pub fn build(self) -> Result<Format, core::convert::Infallible> {
             Ok(Format {
                 len: self.len,
                 lifetime: self.lifetime,
+                rotate_handshake_connection_id: self.rotate_handshake_connection_id,
             })
         }
     }
@@ -130,6 +148,10 @@ pub mod default {
 
         fn lifetime(&self) -> Option<Duration> {
             self.lifetime
+        }
+
+        fn rotate_handshake_connection_id(&self) -> bool {
+            self.rotate_handshake_connection_id
         }
     }
 
@@ -166,6 +188,7 @@ pub mod default {
                 assert_eq!(format.validate(&connection_info, id.as_ref()), Some(len));
                 assert_eq!(id.len(), len);
                 assert_eq!(format.lifetime(), None);
+                assert!(format.rotate_handshake_connection_id());
             }
 
             assert_eq!(
@@ -189,6 +212,7 @@ pub mod default {
                 .build()
                 .unwrap();
             assert_eq!(Some(lifetime), format.lifetime());
+            assert!(format.rotate_handshake_connection_id());
 
             assert_eq!(
                 Some(connection::id::Error::InvalidLifetime),
@@ -203,6 +227,13 @@ pub mod default {
                     .with_lifetime(connection::id::MAX_LIFETIME + Duration::from_millis(1))
                     .err()
             );
+
+            let format = Format::builder()
+                .with_handshake_connection_id_rotation_disabled()
+                .unwrap()
+                .build()
+                .unwrap();
+            assert!(!format.rotate_handshake_connection_id());
         }
     }
 }

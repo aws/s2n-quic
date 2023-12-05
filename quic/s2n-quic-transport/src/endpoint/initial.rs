@@ -135,6 +135,10 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &initial_connection_id,
             initial_connection_id_expiration_time,
             stateless_reset_token,
+            self.config
+                .context()
+                .connection_id_format
+                .rotate_handshake_connection_id(),
         );
 
         let peer_id_registry = self

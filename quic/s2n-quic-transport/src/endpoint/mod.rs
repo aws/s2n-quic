@@ -967,6 +967,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 &local_connection_id,
                 local_connection_id_expiration_time,
                 stateless_reset_token,
+                self.config
+                    .context()
+                    .connection_id_format
+                    .rotate_handshake_connection_id(),
             )
         };
 

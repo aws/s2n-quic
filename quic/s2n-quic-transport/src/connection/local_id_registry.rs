@@ -86,6 +86,9 @@ pub struct LocalIdRegistry {
     transmission_interest: Memo<transmission::Interest, RegisteredIds>,
     /// Memoized query to track the number of active CIDs
     active_id_count: Memo<u8, RegisteredIds>,
+    /// If true, the connection ID used during the the handshake will be requested
+    /// to be retired following confirmation of the handshake completing.
+    rotate_handshake_connection_id: bool,
 }
 
 type RegisteredIds = SmallVec<[LocalIdInfo; NR_STATIC_REGISTRABLE_IDS]>;
@@ -237,6 +240,7 @@ impl LocalIdRegistry {
         handshake_connection_id: &connection::LocalId,
         handshake_connection_id_expiration_time: Option<Timestamp>,
         stateless_reset_token: stateless_reset::Token,
+        rotate_handshake_connection_id: bool,
     ) -> Self {
         let mut registry = Self {
             internal_id,
@@ -279,6 +283,7 @@ impl LocalIdRegistry {
                 }
                 count
             }),
+            rotate_handshake_connection_id,
         };
 
         let _ = registry.register_connection_id(
@@ -615,8 +620,18 @@ impl LocalIdRegistry {
         self.check_consistency();
     }
 
+    /// Invoked when the completion of the handshake has been confirmed
+    ///
+    /// If `rotate_handshake_connection_id` is enabled, the peer will be
+    /// requested to retire the connection id used during the handshake.
+    pub fn on_handshake_confirmed(&mut self) {
+        if self.rotate_handshake_connection_id {
+            self.retire_handshake_connection_id()
+        }
+    }
+
     /// Requests the peer to retire the connection id used during the handshake
-    pub fn retire_handshake_connection_id(&mut self) {
+    fn retire_handshake_connection_id(&mut self) {
         if let Some(handshake_id_info) = self
             .registered_ids
             .iter_mut()

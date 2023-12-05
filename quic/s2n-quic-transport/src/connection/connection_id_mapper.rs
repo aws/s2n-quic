@@ -319,6 +319,7 @@ impl ConnectionIdMapper {
         initial_connection_id: &connection::LocalId,
         initial_connection_id_expiration_time: Option<Timestamp>,
         local_stateless_reset_token: stateless_reset::Token,
+        rotate_handshake_connection_id: bool,
     ) -> LocalIdRegistry {
         LocalIdRegistry::new(
             internal_id,
@@ -326,6 +327,7 @@ impl ConnectionIdMapper {
             initial_connection_id,
             initial_connection_id_expiration_time,
             local_stateless_reset_token,
+            rotate_handshake_connection_id,
         )
     }
 
