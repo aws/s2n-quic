@@ -65,6 +65,9 @@ pub struct PeerIdRegistry {
     ack_interest: Memo<bool, RegisteredIds>,
     /// Memoized query to track if there is any transmission interest
     transmission_interest: Memo<transmission::Interest, RegisteredIds>,
+    /// If true, the connection ID used during the the handshake will be retired
+    /// when the peer sends a NEW_CONNECTION_ID frame.
+    rotate_handshake_connection_id: bool,
 }
 
 type RegisteredIds = SmallVec<[PeerIdInfo; NR_STATIC_REGISTRABLE_IDS]>;
@@ -247,6 +250,7 @@ impl PeerIdRegistry {
     pub(crate) fn new(
         internal_id: InternalConnectionId,
         state: Arc<Mutex<ConnectionIdMapperState>>,
+        rotate_handshake_connection_id: bool,
     ) -> Self {
         Self {
             internal_id,
@@ -271,6 +275,7 @@ impl PeerIdRegistry {
 
                 interest
             }),
+            rotate_handshake_connection_id,
         }
     }
 
@@ -283,15 +288,22 @@ impl PeerIdRegistry {
     pub(crate) fn register_initial_connection_id(&mut self, peer_id: connection::PeerId) {
         debug_assert!(self.is_empty());
 
+        let status = if self.rotate_handshake_connection_id {
+            // Start the initial PeerId in `InUsePendingNewConnectionId` so the ID used
+            // during the handshake is rotated as soon as the peer sends a new connection ID
+            PeerIdStatus::InUsePendingNewConnectionId
+        } else {
+            PeerIdStatus::InUse
+        };
+
         self.registered_ids.push(PeerIdInfo {
             id: peer_id,
             //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.1
             //# The sequence number of the initial connection ID is 0.
             sequence_number: 0,
             stateless_reset_token: None,
-            // Start the initial PeerId in ActivePendingNewConnectionId so the ID used
-            // during the handshake is rotated as soon as the peer sends a new connection ID
-            status: PeerIdStatus::InUsePendingNewConnectionId,
+
+            status,
         });
 
         self.check_consistency();
@@ -692,7 +704,10 @@ pub mod testing {
         let mut random_generator = random::testing::Generator(123);
 
         let mut registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
-            .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
+            .create_client_peer_id_registry(
+                InternalConnectionIdGenerator::new().generate_id(),
+                true,
+            );
         registry.register_initial_connection_id(initial_id);
         if let Some(token) = stateless_reset_token {
             registry.register_initial_stateless_reset_token(token);

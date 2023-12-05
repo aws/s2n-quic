@@ -36,6 +36,7 @@ fn manager_server(first_path: ServerPath) -> ServerManager {
         .create_server_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             first_path.peer_connection_id,
+            true,
         );
     ServerManager::new(first_path, peer_id_registry)
 }
@@ -44,7 +45,7 @@ fn manager_server(first_path: ServerPath) -> ServerManager {
 fn manager_client(first_path: ClientPath) -> ClientManager {
     let mut random_generator = random::testing::Generator(123);
     let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client)
-        .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
+        .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id(), true);
     ClientManager::new(first_path, peer_id_registry)
 }
 
@@ -1588,6 +1589,7 @@ fn last_known_validated_path_should_update_on_path_response() {
             .create_server_peer_id_registry(
                 InternalConnectionIdGenerator::new().generate_id(),
                 zero_path.peer_connection_id,
+                true,
             );
     assert!(peer_id_registry
         .on_new_connection_id(&first_conn_id, 1, 0, &TEST_TOKEN_1)
@@ -1754,6 +1756,7 @@ pub fn helper_manager_with_paths_base(
             .create_server_peer_id_registry(
                 InternalConnectionIdGenerator::new().generate_id(),
                 zero_path.peer_connection_id,
+                true,
             );
     assert!(peer_id_registry
         .on_new_connection_id(&first_conn_id, 1, 0, &TEST_TOKEN_1)

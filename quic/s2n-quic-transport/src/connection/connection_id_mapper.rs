@@ -340,8 +340,13 @@ impl ConnectionIdMapper {
         &mut self,
         internal_id: InternalConnectionId,
         initial_connection_id: connection::PeerId,
+        rotate_handshake_connection_id: bool,
     ) -> PeerIdRegistry {
-        let mut registry = PeerIdRegistry::new(internal_id, self.state.clone());
+        let mut registry = PeerIdRegistry::new(
+            internal_id,
+            self.state.clone(),
+            rotate_handshake_connection_id,
+        );
 
         registry.register_initial_connection_id(initial_connection_id);
         registry
@@ -355,8 +360,13 @@ impl ConnectionIdMapper {
     pub fn create_client_peer_id_registry(
         &mut self,
         internal_id: InternalConnectionId,
+        rotate_handshake_connection_id: bool,
     ) -> PeerIdRegistry {
-        PeerIdRegistry::new(internal_id, self.state.clone())
+        PeerIdRegistry::new(
+            internal_id,
+            self.state.clone(),
+            rotate_handshake_connection_id,
+        )
     }
 }
 
@@ -373,7 +383,7 @@ mod tests {
         let internal_id = InternalConnectionIdGenerator::new().generate_id();
         let peer_id = id(b"id01");
 
-        let mut registry = mapper.create_client_peer_id_registry(internal_id);
+        let mut registry = mapper.create_client_peer_id_registry(internal_id, true);
         registry.register_initial_connection_id(peer_id);
         registry.register_initial_stateless_reset_token(TEST_TOKEN_1);
 
@@ -390,7 +400,7 @@ mod tests {
             mapper.remove_internal_connection_id_by_stateless_reset_token(&TEST_TOKEN_2)
         );
 
-        let mut registry = mapper.create_client_peer_id_registry(internal_id);
+        let mut registry = mapper.create_client_peer_id_registry(internal_id, true);
         registry.register_initial_connection_id(peer_id);
         registry.register_initial_stateless_reset_token(TEST_TOKEN_3);
 

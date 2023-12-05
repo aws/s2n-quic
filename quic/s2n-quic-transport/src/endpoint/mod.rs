@@ -953,6 +953,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .lifetime()
             .map(|duration| timestamp + duration);
 
+        let rotate_handshake_connection_id = self
+            .config
+            .context()
+            .connection_id_format
+            .rotate_handshake_connection_id();
+
         let local_id_registry = {
             // TODO: the client currently generates a random stateless_reset_token but doesnt
             // transmit it. Refactor `create_local_id_registry` to instead accept None for
@@ -967,10 +973,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 &local_connection_id,
                 local_connection_id_expiration_time,
                 stateless_reset_token,
-                self.config
-                    .context()
-                    .connection_id_format
-                    .rotate_handshake_connection_id(),
+                rotate_handshake_connection_id,
             )
         };
 
@@ -999,7 +1002,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         // stateless_reset_token.
         let peer_id_registry = self
             .connection_id_mapper
-            .create_client_peer_id_registry(internal_connection_id);
+            .create_client_peer_id_registry(internal_connection_id, rotate_handshake_connection_id);
 
         let congestion_controller = {
             let path_info = congestion_controller::PathInfo::new(&remote_address);
