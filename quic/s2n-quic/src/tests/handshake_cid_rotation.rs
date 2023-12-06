@@ -19,21 +19,13 @@ fn rotate_handshake_test(
     let client_events = client_subscriber.events();
 
     test(model, |handle| {
-        let server_cid_generator = if server_rotate_handshake_connection_id {
-            connection_id::default::Format::builder().build()?
-        } else {
-            connection_id::default::Format::builder()
-                .with_handshake_connection_id_rotation_disabled()?
-                .build()?
-        };
+        let server_cid_generator = connection_id::default::Format::builder()
+            .with_handshake_connection_id_rotation(server_rotate_handshake_connection_id)?
+            .build()?;
 
-        let client_cid_generator = if client_rotate_handshake_connection_id {
-            connection_id::default::Format::builder().build()?
-        } else {
-            connection_id::default::Format::builder()
-                .with_handshake_connection_id_rotation_disabled()?
-                .build()?
-        };
+        let client_cid_generator = connection_id::default::Format::builder()
+            .with_handshake_connection_id_rotation(client_rotate_handshake_connection_id)?
+            .build()?;
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
