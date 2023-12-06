@@ -3414,6 +3414,7 @@ fn helper_generate_path_manager_with_first_addr(
         .create_server_peer_id_registry(
             InternalConnectionIdGenerator::new().generate_id(),
             connection::PeerId::TEST_ID,
+            true,
         );
     let mut rtt_estimator = RttEstimator::default();
     rtt_estimator.on_max_ack_delay(max_ack_delay.try_into().unwrap());
@@ -3437,7 +3438,7 @@ fn helper_generate_client_path_manager(
     let mut random_generator = random::testing::Generator(123);
 
     let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client)
-        .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id());
+        .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id(), true);
     let mut rtt_estimator = RttEstimator::default();
     rtt_estimator.on_max_ack_delay(max_ack_delay.try_into().unwrap());
     let path = super::Path::new(

@@ -93,6 +93,7 @@ impl Model {
                     .create_server_peer_id_registry(
                         InternalConnectionIdGenerator::new().generate_id(),
                         zero_path.peer_connection_id,
+                        true,
                     );
 
             Manager::new(zero_path, peer_id_registry)

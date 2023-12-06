@@ -429,8 +429,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         local_id_registry: &mut connection::LocalIdRegistry,
         timestamp: Timestamp,
     ) {
-        // Retire the local connection ID used during the handshake to reduce linkability
-        local_id_registry.retire_handshake_connection_id();
+        // Retire the local connection ID used during the handshake to reduce linkability (if enabled)
+        local_id_registry.on_handshake_confirmed();
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# A sender SHOULD restart its PTO timer every time an ack-eliciting

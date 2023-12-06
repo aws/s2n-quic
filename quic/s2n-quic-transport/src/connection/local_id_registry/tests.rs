@@ -58,6 +58,7 @@ fn mapper(
         &handshake_id,
         handshake_id_expiration_time,
         token,
+        true,
     );
     (mapper, registry)
 }
@@ -152,12 +153,14 @@ fn connection_mapper_test() {
         &ext_id_1,
         Some(handshake_id_expiration_time),
         TEST_TOKEN_1,
+        true,
     );
     let mut reg2 = mapper.create_local_id_registry(
         id2,
         &ext_id_3,
         Some(handshake_id_expiration_time),
         TEST_TOKEN_3,
+        true,
     );
 
     reg1.set_active_connection_id_limit(3);
@@ -497,7 +500,7 @@ fn endpoint_may_exceed_limit_temporarily() {
     assert!(reg1
         .register_connection_id(&ext_id_2, Some(now + EXPIRATION_BUFFER), TEST_TOKEN_2)
         .is_ok());
-    reg1.retire_handshake_connection_id();
+    reg1.on_handshake_confirmed();
     reg1.on_timeout(now + EXPIRATION_BUFFER);
 
     // We can register another ID because the retire_prior_to field retires old IDs
@@ -807,7 +810,7 @@ fn on_timeout() {
     // Timer set for the handshake connection ID
     assert_eq!(1, reg1.armed_timer_count());
 
-    reg1.retire_handshake_connection_id();
+    reg1.on_handshake_confirmed();
 
     // Too early, no timer is ready
     reg1.on_timeout(now);
@@ -859,7 +862,7 @@ fn on_timeout() {
 }
 
 #[test]
-fn retire_handshake_connection_id() {
+fn on_handshake_confirmed_rotate_handshake_connection_id_enabled() {
     let ext_id_1 = id(b"id01");
     let ext_id_2 = id(b"id02");
     let ext_id_3 = id(b"id03");
@@ -867,6 +870,7 @@ fn retire_handshake_connection_id() {
     let now = time::now();
     let handshake_expiration = now + Duration::from_secs(60);
     let (_, mut reg1) = mapper(ext_id_1, Some(handshake_expiration), TEST_TOKEN_1);
+    assert!(reg1.rotate_handshake_connection_id);
 
     reg1.set_active_connection_id_limit(3);
 
@@ -877,7 +881,7 @@ fn retire_handshake_connection_id() {
         .register_connection_id(&ext_id_3, None, TEST_TOKEN_3)
         .is_ok());
 
-    reg1.retire_handshake_connection_id();
+    reg1.on_handshake_confirmed();
 
     assert_eq!(3, reg1.registered_ids.iter().count());
 
@@ -893,8 +897,8 @@ fn retire_handshake_connection_id() {
         }
     }
 
-    // Calling retire_handshake_connection_id again does nothing
-    reg1.retire_handshake_connection_id();
+    // Calling on_handshake_confirmed again does nothing
+    reg1.on_handshake_confirmed();
 
     assert_eq!(3, reg1.registered_ids.iter().count());
 
@@ -921,5 +925,34 @@ fn retire_handshake_connection_id() {
         } else {
             assert!(!id_info.is_retired())
         }
+    }
+}
+
+#[test]
+fn on_handshake_confirmed_rotate_handshake_connection_id_disabled() {
+    let ext_id_1 = id(b"id01");
+    let ext_id_2 = id(b"id02");
+    let ext_id_3 = id(b"id03");
+
+    let (_, mut reg1) = mapper(ext_id_1, None, TEST_TOKEN_1);
+    // Disable rotating handshake connection ID
+    reg1.rotate_handshake_connection_id = false;
+
+    reg1.set_active_connection_id_limit(3);
+
+    assert!(reg1
+        .register_connection_id(&ext_id_2, None, TEST_TOKEN_2)
+        .is_ok());
+    assert!(reg1
+        .register_connection_id(&ext_id_3, None, TEST_TOKEN_3)
+        .is_ok());
+
+    reg1.on_handshake_confirmed();
+
+    assert_eq!(3, reg1.registered_ids.iter().count());
+
+    for id_info in reg1.registered_ids.iter() {
+        assert!(!id_info.is_retired());
+        assert_eq!(None, id_info.retirement_time);
     }
 }

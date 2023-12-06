@@ -135,11 +135,20 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &initial_connection_id,
             initial_connection_id_expiration_time,
             stateless_reset_token,
+            self.config
+                .context()
+                .connection_id_format
+                .rotate_handshake_connection_id(),
         );
 
-        let peer_id_registry = self
-            .connection_id_mapper
-            .create_server_peer_id_registry(internal_connection_id, source_connection_id);
+        let peer_id_registry = self.connection_id_mapper.create_server_peer_id_registry(
+            internal_connection_id,
+            source_connection_id,
+            self.config
+                .context()
+                .connection_id_format
+                .rotate_handshake_connection_id(),
+        );
 
         let wakeup_handle = self
             .wakeup_queue

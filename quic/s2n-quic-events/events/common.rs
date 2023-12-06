@@ -357,7 +357,10 @@ enum Frame {
         stream_type: StreamType,
         stream_limit: u64,
     },
-    NewConnectionId,
+    NewConnectionId {
+        sequence_number: u64,
+        retire_prior_to: u64,
+    },
     RetireConnectionId,
     PathChallenge,
     PathResponse,
@@ -487,7 +490,10 @@ impl IntoEvent<builder::Frame> for &crate::frame::StreamsBlocked {
 impl<'a> IntoEvent<builder::Frame> for &crate::frame::NewConnectionId<'a> {
     #[inline]
     fn into_event(self) -> builder::Frame {
-        builder::Frame::NewConnectionId {}
+        builder::Frame::NewConnectionId {
+            sequence_number: self.sequence_number.as_u64(),
+            retire_prior_to: self.retire_prior_to.as_u64(),
+        }
     }
 }
 
