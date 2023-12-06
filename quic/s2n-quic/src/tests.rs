@@ -29,6 +29,7 @@ use setup::*;
 
 mod blackhole;
 mod connection_migration;
+mod handshake_cid_rotation;
 mod interceptor;
 mod mtu;
 mod no_tls;

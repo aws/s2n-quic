@@ -56,6 +56,7 @@ macro_rules! event_recorder {
     };
 }
 
+event_recorder!(FrameSent, FrameSent, on_frame_sent);
 event_recorder!(PacketSent, PacketSent, on_packet_sent);
 event_recorder!(MtuUpdated, MtuUpdated, on_mtu_updated);
 event_recorder!(

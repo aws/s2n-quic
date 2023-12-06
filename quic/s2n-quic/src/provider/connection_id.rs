@@ -123,7 +123,7 @@ pub mod default {
         /// during and after the handshake.
         pub fn with_handshake_connection_id_rotation_disabled(
             mut self,
-        ) -> Result<Self, connection::id::Error> {
+        ) -> Result<Self, core::convert::Infallible> {
             self.rotate_handshake_connection_id = false;
             Ok(self)
         }
