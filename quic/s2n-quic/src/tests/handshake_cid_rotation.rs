@@ -114,20 +114,18 @@ fn server_disabled_client_disabled() {
     assert_retire_connection_id_count(&client_events, 0);
 }
 
-fn assert_retire_prior_to(events: &Vec<FrameSent>, expected: u64) {
+fn assert_retire_prior_to(events: &[FrameSent], expected: u64) {
     for frame_sent in events {
-        match frame_sent.frame {
-            Frame::NewConnectionId {
-                retire_prior_to, ..
-            } => {
-                assert_eq!(retire_prior_to, expected);
-            }
-            _ => {}
+        if let Frame::NewConnectionId {
+            retire_prior_to, ..
+        } = frame_sent.frame
+        {
+            assert_eq!(retire_prior_to, expected);
         }
     }
 }
 
-fn assert_retire_connection_id_count(events: &Vec<FrameSent>, expected: usize) {
+fn assert_retire_connection_id_count(events: &[FrameSent], expected: usize) {
     let retire_connection_id_count = events
         .iter()
         .filter(|frame_sent| matches!(frame_sent.frame, Frame::RetireConnectionId { .. }))
