@@ -11,7 +11,7 @@ use rustls::quic::{
 };
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{self, tls, CryptoError},
+    crypto::{self, tls, tls::CipherSuite, CryptoError},
     transport,
 };
 
@@ -39,6 +39,25 @@ impl tls::TlsSession for Session {
         {
             Ok(_) => Ok(()),
             Err(_) => Err(tls::TlsExportError::failure()),
+        }
+    }
+
+    fn cipher_suite(&self) -> CipherSuite {
+        if let Some(rustls_cipher_suite) = self.connection.negotiated_cipher_suite() {
+            match rustls_cipher_suite.suite() {
+                rustls::CipherSuite::TLS13_AES_128_GCM_SHA256 => {
+                    CipherSuite::TLS_AES_128_GCM_SHA256
+                }
+                rustls::CipherSuite::TLS13_AES_256_GCM_SHA384 => {
+                    CipherSuite::TLS_AES_256_GCM_SHA384
+                }
+                rustls::CipherSuite::TLS13_CHACHA20_POLY1305_SHA256 => {
+                    CipherSuite::TLS_CHACHA20_POLY1305_SHA256
+                }
+                _ => CipherSuite::Unknown,
+            }
+        } else {
+            CipherSuite::Unknown
         }
     }
 }

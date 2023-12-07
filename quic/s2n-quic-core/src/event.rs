@@ -147,6 +147,10 @@ impl<'a> TlsSession<'a> {
     ) -> Result<(), crate::crypto::tls::TlsExportError> {
         self.session.tls_exporter(label, context, output)
     }
+
+    pub fn cipher_suite(&self) -> crate::event::api::CipherSuite {
+        self.session.cipher_suite().into_event()
+    }
 }
 
 impl<'a> crate::event::IntoEvent<TlsSession<'a>> for TlsSession<'a> {

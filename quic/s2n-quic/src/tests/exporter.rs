@@ -6,12 +6,14 @@
 
 use super::*;
 use crate::provider::event::events::{self, ConnectionInfo, ConnectionMeta, Subscriber};
+use s2n_quic_core::event::api::CipherSuite;
 
 struct Exporter;
 
 #[derive(Default)]
 struct ExporterContext {
     key: Option<[u8; 32]>,
+    cipher_suite: Option<CipherSuite>,
 }
 
 impl Subscriber for Exporter {
@@ -38,6 +40,7 @@ impl Subscriber for Exporter {
             .tls_exporter(b"EXPERIMENTAL EXPORTER s2n-quic", b"some context", &mut key)
             .unwrap();
         context.key = Some(key);
+        context.cipher_suite = Some(event.session.cipher_suite());
     }
 }
 
@@ -109,6 +112,11 @@ fn happy_case() {
         let client_key = conn
             .query_event_context(|ctx: &ExporterContext| ctx.key.unwrap())
             .unwrap();
+
+        let cipher_suite = conn
+            .query_event_context(|ctx: &ExporterContext| ctx.cipher_suite.unwrap())
+            .unwrap();
+        eprintln!("HERE {:?}", cipher_suite);
 
         let mut stream = conn.open_bidirectional_stream().await.unwrap();
 

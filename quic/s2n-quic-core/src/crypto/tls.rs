@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::crypto::tls::CipherSuite::{
+    Unknown, TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256,
+};
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::{convert::TryFrom, fmt::Debug};
@@ -40,6 +43,8 @@ pub trait TlsSession: Send + Sync {
         context: &[u8],
         output: &mut [u8],
     ) -> Result<(), TlsExportError>;
+
+    fn cipher_suite(&self) -> CipherSuite;
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
@@ -263,6 +268,17 @@ impl crate::event::IntoEvent<crate::event::api::CipherSuite> for CipherSuite {
     fn into_event(self) -> crate::event::api::CipherSuite {
         let builder: crate::event::builder::CipherSuite = self.into_event();
         builder.into_event()
+    }
+}
+
+impl From<&str> for CipherSuite {
+    fn from(value: &str) -> Self {
+        match value {
+            "TLS_AES_128_GCM_SHA256" => TLS_AES_128_GCM_SHA256,
+            "TLS_AES_256_GCM_SHA384" => TLS_AES_256_GCM_SHA384,
+            "TLS_CHACHA20_POLY1305_SHA256" => TLS_CHACHA20_POLY1305_SHA256,
+            _ => Unknown,
+        }
     }
 }
 
