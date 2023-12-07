@@ -17,6 +17,7 @@ std = ["alloc", "once_cell"]
 testing = ["std", "generator", "s2n-codec/testing", "checked-counters", "insta", "futures-test"]
 generator = ["bolero-generator"]
 checked-counters = []
+branch-tracing = ["tracing"]
 event-tracing = ["tracing"]
 # This feature enables support for third party congestion controller implementations
 unstable-congestion-controller = []
