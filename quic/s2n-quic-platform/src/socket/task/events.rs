@@ -70,8 +70,8 @@ impl crate::syscall::SocketEvents for TxEvents {
                 ControlFlow::Break(())
             }
             _ => {
-                // on platforms that don't support GSO we need to disable it and mark the packet as
-                // "sent" even though we weren't able to.
+                // let the GSO settings know there was an error on the socket, which may indicate
+                // it needs to be disabled
                 let _ = self.gso.handle_socket_error(&error);
 
                 // ignore all other errors and just consider the packet sent
