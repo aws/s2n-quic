@@ -41,8 +41,14 @@ pub fn tracing_events() -> event::tracing::Subscriber {
             }
         }
 
+        let level = if std::env::var("TRACE").is_ok() {
+            tracing_subscriber::filter::LevelFilter::TRACE
+        } else {
+            tracing_subscriber::filter::LevelFilter::DEBUG
+        };
+
         tracing_subscriber::fmt()
-            .with_max_level(tracing_subscriber::filter::LevelFilter::DEBUG)
+            .with_max_level(level)
             .event_format(format)
             .with_test_writer()
             .init();
