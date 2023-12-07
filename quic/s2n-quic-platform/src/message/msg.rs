@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::message::{cmsg, cmsg::Encoder, Message as MessageTrait};
+use crate::{
+    features,
+    message::{cmsg, cmsg::Encoder, Message as MessageTrait},
+};
 use core::{
     alloc::Layout,
     mem::{size_of, size_of_val},
@@ -31,7 +34,7 @@ use bolero_generator::*;
 impl MessageTrait for msghdr {
     type Handle = Handle;
 
-    const SUPPORTS_GSO: bool = cfg!(s2n_quic_platform_gso);
+    const SUPPORTS_GSO: bool = features::gso::IS_SUPPORTED;
     const SUPPORTS_ECN: bool = cfg!(s2n_quic_platform_tos);
     const SUPPORTS_FLOW_LABELS: bool = true;
 
@@ -55,10 +58,11 @@ impl MessageTrait for msghdr {
         (*self.msg_iov).iov_len = payload_len;
     }
 
-    #[cfg(s2n_quic_platform_gso)]
     #[inline]
     fn set_segment_size(&mut self, size: usize) {
-        self.encode_cmsg(libc::SOL_UDP, libc::UDP_SEGMENT, size as cmsg::UdpGso)
+        let level = features::gso::LEVEL.expect("gso is unsupported");
+        let ty = features::gso::TYPE.expect("gso is unsupported");
+        self.encode_cmsg(level, ty, size as features::gso::Cmsg)
             .unwrap();
     }
 

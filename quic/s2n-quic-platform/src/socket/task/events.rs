@@ -1,9 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Some of the functions in these impls are not used on non-unix systems
-#![cfg_attr(not(unix), allow(dead_code))]
-
 use crate::features::Gso;
 use core::ops::ControlFlow;
 
@@ -11,7 +8,6 @@ use core::ops::ControlFlow;
 pub struct TxEvents {
     count: usize,
     is_blocked: bool,
-    #[cfg_attr(not(s2n_quic_platform_gso), allow(dead_code))]
     gso: Gso,
 }
 
@@ -73,19 +69,11 @@ impl crate::syscall::SocketEvents for TxEvents {
                 // if we got interrupted break and have the task try again
                 ControlFlow::Break(())
             }
-            #[cfg(s2n_quic_platform_gso)]
-            _ if error.raw_os_error() == Some(libc::EIO) => {
+            _ => {
                 // on platforms that don't support GSO we need to disable it and mark the packet as
                 // "sent" even though we weren't able to.
-                self.count += 1;
+                let _ = self.gso.handle_socket_error(&error);
 
-                self.gso.disable();
-
-                // We `continue` instead of break because it's very unlikely the message would be
-                // accepted at a later time, so we just discard the packet.
-                ControlFlow::Continue(())
-            }
-            _ => {
                 // ignore all other errors and just consider the packet sent
                 self.count += 1;
 
