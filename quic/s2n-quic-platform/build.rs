@@ -4,10 +4,15 @@
 use std::{fs::read_dir, io::Error, path::Path, process::Command};
 
 fn main() -> Result<(), Error> {
+    let mut features = Features::default();
+
     // allow overriding the detected features with an env variable
-    if let Some(features) = option_env("S2N_QUIC_PLATFORM_FEATURES_OVERRIDE") {
-        for feature in features.split(',') {
-            supports(feature.trim());
+    if let Some(list) = option_env("S2N_QUIC_PLATFORM_FEATURES_OVERRIDE") {
+        // iterate twice in case there is dependence on another feature that comes later
+        for _ in 0..2 {
+            for feature in list.split(',') {
+                features.insert(feature.trim());
+            }
         }
         return Ok(());
     }
@@ -19,7 +24,7 @@ fn main() -> Result<(), Error> {
         if let Some(name) = path.file_stem() {
             println!("cargo:rerun-if-changed={}", path.display());
             if env.check(&path)? {
-                supports(name.to_str().expect("valid feature name"));
+                features.insert(name.to_str().expect("valid feature name"));
             }
         }
     }
@@ -28,31 +33,31 @@ fn main() -> Result<(), Error> {
 
     match env.target_os.as_str() {
         "linux" => {
-            supports("gso");
-            supports("gro");
-            supports("mtu_disc");
-            supports("pktinfo");
-            supports("tos");
-
             // miri doesn't support the way we detect syscall support so override it
             if is_miri {
-                supports("socket_msg");
-                supports("socket_mmsg");
+                features.insert("socket_msg");
+                features.insert("socket_mmsg");
             }
+
+            features.insert("mtu_disc");
+            features.insert("gso");
+            features.insert("gro");
+            features.insert("pktinfo");
+            features.insert("tos");
         }
         "macos" => {
-            supports("pktinfo");
-            supports("tos");
-
             // miri doesn't support the way we detect syscall support so override it
             if is_miri {
-                supports("socket_msg");
+                features.insert("socket_msg");
             }
+
+            features.insert("pktinfo");
+            features.insert("tos");
         }
         "android" => {
-            supports("mtu_disc");
-            supports("pktinfo");
-            supports("tos");
+            features.insert("mtu_disc");
+            features.insert("pktinfo");
+            features.insert("tos");
         }
         _ => {
             // TODO others
@@ -62,8 +67,30 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn supports(name: &str) {
-    println!("cargo:rustc-cfg=s2n_quic_platform_{name}");
+#[derive(Debug, Default)]
+struct Features {
+    features: std::collections::HashSet<String>,
+}
+
+impl Features {
+    fn insert(&mut self, name: &str) {
+        // supporting any kind message implies cmsg support
+        if name == "socket_msg" || name == "socket_mmsg" {
+            self.insert("cmsg");
+        }
+
+        // the following features only make sense if cmsg is supported
+        if ["gso", "gro", "pktinfo", "tos"].contains(&name) && !self.supports("cmsg") {
+            return;
+        }
+
+        self.features.insert(name.to_string());
+        println!("cargo:rustc-cfg=s2n_quic_platform_{name}");
+    }
+
+    fn supports(&self, name: &str) -> bool {
+        self.features.contains(name)
+    }
 }
 
 struct Env {
