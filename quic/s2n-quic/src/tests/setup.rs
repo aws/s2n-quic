@@ -41,14 +41,14 @@ pub fn tracing_events() -> event::tracing::Subscriber {
             }
         }
 
-        let level = if std::env::var("TRACE").is_ok() {
-            tracing_subscriber::filter::LevelFilter::TRACE
-        } else {
-            tracing_subscriber::filter::LevelFilter::DEBUG
-        };
+        let env_filter = tracing_subscriber::EnvFilter::builder()
+            .with_default_directive(tracing::Level::DEBUG.into())
+            .with_env_var("S2N_LOG")
+            .from_env()
+            .unwrap();
 
         tracing_subscriber::fmt()
-            .with_max_level(level)
+            .with_env_filter(env_filter)
             .event_format(format)
             .with_test_writer()
             .init();
