@@ -32,7 +32,7 @@ impl TlsExportError {
     }
 }
 
-pub trait TlsSession: Send + Sync {
+pub trait TlsSession: Send {
     /// See <https://datatracker.ietf.org/doc/html/rfc5705> and <https://www.rfc-editor.org/rfc/rfc8446>.
     fn tls_exporter(
         &self,

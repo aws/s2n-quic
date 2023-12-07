@@ -22,7 +22,6 @@ futures = "0.3"
 http = "0.2"
 humansize = "2"
 lru = "0.10"
-openssl-sys = { version = "0.9", features = ["vendored"] }
 rand = "0.8"
 # dangerous_configuration is used to allow for cert verification to be disabled for the amplification limit interop test
 rustls = { version = "0.21", features = ["dangerous_configuration", "quic"] }
@@ -45,10 +44,6 @@ s2n-quic = { path = "../s2n-quic", features = ["provider-event-console-perf", "p
 # the mimalloc build is currently broken on android
 [target.'cfg(not(target_os = "android"))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }
-
-# we don't use openssl-sys directly; it's just here to pin and vendor in dev
-[package.metadata.cargo-udeps.ignore]
-normal = [ "openssl-sys" ]
 
 # Use unstable s2n-quic features
 # unstable_client_hello and unstable_resumption use s2n-tls, and thus are only enabled for unix platforms
