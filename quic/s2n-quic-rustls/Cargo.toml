@@ -12,7 +12,7 @@ exclude = ["corpus.tar.gz"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }
-rustls = { version = "0.21", features = ["quic"] }
+rustls = { version = "0.22", features = ["quic"] }
 rustls-pemfile = "1"
 s2n-codec = { version = "=0.32.0", path = "../../common/s2n-codec", default-features = false, features = ["alloc"] }
 s2n-quic-core = { version = "=0.32.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
