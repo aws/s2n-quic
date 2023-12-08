@@ -35,4 +35,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # >0.4.1 breaks compatibility with 1.63
 # See https://github.com/aws/s2n-quic/issues/1735
-winnow = "=0.4.1"
+winnow = "=0.5.26"
