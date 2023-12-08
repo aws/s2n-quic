@@ -19,7 +19,7 @@ aya-log = { git = "https://github.com/camshaft/aya", branch = "xdpmaps", optiona
 bytes = { version = "1", default-features = false }
 cfg-if = "1"
 futures = "0.3"
-http = "0.2"
+http = "1.0"
 humansize = "2"
 lru = "0.10"
 rand = "0.8"
