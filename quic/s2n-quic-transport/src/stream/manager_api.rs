@@ -59,6 +59,7 @@ pub trait Manager:
         &mut self,
         stream_type: StreamType,
         open_token: &mut connection::OpenToken,
+        api_call_context: &mut ConnectionApiCallContext,
         context: &Context,
     ) -> Poll<Result<StreamId, connection::Error>>;
 

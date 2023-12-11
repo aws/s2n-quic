@@ -677,12 +677,15 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
         &mut self,
         stream_type: StreamType,
         open_token: &mut connection::OpenToken,
+        api_call_context: &mut ConnectionApiCallContext,
         context: &Context,
     ) -> Poll<Result<StreamId, connection::Error>> {
         // If StreamManager was closed, return the error
         if let Some(error) = self.inner.close_reason {
             return Err(error).into();
         }
+
+        let transmission_snapshot = self.transmission_snapshot();
 
         let first_unopened_id =
             ready!(self
@@ -695,6 +698,14 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
             .next_stream_ids
             .get_mut(self.inner.local_endpoint_type, stream_type) =
             first_unopened_id.next_of_type();
+
+        // A wakeup is only triggered if we now have transmission interest, but previously did not.
+        // The edge triggered behavior minimizes the amount of necessary wakeups.
+        let require_wakeup = transmission_snapshot != self.transmission_snapshot();
+
+        if require_wakeup {
+            api_call_context.wakeup_handle().wakeup();
+        }
 
         Ok(first_unopened_id).into()
     }
