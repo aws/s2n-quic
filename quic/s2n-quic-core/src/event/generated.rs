@@ -508,7 +508,7 @@ pub mod api {
         PacketLoss {},
     }
     #[non_exhaustive]
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     #[allow(non_camel_case_types)]
     pub enum CipherSuite {
         #[non_exhaustive]

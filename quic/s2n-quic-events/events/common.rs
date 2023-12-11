@@ -875,7 +875,7 @@ enum CongestionSource {
     PacketLoss,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(non_camel_case_types)] // we prefer to match the standard identifier
 enum CipherSuite {
     TLS_AES_128_GCM_SHA256,
