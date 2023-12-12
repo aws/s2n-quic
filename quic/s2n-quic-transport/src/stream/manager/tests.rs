@@ -706,7 +706,6 @@ fn max_streams_replenishes_stream_control_capacity() {
             )
             .is_pending());
 
-
         // The stream controller would already have transmission interest so no additional wakeup is needed
         assert_wakeups(&mut wakeup_queue, 0);
 
