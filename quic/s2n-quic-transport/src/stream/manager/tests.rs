@@ -415,11 +415,13 @@ fn try_open(
     stream_type: StreamType,
 ) -> Result<StreamId, connection::Error> {
     let (accept_waker, _accept_wake_counter) = new_count_waker();
+    let (_wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
     let mut token = connection::OpenToken::new();
 
     match manager.poll_open_local_stream(
         stream_type,
         &mut token,
+        &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
         &Context::from_waker(&accept_waker),
     ) {
         Poll::Ready(res) => res,
@@ -670,6 +672,7 @@ fn max_data_replenishes_connection_flow_control_window() {
 fn max_streams_replenishes_stream_control_capacity() {
     let mut manager = create_stream_manager(endpoint::Type::Server);
     let (waker, _counter) = new_count_waker();
+    let (mut wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
     let mut token = connection::OpenToken::new();
 
     for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
@@ -695,8 +698,16 @@ fn max_streams_replenishes_stream_control_capacity() {
         }
 
         assert!(manager
-            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(
+                stream_type,
+                &mut token,
+                &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                &Context::from_waker(&waker)
+            )
             .is_pending());
+
+        // The stream controller would already have transmission interest so no additional wakeup is needed
+        assert_wakeups(&mut wakeup_queue, 0);
 
         for additional_streams in &[VarInt::from_u8(0), VarInt::from_u8(1), VarInt::from_u8(10)] {
             assert!(manager
@@ -714,8 +725,16 @@ fn max_streams_replenishes_stream_control_capacity() {
         }
 
         assert!(manager
-            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(
+                stream_type,
+                &mut token,
+                &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                &Context::from_waker(&waker)
+            )
             .is_ready());
+
+        // The stream controller would already have transmission interest so no additional wakeup is needed
+        assert_wakeups(&mut wakeup_queue, 0);
     }
 }
 
@@ -824,13 +843,19 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
     for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let (waker, _) = new_count_waker();
+        let (_wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
         let mut token = connection::OpenToken::new();
 
         let mut opened_streams = VarInt::from_u8(0);
 
         // Open streams until blocked
         while manager
-            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(
+                stream_type,
+                &mut token,
+                &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                &Context::from_waker(&waker),
+            )
             .is_ready()
         {
             opened_streams += 1;
@@ -928,7 +953,12 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
         // Open streams until blocked
         while manager
-            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(
+                stream_type,
+                &mut token,
+                &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                &Context::from_waker(&waker),
+            )
             .is_ready()
         {
             opened_streams += 1;
@@ -956,6 +986,8 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
 
 #[test]
 fn streams_blocked_period() {
+    let (_wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
+
     for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
         let block_func = |manager: &mut AbstractStreamManager<MockStream>| {
             let (waker, _) = new_count_waker();
@@ -965,7 +997,12 @@ fn streams_blocked_period() {
 
             // Open streams until blocked
             while manager
-                .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
+                .poll_open_local_stream(
+                    stream_type,
+                    &mut token,
+                    &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                    &Context::from_waker(&waker),
+                )
                 .is_ready()
             {
                 opened_streams += 1;
@@ -1230,11 +1267,17 @@ fn blocked_on_local_concurrent_stream_limit() {
         assert!(available_outgoing_stream_capacity < VarInt::from_u32(100_000));
 
         let (waker, wake_counter) = new_count_waker();
+        let (mut wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
         let mut token = connection::OpenToken::new();
 
         for _i in 0..*available_outgoing_stream_capacity {
             assert!(manager
-                .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
+                .poll_open_local_stream(
+                    stream_type,
+                    &mut token,
+                    &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                    &Context::from_waker(&waker)
+                )
                 .is_ready());
         }
 
@@ -1242,12 +1285,19 @@ fn blocked_on_local_concurrent_stream_limit() {
 
         // Cannot open any more streams
         assert!(manager
-            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(
+                stream_type,
+                &mut token,
+                &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                &Context::from_waker(&waker)
+            )
             .is_pending());
 
         if stream_type.is_bidirectional() {
             // if we have a bidirectional stream, then the controller should transmit an empty STREAM frame in order
             // to notify the peer of its existence.
+
+            assert_wakeups(&mut wakeup_queue, 1);
 
             let mut frame_buffer = OutgoingFrameBuffer::new();
             let mut write_context = MockWriteContext::new(
@@ -1299,11 +1349,21 @@ fn blocked_on_local_concurrent_stream_limit() {
 
         // One more stream can be opened
         assert!(manager
-            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(
+                stream_type,
+                &mut token,
+                &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                &Context::from_waker(&waker)
+            )
             .is_ready());
         assert_eq!(wake_counter, 1);
         assert!(manager
-            .poll_open_local_stream(stream_type, &mut token, &Context::from_waker(&waker))
+            .poll_open_local_stream(
+                stream_type,
+                &mut token,
+                &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                &Context::from_waker(&waker)
+            )
             .is_pending());
 
         // Close the stream manager and verify the wake counter is incremented
@@ -1395,6 +1455,7 @@ fn asymmetric_stream_limits_local_initiated() {
     let mut initial_local_limits = create_default_initial_flow_control_limits();
     let mut initial_peer_limits = create_default_initial_flow_control_limits();
     let (accept_waker, _accept_wake_counter) = new_count_waker();
+    let (_wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
     let mut token = connection::OpenToken::new();
 
     for local_limit in 0..101 {
@@ -1429,6 +1490,7 @@ fn asymmetric_stream_limits_local_initiated() {
                     let result = manager.poll_open_local_stream(
                         stream_type,
                         &mut token,
+                        &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
                         &Context::from_waker(&accept_waker),
                     );
                     assert!(

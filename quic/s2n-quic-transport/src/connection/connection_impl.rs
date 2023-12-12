@@ -1874,9 +1874,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .application_mut()
             .ok_or_else(connection::Error::unspecified)?;
 
-        space
-            .stream_manager
-            .poll_open_local_stream(stream_type, open_token, context)
+        let mut api_context = ConnectionApiCallContext::from_wakeup_handle(&self.wakeup_handle);
+
+        space.stream_manager.poll_open_local_stream(
+            stream_type,
+            open_token,
+            &mut api_context,
+            context,
+        )
     }
 
     fn application_close(&mut self, error: Option<application::Error>) {
