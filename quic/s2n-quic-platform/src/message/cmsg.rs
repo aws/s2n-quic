@@ -3,11 +3,12 @@
 
 #![allow(clippy::unnecessary_cast)] // some platforms encode lengths as `u32` so we cast everything to be safe
 
+use crate::features;
 use core::mem::{align_of, size_of};
 use libc::cmsghdr;
 use s2n_quic_core::inet::{AncillaryData, ExplicitCongestionNotification};
 
-const fn size_of_cmsg<T: Copy + Sized>() -> usize {
+pub const fn size_of_cmsg<T: Copy + Sized>() -> usize {
     unsafe { libc::CMSG_SPACE(size_of::<T>() as _) as _ }
 }
 
@@ -26,15 +27,8 @@ const fn const_max(a: usize, b: usize) -> usize {
 pub const MAX_LEN: usize = {
     let tos_size = size_of_cmsg::<IpTos>();
 
-    #[cfg(s2n_quic_platform_gso)]
-    let gso_size = size_of_cmsg::<UdpGso>();
-    #[cfg(not(s2n_quic_platform_gso))]
-    let gso_size = 0;
-
-    #[cfg(s2n_quic_platform_gro)]
-    let gro_size = size_of_cmsg::<UdpGro>();
-    #[cfg(not(s2n_quic_platform_gro))]
-    let gro_size = 0;
+    let gso_size = features::gso::CMSG_SPACE;
+    let gro_size = features::gro::CMSG_SPACE;
 
     let segment_offload_size = const_max(gso_size, gro_size);
 
@@ -52,19 +46,16 @@ pub const MAX_LEN: usize = {
     tos_size + segment_offload_size + pktinfo_size + padding
 };
 
-#[cfg(s2n_quic_platform_gso)]
-pub type UdpGso = u16;
-#[cfg(s2n_quic_platform_gro)]
-pub type UdpGro = libc::c_int;
 pub type IpTos = libc::c_int;
 
 #[repr(align(8))] // the storage needs to be aligned to the same as `cmsghdr`
 #[derive(Clone, Debug)]
-pub struct Storage([u8; MAX_LEN]);
+pub struct Storage<const L: usize = MAX_LEN>([u8; L]);
 
-impl Default for Storage {
+impl<const L: usize> Default for Storage<L> {
+    #[inline]
     fn default() -> Self {
-        Self([0; MAX_LEN])
+        Self([0; L])
     }
 }
 
@@ -92,6 +83,23 @@ pub struct OutOfSpace;
 pub struct SliceEncoder<'a> {
     storage: &'a mut [u8],
     cursor: usize,
+}
+
+impl<'a> SliceEncoder<'a> {
+    #[inline]
+    pub fn new(storage: &'a mut [u8]) -> Self {
+        Self { storage, cursor: 0 }
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.cursor
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.cursor == 0
+    }
 }
 
 impl<'a> Encoder for SliceEncoder<'a> {
@@ -277,14 +285,12 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
                     result.local_address = local_address.into();
                     result.local_interface = Some(pkt_info.ipi6_ifindex as _);
                 }
-                #[cfg(s2n_quic_platform_gso)]
-                (libc::SOL_UDP, libc::UDP_SEGMENT) => {
+                (level, ty) if features::gso::is_match(level, ty) => {
                     // ignore GSO settings when reading
                     continue;
                 }
-                #[cfg(s2n_quic_platform_gro)]
-                (libc::SOL_UDP, libc::UDP_GRO) => {
-                    let segment_size = decode_value::<UdpGro>(value);
+                (level, ty) if features::gro::is_match(level, ty) => {
+                    let segment_size = decode_value::<features::gro::Cmsg>(value);
                     result.segment_size = segment_size as _;
                 }
                 (level, ty) if cfg!(test) => {
@@ -304,7 +310,7 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
 ///
 /// `cmsghdr` must refer to a cmsg containing a payload of type `T`
 #[inline]
-unsafe fn decode_value<T: Copy>(value: &[u8]) -> T {
+pub unsafe fn decode_value<T: Copy>(value: &[u8]) -> T {
     use core::mem;
 
     debug_assert!(mem::align_of::<T>() <= mem::align_of::<cmsghdr>());
@@ -317,7 +323,7 @@ unsafe fn decode_value<T: Copy>(value: &[u8]) -> T {
     v
 }
 
-struct Iter<'a> {
+pub struct Iter<'a> {
     cursor: *const u8,
     len: usize,
     contents: core::marker::PhantomData<&'a [u8]>,
@@ -331,7 +337,7 @@ impl<'a> Iter<'a> {
     ///
     /// * `contents` must be aligned to cmsghdr
     #[inline]
-    unsafe fn new(contents: &'a [u8]) -> Iter<'a> {
+    pub unsafe fn new(contents: &'a [u8]) -> Iter<'a> {
         let cursor = contents.as_ptr();
         let len = contents.len();
 
@@ -348,8 +354,15 @@ impl<'a> Iter<'a> {
         }
     }
 
+    /// Creates a new cmsg::Iter used for iterating over control message headers in the given
+    /// msghdr.
+    ///
+    /// # Safety
+    ///
+    /// * `contents` must be aligned to cmsghdr
+    /// * `msghdr` must point to a valid control buffer
     #[inline]
-    unsafe fn from_msghdr(msghdr: &'a libc::msghdr) -> Self {
+    pub unsafe fn from_msghdr(msghdr: &'a libc::msghdr) -> Self {
         let ptr = msghdr.msg_control as *const u8;
         let len = msghdr.msg_controllen as usize;
         let slice = core::slice::from_raw_parts(ptr, len);
@@ -455,7 +468,7 @@ mod tests {
     }
 
     fn round_trip(ops: &[Op]) {
-        let mut storage = Storage::default();
+        let mut storage = Storage::<{ MAX_LEN }>::default();
         let mut encoder = SliceEncoder {
             storage: &mut storage.0,
             cursor: 0,

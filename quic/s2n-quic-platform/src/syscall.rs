@@ -230,14 +230,14 @@ pub fn configure_gro(rx_socket: &Socket) -> bool {
     let mut success = false;
 
     #[cfg(s2n_quic_platform_gro)]
-    {
+    if let Some((level, ty)) = crate::features::gro::SOCKOPT {
         use std::os::unix::io::AsRawFd;
         let enabled: libc::c_int = 1;
 
         success |= libc!(setsockopt(
             rx_socket.as_raw_fd(),
-            libc::SOL_UDP,
-            libc::UDP_GRO,
+            level as _,
+            ty as _,
             &enabled as *const _ as _,
             core::mem::size_of_val(&enabled) as _
         ))

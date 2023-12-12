@@ -30,16 +30,72 @@ macro_rules! assume {
     };
 }
 
+#[doc(hidden)]
+#[cfg(feature = "branch-tracing")]
+pub use tracing::trace as _trace;
+
+#[cfg(not(feature = "branch-tracing"))]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! _trace {
+    ($($fmt:tt)*) => {};
+}
+
+/// Traces a branch value if the `branch-tracing` feature is enabled. Otherwise it is a no-op.
+#[macro_export]
+macro_rules! branch {
+    ($cond:expr) => {{
+        let result = $cond;
+        $crate::_trace!(
+            branch = stringify!($cond),
+            result,
+            file = file!(),
+            line = line!(),
+        );
+        result
+    }};
+    ($cond:expr, $outcome:expr) => {{
+        let result = $cond;
+        if result {
+            $crate::_trace!(
+                branch = stringify!($cond),
+                result,
+                file = file!(),
+                line = line!(),
+            );
+        } else {
+            $crate::_trace!(
+                branch = stringify!($cond),
+                result,
+                outcome = stringify!($outcome),
+                file = file!(),
+                line = line!(),
+            );
+        }
+        result
+    }};
+}
+
 /// Checks that the first argument is true, otherwise returns the second value
 #[macro_export]
 macro_rules! ensure {
     ($cond:expr) => {
-        if !($cond) {
+        if !$crate::branch!($cond, return) {
             return;
         }
     };
+    ($cond:expr, continue) => {
+        if !$crate::branch!($cond, continue) {
+            continue;
+        }
+    };
+    ($cond:expr, break $($expr:expr)?) => {
+        if !$crate::branch!($cond, break $($expr)?) {
+            break $($expr)?;
+        }
+    };
     ($cond:expr, $ret:expr) => {
-        if !($cond) {
+        if !$crate::branch!($cond, return $ret) {
             return $ret;
         }
     };

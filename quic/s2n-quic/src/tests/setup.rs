@@ -41,8 +41,14 @@ pub fn tracing_events() -> event::tracing::Subscriber {
             }
         }
 
+        let env_filter = tracing_subscriber::EnvFilter::builder()
+            .with_default_directive(tracing::Level::DEBUG.into())
+            .with_env_var("S2N_LOG")
+            .from_env()
+            .unwrap();
+
         tracing_subscriber::fmt()
-            .with_max_level(tracing_subscriber::filter::LevelFilter::DEBUG)
+            .with_env_filter(env_filter)
             .event_format(format)
             .with_test_writer()
             .init();

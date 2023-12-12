@@ -44,6 +44,8 @@ fn local_stream_open_notify_test() {
         primary::spawn(async move {
             let connect = Connect::new(server_addr).with_server_name("localhost");
             let mut connection = client.connect(connect).await.unwrap();
+            // Delay for a second to allow expiring timers and packet acks to be cleared out
+            delay(Duration::from_secs(1)).await;
             let mut stream = connection.open_bidirectional_stream().await.unwrap();
 
             let mut recv_len = 0;
