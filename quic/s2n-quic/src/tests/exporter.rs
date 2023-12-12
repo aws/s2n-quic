@@ -5,8 +5,9 @@
 //! connection on both client and server.
 
 use super::*;
-use crate::provider::event::events::{self, ConnectionInfo, ConnectionMeta, Subscriber};
-use s2n_quic_core::event::api::CipherSuite;
+use crate::provider::event::events::{
+    self, CipherSuite, ConnectionInfo, ConnectionMeta, Subscriber,
+};
 
 struct Exporter;
 
@@ -108,9 +109,10 @@ where
             primary::spawn(async move {
                 let connect = Connect::new(addr).with_server_name("localhost");
                 let conn = client.connect(connect).await.unwrap();
-                delay(Duration::from_millis(250)).await;
+                // Wait a bit to allow the handshake to complete on the
+                // server and populate the server cipher suite
+                delay(Duration::from_millis(100)).await;
                 let server_cipher_suite = server_cipher_suite.lock().unwrap().unwrap();
-                eprintln!("got client cipher suite {:?}", server_cipher_suite);
                 f(conn, server_cipher_suite).await;
             });
         }
@@ -124,7 +126,6 @@ where
 fn happy_case() {
     tls_test(|mut conn, server_cipher_suite| async move {
         use s2n_quic_core::event::IntoEvent;
-        eprintln!("inside tls test");
         let client_key = conn
             .query_event_context(|ctx: &ExporterContext| ctx.key.unwrap())
             .unwrap();

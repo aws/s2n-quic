@@ -90,8 +90,11 @@ impl tls::TlsSession for Session {
     }
 
     fn cipher_suite(&self) -> CipherSuite {
-        //todo remove unwrap
-        self.connection.cipher_suite().unwrap().into()
+        if let Ok(cipher_suite) = self.connection.cipher_suite() {
+            cipher_suite.into()
+        } else {
+            CipherSuite::Unknown
+        }
     }
 }
 
