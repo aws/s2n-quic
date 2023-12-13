@@ -90,11 +90,7 @@ impl tls::TlsSession for Session {
     }
 
     fn cipher_suite(&self) -> CipherSuite {
-        if let Ok(cipher_suite) = self.connection.cipher_suite() {
-            cipher_suite.into()
-        } else {
-            CipherSuite::Unknown
-        }
+        self.state.cipher_suite()
     }
 }
 

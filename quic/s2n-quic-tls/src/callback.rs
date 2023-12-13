@@ -5,7 +5,7 @@ use bytes::{Bytes, BytesMut};
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{tls, CryptoError, CryptoSuite},
+    crypto::{tls, tls::CipherSuite, CryptoError, CryptoSuite},
     endpoint, transport,
 };
 use s2n_quic_crypto::{
@@ -166,9 +166,11 @@ where
                     return Ok(());
                 }
 
-                let (prk_algo, _aead) = get_algo_type(conn).ok_or(CryptoError::INTERNAL_ERROR)?;
+                let (prk_algo, _aead, cipher_suite) =
+                    get_algo_type(conn).ok_or(CryptoError::INTERNAL_ERROR)?;
                 let secret = Prk::new_less_safe(prk_algo, secret);
                 self.state.secrets = Secrets::Half { secret, id };
+                self.state.cipher_suite = cipher_suite;
 
                 Ok(())
             }
@@ -176,9 +178,10 @@ where
                 id: other_id,
                 secret: other_secret,
             } => {
-                let (prk_algo, aead_algo) =
+                let (prk_algo, aead_algo, cipher_suite) =
                     get_algo_type(conn).ok_or(CryptoError::INTERNAL_ERROR)?;
                 let secret = Prk::new_less_safe(prk_algo, secret);
+                self.state.cipher_suite = cipher_suite;
                 let pair = match (id, other_id) {
                     (
                         s2n_secret_type_t::CLIENT_HANDSHAKE_TRAFFIC_SECRET,
@@ -347,6 +350,7 @@ pub struct State {
     rx_phase: HandshakePhase,
     tx_phase: HandshakePhase,
     secrets: Secrets,
+    cipher_suite: CipherSuite,
 }
 
 impl State {
@@ -356,6 +360,10 @@ impl State {
         self.rx_phase.transition();
         debug_assert_eq!(self.tx_phase, HandshakePhase::Application);
         debug_assert_eq!(self.rx_phase, HandshakePhase::Application);
+    }
+
+    pub fn cipher_suite(&self) -> CipherSuite {
+        self.cipher_suite
     }
 }
 
@@ -398,7 +406,7 @@ impl Default for Secrets {
 
 fn get_algo_type(
     connection: *mut s2n_connection,
-) -> Option<(hkdf::Algorithm, &'static aead::Algorithm)> {
+) -> Option<(hkdf::Algorithm, &'static aead::Algorithm, CipherSuite)> {
     let mut cipher = [0, 0];
     unsafe {
         s2n_connection_get_cipher_iana_value(connection, &mut cipher[0], &mut cipher[1])
@@ -435,9 +443,21 @@ fn get_algo_type(
     //# exception of TLS_AES_128_CCM_8_SHA256.
 
     match cipher {
-        TLS_AES_128_GCM_SHA256 => Some((hkdf::HKDF_SHA256, &aead::AES_128_GCM)),
-        TLS_AES_256_GCM_SHA384 => Some((hkdf::HKDF_SHA384, &aead::AES_256_GCM)),
-        TLS_CHACHA20_POLY1305_SHA256 => Some((hkdf::HKDF_SHA256, &aead::CHACHA20_POLY1305)),
+        TLS_AES_128_GCM_SHA256 => Some((
+            hkdf::HKDF_SHA256,
+            &aead::AES_128_GCM,
+            CipherSuite::TLS_AES_128_GCM_SHA256,
+        )),
+        TLS_AES_256_GCM_SHA384 => Some((
+            hkdf::HKDF_SHA384,
+            &aead::AES_256_GCM,
+            CipherSuite::TLS_AES_256_GCM_SHA384,
+        )),
+        TLS_CHACHA20_POLY1305_SHA256 => Some((
+            hkdf::HKDF_SHA256,
+            &aead::CHACHA20_POLY1305,
+            CipherSuite::TLS_CHACHA20_POLY1305_SHA256,
+        )),
         _ => None,
     }
 }
