@@ -238,19 +238,14 @@ impl HelloOffsets {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 #[allow(non_camel_case_types)]
 pub enum CipherSuite {
     TLS_AES_128_GCM_SHA256,
     TLS_AES_256_GCM_SHA384,
     TLS_CHACHA20_POLY1305_SHA256,
+    #[default]
     Unknown,
-}
-
-impl Default for CipherSuite {
-    fn default() -> Self {
-        CipherSuite::Unknown
-    }
 }
 
 impl crate::event::IntoEvent<crate::event::builder::CipherSuite> for CipherSuite {
