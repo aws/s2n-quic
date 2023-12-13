@@ -40,6 +40,8 @@ pub trait TlsSession: Send {
         context: &[u8],
         output: &mut [u8],
     ) -> Result<(), TlsExportError>;
+
+    fn cipher_suite(&self) -> CipherSuite;
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
@@ -236,12 +238,13 @@ impl HelloOffsets {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 #[allow(non_camel_case_types)]
 pub enum CipherSuite {
     TLS_AES_128_GCM_SHA256,
     TLS_AES_256_GCM_SHA384,
     TLS_CHACHA20_POLY1305_SHA256,
+    #[default]
     Unknown,
 }
 

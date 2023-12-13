@@ -6,7 +6,7 @@ use bytes::BytesMut;
 use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{tls, CryptoError, CryptoSuite},
+    crypto::{tls, tls::CipherSuite, CryptoError, CryptoSuite},
     endpoint, transport,
 };
 use s2n_quic_crypto::Suite;
@@ -87,6 +87,10 @@ impl tls::TlsSession for Session {
         self.connection
             .tls_exporter(label, context, output)
             .map_err(|_| tls::TlsExportError::failure())
+    }
+
+    fn cipher_suite(&self) -> CipherSuite {
+        self.state.cipher_suite()
     }
 }
 

@@ -507,8 +507,8 @@ pub mod api {
         #[doc = " One or more packets were detected lost"]
         PacketLoss {},
     }
-    #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     #[allow(non_camel_case_types)]
     pub enum CipherSuite {
         #[non_exhaustive]

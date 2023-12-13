@@ -5,13 +5,16 @@
 //! connection on both client and server.
 
 use super::*;
-use crate::provider::event::events::{self, ConnectionInfo, ConnectionMeta, Subscriber};
+use crate::provider::event::events::{
+    self, CipherSuite, ConnectionInfo, ConnectionMeta, Subscriber,
+};
 
 struct Exporter;
 
 #[derive(Default)]
 struct ExporterContext {
     key: Option<[u8; 32]>,
+    cipher_suite: Option<CipherSuite>,
 }
 
 impl Subscriber for Exporter {
@@ -38,10 +41,14 @@ impl Subscriber for Exporter {
             .tls_exporter(b"EXPERIMENTAL EXPORTER s2n-quic", b"some context", &mut key)
             .unwrap();
         context.key = Some(key);
+        context.cipher_suite = Some(event.session.cipher_suite());
     }
 }
 
-fn start_server(mut server: Server) -> crate::provider::io::testing::Result<SocketAddr> {
+fn start_server(
+    mut server: Server,
+    cipher_suite: Arc<Mutex<Option<CipherSuite>>>,
+) -> crate::provider::io::testing::Result<SocketAddr> {
     let server_addr = server.local_addr()?;
 
     // accept connections and echo back
@@ -50,6 +57,12 @@ fn start_server(mut server: Server) -> crate::provider::io::testing::Result<Sock
             let key = connection
                 .query_event_context(|ctx: &ExporterContext| ctx.key.unwrap())
                 .unwrap();
+
+            let _ = cipher_suite.lock().unwrap().insert(
+                connection
+                    .query_event_context(|ctx: &ExporterContext| ctx.cipher_suite.unwrap())
+                    .unwrap(),
+            );
 
             tracing::debug!("accepted server connection: {}", connection.id());
             spawn(async move {
@@ -66,7 +79,7 @@ fn start_server(mut server: Server) -> crate::provider::io::testing::Result<Sock
     Ok(server_addr)
 }
 
-fn tls_test<C>(f: fn(crate::Connection) -> C)
+fn tls_test<C>(f: fn(crate::Connection, CipherSuite) -> C)
 where
     C: 'static + core::future::Future<Output = ()> + Send,
 {
@@ -79,8 +92,9 @@ where
             .with_tls(SERVER_CERTS)?
             .with_event((Exporter, tracing_events()))?
             .start()?;
+        let server_cipher_suite = Arc::new(Mutex::new(None));
 
-        let addr = start_server(server)?;
+        let addr = start_server(server, server_cipher_suite.clone())?;
 
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
@@ -91,10 +105,15 @@ where
         // show it working for several connections
         for _ in 0..10 {
             let client = client.clone();
+            let server_cipher_suite = server_cipher_suite.clone();
             primary::spawn(async move {
                 let connect = Connect::new(addr).with_server_name("localhost");
                 let conn = client.connect(connect).await.unwrap();
-                f(conn).await;
+                // Wait a bit to allow the handshake to complete on the
+                // server and populate the server cipher suite
+                delay(Duration::from_millis(100)).await;
+                let server_cipher_suite = server_cipher_suite.lock().unwrap().unwrap();
+                f(conn, server_cipher_suite).await;
             });
         }
 
@@ -105,10 +124,25 @@ where
 
 #[test]
 fn happy_case() {
-    tls_test(|mut conn| async move {
+    tls_test(|mut conn, server_cipher_suite| async move {
+        use s2n_quic_core::event::IntoEvent;
         let client_key = conn
             .query_event_context(|ctx: &ExporterContext| ctx.key.unwrap())
             .unwrap();
+
+        let client_cipher_suite = conn
+            .query_event_context(|ctx: &ExporterContext| ctx.cipher_suite.unwrap())
+            .unwrap();
+
+        assert_eq!(client_cipher_suite, server_cipher_suite);
+        assert_ne!(
+            client_cipher_suite,
+            s2n_quic_core::crypto::tls::CipherSuite::Unknown.into_event()
+        );
+        assert_ne!(
+            server_cipher_suite,
+            s2n_quic_core::crypto::tls::CipherSuite::Unknown.into_event()
+        );
 
         let mut stream = conn.open_bidirectional_stream().await.unwrap();
 
