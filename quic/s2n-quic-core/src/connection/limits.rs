@@ -213,6 +213,17 @@ impl Limits {
     );
     setter!(with_ack_elicitation_interval, ack_elicitation_interval, u8);
     setter!(with_max_ack_ranges, ack_ranges_limit, u8);
+    /// Sets the maximum send buffer size for a Stream
+    ///
+    /// The send buffer contains unacknowledged application data. Constraining the maximum
+    /// size of this buffer limits the amount of memory a given Stream may consume. On
+    /// high bandwidth/high RTT connections this may act as a bottleneck, as the connection may be
+    /// waiting for data to be acknowledged by the peer before allowing more data to be sent.
+    /// Increasing this value should be carefully weighed against the potential downsides
+    /// of additional memory utilization as well as increased latency due to the capacity of the
+    /// send buffer exceeding the rate at which the network link and peer are able to drain from it.
+    /// Ideally, the max_send_buffer_size is configured to the minimum value that can support the
+    /// throughput requirements for the connection.
     setter!(with_max_send_buffer_size, max_send_buffer_size, u32);
     setter!(
         with_max_handshake_duration,
