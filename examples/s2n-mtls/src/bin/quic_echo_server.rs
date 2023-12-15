@@ -5,18 +5,9 @@ use std::{error::Error, path::Path};
 
 use s2n_quic::{provider::tls, Server};
 
-pub static CA_CERT_PEM: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../rustls-mtls/certs/ca-cert.pem"
-);
-pub static SERVER_CERT_PEM: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../rustls-mtls/certs/server-cert.pem"
-);
-pub static SERVER_KEY_PEM: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../rustls-mtls/certs/server-key.pem"
-);
+pub static CA_CERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/ca-cert.pem");
+pub static SERVER_CERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/server-cert.pem");
+pub static SERVER_KEY_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/server-key.pem");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

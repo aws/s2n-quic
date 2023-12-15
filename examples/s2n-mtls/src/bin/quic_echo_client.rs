@@ -5,18 +5,9 @@ use std::{error::Error, net::SocketAddr, path::Path};
 
 use s2n_quic::{client::Connect, provider::tls, Client};
 
-pub static CA_CERT_PEM: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../rustls-mtls/certs/ca-cert.pem"
-);
-pub static CLIENT_CERT_PEM: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../rustls-mtls/certs/client-cert.pem"
-);
-pub static CLIENT_KEY_PEM: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../rustls-mtls/certs/client-key.pem"
-);
+pub static CA_CERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/ca-cert.pem");
+pub static CLIENT_CERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/client-cert.pem");
+pub static CLIENT_KEY_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/client-key.pem");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
