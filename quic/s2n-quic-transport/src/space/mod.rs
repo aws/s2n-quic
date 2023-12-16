@@ -275,8 +275,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                     // therefore can throw away the TLS info. Additionally clients that
                     // aren't doing resumption throw this struct away.
                     //
-                    // TODO: We don't want to gate on the resumption flag as it is unstable and
-                    // will go away eventually. We need a way to check if the user enabled resumption.
+                    // TODO: Replace feature flag check with an API
                     if Config::ENDPOINT_TYPE.is_server() || !cfg!(feature = "unstable_resumption") {
                         self.discard_session();
                     }
