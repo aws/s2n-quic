@@ -99,6 +99,10 @@ impl super::Session for Session {
     ) -> Result<(), crate::transport::Error> {
         Ok(())
     }
+
+    fn discard_session(&self, _received_ticket: bool) -> bool {
+        true
+    }
 }
 
 impl CryptoSuite for Session {

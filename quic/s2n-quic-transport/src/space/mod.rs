@@ -271,12 +271,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
             match session_info.session.poll(&mut context)? {
                 Poll::Ready(_success) => {
-                    // The server currently doesn't process post-handshake messages and
-                    // therefore can throw away the TLS info. Additionally clients that
-                    // aren't doing resumption throw this struct away.
-                    //
-                    // TODO: Replace feature flag check with an API
-                    if Config::ENDPOINT_TYPE.is_server() || !cfg!(feature = "unstable_resumption") {
+                    if session_info.session.discard_session(false) {
                         self.discard_session();
                     }
 
@@ -326,7 +321,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             // Once the client has received a session ticket successfully, we can throw away
             // the session_info object as we don't expect more post-handshake messages. Additionally
             // we throw away any errors that occur during post-handshake processing.
-            if result.is_ok() {
+            if session_info.session.discard_session(result.is_ok()) {
                 self.discard_session();
             }
         }

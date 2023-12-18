@@ -155,6 +155,8 @@ pub trait Session: crate::crypto::CryptoSuite + Sized + Send + Debug {
         context: &mut C,
     ) -> Result<(), crate::transport::Error>;
 
+    fn discard_session(&self, received_ticket: bool) -> bool;
+
     /// Parses a hello message of the provided type
     ///
     /// The default implementation of this function assumes TLS messages are being exchanged.
