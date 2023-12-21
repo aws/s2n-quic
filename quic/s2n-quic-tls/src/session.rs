@@ -54,7 +54,7 @@ impl Session {
                 .expect("invalid server name value");
         }
 
-        let client_resumption_enabled = connection.client_resumption_enabled();
+        let client_resumption_enabled = connection.are_session_tickets_enabled();
 
         Ok(Self {
             endpoint,
