@@ -27,7 +27,7 @@ pub struct Session {
     emitted_server_name: bool,
     // This is only set for the client to avoid an extra allocation
     server_name: Option<ServerName>,
-    client_resumption_enabled: bool,
+    resumption_enabled: bool,
 }
 
 impl Session {
@@ -54,7 +54,7 @@ impl Session {
                 .expect("invalid server name value");
         }
 
-        let client_resumption_enabled = connection.are_session_tickets_enabled();
+        let resumption_enabled = connection.are_session_tickets_enabled();
 
         Ok(Self {
             endpoint,
@@ -64,7 +64,7 @@ impl Session {
             send_buffer: BytesMut::new(),
             emitted_server_name: false,
             server_name,
-            client_resumption_enabled,
+            resumption_enabled,
         })
     }
 }
@@ -186,7 +186,7 @@ impl tls::Session for Session {
         // The server currently doesn't process post-handshake messages and
         // therefore can throw away the TLS info. Additionally clients that
         // aren't doing resumption throw this struct away.
-        if self.endpoint.is_server() || !self.client_resumption_enabled || received_ticket {
+        if self.endpoint.is_server() || !self.resumption_enabled || received_ticket {
             return true;
         }
         false
