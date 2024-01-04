@@ -103,7 +103,7 @@ jobs:
           mkdir -p s2n-quic-qns
           cp target/${{ matrix.mode }}/s2n-quic-qns s2n-quic-qns/s2n-quic-qns-${{ matrix.mode }}
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
@@ -229,7 +229,7 @@ jobs:
           TARGET="${{ github.sha }}/interop/logs/latest"
           aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: interop-${{ matrix.client }}-client-${{ matrix.server }}-server
           path: quic-interop-runner/results/result.json
@@ -532,7 +532,7 @@ jobs:
           zip perf.zip **/*.script
           rm -rf **/*.script
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: perf-results-${{ matrix.server }}-${{ matrix.client }}
           path: target/perf/results
