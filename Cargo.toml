@@ -7,7 +7,6 @@ resolver = "2"
 # don't include any workspaces outside of the main project
 exclude = [
     "examples",
-    "netbench",
     "tools",
 ]
 
