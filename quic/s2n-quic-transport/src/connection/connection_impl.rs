@@ -1294,6 +1294,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             // This can be checked on the server side by setting a value in the connection if a
             // token is received in the first Initial Packet. If that value is set, it should be
             // verified in all subsequent packets.
+
             let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1376,6 +1377,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     packet.version,
                 ),
             });
+
             let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,
@@ -1516,6 +1518,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 &datagram.destination_connection_id,
                 &mut publisher,
             );
+
             let processed_packet = space.handle_cleartext_payload(
                 packet.packet_number,
                 packet.payload,

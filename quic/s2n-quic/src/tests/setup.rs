@@ -260,8 +260,9 @@ mod resumption {
         },
     };
     use std::{
+        collections::VecDeque,
         pin::Pin,
-        sync::{Arc, Mutex}, collections::VecDeque,
+        sync::{Arc, Mutex},
     };
 
     pub static TICKET_KEY: [u8; 16] = [0; 16];
