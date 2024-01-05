@@ -261,13 +261,13 @@ mod resumption {
     };
     use std::{
         pin::Pin,
-        sync::{Arc, Mutex},
+        sync::{Arc, Mutex}, collections::VecDeque,
     };
 
     pub static TICKET_KEY: [u8; 16] = [0; 16];
     #[derive(Default, Clone)]
     pub struct SessionTicketHandler {
-        stored_ticket: Arc<Mutex<Option<Vec<u8>>>>,
+        ticket_storage: Arc<Mutex<VecDeque<Vec<u8>>>>,
     }
 
     impl SessionTicketCallback for SessionTicketHandler {
@@ -275,10 +275,8 @@ mod resumption {
             let size = session_ticket.len().unwrap();
             let mut data = vec![0; size];
             session_ticket.data(&mut data).unwrap();
-            let mut ticket = (*self.stored_ticket).lock().unwrap();
-            if ticket.is_none() {
-                *ticket = Some(data);
-            }
+            let mut vec = (*self.ticket_storage).lock().unwrap();
+            vec.push_back(data);
         }
     }
 
@@ -287,7 +285,7 @@ mod resumption {
             &self,
             connection: &mut Connection,
         ) -> Result<Option<Pin<Box<(dyn ConnectionFuture)>>>, Error> {
-            if let Some(ticket) = (*self.stored_ticket).lock().unwrap().as_deref() {
+            if let Some(ticket) = (*self.ticket_storage).lock().unwrap().pop_back().as_deref() {
                 connection.set_session_ticket(ticket)?;
             }
             Ok(None)

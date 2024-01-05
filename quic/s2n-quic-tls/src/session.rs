@@ -7,7 +7,7 @@ use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
     crypto::{tls, tls::CipherSuite, CryptoError, CryptoSuite},
-    endpoint, transport,
+    endpoint, transport, ensure,
 };
 use s2n_quic_crypto::Suite;
 use s2n_tls::{
@@ -27,7 +27,7 @@ pub struct Session {
     emitted_server_name: bool,
     // This is only set for the client to avoid an extra allocation
     server_name: Option<ServerName>,
-    resumption_enabled: bool,
+    received_ticket: bool,
 }
 
 impl Session {
@@ -54,8 +54,6 @@ impl Session {
                 .expect("invalid server name value");
         }
 
-        let resumption_enabled = connection.are_session_tickets_enabled();
-
         Ok(Self {
             endpoint,
             connection,
@@ -64,7 +62,7 @@ impl Session {
             send_buffer: BytesMut::new(),
             emitted_server_name: false,
             server_name,
-            resumption_enabled,
+            received_ticket: false,
         })
     }
 }
@@ -182,13 +180,14 @@ impl tls::Session for Session {
         }
     }
 
-    fn discard_session(&self, received_ticket: bool) -> bool {
-        // The server currently doesn't process post-handshake messages and
-        // therefore can throw away the TLS info. Additionally clients that
-        // aren't doing resumption throw this struct away.
-        if self.endpoint.is_server() || !self.resumption_enabled || received_ticket {
-            return true;
-        }
-        false
+    fn should_discard_session(&self) -> bool {
+        // Only clients process post-handshake messages currently
+        ensure!(self.endpoint.is_client(), true);
+
+        // Clients that haven't enabled resumption can discard the session
+        ensure!(self.connection.are_session_tickets_enabled(), true);
+
+        // Discard the session once a ticket is received
+        self.received_ticket
     }
 }

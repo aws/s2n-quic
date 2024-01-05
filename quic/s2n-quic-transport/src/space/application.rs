@@ -123,7 +123,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             recovery_manager: recovery::Manager::new(PacketNumberSpace::ApplicationData),
             datagram_manager,
             skip_counter: None,
-            buffer_crypto_frames: true,
+            buffer_crypto_frames: Config::ENDPOINT_TYPE.is_client(),
         }
     }
 

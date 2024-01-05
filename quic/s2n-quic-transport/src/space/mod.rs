@@ -271,7 +271,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
             match session_info.session.poll(&mut context)? {
                 Poll::Ready(_success) => {
-                    if session_info.session.discard_session(false) {
+                    if session_info.session.should_discard_session() {
                         self.discard_session();
                     }
 
@@ -318,10 +318,11 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             let result = session_info
                 .session
                 .process_post_handshake_message(&mut context);
+            session_info.session.received_ticket = result;
             // Once the client has received a session ticket successfully, we can throw away
             // the session_info object as we don't expect more post-handshake messages. Additionally
             // we throw away any errors that occur during post-handshake processing.
-            if session_info.session.discard_session(result.is_ok()) {
+            if session_info.session.should_discard_session() {
                 self.discard_session();
             }
         }
@@ -332,6 +333,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     fn discard_session(&mut self) {
         self.session_info = None;
         if let Some((application_space, _status)) = self.application_mut() {
+            application_space.crypto_stream.rx.reset();
             application_space.buffer_crypto_frames = false;
         }
     }
@@ -819,7 +821,6 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
         random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
         packet_interceptor: &mut Config::PacketInterceptor,
-        contains_crypto: &mut bool,
     ) -> Result<ProcessedPacket<'a>, connection::Error> {
         use s2n_quic_core::frame::{Frame, FrameMut};
 
@@ -915,7 +916,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                         publisher,
                     )
                     .map_err(on_error)?;
-                    *contains_crypto = true;
+                    processed_packet.contains_crypto = true;
                 }
                 Frame::Ack(frame) => {
                     let on_error = on_frame_processed!(frame);

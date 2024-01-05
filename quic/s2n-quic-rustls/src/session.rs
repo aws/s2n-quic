@@ -352,9 +352,6 @@ impl tls::Session for Session {
     ) -> Result<(), transport::Error> {
         Ok(())
     }
-    fn discard_session(&self, _received_ticket: bool) -> bool {
-        true
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
