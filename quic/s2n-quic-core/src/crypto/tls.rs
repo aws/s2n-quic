@@ -152,8 +152,10 @@ pub trait Session: crate::crypto::CryptoSuite + Sized + Send + Debug {
 
     fn process_post_handshake_message<C: Context<Self>>(
         &mut self,
-        context: &mut C,
-    ) -> Result<(), crate::transport::Error>;
+        _context: &mut C,
+    ) -> Result<(), crate::transport::Error> {
+        Ok(())
+    }
 
     fn should_discard_session(&self) -> bool {
         true

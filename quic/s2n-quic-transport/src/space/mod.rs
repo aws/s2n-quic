@@ -315,13 +315,9 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 datagram,
             };
 
-            let result = session_info
+            let _result = session_info
                 .session
                 .process_post_handshake_message(&mut context);
-            session_info.session.received_ticket = result;
-            // Once the client has received a session ticket successfully, we can throw away
-            // the session_info object as we don't expect more post-handshake messages. Additionally
-            // we throw away any errors that occur during post-handshake processing.
             if session_info.session.should_discard_session() {
                 self.discard_session();
             }

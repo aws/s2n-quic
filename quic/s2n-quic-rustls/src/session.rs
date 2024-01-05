@@ -346,12 +346,6 @@ impl tls::Session for Session {
         self.emit_events(context)?;
         result
     }
-    fn process_post_handshake_message<C: tls::Context<Self>>(
-        &mut self,
-        _context: &mut C,
-    ) -> Result<(), transport::Error> {
-        Ok(())
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]

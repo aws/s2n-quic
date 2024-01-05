@@ -7,7 +7,7 @@ use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
     crypto::{tls, tls::CipherSuite, CryptoError, CryptoSuite},
-    endpoint, transport, ensure,
+    endpoint, ensure, transport,
 };
 use s2n_quic_crypto::Suite;
 use s2n_tls::{
@@ -171,7 +171,10 @@ impl tls::Session for Session {
         callback.unset(&mut self.connection)?;
 
         match result {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                self.received_ticket = true;
+                Ok(())
+            }
             Err(e) => Err(e
                 .alert()
                 .map(CryptoError::new)

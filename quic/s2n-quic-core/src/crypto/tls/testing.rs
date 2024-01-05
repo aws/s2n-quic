@@ -92,13 +92,6 @@ impl super::Session for Session {
     ) -> Poll<Result<(), transport::Error>> {
         todo!("implement dummy handshake")
     }
-
-    fn process_post_handshake_message<C: tls::Context<Self>>(
-        &mut self,
-        _context: &mut C,
-    ) -> Result<(), crate::transport::Error> {
-        Ok(())
-    }
 }
 
 impl CryptoSuite for Session {
