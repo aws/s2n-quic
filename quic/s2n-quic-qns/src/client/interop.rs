@@ -106,6 +106,23 @@ impl Interop {
                     task??;
                 }
             }
+        // In the Resumption test, the client needs to start a handshake and complete it before
+        // starting a resumption handshake with a session ticket from the first handshake. Therefore,
+        // the two handshake requests are run one after another synchronously.
+        } else if let Some(Testcase::Resumption) = self.testcase {
+            for request in self.requests.iter().cloned() {
+                let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
+                let requests = core::iter::once(request);
+
+                let task = h09::create_connection(
+                    client.clone(),
+                    connect,
+                    requests,
+                    download_dir.clone(),
+                    self.keep_alive,
+                );
+                task.await?;
+            }
         } else {
             // establish a connection per endpoint rather than per request
             for (host, connect) in endpoints.iter() {
@@ -235,8 +252,7 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
         // TODO add the ability to trigger a key update from the application
         KeyUpdate => false,
         Retry => true,
-        // TODO support storing tickets
-        Resumption => false,
+        Resumption => true,
         // TODO implement 0rtt
         ZeroRtt => false,
         Http3 => true,
