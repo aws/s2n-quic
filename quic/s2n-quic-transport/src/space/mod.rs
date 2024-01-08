@@ -315,9 +315,9 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 datagram,
             };
 
-            let _result = session_info
+            session_info
                 .session
-                .process_post_handshake_message(&mut context);
+                .process_post_handshake_message(&mut context)?;
             if session_info.session.should_discard_session() {
                 self.discard_session();
             }
