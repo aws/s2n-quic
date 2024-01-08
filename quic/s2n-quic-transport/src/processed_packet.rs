@@ -17,6 +17,7 @@ pub struct ProcessedPacket<'a> {
     pub(crate) frames: usize,
     pub(crate) path_validation_probing: path_validation::Probe,
     pub(crate) bytes_progressed: usize,
+    pub(crate) contains_crypto: bool,
 }
 
 impl<'a> ProcessedPacket<'a> {
@@ -30,6 +31,7 @@ impl<'a> ProcessedPacket<'a> {
             frames: 0,
             path_validation_probing: path_validation::Probe::default(),
             bytes_progressed: 0,
+            contains_crypto: false,
         }
     }
 

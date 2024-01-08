@@ -1427,6 +1427,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
+        datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1531,6 +1532,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet_interceptor,
             )?;
 
+            // try to process any post-handshake messages
+            if Config::ENDPOINT_TYPE.is_client() && processed_packet.contains_crypto {
+                let space_manager = &mut self.space_manager;
+                space_manager.post_handshake_crypto(
+                    &mut self.path_manager,
+                    &mut self.local_id_registry,
+                    &mut self.limits,
+                    datagram.timestamp,
+                    &self.waker,
+                    &mut publisher,
+                    datagram_endpoint,
+                )?;
+            }
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
         }

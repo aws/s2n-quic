@@ -150,6 +150,17 @@ pub trait Session: crate::crypto::CryptoSuite + Sized + Send + Debug {
         context: &mut C,
     ) -> core::task::Poll<Result<(), crate::transport::Error>>;
 
+    fn process_post_handshake_message<C: Context<Self>>(
+        &mut self,
+        _context: &mut C,
+    ) -> Result<(), crate::transport::Error> {
+        Ok(())
+    }
+
+    fn should_discard_session(&self) -> bool {
+        true
+    }
+
     /// Parses a hello message of the provided type
     ///
     /// The default implementation of this function assumes TLS messages are being exchanged.

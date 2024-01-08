@@ -541,9 +541,13 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             .map(|bytes| bytes.freeze())
     }
 
-    fn receive_application(&mut self, _max_len: Option<usize>) -> Option<Bytes> {
-        // Application doesn't currently have a buffer
-        None
+    fn receive_application(&mut self, max_len: Option<usize>) -> Option<Bytes> {
+        self.application
+            .as_deref_mut()?
+            .crypto_stream
+            .rx
+            .pop_watermarked(max_len.unwrap_or(usize::MAX))
+            .map(|bytes| bytes.freeze())
     }
 
     fn can_send_initial(&self) -> bool {
@@ -586,10 +590,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     }
 
     fn send_application(&mut self, transmission: Bytes) {
-        if cfg!(any(
-            test,
-            all(s2n_quic_unstable, feature = "unstable_resumption")
-        )) {
+        if cfg!(any(test, feature = "unstable_resumption")) {
             self.application
                 .as_mut()
                 .expect("can_send_application should be called before sending")

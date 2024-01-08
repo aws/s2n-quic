@@ -24,6 +24,7 @@ use std::{
 #[macro_use]
 mod recorder;
 
+mod resumption;
 mod setup;
 use setup::*;
 

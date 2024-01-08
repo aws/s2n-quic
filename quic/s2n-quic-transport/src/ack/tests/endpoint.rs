@@ -75,6 +75,7 @@ impl Endpoint {
             frames: 1,
             path_validation_probing: Default::default(),
             bytes_progressed: 0,
+            contains_crypto: false,
         };
 
         let path = helper_path_server();

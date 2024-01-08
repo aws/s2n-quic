@@ -7,7 +7,7 @@ use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
     crypto::{tls, tls::CipherSuite, CryptoError, CryptoSuite},
-    endpoint, transport,
+    endpoint, ensure, transport,
 };
 use s2n_quic_crypto::Suite;
 use s2n_tls::{
@@ -27,6 +27,7 @@ pub struct Session {
     emitted_server_name: bool,
     // This is only set for the client to avoid an extra allocation
     server_name: Option<ServerName>,
+    received_ticket: bool,
 }
 
 impl Session {
@@ -61,6 +62,7 @@ impl Session {
             send_buffer: BytesMut::new(),
             emitted_server_name: false,
             server_name,
+            received_ticket: false,
         })
     }
 }
@@ -138,5 +140,57 @@ impl tls::Session for Session {
                 .into())),
             Poll::Pending => Poll::Pending,
         }
+    }
+
+    fn process_post_handshake_message<W>(&mut self, context: &mut W) -> Result<(), transport::Error>
+    where
+        W: tls::Context<Self>,
+    {
+        let mut callback: Callback<W, Self> = Callback {
+            context,
+            endpoint: self.endpoint,
+            state: &mut self.state,
+            suite: PhantomData,
+            err: None,
+            send_buffer: &mut self.send_buffer,
+            emitted_server_name: &mut self.emitted_server_name,
+            server_name: &self.server_name,
+        };
+
+        unsafe {
+            // Safety: the callback struct must live as long as the callbacks are
+            // set on on the connection
+            callback.set(&mut self.connection);
+        }
+
+        let result = self
+            .connection
+            .quic_process_post_handshake_message()
+            .map(|_| ());
+
+        callback.unset(&mut self.connection)?;
+
+        match result {
+            Ok(_) => {
+                self.received_ticket = true;
+                Ok(())
+            }
+            Err(e) => Err(e
+                .alert()
+                .map(CryptoError::new)
+                .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
+                .into()),
+        }
+    }
+
+    fn should_discard_session(&self) -> bool {
+        // Only clients process post-handshake messages currently
+        ensure!(self.endpoint.is_client(), true);
+
+        // Clients that haven't enabled resumption can discard the session
+        ensure!(self.connection.are_session_tickets_enabled(), true);
+
+        // Discard the session once a ticket is received
+        self.received_ticket
     }
 }
