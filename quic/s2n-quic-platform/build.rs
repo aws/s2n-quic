@@ -84,8 +84,10 @@ impl Features {
             return;
         }
 
-        self.features.insert(name.to_string());
-        println!("cargo:rustc-cfg=s2n_quic_platform_{name}");
+        let newly_inserted = self.features.insert(name.to_string());
+        if newly_inserted {
+            println!("cargo:rustc-cfg=s2n_quic_platform_{name}");
+        }
     }
 
     fn supports(&self, name: &str) -> bool {

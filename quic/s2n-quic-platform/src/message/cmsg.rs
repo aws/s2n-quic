@@ -25,7 +25,10 @@ const fn const_max(a: usize, b: usize) -> usize {
 /// This should be enough for UDP_SEGMENT + IP_TOS + IP_PKTINFO. It may need to be increased
 /// to allow for future control messages.
 pub const MAX_LEN: usize = {
-    let tos_size = size_of_cmsg::<IpTos>();
+    let tos_v4_size = features::tos_v4::CMSG_SPACE;
+    let tos_v6_size = features::tos_v6::CMSG_SPACE;
+
+    let tos_size = const_max(tos_v4_size, tos_v6_size);
 
     let gso_size = features::gso::CMSG_SPACE;
     let gro_size = features::gro::CMSG_SPACE;
@@ -45,8 +48,6 @@ pub const MAX_LEN: usize = {
 
     tos_size + segment_offload_size + pktinfo_size + padding
 };
-
-pub type IpTos = libc::c_int;
 
 #[repr(align(8))] // the storage needs to be aligned to the same as `cmsghdr`
 #[derive(Clone, Debug)]
@@ -230,10 +231,10 @@ pub fn decode(msghdr: &libc::msghdr) -> AncillaryData {
     for (cmsg, value) in iter {
         unsafe {
             match (cmsg.cmsg_level, cmsg.cmsg_type) {
-                // Linux uses IP_TOS, FreeBSD uses IP_RECVTOS
-                (libc::IPPROTO_IP, libc::IP_TOS)
-                | (libc::IPPROTO_IP, libc::IP_RECVTOS)
-                | (libc::IPPROTO_IPV6, libc::IPV6_TCLASS) => {
+                (level, ty)
+                    if features::tos_v4::is_match(level, ty)
+                        || features::tos_v6::is_match(level, ty) =>
+                {
                     // IP_TOS cmsgs should be 1 byte, but occasionally are reported as 4 bytes
                     let value = match value.len() {
                         1 => decode_value::<u8>(value),
