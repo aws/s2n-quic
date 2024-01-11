@@ -35,6 +35,7 @@ pub struct Outcome<'a> {
 impl Slot {
     #[inline]
     pub fn new(start: u64, end: u64, data: BytesMut) -> Self {
+        super::probe::alloc(start, data.capacity());
         let v = Self { start, end, data };
         v.invariants();
         v

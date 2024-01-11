@@ -82,7 +82,7 @@ bolero = { version = "0.10" }
 # in downstream dev-dependencies (in s2n-quic-tls, in this case)
 jobserver = "=0.1.26"
 regex = "=1.9.6" # newer versions require rust 1.65, see https://github.com/aws/s2n-quic/issues/1993
-s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "testing"] }
+s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
 s2n-quic-transport = { version = "=0.32.0", path = "../s2n-quic-transport", features = ["unstable_resumption"] }
 tokio = { version = "1", features = ["full"] }

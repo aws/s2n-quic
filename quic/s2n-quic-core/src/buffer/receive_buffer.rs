@@ -9,6 +9,7 @@ use alloc::collections::{vec_deque, VecDeque};
 use bytes::BytesMut;
 use core::fmt;
 
+mod probe;
 mod request;
 mod slot;
 
@@ -465,6 +466,8 @@ impl ReceiveBuffer {
             // remove empty buffers
             self.slots.pop_front();
         }
+
+        probe::pop(self.start_offset, len);
 
         self.start_offset += len as u64;
 
