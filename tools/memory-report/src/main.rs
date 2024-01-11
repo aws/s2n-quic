@@ -11,6 +11,18 @@ struct Snapshot {
     max: u64,
 }
 
+macro_rules! assert_event {
+    ($event:expr, $actual:expr, $expected:expr) => {{
+        assert!(
+            $actual < $expected,
+            "{}: expected {} to be less than {}",
+            $event,
+            $actual,
+            $expected
+        );
+    }};
+}
+
 impl Snapshot {
     pub fn new() -> Self {
         let stats = dhat::HeapStats::get();
@@ -26,18 +38,13 @@ impl Snapshot {
 
         // make some assertions about the amount of memory use
         if streams > 0 {
-            match event {
-                "post-handshake" => {
-                    assert!(rss < 12_000, "{rss}");
-                }
-                "post-transfer" => {
-                    assert!(rss < 30_000, "{rss}");
-                }
-                "post-close" => {
-                    assert!(rss < 128, "{rss}");
-                }
+            let expected = match event {
+                "post-handshake" => 12_000,
+                "post-transfer" => 30_000,
+                "post-close" => 512,
                 e => unimplemented!("{}", e),
-            }
+            };
+            assert_event!(event, rss, expected);
         }
 
         println!("{event}\t{alloc}\t{rss}\t{streams}");
@@ -118,6 +125,9 @@ async fn client() -> Result {
 
             while let Some(chunk) = data.send_one(usize::MAX) {
                 stream.send(chunk).await?;
+                // flush the chunk, otherwise we will fill up the send buffer and increase total
+                // allocations
+                stream.flush().await?;
             }
 
             stream.close().await?;
