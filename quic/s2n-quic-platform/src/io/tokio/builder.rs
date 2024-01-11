@@ -122,12 +122,34 @@ impl Builder {
         Ok(self)
     }
 
+    /// Configures Generic Segmentation Offload (GSO)
+    ///
+    /// By default, GSO will be used unless the platform does not support it or an attempt to use
+    /// GSO fails. If it is known that GSO is not available, set this option to explicitly disable it.
+    pub fn with_gso(mut self, enabled: bool) -> io::Result<Self> {
+        if !enabled {
+            self.max_segments = 1.try_into().expect("1 is always a valid MaxSegments value");
+        }
+        Ok(self)
+    }
+
     /// Disables Generic Receive Offload (GRO)
     ///
     /// By default, GRO will be used unless the platform does not support it. If it is known that
     /// GRO is not available, set this option to explicitly disable it.
     pub fn with_gro_disabled(mut self) -> io::Result<Self> {
         self.gro_enabled = Some(false);
+        Ok(self)
+    }
+
+    /// Configures Generic Receive Offload (GRO)
+    ///
+    /// By default, GRO will be used unless the platform does not support it. If it is known that
+    /// GRO is not available, set this option to explicitly disable it.
+    pub fn with_gro(mut self, enabled: bool) -> io::Result<Self> {
+        if !enabled {
+            self.gro_enabled = Some(false);
+        }
         Ok(self)
     }
 
