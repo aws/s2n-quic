@@ -46,11 +46,8 @@ impl Server {
     pub fn build(&self) -> Result<impl io::Provider> {
         let mut io_builder = io::Default::builder()
             .with_receive_address((self.ip, self.port).into())?
-            .with_max_mtu(self.max_mtu)?;
-
-        if self.disable_gso {
-            io_builder = io_builder.with_gso_disabled()?;
-        }
+            .with_max_mtu(self.max_mtu)?
+            .with_gso(!self.disable_gso)?;
 
         if let Some(size) = self.queue_send_buffer_size {
             io_builder = io_builder.with_internal_send_buffer_size(size)?;
@@ -102,11 +99,8 @@ impl Client {
     pub fn build(&self) -> Result<impl io::Provider> {
         let mut io_builder = io::Default::builder()
             .with_receive_address((self.local_ip, 0u16).into())?
-            .with_max_mtu(self.max_mtu)?;
-
-        if self.disable_gso {
-            io_builder = io_builder.with_gso_disabled()?;
-        }
+            .with_max_mtu(self.max_mtu)?
+            .with_gso(!self.disable_gso)?;
 
         if let Some(size) = self.queue_send_buffer_size {
             io_builder = io_builder.with_internal_send_buffer_size(size)?;

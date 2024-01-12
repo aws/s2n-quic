@@ -122,6 +122,18 @@ impl Builder {
         Ok(self)
     }
 
+    /// Configures Generic Segmentation Offload (GSO)
+    ///
+    /// By default, GSO will be used unless the platform does not support it or an attempt to use
+    /// GSO fails. If it is known that GSO is not available, set this option to explicitly disable it.
+    pub fn with_gso(self, enabled: bool) -> io::Result<Self> {
+        if enabled {
+            Ok(self)
+        } else {
+            self.with_gso_disabled()
+        }
+    }
+
     /// Disables Generic Receive Offload (GRO)
     ///
     /// By default, GRO will be used unless the platform does not support it. If it is known that
@@ -129,6 +141,18 @@ impl Builder {
     pub fn with_gro_disabled(mut self) -> io::Result<Self> {
         self.gro_enabled = Some(false);
         Ok(self)
+    }
+
+    /// Configures Generic Receive Offload (GRO)
+    ///
+    /// By default, GRO will be used unless the platform does not support it. If it is known that
+    /// GRO is not available, set this option to explicitly disable it.
+    pub fn with_gro(self, enabled: bool) -> io::Result<Self> {
+        if enabled {
+            Ok(self)
+        } else {
+            self.with_gro_disabled()
+        }
     }
 
     /// Enables the port reuse (SO_REUSEPORT) socket option
