@@ -1,15 +1,21 @@
 ####################
 # Base Build Image #
 ####################
-FROM rust:latest AS rust-base
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS rust-base
+
+RUN set -eux; \
+  dnf makecache --refresh; \
+  dnf install -y gcc cmake; \
+  dnf clean all; \
+  rm -rf /var/cache/yum; \
+  curl https://sh.rustup.rs -sSf | bash -s -- -y;
 
 WORKDIR app
 
 RUN set -eux; \
-  apt-get update; \
-  apt-get install -y cmake clang;
-
-RUN cargo install cargo-chef --version 0.1.23
+  source /root/.cargo/env; \
+  cargo install cargo-chef --version 0.1.62 --locked; \
+  cargo install cargo-auditable --version 0.6.1 --locked;
 
 ################
 # Source image #
@@ -20,24 +26,22 @@ FROM rust-base AS sources
 COPY Cargo.toml /app
 COPY common /app/common
 COPY quic /app/quic
-COPY tools/xdp /app/tools/xdp
 # Don't include testing crates
-RUN rm -rf quic/s2n-quic-bench quic/s2n-quic-events quic/s2n-quic-sim
+RUN set -eux; \
+  sed -i '/xdp/d' quic/s2n-quic-platform/Cargo.toml; \
+  sed -i '/xdp/d' quic/s2n-quic-qns/Cargo.toml; \
+  sed -i '/xdp/d' quic/s2n-quic/Cargo.toml; \
+  rm -rf quic/s2n-quic-bench quic/s2n-quic-events quic/s2n-quic-sim
 
 #################
 # Planner image #
 #################
 # create a planner image that forms the dependencies
 FROM sources AS planner
-RUN cargo chef prepare --recipe-path recipe.json
 
-################
-# Cacher image #
-################
-# create a cacher image that builds the dependencies
-FROM rust-base AS cacher
-COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --recipe-path recipe.json
+RUN set -eux; \
+  source /root/.cargo/env; \
+  cargo chef prepare --recipe-path recipe.json;
 
 #################
 # Builder image #
@@ -45,20 +49,33 @@ RUN cargo chef cook --recipe-path recipe.json
 # create an image that builds the final crate
 FROM sources AS builder
 
-# Copy over the cached dependencies
-COPY --from=cacher /app/target target
-COPY --from=cacher /usr/local/cargo /usr/local/cargo
+COPY --from=planner /app/recipe.json recipe.json
+
+ENV RUSTFLAGS_REL="-C link-arg=-s -C panic=abort --cfg s2n_internal_dev"
+ENV RUSTFLAGS_DEV="--cfg s2n_internal_dev"
+
+ARG release="false"
+
+RUN set -eux; \
+  source /root/.cargo/env; \
+  if [ "$release" = "true" ]; then \
+    RUSTFLAGS="$RUSTFLAGS_REL" \
+      cargo chef cook --release --recipe-path recipe.json; \
+  else \
+    RUSTFLAGS="$RUSTFLAGS_DEV" \
+      cargo chef cook --recipe-path recipe.json; \
+  fi;
 
 # build runner
-ARG release="false"
 RUN set -eux; \
+  source /root/.cargo/env; \
   if [ "$release" = "true" ]; then \
-    RUSTFLAGS="-C link-arg=-s -C panic=abort --cfg s2n_internal_dev" \
-      cargo build --bin s2n-quic-qns --release; \
+    RUSTFLAGS="$RUSTFLAGS_REL" \
+      cargo auditable build -p s2n-quic-qns --bin s2n-quic-qns --release; \
     cp target/release/s2n-quic-qns .; \
   else \
-    RUSTFLAGS="--cfg s2n_internal_dev" \
-      cargo build --bin s2n-quic-qns; \
+    RUSTFLAGS="$RUSTFLAGS_DEV" \
+      cargo auditable build -p s2n-quic-qns --bin s2n-quic-qns; \
     cp target/debug/s2n-quic-qns .; \
   fi; \
   rm -rf target
@@ -66,18 +83,20 @@ RUN set -eux; \
 #######################
 # Endpoint base image #
 #######################
-FROM ubuntu:latest AS endpoint-base
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS endpoint-base
 
 ENV RUST_BACKTRACE="1"
 
 ARG sim_hash="1f569016bcd9f7076fc9fd932c1415d28d3020f7"
 
 RUN set -eux; \
-  apt-get update; \
-  apt-get install -y wget net-tools iputils-ping tcpdump ethtool iperf3 iproute2; \
-  wget https://raw.githubusercontent.com/marten-seemann/quic-network-simulator/${sim_hash}/endpoint/setup.sh; \
+  dnf makecache --refresh; \
+  dnf install -y net-tools iputils ethtool iproute hostname; \
+  dnf clean all; \
+  rm -rf /var/cache/yum; \
+  curl -o setup.sh https://raw.githubusercontent.com/marten-seemann/quic-network-simulator/${sim_hash}/endpoint/setup.sh; \
   chmod +x setup.sh; \
-  wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh; \
+  curl -o wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh; \
   chmod +x wait-for-it.sh;
 
 ARG tls
@@ -112,6 +131,12 @@ RUN set -eux; \
 # iperf image #
 ###############
 FROM endpoint-base AS iperf
+
+RUN set -eux; \
+  dnf makecache --refresh; \
+  dnf install -y iperf3; \
+  dnf clean all; \
+  rm -rf /var/cache/yum;
 
 COPY --from=sources /app/quic/s2n-quic-qns/benchmark/iperf/run.sh run_endpoint.sh
 RUN chmod +x run_endpoint.sh
