@@ -66,6 +66,10 @@ RUN set -eux; \
       cargo chef cook --recipe-path recipe.json; \
   fi;
 
+# restore the correct sources - cargo-chef replaces them with empty files
+COPY --from=sources /app/common /app/common
+COPY --from=sources /app/quic /app/quic
+
 # build runner
 RUN set -eux; \
   source /root/.cargo/env; \
@@ -124,7 +128,8 @@ RUN set -eux; \
   ldd /usr/bin/s2n-quic-qns; \
   # ensure the binary works \
   s2n-quic-qns --help; \
-  s2n-quic-qns-release --help; \
+  s2n-quic-qns --help | grep interop; \
+  s2n-quic-qns-release --help | grep interop; \
   echo done
 
 ###############
@@ -157,5 +162,6 @@ RUN set -eux; \
   ldd /usr/bin/s2n-quic-qns; \
   # ensure the binary works \
   s2n-quic-qns --help; \
+  s2n-quic-qns --help | grep interop; \
   echo done
 
