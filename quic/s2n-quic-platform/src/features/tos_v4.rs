@@ -48,9 +48,9 @@ pub use tos_impl::*;
 
 // FreeBSD uses an unsigned_char for IP_TOS
 // see https://svnweb.freebsd.org/base/stable/8/sys/netinet/ip_input.c?view=markup&pathrev=247944#l1716
-#[cfg(target_os = "freebsg")]
+#[cfg(target_os = "freebsd")]
 pub type Cmsg = libc::c_uchar;
-#[cfg(not(target_os = "freebsg"))]
+#[cfg(not(target_os = "freebsd"))]
 pub type Cmsg = c_int;
 
 pub const IS_SUPPORTED: bool = cfg!(s2n_quic_platform_tos);
