@@ -110,7 +110,7 @@ jobs:
 
   interop:
     runs-on: ubuntu-22.04
-    needs: [env]
+    needs: [env, s2n-quic-qns]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
@@ -118,18 +118,29 @@ jobs:
         with:
           path: s2n-quic
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: s2n-quic-qns-debug
+          path: s2n-quic-qns/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: s2n-quic-qns-release
+          path: s2n-quic-qns/
+
       - name: Setup dockerfile
-        working-directory: s2n-quic
+        working-directory: s2n-quic-qns
         run: |
-          cp quic/s2n-quic-qns/etc/Dockerfile .
+          cp ../s2n-quic/quic/s2n-quic-qns/etc/Dockerfile .
+          cp ../s2n-quic/quic/s2n-quic-qns/etc/run_endpoint.sh .
 
       - name: Run docker build
-        working-directory: s2n-quic
+        working-directory: s2n-quic-qns
         env:
           DOCKER_BUILDKIT: 1
         run: |
-          docker build . --file Dockerfile --target default --tag aws/s2n-quic-qns --build-arg tls=s2n-tls
-          docker build . --file Dockerfile --target default --tag aws/s2n-quic-qns-rustls --build-arg tls=rustls
+          docker build . --file Dockerfile --target prebuilt --tag aws/s2n-quic-qns --build-arg tls=s2n-tls
+          docker build . --file Dockerfile --target prebuilt --tag aws/s2n-quic-qns-rustls --build-arg tls=rustls
 
       - uses: actions/checkout@v4
         with:
