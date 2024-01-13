@@ -54,20 +54,18 @@ macro_rules! branch {
         );
         result
     }};
-    ($cond:expr, $outcome:expr) => {{
+    ($cond:expr, $outcome:expr) => {
+        $crate::branch!($cond, stringify!($cond), stringify!($outcome))
+    };
+    ($cond:expr, $branch:expr, $outcome:expr) => {{
         let result = $cond;
         if result {
-            $crate::_trace!(
-                branch = stringify!($cond),
-                result,
-                file = file!(),
-                line = line!(),
-            );
+            $crate::_trace!(branch = $branch, result, file = file!(), line = line!(),);
         } else {
             $crate::_trace!(
-                branch = stringify!($cond),
+                branch = $branch,
                 result,
-                outcome = stringify!($outcome),
+                outcome = $outcome,
                 file = file!(),
                 line = line!(),
             );
@@ -76,13 +74,48 @@ macro_rules! branch {
     }};
 }
 
+#[macro_export]
+macro_rules! ready {
+    ($expr:expr) => {
+        match $expr {
+            ::core::task::Poll::Pending => {
+                $crate::branch!(false, stringify!($expr), "return Poll::Pending");
+                return ::core::task::Poll::Pending;
+            }
+            ::core::task::Poll::Ready(v) => {
+                $crate::branch!(true, stringify!($expr), "");
+                v
+            }
+        }
+    };
+}
+
 /// Checks that the first argument is true, otherwise returns the second value
 #[macro_export]
 macro_rules! ensure {
-    ($cond:expr) => {
-        if !$crate::branch!($cond, return) {
-            return;
-        }
+    (let $pat:pat = $expr:expr, continue) => {
+        let $pat = $expr else {
+            $crate::branch!(false, stringify!(let $pat = $expr), stringify!(continue));
+            continue;
+        };
+        $crate::branch!(true, stringify!(let $pat = $expr), "");
+    };
+    (let $pat:pat = $expr:expr, break $($ret:expr)?) => {
+        let $pat = $expr else {
+            $crate::branch!(false, stringify!(let $pat = $expr), stringify!(break $($ret)?));
+            break $($ret)?;
+        };
+        $crate::branch!(true, stringify!(let $pat = $expr), "");
+    };
+    (let $pat:pat = $expr:expr, return $($ret:expr)?) => {
+        let $pat = $expr else {
+            $crate::branch!(false, stringify!(let $pat = $expr), stringify!(return $($ret)?));
+            return $($ret)?;
+        };
+        $crate::branch!(true, stringify!(let $pat = $expr), "");
+    };
+    (let $pat:pat = $expr:expr $(, $ret:expr)?) => {
+        $crate::ensure!(let $pat = $expr, return $($ret)?)
     };
     ($cond:expr, continue) => {
         if !$crate::branch!($cond, continue) {
@@ -94,10 +127,13 @@ macro_rules! ensure {
             break $($expr)?;
         }
     };
-    ($cond:expr, $ret:expr) => {
-        if !$crate::branch!($cond, return $ret) {
-            return $ret;
+    ($cond:expr, return $($expr:expr)?) => {
+        if !$crate::branch!($cond, return $($expr)?) {
+            return $($expr)?;
         }
+    };
+    ($cond:expr $(, $ret:expr)?) => {
+        $crate::ensure!($cond, return $($ret)?);
     };
 }
 
@@ -119,6 +155,9 @@ macro_rules! impl_ready_future {
         }
     };
 }
+
+#[macro_use]
+pub mod probe;
 
 pub mod ack;
 pub mod application;

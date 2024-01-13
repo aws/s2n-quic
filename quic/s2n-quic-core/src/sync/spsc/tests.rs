@@ -397,7 +397,7 @@ fn loom_spin_rx(mut recv: Receiver<u32>, expected: usize) {
 }
 
 fn loom_async_rx(mut recv: Receiver<u32>, expected: usize) {
-    use futures::{future::poll_fn, ready};
+    use futures::future::poll_fn;
 
     loom::future::block_on(async move {
         let mut value = 0u32;
@@ -455,7 +455,7 @@ fn loom_spin_tx(mut send: Sender<u32>, batch_count: usize, batch_size: usize) {
 }
 
 fn loom_async_tx(mut send: Sender<u32>, batch_count: usize, batch_size: usize) {
-    use futures::{future::poll_fn, ready};
+    use futures::future::poll_fn;
 
     loom::future::block_on(async move {
         let max_value = (batch_count * batch_size) as u32;

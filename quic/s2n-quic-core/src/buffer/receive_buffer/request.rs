@@ -62,6 +62,7 @@ impl<'a> Request<'a> {
 
     #[inline]
     pub fn write(self, buffer: &mut BytesMut) {
+        super::probe::write(self.offset, self.data.len());
         let chunk = buffer.chunk_mut();
         unsafe {
             let len = self.data.len();
