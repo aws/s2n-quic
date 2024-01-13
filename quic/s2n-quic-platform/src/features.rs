@@ -6,4 +6,6 @@ type c_int = std::os::raw::c_int;
 
 pub mod gro;
 pub mod gso;
+pub mod tos_v4;
+pub mod tos_v6;
 pub use gso::Gso;

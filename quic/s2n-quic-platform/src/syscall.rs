@@ -166,28 +166,32 @@ pub fn configure_mtu_disc(tx_socket: &Socket) -> bool {
 pub fn configure_tos(rx_socket: &Socket) -> bool {
     let mut success = false;
 
-    #[cfg(s2n_quic_platform_tos)]
+    #[cfg(unix)]
     {
         use std::os::unix::io::AsRawFd;
         let enabled: libc::c_int = 1;
 
-        success |= libc!(setsockopt(
-            rx_socket.as_raw_fd(),
-            libc::IPPROTO_IP,
-            libc::IP_RECVTOS,
-            &enabled as *const _ as _,
-            core::mem::size_of_val(&enabled) as _,
-        ))
-        .is_ok();
+        if let Some((level, ty)) = crate::features::tos_v4::SOCKOPT {
+            success |= libc!(setsockopt(
+                rx_socket.as_raw_fd(),
+                level,
+                ty,
+                &enabled as *const _ as _,
+                core::mem::size_of_val(&enabled) as _,
+            ))
+            .is_ok();
+        }
 
-        success |= libc!(setsockopt(
-            rx_socket.as_raw_fd(),
-            libc::IPPROTO_IPV6,
-            libc::IPV6_RECVTCLASS,
-            &enabled as *const _ as _,
-            core::mem::size_of_val(&enabled) as _,
-        ))
-        .is_ok()
+        if let Some((level, ty)) = crate::features::tos_v6::SOCKOPT {
+            success |= libc!(setsockopt(
+                rx_socket.as_raw_fd(),
+                level,
+                ty,
+                &enabled as *const _ as _,
+                core::mem::size_of_val(&enabled) as _,
+            ))
+            .is_ok();
+        }
     }
 
     success
@@ -229,7 +233,7 @@ pub fn configure_pktinfo(rx_socket: &Socket) -> bool {
 pub fn configure_gro(rx_socket: &Socket) -> bool {
     let mut success = false;
 
-    #[cfg(s2n_quic_platform_gro)]
+    #[cfg(unix)]
     if let Some((level, ty)) = crate::features::gro::SOCKOPT {
         use std::os::unix::io::AsRawFd;
         let enabled: libc::c_int = 1;

@@ -32,22 +32,20 @@ impl Ext for msghdr {
             return;
         }
 
-        let ecn = ecn as libc::c_int;
-
         // the remote address needs to be unmapped in order to set the appropriate cmsg
         match remote_address.unmap() {
             SocketAddress::IpV4(_) => {
-                // FreeBSD uses an unsigned_char for IP_TOS
-                // see https://svnweb.freebsd.org/base/stable/8/sys/netinet/ip_input.c?view=markup&pathrev=247944#l1716
-                #[cfg(target_os = "freebsd")]
-                let ecn = ecn as libc::c_uchar;
-
-                self.encode_cmsg(libc::IPPROTO_IP, libc::IP_TOS, ecn)
-                    .unwrap()
+                use features::tos_v4 as tos;
+                if let (Some(level), Some(ty)) = (tos::LEVEL, tos::TYPE) {
+                    self.encode_cmsg(level, ty, ecn as tos::Cmsg).unwrap();
+                }
             }
-            SocketAddress::IpV6(_) => self
-                .encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_TCLASS, ecn)
-                .unwrap(),
+            SocketAddress::IpV6(_) => {
+                use features::tos_v6 as tos;
+                if let (Some(level), Some(ty)) = (tos::LEVEL, tos::TYPE) {
+                    self.encode_cmsg(level, ty, ecn as tos::Cmsg).unwrap();
+                }
+            }
         };
     }
 
