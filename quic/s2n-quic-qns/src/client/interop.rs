@@ -83,13 +83,21 @@ impl Interop {
 
         let endpoints = self.endpoints().await?;
 
-        let mut tasks = task::Limiter::new(self.concurrency);
+        // In the Resumption test, the client needs to start a handshake and complete it before
+        // starting a resumption handshake with a session ticket from the first handshake. Therefore,
+        // the two handshake requests are run one after another synchronously.
+        let concurrency = if matches!(self.testcase, Some(Testcase::Resumption)) {
+            1
+        } else {
+            self.concurrency
+        };
+        let mut tasks = task::Limiter::new(concurrency);
 
         // https://github.com/marten-seemann/quic-interop-runner#test-cases
         // Handshake Loss (multiconnect): Tests resilience of the handshake to high loss.
         // The client is expected to establish multiple connections, sequential or in parallel,
         // and use each connection to download a single file.
-        if let Some(Testcase::Multiconnect) = self.testcase {
+        if let Some(Testcase::Multiconnect) | Some(Testcase::Resumption) = self.testcase {
             for request in self.requests.iter().cloned() {
                 let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
                 let requests = core::iter::once(request);
@@ -105,23 +113,6 @@ impl Interop {
                 if let Some(task) = tasks.spawn(task).await {
                     task??;
                 }
-            }
-        // In the Resumption test, the client needs to start a handshake and complete it before
-        // starting a resumption handshake with a session ticket from the first handshake. Therefore,
-        // the two handshake requests are run one after another synchronously.
-        } else if let Some(Testcase::Resumption) = self.testcase {
-            for request in self.requests.iter().cloned() {
-                let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
-                let requests = core::iter::once(request);
-
-                let task = h09::create_connection(
-                    client.clone(),
-                    connect,
-                    requests,
-                    download_dir.clone(),
-                    self.keep_alive,
-                );
-                task.await?;
             }
         } else {
             // establish a connection per endpoint rather than per request

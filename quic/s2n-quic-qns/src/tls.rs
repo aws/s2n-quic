@@ -205,6 +205,7 @@ pub mod s2n_tls {
         Client, Server,
     };
     use std::{
+        collections::VecDeque,
         pin::Pin,
         sync::{Arc, Mutex},
     };
@@ -225,9 +226,18 @@ pub mod s2n_tls {
         })
     }
 
-    #[derive(Default, Clone)]
+    #[derive(Clone)]
     pub struct SessionTicketHandler {
-        stored_ticket: Arc<Mutex<Option<Vec<u8>>>>,
+        ticket_storage: Arc<Mutex<VecDeque<Vec<u8>>>>,
+    }
+
+    impl Default for SessionTicketHandler {
+        fn default() -> SessionTicketHandler {
+            SessionTicketHandler {
+                // Cap session ticket storage at 10 tickets
+                ticket_storage: Arc::new(Mutex::new(VecDeque::with_capacity(10))),
+            }
+        }
     }
 
     impl SessionTicketCallback for SessionTicketHandler {
@@ -235,10 +245,8 @@ pub mod s2n_tls {
             let size = session_ticket.len().unwrap();
             let mut data = vec![0; size];
             session_ticket.data(&mut data).unwrap();
-            let mut ticket = (*self.stored_ticket).lock().unwrap();
-            if ticket.is_none() {
-                *ticket = Some(data);
-            }
+            let mut vec = (*self.ticket_storage).lock().unwrap();
+            vec.push_back(data);
         }
     }
     impl ConnectionInitializer for SessionTicketHandler {
@@ -246,7 +254,7 @@ pub mod s2n_tls {
             &self,
             connection: &mut Connection,
         ) -> Result<Option<Pin<Box<(dyn ConnectionFuture)>>>, Error> {
-            if let Some(ticket) = (*self.stored_ticket).lock().unwrap().as_deref() {
+            if let Some(ticket) = (*self.ticket_storage).lock().unwrap().pop_back().as_deref() {
                 connection.set_session_ticket(ticket)?;
             }
             Ok(None)
