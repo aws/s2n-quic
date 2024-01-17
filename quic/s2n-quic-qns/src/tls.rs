@@ -226,18 +226,9 @@ pub mod s2n_tls {
         })
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Default)]
     pub struct SessionTicketHandler {
         ticket_storage: Arc<Mutex<VecDeque<Vec<u8>>>>,
-    }
-
-    impl Default for SessionTicketHandler {
-        fn default() -> SessionTicketHandler {
-            SessionTicketHandler {
-                // Cap session ticket storage at 10 tickets
-                ticket_storage: Arc::new(Mutex::new(VecDeque::with_capacity(10))),
-            }
-        }
     }
 
     impl SessionTicketCallback for SessionTicketHandler {
@@ -247,6 +238,11 @@ pub mod s2n_tls {
             session_ticket.data(&mut data).unwrap();
             let mut vec = (*self.ticket_storage).lock().unwrap();
             vec.push_back(data);
+
+            // discard any excessive tickets
+            while vec.len() > 10 {
+                let _ = vec.pop_front();
+            }
         }
     }
     impl ConnectionInitializer for SessionTicketHandler {
@@ -254,7 +250,12 @@ pub mod s2n_tls {
             &self,
             connection: &mut Connection,
         ) -> Result<Option<Pin<Box<(dyn ConnectionFuture)>>>, Error> {
-            if let Some(ticket) = (*self.ticket_storage).lock().unwrap().pop_back().as_deref() {
+            if let Some(ticket) = (*self.ticket_storage)
+                .lock()
+                .unwrap()
+                .pop_front()
+                .as_deref()
+            {
                 connection.set_session_ticket(ticket)?;
             }
             Ok(None)

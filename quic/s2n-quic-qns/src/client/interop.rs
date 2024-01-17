@@ -97,7 +97,7 @@ impl Interop {
         // Handshake Loss (multiconnect): Tests resilience of the handshake to high loss.
         // The client is expected to establish multiple connections, sequential or in parallel,
         // and use each connection to download a single file.
-        if let Some(Testcase::Multiconnect) | Some(Testcase::Resumption) = self.testcase {
+        if let Some(Testcase::Multiconnect | Testcase::Resumption) = self.testcase {
             for request in self.requests.iter().cloned() {
                 let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
                 let requests = core::iter::once(request);
