@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::ReceiveBufferError;
+use super::Error;
 use crate::varint::VarInt;
 use bytes::{BufMut, BytesMut};
 use core::fmt;
@@ -23,10 +23,10 @@ impl<'a> fmt::Debug for Request<'a> {
 
 impl<'a> Request<'a> {
     #[inline]
-    pub fn new(offset: VarInt, data: &'a [u8]) -> Result<Self, ReceiveBufferError> {
+    pub fn new(offset: VarInt, data: &'a [u8]) -> Result<Self, Error> {
         offset
             .checked_add_usize(data.len())
-            .ok_or(ReceiveBufferError::OutOfRange)?;
+            .ok_or(Error::OutOfRange)?;
         Ok(Self {
             offset: offset.as_u64(),
             data,

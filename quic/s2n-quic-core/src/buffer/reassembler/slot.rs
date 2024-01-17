@@ -5,7 +5,7 @@ use super::Request;
 use bytes::{Buf, BufMut, BytesMut};
 use core::fmt;
 
-/// Possible states for slots in the [`ReceiveBuffer`]s queue
+/// Possible states for slots in the [`Reassembler`]'s queue
 #[derive(PartialEq, Eq)]
 pub struct Slot {
     start: u64,

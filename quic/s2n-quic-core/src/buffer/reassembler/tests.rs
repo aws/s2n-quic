@@ -20,7 +20,7 @@ enum Op {
         watermark: Option<u16>,
     },
     Skip {
-        len: usize,
+        len: VarInt,
     },
 }
 
@@ -28,7 +28,7 @@ enum Op {
 #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn model_test() {
     check!().with_type::<Vec<Op>>().for_each(|ops| {
-        let mut buffer = ReceiveBuffer::new();
+        let mut buffer = Reassembler::new();
         let mut recv = Data::new(u64::MAX);
         for op in ops {
             match *op {
@@ -59,8 +59,8 @@ fn model_test() {
                     let consumed_len = buffer.consumed_len();
                     if buffer.skip(len).is_ok() {
                         let new_consumed_len = buffer.consumed_len();
-                        assert_eq!(new_consumed_len, consumed_len + len as u64);
-                        recv.seek_forward(len);
+                        assert_eq!(new_consumed_len, consumed_len + len.as_u64());
+                        recv.seek_forward(len.as_u64());
                     }
                 }
             }
@@ -68,14 +68,14 @@ fn model_test() {
 
         // make sure a cleared buffer is the same as a new one
         buffer.reset();
-        assert_eq!(buffer, ReceiveBuffer::new());
+        assert_eq!(buffer, Reassembler::new());
     })
 }
 
 #[test]
 #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn write_and_pop() {
-    let mut buffer = ReceiveBuffer::new();
+    let mut buffer = Reassembler::new();
     let mut offset = VarInt::default();
     let chunk = Data::send_one_at(0, 9000);
     let mut popped_bytes = 0;
@@ -92,22 +92,25 @@ fn write_and_pop() {
 #[test]
 #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn write_and_copy_into_buf() {
-    let mut buffer = ReceiveBuffer::new();
+    use crate::buffer::reader::Storage;
+
+    let mut buffer = Reassembler::new();
     let mut offset = VarInt::default();
-    let mut output = vec![];
+    let mut output: Vec<u8> = vec![];
     for len in 0..10000 {
+        dbg!(len, offset);
         let chunk = Data::send_one_at(offset.as_u64(), len);
         buffer.write_at(offset, &chunk).unwrap();
         offset += chunk.len();
-        let copied_len = buffer.copy_into_buf(&mut output);
-        assert_eq!(copied_len, chunk.len());
+        buffer.copy_into(&mut output).unwrap();
+        assert_eq!(output.len(), chunk.len());
         assert_eq!(&output[..], &chunk[..]);
         output.clear();
     }
 }
 
-fn new_receive_buffer() -> ReceiveBuffer {
-    let buffer = ReceiveBuffer::new();
+fn new_receive_buffer() -> Reassembler {
+    let buffer = Reassembler::new();
     assert_eq!(buffer.len(), 0);
     buffer
 }
@@ -400,7 +403,7 @@ fn chunk_partial_larger_after_test() {
 #[test]
 #[allow(clippy::cognitive_complexity)] // several operations are needed to get the buffer in the desired state
 fn write_and_read_buffer() {
-    let mut buf = ReceiveBuffer::new();
+    let mut buf = Reassembler::new();
 
     assert_eq!(0, buf.len());
     assert!(buf.is_empty());
@@ -452,7 +455,7 @@ fn write_and_read_buffer() {
 
 #[test]
 fn fill_preallocated_gaps() {
-    let mut buf: ReceiveBuffer = ReceiveBuffer::new();
+    let mut buf: Reassembler = Reassembler::new();
 
     buf.write_at((MIN_BUFFER_ALLOCATION_SIZE as u32 + 2).into(), &[42, 45])
         .unwrap();
@@ -498,7 +501,7 @@ fn fill_preallocated_gaps() {
 
 #[test]
 fn create_and_fill_large_gaps() {
-    let mut buf = ReceiveBuffer::new();
+    let mut buf = Reassembler::new();
     // This creates 3 full buffer gaps of full allocation ranges
     buf.write_at(
         (MIN_BUFFER_ALLOCATION_SIZE as u32 * 3 + 2).into(),
@@ -573,7 +576,7 @@ fn create_and_fill_large_gaps() {
 
 #[test]
 fn ignore_already_consumed_data() {
-    let mut buf = ReceiveBuffer::new();
+    let mut buf = Reassembler::new();
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
     assert_eq!(0, buf.consumed_len());
     assert_eq!(&[0u8, 1, 2, 3], &*buf.pop().unwrap());
@@ -597,7 +600,7 @@ fn ignore_already_consumed_data() {
 
 #[test]
 fn merge_right() {
-    let mut buf = ReceiveBuffer::new();
+    let mut buf = Reassembler::new();
     buf.write_at(4u32.into(), &[4, 5, 6]).unwrap();
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
     assert_eq!(7, buf.len());
@@ -606,7 +609,7 @@ fn merge_right() {
 
 #[test]
 fn merge_left() {
-    let mut buf = ReceiveBuffer::new();
+    let mut buf = Reassembler::new();
     buf.write_at(0u32.into(), &[0, 1, 2, 3]).unwrap();
     buf.write_at(4u32.into(), &[4, 5, 6]).unwrap();
     assert_eq!(7, buf.len());
@@ -615,7 +618,7 @@ fn merge_left() {
 
 #[test]
 fn merge_both_sides() {
-    let mut buf = ReceiveBuffer::new();
+    let mut buf = Reassembler::new();
     // Create gaps on all sides, and merge them later
     buf.write_at(4u32.into(), &[4, 5]).unwrap();
     buf.write_at(8u32.into(), &[8, 9]).unwrap();
@@ -627,7 +630,7 @@ fn merge_both_sides() {
 
 #[test]
 fn do_not_merge_across_allocations_right() {
-    let mut buf = ReceiveBuffer::new();
+    let mut buf = Reassembler::new();
     let mut data_left = [0u8; MIN_BUFFER_ALLOCATION_SIZE];
     let mut data_right = [0u8; MIN_BUFFER_ALLOCATION_SIZE];
 
@@ -645,7 +648,7 @@ fn do_not_merge_across_allocations_right() {
 
 #[test]
 fn do_not_merge_across_allocations_left() {
-    let mut buf = ReceiveBuffer::new();
+    let mut buf = Reassembler::new();
     let mut data_left = [0u8; MIN_BUFFER_ALLOCATION_SIZE];
     let mut data_right = [0u8; MIN_BUFFER_ALLOCATION_SIZE];
 
@@ -663,7 +666,7 @@ fn do_not_merge_across_allocations_left() {
 
 #[test]
 fn reset_buffer() {
-    let mut buf = ReceiveBuffer::new();
+    let mut buf = Reassembler::new();
     buf.write_at(2u32.into(), &[2, 3]).unwrap();
     buf.write_at(0u32.into(), &[0, 1]).unwrap();
     assert_eq!(4, buf.len());
@@ -701,7 +704,7 @@ fn fail_to_push_out_of_bounds_data() {
     for nr_bytes in 0..64 * 2 + 1 {
         let data = vec![0u8; nr_bytes + 1];
         assert_eq!(
-            Err(ReceiveBufferError::OutOfRange),
+            Err(Error::OutOfRange),
             buffer.write_at(
                 VarInt::new(MAX_VARINT_VALUE - nr_bytes as u64).unwrap(),
                 &data[..]
@@ -714,7 +717,7 @@ fn fail_to_push_out_of_bounds_data() {
 #[cfg_attr(miri, ignore)] // miri fails because the slice points to invalid memory
 #[cfg(target_pointer_width = "64")]
 fn fail_to_push_out_of_bounds_data_with_long_buffer() {
-    let mut buffer = ReceiveBuffer::new();
+    let mut buffer = Reassembler::new();
 
     // Overflow the allowed buffers by size 1. This uses an invalid memory
     // reference, due to not wanting to allocate too much memory. This is
@@ -728,7 +731,7 @@ fn fail_to_push_out_of_bounds_data_with_long_buffer() {
 
     for _ in 0..64 * 2 + 1 {
         assert_eq!(
-            Err(ReceiveBufferError::OutOfRange),
+            Err(Error::OutOfRange),
             buffer.write_at(20u32.into(), fake_data)
         );
     }
@@ -736,7 +739,7 @@ fn fail_to_push_out_of_bounds_data_with_long_buffer() {
 
 #[test]
 fn pop_watermarked_test() {
-    let mut buffer = ReceiveBuffer::new();
+    let mut buffer = Reassembler::new();
 
     assert_eq!(
         None,
@@ -788,7 +791,7 @@ fn write_start_fin_test() {
     for size in INTERESTING_CHUNK_SIZES.iter().copied() {
         for pre_empty_fin in [false, true] {
             let bytes: Vec<u8> = Iterator::map(0..size, |v| v as u8).collect();
-            let mut buffer = ReceiveBuffer::new();
+            let mut buffer = Reassembler::new();
 
             // write the fin offset first
             if pre_empty_fin {
@@ -832,11 +835,11 @@ fn write_partial_fin_test() {
                 let partial_bytes: Vec<u8> = Iterator::map(0..partial_size, |v| v as u8).collect();
                 let fin_bytes: Vec<u8> = Iterator::map(0..fin_size, |v| v as u8).collect();
 
-                let mut buffer = ReceiveBuffer::new();
+                let mut buffer = Reassembler::new();
                 assert!(!buffer.is_writing_complete());
                 assert!(!buffer.is_reading_complete());
 
-                let mut oracle = ReceiveBuffer::new();
+                let mut oracle = Reassembler::new();
 
                 let mut requests = vec![
                     (0u32, &partial_bytes, false),
@@ -919,13 +922,13 @@ fn write_partial_fin_test() {
 
 #[test]
 fn write_fin_zero_test() {
-    let mut buffer = ReceiveBuffer::new();
+    let mut buffer = Reassembler::new();
 
     buffer.write_at_fin(0u32.into(), &[]).unwrap();
 
     assert_eq!(
         buffer.write_at(0u32.into(), &[1]),
-        Err(ReceiveBufferError::InvalidFin),
+        Err(Error::InvalidFin),
         "no data can be written after a fin"
     );
 }
@@ -933,7 +936,7 @@ fn write_fin_zero_test() {
 #[test]
 fn fin_pop_take_test() {
     for write_fin in [false, true] {
-        let mut buffer = ReceiveBuffer::new();
+        let mut buffer = Reassembler::new();
         buffer.write_at(0u32.into(), &[1]).unwrap();
         if write_fin {
             buffer.write_at_fin(1u32.into(), &[]).unwrap();
@@ -956,38 +959,38 @@ fn fin_pop_take_test() {
 
 #[test]
 fn write_fin_changed_error_test() {
-    let mut buffer = ReceiveBuffer::new();
+    let mut buffer = Reassembler::new();
 
     buffer.write_at_fin(16u32.into(), &[]).unwrap();
 
     assert_eq!(
         buffer.write_at_fin(0u32.into(), &[]),
-        Err(ReceiveBufferError::InvalidFin),
+        Err(Error::InvalidFin),
         "the fin cannot decrease a previous fin"
     );
     assert_eq!(
         buffer.write_at_fin(32u32.into(), &[]),
-        Err(ReceiveBufferError::InvalidFin),
+        Err(Error::InvalidFin),
         "the fin cannot exceed a previous fin"
     );
 }
 
 #[test]
 fn write_fin_lowered_test() {
-    let mut buffer = ReceiveBuffer::new();
+    let mut buffer = Reassembler::new();
 
     buffer.write_at(32u32.into(), &[1]).unwrap();
 
     assert_eq!(
         buffer.write_at_fin(16u32.into(), &[]),
-        Err(ReceiveBufferError::InvalidFin),
+        Err(Error::InvalidFin),
         "the fin cannot be lower than an already existing chunk"
     );
 }
 
 #[test]
 fn write_fin_complete_test() {
-    let mut buffer = ReceiveBuffer::new();
+    let mut buffer = Reassembler::new();
 
     buffer.write_at_fin(4u32.into(), &[4]).unwrap();
 
@@ -1018,7 +1021,7 @@ fn allocation_size_test() {
 
     for (index, (offset, size)) in received.iter().copied().enumerate() {
         assert_eq!(
-            ReceiveBuffer::allocation_size(offset),
+            Reassembler::allocation_size(offset),
             size,
             "offset = {}",
             offset
@@ -1027,7 +1030,7 @@ fn allocation_size_test() {
         if let Some((offset, _)) = received.get(index + 1) {
             let offset = offset - 1;
             assert_eq!(
-                ReceiveBuffer::allocation_size(offset),
+                Reassembler::allocation_size(offset),
                 size,
                 "offset = {}",
                 offset

@@ -6,7 +6,7 @@ use crate::{
     transmission,
 };
 use s2n_quic_core::{
-    ack, buffer::ReceiveBuffer, frame::crypto::CryptoRef, transport, varint::VarInt,
+    ack, buffer::Reassembler, frame::crypto::CryptoRef, transport, varint::VarInt,
 };
 
 pub type TxCryptoStream = DataSender<CryptoFlowController, data_sender::writer::Crypto>;
@@ -33,7 +33,7 @@ impl OutgoingDataFlowController for CryptoFlowController {
 #[derive(Debug)]
 pub struct CryptoStream {
     pub tx: TxCryptoStream,
-    pub rx: ReceiveBuffer,
+    pub rx: Reassembler,
     is_finished: bool,
 }
 
@@ -49,7 +49,7 @@ impl CryptoStream {
     pub fn new() -> Self {
         Self {
             tx: TxCryptoStream::new(Default::default(), TX_MAX_BUFFER_CAPACITY),
-            rx: ReceiveBuffer::default(),
+            rx: Reassembler::default(),
             is_finished: false,
         }
     }

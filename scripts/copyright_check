@@ -7,7 +7,7 @@
 
 set -e
 
-S2N_QUIC_FILES=$(find "$PWD" -type f \( -name "*.rs" -o -name "*.py" \) -not \( -path "*/s2n-quic/target/*" -o -path "*/s2n-tls-sys/s2n/*" \))
+S2N_QUIC_FILES=$(find "$PWD" -type f \( -name "*.rs" -o -name "*.py" \) -not -path "*/target/*")
 
 FAILED=0
 
