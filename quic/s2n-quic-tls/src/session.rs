@@ -14,7 +14,7 @@ use s2n_tls::{
     config::Config,
     connection::Connection,
     enums::{Blinding, Mode},
-    error::Error,
+    error::{Error, ErrorType},
 };
 
 #[derive(Debug)]
@@ -175,11 +175,19 @@ impl tls::Session for Session {
                 self.received_ticket = true;
                 Ok(())
             }
-            Err(e) => Err(e
-                .alert()
-                .map(CryptoError::new)
-                .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
-                .into()),
+            Err(e) => {
+                // Blocking errors are the only type of s2n-tls error
+                // that can be retried.
+                if matches!(e.kind(), ErrorType::Blocked) {
+                    Ok(())
+                } else {
+                    Err(e
+                        .alert()
+                        .map(CryptoError::new)
+                        .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
+                        .into())
+                }
+            }
         }
     }
 
