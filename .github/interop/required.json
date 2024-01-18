@@ -633,7 +633,6 @@
       "server"
     ],
     "mvfst": [
-      "client",
       "server"
     ],
     "neqo": [
@@ -661,9 +660,6 @@
       "server"
     ],
     "s2n-quic-rustls": [],
-    "xquic": [
-      "client",
-      "server"
-    ]
+    "xquic": []
   }
 }
