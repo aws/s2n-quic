@@ -618,5 +618,52 @@
     "s2n-quic": [],
     "s2n-quic-rustls": [],
     "xquic": []
+  },
+  "resumption": {
+    "aioquic": [
+      "client",
+      "server"
+    ],
+    "kwik": [
+      "client",
+      "server"
+    ],
+    "lsquic": [
+      "client",
+      "server"
+    ],
+    "mvfst": [
+      "client",
+      "server"
+    ],
+    "neqo": [
+      "client",
+      "server"
+    ],
+    "ngtcp2": [
+      "client",
+      "server"
+    ],
+    "picoquic": [
+      "client",
+      "server"
+    ],
+    "quic-go": [
+      "client",
+      "server"
+    ],
+    "quiche": [
+      "client",
+      "server"
+    ],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [],
+    "xquic": [
+      "client",
+      "server"
+    ]
   }
 }
