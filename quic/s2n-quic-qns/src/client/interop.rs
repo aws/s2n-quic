@@ -86,10 +86,11 @@ impl Interop {
         // In the Resumption test, the client needs to start a handshake and complete it before
         // starting a resumption handshake with a session ticket from the first handshake. Therefore,
         // the two handshake requests are run one after another synchronously.
-        let concurrency = if matches!(self.testcase, Some(Testcase::Resumption)) {
-            1
-        } else {
-            self.concurrency
+        let mut concurrency = self.concurrency;
+        let mut keep_alive = self.keep_alive;
+        if matches!(self.testcase, Some(Testcase::Resumption)) {
+            concurrency = 1;
+            keep_alive = Some(Duration::from_millis(500));
         };
         let mut tasks = task::Limiter::new(concurrency);
 
@@ -107,7 +108,7 @@ impl Interop {
                     connect,
                     requests,
                     download_dir.clone(),
-                    self.keep_alive,
+                    keep_alive,
                 );
 
                 if let Some(task) = tasks.spawn(task).await {
