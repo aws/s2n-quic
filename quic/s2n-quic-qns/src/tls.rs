@@ -96,15 +96,19 @@ pub struct Client {
 impl Client {
     #[cfg(unix)]
     pub fn build_s2n_tls(&self, alpns: &[String]) -> Result<s2n_tls::Client> {
-        let tls = s2n_tls::Client::builder()
+        let handler = s2n_tls::SessionTicketHandler::default();
+        let mut tls = s2n_tls::Client::builder()
             .with_certificate(s2n_tls::ca(self.ca.as_ref())?)?
             // the "amplificationlimit" tests generates a very large chain so bump the limit
             .with_max_cert_chain_depth(10)?
             .with_application_protocols(alpns.iter().map(String::as_bytes))?
-            .with_key_logging()?
-            .build()?;
+            .with_key_logging()?;
+        let config = tls.config_mut();
+        config
+            .set_session_ticket_callback(handler.clone())?
+            .set_connection_initializer(handler.clone())?;
 
-        Ok(tls)
+        Ok(tls.build()?)
     }
 
     pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Client> {
@@ -193,8 +197,17 @@ impl FromStr for TlsProviders {
 pub mod s2n_tls {
     use super::*;
     pub use s2n_quic::provider::tls::s2n_tls::{
+        callbacks::{ConnectionFuture, SessionTicket, SessionTicketCallback},
         certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
+        config::ConnectionInitializer,
+        connection::Connection,
+        error::Error,
         Client, Server,
+    };
+    use std::{
+        collections::VecDeque,
+        pin::Pin,
+        sync::{Arc, Mutex},
     };
 
     pub fn ca(ca: Option<&PathBuf>) -> Result<Certificate> {
@@ -211,6 +224,42 @@ pub mod s2n_tls {
         } else {
             s2n_quic_core::crypto::tls::testing::certificates::KEY_PEM.into_private_key()?
         })
+    }
+
+    #[derive(Clone, Default)]
+    pub struct SessionTicketHandler {
+        ticket_storage: Arc<Mutex<VecDeque<Vec<u8>>>>,
+    }
+
+    impl SessionTicketCallback for SessionTicketHandler {
+        fn on_session_ticket(&self, _connection: &mut Connection, session_ticket: &SessionTicket) {
+            let size = session_ticket.len().unwrap();
+            let mut data = vec![0; size];
+            session_ticket.data(&mut data).unwrap();
+            let mut vec = (*self.ticket_storage).lock().unwrap();
+            vec.push_back(data);
+
+            // discard any excessive tickets
+            while vec.len() > 10 {
+                let _ = vec.pop_front();
+            }
+        }
+    }
+    impl ConnectionInitializer for SessionTicketHandler {
+        fn initialize_connection(
+            &self,
+            connection: &mut Connection,
+        ) -> Result<Option<Pin<Box<(dyn ConnectionFuture)>>>, Error> {
+            if let Some(ticket) = (*self.ticket_storage)
+                .lock()
+                .unwrap()
+                .pop_front()
+                .as_deref()
+            {
+                connection.set_session_ticket(ticket)?;
+            }
+            Ok(None)
+        }
     }
 }
 

@@ -331,10 +331,10 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 //# that is closing is not required to process any received frame.
                 return Err(error);
             }
-            Err(ProcessingError::CryptoError(_)) => {
+            Err(ProcessingError::DecryptError) => {
                 // NOTE: this reason is emitted by the connection implementation
 
-                // CryptoErrors returned as a result of a packet failing decryption
+                // DecryptErrors returned as a result of a packet failing decryption
                 // will be silently discarded, but are a potential indication of a
                 // stateless reset from the peer
 

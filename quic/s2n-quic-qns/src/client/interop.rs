@@ -83,13 +83,22 @@ impl Interop {
 
         let endpoints = self.endpoints().await?;
 
-        let mut tasks = task::Limiter::new(self.concurrency);
+        // In the Resumption test, the client needs to start a handshake and complete it before
+        // starting a resumption handshake with a session ticket from the first handshake. Therefore,
+        // the two handshake requests are run one after another synchronously.
+        let mut concurrency = self.concurrency;
+        let mut keep_alive = self.keep_alive;
+        if matches!(self.testcase, Some(Testcase::Resumption)) {
+            concurrency = 1;
+            keep_alive = Some(Duration::from_millis(500));
+        };
+        let mut tasks = task::Limiter::new(concurrency);
 
         // https://github.com/marten-seemann/quic-interop-runner#test-cases
         // Handshake Loss (multiconnect): Tests resilience of the handshake to high loss.
         // The client is expected to establish multiple connections, sequential or in parallel,
         // and use each connection to download a single file.
-        if let Some(Testcase::Multiconnect) = self.testcase {
+        if let Some(Testcase::Multiconnect | Testcase::Resumption) = self.testcase {
             for request in self.requests.iter().cloned() {
                 let connect = endpoints.get(&request.host().unwrap()).unwrap().clone();
                 let requests = core::iter::once(request);
@@ -99,7 +108,7 @@ impl Interop {
                     connect,
                     requests,
                     download_dir.clone(),
-                    self.keep_alive,
+                    keep_alive,
                 );
 
                 if let Some(task) = tasks.spawn(task).await {
@@ -235,8 +244,7 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
         // TODO add the ability to trigger a key update from the application
         KeyUpdate => false,
         Retry => true,
-        // TODO support storing tickets
-        Resumption => false,
+        Resumption => true,
         // TODO implement 0rtt
         ZeroRtt => false,
         Http3 => true,

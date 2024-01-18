@@ -333,9 +333,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     .map_err(|err| {
                         use connection::ProcessingError;
                         match err {
-                            ProcessingError::CryptoError(err) => err.into(),
                             ProcessingError::ConnectionError(err) => err,
-                            ProcessingError::Other => {
+                            _ => {
                                 // This is the first packet received. If it's invalid, drop the
                                 // connection.
                                 transport::Error::PROTOCOL_VIOLATION.into()

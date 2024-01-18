@@ -470,7 +470,7 @@ impl From<Error> for std::io::ErrorKind {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ProcessingError {
     ConnectionError(Error),
-    CryptoError(CryptoError),
+    DecryptError,
     Other,
 }
 
@@ -483,9 +483,9 @@ impl From<Error> for ProcessingError {
 impl From<crate::transport::Error> for ProcessingError {
     #[track_caller]
     fn from(inner_error: crate::transport::Error) -> Self {
-        // Try extracting out the crypto error from other transport errors
+        // Try extracting out the decrypt error from other transport errors
         if let Some(error) = inner_error.try_into_crypto_error() {
-            Self::CryptoError(error)
+            error.into()
         } else {
             Self::ConnectionError(inner_error.into())
         }
@@ -494,6 +494,10 @@ impl From<crate::transport::Error> for ProcessingError {
 
 impl From<CryptoError> for ProcessingError {
     fn from(inner_error: CryptoError) -> Self {
-        ProcessingError::CryptoError(inner_error)
+        if inner_error.code == CryptoError::DECRYPT_ERROR.code {
+            Self::DecryptError
+        } else {
+            Self::ConnectionError(inner_error.into())
+        }
     }
 }
