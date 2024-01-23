@@ -12,6 +12,7 @@ exclude = ["corpus.tar.gz"]
 
 [features]
 default = []
+aws-lc-bindgen = ["aws-lc-rs/bindgen"]
 testing = []
 
 [dependencies]
