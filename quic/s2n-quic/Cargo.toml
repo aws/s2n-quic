@@ -74,7 +74,7 @@ zerocopy = { version = "0.7", optional = true, features = ["derive"] }
 zeroize = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
-backtrace = { version = "=0.3.68" } # pin backtrace to avoid bumping MSRV
+backtrace = { version = "0.3" }
 bolero = { version = "0.10" }
 jobserver = "0.1"
 regex = "1"
