@@ -9,7 +9,7 @@ use core::{
     fmt,
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 pub use s2n_quic_core::{
     application,
@@ -78,15 +78,6 @@ impl Drop for State {
             let _ = request.poll(None);
         }
     }
-}
-
-macro_rules! ready {
-    ($e:expr $(,)?) => {
-        match $e {
-            core::task::Poll::Ready(t) => t,
-            core::task::Poll::Pending => return core::task::Poll::Pending,
-        }
-    };
 }
 
 macro_rules! tx_stream_apis {
