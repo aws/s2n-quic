@@ -22,7 +22,7 @@ s2n-quic-core = { version = "=0.32.0", path = "../s2n-quic-core", default-featur
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
-aws-lc-rs = { version = "1.5" }
+aws-lc-rs = { version = "1.6" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ring = { version = "0.16", default-features = false }
