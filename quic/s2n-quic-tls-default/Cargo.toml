@@ -15,10 +15,3 @@ s2n-quic-tls = { version = "=0.32.0", path = "../s2n-quic-tls" }
 
 [target.'cfg(not(unix))'.dependencies]
 s2n-quic-rustls = { version = "=0.32.0", path = "../s2n-quic-rustls" }
-
-[target.'cfg(unix)'.dev-dependencies]
-jobserver = "0.1"
-
-# jobserver is just here to pin
-[package.metadata.cargo-udeps.ignore]
-development = [ "jobserver" ]
