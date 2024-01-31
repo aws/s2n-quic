@@ -47,7 +47,7 @@ macro_rules! impl_handle_api {
             use $crate::stream::{BidirectionalStream, SendStream};
 
             Ok(
-                match futures::ready!(self.0.poll_open_stream(stream_type, cx))? {
+                match core::task::ready!(self.0.poll_open_stream(stream_type, cx))? {
                     stream if stream_type == StreamType::Unidirectional => {
                         SendStream::new(stream.into()).into()
                     }
@@ -97,7 +97,8 @@ macro_rules! impl_handle_api {
             use s2n_quic_core::stream::StreamType;
             use $crate::stream::BidirectionalStream;
 
-            let stream = futures::ready!(self.0.poll_open_stream(StreamType::Bidirectional, cx))?;
+            let stream =
+                core::task::ready!(self.0.poll_open_stream(StreamType::Bidirectional, cx))?;
 
             Ok(BidirectionalStream::new(stream)).into()
         }
@@ -132,7 +133,8 @@ macro_rules! impl_handle_api {
             use s2n_quic_core::stream::StreamType;
             use $crate::stream::SendStream;
 
-            let stream = futures::ready!(self.0.poll_open_stream(StreamType::Unidirectional, cx))?;
+            let stream =
+                core::task::ready!(self.0.poll_open_stream(StreamType::Unidirectional, cx))?;
 
             Ok(SendStream::new(stream.into())).into()
         }

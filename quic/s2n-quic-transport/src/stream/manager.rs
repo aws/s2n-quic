@@ -19,10 +19,9 @@ use crate::{
     transmission::{self, interest::Provider as _},
 };
 use core::{
-    task::{Context, Poll, Waker},
+    task::{ready, Context, Poll, Waker},
     time::Duration,
 };
-use futures_core::ready;
 use s2n_quic_core::{
     ack,
     connection::error::Error,

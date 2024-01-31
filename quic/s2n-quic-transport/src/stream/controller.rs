@@ -12,10 +12,9 @@ use crate::{
     transmission::{interest::Provider, WriteContext},
 };
 use core::{
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Duration,
 };
-use futures_core::ready;
 use s2n_quic_core::{
     ack, endpoint,
     frame::MaxStreams,

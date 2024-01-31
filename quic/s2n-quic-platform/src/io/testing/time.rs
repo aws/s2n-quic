@@ -5,10 +5,9 @@ use bach::time::{self, scheduler};
 use core::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Duration,
 };
-use futures::ready;
 use s2n_quic_core::time::{clock, Timestamp};
 
 pub fn now() -> Timestamp {

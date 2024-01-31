@@ -234,7 +234,7 @@ macro_rules! impl_receive_stream_trait {
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<Option<Self::Item>> {
-                match futures::ready!(self.poll_receive(cx)) {
+                match core::task::ready!(self.poll_receive(cx)) {
                     Ok(Some(v)) => Some(Ok(v)),
                     Ok(None) => None,
                     Err(err) => Some(Err(err)),
@@ -267,7 +267,7 @@ macro_rules! impl_receive_stream_trait {
 
                 let high_watermark = buf.len();
 
-                let response = futures::ready!(self
+                let response = core::task::ready!(self
                     .rx_request()?
                     .receive(&mut chunks)
                     // don't receive more than we're capable of storing
@@ -315,7 +315,7 @@ macro_rules! impl_receive_stream_trait {
 
                 let high_watermark = bufs.iter().map(|buf| buf.len()).sum();
 
-                let response = futures::ready!(self
+                let response = core::task::ready!(self
                     .rx_request()?
                     .receive(&mut chunks)
                     // don't receive more than we're capable of storing
@@ -359,7 +359,7 @@ macro_rules! impl_receive_stream_trait {
 
                 let high_watermark = buf.remaining();
 
-                let response = futures::ready!(self
+                let response = core::task::ready!(self
                     .rx_request()?
                     .receive(&mut chunks)
                     // don't receive more than we're capable of storing

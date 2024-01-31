@@ -55,7 +55,7 @@ macro_rules! impl_accept_api {
             use $crate::stream::{BidirectionalStream, ReceiveStream};
 
             Ok(
-                futures::ready!(self.0.poll_accept(None, cx))?.map(|stream| {
+                core::task::ready!(self.0.poll_accept(None, cx))?.map(|stream| {
                     match stream.id().stream_type() {
                         StreamType::Unidirectional => ReceiveStream::new(stream.into()).into(),
                         StreamType::Bidirectional => BidirectionalStream::new(stream).into(),
@@ -116,7 +116,7 @@ macro_rules! impl_accept_bidirectional_api {
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<Option<$crate::stream::BidirectionalStream>>> {
             Ok(
-                futures::ready!(self
+                core::task::ready!(self
                     .0
                     .poll_accept(Some(s2n_quic_core::stream::StreamType::Bidirectional), cx)
                 )?.map($crate::stream::BidirectionalStream::new)
@@ -170,7 +170,7 @@ macro_rules! impl_accept_receive_api {
             &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<Option<$crate::stream::ReceiveStream>>> {
-            Ok(futures::ready!(self
+            Ok(core::task::ready!(self
                 .0
                 .poll_accept(Some(s2n_quic_core::stream::StreamType::Unidirectional), cx))?
             .map(|stream| $crate::stream::ReceiveStream::new(stream.into())))
@@ -228,7 +228,7 @@ impl futures::stream::Stream for StreamAcceptor {
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
-        match futures::ready!(self.poll_accept(cx)) {
+        match core::task::ready!(self.poll_accept(cx)) {
             Ok(Some(stream)) => Some(Ok(stream)),
             Ok(None) => None,
             Err(err) => Some(Err(err)),
@@ -252,7 +252,7 @@ impl futures::stream::Stream for BidirectionalStreamAcceptor {
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
-        match futures::ready!(self.poll_accept_bidirectional_stream(cx)) {
+        match core::task::ready!(self.poll_accept_bidirectional_stream(cx)) {
             Ok(Some(stream)) => Some(Ok(stream)),
             Ok(None) => None,
             Err(err) => Some(Err(err)),
@@ -276,7 +276,7 @@ impl futures::stream::Stream for ReceiveStreamAcceptor {
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
-        match futures::ready!(self.poll_accept_receive_stream(cx)) {
+        match core::task::ready!(self.poll_accept_receive_stream(cx)) {
             Ok(Some(stream)) => Some(Ok(stream)),
             Ok(None) => None,
             Err(err) => Some(Err(err)),
