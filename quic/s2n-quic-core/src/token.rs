@@ -72,7 +72,7 @@ pub mod testing {
     use crate::crypto::retry;
 
     #[derive(Debug, Default)]
-    pub struct Format(u64);
+    pub struct Format(());
 
     impl super::Format for Format {
         const TOKEN_LEN: usize = retry::example::TOKEN_LEN;
@@ -112,7 +112,7 @@ pub mod testing {
 
     impl Format {
         pub fn new() -> Self {
-            Self(0)
+            Self(())
         }
     }
 }

@@ -105,7 +105,7 @@ impl Interop {
             .with_endpoint_limits(endpoint_limits)?
             .with_limits(limits)?
             .with_event((
-                EventSubscriber(1),
+                EventSubscriber,
                 s2n_quic::provider::event::tracing::Subscriber::default(),
             ))?;
 
@@ -152,7 +152,7 @@ pub struct MyConnectionContext {
     pub(crate) stream_requests: u64,
 }
 
-pub struct EventSubscriber(usize);
+pub struct EventSubscriber;
 
 impl Subscriber for EventSubscriber {
     type ConnectionContext = MyConnectionContext;

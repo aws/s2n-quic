@@ -4,6 +4,9 @@
 //! Provides unreliable datagram support
 
 use s2n_quic_core::datagram::Disabled;
+
+// these imports are only accessible if the unstable feature is enabled
+#[allow(unused_imports)]
 pub use s2n_quic_core::datagram::{
     default,
     traits::{

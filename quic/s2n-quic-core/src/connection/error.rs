@@ -7,7 +7,7 @@ use crate::{
 use core::{convert::TryInto, fmt, panic, time::Duration};
 
 /// Errors that a connection can encounter.
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 #[non_exhaustive]
 pub enum Error {
     /// The connection was closed without an error
@@ -155,6 +155,71 @@ impl fmt::Display for Error {
         }
     }
 }
+
+impl PartialEq for Error {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        // ignore the `source` attribute when considering if errors are equal
+        match (self, other) {
+            (Error::Closed { initiator: a, .. }, Error::Closed { initiator: b, .. }) => a.eq(b),
+            (
+                Error::Transport {
+                    code: a_code,
+                    frame_type: a_frame_type,
+                    reason: a_reason,
+                    initiator: a_initiator,
+                    ..
+                },
+                Error::Transport {
+                    code: b_code,
+                    frame_type: b_frame_type,
+                    reason: b_reason,
+                    initiator: b_initiator,
+                    ..
+                },
+            ) => {
+                a_code.eq(b_code)
+                    && a_frame_type.eq(b_frame_type)
+                    && a_reason.eq(b_reason)
+                    && a_initiator.eq(b_initiator)
+            }
+            (
+                Error::Application {
+                    error: a_error,
+                    initiator: a_initiator,
+                    ..
+                },
+                Error::Application {
+                    error: b_error,
+                    initiator: b_initiator,
+                    ..
+                },
+            ) => a_error.eq(b_error) && a_initiator.eq(b_initiator),
+            (Error::StatelessReset { .. }, Error::StatelessReset { .. }) => true,
+            (Error::IdleTimerExpired { .. }, Error::IdleTimerExpired { .. }) => true,
+            (Error::NoValidPath { .. }, Error::NoValidPath { .. }) => true,
+            (Error::StreamIdExhausted { .. }, Error::StreamIdExhausted { .. }) => true,
+            (
+                Error::MaxHandshakeDurationExceeded {
+                    max_handshake_duration: a,
+                    ..
+                },
+                Error::MaxHandshakeDurationExceeded {
+                    max_handshake_duration: b,
+                    ..
+                },
+            ) => a.eq(b),
+            (Error::ImmediateClose { reason: a, .. }, Error::ImmediateClose { reason: b, .. }) => {
+                a.eq(b)
+            }
+            (Error::EndpointClosing { .. }, Error::EndpointClosing { .. }) => true,
+            (Error::Unspecified { .. }, Error::Unspecified { .. }) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Error {}
 
 impl Error {
     /// Returns the [`panic::Location`] for the error
