@@ -100,7 +100,7 @@ macro_rules! impl_send_stream_api {
 
             ::futures::future::poll_fn(|cx| {
                 sent_chunks +=
-                    ::futures::ready!(self.poll_send_vectored(&mut chunks[sent_chunks..], cx))?;
+                    ::core::task::ready!(self.poll_send_vectored(&mut chunks[sent_chunks..], cx))?;
                 if sent_chunks == chunks.len() {
                     return Ok(()).into();
                 }
@@ -389,7 +389,7 @@ macro_rules! impl_send_stream_trait {
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<$crate::stream::Result<()>> {
-                futures::ready!(self.poll_send_ready(cx))?;
+                core::task::ready!(self.poll_send_ready(cx))?;
                 Ok(()).into()
             }
 
@@ -428,7 +428,7 @@ macro_rules! impl_send_stream_trait {
                     return Ok(0).into();
                 }
 
-                let len = futures::ready!(self.poll_send_ready(cx))?.min(buf.len());
+                let len = core::task::ready!(self.poll_send_ready(cx))?.min(buf.len());
                 let data = bytes::Bytes::copy_from_slice(&buf[..len]);
                 self.send_data(data)?;
                 Ok(len).into()
@@ -443,7 +443,7 @@ macro_rules! impl_send_stream_trait {
                     return Ok(0).into();
                 }
 
-                let len = futures::ready!(self.poll_send_ready(cx))?;
+                let len = core::task::ready!(self.poll_send_ready(cx))?;
                 let capacity = bufs.iter().map(|buf| buf.len()).sum();
                 let len = len.min(capacity);
 
@@ -469,7 +469,7 @@ macro_rules! impl_send_stream_trait {
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                futures::ready!($name::poll_flush(&mut self, cx))?;
+                core::task::ready!($name::poll_flush(&mut self, cx))?;
                 Ok(()).into()
             }
 
@@ -478,7 +478,7 @@ macro_rules! impl_send_stream_trait {
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                futures::ready!($name::poll_close(&mut self, cx))?;
+                core::task::ready!($name::poll_close(&mut self, cx))?;
                 Ok(()).into()
             }
         }
@@ -502,7 +502,7 @@ macro_rules! impl_send_stream_trait {
                     return Ok(0).into();
                 }
 
-                let len = futures::ready!(self.poll_send_ready(cx))?;
+                let len = core::task::ready!(self.poll_send_ready(cx))?;
                 let capacity = bufs.iter().map(|buf| buf.len()).sum();
                 let len = len.min(capacity);
 
@@ -541,7 +541,7 @@ macro_rules! impl_send_stream_trait {
                 mut self: core::pin::Pin<&mut Self>,
                 cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                futures::ready!(self.poll_close(cx))?;
+                core::task::ready!(self.poll_close(cx))?;
                 Ok(()).into()
             }
         }

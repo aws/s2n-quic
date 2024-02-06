@@ -3,8 +3,8 @@
 
 use crate::Result;
 use bytes::{BufMut, Bytes, BytesMut};
-use core::mem::MaybeUninit;
-use futures::{ready, stream::Stream};
+use core::{mem::MaybeUninit, task::ready};
+use futures::stream::Stream;
 use std::{
     path::{Path, PathBuf},
     pin::Pin,

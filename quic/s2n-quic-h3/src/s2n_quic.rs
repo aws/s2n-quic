@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bytes::{Buf, Bytes};
-use futures::ready;
+use core::task::ready;
 use h3::quic::{self, Error, StreamId, WriteBuf};
 use s2n_quic::stream::{BidirectionalStream, ReceiveStream};
 use s2n_quic_core::varint::VarInt;
