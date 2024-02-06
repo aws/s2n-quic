@@ -44,3 +44,22 @@ impl Storage for Empty {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_test() {
+        let mut reader = Empty;
+        let mut writer: Vec<u8> = vec![];
+
+        let chunk = reader.partial_copy_into(&mut writer).unwrap();
+        assert_eq!(chunk.len(), 0);
+        assert_eq!(writer.len(), 0);
+
+        reader.copy_into(&mut writer).unwrap();
+
+        assert_eq!(writer.len(), 0);
+    }
+}

@@ -134,7 +134,8 @@ where
             if should_delegate {
                 self.duplex.read_from(reader)?;
 
-                // don't copy into `storage` here - let the caller do that later
+                // don't copy into `storage` here - let the caller do that later since it can be
+                // more efficient to pull from `duplex` all in one go.
 
                 return Ok(());
             }

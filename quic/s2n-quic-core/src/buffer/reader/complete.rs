@@ -106,6 +106,7 @@ mod tests {
     fn complete_test() {
         let mut storage: &[u8] = &[1, 2, 3, 4];
         let mut reader = Complete::new(&mut storage).unwrap();
+        let mut reader = reader.with_checks();
 
         assert_eq!(reader.current_offset(), VarInt::ZERO);
         assert_eq!(reader.final_offset(), Some(VarInt::from_u8(4)));

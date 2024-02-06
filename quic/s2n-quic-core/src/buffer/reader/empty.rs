@@ -63,6 +63,7 @@ mod tests {
     fn empty_test() {
         let mut reader = Data::new(1000);
         assert_eq!(reader.buffered_len(), 1000);
+        let mut reader = reader.with_checks();
 
         {
             assert_eq!(reader.with_empty_buffer().buffered_len(), 0);

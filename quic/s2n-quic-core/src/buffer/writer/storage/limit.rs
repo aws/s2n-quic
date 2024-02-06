@@ -99,3 +99,39 @@ impl<'a, S: Storage + ?Sized> Storage for Limit<'a, S> {
         self.remaining_capacity -= len;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn limit_test() {
+        let mut writer: Vec<u8> = vec![];
+
+        {
+            let mut writer = writer.limit(5);
+            assert_eq!(writer.remaining_capacity(), 5);
+            writer.put_slice(b"hello");
+            assert_eq!(writer.remaining_capacity(), 0);
+        }
+
+        {
+            let mut writer = writer.limit(5);
+            assert_eq!(writer.remaining_capacity(), 5);
+            writer.put_bytes(Bytes::from_static(b"hello"));
+            assert_eq!(writer.remaining_capacity(), 0);
+        }
+
+        {
+            let mut writer = writer.limit(5);
+            assert_eq!(writer.remaining_capacity(), 5);
+            writer.put_bytes_mut(BytesMut::from(&b"hello"[..]));
+            assert_eq!(writer.remaining_capacity(), 0);
+        }
+
+        {
+            let writer = writer.limit(0);
+            assert!(!writer.has_remaining_capacity());
+        }
+    }
+}

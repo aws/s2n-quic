@@ -72,3 +72,26 @@ macro_rules! impl_queue {
 
 impl_queue!(Vec, push);
 impl_queue!(VecDeque, push_back);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn byte_queue_test() {
+        let mut writer: Vec<BytesMut> = vec![];
+
+        writer.put_slice(b"hello");
+        writer.put_bytes(Bytes::from_static(b" "));
+        writer.put_bytes_mut(BytesMut::from(&b"world"[..]));
+
+        assert_eq!(
+            writer,
+            vec![
+                BytesMut::from(&b"hello"[..]),
+                BytesMut::from(&b" "[..]),
+                BytesMut::from(&b"world"[..])
+            ]
+        );
+    }
+}

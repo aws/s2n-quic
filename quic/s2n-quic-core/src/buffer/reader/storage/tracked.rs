@@ -86,3 +86,42 @@ impl<'a, S: Reader + ?Sized> Reader for Tracked<'a, S> {
         self.storage.is_consumed()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use writer::Storage as _;
+
+    #[test]
+    fn tracked_test() {
+        let mut reader = &b"hello world"[..];
+        let mut writer: Vec<u8> = vec![];
+
+        {
+            let mut reader = reader.tracked();
+            let chunk = reader.read_chunk(1).unwrap();
+            assert_eq!(&chunk[..], b"h");
+            assert_eq!(reader.consumed_len(), 1);
+        }
+
+        {
+            let mut reader = reader.tracked();
+            let mut writer = writer.limit(5);
+
+            let chunk = reader.partial_copy_into(&mut writer).unwrap();
+            assert_eq!(&chunk[..], b"ello ");
+            assert_eq!(reader.consumed_len(), 5);
+        }
+
+        assert_eq!(writer.len(), 0);
+
+        {
+            let mut reader = reader.tracked();
+            reader.copy_into(&mut writer).unwrap();
+            assert_eq!(reader.consumed_len(), 5);
+            assert_eq!(&writer[..], b"world");
+        }
+
+        assert_eq!(reader.len(), 0);
+    }
+}

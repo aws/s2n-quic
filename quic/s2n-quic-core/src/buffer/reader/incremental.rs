@@ -144,15 +144,16 @@ mod tests {
 
         {
             let mut chunk: &[u8] = &[1, 2, 3, 4];
-            let mut with_chunk = incremental.with_storage(&mut chunk, false).unwrap();
+            let mut reader = incremental.with_storage(&mut chunk, false).unwrap();
+            let mut reader = reader.with_checks();
 
-            assert_eq!(with_chunk.buffered_len(), 4);
+            assert_eq!(reader.buffered_len(), 4);
 
             let mut dest: &mut [u8] = &mut [0; 4];
-            let trailing_chunk = with_chunk.partial_copy_into(&mut dest).unwrap();
+            let trailing_chunk = reader.partial_copy_into(&mut dest).unwrap();
             assert_eq!(&*trailing_chunk, &[1, 2, 3, 4]);
 
-            assert_eq!(with_chunk.buffered_len(), 0);
+            assert_eq!(reader.buffered_len(), 0);
         }
 
         assert_eq!(incremental.current_offset(), VarInt::from_u8(4));

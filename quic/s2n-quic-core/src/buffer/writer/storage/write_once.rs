@@ -81,3 +81,59 @@ impl<'a, S: Storage + ?Sized> Storage for WriteOnce<'a, S> {
         self.did_write = true;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_once_test() {
+        let mut writer: Vec<u8> = vec![];
+
+        {
+            let mut writer = writer.write_once();
+            assert!(writer.has_remaining_capacity());
+            writer.put_slice(b"hello");
+            assert_eq!(writer.remaining_capacity(), 0);
+            assert!(!writer.has_remaining_capacity());
+        }
+
+        {
+            let mut writer = writer.write_once();
+            assert!(writer.has_remaining_capacity());
+            writer.put_chunk(b"hello"[..].into());
+            assert_eq!(writer.remaining_capacity(), 0);
+            assert!(!writer.has_remaining_capacity());
+        }
+
+        {
+            let mut writer = writer.write_once();
+            assert!(writer.has_remaining_capacity());
+            let did_write = writer
+                .put_uninit_slice(5, |slice| {
+                    slice.copy_from_slice(b"hello");
+                    <Result<(), core::convert::Infallible>>::Ok(())
+                })
+                .unwrap();
+            assert!(did_write);
+            assert_eq!(writer.remaining_capacity(), 0);
+            assert!(!writer.has_remaining_capacity());
+        }
+
+        {
+            let mut writer = writer.write_once();
+            assert!(writer.has_remaining_capacity());
+            writer.put_bytes(Bytes::from_static(b"hello"));
+            assert_eq!(writer.remaining_capacity(), 0);
+            assert!(!writer.has_remaining_capacity());
+        }
+
+        {
+            let mut writer = writer.write_once();
+            assert!(writer.has_remaining_capacity());
+            writer.put_bytes_mut(BytesMut::from(&b"hello"[..]));
+            assert_eq!(writer.remaining_capacity(), 0);
+            assert!(!writer.has_remaining_capacity());
+        }
+    }
+}

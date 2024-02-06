@@ -102,6 +102,7 @@ mod tests {
     fn max_data_test() {
         let mut reader = Data::new(1000);
         assert_eq!(reader.buffered_len(), 1000);
+        let mut reader = reader.with_checks();
 
         let max_data = 32usize;
 

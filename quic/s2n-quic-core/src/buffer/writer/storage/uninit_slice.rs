@@ -37,3 +37,33 @@ impl Storage for &mut UninitSlice {
         self.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uninit_slice_test() {
+        let mut storage = [0; 8];
+
+        {
+            let mut writer = UninitSlice::new(&mut storage[..]);
+            assert_eq!(writer.remaining_capacity(), 8);
+            writer.put_slice(b"hello");
+            assert_eq!(writer.remaining_capacity(), 3);
+        }
+
+        {
+            let mut writer = UninitSlice::new(&mut storage[..]);
+            assert_eq!(writer.remaining_capacity(), 8);
+            let did_write = writer
+                .put_uninit_slice(5, |slice| {
+                    slice.copy_from_slice(b"hello");
+                    <Result<(), core::convert::Infallible>>::Ok(())
+                })
+                .unwrap();
+            assert!(did_write);
+            assert_eq!(writer.remaining_capacity(), 3);
+        }
+    }
+}

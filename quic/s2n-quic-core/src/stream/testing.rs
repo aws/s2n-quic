@@ -3,7 +3,7 @@
 
 //! A model that ensures stream data is correctly sent and received between peers
 
-use crate::buffer::reader;
+use crate::buffer::{reader, writer};
 use bytes::Bytes;
 
 #[cfg(any(test, feature = "generator"))]
@@ -168,7 +168,7 @@ impl reader::Storage for Data {
     }
 
     #[inline]
-    fn partial_copy_into<Dest: crate::buffer::writer::Storage + ?Sized>(
+    fn partial_copy_into<Dest: writer::Storage + ?Sized>(
         &mut self,
         dest: &mut Dest,
     ) -> Result<reader::storage::Chunk, Self::Error> {
@@ -195,6 +195,32 @@ impl reader::Reader for Data {
     #[inline]
     fn final_offset(&self) -> Option<crate::varint::VarInt> {
         Some(self.len.try_into().unwrap())
+    }
+}
+
+impl writer::Storage for Data {
+    #[inline]
+    fn put_slice(&mut self, slice: &[u8]) {
+        self.receive(&[slice]);
+    }
+
+    #[inline]
+    fn remaining_capacity(&self) -> usize {
+        // return max so readers don't know where the stream is expected to end and we can make an
+        // assertion when they write
+        usize::MAX
+    }
+}
+
+impl writer::Writer for Data {
+    #[inline]
+    fn read_from<R>(&mut self, reader: &mut R) -> Result<(), crate::buffer::Error<R::Error>>
+    where
+        R: reader::Reader + ?Sized,
+    {
+        // no need to specialize on anything here
+        reader.copy_into(self)?;
+        Ok(())
     }
 }
 
@@ -279,5 +305,18 @@ mod tests {
                 assert!(sender.is_finished());
                 assert!(receiver.is_finished());
             })
+    }
+
+    #[test]
+    fn buffer_trait_test() {
+        use writer::Writer as _;
+
+        let mut reader = Data::new(10);
+        let mut writer = reader;
+
+        writer.read_from(&mut reader).unwrap();
+
+        assert!(reader.is_finished());
+        assert!(writer.is_finished());
     }
 }

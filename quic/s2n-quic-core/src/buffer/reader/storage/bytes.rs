@@ -95,3 +95,29 @@ impl Storage for Bytes {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use writer::Storage as _;
+
+    #[test]
+    fn bytes_into_queue_test() {
+        let mut reader = Bytes::from_static(b"hello world");
+
+        let mut writer: Vec<Bytes> = vec![];
+        {
+            let mut writer = writer.limit(5);
+            let chunk = reader.partial_copy_into(&mut writer).unwrap();
+            assert_eq!(&chunk[..], b"hello");
+        }
+
+        assert!(writer.is_empty());
+        assert_eq!(&reader[..], b" world");
+
+        reader.copy_into(&mut writer).unwrap();
+
+        assert_eq!(writer.len(), 1);
+        assert_eq!(&writer.pop().unwrap()[..], b" world");
+    }
+}

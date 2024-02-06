@@ -53,3 +53,20 @@ impl<'a, S: Storage + ?Sized> Storage for FullCopy<'a, S> {
         self.0.copy_into(dest)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn full_copy_test() {
+        let mut reader = &b"hello world"[..];
+        let len = reader.len();
+        let mut reader = reader.full_copy();
+        let mut writer: Vec<u8> = vec![];
+
+        let chunk = reader.partial_copy_into(&mut writer).unwrap();
+        assert_eq!(chunk.len(), 0);
+        assert_eq!(writer.len(), len);
+    }
+}
