@@ -284,11 +284,11 @@ $ grep -Rn 'kani::proof' .
 async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
     let client = Client::builder()
         .with_tls(CERT_PEM)?
-        .with_io(&quot;0.0.0.0:0&quot;)?
+        .with_io("0.0.0.0:0")?
         .start()?;
 
-    let addr: SocketAddr = &quot;127.0.0.1:4433&quot;.parse()?;
-    let connect = Connect::new(addr).with_server_name(&quot;localhost&quot;);
+    let addr: SocketAddr = "127.0.0.1:4433".parse()?;
+    let connect = Connect::new(addr).with_server_name("localhost");
     let mut connection = client.connect(connect).await?;
 
     // ensure the connection doesn't time out with inactivity
@@ -330,13 +330,13 @@ use tokio::{fs, sync::OnceCell};
 
 /// NOTE: this certificate is to be used for demonstration purposes only!
 pub static CERT_PEM_PATH: &amp;str = concat!(
-    env!(&quot;CARGO_MANIFEST_DIR&quot;),
-    &quot;/../../quic/s2n-quic-core/certs/cert.pem&quot;
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../quic/s2n-quic-core/certs/cert.pem"
 );
 /// NOTE: this certificate is to be used for demonstration purposes only!
 pub static KEY_PEM_PATH: &amp;str = concat!(
-    env!(&quot;CARGO_MANIFEST_DIR&quot;),
-    &quot;/../../quic/s2n-quic-core/certs/key.pem&quot;
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../quic/s2n-quic-core/certs/key.pem"
 );
 
 type Sni = String;
@@ -377,7 +377,7 @@ impl ClientHelloCallback for ConfigCache {
             .cache
             .get_with(sni.clone(), || Arc::new(OnceCell::new()));
         if let Some(config) = once_cell_config.get() {
-            eprintln!(&quot;Config already cached for SNI: {}&quot;, sni);
+            eprintln!("Config already cached for SNI: {}", sni);
             connection.set_config(config.clone())?;
             // return `None` if the Config is already in the cache
             return Ok(None);
@@ -393,11 +393,11 @@ impl ClientHelloCallback for ConfigCache {
                 let simulated_network_call_failed = choices[dist.sample(&amp;mut thread_rng())];
 
                 if simulated_network_call_failed {
-                    eprintln!(&quot;simulated network call failed&quot;);
+                    eprintln!("simulated network call failed");
                     return Err(S2nError::application(Box::new(CustomError)));
                 }
 
-                eprintln!(&quot;resolving certificate for SNI: {}&quot;, sni);
+                eprintln!("resolving certificate for SNI: {}", sni);
 
                 // load the cert and key file asynchronously.
                 let (cert, key) = {
@@ -438,22 +438,22 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
 
     let mut server = Server::builder()
         .with_tls(tls)?
-        .with_io(&quot;127.0.0.1:4433&quot;)?
+        .with_io("127.0.0.1:4433")?
         .start()?;
 
     while let Some(mut connection) = server.accept().await {
         // spawn a new task for the connection
         tokio::spawn(async move {
-            eprintln!(&quot;Connection accepted from {:?}&quot;, connection.remote_addr());
+            eprintln!("Connection accepted from {:?}", connection.remote_addr());
 
             while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
                 // spawn a new task for the stream
                 tokio::spawn(async move {
-                    eprintln!(&quot;Stream opened from {:?}&quot;, stream.connection().remote_addr());
+                    eprintln!("Stream opened from {:?}", stream.connection().remote_addr());
 
                     // echo any data back to the stream
                     while let Ok(Some(data)) = stream.receive().await {
-                        stream.send(data).await.expect(&quot;stream should be open&quot;);
+                        stream.send(data).await.expect("stream should be open");
                     }
                 });
             }
@@ -468,7 +468,7 @@ struct CustomError;
 
 impl Display for CustomError {
     fn fmt(&amp;self, f: &amp;mut std::fmt::Formatter&lt;'_&gt;) -&gt; std::fmt::Result {
-        write!(f, &quot;custom error&quot;)?;
+        write!(f, "custom error")?;
         Ok(())
     }
 }
@@ -480,11 +480,11 @@ impl Error for CustomError {}
 implement the <code>CongestionController</code> trait, found in <a href="examples/../../quic/s2n-quic-core/src/recovery/congestion_controller.rs">congestion_controller.rs</a>, to provide your own.</p>
 <h1 id="set-up"><a class="header" href="#set-up">Set-up</a></h1>
 <p>The <code>CongestionController</code> trait is considered unstable and may be subject to change in a future release. In order to build it you must pass a compiler flag:</p>
-<pre><code class="language-sh">export RUSTFLAGS=&quot;--cfg s2n_quic_unstable&quot;
+<pre><code class="language-sh">export RUSTFLAGS="--cfg s2n_quic_unstable"
 </code></pre>
 <p>and add this line to your Cargo.toml file:</p>
 <pre><code class="language-toml">[dependencies]
-s2n-quic = { version = &quot;1&quot;, features = [&quot;unstable-congestion-controller&quot;]}
+s2n-quic = { version = "1", features = ["unstable-congestion-controller"]}
 </code></pre>
 <h2 id="example"><a class="header" href="#example">Example</a></h2>
 <pre><code class="language-rs">#[tokio::main]
@@ -492,7 +492,7 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
     // Build an `s2n_quic::Server`
     let mut server = Server::builder()
         .with_tls((CERT_PEM, KEY_PEM))?
-        .with_io(&quot;127.0.0.1:4433&quot;)?
+        .with_io("127.0.0.1:4433")?
         // Specify the custom congestion controller endpoint defined in `custom-congestion-controller/src/lib.rs`
         .with_congestion_controller(MyCongestionControllerEndpoint::default())?
         .start()?;
@@ -500,16 +500,16 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
     while let Some(mut connection) = server.accept().await {
         // spawn a new task for the connection
         tokio::spawn(async move {
-            eprintln!(&quot;Connection accepted from {:?}&quot;, connection.remote_addr());
+            eprintln!("Connection accepted from {:?}", connection.remote_addr());
 
             while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
                 // spawn a new task for the stream
                 tokio::spawn(async move {
-                    eprintln!(&quot;Stream opened from {:?}&quot;, stream.connection().remote_addr());
+                    eprintln!("Stream opened from {:?}", stream.connection().remote_addr());
 
                     // echo any data back to the stream
                     while let Ok(Some(data)) = stream.receive().await {
-                        stream.send(data).await.expect(&quot;stream should be open&quot;);
+                        stream.send(data).await.expect("stream should be open");
                     }
                 });
             }

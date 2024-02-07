@@ -184,11 +184,11 @@
 implement the <code>CongestionController</code> trait, found in <a href="../../quic/s2n-quic-core/src/recovery/congestion_controller.rs">congestion_controller.rs</a>, to provide your own.</p>
 <h1 id="set-up"><a class="header" href="#set-up">Set-up</a></h1>
 <p>The <code>CongestionController</code> trait is considered unstable and may be subject to change in a future release. In order to build it you must pass a compiler flag:</p>
-<pre><code class="language-sh">export RUSTFLAGS=&quot;--cfg s2n_quic_unstable&quot;
+<pre><code class="language-sh">export RUSTFLAGS="--cfg s2n_quic_unstable"
 </code></pre>
 <p>and add this line to your Cargo.toml file:</p>
 <pre><code class="language-toml">[dependencies]
-s2n-quic = { version = &quot;1&quot;, features = [&quot;unstable-congestion-controller&quot;]}
+s2n-quic = { version = "1", features = ["unstable-congestion-controller"]}
 </code></pre>
 <h2 id="example"><a class="header" href="#example">Example</a></h2>
 <pre><code class="language-rs">#[tokio::main]
@@ -196,7 +196,7 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
     // Build an `s2n_quic::Server`
     let mut server = Server::builder()
         .with_tls((CERT_PEM, KEY_PEM))?
-        .with_io(&quot;127.0.0.1:4433&quot;)?
+        .with_io("127.0.0.1:4433")?
         // Specify the custom congestion controller endpoint defined in `custom-congestion-controller/src/lib.rs`
         .with_congestion_controller(MyCongestionControllerEndpoint::default())?
         .start()?;
@@ -204,16 +204,16 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
     while let Some(mut connection) = server.accept().await {
         // spawn a new task for the connection
         tokio::spawn(async move {
-            eprintln!(&quot;Connection accepted from {:?}&quot;, connection.remote_addr());
+            eprintln!("Connection accepted from {:?}", connection.remote_addr());
 
             while let Ok(Some(mut stream)) = connection.accept_bidirectional_stream().await {
                 // spawn a new task for the stream
                 tokio::spawn(async move {
-                    eprintln!(&quot;Stream opened from {:?}&quot;, stream.connection().remote_addr());
+                    eprintln!("Stream opened from {:?}", stream.connection().remote_addr());
 
                     // echo any data back to the stream
                     while let Ok(Some(data)) = stream.receive().await {
-                        stream.send(data).await.expect(&quot;stream should be open&quot;);
+                        stream.send(data).await.expect("stream should be open");
                     }
                 });
             }
