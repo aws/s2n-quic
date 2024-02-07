@@ -4,16 +4,17 @@
 use super::{Error, Reader, Writer};
 use crate::varint::VarInt;
 
-mod split;
+mod interposer;
 
-pub use split::Split;
+pub use interposer::Interposer;
 
 /// A buffer that is capable of both reading and writing
 pub trait Duplex: Reader + Writer {}
 
 impl<T: Reader + Writer> Duplex for T {}
 
-/// A buffer that is capable of both skipping a write and read with a given amount.
+/// A buffer which can be advanced forward without reading or writing payloads. This
+/// is essentially a forward-only [`std::io::Seek`].
 ///
 /// This can be used for scenarios where the buffer was written somewhere else but still needed to
 /// be tracked.

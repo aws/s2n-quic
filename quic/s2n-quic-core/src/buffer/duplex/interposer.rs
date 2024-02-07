@@ -12,9 +12,10 @@ use crate::{
 };
 use core::convert::Infallible;
 
-/// A split duplex that tries to write as much as possible to `storage`, while falling back to
-/// `duplex`.
-pub struct Split<'a, S, D>
+/// A wrapper around an underlying buffer (`duplex`) which will prefer to read/write from a
+/// user-provided temporary buffer (`storage`). The underlying buffer (`duplex`)'s current
+/// position and total length are updated if needed.
+pub struct Interposer<'a, S, D>
 where
     S: writer::Storage + ?Sized,
     D: duplex::Skip<Error = Infallible> + ?Sized,
@@ -23,19 +24,24 @@ where
     duplex: &'a mut D,
 }
 
-impl<'a, S, D> Split<'a, S, D>
+impl<'a, S, D> Interposer<'a, S, D>
 where
     S: writer::Storage + ?Sized,
     D: duplex::Skip<Error = Infallible> + ?Sized,
 {
     #[inline]
     pub fn new(storage: &'a mut S, duplex: &'a mut D) -> Self {
+        debug_assert!(
+            !storage.has_remaining_capacity() || duplex.buffer_is_empty(),
+            "`duplex` should be drained into `storage` before constructing an Interposer"
+        );
+
         Self { storage, duplex }
     }
 }
 
 /// Delegates to the inner Duplex
-impl<'a, S, D> reader::Storage for Split<'a, S, D>
+impl<'a, S, D> reader::Storage for Interposer<'a, S, D>
 where
     S: writer::Storage + ?Sized,
     D: duplex::Skip<Error = Infallible> + ?Sized,
@@ -78,7 +84,7 @@ where
 }
 
 /// Delegates to the inner Duplex
-impl<'a, C, D> Reader for Split<'a, C, D>
+impl<'a, C, D> Reader for Interposer<'a, C, D>
 where
     C: writer::Storage + ?Sized,
     D: duplex::Skip<Error = Infallible> + ?Sized,
@@ -104,7 +110,7 @@ where
     }
 }
 
-impl<'a, C, D> Writer for Split<'a, C, D>
+impl<'a, C, D> Writer for Interposer<'a, C, D>
 where
     C: writer::Storage + ?Sized,
     D: duplex::Skip<Error = Infallible> + ?Sized,
@@ -121,7 +127,7 @@ where
             // receive buffer, since that's what it stores
             let mut should_delegate = C::SPECIALIZES_BYTES || C::SPECIALIZES_BYTES_MUT;
 
-            // if the storage is empty then write into the duplex
+            // if the storage has no space left then write into the duplex
             should_delegate |= !self.storage.has_remaining_capacity();
 
             // if this packet is non-contiguous, then delegate to the wrapped writer
@@ -192,9 +198,9 @@ mod tests {
             // limit the storage capacity so we force writing into the duplex
             let mut storage = storage.with_write_limit(1);
 
-            let mut split = Split::new(&mut storage, &mut duplex);
+            let mut interposer = Interposer::new(&mut storage, &mut duplex);
 
-            split.read_from(&mut reader).unwrap();
+            interposer.read_from(&mut reader).unwrap();
         }
 
         // the storage was too small so we delegated to duplex
@@ -220,15 +226,15 @@ mod tests {
 
             let mut storage: Vec<u8> = vec![];
 
-            let mut split = Split::new(&mut storage, &mut duplex);
+            let mut interposer = Interposer::new(&mut storage, &mut duplex);
 
-            split.read_from(&mut reader).unwrap();
+            interposer.read_from(&mut reader).unwrap();
 
             // make sure we consumed the reader
             assert_eq!(reader.current_offset().as_u64(), 10);
 
-            assert_eq!(split.current_offset().as_u64(), 0);
-            assert_eq!(split.buffered_len(), 0);
+            assert_eq!(interposer.current_offset().as_u64(), 0);
+            assert_eq!(interposer.buffered_len(), 0);
 
             // make sure we didn't write to the storage, even if we had capacity, since the
             // current_offset doesn't match
@@ -241,15 +247,15 @@ mod tests {
 
             let mut storage: Vec<u8> = vec![];
 
-            let mut split = Split::new(&mut storage, &mut duplex);
+            let mut interposer = Interposer::new(&mut storage, &mut duplex);
 
-            split.read_from(&mut reader).unwrap();
+            interposer.read_from(&mut reader).unwrap();
 
             // make sure we consumed the reader
             assert_eq!(reader.current_offset().as_u64(), 10);
 
-            assert_eq!(split.current_offset().as_u64(), 10);
-            assert_eq!(split.buffered_len(), 0);
+            assert_eq!(interposer.current_offset().as_u64(), 10);
+            assert_eq!(interposer.buffered_len(), 0);
 
             // make sure we copied the entire reader
             assert_eq!(storage.len(), 10);
@@ -265,9 +271,9 @@ mod tests {
 
         let mut storage: Vec<u8> = vec![];
 
-        let mut split = Split::new(&mut storage, &mut duplex);
+        let mut interposer = Interposer::new(&mut storage, &mut duplex);
 
-        split.read_from(&mut reader).unwrap();
+        interposer.read_from(&mut reader).unwrap();
 
         assert_eq!(storage.len(), 10);
         assert_eq!(duplex.current_offset().as_u64(), 10);
@@ -283,19 +289,19 @@ mod tests {
 
         let mut storage = writer::storage::Empty;
 
-        let mut split = Split::new(&mut storage, &mut duplex);
+        let mut interposer = Interposer::new(&mut storage, &mut duplex);
 
-        split.read_from(&mut reader).unwrap();
+        interposer.read_from(&mut reader).unwrap();
 
-        assert_eq!(split.current_offset().as_u64(), 0);
-        assert_eq!(split.buffered_len(), 10);
+        assert_eq!(interposer.current_offset().as_u64(), 0);
+        assert_eq!(interposer.buffered_len(), 10);
 
-        checker.read_from(&mut split).unwrap();
+        checker.read_from(&mut interposer).unwrap();
 
-        assert_eq!(split.current_offset().as_u64(), 10);
-        assert!(split.buffer_is_empty());
-        assert_eq!(split.buffered_len(), 0);
-        assert!(split.is_consumed());
+        assert_eq!(interposer.current_offset().as_u64(), 10);
+        assert!(interposer.buffer_is_empty());
+        assert_eq!(interposer.buffered_len(), 0);
+        assert!(interposer.is_consumed());
     }
 
     #[test]
@@ -308,9 +314,9 @@ mod tests {
         {
             let mut storage = storage.with_write_limit(9);
 
-            let mut split = Split::new(&mut storage, &mut duplex);
+            let mut interposer = Interposer::new(&mut storage, &mut duplex);
 
-            split.read_from(&mut reader).unwrap();
+            interposer.read_from(&mut reader).unwrap();
         }
 
         // the storage was at least half the reader

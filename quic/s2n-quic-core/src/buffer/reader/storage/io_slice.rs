@@ -45,12 +45,10 @@ where
             };
         }
 
-        // skip over any empty slices
-        let buf = &buf[first_non_empty..=last_non_empty];
-
-        unsafe {
-            assume!(!buf.is_empty());
-        }
+        let buf = unsafe {
+            // Safety: we checked above that this range is at least 1 element and is in-bounds
+            buf.get_unchecked(first_non_empty..=last_non_empty)
+        };
 
         let mut slice = Self {
             len,
@@ -115,9 +113,6 @@ where
             // head can be consumed and the watermark still has capacity
             Ordering::Less => {
                 let head = core::mem::take(&mut self.head);
-                unsafe {
-                    assume!(!self.buf.is_empty());
-                }
                 self.advance_buf();
                 self.sub_len(head.len());
                 ControlFlow::Continue(head.into())
@@ -125,15 +120,15 @@ where
             // head can be consumed and the watermark is filled
             Ordering::Equal => {
                 let head = core::mem::take(&mut self.head);
-                unsafe {
-                    assume!(!self.buf.is_empty());
-                }
                 self.advance_buf();
                 self.sub_len(head.len());
                 ControlFlow::Break(head.into())
             }
             // head is partially consumed and the watermark is filled
             Ordering::Greater => {
+                unsafe {
+                    assume!(self.head.len() >= watermark);
+                }
                 let (head, tail) = self.head.split_at(watermark);
                 self.head = tail;
                 self.sub_len(head.len());

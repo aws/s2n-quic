@@ -13,19 +13,16 @@ use crate::{
 ///
 /// This can be used for applying back pressure to the reader with flow control.
 pub struct Limit<'a, R: Reader + ?Sized> {
-    buffered_len: usize,
+    len: usize,
     reader: &'a mut R,
 }
 
 impl<'a, R: Reader + ?Sized> Limit<'a, R> {
     #[inline]
     pub fn new(reader: &'a mut R, max_buffered_len: usize) -> Self {
-        let buffered_len = max_buffered_len.min(reader.buffered_len());
+        let len = max_buffered_len.min(reader.buffered_len());
 
-        Self {
-            buffered_len,
-            reader,
-        }
+        Self { len, reader }
     }
 }
 
@@ -34,17 +31,17 @@ impl<'a, R: Reader + ?Sized> Storage for Limit<'a, R> {
 
     #[inline]
     fn buffered_len(&self) -> usize {
-        self.buffered_len
+        self.len
     }
 
     #[inline]
     fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
-        let watermark = self.buffered_len.min(watermark);
+        let watermark = self.len.min(watermark);
         let chunk = self.reader.read_chunk(watermark)?;
         unsafe {
-            assume!(chunk.len() <= self.buffered_len);
+            assume!(chunk.len() <= self.len);
         }
-        self.buffered_len -= chunk.len();
+        self.len -= chunk.len();
         Ok(chunk)
     }
 
@@ -53,14 +50,14 @@ impl<'a, R: Reader + ?Sized> Storage for Limit<'a, R> {
     where
         Dest: writer::Storage + ?Sized,
     {
-        let mut dest = dest.with_write_limit(self.buffered_len);
+        let mut dest = dest.with_write_limit(self.len);
         let mut dest = dest.track_write();
         let chunk = self.reader.partial_copy_into(&mut dest)?;
         let len = dest.written_len() + chunk.len();
         unsafe {
-            assume!(len <= self.buffered_len);
+            assume!(len <= self.len);
         }
-        self.buffered_len -= len;
+        self.len -= len;
         Ok(chunk)
     }
 
@@ -69,14 +66,14 @@ impl<'a, R: Reader + ?Sized> Storage for Limit<'a, R> {
     where
         Dest: writer::Storage + ?Sized,
     {
-        let mut dest = dest.with_write_limit(self.buffered_len);
+        let mut dest = dest.with_write_limit(self.len);
         let mut dest = dest.track_write();
         self.reader.copy_into(&mut dest)?;
         let len = dest.written_len();
         unsafe {
-            assume!(len <= self.buffered_len);
+            assume!(len <= self.len);
         }
-        self.buffered_len -= len;
+        self.len -= len;
         Ok(())
     }
 }
