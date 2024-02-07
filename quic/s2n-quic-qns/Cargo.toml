@@ -9,7 +9,9 @@ license = "Apache-2.0"
 publish = false
 
 [features]
-default = []
+default = ["interop", "perf"]
+interop = []
+perf = []
 trace = ["s2n-quic-core/branch-tracing", "s2n-quic-core/probe-tracing", "s2n-quic-core/usdt"]
 xdp = ["s2n-quic/unstable-provider-io-xdp", "aya", "aya-log"]
 

@@ -8,13 +8,7 @@ use crate::{
     server::{h09, h3},
     tls, Result,
 };
-use s2n_quic::{
-    provider::{
-        endpoint_limits,
-        event::{events, Subscriber},
-    },
-    Server,
-};
+use s2n_quic::{provider::endpoint_limits, Server};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -104,10 +98,7 @@ impl Interop {
             .with_io(io)?
             .with_endpoint_limits(endpoint_limits)?
             .with_limits(limits)?
-            .with_event((
-                EventSubscriber,
-                s2n_quic::provider::event::tracing::Subscriber::default(),
-            ))?;
+            .with_event(s2n_quic::provider::event::tracing::Subscriber::default())?;
 
         // setup the packet interceptor if internal dev
         #[cfg(s2n_internal_dev)]
@@ -143,37 +134,5 @@ fn is_supported_testcase(testcase: Testcase) -> bool {
         Multiconnect => true,
         Ecn => true,
         ConnectionMigration => true,
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct MyConnectionContext {
-    packet_sent: u64,
-    pub(crate) stream_requests: u64,
-}
-
-pub struct EventSubscriber;
-
-impl Subscriber for EventSubscriber {
-    type ConnectionContext = MyConnectionContext;
-
-    fn create_connection_context(
-        &mut self,
-        _meta: &events::ConnectionMeta,
-        _info: &events::ConnectionInfo,
-    ) -> Self::ConnectionContext {
-        MyConnectionContext {
-            packet_sent: 0,
-            stream_requests: 0,
-        }
-    }
-
-    fn on_packet_sent(
-        &mut self,
-        context: &mut Self::ConnectionContext,
-        _meta: &events::ConnectionMeta,
-        _event: &events::PacketSent,
-    ) {
-        context.packet_sent += 1;
     }
 }
