@@ -157,5 +157,20 @@ mod tests {
         }
 
         assert_eq!(incremental.current_offset(), VarInt::from_u8(4));
+
+        {
+            let mut chunk: &[u8] = &[5, 6, 7, 8];
+            let mut reader = incremental.with_storage(&mut chunk, true).unwrap();
+            let mut reader = reader.with_checks();
+
+            assert_eq!(reader.buffered_len(), 4);
+
+            let trailing_chunk = reader.read_chunk(usize::MAX).unwrap();
+            assert_eq!(&*trailing_chunk, &[5, 6, 7, 8]);
+
+            assert_eq!(reader.buffered_len(), 0);
+            assert!(reader.buffer_is_empty());
+            assert!(reader.is_consumed());
+        }
     }
 }

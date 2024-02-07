@@ -50,6 +50,11 @@ where
     }
 
     #[inline(always)]
+    fn buffer_is_empty(&self) -> bool {
+        self.inner.buffer_is_empty()
+    }
+
+    #[inline(always)]
     fn read_chunk(&mut self, watermark: usize) -> Result<super::storage::Chunk<'_>, Self::Error> {
         self.inner.read_chunk(watermark)
     }
@@ -84,6 +89,11 @@ where
     #[inline]
     fn buffered_len(&self) -> usize {
         self.inner.buffered_len()
+    }
+
+    #[inline]
+    fn buffer_is_empty(&self) -> bool {
+        self.inner.buffer_is_empty()
     }
 
     #[inline]

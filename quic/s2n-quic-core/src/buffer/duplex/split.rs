@@ -182,85 +182,145 @@ mod tests {
     };
 
     #[test]
-    fn split_test() {
+    fn undersized_storage_test() {
         let mut duplex = Reassembler::default();
-        let mut reader = Data::new(10_000);
+        let mut reader = Data::new(10);
         let mut checker = reader;
 
+        let mut storage: Vec<u8> = vec![];
         {
+            // limit the storage capacity so we force writing into the duplex
+            let mut storage = storage.with_write_limit(1);
+
+            let mut split = Split::new(&mut storage, &mut duplex);
+
+            split.read_from(&mut reader).unwrap();
+        }
+
+        // the storage was too small so we delegated to duplex
+        assert!(storage.is_empty());
+        assert_eq!(duplex.buffered_len(), 10);
+
+        // move the reassembled bytes into the checker
+        checker.read_from(&mut duplex).unwrap();
+        assert_eq!(duplex.current_offset().as_u64(), 10);
+        assert!(duplex.is_consumed());
+    }
+
+    #[test]
+    fn out_of_order_test() {
+        let mut duplex = Reassembler::default();
+
+        // first write 5 bytes at offset 5
+        {
+            let mut reader = Data::new(10);
+
+            // advance the reader by 5 bytes
+            let _ = reader.send_one(5);
+
             let mut storage: Vec<u8> = vec![];
 
             let mut split = Split::new(&mut storage, &mut duplex);
 
-            let mut reader = reader.with_read_limit(5);
             split.read_from(&mut reader).unwrap();
 
-            assert_eq!(storage.len(), 5);
-            assert_eq!(duplex.current_offset().as_u64(), 5);
+            // make sure we consumed the reader
+            assert_eq!(reader.current_offset().as_u64(), 10);
 
-            checker.receive(&[&storage[..]]);
-        }
-
-        {
-            let mut storage = writer::storage::Empty;
-
-            let mut split = Split::new(&mut storage, &mut duplex);
-
-            let mut reader = reader.with_read_limit(5);
-            split.read_from(&mut reader).unwrap();
-
-            assert_eq!(duplex.current_offset().as_u64(), 5);
-            assert_eq!(duplex.len(), 5);
-        }
-
-        {
-            let mut storage: Vec<u8> = vec![];
-
-            let mut split = Split::new(&mut storage, &mut duplex);
-
-            let mut reader = reader.with_read_limit(5);
-            split.read_from(&mut reader).unwrap();
+            assert_eq!(split.current_offset().as_u64(), 0);
+            assert_eq!(split.buffered_len(), 0);
 
             // make sure we didn't write to the storage, even if we had capacity, since the
             // current_offset doesn't match
             assert!(storage.is_empty());
-            assert_eq!(duplex.current_offset().as_u64(), 5);
-
-            // move the reassembled bytes into the checker
-            checker.read_from(&mut duplex).unwrap();
-            assert_eq!(duplex.current_offset().as_u64(), 15);
         }
 
+        // then write 10 bytes at offset 0
         {
+            let mut reader = Data::new(10);
+
             let mut storage: Vec<u8> = vec![];
-            {
-                let mut storage = storage.with_write_limit(1);
-
-                let mut split = Split::new(&mut storage, &mut duplex);
-
-                let mut reader = reader.with_read_limit(10);
-                split.read_from(&mut reader).unwrap();
-            }
-
-            // the storage was too small so we delegated to duplex
-            assert!(storage.is_empty());
-            assert_eq!(duplex.len(), 10);
-
-            // move the reassembled bytes into the checker
-            checker.read_from(&mut duplex).unwrap();
-            assert_eq!(duplex.current_offset().as_u64(), 25);
-        }
-
-        {
-            let mut storage = writer::storage::Empty;
 
             let mut split = Split::new(&mut storage, &mut duplex);
 
-            let mut reader = reader.with_read_limit(1);
             split.read_from(&mut reader).unwrap();
 
-            assert_eq!(duplex.current_offset().as_u64(), 25);
-            assert_eq!(duplex.len(), 1);
+            // make sure we consumed the reader
+            assert_eq!(reader.current_offset().as_u64(), 10);
+
+            assert_eq!(split.current_offset().as_u64(), 10);
+            assert_eq!(split.buffered_len(), 0);
+
+            // make sure we copied the entire reader
+            assert_eq!(storage.len(), 10);
+            assert!(duplex.is_consumed());
         }
+    }
+
+    #[test]
+    fn skip_test() {
+        let mut duplex = Reassembler::default();
+        let mut reader = Data::new(10);
+        let mut checker = reader;
+
+        let mut storage: Vec<u8> = vec![];
+
+        let mut split = Split::new(&mut storage, &mut duplex);
+
+        split.read_from(&mut reader).unwrap();
+
+        assert_eq!(storage.len(), 10);
+        assert_eq!(duplex.current_offset().as_u64(), 10);
+
+        checker.receive(&[&storage[..]]);
+    }
+
+    #[test]
+    fn empty_storage_test() {
+        let mut duplex = Reassembler::default();
+        let mut reader = Data::new(10);
+        let mut checker = reader;
+
+        let mut storage = writer::storage::Empty;
+
+        let mut split = Split::new(&mut storage, &mut duplex);
+
+        split.read_from(&mut reader).unwrap();
+
+        assert_eq!(split.current_offset().as_u64(), 0);
+        assert_eq!(split.buffered_len(), 10);
+
+        checker.read_from(&mut split).unwrap();
+
+        assert_eq!(split.current_offset().as_u64(), 10);
+        assert!(split.buffer_is_empty());
+        assert_eq!(split.buffered_len(), 0);
+        assert!(split.is_consumed());
+    }
+
+    #[test]
+    fn partial_test() {
+        let mut duplex = Reassembler::default();
+        let mut reader = Data::new(10);
+        let mut checker = reader;
+
+        let mut storage: Vec<u8> = vec![];
+        {
+            let mut storage = storage.with_write_limit(9);
+
+            let mut split = Split::new(&mut storage, &mut duplex);
+
+            split.read_from(&mut reader).unwrap();
+        }
+
+        // the storage was at least half the reader
+        assert_eq!(storage.len(), 9);
+        assert_eq!(duplex.buffered_len(), 1);
+
+        // move the reassembled bytes into the checker
+        checker.receive(&[&storage]);
+        checker.read_from(&mut duplex).unwrap();
+        assert_eq!(duplex.current_offset().as_u64(), 10);
+        assert!(duplex.is_consumed());
     }
 }

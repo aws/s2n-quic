@@ -8,7 +8,7 @@ use crate::{
         writer,
     },
 };
-use core::cmp::Ordering;
+use core::{cmp::Ordering, ops::ControlFlow};
 
 /// A vectored reader [`Storage`]
 pub struct IoSlice<'a, T> {
@@ -24,40 +24,41 @@ where
     #[inline]
     pub fn new(buf: &'a [T]) -> Self {
         let mut len = 0;
-        let mut first_non_empty = None;
+        let mut first_non_empty = 0;
+        let mut last_non_empty = 0;
 
         // find the total length and the first non-empty slice
         for (idx, buf) in buf.iter().enumerate() {
             len += buf.len();
-            if !buf.is_empty() && first_non_empty.is_none() {
-                first_non_empty = Some(idx);
+            if !buf.is_empty() {
+                last_non_empty = idx;
+                first_non_empty = first_non_empty.min(idx);
             }
         }
 
-        if let Some(idx) = first_non_empty {
-            // skip over any empty slices
-            let buf = &buf[idx..];
-
-            unsafe {
-                assume!(!buf.is_empty());
-            }
-
-            let mut slice = Self {
-                len,
-                head: &[],
-                buf,
-            };
-            slice.advance_buf_once();
-            slice
-        } else {
-            debug_assert_eq!(len, 0);
-
-            Self {
+        // if there are no filled slices then return the base case
+        if len == 0 {
+            return Self {
                 len: 0,
                 head: &[],
                 buf: &[],
-            }
+            };
         }
+
+        // skip over any empty slices
+        let buf = &buf[first_non_empty..=last_non_empty];
+
+        unsafe {
+            assume!(!buf.is_empty());
+        }
+
+        let mut slice = Self {
+            len,
+            head: &[],
+            buf,
+        };
+        slice.advance_buf_once();
+        slice
     }
 
     #[inline(always)]
@@ -97,6 +98,48 @@ where
             assert_eq!(len, computed);
         }
         self.len = len;
+    }
+
+    #[inline]
+    fn read_chunk_control_flow(&mut self, watermark: usize) -> ControlFlow<Chunk<'a>, Chunk<'a>> {
+        // we only have one chunk left so do the happy path
+        if self.buf.is_empty() {
+            let len = self.head.len().min(watermark);
+            let (head, tail) = self.head.split_at(len);
+            self.head = tail;
+            self.set_len(tail.len());
+            return ControlFlow::Break(head.into());
+        }
+
+        match self.head.len().cmp(&watermark) {
+            // head can be consumed and the watermark still has capacity
+            Ordering::Less => {
+                let head = core::mem::take(&mut self.head);
+                unsafe {
+                    assume!(!self.buf.is_empty());
+                }
+                self.advance_buf();
+                self.sub_len(head.len());
+                ControlFlow::Continue(head.into())
+            }
+            // head can be consumed and the watermark is filled
+            Ordering::Equal => {
+                let head = core::mem::take(&mut self.head);
+                unsafe {
+                    assume!(!self.buf.is_empty());
+                }
+                self.advance_buf();
+                self.sub_len(head.len());
+                ControlFlow::Break(head.into())
+            }
+            // head is partially consumed and the watermark is filled
+            Ordering::Greater => {
+                let (head, tail) = self.head.split_at(watermark);
+                self.head = tail;
+                self.sub_len(head.len());
+                ControlFlow::Break(head.into())
+            }
+        }
     }
 }
 
@@ -163,32 +206,10 @@ where
 
     #[inline]
     fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
-        // we only have one chunk left so do the happy path
-        if self.buf.is_empty() {
-            let len = self.head.len().min(watermark);
-            let (head, tail) = self.head.split_at(len);
-            self.head = tail;
-            self.set_len(tail.len());
-            return Ok(head.into());
-        }
-
-        // head can be returned and we need to take the next buf entry
-        if self.head.len() >= watermark {
-            let head = self.head;
-            self.head = &[];
-            unsafe {
-                assume!(!self.buf.is_empty());
-            }
-            self.advance_buf();
-            self.sub_len(head.len());
-            return Ok(head.into());
-        }
-
-        // we just need to split off the current head and return it
-        let (head, tail) = self.head.split_at(watermark);
-        self.head = tail;
-        self.sub_len(head.len());
-        Ok(head.into())
+        Ok(match self.read_chunk_control_flow(watermark) {
+            ControlFlow::Continue(chunk) => chunk,
+            ControlFlow::Break(chunk) => chunk,
+        })
     }
 
     #[inline]
@@ -199,47 +220,143 @@ where
         ensure!(dest.has_remaining_capacity(), Ok(Chunk::empty()));
 
         loop {
-            // we only have one chunk left so do the happy path
-            if self.buf.is_empty() {
-                let len = self.head.len().min(dest.remaining_capacity());
-                let (head, tail) = self.head.split_at(len);
-                self.head = tail;
-                self.set_len(tail.len());
-                return Ok(head.into());
-            }
-
-            match self.head.len().cmp(&dest.remaining_capacity()) {
-                // head needs to be copied into dest and we need to take the next buf entry
-                Ordering::Less => {
-                    let len = self.head.len();
-                    dest.put_slice(self.head);
-                    self.head = &[];
-                    unsafe {
-                        assume!(!self.buf.is_empty());
-                    }
-                    self.advance_buf();
-                    self.sub_len(len);
+            match self.read_chunk_control_flow(dest.remaining_capacity()) {
+                ControlFlow::Continue(chunk) => {
+                    dest.put_slice(&chunk);
                     continue;
                 }
-                // head can be returned and we need to take the next buf entry
-                Ordering::Equal => {
-                    let head = self.head;
-                    self.head = &[];
-                    unsafe {
-                        assume!(!self.buf.is_empty());
-                    }
-                    self.advance_buf();
-                    self.sub_len(head.len());
-                    return Ok(head.into());
+                ControlFlow::Break(chunk) => return Ok(chunk),
+            }
+        }
+    }
+
+    #[inline]
+    fn copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<(), Self::Error>
+    where
+        Dest: writer::Storage + ?Sized,
+    {
+        ensure!(dest.has_remaining_capacity(), Ok(()));
+
+        loop {
+            match self.read_chunk_control_flow(dest.remaining_capacity()) {
+                ControlFlow::Continue(chunk) => {
+                    dest.put_slice(&chunk);
+                    continue;
                 }
-                // we just need to split off the current head and return it
-                Ordering::Greater => {
-                    let (head, tail) = self.head.split_at(dest.remaining_capacity());
-                    self.head = tail;
-                    self.sub_len(head.len());
-                    return Ok(head.into());
+                ControlFlow::Break(chunk) => {
+                    if !chunk.is_empty() {
+                        dest.put_slice(&chunk);
+                    }
+                    return Ok(());
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::buffer::reader::storage::Buf;
+
+    /// ensures each storage type correctly copies multiple chunks into the destination
+    #[test]
+    #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
+    fn io_slice_test() {
+        let mut dest = vec![];
+        let mut source: Vec<Vec<u8>> = vec![];
+        let mut pool = vec![];
+        let mut expected = vec![];
+        bolero::check!()
+            .with_type::<(u16, Vec<u16>)>()
+            .for_each(|(max_dest_len, source_lens)| {
+                while source.len() > source_lens.len() {
+                    pool.push(source.pop().unwrap());
+                }
+
+                while source.len() < source_lens.len() {
+                    source.push(pool.pop().unwrap_or_default());
+                }
+
+                let mut source_len = 0;
+                let mut last_chunk_idx = 0;
+                let mut last_chunk_len = 0;
+                let mut remaining_len = *max_dest_len as usize;
+                for (idx, (len, source)) in source_lens.iter().zip(&mut source).enumerate() {
+                    let fill = (idx + 1) as u8;
+                    let len = *len as usize;
+                    source.resize(len, fill);
+                    source.fill(fill);
+                    if len > 0 && remaining_len > 0 {
+                        last_chunk_idx = idx;
+                        last_chunk_len = len.min(remaining_len);
+                    }
+                    source_len += len;
+                    remaining_len = remaining_len.saturating_sub(len);
+                }
+
+                let dest_len = source_len.min(*max_dest_len as usize);
+                dest.resize(dest_len, 0);
+                dest.fill(0);
+                let dest = &mut dest[..];
+
+                expected.resize(dest_len, 0);
+                expected.fill(0);
+
+                {
+                    // don't copy the last chunk, since that should be returned
+                    let source = &source[..last_chunk_idx];
+                    crate::slice::vectored_copy(source, &mut [&mut expected[..]]);
+                }
+
+                let expected_chunk = source
+                    .get(last_chunk_idx)
+                    .map(|v| &v[..last_chunk_len])
+                    .unwrap_or(&[]);
+
+                // IoSlice implementation
+                {
+                    let mut source = IoSlice::new(&source);
+                    let mut target = &mut dest[..];
+
+                    let chunk = source.partial_copy_into(&mut target).unwrap();
+
+                    assert_eq!(expected, dest);
+                    assert_eq!(expected_chunk, &*chunk);
+                    // reset the destination
+                    dest.fill(0);
+                }
+
+                // Buf implementation
+                {
+                    let mut source = IoSlice::new(&source);
+                    let mut source = Buf::new(&mut source);
+                    let mut target = &mut dest[..];
+
+                    let chunk = source.partial_copy_into(&mut target).unwrap();
+
+                    assert_eq!(expected, dest);
+                    assert_eq!(expected_chunk, &*chunk);
+                    // reset the destination
+                    dest.fill(0);
+                }
+
+                // IoSlice read_chunk
+                {
+                    let mut reader = IoSlice::new(&source);
+                    let max_dest_len = *max_dest_len as usize;
+
+                    let expected_chunk_len = source_lens
+                        .iter()
+                        .find(|len| **len > 0)
+                        .copied()
+                        .unwrap_or(0) as usize;
+                    let expected_chunk_len = expected_chunk_len.min(max_dest_len);
+
+                    let chunk = reader.read_chunk(max_dest_len).unwrap();
+
+                    assert_eq!(chunk.len(), expected_chunk_len);
+                }
+            });
     }
 }

@@ -34,11 +34,6 @@ where
             final_offset,
         })
     }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.storage.buffer_is_empty()
-    }
 }
 
 impl<'a, S> Storage for Complete<'a, S>
@@ -50,6 +45,11 @@ where
     #[inline]
     fn buffered_len(&self) -> usize {
         self.storage.buffered_len()
+    }
+
+    #[inline]
+    fn buffer_is_empty(&self) -> bool {
+        self.storage.buffer_is_empty()
     }
 
     #[inline]
@@ -103,7 +103,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn complete_test() {
+    fn read_chunk_test() {
+        let mut storage: &[u8] = &[1, 2, 3, 4];
+        let mut reader = Complete::new(&mut storage).unwrap();
+        let mut reader = reader.with_checks();
+
+        assert_eq!(reader.current_offset(), VarInt::ZERO);
+        assert_eq!(reader.final_offset(), Some(VarInt::from_u8(4)));
+
+        let chunk = reader.read_chunk(usize::MAX).unwrap();
+        assert_eq!(&*chunk, &[1, 2, 3, 4]);
+
+        assert_eq!(reader.current_offset(), VarInt::from_u8(4));
+        assert!(reader.buffer_is_empty());
+    }
+
+    #[test]
+    fn partial_copy_test() {
         let mut storage: &[u8] = &[1, 2, 3, 4];
         let mut reader = Complete::new(&mut storage).unwrap();
         let mut reader = reader.with_checks();
@@ -114,6 +130,26 @@ mod tests {
         let mut dest: &mut [u8] = &mut [0; 4];
         let chunk = reader.partial_copy_into(&mut dest).unwrap();
         assert_eq!(&*chunk, &[1, 2, 3, 4]);
+
+        assert_eq!(reader.current_offset(), VarInt::from_u8(4));
+        assert!(reader.buffer_is_empty());
+    }
+
+    #[test]
+    fn copy_test() {
+        let mut storage: &[u8] = &[1, 2, 3, 4];
+        let mut reader = Complete::new(&mut storage).unwrap();
+        let mut reader = reader.with_checks();
+
+        assert_eq!(reader.current_offset(), VarInt::ZERO);
+        assert_eq!(reader.final_offset(), Some(VarInt::from_u8(4)));
+
+        let mut dest = [0; 4];
+        {
+            let mut dest = &mut dest[..];
+            reader.copy_into(&mut dest).unwrap();
+        }
+        assert_eq!(&dest[..], &[1, 2, 3, 4]);
 
         assert_eq!(reader.current_offset(), VarInt::from_u8(4));
         assert!(reader.buffer_is_empty());
