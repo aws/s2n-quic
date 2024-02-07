@@ -142,7 +142,7 @@ async fn runtime<A: ToSocketAddrs>(
     receive_addr: A,
     send_addr: Option<A>,
 ) -> io::Result<(super::Io, SocketAddress)> {
-    let rx_socket = syscall::bind_udp(receive_addr, false)?;
+    let rx_socket = syscall::bind_udp(receive_addr, false, false)?;
     rx_socket.set_nonblocking(true)?;
     let rx_socket: std::net::UdpSocket = rx_socket.into();
     let rx_addr = rx_socket.local_addr()?;
@@ -150,7 +150,7 @@ async fn runtime<A: ToSocketAddrs>(
     let mut io_builder = Io::builder().with_rx_socket(rx_socket)?;
 
     if let Some(tx_addr) = send_addr {
-        let tx_socket = syscall::bind_udp(tx_addr, false)?;
+        let tx_socket = syscall::bind_udp(tx_addr, false, false)?;
         tx_socket.set_nonblocking(true)?;
         let tx_socket: std::net::UdpSocket = tx_socket.into();
         io_builder = io_builder.with_tx_socket(tx_socket)?

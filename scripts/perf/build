@@ -15,18 +15,6 @@ if ! command -v "ultraman" &> /dev/null; then
   cargo install ultraman
 fi
 
-if [ ! -f target/perf/quinn/bin/perf_client ] || [ ! -f target/perf/quinn/bin/perf_server ]; then
-  mkdir -p target/perf/quinn
-  cargo +stable install \
-    --git https://github.com/quinn-rs/quinn \
-    --rev 6e4bcbb2fcb57ced2ef261c9662521c5baf37f3c \
-    --bin perf_client \
-    --bin perf_server \
-    --root target/perf/quinn \
-    --target-dir target/perf/quinn \
-    perf
-fi
-
 cargo \
   +stable \
   build \

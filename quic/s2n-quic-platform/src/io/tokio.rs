@@ -57,6 +57,7 @@ impl Io {
             mut max_mtu,
             max_segments,
             gro_enabled,
+            reuse_address,
             reuse_port,
         } = self.builder;
 
@@ -90,7 +91,7 @@ impl Io {
         let rx_socket = if let Some(rx_socket) = rx_socket {
             rx_socket
         } else if let Some(recv_addr) = recv_addr {
-            syscall::bind_udp(recv_addr, reuse_port)?
+            syscall::bind_udp(recv_addr, reuse_address, reuse_port)?
         } else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -103,7 +104,7 @@ impl Io {
         let tx_socket = if let Some(tx_socket) = tx_socket {
             tx_socket
         } else if let Some(send_addr) = send_addr {
-            syscall::bind_udp(send_addr, reuse_port)?
+            syscall::bind_udp(send_addr, reuse_address, reuse_port)?
         } else {
             // No tx_socket or send address was specified, so the tx socket
             // will be a handle to the rx socket.

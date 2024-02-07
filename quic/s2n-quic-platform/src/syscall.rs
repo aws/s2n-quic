@@ -69,13 +69,15 @@ pub fn udp_socket(addr: std::net::SocketAddr) -> io::Result<Socket> {
     // allow ipv4 to also connect - ignore the error if it fails
     let _ = socket.set_only_v6(false);
 
-    socket.set_reuse_address(true)?;
-
     Ok(socket)
 }
 
 /// Creates a UDP socket bound to the provided address
-pub fn bind_udp<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Result<Socket> {
+pub fn bind_udp<A: std::net::ToSocketAddrs>(
+    addr: A,
+    reuse_address: bool,
+    reuse_port: bool,
+) -> io::Result<Socket> {
     let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
         std::io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -83,6 +85,8 @@ pub fn bind_udp<A: std::net::ToSocketAddrs>(addr: A, reuse_port: bool) -> io::Re
         )
     })?;
     let socket = udp_socket(addr)?;
+
+    socket.set_reuse_address(reuse_address)?;
 
     #[cfg(unix)]
     socket.set_reuse_port(reuse_port)?;

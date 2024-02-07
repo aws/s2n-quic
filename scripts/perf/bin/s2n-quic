@@ -9,7 +9,7 @@ set -e
 
 case "$PS" in
     server*)
-          ../../target/release/s2n-quic-qns \
+          exec ../../target/release/s2n-quic-qns \
             perf \
             server \
             --port $SERVER_PORT \
@@ -17,7 +17,7 @@ case "$PS" in
             --stats
         ;;
     client*)
-          ../../target/release/s2n-quic-qns \
+          exec ../../target/release/s2n-quic-qns \
             perf \
             client \
             --receive "${DOWNLOAD_BYTES}" \
