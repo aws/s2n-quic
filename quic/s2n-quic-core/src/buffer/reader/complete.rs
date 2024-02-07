@@ -64,7 +64,7 @@ where
     where
         Dest: writer::Storage + ?Sized,
     {
-        let mut dest = dest.tracked();
+        let mut dest = dest.track_write();
         let chunk = self.storage.partial_copy_into(&mut dest)?;
         self.current_offset += chunk.len();
         self.current_offset += dest.written_len();
@@ -76,7 +76,7 @@ where
     where
         Dest: writer::Storage + ?Sized,
     {
-        let mut dest = dest.tracked();
+        let mut dest = dest.track_write();
         self.storage.copy_into(&mut dest)?;
         self.current_offset += dest.written_len();
         Ok(())

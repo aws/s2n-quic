@@ -72,7 +72,7 @@ pub trait Storage {
 
     /// Tracks the number of bytes read from the storage
     #[inline]
-    fn tracked(&mut self) -> Tracked<Self> {
+    fn track_read(&mut self) -> Tracked<Self> {
         Tracked::new(self)
     }
 }

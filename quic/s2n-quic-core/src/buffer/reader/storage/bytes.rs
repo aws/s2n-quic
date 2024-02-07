@@ -107,7 +107,7 @@ mod tests {
 
         let mut writer: Vec<Bytes> = vec![];
         {
-            let mut writer = writer.limit(5);
+            let mut writer = writer.with_write_limit(5);
             let chunk = reader.partial_copy_into(&mut writer).unwrap();
             assert_eq!(&chunk[..], b"hello");
         }

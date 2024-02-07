@@ -114,16 +114,15 @@ where
     where
         R: Reader + ?Sized,
     {
-        // enable reader checks
-        let mut reader = reader.with_checks();
-        let reader = &mut reader;
-
         let final_offset = reader.final_offset();
 
         {
             // if the storage specializes writing zero-copy Bytes/BytesMut, then just write to the
             // receive buffer, since that's what it stores
             let mut should_delegate = C::SPECIALIZES_BYTES || C::SPECIALIZES_BYTES_MUT;
+
+            // if the storage is empty then write into the duplex
+            should_delegate |= !self.storage.has_remaining_capacity();
 
             // if this packet is non-contiguous, then delegate to the wrapped writer
             should_delegate |= reader.current_offset() != self.duplex.current_offset();
@@ -148,7 +147,7 @@ where
 
         {
             // track the number of consumed bytes
-            let mut reader = reader.tracked();
+            let mut reader = reader.track_read();
 
             reader.copy_into(self.storage)?;
 
@@ -167,5 +166,101 @@ where
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        buffer::{
+            reader::Reader,
+            writer::{Storage as _, Writer},
+            Reassembler,
+        },
+        stream::testing::Data,
+    };
+
+    #[test]
+    fn split_test() {
+        let mut duplex = Reassembler::default();
+        let mut reader = Data::new(10_000);
+        let mut checker = reader;
+
+        {
+            let mut storage: Vec<u8> = vec![];
+
+            let mut split = Split::new(&mut storage, &mut duplex);
+
+            let mut reader = reader.with_read_limit(5);
+            split.read_from(&mut reader).unwrap();
+
+            assert_eq!(storage.len(), 5);
+            assert_eq!(duplex.current_offset().as_u64(), 5);
+
+            checker.receive(&[&storage[..]]);
+        }
+
+        {
+            let mut storage = writer::storage::Empty;
+
+            let mut split = Split::new(&mut storage, &mut duplex);
+
+            let mut reader = reader.with_read_limit(5);
+            split.read_from(&mut reader).unwrap();
+
+            assert_eq!(duplex.current_offset().as_u64(), 5);
+            assert_eq!(duplex.len(), 5);
+        }
+
+        {
+            let mut storage: Vec<u8> = vec![];
+
+            let mut split = Split::new(&mut storage, &mut duplex);
+
+            let mut reader = reader.with_read_limit(5);
+            split.read_from(&mut reader).unwrap();
+
+            // make sure we didn't write to the storage, even if we had capacity, since the
+            // current_offset doesn't match
+            assert!(storage.is_empty());
+            assert_eq!(duplex.current_offset().as_u64(), 5);
+
+            // move the reassembled bytes into the checker
+            checker.read_from(&mut duplex).unwrap();
+            assert_eq!(duplex.current_offset().as_u64(), 15);
+        }
+
+        {
+            let mut storage: Vec<u8> = vec![];
+            {
+                let mut storage = storage.with_write_limit(1);
+
+                let mut split = Split::new(&mut storage, &mut duplex);
+
+                let mut reader = reader.with_read_limit(10);
+                split.read_from(&mut reader).unwrap();
+            }
+
+            // the storage was too small so we delegated to duplex
+            assert!(storage.is_empty());
+            assert_eq!(duplex.len(), 10);
+
+            // move the reassembled bytes into the checker
+            checker.read_from(&mut duplex).unwrap();
+            assert_eq!(duplex.current_offset().as_u64(), 25);
+        }
+
+        {
+            let mut storage = writer::storage::Empty;
+
+            let mut split = Split::new(&mut storage, &mut duplex);
+
+            let mut reader = reader.with_read_limit(1);
+            split.read_from(&mut reader).unwrap();
+
+            assert_eq!(duplex.current_offset().as_u64(), 25);
+            assert_eq!(duplex.len(), 1);
+        }
     }
 }

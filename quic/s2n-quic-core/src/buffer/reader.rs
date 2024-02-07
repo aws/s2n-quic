@@ -49,12 +49,12 @@ pub trait Reader: Storage {
     fn with_max_data(&mut self, max_data: VarInt) -> Limit<Self> {
         let max_buffered_len = max_data.saturating_sub(self.current_offset());
         let max_buffered_len = max_buffered_len.as_u64().min(self.buffered_len() as u64) as usize;
-        self.with_limit(max_buffered_len)
+        self.with_read_limit(max_buffered_len)
     }
 
     /// Limits the maximum amount of data that the caller can read from the reader
     #[inline]
-    fn with_limit(&mut self, max_buffered_len: usize) -> Limit<Self> {
+    fn with_read_limit(&mut self, max_buffered_len: usize) -> Limit<Self> {
         Limit::new(self, max_buffered_len)
     }
 

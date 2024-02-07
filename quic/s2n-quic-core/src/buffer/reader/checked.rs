@@ -110,7 +110,7 @@ where
         Dest: writer::Storage + ?Sized,
     {
         let snapshot = Snapshot::new(self.inner, dest.remaining_capacity());
-        let mut dest = dest.tracked();
+        let mut dest = dest.track_write();
 
         let mut chunk = self.inner.partial_copy_into(&mut dest)?;
 
@@ -129,7 +129,7 @@ where
         Dest: writer::Storage + ?Sized,
     {
         let snapshot = Snapshot::new(self.inner, dest.remaining_capacity());
-        let mut dest = dest.tracked();
+        let mut dest = dest.track_write();
 
         self.inner.copy_into(&mut dest)?;
 

@@ -46,7 +46,7 @@ impl<'a, S: Storage + ?Sized> Storage for Tracked<'a, S> {
     where
         Dest: writer::Storage + ?Sized,
     {
-        let mut dest = dest.tracked();
+        let mut dest = dest.track_write();
         let chunk = self.storage.partial_copy_into(&mut dest)?;
         self.consumed += dest.written_len();
         self.consumed += chunk.len();
@@ -58,7 +58,7 @@ impl<'a, S: Storage + ?Sized> Storage for Tracked<'a, S> {
     where
         Dest: writer::Storage + ?Sized,
     {
-        let mut dest = dest.tracked();
+        let mut dest = dest.track_write();
         self.storage.copy_into(&mut dest)?;
         self.consumed += dest.written_len();
         Ok(())
@@ -98,15 +98,15 @@ mod tests {
         let mut writer: Vec<u8> = vec![];
 
         {
-            let mut reader = reader.tracked();
+            let mut reader = reader.track_read();
             let chunk = reader.read_chunk(1).unwrap();
             assert_eq!(&chunk[..], b"h");
             assert_eq!(reader.consumed_len(), 1);
         }
 
         {
-            let mut reader = reader.tracked();
-            let mut writer = writer.limit(5);
+            let mut reader = reader.track_read();
+            let mut writer = writer.with_write_limit(5);
 
             let chunk = reader.partial_copy_into(&mut writer).unwrap();
             assert_eq!(&chunk[..], b"ello ");
@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(writer.len(), 0);
 
         {
-            let mut reader = reader.tracked();
+            let mut reader = reader.track_read();
             reader.copy_into(&mut writer).unwrap();
             assert_eq!(reader.consumed_len(), 5);
             assert_eq!(&writer[..], b"world");

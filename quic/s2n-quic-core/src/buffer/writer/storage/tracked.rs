@@ -89,21 +89,21 @@ mod tests {
         let mut writer: Vec<u8> = vec![];
 
         {
-            let mut writer = writer.tracked();
+            let mut writer = writer.track_write();
             assert_eq!(writer.written_len(), 0);
             writer.put_slice(b"hello");
             assert_eq!(writer.written_len(), 5);
         }
 
         {
-            let mut writer = writer.tracked();
+            let mut writer = writer.track_write();
             assert_eq!(writer.written_len(), 0);
             writer.put_bytes(Bytes::from_static(b"hello"));
             assert_eq!(writer.written_len(), 5);
         }
 
         {
-            let mut writer = writer.tracked();
+            let mut writer = writer.track_write();
             assert_eq!(writer.written_len(), 0);
             writer.put_bytes_mut(BytesMut::from(&b"hello"[..]));
             assert_eq!(writer.written_len(), 5);

@@ -87,13 +87,13 @@ pub trait Storage {
 
     /// Limits the number of bytes that can be written to the storage
     #[inline]
-    fn limit(&mut self, max_len: usize) -> Limit<Self> {
+    fn with_write_limit(&mut self, max_len: usize) -> Limit<Self> {
         Limit::new(self, max_len)
     }
 
     /// Tracks the number of bytes written to the storage
     #[inline]
-    fn tracked(&mut self) -> Tracked<Self> {
+    fn track_write(&mut self) -> Tracked<Self> {
         Tracked::new(self)
     }
 

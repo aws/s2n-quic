@@ -53,8 +53,8 @@ impl<'a, R: Reader + ?Sized> Storage for Limit<'a, R> {
     where
         Dest: writer::Storage + ?Sized,
     {
-        let mut dest = dest.limit(self.buffered_len);
-        let mut dest = dest.tracked();
+        let mut dest = dest.with_write_limit(self.buffered_len);
+        let mut dest = dest.track_write();
         let chunk = self.reader.partial_copy_into(&mut dest)?;
         let len = dest.written_len() + chunk.len();
         unsafe {
@@ -69,8 +69,8 @@ impl<'a, R: Reader + ?Sized> Storage for Limit<'a, R> {
     where
         Dest: writer::Storage + ?Sized,
     {
-        let mut dest = dest.limit(self.buffered_len);
-        let mut dest = dest.tracked();
+        let mut dest = dest.with_write_limit(self.buffered_len);
+        let mut dest = dest.track_write();
         self.reader.copy_into(&mut dest)?;
         let len = dest.written_len();
         unsafe {
