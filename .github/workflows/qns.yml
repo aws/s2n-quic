@@ -66,7 +66,7 @@ jobs:
           echo "Servers: $SERVERS"
           MATRIX=$(echo "[$CLIENTS, $SERVERS]" | jq -c '{"include": . | flatten | sort | unique}')
           echo "Matrix: $MATRIX"
-          echo "::set-output name=matrix::$MATRIX"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   s2n-quic-qns:
     runs-on: ubuntu-22.04
@@ -257,7 +257,7 @@ jobs:
           wget ${INTEROP_BASE_URL}latest/result.json || echo '{}' > result.json
           mv result.json latest.json
           INTEROP_LOG_URL=${INTEROP_BASE_URL}$(jq --raw-output '.log_dir' latest.json)/SERVER_CLIENT/TEST/
-          echo "::set-output name=INTEROP_LOG_URL::$INTEROP_LOG_URL"
+          echo "INTEROP_LOG_URL=$INTEROP_LOG_URL" >> $GITHUB_OUTPUT
 
       - name: Get latest successful interop commit SHA on main branch
         id: mainsha
@@ -268,7 +268,7 @@ jobs:
           --header "Accept: application/vnd.github.v3+json" > latest_workflow_run.json
           MAIN_SHA=$(jq --raw-output '.workflow_runs[0] | .head_sha' latest_workflow_run.json)
           rm -f latest_workflow_run.json
-          echo "::set-output name=MAIN_SHA::$MAIN_SHA"
+          echo "MAIN_SHA=$MAIN_SHA" >> $GITHUB_OUTPUT
 
       - name: Download latest main interop result
         if: github.event.pull_request
@@ -322,7 +322,7 @@ jobs:
           TARGET="${{ github.sha }}/interop"
           aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -423,7 +423,7 @@ jobs:
           TARGET="${{ github.sha }}/bench"
           aws s3 sync target/benchmark/results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -572,7 +572,7 @@ jobs:
           TARGET="${{ github.sha }}/perf"
           aws s3 sync perf-results "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
           URL="$CDN/$TARGET/index.html"
-          echo "::set-output name=URL::$URL"
+          echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
