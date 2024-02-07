@@ -8,14 +8,11 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 mod client;
 mod congestion_control;
-#[cfg(feature = "interop")]
 mod file;
 mod intercept;
-#[cfg(feature = "interop")]
 mod interop;
 mod io;
 mod limits;
-#[cfg(feature = "perf")]
 mod perf;
 mod runtime;
 mod server;
@@ -68,31 +65,25 @@ fn main() {
 
 #[derive(Debug, StructOpt)]
 enum Arguments {
-    #[cfg(feature = "interop")]
     Interop(Interop),
-    #[cfg(feature = "perf")]
     Perf(Perf),
 }
 
 impl Arguments {
     pub fn run(&self) -> Result<()> {
         match self {
-            #[cfg(feature = "interop")]
             Self::Interop(subject) => subject.run(),
-            #[cfg(feature = "perf")]
             Self::Perf(subject) => subject.run(),
         }
     }
 }
 
-#[cfg(feature = "interop")]
 #[derive(Debug, StructOpt)]
 enum Interop {
     Server(server::Interop),
     Client(client::Interop),
 }
 
-#[cfg(feature = "interop")]
 impl Interop {
     pub fn run(&self) -> Result<()> {
         match self {
@@ -102,14 +93,12 @@ impl Interop {
     }
 }
 
-#[cfg(feature = "perf")]
 #[derive(Debug, StructOpt)]
 enum Perf {
     Server(server::Perf),
     Client(client::Perf),
 }
 
-#[cfg(feature = "perf")]
 impl Perf {
     pub fn run(&self) -> Result<()> {
         match self {

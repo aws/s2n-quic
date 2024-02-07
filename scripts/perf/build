@@ -19,6 +19,4 @@ cargo \
   +stable \
   build \
   --bin s2n-quic-qns \
-  --profile release-debug \
-  --no-default-features \
-  --features perf
+  --profile bench

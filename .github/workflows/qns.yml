@@ -72,9 +72,10 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        profile: ["debug", "release"]
+        mode: ["debug", "release"]
+    # enable debug information
     env:
-      RUSTFLAGS: "--cfg s2n_internal_dev --cfg s2n_quic_dump_on_panic --cfg s2n_quic_unstable"
+      RUSTFLAGS: "-g --cfg s2n_internal_dev --cfg s2n_quic_dump_on_panic --cfg s2n_quic_unstable"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,25 +90,22 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
         with:
-          key: ${{ matrix.profile }}-${{ env.RUSTFLAGS }}
+          key: ${{ matrix.mode }}-${{ env.RUSTFLAGS }}
 
       - name: Run cargo build
-        env:
-          QNS_PROFILE: ${{ matrix.profile == 'release' && '--profile=release-debug' || '' }}
-        working-directory: quic/s2n-quic-qns/
-        run: |
-          cargo build --bin s2n-quic-qns $QNS_PROFILE
+        uses: actions-rs/cargo@v1.0.3
+        with:
+          command: build
+          args: --bin s2n-quic-qns ${{ matrix.mode == 'release' && '--release' || '' }}
 
       - name: Prepare artifact
-        env:
-          QNS_PROFILE: ${{ matrix.profile == 'release' && 'release-debug' || 'debug' }}
         run: |
           mkdir -p s2n-quic-qns
-          cp target/$QNS_PROFILE/s2n-quic-qns s2n-quic-qns/s2n-quic-qns-${{ matrix.profile }}
+          cp target/${{ matrix.mode }}/s2n-quic-qns s2n-quic-qns/s2n-quic-qns-${{ matrix.mode }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: s2n-quic-qns-${{ matrix.profile }}
+          name: s2n-quic-qns-${{ matrix.mode }}
           path: s2n-quic-qns/
 
   interop:
@@ -506,9 +504,8 @@ jobs:
 
       - name: Setup artifacts
         run: |
-          mkdir -p target/release-debug
-          mv target/release/s2n-quic-qns-release target/release-debug/s2n-quic-qns
-          chmod +x target/release-debug/s2n-quic-qns
+          mv target/release/s2n-quic-qns-release target/release/s2n-quic-qns
+          chmod +x target/release/s2n-quic-qns
 
       - name: Run script
         env:

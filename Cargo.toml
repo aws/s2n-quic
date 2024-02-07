@@ -10,6 +10,11 @@ exclude = [
     "tools",
 ]
 
+[profile.release]
+lto = true
+codegen-units = 1
+incremental = false
+
 [profile.bench]
 lto = true
 codegen-units = 1
@@ -22,11 +27,3 @@ inherits = "dev"
 opt-level = 3
 incremental = false
 codegen-units = 1
-
-[profile.release-debug]
-inherits = "release"
-debug-assertions = true
-debug = true
-
-[profile.release-bench]
-inherits = "bench"

@@ -1,18 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[cfg(feature = "interop")]
 mod h09;
-#[cfg(feature = "interop")]
 mod h3;
-#[cfg(feature = "interop")]
 pub mod interop;
-#[cfg(feature = "perf")]
 pub mod perf;
 
-#[cfg(feature = "interop")]
 pub use interop::Interop;
-#[cfg(feature = "perf")]
 pub use perf::Perf;
 
 use crate::{
