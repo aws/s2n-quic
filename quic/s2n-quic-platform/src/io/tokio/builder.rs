@@ -17,6 +17,7 @@ pub struct Builder {
     pub(super) max_mtu: MaxMtu,
     pub(super) max_segments: gso::MaxSegments,
     pub(super) gro_enabled: Option<bool>,
+    pub(super) reuse_address: bool,
     pub(super) reuse_port: bool,
 }
 
@@ -153,6 +154,12 @@ impl Builder {
         } else {
             self.with_gro_disabled()
         }
+    }
+
+    /// Enables the address reuse (SO_REUSEADDR) socket option
+    pub fn with_reuse_address(mut self, enabled: bool) -> io::Result<Self> {
+        self.reuse_address = enabled;
+        Ok(self)
     }
 
     /// Enables the port reuse (SO_REUSEPORT) socket option
