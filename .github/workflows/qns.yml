@@ -604,7 +604,7 @@ jobs:
 
       - name: Run cargo build
         working-directory: tools/${{ matrix.attack }}-attack
-        run: cargo build --release
+        run: cargo +stable build --release
 
       - name: Start client
         working-directory: tools/${{ matrix.attack }}-attack

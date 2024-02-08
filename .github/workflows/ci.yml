@@ -804,7 +804,7 @@ jobs:
       - uses: actions-rs/toolchain@v1.0.7
         id: toolchain
         with:
-          toolchain: 1.70.0
+          toolchain: stable
           profile: minimal
           override: true
           components: clippy,rustfmt
@@ -817,11 +817,11 @@ jobs:
 
       - name: Run clippy
         working-directory: tools/xdp
-        run: cargo clippy
+        run: cargo +stable clippy
 
       - name: Build ebpf
         working-directory: tools/xdp
         env:
           RUST_LOG: trace
-        run: cargo xtask ci
+        run: cargo +stable xtask ci
 
