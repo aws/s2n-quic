@@ -32,9 +32,9 @@ impl<'a, S: Storage + ?Sized> Storage for WriteOnce<'a, S> {
 
     #[inline]
     fn put_slice(&mut self, bytes: &[u8]) {
-        debug_assert!(!self.did_write);
+        let did_write = !bytes.is_empty();
         self.storage.put_slice(bytes);
-        self.did_write = true;
+        self.did_write |= did_write;
     }
 
     #[inline(always)]
@@ -42,9 +42,8 @@ impl<'a, S: Storage + ?Sized> Storage for WriteOnce<'a, S> {
     where
         F: FnOnce(&mut UninitSlice) -> Result<(), Error>,
     {
-        debug_assert!(!self.did_write);
         let did_write = self.storage.put_uninit_slice(payload_len, f)?;
-        self.did_write |= did_write;
+        self.did_write |= did_write && payload_len > 0;
         Ok(did_write)
     }
 
@@ -62,23 +61,23 @@ impl<'a, S: Storage + ?Sized> Storage for WriteOnce<'a, S> {
 
     #[inline]
     fn put_bytes(&mut self, bytes: Bytes) {
-        debug_assert!(!self.did_write);
+        let did_write = !bytes.is_empty();
         self.storage.put_bytes(bytes);
-        self.did_write = true;
+        self.did_write |= did_write;
     }
 
     #[inline]
     fn put_bytes_mut(&mut self, bytes: BytesMut) {
-        debug_assert!(!self.did_write);
+        let did_write = !bytes.is_empty();
         self.storage.put_bytes_mut(bytes);
-        self.did_write = true;
+        self.did_write |= did_write;
     }
 
     #[inline]
     fn put_chunk(&mut self, chunk: Chunk) {
-        debug_assert!(!self.did_write);
+        let did_write = !chunk.is_empty();
         self.storage.put_chunk(chunk);
-        self.did_write = true;
+        self.did_write |= did_write;
     }
 }
 
@@ -135,5 +134,22 @@ mod tests {
             assert_eq!(writer.remaining_capacity(), 0);
             assert!(!writer.has_remaining_capacity());
         }
+    }
+
+    // ensures a reader that only reads capacity at the beginning can still write multiple chunks
+    #[test]
+    fn copy_into_multi_chunks() {
+        let mut writer: Vec<u8> = vec![];
+        {
+            let mut writer = writer.write_once();
+
+            assert!(writer.has_remaining_capacity());
+            writer.put_slice(b"hello");
+            assert!(!writer.has_remaining_capacity());
+            writer.put_slice(b"world");
+            assert!(!writer.has_remaining_capacity());
+        }
+
+        assert_eq!(&writer[..], b"helloworld");
     }
 }
