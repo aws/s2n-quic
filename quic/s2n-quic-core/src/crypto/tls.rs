@@ -6,6 +6,9 @@ pub use bytes::{Bytes, BytesMut};
 use core::{convert::TryFrom, fmt::Debug};
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 
+mod error;
+pub use error::Error;
+
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 

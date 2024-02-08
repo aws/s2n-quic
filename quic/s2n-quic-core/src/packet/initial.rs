@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{CryptoError, EncryptedPayload, InitialHeaderKey, InitialKey, ProtectedPayload},
+    crypto::{packet_protection, EncryptedPayload, InitialHeaderKey, InitialKey, ProtectedPayload},
     packet::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
@@ -112,7 +112,7 @@ impl<'a> ProtectedInitial<'a> {
         self,
         header_key: &H,
         largest_acknowledged_packet_number: PacketNumber,
-    ) -> Result<EncryptedInitial<'a>, CryptoError> {
+    ) -> Result<EncryptedInitial<'a>, packet_protection::Error> {
         let Initial {
             version,
             destination_connection_id,
@@ -160,7 +160,10 @@ impl<'a> ProtectedInitial<'a> {
 }
 
 impl<'a> EncryptedInitial<'a> {
-    pub fn decrypt<C: InitialKey>(self, crypto: &C) -> Result<CleartextInitial<'a>, CryptoError> {
+    pub fn decrypt<C: InitialKey>(
+        self,
+        crypto: &C,
+    ) -> Result<CleartextInitial<'a>, packet_protection::Error> {
         let Initial {
             version,
             destination_connection_id,

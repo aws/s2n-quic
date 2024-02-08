@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{cipher_suite::TLS_AES_128_GCM_SHA256 as CipherSuite, header_key::HeaderKey};
-use s2n_quic_core::crypto::{self, scatter, CryptoError, HeaderProtectionMask, Key};
+use s2n_quic_core::crypto::{self, packet_protection, scatter, HeaderProtectionMask, Key};
 
 #[derive(Debug)]
 pub struct ZeroRttKey(CipherSuite);
@@ -25,7 +25,7 @@ impl Key for ZeroRttKey {
         packet_number: u64,
         header: &[u8],
         payload: &mut [u8],
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         self.0.decrypt(packet_number, header, payload)
     }
 
@@ -34,7 +34,7 @@ impl Key for ZeroRttKey {
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         self.0.encrypt(packet_number, header, payload)
     }
 

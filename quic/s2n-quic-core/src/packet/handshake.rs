@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{CryptoError, EncryptedPayload, HandshakeHeaderKey, HandshakeKey, ProtectedPayload},
+    connection::ProcessingError,
+    crypto::{
+        packet_protection, EncryptedPayload, HandshakeHeaderKey, HandshakeKey, ProtectedPayload,
+    },
     packet::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
@@ -94,7 +97,7 @@ impl<'a> ProtectedHandshake<'a> {
         self,
         key: &K,
         largest_acknowledged_packet_number: PacketNumber,
-    ) -> Result<EncryptedHandshake<'a>, CryptoError> {
+    ) -> Result<EncryptedHandshake<'a>, packet_protection::Error> {
         let Handshake {
             version,
             destination_connection_id,
@@ -136,7 +139,7 @@ impl<'a> EncryptedHandshake<'a> {
     pub fn decrypt<C: HandshakeKey>(
         self,
         crypto: &C,
-    ) -> Result<CleartextHandshake<'a>, transport::Error> {
+    ) -> Result<CleartextHandshake<'a>, ProcessingError> {
         let Handshake {
             version,
             destination_connection_id,
@@ -156,9 +159,9 @@ impl<'a> EncryptedHandshake<'a> {
         //# after removing both packet and header protection as a connection
         //# error of type PROTOCOL_VIOLATION.
         if header[0] & super::long::RESERVED_BITS_MASK != 0 {
-            return Err(
-                transport::Error::PROTOCOL_VIOLATION.with_reason("reserved bits are non-zero")
-            );
+            return Err(transport::Error::PROTOCOL_VIOLATION
+                .with_reason("reserved bits are non-zero")
+                .into());
         }
 
         let destination_connection_id = destination_connection_id.get(header);

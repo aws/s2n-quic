@@ -3,7 +3,7 @@
 
 use rustls::{cipher_suite as ciphers, quic, CipherSuite, SupportedCipherSuite};
 use s2n_codec::Encoder;
-use s2n_quic_core::crypto::{self, scatter, tls, CryptoError, HeaderProtectionMask, Key};
+use s2n_quic_core::crypto::{self, packet_protection, scatter, tls, HeaderProtectionMask, Key};
 
 pub struct PacketKey {
     key: quic::PacketKey,
@@ -32,10 +32,10 @@ impl crypto::Key for PacketKey {
         packet_number: u64,
         header: &[u8],
         payload: &mut [u8],
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         match self.key.decrypt_in_place(packet_number, header, payload) {
             Ok(_tag) => Ok(()),
-            Err(_) => Err(CryptoError::DECRYPT_ERROR),
+            Err(_) => Err(packet_protection::Error::DECRYPT_ERROR),
         }
     }
 
@@ -45,7 +45,7 @@ impl crypto::Key for PacketKey {
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         let buffer = payload.flatten();
         let (payload, _) = buffer.split_mut();
         match self.key.encrypt_in_place(packet_number, header, payload) {
@@ -53,7 +53,7 @@ impl crypto::Key for PacketKey {
                 buffer.write_slice(tag.as_ref());
                 Ok(())
             }
-            Err(_) => Err(CryptoError::INTERNAL_ERROR),
+            Err(_) => Err(packet_protection::Error::INTERNAL_ERROR),
         }
     }
 
@@ -122,7 +122,7 @@ impl crypto::Key for PacketKeys {
         packet_number: u64,
         header: &[u8],
         payload: &mut [u8],
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         self.opener.decrypt(packet_number, header, payload)
     }
 
@@ -132,7 +132,7 @@ impl crypto::Key for PacketKeys {
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         self.sealer.encrypt(packet_number, header, payload)
     }
 
@@ -262,7 +262,7 @@ impl crypto::Key for OneRttKey {
         packet_number: u64,
         header: &[u8],
         payload: &mut [u8],
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         self.key.decrypt(packet_number, header, payload)
     }
 
@@ -272,7 +272,7 @@ impl crypto::Key for OneRttKey {
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         self.key.encrypt(packet_number, header, payload)
     }
 

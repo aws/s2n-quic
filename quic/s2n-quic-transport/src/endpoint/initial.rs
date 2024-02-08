@@ -110,8 +110,16 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             );
 
         let largest_packet_number = Default::default();
-        let packet = packet.unprotect(&initial_header_key, largest_packet_number)?;
-        let packet = packet.decrypt(&initial_key)?;
+        // The `packet_protection::Error`s returned by the `unprotect` and `decrypt` methods usually result
+        // in the packet being dropped, rather than closing the connection. In this case, since there is no
+        // connection created yet, we map the `packet_protection::Error` to `tls:Error`s that result in the
+        // connection attempt being aborted rather than just dropping the packets.
+        let packet = packet
+            .unprotect(&initial_header_key, largest_packet_number)
+            .map_err(|_| transport::Error::from(tls::Error::DECODE_ERROR))?;
+        let packet = packet
+            .decrypt(&initial_key)
+            .map_err(|_| transport::Error::from(tls::Error::DECRYPT_ERROR))?;
 
         // TODO handle token with stateless retry
 

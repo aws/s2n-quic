@@ -132,7 +132,6 @@
 //!
 
 pub mod application;
-pub mod error;
 pub mod handshake;
 pub mod header_crypto;
 pub mod initial;
@@ -149,7 +148,6 @@ pub mod zero_rtt;
 mod tests;
 
 pub use application::*;
-pub use error::*;
 pub use handshake::*;
 pub use header_crypto::*;
 pub use initial::*;
@@ -213,7 +211,7 @@ pub fn encrypt<'a, K: Key>(
     packet_number_len: PacketNumberLen,
     header_len: usize,
     payload: scatter::Buffer<'a>,
-) -> Result<(EncryptedPayload<'a>, EncoderBuffer<'a>), CryptoError> {
+) -> Result<(EncryptedPayload<'a>, EncoderBuffer<'a>), packet_protection::Error> {
     let header_with_pn_len = packet_number_len.bytesize() + header_len;
 
     let (mut payload, extra) = payload.into_inner();
@@ -254,7 +252,7 @@ pub fn decrypt<'a, K: Key>(
     key: &K,
     packet_number: PacketNumber,
     payload: EncryptedPayload<'a>,
-) -> Result<(DecoderBufferMut<'a>, DecoderBufferMut<'a>), CryptoError> {
+) -> Result<(DecoderBufferMut<'a>, DecoderBufferMut<'a>), packet_protection::Error> {
     let (header, payload) = payload.split_mut();
     key.decrypt(packet_number.as_crypto_nonce(), header, payload)?;
 

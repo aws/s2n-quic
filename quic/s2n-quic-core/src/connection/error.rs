@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    application, connection, crypto::CryptoError, endpoint, frame::ConnectionClose, transport,
+    application, connection, crypto::packet_protection, endpoint, frame::ConnectionClose, transport,
 };
 use core::{convert::TryInto, fmt, panic, time::Duration};
 
@@ -469,13 +469,6 @@ impl From<transport::Error> for Error {
     }
 }
 
-impl From<CryptoError> for Error {
-    #[track_caller]
-    fn from(error: CryptoError) -> Self {
-        transport::Error::from(error).into()
-    }
-}
-
 impl<'a> From<ConnectionClose<'a>> for Error {
     #[track_caller]
     fn from(error: ConnectionClose) -> Self {
@@ -530,7 +523,7 @@ impl From<Error> for std::io::ErrorKind {
     }
 }
 
-/// Some connection methods may need to indicate both `TransportError`s and `CryptoError`s. This
+/// Some connection methods may need to indicate both `ConnectionError`s and `DecryptError`s. This
 /// enum is used to allow for either error type to be returned as appropriate.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ProcessingError {
@@ -548,21 +541,12 @@ impl From<Error> for ProcessingError {
 impl From<crate::transport::Error> for ProcessingError {
     #[track_caller]
     fn from(inner_error: crate::transport::Error) -> Self {
-        // Try extracting out the decrypt error from other transport errors
-        if let Some(error) = inner_error.try_into_crypto_error() {
-            error.into()
-        } else {
-            Self::ConnectionError(inner_error.into())
-        }
+        Self::ConnectionError(inner_error.into())
     }
 }
 
-impl From<CryptoError> for ProcessingError {
-    fn from(inner_error: CryptoError) -> Self {
-        if inner_error.code == CryptoError::DECRYPT_ERROR.code {
-            Self::DecryptError
-        } else {
-            Self::ConnectionError(inner_error.into())
-        }
+impl From<packet_protection::Error> for ProcessingError {
+    fn from(_: packet_protection::Error) -> Self {
+        Self::DecryptError
     }
 }

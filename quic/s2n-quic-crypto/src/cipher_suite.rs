@@ -5,7 +5,7 @@ use crate::{aead::Aead, header_key::HeaderKey, hkdf, iv, ring_aead as aead};
 use core::fmt;
 use s2n_quic_core::{
     assume,
-    crypto::{label, scatter, CryptoError},
+    crypto::{label, packet_protection, scatter},
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -130,13 +130,13 @@ macro_rules! impl_cipher_suite {
                     packet_number: u64,
                     header: &[u8],
                     payload: &mut [u8],
-                ) -> Result<(), CryptoError> {
+                ) -> Result<(), packet_protection::Error> {
                     let nonce = self.iv.nonce(packet_number);
 
                     let payload_len = payload
                         .len()
                         .checked_sub(TAG_LEN)
-                        .ok_or_else(|| CryptoError::DECRYPT_ERROR)?;
+                        .ok_or_else(|| packet_protection::Error::DECRYPT_ERROR)?;
 
                     let (payload, tag) = payload.split_at_mut(payload_len);
                     let tag = {
@@ -159,7 +159,7 @@ macro_rules! impl_cipher_suite {
                     packet_number: u64,
                     header: &[u8],
                     payload: &mut scatter::Buffer,
-                ) -> Result<(), CryptoError> {
+                ) -> Result<(), packet_protection::Error> {
                     let nonce = self.iv.nonce(packet_number);
                     self.key.encrypt(&nonce, header, payload)?;
                     Ok(())
