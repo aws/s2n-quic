@@ -24,7 +24,7 @@ where
     #[inline]
     pub fn new(buf: &'a [T]) -> Self {
         let mut len = 0;
-        let mut first_non_empty = 0;
+        let mut first_non_empty = usize::MAX;
         let mut last_non_empty = 0;
 
         // find the total length and the first non-empty slice
@@ -56,6 +56,7 @@ where
             buf,
         };
         slice.advance_buf_once();
+        slice.invariants();
         slice
     }
 
@@ -87,15 +88,8 @@ where
 
     #[inline]
     fn set_len(&mut self, len: usize) {
-        if cfg!(debug_assertions) {
-            // make sure the computed len matches the actual remaining len
-            let mut computed = self.head.len();
-            for buf in self.buf.iter() {
-                computed += buf.len();
-            }
-            assert_eq!(len, computed);
-        }
         self.len = len;
+        self.invariants();
     }
 
     #[inline]
@@ -133,6 +127,24 @@ where
                 self.head = tail;
                 self.sub_len(head.len());
                 ControlFlow::Break(head.into())
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn invariants(&self) {
+        #[cfg(debug_assertions)]
+        {
+            // make sure the computed len matches the actual remaining len
+            let mut computed = self.head.len();
+            for buf in self.buf.iter() {
+                computed += buf.len();
+            }
+            assert_eq!(self.len, computed);
+
+            if self.head.is_empty() {
+                assert!(self.buf.is_empty());
+                assert_eq!(self.len, 0);
             }
         }
     }

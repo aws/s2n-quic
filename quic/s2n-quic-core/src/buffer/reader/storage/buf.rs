@@ -88,8 +88,13 @@ where
             match chunk_len.cmp(&dest.remaining_capacity()) {
                 // if there's more chunks left, then copy this one out and keep going
                 Ordering::Less if self.buf.remaining() > chunk_len => {
-                    dest.put_slice(self.buf.chunk());
-                    self.buf.advance(chunk_len);
+                    if Dest::SPECIALIZES_BYTES {
+                        let chunk = self.buf.copy_to_bytes(chunk_len);
+                        dest.put_bytes(chunk);
+                    } else {
+                        dest.put_slice(self.buf.chunk());
+                        self.buf.advance(chunk_len);
+                    }
                     continue;
                 }
                 Ordering::Less | Ordering::Equal => {
@@ -120,8 +125,13 @@ where
 
             ensure!(len > 0, Ok(()));
 
-            dest.put_slice(&chunk[..len]);
-            self.buf.advance(len);
+            if Dest::SPECIALIZES_BYTES {
+                let chunk = self.buf.copy_to_bytes(len);
+                dest.put_bytes(chunk);
+            } else {
+                dest.put_slice(&chunk[..len]);
+                self.buf.advance(len);
+            }
         }
     }
 }
