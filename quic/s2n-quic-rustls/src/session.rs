@@ -11,7 +11,7 @@ use rustls::quic::{
 };
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{self, tls, tls::CipherSuite, CryptoError},
+    crypto::{self, tls, tls::CipherSuite},
     transport,
 };
 
@@ -104,11 +104,11 @@ impl Session {
 
                 self.connection
                     .alert()
-                    .map(|alert| CryptoError {
+                    .map(|alert| tls::Error {
                         code: alert.get_u8(),
                         reason,
                     })
-                    .unwrap_or(CryptoError::INTERNAL_ERROR)
+                    .unwrap_or(tls::Error::INTERNAL_ERROR)
             })?;
         Ok(())
     }
@@ -122,7 +122,7 @@ impl Session {
         //# alert, see Section 4.8).
         let transport_parameters =
             self.connection.quic_transport_parameters().ok_or_else(|| {
-                CryptoError::MISSING_EXTENSION.with_reason("Missing QUIC transport parameters")
+                tls::Error::MISSING_EXTENSION.with_reason("Missing QUIC transport parameters")
             })?;
 
         Ok(tls::ApplicationParameters {

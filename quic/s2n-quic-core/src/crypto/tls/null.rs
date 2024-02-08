@@ -303,7 +303,7 @@ mod key {
             _packet_number: u64,
             _header: &[u8],
             _payload: &mut [u8],
-        ) -> Result<(), crypto::CryptoError> {
+        ) -> Result<(), crypto::packet_protection::Error> {
             // Do nothing
             Ok(())
         }
@@ -314,7 +314,7 @@ mod key {
             _packet_number: u64,
             _header: &[u8],
             payload: &mut scatter::Buffer,
-        ) -> Result<(), crypto::CryptoError> {
+        ) -> Result<(), crypto::packet_protection::Error> {
             // copy any extra bytes into the slice
             payload.flatten();
             Ok(())
@@ -422,7 +422,7 @@ mod key {
         fn validate(
             _payload: &[u8],
             _tag: crypto::retry::IntegrityTag,
-        ) -> Result<(), crypto::CryptoError> {
+        ) -> Result<(), crypto::packet_protection::Error> {
             Ok(())
         }
     }

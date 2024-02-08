@@ -6,7 +6,7 @@ use crate::{
     SecretPair,
 };
 use s2n_quic_core::{
-    crypto::{scatter, CryptoError, Key},
+    crypto::{packet_protection, scatter, Key},
     endpoint,
 };
 
@@ -57,7 +57,7 @@ impl Key for KeyPair {
         packet_number: u64,
         header: &[u8],
         payload: &mut [u8],
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         self.opener.decrypt(packet_number, header, payload)
     }
 
@@ -67,7 +67,7 @@ impl Key for KeyPair {
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         self.sealer.encrypt(packet_number, header, payload)
     }
 
@@ -144,7 +144,7 @@ macro_rules! negotiated_crypto {
                 packet_number: u64,
                 header: &[u8],
                 payload: &mut [u8],
-            ) -> Result<(), s2n_quic_core::crypto::CryptoError> {
+            ) -> Result<(), s2n_quic_core::crypto::packet_protection::Error> {
                 self.0.decrypt(packet_number, header, payload)
             }
 
@@ -154,7 +154,7 @@ macro_rules! negotiated_crypto {
                 packet_number: u64,
                 header: &[u8],
                 payload: &mut s2n_quic_core::crypto::scatter::Buffer,
-            ) -> Result<(), s2n_quic_core::crypto::CryptoError> {
+            ) -> Result<(), s2n_quic_core::crypto::packet_protection::Error> {
                 self.0.encrypt(packet_number, header, payload)
             }
 

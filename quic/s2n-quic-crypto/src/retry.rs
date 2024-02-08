@@ -4,9 +4,8 @@
 use crate::{constant_time, ring_aead as aead};
 use core::convert::TryInto;
 use s2n_quic_core::crypto::{
-    self,
+    self, packet_protection,
     retry::{IntegrityTag, NONCE_BYTES, SECRET_KEY_BYTES},
-    CryptoError,
 };
 
 lazy_static::lazy_static! {
@@ -31,11 +30,11 @@ impl crypto::RetryKey for RetryKey {
             .expect("AES_128_GCM tag len should always be 128 bits")
     }
 
-    fn validate(pseudo_packet: &[u8], tag: IntegrityTag) -> Result<(), CryptoError> {
+    fn validate(pseudo_packet: &[u8], tag: IntegrityTag) -> Result<(), packet_protection::Error> {
         let expected = Self::generate_tag(pseudo_packet);
 
         constant_time::verify_slices_are_equal(&expected, &tag)
-            .map_err(|_| CryptoError::DECRYPT_ERROR)
+            .map_err(|_| packet_protection::Error::DECRYPT_ERROR)
     }
 }
 

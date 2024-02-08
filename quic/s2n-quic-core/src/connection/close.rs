@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{application, crypto, transport};
+use crate::{application, crypto::tls, transport};
 pub use crate::{frame::ConnectionClose, inet::SocketAddress};
 
 /// Provides a hook for applications to rewrite CONNECTION_CLOSE frames
@@ -116,8 +116,8 @@ impl Formatter for Production {
         //# includes replacing any alert with a generic alert, such as
         //# handshake_failure (0x0128 in QUIC).  Endpoints MAY use a generic
         //# error code to avoid possibly exposing confidential information.
-        if error.try_into_crypto_error().is_some() {
-            return transport::Error::from(crypto::CryptoError::HANDSHAKE_FAILURE).into();
+        if error.try_into_tls_error().is_some() {
+            return transport::Error::from(tls::Error::HANDSHAKE_FAILURE).into();
         }
 
         // only preserve the error code

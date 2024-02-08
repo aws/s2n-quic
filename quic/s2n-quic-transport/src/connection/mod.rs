@@ -18,7 +18,6 @@ mod connection_impl;
 mod connection_interests;
 mod connection_timers;
 mod connection_trait;
-mod errors;
 pub(crate) mod finalization;
 mod internal_connection_id;
 pub(crate) mod local_id_registry;

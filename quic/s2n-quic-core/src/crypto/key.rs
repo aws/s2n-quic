@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::crypto::CryptoError;
+use crate::crypto::packet_protection;
 use s2n_codec::encoder::scatter;
 
 /// A trait for crypto keys
@@ -12,7 +12,7 @@ pub trait Key: Send {
         packet_number: u64,
         header: &[u8],
         payload: &mut [u8],
-    ) -> Result<(), CryptoError>;
+    ) -> Result<(), packet_protection::Error>;
 
     /// Encrypt a payload
     fn encrypt(
@@ -20,7 +20,7 @@ pub trait Key: Send {
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
-    ) -> Result<(), CryptoError>;
+    ) -> Result<(), packet_protection::Error>;
 
     /// Length of the appended tag
     fn tag_len(&self) -> usize;
@@ -37,8 +37,9 @@ pub trait Key: Send {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use crate::crypto::{
+        packet_protection,
         retry::{IntegrityTag, INTEGRITY_TAG_LEN},
-        scatter, CryptoError, HandshakeHeaderKey, HandshakeKey, HeaderKey as CryptoHeaderKey,
+        scatter, HandshakeHeaderKey, HandshakeKey, HeaderKey as CryptoHeaderKey,
         HeaderProtectionMask, InitialHeaderKey, InitialKey, OneRttHeaderKey, OneRttKey, RetryKey,
         ZeroRttHeaderKey, ZeroRttKey,
     };
@@ -77,9 +78,9 @@ pub mod testing {
             _packet_number: u64,
             _header: &[u8],
             _payload: &mut [u8],
-        ) -> Result<(), CryptoError> {
+        ) -> Result<(), packet_protection::Error> {
             if self.fail_on_decrypt {
-                return Err(CryptoError::DECRYPT_ERROR);
+                return Err(packet_protection::Error::DECRYPT_ERROR);
             }
 
             Ok(())
@@ -91,7 +92,7 @@ pub mod testing {
             _packet_number: u64,
             _header: &[u8],
             payload: &mut scatter::Buffer,
-        ) -> Result<(), CryptoError> {
+        ) -> Result<(), packet_protection::Error> {
             // copy any bytes into the final slice
             payload.flatten();
             Ok(())
@@ -145,7 +146,7 @@ pub mod testing {
         fn generate_tag(_payload: &[u8]) -> IntegrityTag {
             [0u8; INTEGRITY_TAG_LEN]
         }
-        fn validate(_payload: &[u8], _tag: IntegrityTag) -> Result<(), CryptoError> {
+        fn validate(_payload: &[u8], _tag: IntegrityTag) -> Result<(), packet_protection::Error> {
             Ok(())
         }
     }

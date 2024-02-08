@@ -4,7 +4,7 @@
 #![forbid(unsafe_code)]
 
 use crate::{
-    crypto::CryptoError,
+    crypto::tls,
     frame::ConnectionClose,
     varint::{VarInt, VarIntError},
 };
@@ -159,7 +159,7 @@ macro_rules! impl_errors {
                     $(
                         $code => Some(stringify!($name)),
                     )*
-                    code @ 0x100..=0x1ff => CryptoError::new(code as u8).description(),
+                    code @ 0x100..=0x1ff => tls::Error::new(code as u8).description(),
                     _ => None
                 }
             }
@@ -182,7 +182,7 @@ macro_rules! impl_errors {
             $(
                 assert_eq!(&Error::$name.to_string(), stringify!($name));
             )*
-            assert_eq!(&Error::from(CryptoError::DECODE_ERROR).to_string(), "DECODE_ERROR");
+            assert_eq!(&Error::from(tls::Error::DECODE_ERROR).to_string(), "DECODE_ERROR");
         }
     };
 }
@@ -334,12 +334,12 @@ impl Error {
             .with_frame_type(VarInt::from_u32(UNKNOWN_FRAME_TYPE))
     }
 
-    /// If the [`Error`] contains a [`CryptoError`], it is returned
+    /// If the [`Error`] contains a [`tls::Error`], it is returned
     #[inline]
-    pub fn try_into_crypto_error(self) -> Option<CryptoError> {
+    pub fn try_into_tls_error(self) -> Option<tls::Error> {
         let code = self.code.as_u64();
         if (0x100..=0x1ff).contains(&code) {
-            Some(CryptoError::new(code as u8).with_reason(self.reason))
+            Some(tls::Error::new(code as u8).with_reason(self.reason))
         } else {
             None
         }
@@ -374,11 +374,11 @@ impl From<DecoderError> for Error {
     }
 }
 
-/// Implements conversion from crypto errors
+/// Implements conversion from TLS errors
 /// See `Error::crypto_error` for more details
-impl From<CryptoError> for Error {
-    fn from(crypto_error: CryptoError) -> Self {
-        Self::crypto_error(crypto_error.code).with_reason(crypto_error.reason)
+impl From<tls::Error> for Error {
+    fn from(tls_error: tls::Error) -> Self {
+        Self::crypto_error(tls_error.code).with_reason(tls_error.reason)
     }
 }
 

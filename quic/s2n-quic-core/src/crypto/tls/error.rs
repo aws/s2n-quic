@@ -4,21 +4,21 @@
 use core::fmt;
 use s2n_codec::DecoderError;
 
-/// Error type for crypto-related errors
+/// Error type for TLS-related errors
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub struct CryptoError {
+pub struct Error {
     pub reason: &'static str,
     pub code: u8,
 }
 
-impl CryptoError {
-    /// Creates a new `CryptoError`
+impl Error {
+    /// Creates a new `tls::Error`
     pub const fn new(code: u8) -> Self {
         Self { code, reason: "" }
     }
 
-    /// Sets the reason for `CryptoError`
+    /// Sets the reason for `tls::Error`
     #[must_use]
     pub const fn with_reason(mut self, reason: &'static str) -> Self {
         self.reason = reason;
@@ -26,21 +26,21 @@ impl CryptoError {
     }
 }
 
-impl fmt::Display for CryptoError {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if !self.reason.is_empty() {
             self.reason.fmt(f)
         } else if let Some(description) = self.description() {
             description.fmt(f)
         } else {
-            write!(f, "CryptoError({})", self.code)
+            write!(f, "tls::Error({})", self.code)
         }
     }
 }
 
-impl fmt::Debug for CryptoError {
+impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut d = f.debug_struct("CryptoError");
+        let mut d = f.debug_struct("tls::Error");
 
         d.field("code", &self.code);
 
@@ -56,7 +56,7 @@ impl fmt::Debug for CryptoError {
     }
 }
 
-impl From<DecoderError> for CryptoError {
+impl From<DecoderError> for Error {
     fn from(_: DecoderError) -> Self {
         Self::DECODE_ERROR
     }
@@ -64,7 +64,7 @@ impl From<DecoderError> for CryptoError {
 
 macro_rules! alert_descriptions {
     ($($name:ident = $value:expr),* $(,)?) => {
-        impl CryptoError {
+        impl Error {
             pub fn description(&self) -> Option<&'static str> {
                 match self.code {
                     $(
@@ -82,7 +82,7 @@ macro_rules! alert_descriptions {
         #[test]
         fn description_test() {
             $(
-                assert_eq!(&CryptoError::$name.to_string(), stringify!($name));
+                assert_eq!(&Error::$name.to_string(), stringify!($name));
             )*
         }
     };

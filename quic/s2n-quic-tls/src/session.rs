@@ -6,7 +6,7 @@ use bytes::BytesMut;
 use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{tls, tls::CipherSuite, CryptoError, CryptoSuite},
+    crypto::{tls, tls::CipherSuite, CryptoSuite},
     endpoint, ensure, transport,
 };
 use s2n_quic_crypto::Suite;
@@ -135,8 +135,8 @@ impl tls::Session for Session {
             }
             Poll::Ready(Err(e)) => Poll::Ready(Err(e
                 .alert()
-                .map(CryptoError::new)
-                .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
+                .map(tls::Error::new)
+                .unwrap_or(tls::Error::HANDSHAKE_FAILURE)
                 .into())),
             Poll::Pending => Poll::Pending,
         }
@@ -183,8 +183,8 @@ impl tls::Session for Session {
                 } else {
                     Err(e
                         .alert()
-                        .map(CryptoError::new)
-                        .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
+                        .map(tls::Error::new)
+                        .unwrap_or(tls::Error::HANDSHAKE_FAILURE)
                         .into())
                 }
             }

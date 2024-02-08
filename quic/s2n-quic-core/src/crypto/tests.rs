@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{scatter, CryptoError, HeaderKey, HeaderProtectionMask, Key, ProtectedPayload},
+    crypto::{packet_protection, scatter, HeaderKey, HeaderProtectionMask, Key, ProtectedPayload},
     packet::number::{PacketNumber, PacketNumberSpace},
     varint::VarInt,
 };
@@ -43,7 +43,7 @@ fn round_trip() {
 fn fuzz_unprotect(
     input: &mut [u8],
     largest_packet_number: PacketNumber,
-) -> Result<(PacketNumber, usize), CryptoError> {
+) -> Result<(PacketNumber, usize), packet_protection::Error> {
     let buffer = DecoderBufferMut::new(input);
     let header_len = {
         let peek = buffer.peek();
@@ -64,7 +64,7 @@ fn fuzz_unprotect(
     packet_number
         .truncate(largest_packet_number)
         .filter(|actual| truncated_packet_number.eq(actual))
-        .ok_or(CryptoError::DECODE_ERROR)?;
+        .ok_or(packet_protection::Error::DECODE_ERROR)?;
 
     let (_header, _payload) = crate::crypto::decrypt(&FuzzCrypto, packet_number, payload)?;
 
@@ -76,7 +76,7 @@ fn fuzz_protect(
     header_len: usize,
     largest_packet_number: PacketNumber,
     packet_number: PacketNumber,
-) -> Result<(), CryptoError> {
+) -> Result<(), packet_protection::Error> {
     let payload_len = input.len();
     let mut payload = EncoderBuffer::new(input);
     payload.set_position(payload_len);
@@ -108,7 +108,7 @@ impl Key for FuzzCrypto {
         packet_number: u64,
         _header: &[u8],
         payload: &mut [u8],
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         let mask = packet_number as u8;
         for byte in payload.iter_mut() {
             *byte ^= mask;
@@ -121,7 +121,7 @@ impl Key for FuzzCrypto {
         packet_number: u64,
         _header: &[u8],
         payload: &mut scatter::Buffer,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         let payload = payload.flatten();
         let (payload, _) = payload.split_mut();
 

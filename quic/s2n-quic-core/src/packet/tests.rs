@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection::id::ConnectionInfo,
+    connection::{id::ConnectionInfo, ProcessingError},
     crypto::key::testing,
     inet::SocketAddress,
     packet::{
         encoding::PacketEncoder, number::PacketNumberSpace, CleartextPacket, ProtectedPacket,
     },
-    transport,
 };
 use bolero::check;
 use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer};
@@ -37,7 +36,7 @@ fn round_trip() {
     });
 }
 
-fn decrypt_packet(packet: ProtectedPacket) -> Result<CleartextPacket, transport::Error> {
+fn decrypt_packet(packet: ProtectedPacket) -> Result<CleartextPacket, ProcessingError> {
     use ProtectedPacket::*;
     match packet {
         Handshake(packet) => {

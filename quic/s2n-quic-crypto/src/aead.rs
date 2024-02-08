@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use s2n_quic_core::crypto::{scatter, CryptoError as Error};
+pub use s2n_quic_core::crypto::{packet_protection::Error, scatter};
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
 pub trait Aead {

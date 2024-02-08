@@ -5,7 +5,7 @@ use bytes::{Bytes, BytesMut};
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{tls, tls::CipherSuite, CryptoError, CryptoSuite},
+    crypto::{tls, tls::CipherSuite, CryptoSuite},
     endpoint, transport,
 };
 use s2n_quic_crypto::{
@@ -167,7 +167,7 @@ where
                 }
 
                 let (prk_algo, _aead, cipher_suite) =
-                    get_algo_type(conn).ok_or(CryptoError::INTERNAL_ERROR)?;
+                    get_algo_type(conn).ok_or(tls::Error::INTERNAL_ERROR)?;
                 let secret = Prk::new_less_safe(prk_algo, secret);
                 self.state.secrets = Secrets::Half { secret, id };
                 self.state.cipher_suite = cipher_suite;
@@ -179,7 +179,7 @@ where
                 secret: other_secret,
             } => {
                 let (prk_algo, aead_algo, cipher_suite) =
-                    get_algo_type(conn).ok_or(CryptoError::INTERNAL_ERROR)?;
+                    get_algo_type(conn).ok_or(tls::Error::INTERNAL_ERROR)?;
                 let secret = Prk::new_less_safe(prk_algo, secret);
                 self.state.cipher_suite = cipher_suite;
                 let pair = match (id, other_id) {
@@ -464,7 +464,7 @@ fn get_algo_type(
 
 unsafe fn get_application_params<'a>(
     connection: *mut s2n_connection,
-) -> Result<tls::ApplicationParameters<'a>, CryptoError> {
+) -> Result<tls::ApplicationParameters<'a>, tls::Error> {
     //= https://www.rfc-editor.org/rfc/rfc9001#section-8.1
     //# When using ALPN, endpoints MUST immediately close a connection (see
     //# Section 10.2 of [QUIC-TRANSPORT]) with a no_application_protocol TLS
@@ -476,7 +476,7 @@ unsafe fn get_application_params<'a>(
     //# use this alert, QUIC clients MUST use error 0x178 to terminate a
     //# connection when ALPN negotiation fails.
     let transport_parameters =
-        get_transport_parameters(connection).ok_or(CryptoError::MISSING_EXTENSION)?;
+        get_transport_parameters(connection).ok_or(tls::Error::MISSING_EXTENSION)?;
 
     Ok(tls::ApplicationParameters {
         transport_parameters,
@@ -501,10 +501,10 @@ unsafe fn get_application_params<'a>(
 //#    Application Data                <------->       Application Data
 unsafe fn get_application_protocol<'a>(
     connection: *mut s2n_connection,
-) -> Result<&'a [u8], CryptoError> {
+) -> Result<&'a [u8], tls::Error> {
     let ptr = s2n_get_application_protocol(connection).into_result().ok();
     ptr.and_then(|ptr| get_cstr_slice(ptr))
-        .ok_or(CryptoError::MISSING_EXTENSION)
+        .ok_or(tls::Error::MISSING_EXTENSION)
 }
 
 unsafe fn get_transport_parameters<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {

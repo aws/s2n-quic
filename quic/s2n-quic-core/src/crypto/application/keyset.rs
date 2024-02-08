@@ -203,7 +203,7 @@ impl<K: OneRttKey> KeySet<K> {
                     return Err(transport::Error::AEAD_LIMIT_REACHED.into());
                 }
 
-                Err(err.into())
+                Err(err)
             }
         }
     }

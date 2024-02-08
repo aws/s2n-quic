@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{CryptoError, EncryptedPayload, ProtectedPayload, ZeroRttHeaderKey, ZeroRttKey},
+    crypto::{packet_protection, EncryptedPayload, ProtectedPayload, ZeroRttHeaderKey, ZeroRttKey},
     packet::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
@@ -93,7 +93,7 @@ impl<'a> ProtectedZeroRtt<'a> {
         self,
         header_key: &H,
         largest_acknowledged_packet_number: PacketNumber,
-    ) -> Result<EncryptedZeroRtt<'a>, CryptoError> {
+    ) -> Result<EncryptedZeroRtt<'a>, packet_protection::Error> {
         let ZeroRtt {
             version,
             destination_connection_id,
@@ -132,7 +132,10 @@ impl<'a> ProtectedZeroRtt<'a> {
 }
 
 impl<'a> EncryptedZeroRtt<'a> {
-    pub fn decrypt<C: ZeroRttKey>(self, crypto: &C) -> Result<CleartextZeroRtt<'a>, CryptoError> {
+    pub fn decrypt<C: ZeroRttKey>(
+        self,
+        crypto: &C,
+    ) -> Result<CleartextZeroRtt<'a>, packet_protection::Error> {
         let ZeroRtt {
             version,
             destination_connection_id,

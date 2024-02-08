@@ -7,7 +7,7 @@ use crate::{
     hkdf, ring_aead as aead,
 };
 use core::fmt;
-use s2n_quic_core::crypto::{self, scatter, CryptoError};
+use s2n_quic_core::crypto::{self, packet_protection, scatter};
 
 // ignore casing warnings in order to preserve the IANA name
 #[allow(non_camel_case_types, clippy::all)]
@@ -85,7 +85,7 @@ impl crypto::Key for NegotiatedCipherSuite {
         packet_number: u64,
         header: &[u8],
         payload: &mut [u8],
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         dispatch!(self, |cipher| cipher.decrypt(
             packet_number,
             header,
@@ -99,7 +99,7 @@ impl crypto::Key for NegotiatedCipherSuite {
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), packet_protection::Error> {
         dispatch!(self, |cipher| cipher.encrypt(
             packet_number,
             header,

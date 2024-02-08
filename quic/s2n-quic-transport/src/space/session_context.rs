@@ -487,7 +487,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             //# While [ALPN] only specifies that servers
             //# use this alert, QUIC clients MUST use error 0x178 to terminate a
             //# connection when ALPN negotiation fails.
-            let err = crypto::CryptoError::NO_APPLICATION_PROTOCOL
+            let err = crypto::tls::Error::NO_APPLICATION_PROTOCOL
                 .with_reason("Missing ALPN protocol")
                 .into();
             return Err(err);

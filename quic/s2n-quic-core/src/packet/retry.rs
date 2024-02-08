@@ -4,9 +4,8 @@
 use crate::{
     connection,
     crypto::{
-        retry,
+        packet_protection, retry,
         retry::{IntegrityTag, RetryKey},
-        CryptoError,
     },
     inet::SocketAddress,
     packet::{
@@ -170,7 +169,7 @@ impl<'a> Retry<'a> {
         &self,
         odcid: &connection::InitialId,
         create_buf: CreateBuf,
-    ) -> Result<(), CryptoError>
+    ) -> Result<(), packet_protection::Error>
     where
         Crypto: RetryKey,
         CreateBuf: FnOnce(usize) -> Buf,

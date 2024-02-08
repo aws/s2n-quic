@@ -3,8 +3,8 @@
 
 use crate::{
     connection,
-    connection::id::ConnectionInfo,
-    crypto::{CryptoError, EncryptedPayload, OneRttHeaderKey, OneRttKey, ProtectedPayload},
+    connection::{id::ConnectionInfo, ProcessingError},
+    crypto::{packet_protection, EncryptedPayload, OneRttHeaderKey, OneRttKey, ProtectedPayload},
     packet::{
         decoding::HeaderDecoder,
         encoding::{PacketEncoder, PacketPayloadEncoder},
@@ -164,7 +164,7 @@ impl<'a> ProtectedShort<'a> {
         self,
         header_key: &H,
         largest_acknowledged_packet_number: PacketNumber,
-    ) -> Result<EncryptedShort<'a>, CryptoError> {
+    ) -> Result<EncryptedShort<'a>, packet_protection::Error> {
         let Short {
             spin_bit,
             destination_connection_id,
@@ -197,7 +197,7 @@ impl<'a> ProtectedShort<'a> {
 }
 
 impl<'a> EncryptedShort<'a> {
-    pub fn decrypt<C: OneRttKey>(self, crypto: &C) -> Result<CleartextShort<'a>, transport::Error> {
+    pub fn decrypt<C: OneRttKey>(self, crypto: &C) -> Result<CleartextShort<'a>, ProcessingError> {
         let Short {
             spin_bit,
             key_phase,
@@ -216,9 +216,9 @@ impl<'a> EncryptedShort<'a> {
         //# both packet and header protection, as a connection error of type
         //# PROTOCOL_VIOLATION.
         if header[0] & RESERVED_BITS_MASK != 0 {
-            return Err(
-                transport::Error::PROTOCOL_VIOLATION.with_reason("reserved bits are non-zero")
-            );
+            return Err(transport::Error::PROTOCOL_VIOLATION
+                .with_reason("reserved bits are non-zero")
+                .into());
         }
 
         let destination_connection_id = destination_connection_id.get(header);

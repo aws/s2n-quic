@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::crypto::CryptoError;
+use crate::crypto::packet_protection;
 use hex_literal::hex;
 
 pub const INTEGRITY_TAG_LEN: usize = 16;
@@ -9,7 +9,7 @@ pub type IntegrityTag = [u8; INTEGRITY_TAG_LEN];
 
 pub trait RetryKey {
     fn generate_tag(payload: &[u8]) -> IntegrityTag;
-    fn validate(payload: &[u8], tag: IntegrityTag) -> Result<(), CryptoError>;
+    fn validate(payload: &[u8], tag: IntegrityTag) -> Result<(), packet_protection::Error>;
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9001#section-5.8
