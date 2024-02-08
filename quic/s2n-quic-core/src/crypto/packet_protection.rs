@@ -26,13 +26,6 @@ pub struct Error {
 }
 
 impl Error {
-    /// Sets the reason for the `packet_protection::Error`
-    #[must_use]
-    pub const fn with_reason(mut self, reason: &'static str) -> Self {
-        self.reason = reason;
-        self
-    }
-
     pub const DECODE_ERROR: Self = Self {
         reason: "DECODE_ERROR",
     };
