@@ -65,6 +65,11 @@ pub trait Reader: Storage {
     }
 
     /// Enables checking the reader for correctness invariants
+    ///
+    /// # Note
+    ///
+    /// `debug_assertions` must be enabled for these checks to be performed. Otherwise, the reader
+    /// methods will simply be forwarded to `Self`.
     #[inline]
     fn with_checks(&mut self) -> Checked<Self> {
         Checked::new(self)
