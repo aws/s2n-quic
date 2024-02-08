@@ -18,9 +18,7 @@ use core::{
 };
 use s2n_quic_core::{
     ack, application,
-    buffer::{
-        ReceiveBuffer as StreamReceiveBuffer, ReceiveBufferError as StreamReceiveBufferError,
-    },
+    buffer::{self, Reassembler},
     frame::{stream::StreamRef, MaxStreamData, ResetStream, StopSending, StreamDataBlocked},
     packet::number::PacketNumber,
     stream::{ops, StreamId},
@@ -337,7 +335,7 @@ pub struct ReceiveStream {
     /// The current state of the stream
     pub(super) state: ReceiveStreamState,
     /// Buffer of already received data
-    pub(super) receive_buffer: StreamReceiveBuffer,
+    pub(super) receive_buffer: Reassembler,
     /// The composite flow controller for receiving data
     pub(super) flow_controller: ReceiveStreamFlowController,
     /// Synchronizes the `STOP_SENDING` flag towards the peer.
@@ -368,7 +366,7 @@ impl ReceiveStream {
 
         let mut result = ReceiveStream {
             state,
-            receive_buffer: StreamReceiveBuffer::new(),
+            receive_buffer: Reassembler::new(),
             flow_controller: ReceiveStreamFlowController::new(
                 connection_flow_controller,
                 initial_window,
@@ -447,7 +445,7 @@ impl ReceiveStream {
 
                 // If this is the last frame then inform the receive_buffer so it can check for any
                 // final size errors.
-                let write_result = if frame.is_fin {
+                let write_result: Result<(), buffer::Error> = if frame.is_fin {
                     self.receive_buffer.write_at_fin(frame.offset, frame.data)
                 } else {
                     self.receive_buffer.write_at(frame.offset, frame.data)
@@ -460,16 +458,17 @@ impl ReceiveStream {
                         //# FLOW_CONTROL_ERROR if it receives more data than the maximum data
                         //# value that it has sent.  This includes violations of remembered
                         //# limits in Early Data; see Section 7.4.1.
-                        StreamReceiveBufferError::OutOfRange => {
-                            transport::Error::FLOW_CONTROL_ERROR
-                        }
+                        buffer::Error::OutOfRange => transport::Error::FLOW_CONTROL_ERROR,
                         //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
                         //# Once a final size for a stream is known, it cannot change.  If a
                         //# RESET_STREAM or STREAM frame is received indicating a change in the
                         //# final size for the stream, an endpoint SHOULD respond with an error
                         //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
                         //# handling.
-                        StreamReceiveBufferError::InvalidFin => transport::Error::FINAL_SIZE_ERROR,
+                        buffer::Error::InvalidFin => transport::Error::FINAL_SIZE_ERROR,
+                        buffer::Error::ReaderError(_) => {
+                            unreachable!("reader is infallible")
+                        }
                     }
                     .with_reason("data reception error")
                     .with_frame_type(frame.tag().into())

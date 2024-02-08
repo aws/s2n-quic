@@ -3,13 +3,11 @@
 
 //! A model that ensures stream data is correctly sent and received between peers
 
-#[cfg(feature = "generator")]
-use bolero_generator::*;
-
-#[cfg(test)]
-use bolero::generator::*;
-
+use crate::buffer::{reader, writer};
 use bytes::Bytes;
+
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
 
 static DATA: Bytes = {
     const INNER: [u8; DATA_LEN] = {
@@ -125,7 +123,7 @@ impl Data {
         let amount = ((self.len - self.offset) as usize).min(amount);
         let chunk = Self::send_one_at(self.offset, amount);
 
-        self.seek_forward(chunk.len());
+        self.seek_forward(chunk.len() as u64);
 
         Some(chunk)
     }
@@ -147,8 +145,82 @@ impl Data {
     }
 
     /// Moves the current offset forward by the provided `len`
-    pub fn seek_forward(&mut self, len: usize) {
-        self.offset += len as u64;
+    pub fn seek_forward(&mut self, len: u64) {
+        self.offset += len;
+    }
+}
+
+impl reader::Storage for Data {
+    type Error = core::convert::Infallible;
+
+    #[inline]
+    fn buffered_len(&self) -> usize {
+        (self.len - self.offset).try_into().unwrap()
+    }
+
+    #[inline]
+    fn read_chunk(&mut self, watermark: usize) -> Result<reader::storage::Chunk, Self::Error> {
+        if let Some(chunk) = self.send_one(watermark) {
+            return Ok(chunk.into());
+        }
+
+        Ok(Default::default())
+    }
+
+    #[inline]
+    fn partial_copy_into<Dest: writer::Storage + ?Sized>(
+        &mut self,
+        dest: &mut Dest,
+    ) -> Result<reader::storage::Chunk, Self::Error> {
+        while let Some(chunk) = self.send_one(dest.remaining_capacity()) {
+            // if the chunk matches the destination then return it instead of copying
+            if chunk.len() == dest.remaining_capacity() || self.is_finished() {
+                return Ok(chunk.into());
+            }
+
+            // otherwise copy the chunk into the destination
+            dest.put_bytes(chunk);
+        }
+
+        Ok(Default::default())
+    }
+}
+
+impl reader::Reader for Data {
+    #[inline]
+    fn current_offset(&self) -> crate::varint::VarInt {
+        self.offset().try_into().unwrap()
+    }
+
+    #[inline]
+    fn final_offset(&self) -> Option<crate::varint::VarInt> {
+        Some(self.len.try_into().unwrap())
+    }
+}
+
+impl writer::Storage for Data {
+    #[inline]
+    fn put_slice(&mut self, slice: &[u8]) {
+        self.receive(&[slice]);
+    }
+
+    #[inline]
+    fn remaining_capacity(&self) -> usize {
+        // return max so readers don't know where the stream is expected to end and we can make an
+        // assertion when they write
+        usize::MAX
+    }
+}
+
+impl writer::Writer for Data {
+    #[inline]
+    fn read_from<R>(&mut self, reader: &mut R) -> Result<(), crate::buffer::Error<R::Error>>
+    where
+        R: reader::Reader + ?Sized,
+    {
+        // no need to specialize on anything here
+        reader.copy_into(self)?;
+        Ok(())
     }
 }
 
@@ -233,5 +305,18 @@ mod tests {
                 assert!(sender.is_finished());
                 assert!(receiver.is_finished());
             })
+    }
+
+    #[test]
+    fn buffer_trait_test() {
+        use writer::Writer as _;
+
+        let mut reader = Data::new(10);
+        let mut writer = reader;
+
+        writer.read_from(&mut reader).unwrap();
+
+        assert!(reader.is_finished());
+        assert!(writer.is_finished());
     }
 }
