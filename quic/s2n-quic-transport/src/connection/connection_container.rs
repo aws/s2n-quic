@@ -842,11 +842,13 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         let cursor = self.connection_map.find(&connection_id);
         let node = cursor.get()?;
 
-        let (result, interests) = match node.inner.write(|conn| {
+        let on_write = |conn: &mut C| {
             let result = func(conn);
             let interests = conn.interests();
             (result, interests)
-        }) {
+        };
+
+        let (result, interests) = match node.inner.write(on_write) {
             Ok(result) => result,
             Err(_) => {
                 // the connection panicked so remove it from the container
@@ -992,7 +994,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
             // also clear the timer to make the state consistent
             connection.timeout.set(None);
 
-            let mut interests = match connection.inner.write(|conn| {
+            let on_write = |conn: &mut C| {
                 let remote_address = conn
                     .remote_address()
                     .expect("Remote address should be available");
@@ -1004,7 +1006,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
                 );
                 func(conn, &context);
                 conn.interests()
-            }) {
+            };
+
+            let mut interests = match connection.inner.write(on_write) {
                 Ok(result) => result,
                 Err(_) => {
                     self.remove_poisoned_node(&connection);
