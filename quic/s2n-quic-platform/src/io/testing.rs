@@ -23,6 +23,11 @@ pub use time::now;
 
 pub use bach::task::{self, primary, spawn};
 
+// returns `true` if the caller is being executed in a testing environment
+pub fn is_in_env() -> bool {
+    bach::task::scope::try_borrow_with(|scope| scope.is_some())
+}
+
 pub mod rand {
     pub use ::bach::rand::*;
 
