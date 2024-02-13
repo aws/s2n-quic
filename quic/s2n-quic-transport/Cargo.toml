@@ -16,6 +16,7 @@ std = ["futures-channel/std"]
 unstable_resumption = []
 
 [dependencies]
+ahash = { version = "=0.8.7" } # ahash 0.8.8 requires rust 1.72, see https://github.com/aws/s2n-quic/issues/2118
 bytes = { version = "1", default-features = false }
 futures-channel = { version = "0.3", default-features = false, features = ["alloc"] }
 futures-core = { version = "0.3", default-features = false, features = ["alloc"] }
