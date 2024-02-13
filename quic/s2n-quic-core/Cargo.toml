@@ -57,3 +57,7 @@ s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 
 [target.'cfg(loom)'.dev-dependencies]
 loom = { version = "0.7", features = ["checkpoint", "futures"] }
+
+[package.metadata.kani]
+flags = { tests = true }
+unstable = { stubbing = true }
