@@ -1,6 +1,5 @@
 ---
 source: quic/s2n-quic-crypto/src/cipher_suite.rs
-assertion_line: 271
 expression: "u64::pow(2, 36)"
 ---
 68719476736

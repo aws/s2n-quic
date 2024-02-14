@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-core/src/ack/transmission.rs
+expression: "size_of::<Transmission>()"
+---
+16

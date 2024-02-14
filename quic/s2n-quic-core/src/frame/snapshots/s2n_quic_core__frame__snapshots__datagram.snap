@@ -1,6 +1,5 @@
 ---
 source: quic/s2n-quic-core/src/frame/mod.rs
-assertion_line: 231
 expression: values
 ---
 [

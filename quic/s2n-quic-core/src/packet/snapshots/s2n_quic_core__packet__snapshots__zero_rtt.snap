@@ -1,7 +1,6 @@
 ---
 source: quic/s2n-quic-core/src/packet/mod.rs
 expression: values
-
 ---
 [
     ZeroRtt(

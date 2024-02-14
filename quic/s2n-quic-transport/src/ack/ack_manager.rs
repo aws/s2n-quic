@@ -2,13 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ack::{
-        ack_eliciting_transmission::{AckElicitingTransmission, AckElicitingTransmissionSet},
-        ack_transmission_state::AckTransmissionState,
-    },
-    contexts::WriteContext,
-    processed_packet::ProcessedPacket,
-    transmission,
+    ack::ack_transmission_state::AckTransmissionState, contexts::WriteContext,
+    processed_packet::ProcessedPacket, transmission,
 };
 use s2n_quic_core::{
     ack,
@@ -46,7 +41,7 @@ pub struct AckManager {
     ack_delay_timer: Timer,
 
     /// Used to track the ACK-eliciting transmissions sent from the AckManager
-    ack_eliciting_transmissions: AckElicitingTransmissionSet,
+    ack_eliciting_transmissions: ack::transmission::Set,
 
     /// All of the processed AckRanges that need to be ACKed
     pub(super) ack_ranges: ack::Ranges,
@@ -77,7 +72,7 @@ impl AckManager {
     pub fn new(packet_space: PacketNumberSpace, ack_settings: ack::Settings) -> Self {
         Self {
             ack_delay_timer: Timer::default(),
-            ack_eliciting_transmissions: AckElicitingTransmissionSet::default(),
+            ack_eliciting_transmissions: Default::default(),
             ack_settings,
             ack_ranges: ack::Ranges::new(ack_settings.ack_ranges_limit as usize),
             largest_received_packet_number_acked: packet_space
@@ -163,7 +158,7 @@ impl AckManager {
             //# When a packet containing an ACK frame is sent, the Largest
             //# Acknowledged field in that frame can be saved.
             self.ack_eliciting_transmissions
-                .on_transmit(AckElicitingTransmission {
+                .on_transmit(ack::Transmission {
                     sent_in_packet: context.packet_number(),
                     largest_received_packet_number_acked: self.largest_received_packet_number_acked,
                 });
