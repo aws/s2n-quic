@@ -180,6 +180,24 @@ impl EncoderValue for () {
     }
 }
 
+impl<A: EncoderValue, B: EncoderValue> EncoderValue for (A, B) {
+    #[inline]
+    fn encode<E: Encoder>(&self, encoder: &mut E) {
+        self.0.encode(encoder);
+        self.1.encode(encoder);
+    }
+
+    #[inline]
+    fn encoding_size(&self) -> usize {
+        self.0.encoding_size() + self.1.encoding_size()
+    }
+
+    #[inline]
+    fn encoding_size_for_encoder<E: Encoder>(&self, encoder: &E) -> usize {
+        self.0.encoding_size_for_encoder(encoder) + self.1.encoding_size_for_encoder(encoder)
+    }
+}
+
 impl<T: EncoderValue> EncoderValue for Option<T> {
     #[inline]
     fn encode<E: Encoder>(&self, buffer: &mut E) {
