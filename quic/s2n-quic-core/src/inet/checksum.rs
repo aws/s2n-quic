@@ -401,13 +401,18 @@ mod tests {
         }
     }
 
+    // Reduce the length to 4 for Kani until
+    // https://github.com/model-checking/kani/issues/3030 is fixed
+    #[cfg(any(kani, miri))]
+    const LEN: usize = if cfg!(kani) { 4 } else { 32 };
+
     /// * Compares the implementation to a port of the C code defined in the RFC
     /// * Ensures partial writes are correctly handled, even if they're not at a 16 bit boundary
     #[test]
-    #[cfg_attr(kani, kani::proof, kani::unwind(17), kani::solver(kissat))]
+    #[cfg_attr(kani, kani::proof, kani::unwind(9), kani::solver(cadical))]
     fn differential() {
         #[cfg(any(kani, miri))]
-        type Bytes = crate::testing::InlineVec<u8, 16>;
+        type Bytes = crate::testing::InlineVec<u8, LEN>;
         #[cfg(not(any(kani, miri)))]
         type Bytes = Vec<u8>;
 
