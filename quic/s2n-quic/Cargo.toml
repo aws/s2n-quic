@@ -74,7 +74,7 @@ zerocopy = { version = "0.7", optional = true, features = ["derive"] }
 zeroize = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
-ahash = { version = "=0.8.7" } # ahash 0.8.8 requires rust 1.72, see https://github.com/aws/s2n-quic/issues/2118
+ahash = { version = "=0.8.6" } # ahash 0.8.7 requires rust 1.72, see https://github.com/aws/s2n-quic/issues/2118
 bolero = { version = "0.10" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
