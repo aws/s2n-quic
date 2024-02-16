@@ -28,7 +28,7 @@ siphasher = "1.0"
 smallvec = { version = "1", default-features = false }
 
 [dev-dependencies]
-ahash = { version = "=0.8.7" } # ahash 0.8.8 requires rust 1.72, see https://github.com/aws/s2n-quic/issues/2118
+ahash = { version = "=0.8.6" } # ahash 0.8.7 requires rust 1.72, see https://github.com/aws/s2n-quic/issues/2118
 bolero = "0.10"
 futures-test = "0.3" # For testing Waker interactions
 insta = { version = "1", features = ["json"] }
