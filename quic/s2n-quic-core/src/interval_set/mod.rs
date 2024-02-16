@@ -659,10 +659,13 @@ impl<T: IntervalBound> IntervalSet<T> {
         }
     }
 
-    /// Internal check for integrity - only used when debug_assertions are enabled
+    /// Internal check for integrity - only used when `cfg(test)` is enabled
     #[inline]
     fn check_integrity(&self) {
-        if cfg!(debug_assertions) {
+        // When using this data structure outside of this crate, these checks are quite expensive.
+        // Rather than using `cfg(debug_assertions)`, we limit it to `cfg(test)`, which will just
+        // turn them on when testing this crate.
+        if cfg!(test) {
             let mut prev_end: Option<T> = None;
 
             for interval in self.intervals.iter() {
