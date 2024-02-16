@@ -71,6 +71,17 @@ impl Pto {
     pub fn transmissions(&self) -> u8 {
         self.state.transmissions()
     }
+
+    #[inline]
+    pub fn transmit_once(&mut self) {
+        self.state.on_transmit();
+    }
+
+    #[inline]
+    pub fn force_transmit(&mut self) {
+        ensure!(matches!(self.state, State::Idle));
+        self.state = State::RequiresTransmission(1);
+    }
 }
 
 impl timer::Provider for Pto {
