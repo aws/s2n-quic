@@ -44,6 +44,27 @@ pub trait Reader: Storage {
             .map_or(false, |fin| fin == self.current_offset())
     }
 
+    /// Skips the data in the reader until `offset` is reached, or the reader storage is exhausted.
+    #[inline]
+    fn skip_until(&mut self, offset: VarInt) -> Result<(), Self::Error> {
+        ensure!(offset > self.current_offset(), Ok(()));
+
+        while let Some(len) = offset.checked_sub(self.current_offset()) {
+            let len = len.as_u64();
+
+            // we don't need to skip anything if the difference is 0
+            ensure!(len > 0, break);
+
+            // clamp the len to usize
+            let len = (usize::MAX as u64).min(len) as usize;
+            let _chunk = self.read_chunk(len)?;
+
+            ensure!(!self.buffer_is_empty(), break);
+        }
+
+        Ok(())
+    }
+
     /// Limits the maximum offset that the caller can read from the reader
     #[inline]
     fn with_max_data(&mut self, max_data: VarInt) -> Limit<Self> {

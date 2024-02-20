@@ -284,7 +284,7 @@ fn chunk_duplicate_test() {
     let mut buffer = new_receive_buffer();
 
     assert!(buffer.write_at(0u32.into(), &[0, 1, 2, 3]).is_ok());
-    assert_eq!(4, buffer.len());
+    assert_eq!(4, buffer.len(), "{buffer:#?}");
 
     assert!(buffer.write_at(0u32.into(), &[10, 11, 12, 13]).is_ok()); // exact match
     assert!(buffer.write_at(0u32.into(), &[20, 21]).is_ok()); // beginning
@@ -790,6 +790,8 @@ const INTERESTING_CHUNK_SIZES: &[u32] = &[4, 4095, 4096, 4097];
 fn write_start_fin_test() {
     for size in INTERESTING_CHUNK_SIZES.iter().copied() {
         for pre_empty_fin in [false, true] {
+            dbg!(size, pre_empty_fin);
+
             let bytes: Vec<u8> = Iterator::map(0..size, |v| v as u8).collect();
             let mut buffer = Reassembler::new();
 

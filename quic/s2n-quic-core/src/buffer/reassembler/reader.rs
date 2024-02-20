@@ -113,7 +113,7 @@ impl Reader for Reassembler {
     fn current_offset(&self) -> VarInt {
         unsafe {
             // SAFETY: offset will always fit into a VarInt
-            VarInt::new_unchecked(self.start_offset)
+            VarInt::new_unchecked(self.cursors.start_offset)
         }
     }
 
