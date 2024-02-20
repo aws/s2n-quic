@@ -56,7 +56,6 @@
       "server"
     ],
     "mvfst": [
-      "client",
       "server"
     ],
     "neqo": [
@@ -145,7 +144,6 @@
       "server"
     ],
     "mvfst": [
-      "client",
       "server"
     ],
     "neqo": [
@@ -447,9 +445,7 @@
       "client",
       "server"
     ],
-    "mvfst": [
-      "client"
-    ],
+    "mvfst": [],
     "neqo": [
       "client",
       "server"
@@ -510,9 +506,7 @@
       "client",
       "server"
     ],
-    "mvfst": [
-      "client"
-    ],
+    "mvfst": [],
     "neqo": [
       "client",
       "server"
