@@ -1,6 +1,5 @@
 ---
-source: quic/s2n-quic-core/src/packet/number/mod.rs
+source: quic/s2n-quic-core/src/packet/number/tests.rs
 expression: "size_of::<PacketNumber>()"
-
 ---
 8

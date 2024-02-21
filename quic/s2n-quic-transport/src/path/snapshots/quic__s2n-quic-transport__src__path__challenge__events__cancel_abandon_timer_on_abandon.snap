@@ -1,7 +1,5 @@
 ---
 source: quic/s2n-quic-transport/src/path/challenge.rs
-assertion_line: 508
 expression: ""
-
 ---
 PathChallengeUpdated { path_challenge_status: Abandoned, path: Path { local_addr: 127.0.0.1:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.1:0, remote_cid: 0x5065657249640000000000000000506565724964, id: 0, is_active: false }, challenge_data: [0, 0, 0, 0, 0, 0, 0, 0] }

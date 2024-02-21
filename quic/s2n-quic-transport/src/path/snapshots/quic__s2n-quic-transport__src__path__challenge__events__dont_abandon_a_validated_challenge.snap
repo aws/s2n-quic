@@ -1,7 +1,5 @@
 ---
 source: quic/s2n-quic-transport/src/path/challenge.rs
-assertion_line: 496
 expression: ""
-
 ---
 

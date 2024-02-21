@@ -1,5 +1,0 @@
----
-source: quic/s2n-quic-transport/src/ack/ack_eliciting_transmission.rs
-expression: "size_of::<AckElicitingTransmissionSet>()"
----
-32

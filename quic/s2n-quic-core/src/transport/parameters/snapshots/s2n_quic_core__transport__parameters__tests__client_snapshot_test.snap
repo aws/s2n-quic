@@ -1,6 +1,5 @@
 ---
 source: quic/s2n-quic-core/src/transport/parameters/tests.rs
-assertion_line: 132
 expression: encoded_output
 ---
 [

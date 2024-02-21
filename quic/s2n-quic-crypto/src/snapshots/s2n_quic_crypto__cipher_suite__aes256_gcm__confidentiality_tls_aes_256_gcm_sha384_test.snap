@@ -1,6 +1,5 @@
 ---
 source: quic/s2n-quic-crypto/src/cipher_suite.rs
-assertion_line: 251
 expression: "u64::pow(2, 23)"
 ---
 8388608
