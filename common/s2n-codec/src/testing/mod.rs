@@ -212,16 +212,66 @@ pub fn ensure_decoding_mut_matches<'a, T: DecoderValueMut<'a> + PartialEq + core
 
 #[cfg(test)]
 mod tests {
+    use crate::{i24, i48, u24, u48};
+    use bolero::check;
+
     #[test]
-    fn test_u8_round_trip_value() {
-        for i in 0..core::u8::MAX {
+    fn u8_round_trip_value_test() {
+        for i in 0..=core::u8::MAX {
             ensure_codec_round_trip_value!(u8, i).unwrap();
         }
     }
 
     #[test]
-    fn test_u8_round_trip_bytes() {
-        let bytes = (0..core::u8::MAX).collect::<Vec<_>>();
+    fn u8_round_trip_bytes_test() {
+        let bytes = (0..=core::u8::MAX).collect::<Vec<_>>();
         ensure_codec_round_trip_bytes!(u8, &bytes).unwrap();
     }
+
+    #[test]
+    fn u16_round_trip_value_test() {
+        for i in 0..=u16::MAX {
+            ensure_codec_round_trip_value!(u16, i).unwrap();
+        }
+    }
+
+    #[test]
+    fn u16_round_trip_bytes_test() {
+        let mut bytes = vec![];
+        for v in 0..=u16::MAX {
+            bytes.extend_from_slice(&v.to_be_bytes());
+        }
+        ensure_codec_round_trip_bytes!(u16, &bytes).unwrap();
+    }
+
+    macro_rules! fuzz_tests {
+        ($ty:ident, $value_test:ident, $bytes_test:ident) => {
+            #[test]
+            #[cfg_attr(kani, kani::proof, kani::solver(cadical))]
+            fn $value_test() {
+                check!().with_type().cloned().for_each(|v| {
+                    ensure_codec_round_trip_value!($ty, v).unwrap();
+                    let bytes = v.to_be_bytes();
+                    let actual = $ty::from_be_bytes(bytes);
+                    assert_eq!(v, actual);
+                });
+            }
+
+            #[test]
+            fn $bytes_test() {
+                check!().for_each(|bytes| {
+                    let _ = ensure_codec_round_trip_bytes!($ty, &bytes);
+                });
+            }
+        };
+    }
+
+    fuzz_tests!(u24, u24_round_trip_value_test, u24_round_trip_bytes_test);
+    fuzz_tests!(i24, i24_round_trip_value_test, i24_round_trip_bytes_test);
+    fuzz_tests!(u32, u32_round_trip_value_test, u32_round_trip_bytes_test);
+    fuzz_tests!(i32, i32_round_trip_value_test, i32_round_trip_bytes_test);
+    fuzz_tests!(u48, u48_round_trip_value_test, u48_round_trip_bytes_test);
+    fuzz_tests!(i48, i48_round_trip_value_test, i48_round_trip_bytes_test);
+    fuzz_tests!(u64, u64_round_trip_value_test, u64_round_trip_bytes_test);
+    fuzz_tests!(i64, i64_round_trip_value_test, i64_round_trip_bytes_test);
 }

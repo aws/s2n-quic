@@ -23,3 +23,11 @@ bolero-generator = { version = "0.10", default-features = false, optional = true
 byteorder = { version = "1.1", default-features = false }
 bytes = { version = "1", default-features = false, optional = true }
 zerocopy = { version = "0.7", features = ["derive"] }
+
+[dev-dependencies]
+bolero = "0.10"
+bolero-generator = "0.10"
+
+[package.metadata.kani]
+flags = { tests = true }
+unstable = { stubbing = true }

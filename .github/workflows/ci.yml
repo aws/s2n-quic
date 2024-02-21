@@ -698,7 +698,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [quic/s2n-quic-core, quic/s2n-quic-platform]
+        crate: [common/s2n-codec, quic/s2n-quic-core, quic/s2n-quic-platform]
     steps:
       - uses: actions/checkout@v4
         with:

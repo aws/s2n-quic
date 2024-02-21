@@ -413,7 +413,7 @@ pub use buffer_mut::*;
 pub use checked_range::*;
 pub use value::*;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum DecoderError {
     UnexpectedEof(usize),
     UnexpectedBytes(usize),
