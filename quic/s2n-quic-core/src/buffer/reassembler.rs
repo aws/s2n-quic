@@ -3,8 +3,10 @@
 
 //! This module contains data structures for buffering incoming streams.
 
-use super::Error;
-use crate::varint::VarInt;
+use crate::{
+    buffer::{Error, Reader},
+    varint::VarInt,
+};
 use alloc::collections::{vec_deque, VecDeque};
 use bytes::BytesMut;
 
@@ -76,29 +78,35 @@ const UNKNOWN_FINAL_SIZE: u64 = u64::MAX;
 /// // they will be returned in combined fashion.
 /// assert_eq!(&[0u8, 1, 2, 3, 4, 5, 6, 7], &buffer.pop().unwrap()[..]);
 /// ```
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct Reassembler {
     slots: VecDeque<Slot>,
+    cursors: Cursors,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Cursors {
     start_offset: u64,
     max_recv_offset: u64,
     final_offset: u64,
 }
 
-impl Default for Reassembler {
+impl Default for Cursors {
+    #[inline]
     fn default() -> Self {
-        Self::new()
+        Self {
+            start_offset: 0,
+            max_recv_offset: 0,
+            final_offset: UNKNOWN_FINAL_SIZE,
+        }
     }
 }
 
 impl Reassembler {
     /// Creates a new `Reassembler`
+    #[inline]
     pub fn new() -> Reassembler {
-        Reassembler {
-            slots: VecDeque::new(),
-            start_offset: 0,
-            max_recv_offset: 0,
-            final_offset: UNKNOWN_FINAL_SIZE,
-        }
+        Self::default()
     }
 
     /// Returns true if the buffer has completely been written to and the final size is known
@@ -112,16 +120,16 @@ impl Reassembler {
     #[inline]
     pub fn is_reading_complete(&self) -> bool {
         self.final_size()
-            .map_or(false, |len| self.start_offset == len)
+            .map_or(false, |len| self.cursors.start_offset == len)
     }
 
     /// Returns the final size of the stream, if known
     #[inline]
     pub fn final_size(&self) -> Option<u64> {
-        if self.final_offset == UNKNOWN_FINAL_SIZE {
+        if self.cursors.final_offset == UNKNOWN_FINAL_SIZE {
             None
         } else {
-            Some(self.final_offset)
+            Some(self.cursors.final_offset)
         }
     }
 
@@ -137,7 +145,7 @@ impl Reassembler {
     #[inline]
     pub fn is_empty(&self) -> bool {
         if let Some(slot) = self.slots.front() {
-            !slot.is_occupied(self.start_offset)
+            !slot.is_occupied(self.cursors.start_offset)
         } else {
             true
         }
@@ -158,113 +166,234 @@ impl Reassembler {
     /// Pushes a slice at a certain offset
     #[inline]
     pub fn write_at(&mut self, offset: VarInt, data: &[u8]) -> Result<(), Error> {
-        // create a request
-        let request = Request::new(offset, data)?;
-        self.write_request(request)?;
+        let mut request = Request::new(offset, data, false)?;
+        self.write_reader(&mut request)?;
         Ok(())
     }
 
     /// Pushes a slice at a certain offset, which is the end of the buffer
     #[inline]
     pub fn write_at_fin(&mut self, offset: VarInt, data: &[u8]) -> Result<(), Error> {
-        // create a request
-        let request = Request::new(offset, data)?;
+        let mut request = Request::new(offset, data, true)?;
+        self.write_reader(&mut request)?;
+        Ok(())
+    }
 
-        // compute the final offset for the fin request
-        let final_offset = request.end_exclusive();
+    #[inline]
+    pub fn write_reader<R>(&mut self, reader: &mut R) -> Result<(), Error<R::Error>>
+    where
+        R: Reader + ?Sized,
+    {
+        // Trims off any data that has already been received
+        reader.skip_until(self.current_offset())?;
 
-        // make sure if we previously saw a final size that they still match
+        // store a snapshot of the cursors in case there's an error
+        let snapshot = self.cursors;
+
+        self.check_reader_fin(reader)?;
+
+        if let Err(err) = self.write_reader_impl(reader) {
+            use core::any::TypeId;
+            if TypeId::of::<R::Error>() != TypeId::of::<core::convert::Infallible>() {
+                self.cursors = snapshot;
+            }
+            return Err(Error::ReaderError(err));
+        }
+
+        self.invariants();
+
+        Ok(())
+    }
+
+    /// Ensures the final offset doesn't change
+    #[inline]
+    fn check_reader_fin<R>(&mut self, reader: &mut R) -> Result<(), Error<R::Error>>
+    where
+        R: Reader + ?Sized,
+    {
+        let buffered_offset = reader
+            .current_offset()
+            .checked_add_usize(reader.buffered_len())
+            .ok_or(Error::OutOfRange)?
+            .as_u64();
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
         //# Once a final size for a stream is known, it cannot change.  If a
         //# RESET_STREAM or STREAM frame is received indicating a change in the
         //# final size for the stream, an endpoint SHOULD respond with an error
         //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
         //# handling.
-        if let Some(final_size) = self.final_size() {
-            ensure!(final_size == final_offset, Err(Error::InvalidFin));
+        match (reader.final_offset(), self.final_size()) {
+            (Some(actual), Some(expected)) => {
+                ensure!(actual == expected, Err(Error::InvalidFin));
+            }
+            (Some(final_offset), None) => {
+                let final_offset = final_offset.as_u64();
+
+                // make sure that we didn't see any previous chunks greater than the final size
+                ensure!(
+                    self.cursors.max_recv_offset <= final_offset,
+                    Err(Error::InvalidFin)
+                );
+
+                self.cursors.final_offset = final_offset;
+            }
+            (None, Some(expected)) => {
+                // make sure the reader doesn't exceed a previously known final offset
+                ensure!(expected >= buffered_offset, Err(Error::InvalidFin));
+            }
+            (None, None) => {}
         }
 
-        // make sure that we didn't see any previous chunks greater than the final size
-        ensure!(self.max_recv_offset <= final_offset, Err(Error::InvalidFin));
+        // record the maximum offset that we've seen
+        self.cursors.max_recv_offset = self.cursors.max_recv_offset.max(buffered_offset);
 
-        self.final_offset = final_offset;
+        Ok(())
+    }
 
-        self.write_request(request)?;
+    #[inline(always)]
+    fn write_reader_impl<R>(&mut self, reader: &mut R) -> Result<(), R::Error>
+    where
+        R: Reader + ?Sized,
+    {
+        // if the reader is empty at this point, just make sure it doesn't return an error
+        if reader.buffer_is_empty() {
+            let _chunk = reader.read_chunk(0)?;
+            return Ok(());
+        }
+
+        let mut selected = None;
+
+        // start from the back with the assumption that most data arrives in order
+        for idx in (0..self.slots.len()).rev() {
+            let Some(slot) = self.slots.get(idx) else {
+                debug_assert!(false);
+                unsafe {
+                    // SAFETY: `idx` should always be in bounds, since it's generated by the range
+                    // `0..slots.len()`
+                    core::hint::unreachable_unchecked()
+                }
+            };
+
+            // find the first slot that we can write into
+            ensure!(slot.start() <= reader.current_offset().as_u64(), continue);
+
+            selected = Some(idx);
+            break;
+        }
+
+        let idx = if let Some(idx) = selected {
+            idx
+        } else {
+            let mut idx = 0;
+            // set the current request to the upper slot and loop
+            let mut slot = self.allocate_slot(reader);
+
+            // before pushing the slot, make sure the reader doesn't fail
+            let filled = slot.try_write_reader(reader, &mut true)?;
+
+            if let Some(slot) = filled {
+                self.slots.push_front(slot);
+                idx += 1;
+            }
+            self.slots.push_front(slot);
+
+            ensure!(!reader.buffer_is_empty(), Ok(()));
+
+            idx
+        };
+
+        self.write_reader_at(reader, idx)?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn write_reader_at<R>(&mut self, reader: &mut R, mut idx: usize) -> Result<(), R::Error>
+    where
+        R: Reader + ?Sized,
+    {
+        let initial_idx = idx;
+        let mut filled_slot = false;
+
+        unsafe {
+            assume!(
+                !reader.buffer_is_empty(),
+                "the first write should always be non-empty"
+            );
+        }
+
+        while !reader.buffer_is_empty() {
+            let Some(slot) = self.slots.get_mut(idx) else {
+                debug_assert!(false);
+                unsafe { core::hint::unreachable_unchecked() }
+            };
+
+            let filled = slot.try_write_reader(reader, &mut filled_slot)?;
+
+            idx += 1;
+            if let Some(slot) = filled {
+                self.insert(idx, slot);
+                idx += 1;
+            }
+
+            ensure!(!reader.buffer_is_empty(), break);
+
+            if let Some(next) = self.slots.get(idx) {
+                // the next slot is able to handle the reader
+                if next.start() <= reader.current_offset().as_u64() {
+                    continue;
+                }
+            }
+
+            let slot = self.allocate_slot(reader);
+            self.insert(idx, slot);
+            continue;
+        }
+
+        // only try unsplitting if we filled at least one spot
+        if filled_slot {
+            self.unsplit_range(initial_idx..idx);
+        }
 
         Ok(())
     }
 
     #[inline]
-    fn write_request(&mut self, request: Request) -> Result<(), Error> {
-        // trim off any data that we've already read
-        let (_, request) = request.split(self.start_offset);
-        // trim off any data that exceeds our final length
-        let (mut request, excess) = request.split(self.final_offset);
-
-        // make sure the request isn't trying to write beyond the final size
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
-        //# Once a final size for a stream is known, it cannot change.  If a
-        //# RESET_STREAM or STREAM frame is received indicating a change in the
-        //# final size for the stream, an endpoint SHOULD respond with an error
-        //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
-        //# handling.
-        ensure!(excess.is_empty(), Err(Error::InvalidFin));
-
-        // if the request is empty we're done
-        ensure!(!request.is_empty(), Ok(()));
-
-        // record the maximum offset that we've seen
-        self.max_recv_offset = self.max_recv_offset.max(request.end_exclusive());
-
-        // start from the back with the assumption that most data arrives in order
-        for mut idx in (0..self.slots.len()).rev() {
-            unsafe {
-                assume!(self.slots.len() > idx);
-            }
-            let slot = &mut self.slots[idx];
-
-            let slot::Outcome { lower, mid, upper } = slot.try_write(request);
+    fn unsplit_range(&mut self, range: core::ops::Range<usize>) {
+        // try to merge all of the slots that were modified
+        for idx in range.rev() {
+            let Some(slot) = self.slots.get(idx) else {
+                debug_assert!(false);
+                unsafe {
+                    // SAFETY: `idx` should always be in bounds, since it's provided by a range
+                    // that was bound to `slots.len()`
+                    core::hint::unreachable_unchecked()
+                }
+            };
 
             // if this slot was completed, we should try and unsplit with the next slot
-            if slot.is_full() {
-                let current_block =
-                    Self::align_offset(slot.start(), Self::allocation_size(slot.start()));
-                let end = slot.end();
+            ensure!(slot.is_full(), continue);
 
-                if let Some(next) = self.slots.get(idx + 1) {
-                    let next_block =
-                        Self::align_offset(next.start(), Self::allocation_size(next.start()));
+            let start = slot.start();
+            let end = slot.end();
 
-                    if next.start() == end && current_block == next_block {
-                        unsafe {
-                            assume!(self.slots.len() > idx + 1);
-                        }
-                        if let Some(next) = self.slots.remove(idx + 1) {
-                            self.slots[idx].unsplit(next);
-                        }
-                    }
-                }
-            }
+            let Some(next) = self.slots.get(idx + 1) else {
+                continue;
+            };
 
-            idx += 1;
-            self.allocate_request(idx, upper);
+            ensure!(next.start() == end, continue);
 
-            if let Some(mid) = mid {
-                self.insert(idx, mid);
-            }
+            let current_block = Self::align_offset(start, Self::allocation_size(start));
+            let next_block = Self::align_offset(next.start(), Self::allocation_size(next.start()));
+            ensure!(current_block == next_block, continue);
 
-            request = lower;
-
-            if request.is_empty() {
-                break;
+            if let Some(next) = self.slots.remove(idx + 1) {
+                self.slots[idx].unsplit(next);
+            } else {
+                debug_assert!(false, "idx + 1 was checked above");
+                unsafe { core::hint::unreachable_unchecked() }
             }
         }
-
-        self.allocate_request(0, request);
-
-        self.invariants();
-
-        Ok(())
     }
 
     /// Advances the read and write cursors and discards any held data
@@ -277,6 +406,7 @@ impl Reassembler {
         ensure!(len > VarInt::ZERO, Ok(()));
 
         let new_start_offset = self
+            .cursors
             .start_offset
             .checked_add(len.as_u64())
             .ok_or(Error::OutOfRange)?;
@@ -286,10 +416,10 @@ impl Reassembler {
         }
 
         // record the maximum offset that we've seen
-        self.max_recv_offset = self.max_recv_offset.max(new_start_offset);
+        self.cursors.max_recv_offset = self.cursors.max_recv_offset.max(new_start_offset);
 
         // update the current start offset
-        self.start_offset = new_start_offset;
+        self.cursors.start_offset = new_start_offset;
 
         // clear out the slots to the new start offset
         while let Some(mut slot) = self.slots.pop_front() {
@@ -377,9 +507,9 @@ impl Reassembler {
         let slot = self.slots.front_mut()?;
 
         // make sure the slot has some data
-        ensure!(slot.is_occupied(self.start_offset), None);
+        ensure!(slot.is_occupied(self.cursors.start_offset), None);
 
-        let is_final_offset = self.final_offset == slot.end();
+        let is_final_offset = self.cursors.final_offset == slot.end();
         let buffer = slot.data_mut();
 
         let (out, len) = transform(buffer, is_final_offset);
@@ -394,9 +524,9 @@ impl Reassembler {
             self.slots.pop_front();
         }
 
-        probe::pop(self.start_offset, len);
+        probe::pop(self.cursors.start_offset, len);
 
-        self.start_offset += len as u64;
+        self.cursors.start_offset += len as u64;
 
         self.invariants();
 
@@ -407,7 +537,7 @@ impl Reassembler {
     /// receive buffer.
     #[inline]
     pub fn consumed_len(&self) -> u64 {
-        self.start_offset
+        self.cursors.start_offset
     }
 
     /// Returns the total amount of contiguous received data.
@@ -416,7 +546,7 @@ impl Reassembler {
     /// buffered and available for consumption.
     #[inline]
     pub fn total_received_len(&self) -> u64 {
-        let mut offset = self.start_offset;
+        let mut offset = self.cursors.start_offset;
 
         for slot in &self.slots {
             ensure!(slot.is_occupied(offset), offset);
@@ -432,9 +562,7 @@ impl Reassembler {
     #[inline]
     pub fn reset(&mut self) {
         self.slots.clear();
-        self.start_offset = Default::default();
-        self.max_recv_offset = 0;
-        self.final_offset = u64::MAX;
+        self.cursors = Default::default();
     }
 
     #[inline(always)]
@@ -447,81 +575,43 @@ impl Reassembler {
         }
     }
 
+    /// Allocates a slot for a reader
     #[inline]
-    fn allocate_request(&mut self, mut idx: usize, mut request: Request) {
-        ensure!(!request.is_empty());
+    fn allocate_slot<R>(&mut self, reader: &R) -> Slot
+    where
+        R: Reader + ?Sized,
+    {
+        let start = reader.current_offset().as_u64();
+        let mut size = Self::allocation_size(start);
+        let mut offset = Self::align_offset(start, size);
 
-        // if this is a fin request and the write is under the allocation size, then no need to
-        // do a full allocation that doesn't end up getting used.
-        if request.end_exclusive() == self.final_offset {
-            while !request.is_empty() {
-                let start = request.start();
-                let mut size = Self::allocation_size(start);
-                let offset = Self::align_offset(start, size);
-
-                let size_candidate = (start - offset) as usize + request.len();
-                if size_candidate < size {
-                    size = size_candidate;
-                }
-
-                // set the current request to the upper slot and loop
-                request = self.allocate_slot(&mut idx, request, offset, size);
-            }
-            return;
-        }
-
-        while !request.is_empty() {
-            let start = request.start();
-            let size = Self::allocation_size(start);
-            let offset = Self::align_offset(start, size);
-            // set the current request to the upper slot and loop
-            request = self.allocate_slot(&mut idx, request, offset, size);
-        }
-    }
-
-    #[inline]
-    fn allocate_slot<'a>(
-        &mut self,
-        idx: &mut usize,
-        request: Request<'a>,
-        mut offset: u64,
-        mut size: usize,
-    ) -> Request<'a> {
         // don't allocate for data we've already consumed
-        if let Some(diff) = self.start_offset.checked_sub(offset) {
-            debug_assert!(
-                request.start() >= self.start_offset,
-                "requests should be split before allocating slots"
-            );
-            offset = self.start_offset;
-            size -= diff as usize;
+        if let Some(diff) = self.cursors.start_offset.checked_sub(offset) {
+            if diff > 0 {
+                debug_assert!(
+                    reader.current_offset().as_u64() >= self.cursors.start_offset,
+                    "requests should be split before allocating slots"
+                );
+                offset = self.cursors.start_offset;
+                size -= diff as usize;
+            }
+        }
+
+        if self.cursors.final_offset
+            - reader.current_offset().as_u64()
+            - reader.buffered_len() as u64
+            == 0
+        {
+            let size_candidate = (start - offset) as usize + reader.buffered_len();
+            if size_candidate < size {
+                size = size_candidate;
+            }
         }
 
         let buffer = BytesMut::with_capacity(size);
 
         let end = offset + size as u64;
-        let mut slot = Slot::new(offset, end, buffer);
-
-        let slot::Outcome { lower, mid, upper } = slot.try_write(request);
-
-        unsafe {
-            assume!(lower.is_empty(), "lower requests should always be empty");
-        }
-
-        // first insert the newly-created Slot
-        debug_assert!(!slot.should_drop());
-        self.insert(*idx, slot);
-        *idx += 1;
-
-        // check if we have a mid-slot and insert that as well
-        if let Some(mid) = mid {
-            debug_assert!(!mid.should_drop());
-            self.insert(*idx, mid);
-            *idx += 1;
-        }
-
-        // return the upper request if we need to allocate more
-        upper
+        Slot::new(offset, end, buffer)
     }
 
     /// Aligns an offset to a certain alignment size
@@ -576,12 +666,31 @@ impl Reassembler {
             assert_eq!(actual_len == 0, self.is_empty());
             assert_eq!(self.iter().count(), chunks);
 
-            let mut prev_end = self.start_offset;
+            let mut prev_end = self.cursors.start_offset;
 
-            for slot in &self.slots {
+            for (idx, slot) in self.slots.iter().enumerate() {
                 assert!(slot.start() >= prev_end, "{self:#?}");
                 assert!(!slot.should_drop(), "slot range should be non-empty");
                 prev_end = slot.end_allocated();
+
+                // make sure if the slot is full, then it was unsplit into the next slot
+                if slot.is_full() {
+                    let start = slot.start();
+                    let end = slot.end();
+
+                    let Some(next) = self.slots.get(idx + 1) else {
+                        continue;
+                    };
+
+                    ensure!(next.start() == end, continue);
+
+                    let current_block = Self::align_offset(start, Self::allocation_size(start));
+                    let next_block =
+                        Self::align_offset(next.start(), Self::allocation_size(next.start()));
+                    ensure!(current_block == next_block, continue);
+
+                    panic!("unmerged slots at {idx} and {} {self:#?}", idx + 1);
+                }
             }
         }
     }
@@ -596,7 +705,7 @@ impl<'a> Iter<'a> {
     #[inline]
     fn new(buffer: &'a Reassembler) -> Self {
         Self {
-            prev_end: buffer.start_offset,
+            prev_end: buffer.cursors.start_offset,
             inner: buffer.slots.iter(),
         }
     }

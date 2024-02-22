@@ -23,7 +23,7 @@ pub use io_slice::IoSlice;
 pub use tracked::Tracked;
 
 pub trait Storage {
-    type Error;
+    type Error: 'static;
 
     /// Returns the length of the chunk
     fn buffered_len(&self) -> usize;
