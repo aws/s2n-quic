@@ -119,6 +119,8 @@ impl Slot {
         debug_assert_eq!(reader.current_offset().as_u64(), self.end());
 
         unsafe {
+            // SAFETY: the data buffer should have at least one byte of spare capacity if we got to
+            // this point
             assume!(self.data.capacity() > self.data.len());
         }
         let chunk = self.data.spare_capacity_mut();
@@ -131,6 +133,7 @@ impl Slot {
         super::probe::write(self.end(), len);
 
         unsafe {
+            // SAFETY: we should not have written more than the spare capacity
             assume!(self.data.len() + len <= self.data.capacity());
             self.data.advance_mut(len);
         }
