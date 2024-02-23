@@ -23,7 +23,7 @@ fn test_msghdr<F: FnOnce(&mut msghdr)>(f: F) {
 
     msghdr.msg_iov = &mut iovec;
 
-    let mut msg_control = cmsg::Storage::default();
+    let mut msg_control = <cmsg::Storage<{ cmsg::MAX_LEN }>>::default();
     msghdr.msg_controllen = msg_control.len() as _;
     msghdr.msg_control = msg_control.as_mut_ptr() as *mut _;
 
@@ -39,7 +39,7 @@ fn test_msghdr<F: FnOnce(&mut msghdr)>(f: F) {
 mod stubs {
     use s2n_quic_core::inet::AncillaryData;
 
-    pub fn decode(_msghdr: &libc::msghdr) -> AncillaryData {
+    pub fn collect(_iter: crate::message::cmsg::decode::Iter) -> AncillaryData {
         let ancillary_data = kani::any();
 
         ancillary_data
@@ -68,7 +68,7 @@ fn address_inverse_pair_test() {
     kani::solver(cadical),
     kani::unwind(65),
     // it's safe to stub out cmsg::decode since the cmsg result isn't actually checked in this particular test
-    kani::stub(cmsg::decode, stubs::decode)
+    kani::stub(cmsg::decode::collect, stubs::collect)
 )]
 fn handle_get_set_test() {
     check!()
@@ -92,7 +92,7 @@ fn handle_get_set_test() {
                 // no need to check this on kani since we abstract the decode() function to avoid performance issues
                 #[cfg(not(kani))]
                 {
-                    if cfg!(s2n_quic_platform_pktinfo)
+                    if features::pktinfo::IS_SUPPORTED
                         && !handle.local_address.ip().is_unspecified()
                     {
                         assert_eq!(header.path.local_address.ip(), handle.local_address.ip());

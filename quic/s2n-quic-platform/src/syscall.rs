@@ -207,28 +207,32 @@ pub fn configure_pktinfo(rx_socket: &Socket) -> bool {
     let mut success = false;
 
     // Set up the RX socket to pass information about the local address and interface
-    #[cfg(s2n_quic_platform_pktinfo)]
+    #[cfg(unix)]
     {
         use std::os::unix::io::AsRawFd;
         let enabled: libc::c_int = 1;
 
-        success |= libc!(setsockopt(
-            rx_socket.as_raw_fd(),
-            libc::IPPROTO_IP,
-            libc::IP_PKTINFO,
-            &enabled as *const _ as _,
-            core::mem::size_of_val(&enabled) as _,
-        ))
-        .is_ok();
+        if let Some((level, ty)) = crate::features::pktinfo_v4::SOCKOPT {
+            success |= libc!(setsockopt(
+                rx_socket.as_raw_fd(),
+                level,
+                ty,
+                &enabled as *const _ as _,
+                core::mem::size_of_val(&enabled) as _,
+            ))
+            .is_ok();
+        }
 
-        success |= libc!(setsockopt(
-            rx_socket.as_raw_fd(),
-            libc::IPPROTO_IPV6,
-            libc::IPV6_RECVPKTINFO,
-            &enabled as *const _ as _,
-            core::mem::size_of_val(&enabled) as _,
-        ))
-        .is_ok();
+        if let Some((level, ty)) = crate::features::pktinfo_v6::SOCKOPT {
+            success |= libc!(setsockopt(
+                rx_socket.as_raw_fd(),
+                level,
+                ty,
+                &enabled as *const _ as _,
+                core::mem::size_of_val(&enabled) as _,
+            ))
+            .is_ok();
+        }
     }
 
     success
