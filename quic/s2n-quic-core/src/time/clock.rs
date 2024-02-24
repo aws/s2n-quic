@@ -48,3 +48,39 @@ impl Clock for NoopClock {
         unsafe { Timestamp::from_duration(Duration::from_micros(1)) }
     }
 }
+
+impl Clock for Timestamp {
+    #[inline]
+    fn get_time(&self) -> Timestamp {
+        *self
+    }
+}
+
+/// A clock that caches the time query for the inner clock
+pub struct Cached<'a, C: Clock> {
+    clock: &'a C,
+    cached_value: core::cell::Cell<Option<Timestamp>>,
+}
+
+impl<'a, C: Clock> Cached<'a, C> {
+    #[inline]
+    pub fn new(clock: &'a C) -> Self {
+        Self {
+            clock,
+            cached_value: Default::default(),
+        }
+    }
+}
+
+impl<'a, C: Clock> Clock for Cached<'a, C> {
+    #[inline]
+    fn get_time(&self) -> Timestamp {
+        if let Some(time) = self.cached_value.get() {
+            return time;
+        }
+
+        let now = self.clock.get_time();
+        self.cached_value.set(Some(now));
+        now
+    }
+}
