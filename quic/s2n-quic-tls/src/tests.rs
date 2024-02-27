@@ -23,6 +23,7 @@ use s2n_tls::callbacks::{PrivateKeyCallback, PrivateKeyOperation};
 use s2n_tls::{
     callbacks::{ConnectionFuture, VerifyHostNameCallback},
     connection::Connection,
+    enums::ClientAuthType,
     error::Error,
 };
 use std::{sync::Arc, time::SystemTime};
@@ -193,6 +194,24 @@ fn s2n_client_with_client_auth() -> Result<client::Client, Error> {
         .build()
 }
 
+fn s2n_client_with_client_auth_optional() -> Result<client::Client, Error> {
+    client::Builder::default()
+        .with_client_auth_type(ClientAuthType::Optional)?
+        .with_empty_trust_store()?
+        .with_certificate(CERT_PEM)?
+        .with_client_identity(CERT_PEM, KEY_PEM)?
+        .build()
+}
+
+fn s2n_client_with_client_auth_none() -> Result<client::Client, Error> {
+    client::Builder::default()
+        .with_client_auth_type(ClientAuthType::None)?
+        .with_empty_trust_store()?
+        .with_certificate(CERT_PEM)?
+        .with_client_identity(CERT_PEM, KEY_PEM)?
+        .build()
+}
+
 fn s2n_client_with_untrusted_client_auth() -> Result<client::Client, Error> {
     client::Builder::default()
         .with_empty_trust_store()?
@@ -246,6 +265,28 @@ fn s2n_server_with_client_auth() -> Result<server::Server, Error> {
         .with_verify_host_name_callback(VerifyHostNameClientCertVerifier::new("qlaws.qlaws"))?
         .with_certificate(CERT_PEM, KEY_PEM)?
         .with_trusted_certificate(CERT_PEM)?
+        .build()
+}
+
+fn s2n_server_with_client_auth_optional() -> Result<server::Server, Error> {
+    server::Builder::default()
+        .with_client_auth_type(ClientAuthType::Optional)?
+        .with_empty_trust_store()?
+        .with_client_authentication()?
+        .with_verify_host_name_callback(VerifyHostNameClientCertVerifier::new("qlaws.qlaws"))?
+        .with_certificate(CERT_PEM, KEY_PEM)?
+        .with_trusted_certificate(CERT_PEM)?
+        .build()
+}
+
+fn s2n_server_with_client_auth_none() -> Result<server::Server, Error> {
+    server::Builder::default()
+        .with_empty_trust_store()?
+        .with_client_authentication()?
+        .with_verify_host_name_callback(VerifyHostNameClientCertVerifier::new("qlaws.qlaws"))?
+        .with_certificate(CERT_PEM, KEY_PEM)?
+        .with_trusted_certificate(CERT_PEM)?
+        .with_client_auth_type(ClientAuthType::None)?
         .build()
 }
 
@@ -393,8 +434,59 @@ fn s2n_client_s2n_server_client_auth_test() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
+fn s2n_client_optional_client_auth_s2n_server_client_auth_test() {
+    let mut client_endpoint = s2n_client_with_client_auth_optional().unwrap();
+    let mut server_endpoint = s2n_server_with_client_auth().unwrap();
+
+    run(&mut server_endpoint, &mut client_endpoint, None);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_s2n_server_optional_client_auth_test() {
+    let mut client_endpoint = s2n_client_with_client_auth().unwrap();
+    let mut server_endpoint = s2n_server_with_client_auth_optional().unwrap();
+
+    run(&mut server_endpoint, &mut client_endpoint, None);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_optional_client_auth_s2n_server_optional_client_auth_test() {
+    let mut client_endpoint = s2n_client_with_client_auth_optional().unwrap();
+    let mut server_endpoint = s2n_server_with_client_auth_optional().unwrap();
+
+    run(&mut server_endpoint, &mut client_endpoint, None);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_none_client_auth_s2n_server_none_client_auth_test() {
+    let mut client_endpoint = s2n_client_with_client_auth_none().unwrap();
+    let mut server_endpoint = s2n_server_with_client_auth_none().unwrap();
+
+    run(&mut server_endpoint, &mut client_endpoint, None);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
 fn s2n_client_no_client_auth_s2n_server_requires_client_auth_test() {
     let mut client_endpoint = s2n_client();
+    let mut server_endpoint = s2n_server_with_client_auth().unwrap();
+
+    let test_result = run_result(&mut server_endpoint, &mut client_endpoint, None);
+
+    // The handshake should fail because the server requires client auth,
+    // but the client does not support it.
+    assert!(test_result.is_err());
+    let e = test_result.unwrap_err();
+    assert_eq!(e.description().unwrap(), "UNEXPECTED_MESSAGE");
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_none_client_auth_s2n_server_requires_client_auth_test() {
+    let mut client_endpoint = s2n_client_with_client_auth_none().unwrap();
     let mut server_endpoint = s2n_server_with_client_auth().unwrap();
 
     let test_result = run_result(&mut server_endpoint, &mut client_endpoint, None);
@@ -411,6 +503,32 @@ fn s2n_client_no_client_auth_s2n_server_requires_client_auth_test() {
 fn s2n_client_with_client_auth_s2n_server_does_not_require_client_auth_test() {
     let mut client_endpoint = s2n_client_with_client_auth().unwrap();
     let mut server_endpoint = s2n_server();
+
+    let test_result = run_result(&mut server_endpoint, &mut client_endpoint, None);
+
+    // The handshake should fail because the client requires client auth,
+    // but the server does not support it.
+    assert!(test_result.is_err());
+    let e = test_result.unwrap_err();
+    assert_eq!(e.description().unwrap(), "UNEXPECTED_MESSAGE");
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_with_optional_client_auth_s2n_server_does_not_require_client_auth_test() {
+    let mut client_endpoint = s2n_client_with_client_auth_optional().unwrap();
+    let mut server_endpoint = s2n_server();
+
+    // The handshake should succeed even server does not support client auth,
+    // because the client is optional support client auth
+    run(&mut server_endpoint, &mut client_endpoint, None);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn s2n_client_client_auth_s2n_server_none_client_auth_test() {
+    let mut client_endpoint = s2n_client_with_client_auth().unwrap();
+    let mut server_endpoint = s2n_server_with_client_auth_none().unwrap();
 
     let test_result = run_result(&mut server_endpoint, &mut client_endpoint, None);
 
