@@ -76,6 +76,7 @@ impl<L: ConfigLoader> From<Server<L>> for Config {
 pub struct Builder {
     config: config::Builder,
     keylog: Option<KeyLogHandle>,
+    client_auth_type_specify: bool,
 }
 
 impl Default for Builder {
@@ -89,6 +90,7 @@ impl Default for Builder {
         Self {
             config,
             keylog: None,
+            client_auth_type_specify: false,
         }
     }
 }
@@ -169,9 +171,19 @@ impl Builder {
         Ok(self)
     }
 
-    /// Configures this server instance to require client authentication (mutual TLS).
+    /// Configures this server instance to require client authentication (mutual TLS)
+    /// if not set client authentication type directly by call `with_client_auth_type`.
     pub fn with_client_authentication(mut self) -> Result<Self, Error> {
-        self.config.set_client_auth_type(ClientAuthType::Required)?;
+        if !self.client_auth_type_specify {
+            self.config.set_client_auth_type(ClientAuthType::Required)?;
+        }
+        Ok(self)
+    }
+
+    /// Configures this server instance of client authentication type (mutual TLS).
+    pub fn with_client_auth_type(mut self, auth_type: ClientAuthType) -> Result<Self, Error> {
+        self.config.set_client_auth_type(auth_type)?;
+        self.client_auth_type_specify = true;
         Ok(self)
     }
 

@@ -66,6 +66,7 @@ impl<L: ConfigLoader> ConfigLoader for Client<L> {
 pub struct Builder {
     config: config::Builder,
     keylog: Option<KeyLogHandle>,
+    client_auth_type_specify: bool,
 }
 
 impl Default for Builder {
@@ -79,6 +80,7 @@ impl Default for Builder {
         Self {
             config,
             keylog: None,
+            client_auth_type_specify: false,
         }
     }
 }
@@ -125,6 +127,9 @@ impl Builder {
     /// This must be set when the server requires client authentication (mutual TLS).
     /// The client will offer the certificate to the server when it is requested
     /// as part of the TLS handshake.
+    ///
+    /// This method will set the client authentication type to `ClientAuthType::Required`
+    /// if not set client authentication type directly by call `with_client_auth_type`.
     pub fn with_client_identity<C: IntoCertificate, PK: IntoPrivateKey>(
         mut self,
         certificate: C,
@@ -142,7 +147,16 @@ impl Builder {
                 .as_pem()
                 .expect("pem is currently the only certificate format supported"),
         )?;
-        self.config.set_client_auth_type(ClientAuthType::Required)?;
+        if !self.client_auth_type_specify {
+            self.config.set_client_auth_type(ClientAuthType::Required)?;
+        }
+        Ok(self)
+    }
+
+    /// Configures this client instance of client authentication type (mutual TLS).
+    pub fn with_client_auth_type(mut self, auth_type: ClientAuthType) -> Result<Self, Error> {
+        self.config.set_client_auth_type(auth_type)?;
+        self.client_auth_type_specify = true;
         Ok(self)
     }
 
