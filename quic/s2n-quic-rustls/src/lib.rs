@@ -3,7 +3,10 @@
 
 #![forbid(unsafe_code)]
 
-pub use rustls::{self, Certificate, PrivateKey};
+pub use rustls::{
+    self,
+    pki_types::{CertificateDer, PrivateKeyDer},
+};
 
 mod cipher_suite;
 mod error;
@@ -13,13 +16,14 @@ pub mod certificate;
 pub mod client;
 pub mod server;
 
-pub use cipher_suite::DEFAULT_CIPHERSUITES;
+pub use cipher_suite::default_crypto_provider;
 pub use client::Client;
 pub use server::Server;
 
 //= https://www.rfc-editor.org/rfc/rfc9001#section-4.2
 //# Clients MUST NOT offer TLS versions older than 1.3.
-static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
+pub static TLS13_PROTOCOL_VERSION: &[&rustls::SupportedProtocolVersion] =
+    &[&rustls::version::TLS13];
 
 /// The supported version of quic
 const QUIC_VERSION: rustls::quic::Version = rustls::quic::Version::V1;

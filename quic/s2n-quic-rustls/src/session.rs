@@ -104,9 +104,15 @@ impl Session {
 
                 self.connection
                     .alert()
-                    .map(|alert| tls::Error {
-                        code: alert.get_u8(),
-                        reason,
+                    .map(|alert| {
+                        // Explicitly annotate the type to detect if rustls starts
+                        // returning a large array
+                        let code: [u8; 1] = alert.to_array();
+                        let code = code.first().expect("expect an error code");
+                        tls::Error {
+                            code: *code,
+                            reason,
+                        }
                     })
                     .unwrap_or(tls::Error::INTERNAL_ERROR)
             })?;

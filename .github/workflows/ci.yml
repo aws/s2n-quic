@@ -229,6 +229,7 @@ jobs:
             target: native
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE="mtu_disc,pktinfo,tos,socket_msg"
     steps:
+      - uses: ilammy/setup-nasm@v1
       - uses: actions/checkout@v4
         with:
           lfs: true
