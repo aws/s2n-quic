@@ -5,7 +5,6 @@ use crate::{
     frame::ack_elicitation::AckElicitation, inet::ExplicitCongestionNotification, path,
     time::Timestamp, transmission,
 };
-use core::convert::TryInto;
 
 //= https://www.rfc-editor.org/rfc/rfc9002#appendix-A.1
 

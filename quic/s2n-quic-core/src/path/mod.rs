@@ -6,7 +6,6 @@ use crate::{
     inet::{IpV4Address, IpV6Address, SocketAddress, SocketAddressV4, SocketAddressV6},
 };
 use core::{
-    convert::{TryFrom, TryInto},
     fmt,
     fmt::{Display, Formatter},
     num::NonZeroU16,

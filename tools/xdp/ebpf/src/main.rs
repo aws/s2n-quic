@@ -24,7 +24,8 @@ static SOCKETS: XskMap = XskMap::with_max_entries(1024, 0);
 #[map(name = "S2N_QUIC_XDP_PORTS")]
 static PORTS: HashMap<u16, u8> = HashMap::with_max_entries(1024, 0);
 
-#[xdp(name = "s2n_quic_xdp")]
+#[xdp]
+#[allow(clippy::let_and_return)]
 pub fn s2n_quic_xdp(ctx: XdpContext) -> u32 {
     let action = handle_packet(&ctx);
 
@@ -60,8 +61,9 @@ fn handle_packet(ctx: &XdpContext) -> u32 {
 
             // if the packet is valid forward it on to the associated AF_XDP socket
             let queue_id = unsafe { (*ctx.ctx).rx_queue_index };
-            let not_found_action = xdp_action::XDP_PASS as _;
-            SOCKETS.redirect(queue_id, not_found_action)
+            SOCKETS
+                .redirect(queue_id, 0)
+                .unwrap_or(xdp_action::XDP_PASS)
         }
         Ok(None) => xdp_action::XDP_PASS,
         Err(_) => xdp_action::XDP_ABORTED,

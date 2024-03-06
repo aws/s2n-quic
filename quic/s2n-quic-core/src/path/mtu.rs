@@ -3,7 +3,7 @@
 
 use crate::{
     counter::{Counter, Saturating},
-    ensure, event,
+    event,
     event::{builder::MtuUpdatedCause, IntoEvent},
     frame,
     inet::SocketAddress,

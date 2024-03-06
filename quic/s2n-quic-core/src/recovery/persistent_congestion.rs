@@ -1,9 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    ensure, packet::number::PacketNumber, path, recovery::SentPacketInfo, time::Timestamp,
-};
+use crate::{packet::number::PacketNumber, path, recovery::SentPacketInfo, time::Timestamp};
 use core::time::Duration;
 
 #[derive(Debug)]

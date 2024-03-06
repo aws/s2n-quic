@@ -4,7 +4,7 @@
 use crate::{
     application, connection, crypto::packet_protection, endpoint, frame::ConnectionClose, transport,
 };
-use core::{convert::TryInto, fmt, panic, time::Duration};
+use core::{fmt, panic, time::Duration};
 
 /// Errors that a connection can encounter.
 #[derive(Debug, Copy, Clone)]

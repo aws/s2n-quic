@@ -10,8 +10,6 @@ pub use buffer::*;
 pub use estimator::*;
 pub use value::*;
 
-use core::convert::TryFrom;
-
 pub trait Encoder: Sized {
     /// Set to `true` if the particular encoder specializes on the bytes implementation
     #[cfg(feature = "bytes")]

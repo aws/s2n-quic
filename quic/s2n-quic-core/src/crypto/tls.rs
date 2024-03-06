@@ -3,7 +3,7 @@
 
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
-use core::{convert::TryFrom, fmt::Debug};
+use core::fmt::Debug;
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 
 mod error;

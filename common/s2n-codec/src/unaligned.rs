@@ -1,10 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{
-    convert::{TryFrom, TryInto},
-    ops::Deref,
-};
+use core::ops::Deref;
 
 // Unaligned integer types are integers which Rust does not provide natively.
 // This macro attempts to create wrapper types around the rounded up type
