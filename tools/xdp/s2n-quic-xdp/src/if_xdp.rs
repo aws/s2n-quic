@@ -11,7 +11,7 @@ use std::{ffi::CStr, os::unix::io::AsRawFd};
 bitflags!(
     /// Options for the `flags` field in [`Address`]
     ///
-    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/2bac7dc169af3cd4a0cb5200aa1f7b89affa042a/include/uapi/linux/if_xdp.h#L16-L27)
+    /// See [if_xdp.h](https://github.com/torvalds/linux/blob/11614723af26e7c32fcb704d8f30fdf60c1122dc/include/uapi/linux/if_xdp.h#L16-L33)
     ///
     /// Note that the size of the value is specified in the [sxdp_flags field](
     /// https://github.com/torvalds/linux/blob/0d3eb744aed40ffce820cded61d7eac515199165/include/uapi/linux/if_xdp.h#L34).
@@ -31,6 +31,11 @@ bitflags!(
         /// core, you should use this option so that the kernel will yield to the user space
         /// application.
         const USE_NEED_WAKEUP = 1 << 3;
+        /// By setting this option, userspace application indicates that it can
+        /// handle multiple descriptors per packet thus enabling AF_XDP to split
+        /// multi-buffer XDP frames into multiple Rx descriptors. Without this set
+        /// such frames will be dropped
+        const XDP_USE_SG = 1 << 4;
     }
 );
 
