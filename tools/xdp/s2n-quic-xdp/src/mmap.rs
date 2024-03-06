@@ -37,8 +37,8 @@ impl Mmap {
     #[inline]
     pub fn new(len: usize, offset: usize, flags: Option<MmapOptions>) -> Result<Self> {
         let addr = match flags{
-            Some(MmapFlags::Huge) => mmap(len, offset, None, true),
-            Some(MmapFlags::Fd(fd)) => mmap(len, offset, Some(fd), false),
+            Some(MmapOptions::Huge) => mmap(len, offset, None, true),
+            Some(MmapOptions::Fd(fd)) => mmap(len, offset, Some(fd), false),
             _ => mmap(len, offset, None, false),
         }?;
         Ok(Self { addr, len })
