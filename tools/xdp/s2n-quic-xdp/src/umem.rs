@@ -3,7 +3,7 @@
 
 use crate::{
     if_xdp::{RxTxDescriptor, UmemDescriptor, UmemFlags, UmemReg},
-    mmap::Mmap,
+    mmap::{Mmap, MmapOptions},
     syscall, Result,
 };
 use core::ptr::NonNull;
@@ -22,6 +22,8 @@ pub struct Builder {
     pub frame_headroom: u32,
     /// The flags for the Umem
     pub flags: UmemFlags,
+    /// Back the umem with a hugepage
+    pub hugepage: bool
 }
 
 impl Default for Builder {
@@ -31,6 +33,7 @@ impl Default for Builder {
             frame_count: 1024,
             frame_headroom: 0,
             flags: Default::default(),
+            hugepage: false,
         }
     }
 }
@@ -38,7 +41,12 @@ impl Default for Builder {
 impl Builder {
     pub fn build(self) -> Result<Umem> {
         let len = self.frame_size as usize * self.frame_count as usize;
-        let area = Mmap::new(len, 0, None)?;
+        let options = if self.hugepage {
+            Some(MmapOptions::Huge)
+        } else {
+            None
+        };
+        let area = Mmap::new(len, 0, options)?;
         let area = Arc::new(area);
         let mem = area.addr().cast();
 

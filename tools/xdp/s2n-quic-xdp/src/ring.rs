@@ -3,7 +3,7 @@
 
 use crate::{
     if_xdp::{MmapOffsets, RingFlags, RingOffsetV2, RxTxDescriptor, UmemDescriptor},
-    mmap::Mmap,
+    mmap::{Mmap, MmapOptions},
     socket, syscall,
 };
 use core::{fmt, mem::size_of, ptr::NonNull};
@@ -94,7 +94,7 @@ macro_rules! impl_producer {
             // Use the hard-coded offset of the ring type
             let offset = MmapOffsets::$offset;
 
-            let area = Mmap::new(len, offset, Some(socket.as_raw_fd()))?;
+            let area = Mmap::new(len, offset, Some(MmapOptions::Fd(socket.as_raw_fd())))?;
 
             let (cursor, flags) = unsafe {
                 // Safety: `area` lives as long as `cursor`
@@ -193,7 +193,7 @@ macro_rules! impl_consumer {
             // Use the hard-coded offset of the ring type
             let offset = MmapOffsets::$offset;
 
-            let area = Mmap::new(len, offset, Some(socket.as_raw_fd()))?;
+            let area = Mmap::new(len, offset, Some(MmapOptions::Fd(socket.as_raw_fd())))?;
 
             let (cursor, flags) = unsafe {
                 // Safety: `area` lives as long as `cursor`
