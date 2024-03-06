@@ -5,7 +5,7 @@ use crate::{
     transport::parameters::{AckDelayExponent, MaxAckDelay},
     varint::VarInt,
 };
-use core::{convert::TryInto, time::Duration};
+use core::time::Duration;
 
 // After running simulations, this seemed to be a good baseline
 // TODO experiment more with this

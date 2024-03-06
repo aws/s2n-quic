@@ -194,7 +194,14 @@ impl Umem {
 /// Specifies an indexable value, which relies on the caller to guarantee borrowing rules are not
 /// violated.
 pub trait UnsafeIndex<T> {
+    /// # Safety
+    ///
+    /// Callers need to guarantee the reference is not already exclusively borrowed
     unsafe fn index(&self, idx: T) -> &[u8];
+
+    /// # Safety
+    ///
+    /// Callers need to guarantee the reference is not already exclusively borrowed
     #[allow(clippy::mut_from_ref)] // interior mutability safety is enforced by the caller
     unsafe fn index_mut(&self, idx: T) -> &mut [u8];
 }

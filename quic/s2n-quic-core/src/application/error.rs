@@ -7,7 +7,7 @@ use crate::{
     frame::ConnectionClose,
     varint::{VarInt, VarIntError},
 };
-use core::{convert::TryFrom, fmt, ops};
+use core::{fmt, ops};
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-20.2
 //# The management of application error codes is left to application
