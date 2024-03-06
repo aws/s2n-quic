@@ -121,6 +121,12 @@ impl Umem {
         self.area.len()
     }
 
+    /// Returns the pointer to the umem memory region
+    #[inline]
+    pub fn as_ptr(&self) -> *mut u8 {
+        self.mem.as_ptr()
+    }
+
     /// Returns `true` if the Umem is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -178,7 +184,7 @@ impl Umem {
             desc.address + desc.len as u64 <= self.area.len() as u64,
             "pointer out of bounds"
         );
-        unsafe { self.mem.as_ptr().add(desc.address as _) }
+        unsafe { self.as_ptr().add(desc.address as _) }
     }
 
     #[inline]
@@ -187,7 +193,7 @@ impl Umem {
             desc.address + self.frame_size as u64 <= self.area.len() as u64,
             "pointer out of bounds"
         );
-        unsafe { self.mem.as_ptr().add(desc.address as _) }
+        unsafe { self.as_ptr().add(desc.address as _) }
     }
 }
 
