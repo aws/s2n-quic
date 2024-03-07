@@ -15,8 +15,8 @@ pub mod client;
 pub mod server;
 
 pub use cipher_suite::default_crypto_provider;
-pub use client::Client;
-pub use server::Server;
+pub use client::{default_config_builder as client_config_builder, Client};
+pub use server::{default_config_builder as server_config_builder, Server};
 
 //= https://www.rfc-editor.org/rfc/rfc9001#section-4.2
 //# Clients MUST NOT offer TLS versions older than 1.3.

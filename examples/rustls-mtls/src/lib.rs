@@ -55,7 +55,7 @@ impl tls::Provider for MtlsProvider {
         )
         .build()
         .unwrap();
-        let mut cfg = tls::rustls::Server::default_config_builder()?
+        let mut cfg = tls::rustls::server_config_builder()?
             .with_client_cert_verifier(verifier)
             .with_single_cert(self.my_cert_chain, self.my_private_key)?;
 
@@ -66,7 +66,7 @@ impl tls::Provider for MtlsProvider {
     }
 
     fn start_client(self) -> Result<Self::Client, Self::Error> {
-        let mut cfg = tls::rustls::Client::default_config_builder()?
+        let mut cfg = tls::rustls::client_config_builder()?
             .with_root_certificates(self.root_store)
             .with_client_auth_cert(self.my_cert_chain, self.my_private_key)?;
 

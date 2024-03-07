@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{tls::rustls::DisabledVerifier, Result};
-use s2n_quic::provider::tls::rustls::rustls as rustls_crate;
+use s2n_quic::provider::tls::rustls::{client_config_builder, rustls as rustls_crate};
 use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 
@@ -117,7 +117,7 @@ impl Client {
             use rustls_crate::KeyLogFile;
             use std::sync::Arc;
 
-            let mut config = rustls::Client::default_config_builder()?
+            let mut config = client_config_builder()?
                 .dangerous()
                 .with_custom_certificate_verifier(Arc::new(DisabledVerifier))
                 .with_no_client_auth();

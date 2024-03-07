@@ -8,6 +8,16 @@ use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
 
+/// Create a QUIC client specific [rustls::ConfigBuilder].
+///
+/// Uses aws_lc_rs as the crypto provider and sets QUIC specific protocol versions.
+pub fn default_config_builder() -> Result<ConfigBuilder<ClientConfig, WantsVerifier>, rustls::Error>
+{
+    let tls13_cipher_suite_crypto_provider = default_crypto_provider()?;
+    ClientConfig::builder_with_provider(tls13_cipher_suite_crypto_provider.into())
+        .with_protocol_versions(crate::PROTOCOL_VERSIONS)
+}
+
 #[derive(Clone)]
 pub struct Client {
     config: Arc<ClientConfig>,
@@ -22,16 +32,6 @@ impl Client {
 
     pub fn builder() -> Builder {
         Builder::new()
-    }
-
-    /// Create a QUIC client specific [rustls::ConfigBuilder].
-    ///
-    /// Uses aws_lc_rs as the crypto provider and sets QUIC specific protocol versions.
-    pub fn default_config_builder(
-    ) -> Result<ConfigBuilder<ClientConfig, WantsVerifier>, rustls::Error> {
-        let tls13_cipher_suite_crypto_provider = default_crypto_provider()?;
-        ClientConfig::builder_with_provider(tls13_cipher_suite_crypto_provider.into())
-            .with_protocol_versions(crate::PROTOCOL_VERSIONS)
     }
 }
 
@@ -158,7 +158,7 @@ impl Builder {
             ));
         }
 
-        let mut config = Client::default_config_builder()?
+        let mut config = default_config_builder()?
             .with_root_certificates(self.cert_store)
             .with_no_client_auth();
 
