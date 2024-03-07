@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{tls::rustls::DisabledVerifier, Result};
-use s2n_quic::provider::tls::rustls::{default_crypto_provider, TLS13_PROTOCOL_VERSION};
+use s2n_quic::provider::tls::rustls::rustls as rustls_crate;
 use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 
@@ -114,16 +114,13 @@ impl Client {
 
     pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Client> {
         let tls = if self.disable_cert_verification {
-            use ::rustls::{ClientConfig, KeyLogFile};
+            use rustls_crate::KeyLogFile;
             use std::sync::Arc;
 
-            let tls13_cipher_suite_crypto_provider = default_crypto_provider()?;
-            let mut config =
-                ClientConfig::builder_with_provider(tls13_cipher_suite_crypto_provider.into())
-                    .with_protocol_versions(TLS13_PROTOCOL_VERSION)?
-                    .dangerous()
-                    .with_custom_certificate_verifier(Arc::new(DisabledVerifier))
-                    .with_no_client_auth();
+            let mut config = rustls::Client::default_config_builder()?
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(DisabledVerifier))
+                .with_no_client_auth();
             config.max_fragment_size = None;
             config.alpn_protocols = alpns.iter().map(|p| p.as_bytes().to_vec()).collect();
             config.key_log = Arc::new(KeyLogFile::new());
@@ -267,16 +264,13 @@ pub mod s2n_tls {
 
 pub mod rustls {
     use super::*;
-    use ::rustls::{
+    use rustls_crate::{
         client::danger,
-        crypto,
-        pki_types::{ServerName, UnixTime},
-        DigitallySignedStruct, Error, SignatureScheme,
+        pki_types::{CertificateDer, ServerName, UnixTime},
     };
-    use s2n_quic::provider::tls::rustls::CertificateDer;
     pub use s2n_quic::provider::tls::rustls::{
         certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
-        Client, Server,
+        default_crypto_provider, Client, Server,
     };
 
     pub fn ca(ca: Option<&PathBuf>) -> Result<Certificate> {
@@ -306,7 +300,7 @@ pub mod rustls {
             _server_name: &ServerName,
             _ocsp_response: &[u8],
             _now: UnixTime,
-        ) -> Result<danger::ServerCertVerified, Error> {
+        ) -> Result<danger::ServerCertVerified, rustls_crate::Error> {
             Ok(danger::ServerCertVerified::assertion())
         }
 
@@ -314,9 +308,9 @@ pub mod rustls {
             &self,
             message: &[u8],
             cert: &CertificateDer<'_>,
-            dss: &rustls::DigitallySignedStruct,
-        ) -> Result<danger::HandshakeSignatureValid, rustls::Error> {
-            crypto::verify_tls12_signature(
+            dss: &rustls_crate::DigitallySignedStruct,
+        ) -> Result<danger::HandshakeSignatureValid, rustls_crate::Error> {
+            rustls_crate::crypto::verify_tls12_signature(
                 message,
                 cert,
                 dss,
@@ -328,9 +322,9 @@ pub mod rustls {
             &self,
             message: &[u8],
             cert: &CertificateDer<'_>,
-            dss: &rustls::DigitallySignedStruct,
-        ) -> Result<danger::HandshakeSignatureValid, rustls::Error> {
-            rustls::crypto::verify_tls13_signature(
+            dss: &rustls_crate::DigitallySignedStruct,
+        ) -> Result<danger::HandshakeSignatureValid, rustls_crate::Error> {
+            rustls_crate::crypto::verify_tls13_signature(
                 message,
                 cert,
                 dss,
@@ -338,7 +332,7 @@ pub mod rustls {
             )
         }
 
-        fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        fn supported_verify_schemes(&self) -> Vec<rustls_crate::SignatureScheme> {
             default_crypto_provider()
                 .unwrap()
                 .signature_verification_algorithms

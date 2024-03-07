@@ -8,6 +8,8 @@ use rustls::{
 use s2n_codec::Encoder;
 use s2n_quic_core::crypto::{self, packet_protection, scatter, tls, HeaderProtectionMask, Key};
 
+/// `aws_lc_rs` is the default crypto provider since that is also the
+/// default used by rustls.
 pub fn default_crypto_provider() -> Result<CryptoProvider, rustls::Error> {
     Ok(CryptoProvider {
         cipher_suites: DEFAULT_CIPHERSUITES.to_vec(),

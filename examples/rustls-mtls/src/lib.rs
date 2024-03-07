@@ -1,13 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::rustls::server::WebPkiClientVerifier;
-use rustls::{ClientConfig, Error, RootCertStore, ServerConfig};
-use s2n_quic::provider::{
-    tls,
-    tls::{
-        default::{default_crypto_provider, CertificateDer, PrivateKeyDer, TLS13_PROTOCOL_VERSION},
-        rustls::rustls,
+use s2n_quic::provider::tls::{
+    self,
+    default::default_crypto_provider,
+    rustls::rustls::{
+        pki_types::{CertificateDer, PrivateKeyDer},
+        server::WebPkiClientVerifier,
+        Error as RustlsError, RootCertStore,
     },
 };
 use std::{io::Cursor, path::Path, sync::Arc};
@@ -37,7 +37,7 @@ pub fn initialize_logger(endpoint: &str) {
 }
 
 pub struct MtlsProvider {
-    root_store: rustls::RootCertStore,
+    root_store: RootCertStore,
     my_cert_chain: Vec<CertificateDer<'static>>,
     my_private_key: PrivateKeyDer<'static>,
 }
@@ -45,18 +45,17 @@ pub struct MtlsProvider {
 impl tls::Provider for MtlsProvider {
     type Server = tls::rustls::Server;
     type Client = tls::rustls::Client;
-    type Error = rustls::Error;
+    type Error = RustlsError;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
-        let tls13_cipher_suite_crypto_provider = Arc::new(default_crypto_provider()?);
+        let tls13_cipher_suite_crypto_provider = default_crypto_provider()?;
         let verifier = WebPkiClientVerifier::builder_with_provider(
             Arc::new(self.root_store),
-            tls13_cipher_suite_crypto_provider.clone(),
+            tls13_cipher_suite_crypto_provider.into(),
         )
         .build()
         .unwrap();
-        let mut cfg = ServerConfig::builder_with_provider(tls13_cipher_suite_crypto_provider)
-            .with_protocol_versions(TLS13_PROTOCOL_VERSION)?
+        let mut cfg = tls::rustls::Server::default_config_builder()?
             .with_client_cert_verifier(verifier)
             .with_single_cert(self.my_cert_chain, self.my_private_key)?;
 
@@ -67,12 +66,9 @@ impl tls::Provider for MtlsProvider {
     }
 
     fn start_client(self) -> Result<Self::Client, Self::Error> {
-        let tls13_cipher_suite_crypto_provider = default_crypto_provider()?;
-        let mut cfg =
-            ClientConfig::builder_with_provider(tls13_cipher_suite_crypto_provider.into())
-                .with_protocol_versions(TLS13_PROTOCOL_VERSION)?
-                .with_root_certificates(self.root_store)
-                .with_client_auth_cert(self.my_cert_chain, self.my_private_key)?;
+        let mut cfg = tls::rustls::Client::default_config_builder()?
+            .with_root_certificates(self.root_store)
+            .with_client_auth_cert(self.my_cert_chain, self.my_private_key)?;
 
         cfg.max_fragment_size = None;
         cfg.alpn_protocols = vec![b"h3".to_vec()];
@@ -85,7 +81,7 @@ impl MtlsProvider {
         ca_cert_pem: A,
         my_cert_pem: B,
         my_key_pem: C,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, RustlsError> {
         let root_store = into_root_store(ca_cert_pem.as_ref()).await?;
         let cert_chain = into_certificate(my_cert_pem.as_ref()).await?;
         let private_key = into_private_key(my_key_pem.as_ref()).await?;
@@ -97,22 +93,22 @@ impl MtlsProvider {
     }
 }
 
-async fn into_certificate(path: &Path) -> Result<Vec<Vec<u8>>, Error> {
+async fn into_certificate(path: &Path) -> Result<Vec<Vec<u8>>, RustlsError> {
     let mut f = File::open(path)
         .await
-        .map_err(|e| Error::General(format!("Failed to load file: {}", e)))?;
+        .map_err(|e| RustlsError::General(format!("Failed to load file: {}", e)))?;
     let mut buf = Vec::new();
     f.read_to_end(&mut buf)
         .await
-        .map_err(|e| Error::General(format!("Failed to read file: {}", e)))?;
+        .map_err(|e| RustlsError::General(format!("Failed to read file: {}", e)))?;
     let mut cursor = Cursor::new(buf);
     let certs = rustls_pemfile::certs(&mut cursor)
         .map(|certs| certs.into_iter().collect())
-        .map_err(|_| Error::General("Could not read certificate".to_string()))?;
+        .map_err(|_| RustlsError::General("Could not read certificate".to_string()))?;
     Ok(certs)
 }
 
-async fn into_root_store(path: &Path) -> Result<RootCertStore, Error> {
+async fn into_root_store(path: &Path) -> Result<RootCertStore, RustlsError> {
     let ca_certs: Vec<CertificateDer<'static>> = into_certificate(path)
         .await
         .map(|certs| certs.into_iter().map(CertificateDer::from))?
@@ -122,22 +118,22 @@ async fn into_root_store(path: &Path) -> Result<RootCertStore, Error> {
     Ok(cert_store)
 }
 
-fn construct_pkcs1_key(key: Vec<u8>) -> Result<PrivateKeyDer<'static>, Error> {
+fn construct_pkcs1_key(key: Vec<u8>) -> Result<PrivateKeyDer<'static>, RustlsError> {
     Ok(PrivateKeyDer::Pkcs1(key.into()))
 }
 
-fn construct_pkcs8_key(key: Vec<u8>) -> Result<PrivateKeyDer<'static>, Error> {
+fn construct_pkcs8_key(key: Vec<u8>) -> Result<PrivateKeyDer<'static>, RustlsError> {
     Ok(PrivateKeyDer::Pkcs8(key.into()))
 }
 
-async fn into_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, Error> {
+async fn into_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, RustlsError> {
     let mut f = File::open(path)
         .await
-        .map_err(|e| Error::General(format!("Failed to load file: {}", e)))?;
+        .map_err(|e| RustlsError::General(format!("Failed to load file: {}", e)))?;
     let mut buf = Vec::new();
     f.read_to_end(&mut buf)
         .await
-        .map_err(|e| Error::General(format!("Failed to read file: {}", e)))?;
+        .map_err(|e| RustlsError::General(format!("Failed to read file: {}", e)))?;
     let mut cursor = Cursor::new(buf);
 
     macro_rules! parse_key {
@@ -153,7 +149,7 @@ async fn into_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, Error> 
                     return $constructor(keys.pop().unwrap());
                 }
                 Ok(keys) => {
-                    return Err(Error::General(format!(
+                    return Err(RustlsError::General(format!(
                         "Unexpected number of keys: {} (only 1 supported)",
                         keys.len()
                     )));
@@ -167,7 +163,7 @@ async fn into_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, Error> 
     // attempt to parse RSA key
     parse_key!(rsa_private_keys, construct_pkcs1_key);
 
-    Err(Error::General(
+    Err(RustlsError::General(
         "could not load any valid private keys".to_string(),
     ))
 }
