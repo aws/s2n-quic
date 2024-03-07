@@ -16,7 +16,7 @@ use crate::{
     },
     random, token,
 };
-use core::{convert::TryInto, mem::size_of, ops::Range};
+use core::{mem::size_of, ops::Range};
 use retry::INTEGRITY_TAG_LEN;
 use s2n_codec::{
     decoder_invariant, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderBuffer,

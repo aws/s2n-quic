@@ -5,7 +5,6 @@ use crate::{
     packet::{encoding::PacketPayloadLenCursor, number::TruncatedPacketNumber},
     varint::VarInt,
 };
-use core::convert::TryFrom;
 use s2n_codec::{
     decoder_invariant, CheckedRange, DecoderError, Encoder, EncoderBuffer, EncoderValue,
 };

@@ -14,7 +14,7 @@ use crate::{
     },
     time::Timestamp,
 };
-use core::{convert::TryInto, time::Duration};
+use core::time::Duration;
 use num_rational::Ratio;
 use num_traits::One;
 
