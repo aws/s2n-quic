@@ -7,6 +7,7 @@ pub mod iter;
 pub mod limits;
 #[cfg(feature = "alloc")]
 pub mod ops;
+pub mod state;
 mod type_;
 
 pub use error::*;
