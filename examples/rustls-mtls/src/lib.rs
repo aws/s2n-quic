@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_quic::provider::tls::{
-    self,
-    default::default_crypto_provider,
+    self as s2n_quic_tls_provider,
     rustls::rustls::{
+        // types from the external rustls crate
         pki_types::{CertificateDer, PrivateKeyDer},
         server::WebPkiClientVerifier,
-        Error as RustlsError, RootCertStore,
+        Error as RustlsError,
+        RootCertStore,
     },
 };
 use std::{io::Cursor, path::Path, sync::Arc};
@@ -42,20 +43,20 @@ pub struct MtlsProvider {
     my_private_key: PrivateKeyDer<'static>,
 }
 
-impl tls::Provider for MtlsProvider {
-    type Server = tls::rustls::Server;
-    type Client = tls::rustls::Client;
+impl s2n_quic_tls_provider::Provider for MtlsProvider {
+    type Server = s2n_quic_tls_provider::rustls::Server;
+    type Client = s2n_quic_tls_provider::rustls::Client;
     type Error = RustlsError;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
-        let tls13_cipher_suite_crypto_provider = default_crypto_provider()?;
+        let default_crypto_provider = s2n_quic_tls_provider::rustls::default_crypto_provider()?;
         let verifier = WebPkiClientVerifier::builder_with_provider(
             Arc::new(self.root_store),
-            tls13_cipher_suite_crypto_provider.into(),
+            default_crypto_provider.into(),
         )
         .build()
         .unwrap();
-        let mut cfg = tls::rustls::server_config_builder()?
+        let mut cfg = s2n_quic_tls_provider::rustls::server_config_builder()?
             .with_client_cert_verifier(verifier)
             .with_single_cert(self.my_cert_chain, self.my_private_key)?;
 
@@ -66,7 +67,7 @@ impl tls::Provider for MtlsProvider {
     }
 
     fn start_client(self) -> Result<Self::Client, Self::Error> {
-        let mut cfg = tls::rustls::client_config_builder()?
+        let mut cfg = s2n_quic_tls_provider::rustls::client_config_builder()?
             .with_root_certificates(self.root_store)
             .with_client_auth_cert(self.my_cert_chain, self.my_private_key)?;
 

@@ -154,6 +154,10 @@ mod der {
     }
 
     pub fn into_private_key(contents: Vec<u8>) -> Result<PrivateKeyDer<'static>, Error> {
+        // Pkcs8 is used since it's capable of encoding RSA as well as other key
+        // types (eg. ECDSA). Pkcs1 is only used for encoding RSA keys.
+        //
+        // https://stackoverflow.com/a/48960291
         Ok(PrivateKeyDer::Pkcs8(contents.into()))
     }
 }
