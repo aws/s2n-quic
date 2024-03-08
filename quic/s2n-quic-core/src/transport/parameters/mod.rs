@@ -9,11 +9,7 @@ use crate::{
     stream::{StreamId, StreamType},
     varint::VarInt,
 };
-use core::{
-    convert::{TryFrom, TryInto},
-    mem::size_of,
-    time::Duration,
-};
+use core::{mem::size_of, time::Duration};
 use s2n_codec::{
     decoder_invariant, decoder_value, DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult,
     DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderValue,

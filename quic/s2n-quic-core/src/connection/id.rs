@@ -7,10 +7,7 @@ use crate::{
     event::{api::SocketAddress, IntoEvent},
     inet, transport,
 };
-use core::{
-    convert::{TryFrom, TryInto},
-    time::Duration,
-};
+use core::time::Duration;
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
 #[cfg(any(test, feature = "generator"))]

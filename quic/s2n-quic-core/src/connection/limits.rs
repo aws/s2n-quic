@@ -12,7 +12,7 @@ use crate::{
         MaxDatagramFrameSize, MaxIdleTimeout, TransportParameters,
     },
 };
-use core::{convert::TryInto, time::Duration};
+use core::time::Duration;
 use s2n_codec::decoder_invariant;
 
 pub use crate::transport::parameters::ValidationError;

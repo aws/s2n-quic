@@ -14,7 +14,7 @@ exclude = ["corpus.tar.gz"]
 default = ["tokio"]
 
 [dependencies]
-aya = { version = "0.11", default-features = false }
+aya = { version = "0.12", default-features = false }
 bitflags = "2"
 errno = "0.3"
 libc = "0.2"

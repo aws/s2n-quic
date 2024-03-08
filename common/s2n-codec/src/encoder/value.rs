@@ -6,7 +6,7 @@ use crate::{
     i24, i48, u24, u48, DecoderBuffer, DecoderBufferMut,
 };
 use byteorder::{ByteOrder, NetworkEndian};
-use core::{convert::TryFrom, mem::size_of};
+use core::mem::size_of;
 
 pub trait EncoderValue: Sized {
     /// Encodes the value into the encoder

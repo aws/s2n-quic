@@ -5,9 +5,8 @@ edition = "2021"
 
 [dependencies]
 # These crates are not published so use a git dependency for now. See https://github.com/aya-rs/aya/issues/464
-# TODO switch to the main repo once the xdpmaps are available - https://github.com/aya-rs/aya/pull/527
-aya-bpf = { git = "https://github.com/camshaft/aya", branch = "xdpmaps" }
-aya-log-ebpf = { git = "https://github.com/camshaft/aya", branch = "xdpmaps" }
+aya-bpf = { git = "https://github.com/aya-rs/aya", tag = "aya-v0.12.0" }
+aya-log-ebpf = { git = "https://github.com/aya-rs/aya", tag = "aya-v0.12.0" }
 s2n-quic-core = { path = "../../../quic/s2n-quic-core", default-features = false }
 
 [features]
