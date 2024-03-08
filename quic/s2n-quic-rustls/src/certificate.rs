@@ -57,9 +57,9 @@ macro_rules! cert_type {
             fn $method(self) -> Result<$name, Error> {
                 match self.extension() {
                     Some(ext) if ext == "der" => {
-                        let pem =
+                        let der =
                             std::fs::read(self).map_err(|err| Error::General(err.to_string()))?;
-                        pem.$method()
+                        der.$method()
                     }
                     _ => {
                         let pem = std::fs::read_to_string(self)
