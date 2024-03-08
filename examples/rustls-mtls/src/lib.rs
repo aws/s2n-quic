@@ -93,7 +93,7 @@ impl MtlsProvider {
     }
 }
 
-async fn into_certificate(path: &Path) -> Result<Vec<CertificateDer<'static>>, RustlsError> {
+async fn read_file(path: &Path) -> Result<Vec<u8>, RustlsError> {
     let mut f = File::open(path)
         .await
         .map_err(|e| RustlsError::General(format!("Failed to load file: {}", e)))?;
@@ -101,6 +101,11 @@ async fn into_certificate(path: &Path) -> Result<Vec<CertificateDer<'static>>, R
     f.read_to_end(&mut buf)
         .await
         .map_err(|e| RustlsError::General(format!("Failed to read file: {}", e)))?;
+    Ok(buf)
+}
+
+async fn into_certificate(path: &Path) -> Result<Vec<CertificateDer<'static>>, RustlsError> {
+    let buf = &read_file(path).await?;
     let mut cursor = Cursor::new(buf);
     rustls_pemfile::certs(&mut cursor)
         .map(|cert| {
@@ -120,13 +125,7 @@ async fn into_root_store(path: &Path) -> Result<RootCertStore, RustlsError> {
 }
 
 async fn into_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, RustlsError> {
-    let mut f = File::open(path)
-        .await
-        .map_err(|e| RustlsError::General(format!("Failed to load file: {}", e)))?;
-    let mut buf = Vec::new();
-    f.read_to_end(&mut buf)
-        .await
-        .map_err(|e| RustlsError::General(format!("Failed to read file: {}", e)))?;
+    let buf = &read_file(path).await?;
     let mut cursor = Cursor::new(buf);
 
     macro_rules! parse_key {
