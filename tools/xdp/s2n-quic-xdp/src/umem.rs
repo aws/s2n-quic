@@ -23,7 +23,7 @@ pub struct Builder {
     /// The flags for the Umem
     pub flags: UmemFlags,
     /// Back the umem with a hugepage
-    pub hugepage: bool
+    pub hugepage: bool,
 }
 
 impl Default for Builder {
