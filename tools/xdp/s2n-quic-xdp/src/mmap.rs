@@ -20,8 +20,7 @@ pub struct Mmap {
 }
 
 #[derive(Debug)]
-pub enum MmapOptions {
-    None,
+pub enum Options {
     Huge,
     Fd(RawFd),
 }
@@ -35,10 +34,10 @@ unsafe impl Sync for Mmap {}
 impl Mmap {
     /// Creates a new mmap'd region, with an optional file descriptor.
     #[inline]
-    pub fn new(len: usize, offset: usize, flags: Option<MmapOptions>) -> Result<Self> {
+    pub fn new(len: usize, offset: usize, flags: Option<Options>) -> Result<Self> {
         let addr = match flags {
-            Some(MmapOptions::Huge) => mmap(len, offset, None, true),
-            Some(MmapOptions::Fd(fd)) => mmap(len, offset, Some(fd), false),
+            Some(Options::Huge) => mmap(len, offset, None, true),
+            Some(Options::Fd(fd)) => mmap(len, offset, Some(fd), false),
             _ => mmap(len, offset, None, false),
         }?;
         Ok(Self { addr, len })

@@ -3,7 +3,7 @@
 
 use crate::{
     if_xdp::{RxTxDescriptor, UmemDescriptor, UmemFlags, UmemReg},
-    mmap::{Mmap, MmapOptions},
+    mmap::{self, Mmap},
     syscall, Result,
 };
 use core::ptr::NonNull;
@@ -42,7 +42,7 @@ impl Builder {
     pub fn build(self) -> Result<Umem> {
         let len = self.frame_size as usize * self.frame_count as usize;
         let options = if self.hugepage {
-            Some(MmapOptions::Huge)
+            Some(mmap::Options::Huge)
         } else {
             None
         };
