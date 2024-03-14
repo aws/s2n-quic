@@ -19,6 +19,12 @@ pub struct Mmap {
     len: usize,
 }
 
+#[derive(Debug)]
+pub enum Options {
+    Huge,
+    Fd(RawFd),
+}
+
 /// Safety: Mmap pointer can be sent between threads
 unsafe impl Send for Mmap {}
 
@@ -28,8 +34,12 @@ unsafe impl Sync for Mmap {}
 impl Mmap {
     /// Creates a new mmap'd region, with an optional file descriptor.
     #[inline]
-    pub fn new(len: usize, offset: usize, fd: Option<RawFd>) -> Result<Self> {
-        let addr = mmap(len, offset, fd)?;
+    pub fn new(len: usize, offset: usize, flags: Option<Options>) -> Result<Self> {
+        let addr = match flags {
+            Some(Options::Huge) => mmap(len, offset, None, true),
+            Some(Options::Fd(fd)) => mmap(len, offset, Some(fd), false),
+            None => mmap(len, offset, None, false),
+        }?;
         Ok(Self { addr, len })
     }
 
