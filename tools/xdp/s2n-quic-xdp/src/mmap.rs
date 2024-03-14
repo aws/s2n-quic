@@ -38,7 +38,7 @@ impl Mmap {
         let addr = match flags {
             Some(Options::Huge) => mmap(len, offset, None, true),
             Some(Options::Fd(fd)) => mmap(len, offset, Some(fd), false),
-            _ => mmap(len, offset, None, false),
+            None => mmap(len, offset, None, false),
         }?;
         Ok(Self { addr, len })
     }
