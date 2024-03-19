@@ -157,7 +157,9 @@ impl Io {
             let payload_len = if gro_enabled {
                 u16::MAX
             } else {
-                max_mtu.into()
+                // Use the originally configured MTU to allow larger packets to be received
+                // even if the tx MTU has been reduced due to configure_mtu_disc failing
+                self.builder.max_mtu.into()
             } as u32;
 
             let rx_buffer_size = queue_recv_buffer_size.unwrap_or(8 * (1 << 20));
