@@ -215,6 +215,10 @@ jobs:
           - rust: stable
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
+          - rust: stable
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            args: --features aws-lc-bindgen
           # test with different platform features
           - rust: stable
             os: ubuntu-latest
@@ -261,14 +265,14 @@ jobs:
         uses: actions-rs/cargo@v1.0.3
         with:
           command: build
-          args: --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
+          args: --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
           use-cross: ${{ matrix.target != 'native' }}
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1.0.3
         with:
           command: test
-          args: ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
+          args: ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
           use-cross: ${{ matrix.target != 'native' }}
 
   miri:
