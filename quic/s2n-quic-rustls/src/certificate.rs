@@ -154,8 +154,9 @@ mod der {
     }
 
     pub fn into_private_key(contents: Vec<u8>) -> Result<PrivateKeyDer<'static>, Error> {
-        // Pkcs8 is used since it's capable of encoding RSA as well as other key
-        // types (eg. ECDSA). Pkcs1 is only used for encoding RSA keys.
+        // PKCS #8 is used since it's capable of encoding RSA as well as other key
+        // types (eg. ECDSA). Additionally, multiple attacks have been discovered
+        // against PKCS #1 so PKCS #8 should be preferred.
         //
         // https://stackoverflow.com/a/48960291
         Ok(PrivateKeyDer::Pkcs8(contents.into()))
@@ -168,11 +169,17 @@ mod tests {
     use s2n_quic_core::crypto::tls::testing::certificates::*;
 
     #[test]
-    fn load() {
+    fn load_pem() {
         let _ = CERT_PEM.into_certificate().unwrap();
-        let _ = CERT_DER.into_certificate().unwrap();
-
+        // PKCS #8 encoded key
         let _ = KEY_PEM.into_private_key().unwrap();
+        // PKCS #1 encoded key
+        let _ = KEY_PKCS1_PEM.into_private_key().unwrap();
+    }
+
+    #[test]
+    fn load_der() {
+        let _ = CERT_DER.into_certificate().unwrap();
         let _ = KEY_DER.into_private_key().unwrap();
     }
 }

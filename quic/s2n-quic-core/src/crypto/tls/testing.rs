@@ -39,6 +39,7 @@ pub mod certificates {
     }
 
     pem!(KEY_PEM, "key.pem");
+    pem!(KEY_PKCS1_PEM, "key_pkcs1.pem");
     pem!(CERT_PEM, "cert.pem");
     der!(KEY_DER, "key.der");
     der!(CERT_DER, "cert.der");
