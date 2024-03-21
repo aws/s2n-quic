@@ -21,11 +21,16 @@ pub mod mtu;
 //= https://www.rfc-editor.org/rfc/rfc9000#section-14
 //# QUIC MUST NOT be used if the network path cannot support a
 //# maximum datagram size of at least 1200 bytes.
+// TODO: rename to MINIMUM_DATAGRAM_SIZE
 pub const MINIMUM_MTU: u16 = 1200;
 
 // TODO decide on better defaults
 // Safety: 1500 is greater than zero
 pub const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
+const DEFAULT_MIN_MTU: MinMtu =
+    MinMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+const DEFAULT_INITIAL_MTU: InitialMtu =
+    InitialMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
 
 // Length is the length in octets of this user datagram  including  this
 // header and the data. (This means the minimum value of the length is
@@ -47,6 +52,7 @@ const fn const_min(a: u16, b: u16) -> u16 {
         b
     }
 }
+// TODO: rename to MINIMUM_MTU
 const MIN_ALLOWED_MAX_MTU: u16 =
     MINIMUM_MTU + UDP_HEADER_LEN + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);
 
@@ -285,59 +291,67 @@ impl Handle for Tuple {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MaxMtu(NonZeroU16);
+macro_rules! impl_mtu {
+    ($name:ident, $default:expr) => {
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        pub struct $name(NonZeroU16);
 
-impl MaxMtu {
-    /// The minimum value required for path MTU
-    pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
-}
-
-impl Default for MaxMtu {
-    fn default() -> Self {
-        DEFAULT_MAX_MTU
-    }
-}
-
-impl TryFrom<u16> for MaxMtu {
-    type Error = MaxMtuError;
-
-    fn try_from(value: u16) -> Result<Self, Self::Error> {
-        if value < MIN_ALLOWED_MAX_MTU {
-            return Err(MaxMtuError(MIN_ALLOWED_MAX_MTU.try_into().unwrap()));
+        impl $name {
+            /// The minimum value required for path MTU
+            pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
         }
 
-        Ok(MaxMtu(value.try_into().expect(
-            "Value must be greater than zero according to the check above",
-        )))
-    }
+        impl Default for $name {
+            fn default() -> Self {
+                $default
+            }
+        }
+
+        impl TryFrom<u16> for $name {
+            type Error = MtuError;
+
+            fn try_from(value: u16) -> Result<Self, Self::Error> {
+                if value < MIN_ALLOWED_MAX_MTU {
+                    return Err(MtuError(MIN_ALLOWED_MAX_MTU.try_into().unwrap()));
+                }
+
+                Ok($name(value.try_into().expect(
+                    "Value must be greater than zero according to the check above",
+                )))
+            }
+        }
+
+        impl From<$name> for usize {
+            #[inline]
+            fn from(value: $name) -> Self {
+                value.0.get() as usize
+            }
+        }
+
+        impl From<$name> for u16 {
+            #[inline]
+            fn from(value: $name) -> Self {
+                value.0.get()
+            }
+        }
+    };
 }
 
-impl From<MaxMtu> for usize {
-    #[inline]
-    fn from(value: MaxMtu) -> Self {
-        value.0.get() as usize
-    }
-}
-
-impl From<MaxMtu> for u16 {
-    #[inline]
-    fn from(value: MaxMtu) -> Self {
-        value.0.get()
-    }
-}
+impl_mtu!(MaxMtu, DEFAULT_MAX_MTU);
+impl_mtu!(InitialMtu, DEFAULT_INITIAL_MTU);
+impl_mtu!(MinMtu, DEFAULT_MIN_MTU);
 
 #[derive(Debug)]
-pub struct MaxMtuError(NonZeroU16);
+pub struct MtuError(NonZeroU16);
 
-impl Display for MaxMtuError {
+impl Display for MtuError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "MaxMtu must be at least {}", self.0)
+        write!(f, "Mtu must be at least {}", self.0)
     }
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for MaxMtuError {}
+impl std::error::Error for MtuError {}
 
 //= https://www.rfc-editor.org/rfc/rfc9308#section-8.1
 //# Some UDP protocols are vulnerable to reflection attacks, where an

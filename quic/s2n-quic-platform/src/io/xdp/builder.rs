@@ -4,7 +4,7 @@
 use core::mem::size_of;
 use s2n_quic_core::{
     inet::{ethernet, ipv4, udp},
-    path::{MaxMtu, MaxMtuError},
+    path::{MaxMtu, MtuError},
 };
 use s2n_quic_xdp::umem::DEFAULT_FRAME_SIZE;
 use tokio::runtime::Handle;
@@ -41,7 +41,7 @@ impl<Rx, Tx> Builder<Rx, Tx> {
     }
 
     /// Sets the UMEM frame size for the provider
-    pub fn with_frame_size(mut self, frame_size: u16) -> Result<Self, MaxMtuError> {
+    pub fn with_frame_size(mut self, frame_size: u16) -> Result<Self, MtuError> {
         self.max_mtu = frame_size.saturating_sub(MIN_FRAME_OVERHEAD).try_into()?;
         Ok(self)
     }
