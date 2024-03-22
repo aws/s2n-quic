@@ -25,27 +25,54 @@ static PROTOCOL_VERSIONS: &[&rustls::SupportedProtocolVersion] = &[&rustls::vers
 /// The supported version of quic
 const QUIC_VERSION: rustls::quic::Version = rustls::quic::Version::V1;
 
-#[test]
-fn client_server_test() {
+#[cfg(test)]
+mod tests {
+    use super::*;
     use s2n_quic_core::crypto::tls::{self, testing::certificates::*};
 
-    let mut client = client::Builder::new()
-        .with_certificate(CERT_PEM)
-        .unwrap()
-        .build()
-        .unwrap();
+    #[test]
+    fn client_server_test() {
+        let mut client = client::Builder::new()
+            .with_certificate(CERT_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
 
-    let mut server = server::Builder::new()
-        .with_certificate(CERT_PEM, KEY_PEM)
-        .unwrap()
-        .build()
-        .unwrap();
+        let mut server = server::Builder::new()
+            .with_certificate(CERT_PEM, KEY_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
 
-    let mut pair = tls::testing::Pair::new(&mut server, &mut client, "localhost".into());
+        let mut pair = tls::testing::Pair::new(&mut server, &mut client, "localhost".into());
 
-    while pair.is_handshaking() {
-        pair.poll(None).unwrap();
+        while pair.is_handshaking() {
+            pair.poll(None).unwrap();
+        }
+
+        pair.finish();
     }
 
-    pair.finish();
+    #[test]
+    fn client_server_der_test() {
+        let mut client = client::Builder::new()
+            .with_certificate(CERT_DER)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut server = server::Builder::new()
+            .with_certificate(CERT_DER, KEY_DER)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut pair = tls::testing::Pair::new(&mut server, &mut client, "localhost".into());
+
+        while pair.is_handshaking() {
+            pair.poll(None).unwrap();
+        }
+
+        pair.finish();
+    }
 }
