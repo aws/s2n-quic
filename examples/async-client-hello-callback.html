@@ -321,7 +321,7 @@ impl ClientHelloCallback for ConfigCache {
                     .into();
                 Ok(config)
             });
-            fut.await.map(|config| config.clone())
+            fut.await.cloned()
         };
 
         // return `Some(ConnectionFuture)` if the Config wasn't found in the
