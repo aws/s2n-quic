@@ -1,0 +1,21 @@
+[ req ]
+prompt = no
+distinguished_name = ca_distinguished_name
+x509_extensions=ext
+
+[ ca_distinguished_name ]
+# country name
+C = JP
+# state or province
+ST = Chiba
+L = Chiba City
+O = Tessier-Ashpool
+CN = localca
+emailAddress = ca@develop.localca
+[ ext ]
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = localhost
+DNS.2 = qlaws.qlaws
+IP.1 = 127.0.0.1
+IP.2 = ::1

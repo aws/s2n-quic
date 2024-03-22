@@ -171,6 +171,7 @@ mod tests {
     #[test]
     fn load_pem() {
         let _ = CERT_PEM.into_certificate().unwrap();
+        let _ = CERT_PKCS1_PEM.into_certificate().unwrap();
         // PKCS #8 encoded key
         let _ = KEY_PEM.into_private_key().unwrap();
         // PKCS #1 encoded key

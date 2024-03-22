@@ -75,4 +75,27 @@ mod tests {
 
         pair.finish();
     }
+
+    #[test]
+    fn client_server_pkcs1_test() {
+        let mut client = client::Builder::new()
+            .with_certificate(CERT_PKCS1_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut server = server::Builder::new()
+            .with_certificate(CERT_PKCS1_PEM, KEY_PKCS1_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut pair = tls::testing::Pair::new(&mut server, &mut client, "localhost".into());
+
+        while pair.is_handshaking() {
+            pair.poll(None).unwrap();
+        }
+
+        pair.finish();
+    }
 }
