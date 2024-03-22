@@ -91,8 +91,8 @@ macro_rules! cert_type {
             fn $method(self) -> Result<$name, Error> {
                 match self.extension() {
                     Some(ext) if ext == "der" => {
-                        let pem = std::fs::read(self).map_err(|err| Error::io_error(err))?;
-                        pem.$method()
+                        let der = std::fs::read(self).map_err(|err| Error::io_error(err))?;
+                        der.$method()
                     }
                     // assume it's in pem format
                     _ => {
