@@ -9,7 +9,10 @@ use crate::{
     inet::SocketAddress,
     packet::number::PacketNumber,
     path,
-    path::{MaxMtu, IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN, MINIMUM_MTU, UDP_HEADER_LEN},
+    path::{
+        InitialMtu, MaxMtu, MinMtu, IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN, MINIMUM_MTU,
+        UDP_HEADER_LEN,
+    },
     recovery::{congestion_controller, CongestionController},
     time::{timer, Timer, Timestamp},
     transmission,
@@ -29,7 +32,13 @@ pub mod testing {
     pub fn new_controller(max_mtu: u16) -> Controller {
         let ip = IpV4Address::new([127, 0, 0, 1]);
         let addr = SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
-        Controller::new(max_mtu.try_into().unwrap(), &addr)
+        Controller::new(
+            Config {
+                max_mtu: max_mtu.try_into().unwrap(),
+                ..Default::default()
+            },
+            &addr,
+        )
     }
 
     /// Creates a new mtu::Controller with the given mtu and probed size
@@ -56,16 +65,6 @@ enum State {
     //# The SEARCH_COMPLETE state indicates that a search has completed.
     SearchComplete,
 }
-
-//= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
-//# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
-//# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
-//# datagram size.
-
-//= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
-//# When using IPv4, there is no currently equivalent size specified,
-//# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
-const BASE_PLPMTU: u16 = MINIMUM_MTU;
 
 //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
 //# The MAX_PROBES is the maximum value of the PROBE_COUNT
@@ -106,9 +105,29 @@ const BLACK_HOLE_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 //# seconds, as recommended by PLPMTUD [RFC4821].
 const PMTU_RAISE_TIMER_DURATION: Duration = Duration::from_secs(600);
 
+#[derive(Copy, Clone, Debug, Default)]
+pub struct Config {
+    pub initial_mtu: InitialMtu,
+    pub min_mtu: MinMtu,
+    pub max_mtu: MaxMtu,
+}
+
+impl Config {
+    pub const MIN: Self = Self {
+        initial_mtu: InitialMtu::MIN,
+        min_mtu: MinMtu::MIN,
+        max_mtu: MaxMtu::MIN,
+    };
+}
+
 #[derive(Clone, Debug)]
 pub struct Controller {
     state: State,
+    //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
+    //# The BASE_PLPMTU is a configured size expected to work for most paths.
+    //# The size is equal to or larger than the MIN_PLPMTU and smaller than
+    //# the MAX_PLPMTU.
+    base_plpmtu: u16,
     //= https://www.rfc-editor.org/rfc/rfc8899#section-2
     //# The Packetization Layer PMTU is an estimate of the largest size
     //# of PL datagram that can be sent by a path, controlled by PLPMTUD
@@ -150,24 +169,40 @@ impl Controller {
     /// max_mtu is the maximum allowed mtu, e.g. for jumbo frames this value is expected to
     /// be over 9000.
     #[inline]
-    pub fn new(max_mtu: MaxMtu, peer_socket_address: &SocketAddress) -> Self {
+    pub fn new(config: Config, peer_socket_address: &SocketAddress) -> Self {
         let min_ip_header_len = match peer_socket_address {
             SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
             SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
         };
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
+        //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
+        //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
+        //# datagram size.
+
+        //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
+        //# When using IPv4, there is no currently equivalent size specified,
+        //# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
+        let base_plpmtu =
+            (u16::from(config.min_mtu) - UDP_HEADER_LEN - min_ip_header_len).max(MINIMUM_MTU);
+
         let max_udp_payload =
-            (u16::from(max_mtu) - UDP_HEADER_LEN - min_ip_header_len).max(BASE_PLPMTU);
+            (u16::from(config.max_mtu) - UDP_HEADER_LEN - min_ip_header_len).max(base_plpmtu);
 
         // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
         // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
         let initial_probed_size =
             (ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len).min(max_udp_payload);
 
+        let plpmtu =
+            (u16::from(config.initial_mtu) - UDP_HEADER_LEN - min_ip_header_len).max(base_plpmtu);
+
         Self {
             state: State::Disabled,
-            plpmtu: BASE_PLPMTU,
+            base_plpmtu,
+            plpmtu,
             probed_size: initial_probed_size,
-            max_mtu,
+            max_mtu: config.max_mtu,
             max_udp_payload,
             max_probe_size: max_udp_payload,
             probe_count: 0,
@@ -292,7 +327,7 @@ impl Controller {
                 }
             }
             State::Searching(_, _) | State::SearchComplete | State::SearchRequested => {
-                if (BASE_PLPMTU + 1..=self.plpmtu).contains(&lost_bytes)
+                if (self.base_plpmtu + 1..=self.plpmtu).contains(&lost_bytes)
                     && self
                         .largest_acked_mtu_sized_packet
                         .map_or(true, |pn| packet_number > pn)
@@ -370,9 +405,9 @@ impl Controller {
         self.black_hole_counter = Default::default();
         self.largest_acked_mtu_sized_packet = None;
         // Reset the plpmtu back to the BASE_PLPMTU and notify the congestion controller
-        self.plpmtu = BASE_PLPMTU;
+        self.plpmtu = self.base_plpmtu;
         congestion_controller.on_mtu_update(
-            BASE_PLPMTU,
+            self.plpmtu,
             &mut congestion_controller::PathPublisher::new(publisher, path_id),
         );
         // Cancel any current probes

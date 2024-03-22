@@ -32,7 +32,7 @@ use s2n_quic_core::{
         zero_rtt::ProtectedZeroRtt,
         ProtectedPacket,
     },
-    path::{Handle as _, MaxMtu},
+    path::{mtu, Handle as _},
     query,
     time::Timestamp,
 };
@@ -204,7 +204,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         migration_validator: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
-        max_mtu: MaxMtu,
+        mtu_config: mtu::Config,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, DatagramDropReason>;
 

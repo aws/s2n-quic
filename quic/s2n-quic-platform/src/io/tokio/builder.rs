@@ -14,7 +14,7 @@ pub struct Builder {
     pub(super) socket_send_buffer_size: Option<usize>,
     pub(super) queue_recv_buffer_size: Option<u32>,
     pub(super) queue_send_buffer_size: Option<u32>,
-    pub(super) max_mtu: MaxMtu,
+    pub(super) mtu_config: mtu::Config,
     pub(super) max_segments: gso::MaxSegments,
     pub(super) gro_enabled: Option<bool>,
     pub(super) reuse_address: bool,
@@ -108,7 +108,26 @@ impl Builder {
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
     pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
-        self.max_mtu = max_mtu
+        self.mtu_config.max_mtu = max_mtu
+            .try_into()
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
+        Ok(self)
+    }
+
+    /// Sets the maximum transmission unit (MTU) to use when initiating a connection
+    pub fn with_initial_mtu(mut self, initial_mtu: u16) -> io::Result<Self> {
+        self.mtu_config.initial_mtu = initial_mtu
+            .try_into()
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
+        Ok(self)
+    }
+
+    /// Sets the smallest maximum transmission unit (MTU) to use when transmitting
+    ///
+    /// Note: Only configure this value if it is certain the network path and peer can
+    ///       support the given `min_mtu`.
+    pub fn with_min_mtu(mut self, min_mtu: u16) -> io::Result<Self> {
+        self.mtu_config.min_mtu = min_mtu
             .try_into()
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
         Ok(self)
@@ -175,6 +194,8 @@ impl Builder {
     }
 
     pub fn build(self) -> io::Result<Io> {
+        //TODO: add validation here
+
         Ok(Io { builder: self })
     }
 }

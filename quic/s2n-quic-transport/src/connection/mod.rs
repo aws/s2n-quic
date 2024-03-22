@@ -4,10 +4,10 @@
 //! This module contains the implementation of QUIC `Connections` and their management
 
 use crate::{
-    endpoint, path::MaxMtu, recovery::congestion_controller, space::PacketSpaceManager,
+    endpoint, recovery::congestion_controller, space::PacketSpaceManager,
     wakeup_queue::WakeupHandle,
 };
-use s2n_quic_core::{connection, event, event::supervisor, time::Timestamp};
+use s2n_quic_core::{connection, event, event::supervisor, path::mtu, time::Timestamp};
 
 mod api;
 mod api_provider;
@@ -72,8 +72,8 @@ pub struct Parameters<'a, Cfg: endpoint::Config> {
     pub quic_version: u32,
     /// The limits that were advertised to the peer
     pub limits: connection::Limits,
-    /// The largest maximum transmission unit (MTU) that can be sent on a path
-    pub max_mtu: MaxMtu,
+    /// Configuration for the maximum transmission unit (MTU) that can be sent on a path
+    pub mtu_config: mtu::Config,
     /// The context that should be passed to all related connection events
     pub event_context: <Cfg::EventSubscriber as event::Subscriber>::ConnectionContext,
     /// The context passed to the connection supervisor

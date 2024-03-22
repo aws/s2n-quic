@@ -112,7 +112,7 @@ impl<Config: endpoint::Config> Path<Config> {
         rtt_estimator: RttEstimator,
         congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
-        max_mtu: MaxMtu,
+        mtu_config: mtu::Config,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
@@ -137,7 +137,7 @@ impl<Config: endpoint::Config> Path<Config> {
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
             state,
-            mtu_controller: mtu::Controller::new(max_mtu, &peer_socket_address),
+            mtu_controller: mtu::Controller::new(mtu_config, &peer_socket_address),
             ecn_controller: ecn::Controller::default(),
             peer_validated,
             challenge: Challenge::disabled(),
@@ -587,12 +587,9 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Path<Config>
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
-    use crate::{
-        endpoint,
-        path::{Path, DEFAULT_MAX_MTU},
-    };
+    use crate::{endpoint, path::Path};
     use core::time::Duration;
-    use s2n_quic_core::{connection, recovery::RttEstimator};
+    use s2n_quic_core::{connection, path::mtu, recovery::RttEstimator};
 
     pub fn helper_path_server() -> Path<endpoint::testing::Server> {
         Path::new(
@@ -602,7 +599,7 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             true,
-            DEFAULT_MAX_MTU,
+            mtu::Config::default(),
         )
     }
 
@@ -614,7 +611,7 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            DEFAULT_MAX_MTU,
+            mtu::Config::default(),
         )
     }
 }
@@ -1109,7 +1106,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            DEFAULT_MAX_MTU,
+            mtu::Config::default(),
         );
         let now = NoopClock.get_time();
         let random = &mut random::testing::Generator::default();

@@ -27,8 +27,7 @@ pub const MINIMUM_MTU: u16 = 1200;
 // TODO decide on better defaults
 // Safety: 1500 is greater than zero
 pub const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
-const DEFAULT_MIN_MTU: MinMtu =
-    MinMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+const DEFAULT_MIN_MTU: MinMtu = MinMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
 const DEFAULT_INITIAL_MTU: InitialMtu =
     InitialMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
 
@@ -349,6 +348,12 @@ impl Display for MtuError {
         write!(f, "Mtu must be at least {}", self.0)
     }
 }
+
+// impl core::cmp::PartialOrd<InitialMtu> for MaxMtu {
+//     fn partial_cmp(&self, other: &InitialMtu) -> Option<Ordering> {
+//         self.0.partial_cmp(&other.0)
+//     }
+// }
 
 #[cfg(feature = "std")]
 impl std::error::Error for MtuError {}

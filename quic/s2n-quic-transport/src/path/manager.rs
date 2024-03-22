@@ -240,7 +240,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        max_mtu: MaxMtu,
+        mtu_config: mtu::Config,
         initial_rtt: Duration,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -303,7 +303,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             datagram,
             congestion_controller_endpoint,
             migration_validator,
-            max_mtu,
+            mtu_config,
             initial_rtt,
             publisher,
         )
@@ -316,7 +316,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        max_mtu: MaxMtu,
+        mtu_config: mtu::Config,
         initial_rtt: Duration,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -443,7 +443,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             rtt,
             cc,
             true,
-            max_mtu,
+            mtu_config,
         );
 
         let amplification_outcome = path.on_bytes_received(datagram.payload_len);
@@ -973,7 +973,7 @@ macro_rules! path_event {
 }
 
 pub(crate) use path_event;
-use s2n_quic_core::event::builder::MtuUpdatedCause;
+use s2n_quic_core::{event::builder::MtuUpdatedCause, path::mtu};
 
 #[cfg(test)]
 mod tests;
