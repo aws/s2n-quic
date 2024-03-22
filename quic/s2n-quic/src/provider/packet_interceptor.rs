@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+// this is only exposed as an unstable provider so we get warnings without this
+#[allow(unused_imports)]
 pub use s2n_quic_core::packet::interceptor::{
     loss, Disabled, Havoc, Interceptor as PacketInterceptor, Loss,
 };
