@@ -26,9 +26,9 @@
 ## Modifying the runner.patch
 
 ```
-git clone git@github.com:marten-seemann/quic-interop-runner.git
+git clone https://github.com/marten-seemann/quic-interop-runner.git
 cd quic-interop-runner
-gco b21b8a55de227f665d2381f3e63174a83a3bc66c
+gco 601c9fca5042d9a5f49c3caad3a2bfd1136b31bf
 
 cp <s2n-quic_proj_dir>.runner.patch .
 git apply --3way runner.patch # apply the current patch
