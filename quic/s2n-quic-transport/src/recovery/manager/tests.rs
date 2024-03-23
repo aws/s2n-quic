@@ -18,7 +18,7 @@ use s2n_quic_core::{
     frame::ack_elicitation::AckElicitation,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     packet::number::PacketNumberSpace,
-    path::{migration, mtu, RemoteAddress, INITIAL_PTO_BACKOFF},
+    path::{migration, mtu, RemoteAddress, INITIAL_PTO_BACKOFF, MINIMUM_MAX_DATAGRAM_SIZE},
     random,
     recovery::{
         congestion_controller::testing::mock::{
