@@ -215,13 +215,6 @@ impl Display for MtuError {
     }
 }
 
-// TODO
-// impl core::cmp::PartialOrd<InitialMtu> for MaxMtu {
-//     fn partial_cmp(&self, other: &InitialMtu) -> Option<Ordering> {
-//         self.0.partial_cmp(&other.0)
-//     }
-// }
-
 #[cfg(feature = "std")]
 impl std::error::Error for MtuError {}
 
@@ -238,6 +231,14 @@ impl Config {
         min_mtu: MinMtu::MIN,
         max_mtu: MaxMtu::MIN,
     };
+
+    /// Returns true if the MTU configuration is valid
+    ///
+    /// A valid MTU configuration must have min_mtu <= initial_mtu <= max_mtu
+    #[inline]
+    pub fn is_valid(&self) -> bool {
+        self.min_mtu.0 <= self.initial_mtu.0 && self.initial_mtu.0 <= self.max_mtu.0
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -290,6 +291,8 @@ impl Controller {
     /// be over 9000.
     #[inline]
     pub fn new(config: Config, peer_socket_address: &SocketAddress) -> Self {
+        debug_assert!(config.is_valid(), "Invalid MTU configuration {:?}", config);
+
         let min_ip_header_len = match peer_socket_address {
             SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
             SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,

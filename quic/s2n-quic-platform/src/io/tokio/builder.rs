@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use s2n_quic_core::ensure;
 
 #[derive(Debug, Default)]
 pub struct Builder {
@@ -194,7 +195,13 @@ impl Builder {
     }
 
     pub fn build(self) -> io::Result<Io> {
-        //TODO: add validation here
+        ensure!(
+            self.mtu_config.is_valid(),
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the MTU configuration must have min_mtu <= initial_mtu <= max_mtu"
+            ))
+        );
 
         Ok(Io { builder: self })
     }

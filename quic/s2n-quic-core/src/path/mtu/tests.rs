@@ -8,6 +8,7 @@ use crate::{
     frame::Frame,
     inet::{IpV4Address, SocketAddressV4},
     packet::number::PacketNumberSpace,
+    path::mtu,
     recovery::congestion_controller::testing::mock::CongestionController,
     time::{clock::testing::now, timer::Provider as _},
     transmission::{
@@ -24,6 +25,41 @@ use std::{convert::TryInto, net::SocketAddr};
 /// Creates an application space packet number with the given value
 fn pn(nr: usize) -> PacketNumber {
     PacketNumberSpace::ApplicationData.new_packet_number(VarInt::new(nr as u64).unwrap())
+}
+
+#[test]
+fn mtu_config_is_valid() {
+    let config = Config {
+        initial_mtu: 1500.try_into().unwrap(),
+        min_mtu: 1228.try_into().unwrap(),
+        max_mtu: 9000.try_into().unwrap(),
+    };
+
+    assert!(config.is_valid());
+
+    let config = Config {
+        initial_mtu: 1500.try_into().unwrap(),
+        min_mtu: 1500.try_into().unwrap(),
+        max_mtu: 1500.try_into().unwrap(),
+    };
+
+    assert!(config.is_valid());
+
+    let config = Config {
+        initial_mtu: 1500.try_into().unwrap(),
+        min_mtu: 1501.try_into().unwrap(),
+        max_mtu: 9000.try_into().unwrap(),
+    };
+
+    assert!(!config.is_valid());
+
+    let config = mtu::Config {
+        initial_mtu: 1500.try_into().unwrap(),
+        min_mtu: 1228.try_into().unwrap(),
+        max_mtu: 1400.try_into().unwrap(),
+    };
+
+    assert!(!config.is_valid());
 }
 
 #[test]
