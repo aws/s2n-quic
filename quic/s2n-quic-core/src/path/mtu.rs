@@ -116,6 +116,10 @@ const PMTU_RAISE_TIMER_DURATION: Duration = Duration::from_secs(600);
 //= https://www.rfc-editor.org/rfc/rfc9000#section-14
 //# QUIC MUST NOT be used if the network path cannot support a
 //# maximum datagram size of at least 1200 bytes.
+
+//= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
+//# When using IPv4, there is no currently equivalent size specified,
+//# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
 pub const MINIMUM_MAX_DATAGRAM_SIZE: u16 = 1200;
 
 // Length is the length in octets of this user datagram  including  this
@@ -160,7 +164,8 @@ macro_rules! impl_mtu {
                     SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
                     SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
                 };
-                u16::from(*self) - UDP_HEADER_LEN - min_ip_header_len
+                (u16::from(*self) - UDP_HEADER_LEN - min_ip_header_len)
+                    .max(MINIMUM_MAX_DATAGRAM_SIZE)
             }
         }
 
@@ -303,21 +308,9 @@ impl Controller {
         //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
         //# datagram size.
 
-        //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
-        //# When using IPv4, there is no currently equivalent size specified,
-        //# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
-        let base_plpmtu = config
-            .min_mtu
-            .max_datagram_size(peer_socket_address)
-            .max(MINIMUM_MAX_DATAGRAM_SIZE);
-        let max_udp_payload = config
-            .max_mtu
-            .max_datagram_size(peer_socket_address)
-            .max(base_plpmtu);
-        let plpmtu = config
-            .initial_mtu
-            .max_datagram_size(peer_socket_address)
-            .max(base_plpmtu);
+        let base_plpmtu = config.min_mtu.max_datagram_size(peer_socket_address);
+        let max_udp_payload = config.max_mtu.max_datagram_size(peer_socket_address);
+        let plpmtu = config.initial_mtu.max_datagram_size(peer_socket_address);
         let initial_probed_size = if u16::from(config.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD
         {
             // An initial MTU was provided within the probe threshold of the Ethernet MTU, so we can
