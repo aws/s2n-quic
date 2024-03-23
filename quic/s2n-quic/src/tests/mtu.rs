@@ -135,7 +135,7 @@ fn initial_mtu() {
 #[test]
 fn initial_mtu_not_supported() {
     let events = mtu_updates(2000, MinMtu::default().into(), 9_001, 1500);
-    let first_mtu = events.get(0).unwrap();
+    let first_mtu = events.first().unwrap();
     let second_mtu = events.get(1).unwrap();
     let last_mtu = events.last().unwrap();
     // First try the initial MTU
@@ -163,7 +163,7 @@ fn initial_mtu_is_jumbo() {
 #[test]
 fn initial_mtu_is_jumbo_not_supported() {
     let events = mtu_updates(9_001, 1_500, 9_001, 2_500);
-    let first_mtu = events.get(0).unwrap();
+    let first_mtu = events.first().unwrap();
     let second_mtu = events.get(1).unwrap();
     let last_mtu = events.last().unwrap();
     // First try the initial MTU
