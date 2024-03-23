@@ -1005,7 +1005,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .create_client_peer_id_registry(internal_connection_id, rotate_handshake_connection_id);
 
         let congestion_controller = {
-            let path_info = congestion_controller::PathInfo::new(&remote_address);
+            let path_info =
+                congestion_controller::PathInfo::new(self.mtu_config.initial_mtu, &remote_address);
             endpoint_context
                 .congestion_controller
                 .new_congestion_controller(path_info)

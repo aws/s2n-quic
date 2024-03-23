@@ -230,7 +230,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .tls
             .new_server_session(&transport_parameters);
 
-        let path_info = congestion_controller::PathInfo::new(&remote_address);
+        let path_info =
+            congestion_controller::PathInfo::new(self.mtu_config.initial_mtu, &remote_address);
         let congestion_controller = endpoint_context
             .congestion_controller
             .new_congestion_controller(path_info);

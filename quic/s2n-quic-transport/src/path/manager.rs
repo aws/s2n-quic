@@ -400,7 +400,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         // we do not need to reset congestion controller and round-trip time estimator
         // again on confirming the peer's ownership of its new address.
         let rtt = self.active_path().rtt_estimator.for_new_path(initial_rtt);
-        let path_info = congestion_controller::PathInfo::new(&remote_address);
+        let path_info =
+            congestion_controller::PathInfo::new(mtu_config.initial_mtu, &remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
         let peer_connection_id = {
