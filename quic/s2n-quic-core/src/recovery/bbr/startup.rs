@@ -143,8 +143,10 @@ mod tests {
 
         // Set ECN state to be too high, which would cause the full pipe estimator to be filled
         bbr.ecn_state.on_explicit_congestion(1000);
-        bbr.ecn_state
-            .on_round_start(1000 * MINIMUM_MAX_DATAGRAM_SIZE as u64, MINIMUM_MAX_DATAGRAM_SIZE);
+        bbr.ecn_state.on_round_start(
+            1000 * MINIMUM_MAX_DATAGRAM_SIZE as u64,
+            MINIMUM_MAX_DATAGRAM_SIZE,
+        );
         assert!(!bbr.round_counter.round_start());
 
         // ECN must be too high over 2 rounds to fill the pipe

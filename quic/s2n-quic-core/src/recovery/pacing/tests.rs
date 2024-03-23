@@ -191,14 +191,35 @@ fn interval_change() {
     let mut cwnd = MINIMUM_MAX_DATAGRAM_SIZE as u32 * 100;
 
     if INITIAL_INTERVAL > Duration::ZERO {
-        let interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MAX_DATAGRAM_SIZE, false);
+        let interval = get_interval(
+            now,
+            &mut pacer,
+            &rtt,
+            cwnd,
+            MINIMUM_MAX_DATAGRAM_SIZE,
+            false,
+        );
         assert_eq!(INITIAL_INTERVAL, interval);
     }
 
-    let interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MAX_DATAGRAM_SIZE, false);
+    let interval = get_interval(
+        now,
+        &mut pacer,
+        &rtt,
+        cwnd,
+        MINIMUM_MAX_DATAGRAM_SIZE,
+        false,
+    );
 
     cwnd += MINIMUM_MAX_DATAGRAM_SIZE as u32;
-    let new_interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MAX_DATAGRAM_SIZE, false);
+    let new_interval = get_interval(
+        now,
+        &mut pacer,
+        &rtt,
+        cwnd,
+        MINIMUM_MAX_DATAGRAM_SIZE,
+        false,
+    );
 
     // Interval decreases after the congestion window increases, as more bursts need to be
     // distributed evenly across the same time period (1 rtt)
@@ -212,7 +233,14 @@ fn interval_change() {
         true,
         PacketNumberSpace::ApplicationData,
     );
-    let new_interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MAX_DATAGRAM_SIZE, false);
+    let new_interval = get_interval(
+        now,
+        &mut pacer,
+        &rtt,
+        cwnd,
+        MINIMUM_MAX_DATAGRAM_SIZE,
+        false,
+    );
 
     // Interval increases after the RTT increases, as the same amount of data is distributed over
     // a longer time period
@@ -243,7 +271,7 @@ fn interval_change() {
 fn interval_differential_test() {
     check!()
         .with_generator((
-            1_000_000..u32::MAX, // RTT ranges from 1ms to ~4sec
+            1_000_000..u32::MAX,              // RTT ranges from 1ms to ~4sec
             2400..u32::MAX, // congestion window ranges from the minimum window (2 * MINIMUM_MAX_DATAGRAM_SIZE) to u32::MAX
             MINIMUM_MAX_DATAGRAM_SIZE..=9000, // max_datagram_size ranges from MINIMUM_MAX_DATAGRAM_SIZE to 9000
             gen(),

@@ -430,7 +430,10 @@ fn quantization_budget() {
     assert!(bbr.state.is_probing_bw_up());
 
     // since probe bw up, add 2 packets to the budget
-    assert_eq!(4800 + 2 * MINIMUM_MAX_DATAGRAM_SIZE as u64, bbr.quantization_budget(2000));
+    assert_eq!(
+        4800 + 2 * MINIMUM_MAX_DATAGRAM_SIZE as u64,
+        bbr.quantization_budget(2000)
+    );
 }
 
 #[test]

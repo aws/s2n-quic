@@ -4,8 +4,8 @@
 use crate::endpoint;
 use alloc::collections::VecDeque;
 use s2n_quic_core::{
-    event, inet::ExplicitCongestionNotification, io::tx, packet, path, path::MINIMUM_MAX_DATAGRAM_SIZE, random,
-    stateless_reset, time,
+    event, inet::ExplicitCongestionNotification, io::tx, packet, path,
+    path::MINIMUM_MAX_DATAGRAM_SIZE, random, stateless_reset, time,
 };
 
 #[derive(Debug)]
