@@ -249,6 +249,16 @@ impl Builder {
         Ok(Io { builder: self })
     }
 
+    pub fn with_min_mtu(mut self, min_mtu: u16) -> Self {
+        self.mtu_config.min_mtu = min_mtu.try_into().unwrap();
+        self
+    }
+
+    pub fn with_initial_mtu(mut self, initial_mtu: u16) -> Self {
+        self.mtu_config.initial_mtu = initial_mtu.try_into().unwrap();
+        self
+    }
+
     pub fn with_max_mtu(mut self, max_mtu: u16) -> Self {
         self.mtu_config.max_mtu = max_mtu.try_into().unwrap();
         self
