@@ -15,7 +15,7 @@ use s2n_quic_core::{
     endpoint::Endpoint,
     inet::{self, SocketAddress},
     io::event_loop::{select::Select, EventLoop},
-    path::{self, mtu, MaxMtu},
+    path::{self, mtu},
 };
 use std::{convert::TryInto, io, io::ErrorKind};
 use tokio::runtime::Handle;
