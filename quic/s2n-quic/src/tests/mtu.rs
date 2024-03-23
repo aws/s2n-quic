@@ -135,8 +135,8 @@ fn initial_mtu() {
 #[test]
 fn initial_mtu_not_supported() {
     let events = mtu_updates(2000, MinMtu::default().into(), 9_001, 1500);
-    let first_mtu = events.iter().nth(0).unwrap();
-    let second_mtu = events.iter().nth(1).unwrap();
+    let first_mtu = events.get(0).unwrap();
+    let second_mtu = events.get(1).unwrap();
     let last_mtu = events.last().unwrap();
     // First try the initial MTU
     assert_eq!(first_mtu.mtu, 1972);
@@ -163,8 +163,8 @@ fn initial_mtu_is_jumbo() {
 #[test]
 fn initial_mtu_is_jumbo_not_supported() {
     let events = mtu_updates(9_001, 1_500, 9_001, 2_500);
-    let first_mtu = events.iter().nth(0).unwrap();
-    let second_mtu = events.iter().nth(1).unwrap();
+    let first_mtu = events.get(0).unwrap();
+    let second_mtu = events.get(1).unwrap();
     let last_mtu = events.last().unwrap();
     // First try the initial MTU
     assert_eq!(first_mtu.mtu, 8_973);
