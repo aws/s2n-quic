@@ -497,7 +497,7 @@ impl Controller {
         self.plpmtu as usize
     }
 
-    /// Returns the maximum size any packet can reach
+    /// Returns the maximum size any packet can reach, including IP and UDP headers
     #[inline]
     pub fn max_mtu(&self) -> MaxMtu {
         self.max_mtu
