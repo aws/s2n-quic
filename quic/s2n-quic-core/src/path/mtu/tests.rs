@@ -641,9 +641,9 @@ fn on_packet_loss_initial_mtu_configured() {
     let addr = SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
     let mut publisher = Publisher::snapshot();
 
-    for max_mtu in [MIN_ALLOWED_MAX_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
-        for initial_mtu in [MIN_ALLOWED_MAX_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
-            for min_mtu in [MIN_ALLOWED_MAX_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
+    for max_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
+        for initial_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
+            for min_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
                 let mtu_config = Config {
                     max_mtu: max_mtu.try_into().unwrap(),
                     initial_mtu: initial_mtu.min(max_mtu).try_into().unwrap(),

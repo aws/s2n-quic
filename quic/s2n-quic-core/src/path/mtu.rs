@@ -120,7 +120,7 @@ macro_rules! impl_mtu {
 
         impl $name {
             /// The minimum value required for path MTU
-            pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+            pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
 
             /// The Packetization Layer Path MTU, the largest size of a QUIC datagram that can be
             /// sent on a path. This does not include the size of UDP and IP headers.
@@ -139,8 +139,8 @@ macro_rules! impl_mtu {
             type Error = MtuError;
 
             fn try_from(value: u16) -> Result<Self, Self::Error> {
-                if value < MIN_ALLOWED_MAX_MTU {
-                    return Err(MtuError(MIN_ALLOWED_MAX_MTU.try_into().unwrap()));
+                if value < MINIMUM_MTU {
+                    return Err(MtuError(MINIMUM_MTU.try_into().unwrap()));
                 }
 
                 Ok($name(value.try_into().expect(
@@ -636,9 +636,9 @@ pub const MINIMUM_MAX_DATAGRAM_SIZE: u16 = 1200;
 // TODO decide on better defaults
 // Safety: 1500 is greater than zero
 const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
-const DEFAULT_MIN_MTU: MinMtu = MinMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+const DEFAULT_MIN_MTU: MinMtu = MinMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
 const DEFAULT_INITIAL_MTU: InitialMtu =
-    InitialMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+    InitialMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
 
 // Length is the length in octets of this user datagram  including  this
 // header and the data. (This means the minimum value of the length is
@@ -661,7 +661,6 @@ const fn const_min(a: u16, b: u16) -> u16 {
     }
 }
 
-// TODO: rename to MINIMUM_MTU
-const MIN_ALLOWED_MAX_MTU: u16 = MINIMUM_MAX_DATAGRAM_SIZE
+const MINIMUM_MTU: u16 = MINIMUM_MAX_DATAGRAM_SIZE
     + UDP_HEADER_LEN
     + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);
