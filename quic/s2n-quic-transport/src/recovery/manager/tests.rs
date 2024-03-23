@@ -8,7 +8,6 @@ use crate::{
         self,
         testing::{Client as ClientConfig, Server as ServerConfig},
     },
-    path::MINIMUM_MTU,
     recovery,
 };
 use bolero::TypeGenerator;

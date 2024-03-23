@@ -629,6 +629,7 @@ mod tests {
     use s2n_quic_core::{
         connection, endpoint,
         event::testing::Publisher,
+        path::MINIMUM_MTU,
         recovery::{CongestionController, RttEstimator},
         time::{Clock, NoopClock},
         transmission,

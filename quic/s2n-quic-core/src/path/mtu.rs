@@ -9,15 +9,16 @@ use crate::{
     inet::SocketAddress,
     packet::number::PacketNumber,
     path,
-    path::{
-        InitialMtu, MaxMtu, MinMtu, IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN, MINIMUM_MTU,
-        UDP_HEADER_LEN,
-    },
     recovery::{congestion_controller, CongestionController},
     time::{timer, Timer, Timestamp},
     transmission,
 };
-use core::time::Duration;
+use core::{
+    fmt,
+    fmt::{Display, Formatter},
+    num::NonZeroU16,
+    time::Duration,
+};
 use s2n_codec::EncoderValue;
 
 #[cfg(test)]
@@ -111,6 +112,81 @@ const BLACK_HOLE_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 //# reenters the Search Phase.  This timer has a period of 600
 //# seconds, as recommended by PLPMTUD [RFC4821].
 const PMTU_RAISE_TIMER_DURATION: Duration = Duration::from_secs(600);
+
+macro_rules! impl_mtu {
+    ($name:ident, $default:expr) => {
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        pub struct $name(NonZeroU16);
+
+        impl $name {
+            /// The minimum value required for path MTU
+            pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+
+            /// The Packetization Layer Path MTU, the largest size of a QUIC datagram that can be
+            /// sent on a path. This does not include the size of UDP and IP headers.
+            pub fn plpmtu(&self, ip_header_len: u16) -> u16 {
+                u16::from(*self) - UDP_HEADER_LEN - ip_header_len
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                $default
+            }
+        }
+
+        impl TryFrom<u16> for $name {
+            type Error = MtuError;
+
+            fn try_from(value: u16) -> Result<Self, Self::Error> {
+                if value < MIN_ALLOWED_MAX_MTU {
+                    return Err(MtuError(MIN_ALLOWED_MAX_MTU.try_into().unwrap()));
+                }
+
+                Ok($name(value.try_into().expect(
+                    "Value must be greater than zero according to the check above",
+                )))
+            }
+        }
+
+        impl From<$name> for usize {
+            #[inline]
+            fn from(value: $name) -> Self {
+                value.0.get() as usize
+            }
+        }
+
+        impl From<$name> for u16 {
+            #[inline]
+            fn from(value: $name) -> Self {
+                value.0.get()
+            }
+        }
+    };
+}
+
+impl_mtu!(MaxMtu, DEFAULT_MAX_MTU);
+impl_mtu!(InitialMtu, DEFAULT_INITIAL_MTU);
+impl_mtu!(MinMtu, DEFAULT_MIN_MTU);
+
+#[derive(Debug)]
+pub struct MtuError(NonZeroU16);
+
+impl Display for MtuError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Mtu must be at least {}", self.0)
+    }
+}
+
+// TODO
+// impl core::cmp::PartialOrd<InitialMtu> for MaxMtu {
+//     fn partial_cmp(&self, other: &InitialMtu) -> Option<Ordering> {
+//         self.0.partial_cmp(&other.0)
+//     }
+// }
+
+#[cfg(feature = "std")]
+impl std::error::Error for MtuError {}
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Config {
@@ -548,3 +624,41 @@ impl transmission::interest::Provider for Controller {
         }
     }
 }
+
+//= https://www.rfc-editor.org/rfc/rfc9000#section-14
+//# QUIC MUST NOT be used if the network path cannot support a
+//# maximum datagram size of at least 1200 bytes.
+// TODO: rename to MINIMUM_DATAGRAM_SIZE
+pub const MINIMUM_MTU: u16 = 1200;
+
+// TODO decide on better defaults
+// Safety: 1500 is greater than zero
+pub const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
+const DEFAULT_MIN_MTU: MinMtu = MinMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+const DEFAULT_INITIAL_MTU: InitialMtu =
+    InitialMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+
+// Length is the length in octets of this user datagram  including  this
+// header and the data. (This means the minimum value of the length is
+// eight.)
+// See https://www.rfc-editor.org/rfc/rfc768.txt
+pub const UDP_HEADER_LEN: u16 = 8;
+
+// IPv4 header ranges from 20-60 bytes, depending on Options
+pub const IPV4_MIN_HEADER_LEN: u16 = 20;
+// IPv6 header is always 40 bytes, plus extensions
+pub const IPV6_MIN_HEADER_LEN: u16 = 40;
+
+// The minimum allowed Max MTU is the minimum UDP datagram size of 1200 bytes plus
+// the UDP header length and minimal IP header length
+const fn const_min(a: u16, b: u16) -> u16 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+// TODO: rename to MINIMUM_MTU
+const MIN_ALLOWED_MAX_MTU: u16 =
+    MINIMUM_MTU + UDP_HEADER_LEN + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);
