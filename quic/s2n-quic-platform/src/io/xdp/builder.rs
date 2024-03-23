@@ -45,7 +45,7 @@ impl<Rx, Tx> Builder<Rx, Tx> {
 
     /// Sets the UMEM frame size for the provider
     pub fn with_frame_size(mut self, frame_size: u16) -> Result<Self, MtuError> {
-        self.max_mtu = frame_size.saturating_sub(MIN_FRAME_OVERHEAD).try_into()?;
+        self.mtu_config.max_mtu = frame_size.saturating_sub(MIN_FRAME_OVERHEAD).try_into()?;
         Ok(self)
     }
 
