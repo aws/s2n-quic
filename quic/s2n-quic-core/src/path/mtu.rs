@@ -457,8 +457,7 @@ impl Controller {
                     publisher.on_mtu_updated(event::builder::MtuUpdated {
                         path_id: path_id.into_event(),
                         mtu: self.plpmtu,
-                        // TODO: new cause
-                        cause: MtuUpdatedCause::Blackhole,
+                        cause: MtuUpdatedCause::InitialMtuPacketLost,
                     })
                 }
             }
