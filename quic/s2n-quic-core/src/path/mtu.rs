@@ -113,6 +113,36 @@ const BLACK_HOLE_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 //# seconds, as recommended by PLPMTUD [RFC4821].
 const PMTU_RAISE_TIMER_DURATION: Duration = Duration::from_secs(600);
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-14
+//# QUIC MUST NOT be used if the network path cannot support a
+//# maximum datagram size of at least 1200 bytes.
+pub const MINIMUM_MAX_DATAGRAM_SIZE: u16 = 1200;
+
+// Length is the length in octets of this user datagram  including  this
+// header and the data. (This means the minimum value of the length is
+// eight.)
+// See https://www.rfc-editor.org/rfc/rfc768.txt
+const UDP_HEADER_LEN: u16 = 8;
+
+// IPv4 header ranges from 20-60 bytes, depending on Options
+const IPV4_MIN_HEADER_LEN: u16 = 20;
+// IPv6 header is always 40 bytes, plus extensions
+const IPV6_MIN_HEADER_LEN: u16 = 40;
+
+// The minimum allowed Max MTU is the minimum UDP datagram size of 1200 bytes plus
+// the UDP header length and minimal IP header length
+const fn const_min(a: u16, b: u16) -> u16 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+const MINIMUM_MTU: u16 = MINIMUM_MAX_DATAGRAM_SIZE
+    + UDP_HEADER_LEN
+    + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);
+
 macro_rules! impl_mtu {
     ($name:ident, $default:expr) => {
         #[derive(Clone, Copy, Debug, PartialEq)]
@@ -164,6 +194,13 @@ macro_rules! impl_mtu {
         }
     };
 }
+
+// TODO decide on better defaults
+// Safety: 1500 and MINIMUM_MTU are greater than zero
+const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
+const DEFAULT_MIN_MTU: MinMtu = MinMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
+const DEFAULT_INITIAL_MTU: InitialMtu =
+    InitialMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
 
 impl_mtu!(MaxMtu, DEFAULT_MAX_MTU);
 impl_mtu!(InitialMtu, DEFAULT_INITIAL_MTU);
@@ -627,40 +664,3 @@ impl transmission::interest::Provider for Controller {
         }
     }
 }
-
-//= https://www.rfc-editor.org/rfc/rfc9000#section-14
-//# QUIC MUST NOT be used if the network path cannot support a
-//# maximum datagram size of at least 1200 bytes.
-pub const MINIMUM_MAX_DATAGRAM_SIZE: u16 = 1200;
-
-// TODO decide on better defaults
-// Safety: 1500 is greater than zero
-const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
-const DEFAULT_MIN_MTU: MinMtu = MinMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
-const DEFAULT_INITIAL_MTU: InitialMtu =
-    InitialMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
-
-// Length is the length in octets of this user datagram  including  this
-// header and the data. (This means the minimum value of the length is
-// eight.)
-// See https://www.rfc-editor.org/rfc/rfc768.txt
-pub const UDP_HEADER_LEN: u16 = 8;
-
-// IPv4 header ranges from 20-60 bytes, depending on Options
-pub const IPV4_MIN_HEADER_LEN: u16 = 20;
-// IPv6 header is always 40 bytes, plus extensions
-pub const IPV6_MIN_HEADER_LEN: u16 = 40;
-
-// The minimum allowed Max MTU is the minimum UDP datagram size of 1200 bytes plus
-// the UDP header length and minimal IP header length
-const fn const_min(a: u16, b: u16) -> u16 {
-    if a < b {
-        a
-    } else {
-        b
-    }
-}
-
-const MINIMUM_MTU: u16 = MINIMUM_MAX_DATAGRAM_SIZE
-    + UDP_HEADER_LEN
-    + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);
