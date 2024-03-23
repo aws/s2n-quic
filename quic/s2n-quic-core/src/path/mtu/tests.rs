@@ -97,7 +97,7 @@ fn new_max_mtu_smaller_than_common_mtu() {
 
     let mut controller = new_controller(max_mtu);
     assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE + 1, controller.probed_size);
-    assert_eq!(max_mtu, controller.max_mtu.into());
+    assert_eq!(max_mtu, u16::from(controller.max_mtu));
     assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.base_plpmtu);
 
     controller.enable();
@@ -114,7 +114,7 @@ fn new_ipv4() {
         },
         &addr.into(),
     );
-    assert_eq!(1600_u16, controller.max_mtu.into());
+    assert_eq!(1600_u16, u16::from(controller.max_mtu));
     assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.base_plpmtu);
     assert_eq!(
         1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
@@ -146,7 +146,7 @@ fn new_ipv6() {
         },
         &addr.into(),
     );
-    assert_eq!(2000_u16, controller.max_mtu.into());
+    assert_eq!(2000_u16, u16::from(controller.max_mtu));
     assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.base_plpmtu);
     assert_eq!(
         2000 - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
@@ -177,7 +177,7 @@ fn new_initial_and_min_mtu() {
         },
         &addr.into(),
     );
-    assert_eq!(2600_u16, controller.max_mtu.into());
+    assert_eq!(2600_u16, u16::from(controller.max_mtu));
     assert_eq!(
         2600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
         controller.max_udp_payload
