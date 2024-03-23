@@ -298,6 +298,12 @@ macro_rules! impl_mtu {
         impl $name {
             /// The minimum value required for path MTU
             pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
+
+            /// The Packetization Layer Path MTU, the largest size of a QUIC datagram that can be
+            /// sent on a path. This does not include the size of UDP and IP headers.
+            pub fn plpmtu(&self, ip_header_len: u16) -> u16 {
+                u16::from(*self) - UDP_HEADER_LEN - ip_header_len
+            }
         }
 
         impl Default for $name {

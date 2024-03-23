@@ -66,6 +66,13 @@ enum State {
     SearchComplete,
 }
 
+impl State {
+    /// Returns true if the MTU controller is in the disabled state
+    fn is_disabled(&self) -> bool {
+        matches!(self, State::Disabled)
+    }
+}
+
 //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
 //# The MAX_PROBES is the maximum value of the PROBE_COUNT
 //# counter (see Section 5.1.3).  MAX_PROBES represents the limit for
@@ -183,19 +190,23 @@ impl Controller {
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
         //# When using IPv4, there is no currently equivalent size specified,
         //# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
-        let base_plpmtu =
-            (u16::from(config.min_mtu) - UDP_HEADER_LEN - min_ip_header_len).max(MINIMUM_MTU);
-
-        let max_udp_payload =
-            (u16::from(config.max_mtu) - UDP_HEADER_LEN - min_ip_header_len).max(base_plpmtu);
-
-        // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
-        // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
-        let initial_probed_size =
-            (ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len).min(max_udp_payload);
-
-        let plpmtu =
-            (u16::from(config.initial_mtu) - UDP_HEADER_LEN - min_ip_header_len).max(base_plpmtu);
+        let base_plpmtu = config.min_mtu.plpmtu(min_ip_header_len).max(MINIMUM_MTU);
+        let max_udp_payload = config.max_mtu.plpmtu(min_ip_header_len).max(base_plpmtu);
+        let plpmtu = config
+            .initial_mtu
+            .plpmtu(min_ip_header_len)
+            .max(base_plpmtu);
+        let initial_probed_size = if u16::from(config.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD
+        {
+            // An initial MTU was provided within the probe threshold of the Ethernet MTU, so we can
+            // instead try probing for an MTU larger than the Ethernet MTU
+            Self::next_probe_size(plpmtu, max_udp_payload)
+        } else {
+            // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
+            // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
+            ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len
+        }
+        .min(max_udp_payload);
 
         Self {
             state: State::Disabled,
@@ -309,10 +320,29 @@ impl Controller {
         publisher: &mut Pub,
     ) {
         // MTU probes are only sent in application data space
-        ensure!(packet_number.space().is_application_data());
+        ensure!(self.state.is_disabled() || packet_number.space().is_application_data());
 
         match &self.state {
-            State::Disabled => {}
+            State::Disabled => {
+                if lost_bytes > self.base_plpmtu && self.plpmtu > self.base_plpmtu {
+                    // MTU probing hasn't been enabled yet, but since the initial MTU was configured
+                    // higher than the base PLPMTU and this setting resulted in a lost packet
+                    // we drop back down to the base PLPMTU.
+                    self.plpmtu = self.base_plpmtu;
+
+                    congestion_controller.on_mtu_update(
+                        self.plpmtu,
+                        &mut congestion_controller::PathPublisher::new(publisher, path_id),
+                    );
+
+                    publisher.on_mtu_updated(event::builder::MtuUpdated {
+                        path_id: path_id.into_event(),
+                        mtu: self.plpmtu,
+                        // TODO: new cause
+                        cause: MtuUpdatedCause::Blackhole,
+                    })
+                }
+            }
             State::Searching(probe_pn, _) if *probe_pn == packet_number => {
                 // The MTU probe was lost
                 if self.probe_count == MAX_PROBES {
@@ -369,7 +399,13 @@ impl Controller {
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.3.2
         //# Implementations SHOULD select the set of probe packet sizes to
         //# maximize the gain in PLPMTU from each search step.
-        self.probed_size = self.plpmtu + ((self.max_probe_size - self.plpmtu) / 2);
+        self.probed_size = Self::next_probe_size(self.plpmtu, self.max_probe_size);
+    }
+
+    /// Calculates the next probe size as halfway from the current to the max size
+    #[inline]
+    fn next_probe_size(current: u16, max: u16) -> u16 {
+        current + ((max - current) / 2)
     }
 
     /// Requests a new search to be initiated

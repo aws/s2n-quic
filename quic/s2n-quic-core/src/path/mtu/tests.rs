@@ -8,6 +8,7 @@ use crate::{
     frame::Frame,
     inet::{IpV4Address, SocketAddressV4},
     packet::number::PacketNumberSpace,
+    path::MIN_ALLOWED_MAX_MTU,
     recovery::congestion_controller::testing::mock::CongestionController,
     time::{clock::testing::now, timer::Provider as _},
     transmission::{
@@ -51,12 +52,18 @@ fn min_max_mtu() {
         &addr.into(),
     );
     assert_eq!(MINIMUM_MTU, controller.plpmtu);
+    assert_eq!(MaxMtu::MIN, controller.max_mtu);
+    assert_eq!(MINIMUM_MTU, controller.base_plpmtu);
 }
 
 #[test]
 fn new_max_mtu_smaller_than_common_mtu() {
-    let mut controller = new_controller(MINIMUM_MTU + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN + 1);
+    let max_mtu = MINIMUM_MTU + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN + 1;
+
+    let mut controller = new_controller(max_mtu);
     assert_eq!(MINIMUM_MTU + 1, controller.probed_size);
+    assert_eq!(max_mtu, controller.max_mtu.into());
+    assert_eq!(MINIMUM_MTU, controller.base_plpmtu);
 
     controller.enable();
     assert_eq!(State::SearchComplete, controller.state);
@@ -72,6 +79,8 @@ fn new_ipv4() {
         },
         &addr.into(),
     );
+    assert_eq!(1600_u16, controller.max_mtu.into());
+    assert_eq!(MINIMUM_MTU, controller.base_plpmtu);
     assert_eq!(
         1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
         controller.max_udp_payload
@@ -102,6 +111,8 @@ fn new_ipv6() {
         },
         &addr.into(),
     );
+    assert_eq!(2000_u16, controller.max_mtu.into());
+    assert_eq!(MINIMUM_MTU, controller.base_plpmtu);
     assert_eq!(
         2000 - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
         controller.max_udp_payload
@@ -118,6 +129,90 @@ fn new_ipv6() {
         ETHERNET_MTU - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
         controller.probed_size
     );
+}
+
+#[test]
+fn new_initial_and_min_mtu() {
+    let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+    let mut controller = Controller::new(
+        Config {
+            max_mtu: 2600.try_into().unwrap(),
+            min_mtu: 1400.try_into().unwrap(),
+            initial_mtu: 2500.try_into().unwrap(),
+        },
+        &addr.into(),
+    );
+    assert_eq!(2600_u16, controller.max_mtu.into());
+    assert_eq!(
+        2600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+        controller.max_udp_payload
+    );
+    assert_eq!(
+        2600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+        controller.max_probe_size
+    );
+    assert_eq!(
+        1400 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+        controller.base_plpmtu
+    );
+    assert_eq!(
+        2500 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+        controller.plpmtu
+    );
+    assert_eq!(
+        (2500 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN) as usize,
+        controller.mtu()
+    );
+    assert_eq!(0, controller.probe_count);
+    assert_eq!(State::Disabled, controller.state);
+    assert!(!controller.pmtu_raise_timer.is_armed());
+    // probe a value halfway to the max mtu
+    assert_eq!(
+        2550 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+        controller.probed_size
+    );
+    controller.enable();
+    assert!(matches!(controller.state, State::SearchRequested));
+}
+
+#[test]
+fn new_initial_mtu_less_than_ethernet_mtu() {
+    let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+    let mut controller = Controller::new(
+        Config {
+            max_mtu: 9000.try_into().unwrap(),
+            initial_mtu: 1400.try_into().unwrap(),
+            ..Default::default()
+        },
+        &addr.into(),
+    );
+    // probe the ethernet MTU
+    assert_eq!(
+        ETHERNET_MTU - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+        controller.probed_size
+    );
+    controller.enable();
+    assert!(matches!(controller.state, State::SearchRequested));
+}
+
+#[test]
+fn new_initial_mtu_equal_to_ethernet_mtu() {
+    let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+    let mut controller = Controller::new(
+        Config {
+            max_mtu: 9000.try_into().unwrap(),
+            initial_mtu: ETHERNET_MTU.try_into().unwrap(),
+            ..Default::default()
+        },
+        &addr.into(),
+    );
+    // probe halfway to the max MTU
+    assert_eq!(
+        1500 + (9000 - 1500) / 2 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
+        controller.probed_size
+    );
+    controller.enable();
+    assert!(matches!(controller.state, State::SearchRequested));
 }
 
 #[test]
@@ -534,6 +629,57 @@ fn on_packet_loss_not_application_space() {
             );
             assert_eq!(controller.black_hole_counter, 0);
             assert_eq!(0, cc.on_mtu_update);
+        }
+    }
+}
+
+// Tests that when packet loss occurs after initial MTU has been
+// configured to a value larger than the default, the MTU drops to
+// the base_plpmtu
+#[test]
+fn on_packet_loss_initial_mtu_configured() {
+    let ip = IpV4Address::new([127, 0, 0, 1]);
+    let addr = SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
+    let mut publisher = Publisher::snapshot();
+
+    for max_mtu in [MIN_ALLOWED_MAX_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
+        for initial_mtu in [MIN_ALLOWED_MAX_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
+            for min_mtu in [MIN_ALLOWED_MAX_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
+                let mtu_config = Config {
+                    max_mtu: max_mtu.try_into().unwrap(),
+                    initial_mtu: initial_mtu.min(max_mtu).try_into().unwrap(),
+                    min_mtu: min_mtu.min(initial_mtu).min(max_mtu).try_into().unwrap(),
+                };
+                let mut controller = Controller::new(mtu_config, &addr);
+                let base_plpmtu = controller.base_plpmtu;
+                let original_plpmtu = controller.plpmtu;
+                let pn = pn(1);
+                let mut cc = CongestionController::default();
+                let now = now();
+
+                controller.on_packet_loss(
+                    pn,
+                    mtu_config.initial_mtu.into(),
+                    false,
+                    now,
+                    &mut cc,
+                    path::Id::test_id(),
+                    &mut publisher,
+                );
+
+                if original_plpmtu > base_plpmtu {
+                    // the MTU was updated
+                    assert_eq!(1, cc.on_mtu_update);
+                    assert_eq!(base_plpmtu, controller.plpmtu);
+                } else {
+                    // everything remains the same since we are operating at the base plpmtu
+                    assert_eq!(0, cc.on_mtu_update);
+                    assert_eq!(original_plpmtu, controller.plpmtu);
+                }
+
+                // MTU controller is still disabled
+                assert_eq!(State::Disabled, controller.state);
+            }
         }
     }
 }
