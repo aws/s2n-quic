@@ -50,19 +50,19 @@ fn min_max_mtu() {
         },
         &addr.into(),
     );
-    assert_eq!(MINIMUM_MTU, controller.plpmtu);
+    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.plpmtu);
     assert_eq!(MaxMtu::MIN, controller.max_mtu);
-    assert_eq!(MINIMUM_MTU, controller.base_plpmtu);
+    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.base_plpmtu);
 }
 
 #[test]
 fn new_max_mtu_smaller_than_common_mtu() {
-    let max_mtu = MINIMUM_MTU + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN + 1;
+    let max_mtu = MINIMUM_MAX_DATAGRAM_SIZE + UDP_HEADER_LEN + IPV4_MIN_HEADER_LEN + 1;
 
     let mut controller = new_controller(max_mtu);
-    assert_eq!(MINIMUM_MTU + 1, controller.probed_size);
+    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE + 1, controller.probed_size);
     assert_eq!(max_mtu, controller.max_mtu.into());
-    assert_eq!(MINIMUM_MTU, controller.base_plpmtu);
+    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.base_plpmtu);
 
     controller.enable();
     assert_eq!(State::SearchComplete, controller.state);
@@ -79,7 +79,7 @@ fn new_ipv4() {
         &addr.into(),
     );
     assert_eq!(1600_u16, controller.max_mtu.into());
-    assert_eq!(MINIMUM_MTU, controller.base_plpmtu);
+    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.base_plpmtu);
     assert_eq!(
         1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
         controller.max_udp_payload
@@ -88,7 +88,7 @@ fn new_ipv4() {
         1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
         controller.max_probe_size
     );
-    assert_eq!(MINIMUM_MTU as usize, controller.mtu());
+    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE as usize, controller.mtu());
     assert_eq!(0, controller.probe_count);
     assert_eq!(State::Disabled, controller.state);
     assert!(!controller.pmtu_raise_timer.is_armed());
@@ -111,7 +111,7 @@ fn new_ipv6() {
         &addr.into(),
     );
     assert_eq!(2000_u16, controller.max_mtu.into());
-    assert_eq!(MINIMUM_MTU, controller.base_plpmtu);
+    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.base_plpmtu);
     assert_eq!(
         2000 - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
         controller.max_udp_payload
@@ -120,7 +120,7 @@ fn new_ipv6() {
         2000 - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
         controller.max_probe_size
     );
-    assert_eq!(MINIMUM_MTU as usize, controller.mtu());
+    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE as usize, controller.mtu());
     assert_eq!(0, controller.probe_count);
     assert_eq!(State::Disabled, controller.state);
     assert!(!controller.pmtu_raise_timer.is_armed());
@@ -247,19 +247,19 @@ fn on_packet_ack_within_threshold() {
     let now = now();
     let mut publisher = Publisher::snapshot();
     controller.state = State::Searching(pn, now);
-    controller.probed_size = MINIMUM_MTU;
-    controller.max_probe_size = MINIMUM_MTU + PROBE_THRESHOLD * 2 - 1;
+    controller.probed_size = MINIMUM_MAX_DATAGRAM_SIZE;
+    controller.max_probe_size = MINIMUM_MAX_DATAGRAM_SIZE + PROBE_THRESHOLD * 2 - 1;
 
     controller.on_packet_ack(
         pn,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         &mut cc,
         path::Id::test_id(),
         &mut publisher,
     );
 
     assert_eq!(
-        MINIMUM_MTU + (max_udp_payload - MINIMUM_MTU) / 2,
+        MINIMUM_MAX_DATAGRAM_SIZE + (max_udp_payload - MINIMUM_MAX_DATAGRAM_SIZE) / 2,
         controller.probed_size
     );
     assert_eq!(1, cc.on_mtu_update);
@@ -276,7 +276,7 @@ fn on_packet_ack_within_threshold() {
 
     assert_eq!(State::SearchRequested, controller.state);
     assert_eq!(
-        MINIMUM_MTU + (max_udp_payload - MINIMUM_MTU) / 2,
+        MINIMUM_MAX_DATAGRAM_SIZE + (max_udp_payload - MINIMUM_MAX_DATAGRAM_SIZE) / 2,
         controller.probed_size
     );
 }
@@ -491,7 +491,7 @@ fn on_packet_loss_max_probes() {
     assert_eq!(0, cc.on_mtu_update);
     assert_eq!(1472, controller.max_probe_size);
     assert_eq!(
-        MINIMUM_MTU + (1472 - MINIMUM_MTU) / 2,
+        MINIMUM_MAX_DATAGRAM_SIZE + (1472 - MINIMUM_MAX_DATAGRAM_SIZE) / 2,
         controller.probed_size
     );
     assert_eq!(State::SearchRequested, controller.state);

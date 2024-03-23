@@ -208,7 +208,7 @@ impl Estimator {
 mod tests {
     use super::*;
     use crate::{
-        path::MINIMUM_MTU,
+        path::MINIMUM_MAX_DATAGRAM_SIZE,
         recovery::{bandwidth::RateSample, bbr::full_pipe},
     };
     use core::time::Duration;
@@ -266,12 +266,12 @@ mod tests {
         };
 
         // Only 7 loss bursts, not enough to be considered excessive loss
-        fp_estimator.on_loss_round_start(rate_sample, 7, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, 7, MINIMUM_MAX_DATAGRAM_SIZE);
         // The pipe has not been filled yet since there were only 2 loss bursts
         assert!(!fp_estimator.filled_pipe());
 
         // 3 loss bursts, enough to be considered excessive loss
-        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MAX_DATAGRAM_SIZE);
         // The pipe has been filled due to loss
         assert!(fp_estimator.filled_pipe());
     }
@@ -284,14 +284,14 @@ mod tests {
             is_app_limited: true,
             // >= ECN_THRESH (50%) of packets had ECN CE markings
             ecn_ce_count: 5,
-            delivered_bytes: 9 * MINIMUM_MTU as u64,
+            delivered_bytes: 9 * MINIMUM_MAX_DATAGRAM_SIZE as u64,
             ..Default::default()
         };
 
         // Only 7 loss bursts, not enough to be considered excessive loss
-        fp_estimator.on_loss_round_start(rate_sample, 7, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, 7, MINIMUM_MAX_DATAGRAM_SIZE);
 
-        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MAX_DATAGRAM_SIZE);
         // The pipe has been filled due to ECN
         assert!(fp_estimator.filled_pipe());
     }
@@ -308,7 +308,7 @@ mod tests {
             ..Default::default()
         };
         // 8 loss bursts, enough to be considered excessive loss
-        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MTU);
+        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MAX_DATAGRAM_SIZE);
         // The pipe has not been filled yet since the loss rate was not high enough
         assert!(!fp_estimator.filled_pipe());
     }

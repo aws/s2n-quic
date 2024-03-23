@@ -102,7 +102,7 @@ fn calculate_alpha(alpha: f64, ce_ratio: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert_delta, path::MINIMUM_MTU, recovery::bbr::ecn};
+    use crate::{assert_delta, path::MINIMUM_MAX_DATAGRAM_SIZE, recovery::bbr::ecn};
 
     #[test]
     fn on_round_start() {
@@ -110,7 +110,7 @@ mod tests {
         assert_delta!(1.0, state.alpha(), 0.0001);
 
         let delivered_bytes = 1000;
-        state.on_round_start(delivered_bytes, MINIMUM_MTU);
+        state.on_round_start(delivered_bytes, MINIMUM_MAX_DATAGRAM_SIZE);
 
         // No ECN CE yet and alpha is currently at the initial value of 1,
         // so alpha is just 1 - alpha gain
@@ -124,9 +124,9 @@ mod tests {
         let alpha = state.alpha();
         let prev_delivered = delivered_bytes;
         // 20 packets delivered, 10 of which were ECN CE marked
-        let delivered_bytes = prev_delivered + 20 * MINIMUM_MTU as u64;
+        let delivered_bytes = prev_delivered + 20 * MINIMUM_MAX_DATAGRAM_SIZE as u64;
 
-        state.on_round_start(delivered_bytes, MINIMUM_MTU);
+        state.on_round_start(delivered_bytes, MINIMUM_MAX_DATAGRAM_SIZE);
 
         assert_delta!(
             (1.0 - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * 0.5,
@@ -144,10 +144,10 @@ mod tests {
 
         let alpha = state.alpha();
         let prev_delivered = delivered_bytes;
-        let delivered_bytes = prev_delivered + 20 * MINIMUM_MTU as u64;
+        let delivered_bytes = prev_delivered + 20 * MINIMUM_MAX_DATAGRAM_SIZE as u64;
 
         // 20 packets delivered, 11 of which were ECN CE marked
-        state.on_round_start(delivered_bytes, MINIMUM_MTU);
+        state.on_round_start(delivered_bytes, MINIMUM_MAX_DATAGRAM_SIZE);
 
         assert_delta!(
             (1.0 - ECN_ALPHA_GAIN) * alpha + ECN_ALPHA_GAIN * 11.0 / 20.0,

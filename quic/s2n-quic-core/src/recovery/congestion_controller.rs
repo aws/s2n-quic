@@ -9,7 +9,7 @@ use crate::{
         IntoEvent,
     },
     inet, path,
-    path::MINIMUM_MTU,
+    path::MINIMUM_MAX_DATAGRAM_SIZE,
     random,
     recovery::{
         bandwidth::{Bandwidth, RateSample},
@@ -41,7 +41,8 @@ impl<'a> PathInfo<'a> {
         Self {
             remote_address: remote_address.into_event(),
             application_protocol: None,
-            max_datagram_size: MINIMUM_MTU,
+            // TODO: update with initial_mtu
+            max_datagram_size: MINIMUM_MAX_DATAGRAM_SIZE,
         }
     }
 }

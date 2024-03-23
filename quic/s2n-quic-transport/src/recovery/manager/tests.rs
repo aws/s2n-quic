@@ -2008,7 +2008,7 @@ fn detect_and_remove_lost_packets_mtu_probe() {
     let outcome = transmission::Outcome {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
-        bytes_sent: MINIMUM_MTU as usize + 1,
+        bytes_sent: MINIMUM_MAX_DATAGRAM_SIZE as usize + 1,
         bytes_progressed: 0,
     };
 
@@ -2026,7 +2026,7 @@ fn detect_and_remove_lost_packets_mtu_probe() {
     );
     assert_eq!(
         context.path().congestion_controller.bytes_in_flight,
-        MINIMUM_MTU as u32 + 1
+        MINIMUM_MAX_DATAGRAM_SIZE as u32 + 1
     );
 
     manager.detect_and_remove_lost_packets(time_sent, random, &mut context, &mut publisher);

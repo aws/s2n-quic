@@ -321,7 +321,7 @@ mod tests {
     use s2n_quic_core::{
         event::testing::Publisher,
         io::tx::Message as _,
-        path::MINIMUM_MTU,
+        path::MINIMUM_MAX_DATAGRAM_SIZE,
         time::{clock::testing as time, testing::Clock, timer::Provider as _, Clock as _},
     };
 
@@ -345,7 +345,7 @@ mod tests {
                 let mut sender = CloseSender::default();
                 let mut clock = Clock::default();
                 let mut path = helper_path_server();
-                let mut buffer = [0; MINIMUM_MTU as usize];
+                let mut buffer = [0; MINIMUM_MAX_DATAGRAM_SIZE as usize];
                 let mut transmission_count = 0usize;
                 let mut publisher = Publisher::no_snapshot();
 
@@ -354,7 +354,7 @@ mod tests {
                     path.on_handshake_packet();
                 } else {
                     // give the path some initial credits
-                    let _ = path.on_bytes_received(MINIMUM_MTU as usize);
+                    let _ = path.on_bytes_received(MINIMUM_MAX_DATAGRAM_SIZE as usize);
                 }
 
                 sender.close(PACKET.clone(), *close_time, clock.get_time());

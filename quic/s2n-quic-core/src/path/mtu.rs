@@ -231,7 +231,7 @@ pub struct Controller {
     //# The PROBE_COUNT is a count of the number of successive
     //# unsuccessful probe packets that have been sent.
     probe_count: u8,
-    /// A count of the number of packets with a size > MINIMUM_MTU lost since
+    /// A count of the number of packets with a size > base_plpmtu lost since
     /// the last time a packet with size equal to the current MTU was acknowledged.
     black_hole_counter: Counter<u8, Saturating>,
     /// The largest acknowledged packet with size >= the plpmtu. Used when tracking
@@ -266,7 +266,10 @@ impl Controller {
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
         //# When using IPv4, there is no currently equivalent size specified,
         //# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
-        let base_plpmtu = config.min_mtu.plpmtu(min_ip_header_len).max(MINIMUM_MTU);
+        let base_plpmtu = config
+            .min_mtu
+            .plpmtu(min_ip_header_len)
+            .max(MINIMUM_MAX_DATAGRAM_SIZE);
         let max_udp_payload = config.max_mtu.plpmtu(min_ip_header_len).max(base_plpmtu);
         let plpmtu = config
             .initial_mtu
@@ -628,12 +631,11 @@ impl transmission::interest::Provider for Controller {
 //= https://www.rfc-editor.org/rfc/rfc9000#section-14
 //# QUIC MUST NOT be used if the network path cannot support a
 //# maximum datagram size of at least 1200 bytes.
-// TODO: rename to MINIMUM_DATAGRAM_SIZE
-pub const MINIMUM_MTU: u16 = 1200;
+pub const MINIMUM_MAX_DATAGRAM_SIZE: u16 = 1200;
 
 // TODO decide on better defaults
 // Safety: 1500 is greater than zero
-pub const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
+const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
 const DEFAULT_MIN_MTU: MinMtu = MinMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
 const DEFAULT_INITIAL_MTU: InitialMtu =
     InitialMtu(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
@@ -660,5 +662,6 @@ const fn const_min(a: u16, b: u16) -> u16 {
 }
 
 // TODO: rename to MINIMUM_MTU
-const MIN_ALLOWED_MAX_MTU: u16 =
-    MINIMUM_MTU + UDP_HEADER_LEN + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);
+const MIN_ALLOWED_MAX_MTU: u16 = MINIMUM_MAX_DATAGRAM_SIZE
+    + UDP_HEADER_LEN
+    + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);

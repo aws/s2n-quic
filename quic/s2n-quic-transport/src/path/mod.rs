@@ -416,7 +416,7 @@ impl<Config: endpoint::Config> Path<Config> {
             //
             // The priority during PathValidationOnly is to validate the path, so the
             // minimum MTU is used to avoid packet loss due to MTU limits.
-            Mode::LossRecoveryProbing | Mode::PathValidationOnly => MINIMUM_MTU as usize,
+            Mode::LossRecoveryProbing | Mode::PathValidationOnly => MINIMUM_MAX_DATAGRAM_SIZE as usize,
             // When MTU Probing, clamp to the size of the MTU we are attempting to validate
             Mode::MtuProbing => self.mtu_controller.probed_sized(),
             // Otherwise use the confirmed MTU
@@ -629,7 +629,7 @@ mod tests {
     use s2n_quic_core::{
         connection, endpoint,
         event::testing::Publisher,
-        path::MINIMUM_MTU,
+        path::MINIMUM_MAX_DATAGRAM_SIZE,
         recovery::{CongestionController, RttEstimator},
         time::{Clock, NoopClock},
         transmission,
@@ -1035,11 +1035,11 @@ mod tests {
             path.clamp_mtu(10000, transmission::Mode::Normal)
         );
         assert_eq!(
-            MINIMUM_MTU as usize,
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
             path.clamp_mtu(10000, transmission::Mode::PathValidationOnly)
         );
         assert_eq!(
-            MINIMUM_MTU as usize,
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
             path.clamp_mtu(10000, transmission::Mode::LossRecoveryProbing)
         );
         assert_eq!(
@@ -1063,11 +1063,11 @@ mod tests {
             path.mtu(transmission::Mode::Normal)
         );
         assert_eq!(
-            MINIMUM_MTU as usize,
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
             path.mtu(transmission::Mode::PathValidationOnly)
         );
         assert_eq!(
-            MINIMUM_MTU as usize,
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
             path.mtu(transmission::Mode::LossRecoveryProbing)
         );
         assert_eq!(
