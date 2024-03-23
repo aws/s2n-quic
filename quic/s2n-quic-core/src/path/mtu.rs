@@ -152,10 +152,15 @@ macro_rules! impl_mtu {
             /// The minimum value required for path MTU
             pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
 
-            /// The Packetization Layer Path MTU, the largest size of a QUIC datagram that can be
-            /// sent on a path. This does not include the size of UDP and IP headers.
-            fn plpmtu(&self, ip_header_len: u16) -> u16 {
-                u16::from(*self) - UDP_HEADER_LEN - ip_header_len
+            /// The largest size of a QUIC datagram that can be sent on a path that supports this
+            /// MTU. This does not include the size of UDP and IP headers.
+            #[inline]
+            pub fn max_datagram_size(&self, peer_socket_address: &SocketAddress) -> u16 {
+                let min_ip_header_len = match peer_socket_address {
+                    SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
+                    SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
+                };
+                u16::from(*self) - UDP_HEADER_LEN - min_ip_header_len
             }
         }
 
@@ -293,11 +298,6 @@ impl Controller {
     pub fn new(config: Config, peer_socket_address: &SocketAddress) -> Self {
         debug_assert!(config.is_valid(), "Invalid MTU configuration {:?}", config);
 
-        let min_ip_header_len = match peer_socket_address {
-            SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
-            SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
-        };
-
         //= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
         //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
         //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
@@ -308,12 +308,15 @@ impl Controller {
         //# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
         let base_plpmtu = config
             .min_mtu
-            .plpmtu(min_ip_header_len)
+            .max_datagram_size(peer_socket_address)
             .max(MINIMUM_MAX_DATAGRAM_SIZE);
-        let max_udp_payload = config.max_mtu.plpmtu(min_ip_header_len).max(base_plpmtu);
+        let max_udp_payload = config
+            .max_mtu
+            .max_datagram_size(peer_socket_address)
+            .max(base_plpmtu);
         let plpmtu = config
             .initial_mtu
-            .plpmtu(min_ip_header_len)
+            .max_datagram_size(peer_socket_address)
             .max(base_plpmtu);
         let initial_probed_size = if u16::from(config.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD
         {
@@ -323,6 +326,10 @@ impl Controller {
         } else {
             // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
             // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
+            let min_ip_header_len = match peer_socket_address {
+                SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
+                SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
+            };
             ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len
         }
         .min(max_udp_payload);
