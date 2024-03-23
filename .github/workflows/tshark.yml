@@ -23,14 +23,14 @@ on:
       version:
         description: 'wireshark version'
         required: true
-        default: '3.7.1'
+        default: '4.2.3'
         type: string
 
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      WIRESHARK_VERSION: ${{ inputs.version || '3.7.1' }}
+      WIRESHARK_VERSION: ${{ inputs.version || '4.2.3' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,14 +46,14 @@ jobs:
             cp /usr/local/bin/tshark /usr/local/bin/editcap /host-dir/
 
       - uses: aws-actions/configure-aws-credentials@v4.0.2
-        if: github.event_name == 'schedule' || github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        if: github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-1
 
       - name: Upload to S3
-        if: github.event_name == 'schedule' || github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+        if: github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.repository == github.event.pull_request.head.repo.full_name
         run: |
           aws s3 sync target/tshark "s3://s2n-quic-ci-artifacts/tshark" --acl private --follow-symlinks
 

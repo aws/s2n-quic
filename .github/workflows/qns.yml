@@ -19,7 +19,7 @@ env:
   # This should be updated when updating wesleyrosenblum/quic-network-simulator
   NETWORK_SIMULATOR_REF: sha256:20abe0bed8c0e39e1d8750507b24295f7c978bdd7e05fa6f3a5afed4b76dc191
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
-  WIRESHARK_VERSION: 3.7.1
+  WIRESHARK_VERSION: 4.2.3
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
 
