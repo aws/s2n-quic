@@ -1,9 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use rustls_mtls::{initialize_logger, MtlsProvider};
+use rustls_mtls::{initialize_logger, into_root_store};
+use s2n_quic_rustls::server::ClientAuthType;
 use s2n_quic::Server;
 use std::error::Error;
+use std::path::Path;
 
 /// NOTE: this certificate is to be used for demonstration purposes only!
 pub static CACERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/ca-cert.pem");
@@ -13,10 +15,14 @@ pub static MY_KEY_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/server
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     initialize_logger("server");
-    let provider = MtlsProvider::new(CACERT_PEM, MY_CERT_PEM, MY_KEY_PEM).await?;
     let mut server = Server::builder()
         .with_event(s2n_quic::provider::event::tracing::Subscriber::default())?
-        .with_tls(provider)?
+        .with_tls(s2n_quic_rustls::Server::builder()
+            .with_application_protocols(vec!["h3"].into_iter())?
+            .with_trusted_root_store(into_root_store(Path::new(CACERT_PEM)).await?)?
+            .with_client_authentication_type(ClientAuthType::Required)?
+            .with_certificate(Path::new(MY_CERT_PEM), Path::new(MY_KEY_PEM))?
+            .build()?)?
         .with_io("127.0.0.1:4433")?
         .start()?;
 
