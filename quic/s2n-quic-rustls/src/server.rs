@@ -6,6 +6,7 @@ use rustls::{crypto::aws_lc_rs, ConfigBuilder, ServerConfig, WantsVerifier};
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
+use rustls::server::WebPkiClientVerifier;
 
 /// Create a QUIC server specific [rustls::ConfigBuilder].
 ///
@@ -20,6 +21,13 @@ pub fn default_config_builder() -> Result<ConfigBuilder<ServerConfig, WantsVerif
 #[derive(Clone)]
 pub struct Server {
     config: Arc<ServerConfig>,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum ClientAuthType {
+    Required,
+    Optional,
+    None,
 }
 
 impl Server {
@@ -90,6 +98,8 @@ impl tls::Endpoint for Server {
 
 pub struct Builder {
     cert_resolver: Option<Arc<dyn rustls::server::ResolvesServerCert>>,
+    client_auth_type: ClientAuthType,
+    root_cert_store: Option<rustls::RootCertStore>,
     application_protocols: Vec<Vec<u8>>,
     key_log: Option<Arc<dyn rustls::KeyLog>>,
 }
@@ -104,6 +114,8 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             cert_resolver: None,
+            client_auth_type: ClientAuthType::None,
+            root_cert_store: None,
             application_protocols: vec![b"h3".to_vec()],
             key_log: None,
         }
@@ -129,6 +141,22 @@ impl Builder {
         Ok(self)
     }
 
+    /// Provide a trusted root store for the server to use when verifying client certificates.
+    /// This is required when using `ClientAuthType::Required` or `ClientAuthType::Optional`, or ignored when using `ClientAuthType::None`.
+    ///
+    pub fn with_trusted_root_store(
+        mut self,
+        store: rustls::RootCertStore,
+    ) -> Result<Self, rustls::Error> {
+        self.root_cert_store = Some(store);
+        Ok(self)
+    }
+
+    pub fn with_client_authentication_type(mut self, client_auth_type: ClientAuthType) -> Result<Self, rustls::Error> {
+        self.client_auth_type = client_auth_type;
+        Ok(self)
+    }
+
     pub fn with_application_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,
@@ -143,7 +171,25 @@ impl Builder {
     }
 
     pub fn build(self) -> Result<Server, rustls::Error> {
-        let builder = default_config_builder()?.with_no_client_auth();
+        let builder = default_config_builder()?;
+
+        let builder = match (self.client_auth_type, self.root_cert_store) {
+            (ClientAuthType::None, _) => builder.with_no_client_auth(),
+            (auth_type, Some(store)) => {
+                let mut client_verifier_builder = WebPkiClientVerifier::builder(Arc::new(store));
+                if auth_type == ClientAuthType::Optional {
+                    client_verifier_builder = client_verifier_builder.allow_unauthenticated()
+                }
+                let verifier = client_verifier_builder.build().map_err(|e| rustls::Error::General(e.to_string()))?;
+
+                builder.with_client_cert_verifier(verifier)
+            }
+            (_, None) => {
+                return Err(rustls::Error::General(
+                    "Missing root certificate store".to_string(),
+                ));
+            }
+        };
 
         let mut config = if let Some(cert_resolver) = self.cert_resolver {
             builder.with_cert_resolver(cert_resolver)

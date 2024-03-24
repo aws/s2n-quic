@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{certificate, cipher_suite::default_crypto_provider, session::Session};
+use crate::{certificate, cipher_suite::default_crypto_provider, certificate::{Certificate, PrivateKey}, session::Session};
 use core::convert::TryFrom;
 use rustls::{ClientConfig, ConfigBuilder, WantsVerifier};
 use s2n_codec::EncoderValue;
@@ -96,6 +96,7 @@ impl tls::Endpoint for Client {
 
 pub struct Builder {
     cert_store: rustls::RootCertStore,
+    client_identity: Option<(Certificate, PrivateKey)>,
     application_protocols: Vec<Vec<u8>>,
     key_log: Option<Arc<dyn rustls::KeyLog>>,
 }
@@ -110,6 +111,7 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             cert_store: rustls::RootCertStore::empty(),
+            client_identity: None,
             application_protocols: vec![b"h3".to_vec()],
             key_log: None,
         }
@@ -132,6 +134,18 @@ impl Builder {
     pub fn with_max_cert_chain_depth(self, len: u16) -> Result<Self, rustls::Error> {
         // TODO is there a way to configure this?
         let _ = len;
+        Ok(self)
+    }
+
+    pub fn with_client_identity<C: certificate::IntoCertificate, PK: certificate::IntoPrivateKey>(
+        mut self,
+        certificate: C,
+        private_key: PK,
+    ) -> Result<Self, rustls::Error> {
+        let certificate = certificate.into_certificate()?;
+        let private_key = private_key.into_private_key()?;
+
+        self.client_identity = Some((certificate, private_key));
         Ok(self)
     }
 
@@ -158,9 +172,16 @@ impl Builder {
             ));
         }
 
-        let mut config = default_config_builder()?
-            .with_root_certificates(self.cert_store)
-            .with_no_client_auth();
+        let config = default_config_builder()?
+            .with_root_certificates(self.cert_store);
+        let mut config = match self.client_identity {
+            Some((cert, key)) => {
+                config.with_client_auth_cert(cert.0, key.0)?
+            },
+            None => {
+                config.with_no_client_auth()
+            }
+        };
 
         config.max_fragment_size = None;
         config.alpn_protocols = self.application_protocols;
