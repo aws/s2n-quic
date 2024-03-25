@@ -31,17 +31,19 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/install@v1
         with:
           crate: cargo-audit
 
+      # FIXME replace with custom action since actions-rs is deprecated:
+      # https://github.com/aws/s2n-quic/issues/2096
       - uses: actions-rs/audit-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

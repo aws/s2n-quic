@@ -233,7 +233,6 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           override: true
-          # https://github.com/actions/runner/issues/409#issuecomment-752775072
           target: ${{ matrix.target != 'native' && matrix.target || '' }}
 
       - name: Install cross
