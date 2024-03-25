@@ -82,7 +82,7 @@ jobs:
           rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - name: Run cargo fmt
-      - run: |
+        run: |
           cargo fmt --all -- --check
 
   clippy:
@@ -111,7 +111,7 @@ jobs:
 
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy
-      - run: |
+        run: |
           # deriving Eq may break API compatibility so we disable it
           # See https://github.com/rust-lang/rust-clippy/issues/9063
           #
