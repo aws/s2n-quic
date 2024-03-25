@@ -126,12 +126,13 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+
 
       - uses: camshaft/rust-cache@v1
 
@@ -151,12 +152,13 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
+
 
       - uses: camshaft/rust-cache@v1
 
@@ -234,6 +236,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           override: true
+          https://github.com/actions/runner/issues/409#issuecomment-752775072
           target: ${{ matrix.target != 'native' && matrix.target || '' }}
 
       - name: Install cross
@@ -283,12 +286,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          override: true
-          components: miri, rust-src
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --component miri,rust-src
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - uses: camshaft/rust-cache@v1
         with:
@@ -308,12 +311,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          override: true
-          components: rust-src
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --component rust-src
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - uses: camshaft/rust-cache@v1
 
@@ -348,12 +351,12 @@ jobs:
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          override: true
-          components: llvm-tools-preview
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --component llvm-tools-preview
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - uses: camshaft/rust-cache@v1
 
@@ -405,12 +408,13 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ needs.env.outputs.msrv }}
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install ${{ needs.env.outputs.msrv }} --profile minimal
+          rustup override set ${{ needs.env.outputs.msrv }}
+
 
       - name: build
         uses: actions-rs/cargo@v1.0.3
@@ -432,17 +436,18 @@ jobs:
           submodules: true
 
       # nightly features are used for formatting
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: nightly-toolchain
-        with:
-          toolchain: nightly
-          components: rustfmt
+        run: |
+          rustup --version
+          rustup toolchain install nightly --component rustfmt
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: stable-toolchain
-        with:
-          toolchain: stable
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
         with:
@@ -471,12 +476,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
 
@@ -514,12 +519,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
 
@@ -573,13 +578,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          profile: minimal
-          override: true
-          components: rustfmt
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal --component rustfmt
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - uses: camshaft/rust-cache@v1
 
@@ -600,12 +604,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - name: Install cargo-insta
         uses: camshaft/install@v1
@@ -632,12 +636,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - name: Run cargo build
         run: |
@@ -674,12 +678,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/install@v1
         with:
@@ -713,12 +717,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
 
@@ -775,12 +779,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
         with:
@@ -799,13 +803,12 @@ jobs:
         with:
           lfs: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-          components: clippy,rustfmt
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup override set stable
 
       - uses: camshaft/install@v1
         with:
