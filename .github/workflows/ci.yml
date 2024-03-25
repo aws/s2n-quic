@@ -163,10 +163,7 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Run cargo doc
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: doc
-          args: --all-features --no-deps --workspace --exclude s2n-quic-qns
+        run: cargo doc --all-features --no-deps --workspace --exclude s2n-quic-qns
 
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -363,11 +360,8 @@ jobs:
       - name: Install cargo-llvm-cov
         run: curl -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
 
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: llvm-cov
-          args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
+      - name: Run cargo llvm-cov
+        run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
 
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -416,11 +410,8 @@ jobs:
           rustup override set ${{ needs.env.outputs.msrv }}
 
 
-      - name: build
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: build
-          args: --manifest-path ${{ matrix.crate }}
+      - name: Run cargo build
+        uses: cargo build --manifest-path ${{ matrix.crate }}
 
   examples:
     needs: env
@@ -529,10 +520,7 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Run cargo build
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: build
-          args: --bin s2n-quic-sim --release
+        uses: cargo build --bin s2n-quic-sim --release
 
       - name: Run simulations
         run: |
