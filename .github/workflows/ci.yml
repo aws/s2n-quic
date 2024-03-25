@@ -411,7 +411,7 @@ jobs:
 
 
       - name: Run cargo build
-        uses: cargo build --manifest-path ${{ matrix.crate }}
+        run: cargo build --manifest-path ${{ matrix.crate }}
 
   examples:
     needs: env
@@ -520,7 +520,7 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       - name: Run cargo build
-        uses: cargo build --bin s2n-quic-sim --release
+        run: cargo build --bin s2n-quic-sim --release
 
       - name: Run simulations
         run: |
