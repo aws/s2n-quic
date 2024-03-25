@@ -82,10 +82,8 @@ jobs:
           rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - name: Run cargo fmt
-        uses: cargo
-        with:
-          command: fmt
-          args: --all -- --check
+      - run: |
+          cargo fmt --all -- --check
 
   clippy:
     runs-on: ubuntu-latest
@@ -102,13 +100,6 @@ jobs:
         with:
           submodules: true
 
-      # - uses: actions-rs/toolchain@v1.0.7
-      #   id: toolchain
-      #   with:
-      #     toolchain: ${{ matrix.toolchain }}
-      #     profile: minimal
-      #     override: true
-      #     components: clippy
       - name: Install rust toolchain
         id: toolchain
         run: |
@@ -120,15 +111,13 @@ jobs:
 
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: clippy
+      - run: |
           # deriving Eq may break API compatibility so we disable it
           # See https://github.com/rust-lang/rust-clippy/issues/9063
-
+          #
           # manual_clamp will panic when min > max
           # See https://github.com/rust-lang/rust-clippy/pull/10101
-          args: --all-features --all-targets -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
+          cargo clippy --all-features --all-targets -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
 
   udeps:
     runs-on: ubuntu-latest
