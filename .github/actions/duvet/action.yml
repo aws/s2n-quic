@@ -35,6 +35,7 @@ runs:
         rustup --version
         rustup toolchain install stable
         rustup override set stable
+      shell: bash
 
     - uses: camshaft/rust-cache@v1
 
