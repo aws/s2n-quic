@@ -74,13 +74,19 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      # - uses: actions-rs/toolchain@v1.0.7
+      #   id: toolchain
+      #   with:
+      #     toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+      #     profile: minimal
+      #     override: true
+      #     components: rustfmt
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          profile: minimal
-          override: true
-          components: rustfmt
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal --component rustfmt
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1.0.3
@@ -103,13 +109,19 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      # - uses: actions-rs/toolchain@v1.0.7
+      #   id: toolchain
+      #   with:
+      #     toolchain: ${{ matrix.toolchain }}
+      #     profile: minimal
+      #     override: true
+      #     components: clippy
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ matrix.toolchain }}
-          profile: minimal
-          override: true
-          components: clippy
+        run: |
+          rustup --version
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --component clippy
+          rustup override set ${{ matrix.toolchain }}
 
       - uses: camshaft/rust-cache@v1
 
