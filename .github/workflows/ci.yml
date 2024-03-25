@@ -74,19 +74,16 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          profile: minimal
-          override: true
-          components: rustfmt
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal --component rustfmt
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: fmt
-          args: --all -- --check
+        run: |
+          cargo fmt --all -- --check
 
   clippy:
     runs-on: ubuntu-latest
@@ -103,27 +100,24 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ matrix.toolchain }}
-          profile: minimal
-          override: true
-          components: clippy
+        run: |
+          rustup --version
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --component clippy
+          rustup override set ${{ matrix.toolchain }}
 
       - uses: camshaft/rust-cache@v1
 
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: clippy
+        run: |
           # deriving Eq may break API compatibility so we disable it
           # See https://github.com/rust-lang/rust-clippy/issues/9063
-
+          #
           # manual_clamp will panic when min > max
           # See https://github.com/rust-lang/rust-clippy/pull/10101
-          args: --all-features --all-targets -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
+          cargo clippy --all-features --all-targets -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
 
   udeps:
     runs-on: ubuntu-latest
@@ -132,12 +126,13 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+
 
       - uses: camshaft/rust-cache@v1
 
@@ -157,20 +152,18 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
+
 
       - uses: camshaft/rust-cache@v1
 
       - name: Run cargo doc
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: doc
-          args: --all-features --no-deps --workspace --exclude s2n-quic-qns
+        run: cargo doc --all-features --no-deps --workspace --exclude s2n-quic-qns
 
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -235,12 +228,19 @@ jobs:
           lfs: true
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install cross target
+        if: ${{ matrix.target != 'native' }}
+        run: |
+          rustup target add ${{ matrix.target }}
+
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ matrix.rust }}
-          override: true
-          target: ${{ matrix.target != 'native' && matrix.target || '' }}
+        run: |
+          rustup --version
+          rustup toolchain install ${{ matrix.rust }}
+          rustup override set ${{ matrix.rust }}
+          # if not 'native', this install the toolchain for target, otherwise it's a noop
+          rustup toolchain install ${{ matrix.rust }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
 
       - name: Install cross
         if: ${{ matrix.target != 'native' }}
@@ -262,19 +262,13 @@ jobs:
         run: echo ${{ matrix.env }} >> $GITHUB_ENV
 
       # Build the tests before running to improve cross compilation speed
-      - name: Run cargo build
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: build
-          args: --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
-          use-cross: ${{ matrix.target != 'native' }}
+      - name: Run cargo/cross build
+        run: |
+          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} build --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: test
-          args: ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
-          use-cross: ${{ matrix.target != 'native' }}
+      - name: Run cargo/cross test
+        run: |
+          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
   miri:
     # miri needs quite a bit of memory so use a larger instance
@@ -289,12 +283,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          override: true
-          components: miri, rust-src
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --component miri,rust-src
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - uses: camshaft/rust-cache@v1
         with:
@@ -314,12 +308,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          override: true
-          components: rust-src
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --component rust-src
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - uses: camshaft/rust-cache@v1
 
@@ -354,23 +348,20 @@ jobs:
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          override: true
-          components: llvm-tools-preview
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --component llvm-tools-preview
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - uses: camshaft/rust-cache@v1
 
       - name: Install cargo-llvm-cov
         run: curl -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
 
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: llvm-cov
-          args: --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
+      - name: Run cargo llvm-cov
+        run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
 
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -411,18 +402,16 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ needs.env.outputs.msrv }}
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install ${{ needs.env.outputs.msrv }} --profile minimal
+          rustup override set ${{ needs.env.outputs.msrv }}
 
-      - name: build
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: build
-          args: --manifest-path ${{ matrix.crate }}
+
+      - name: Run cargo build
+        run: cargo build --manifest-path ${{ matrix.crate }}
 
   examples:
     needs: env
@@ -438,17 +427,18 @@ jobs:
           submodules: true
 
       # nightly features are used for formatting
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust nightly toolchain
         id: nightly-toolchain
-        with:
-          toolchain: nightly
-          components: rustfmt
+        run: |
+          rustup --version
+          rustup toolchain install nightly --component rustfmt
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust stable toolchain
         id: stable-toolchain
-        with:
-          toolchain: stable
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
         with:
@@ -477,12 +467,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
 
@@ -520,20 +510,17 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
 
       - name: Run cargo build
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: build
-          args: --bin s2n-quic-sim --release
+        run: cargo build --bin s2n-quic-sim --release
 
       - name: Run simulations
         run: |
@@ -579,13 +566,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          profile: minimal
-          override: true
-          components: rustfmt
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal --component rustfmt
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - uses: camshaft/rust-cache@v1
 
@@ -606,12 +592,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - name: Install cargo-insta
         uses: camshaft/install@v1
@@ -638,12 +624,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - name: Run cargo build
         run: |
@@ -680,12 +666,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/install@v1
         with:
@@ -719,12 +705,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
 
@@ -781,12 +767,12 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
         with:
@@ -805,13 +791,12 @@ jobs:
         with:
           lfs: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-          components: clippy,rustfmt
+        run: |
+          rustup --version
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup override set stable
 
       - uses: camshaft/install@v1
         with:

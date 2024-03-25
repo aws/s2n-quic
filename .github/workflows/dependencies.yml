@@ -28,21 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - uses: actions-rs/toolchain@v1.0.7
-        id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - uses: camshaft/install@v1
-        with:
-          crate: cargo-audit
-
-      - uses: actions-rs/audit-check@v1
+      - uses: rustsec/audit-check@v1.4.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 

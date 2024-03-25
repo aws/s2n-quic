@@ -29,11 +29,13 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - uses: actions-rs/toolchain@v1.0.7
+    - name: Install rust toolchain
       id: toolchain
-      with:
-        toolchain: stable
-        override: true
+      run: |
+        rustup --version
+        rustup toolchain install stable
+        rustup override set stable
+      shell: bash
 
     - uses: camshaft/rust-cache@v1
 
