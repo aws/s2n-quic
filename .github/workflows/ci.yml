@@ -237,7 +237,7 @@ jobs:
         id: toolchain
         run: |
           rustup --version
-          rustup toolchain install ${{ matrix.rust }}
+          rustup toolchain install ${{ matrix.rust }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
           rustup override set ${{ matrix.rust }}
 
       - name: Install cross
