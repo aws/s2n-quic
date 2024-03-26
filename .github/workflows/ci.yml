@@ -238,7 +238,7 @@ jobs:
         run: |
           rustup --version
           rustup toolchain install ${{ matrix.rust }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
-          rustup override set ${{ matrix.rust }}
+          rustup override set ${{ matrix.target != 'native' && format('{0}-{1}', matrix.target, matrix.rust ) || ${{ matrix.rust }} }}
 
       - name: Install cross
         if: ${{ matrix.target != 'native' }}
