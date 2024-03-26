@@ -240,7 +240,7 @@ jobs:
           echo '------1'
           rustup toolchain install ${{ matrix.rust }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
           echo '------2'
-          rustup override set ${{ matrix.target != 'native' && format('{0}-{1}', matrix.rust, matrix.target ) || matrix.rust }}
+          rustup override set ${{ matrix.rust }}
 
       - name: Install cross
         if: ${{ matrix.target != 'native' }}
