@@ -28,23 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - name: Install rust toolchain
-        id: toolchain
-        run: |
-          rustup --version
-          rustup toolchain install stable --profile minimal
-          rustup override set stable
-
-      - uses: camshaft/install@v1
-        with:
-          crate: cargo-audit
-
-      # FIXME replace with custom action since actions-rs is deprecated:
-      # https://github.com/aws/s2n-quic/issues/2096
-      - uses: actions-rs/audit-check@v1
+      - uses: rustsec/audit-check@v1.4.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
