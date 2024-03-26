@@ -19,7 +19,7 @@ skip-tree = [
     { name = "bach" },
     { name = "bolero" },
     { name = "criterion" },
-    { name = "insta" },
+    # { name = "insta" },
 
     # Ignore duplicate dependencies in private s2n-quic crates
     { name = "s2n-quic-bench" },
