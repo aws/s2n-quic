@@ -427,13 +427,13 @@ jobs:
           submodules: true
 
       # nightly features are used for formatting
-      - name: Install rust toolchain
+      - name: Install rust nightly toolchain
         id: nightly-toolchain
         run: |
           rustup --version
           rustup toolchain install nightly --component rustfmt
 
-      - name: Install rust toolchain
+      - name: Install rust stable toolchain
         id: stable-toolchain
         run: |
           rustup --version
