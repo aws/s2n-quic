@@ -228,12 +228,17 @@ jobs:
           lfs: true
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install cross target
+        if: ${{ matrix.target != 'native' }}
+        run: |
+          rustup target add ${{ matrix.target }}
+
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: ${{ matrix.rust }}
-          override: true
-          target: ${{ matrix.target != 'native' && matrix.target || '' }}
+        run: |
+          rustup --version
+          rustup toolchain install ${{ matrix.rust }}
+          rustup override set ${{ matrix.rust }}
 
       - name: Install cross
         if: ${{ matrix.target != 'native' }}
