@@ -5,6 +5,7 @@ notice = "deny"
 yanked = "deny"
 ignore = [
     "RUSTSEC-2021-0139", # criterion, structopt, and tracing-subscriber (test dependencies) use ansi_term
+    "RUSTSEC-2024-0320", # insta (test dependency) uses yaml-rust
 ]
 
 [bans]
