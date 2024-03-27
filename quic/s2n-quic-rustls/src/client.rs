@@ -1,12 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{certificate, session::Session};
+use crate::{certificate, cipher_suite::default_crypto_provider, session::Session};
 use core::convert::TryFrom;
-use rustls::ClientConfig;
+use rustls::{ClientConfig, ConfigBuilder, WantsVerifier};
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
+
+/// Create a QUIC client specific [rustls::ConfigBuilder].
+///
+/// Uses aws_lc_rs as the crypto provider and sets QUIC specific protocol versions.
+pub fn default_config_builder() -> Result<ConfigBuilder<ClientConfig, WantsVerifier>, rustls::Error>
+{
+    let tls13_cipher_suite_crypto_provider = default_crypto_provider()?;
+    ClientConfig::builder_with_provider(tls13_cipher_suite_crypto_provider.into())
+        .with_protocol_versions(crate::PROTOCOL_VERSIONS)
+}
 
 #[derive(Clone)]
 pub struct Client {
@@ -65,8 +75,8 @@ impl tls::Endpoint for Client {
         //# Endpoints MUST send the quic_transport_parameters extension;
         let transport_parameters = transport_parameters.encode_to_vec();
 
-        let rustls_server_name =
-            rustls::ServerName::try_from(server_name.as_ref()).expect("invalid server name");
+        let rustls_server_name = rustls::pki_types::ServerName::try_from(server_name.to_string())
+            .expect("invalid server name");
 
         let session = rustls::quic::ClientConnection::new(
             self.config.clone(),
@@ -114,7 +124,7 @@ impl Builder {
             rustls::Error::General("Certificate chain needs to have at least one entry".to_string())
         })?;
         self.cert_store
-            .add(root_certificate)
+            .add(root_certificate.to_owned())
             .map_err(|err| rustls::Error::General(err.to_string()))?;
         Ok(self)
     }
@@ -148,10 +158,7 @@ impl Builder {
             ));
         }
 
-        let mut config = ClientConfig::builder()
-            .with_cipher_suites(crate::cipher_suite::DEFAULT_CIPHERSUITES)
-            .with_safe_default_kx_groups()
-            .with_protocol_versions(crate::PROTOCOL_VERSIONS)?
+        let mut config = default_config_builder()?
             .with_root_certificates(self.cert_store)
             .with_no_client_auth();
 

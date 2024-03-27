@@ -1,11 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{certificate, session::Session};
-use rustls::ServerConfig;
+use crate::{certificate, cipher_suite::default_crypto_provider, session::Session};
+use rustls::{crypto::aws_lc_rs, ConfigBuilder, ServerConfig, WantsVerifier};
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
+
+/// Create a QUIC server specific [rustls::ConfigBuilder].
+///
+/// Uses aws_lc_rs as the crypto provider and sets QUIC specific protocol versions.
+pub fn default_config_builder() -> Result<ConfigBuilder<ServerConfig, WantsVerifier>, rustls::Error>
+{
+    let tls13_cipher_suite_crypto_provider = default_crypto_provider()?;
+    ServerConfig::builder_with_provider(tls13_cipher_suite_crypto_provider.into())
+        .with_protocol_versions(crate::PROTOCOL_VERSIONS)
+}
 
 #[derive(Clone)]
 pub struct Server {
@@ -133,11 +143,7 @@ impl Builder {
     }
 
     pub fn build(self) -> Result<Server, rustls::Error> {
-        let builder = ServerConfig::builder()
-            .with_cipher_suites(crate::cipher_suite::DEFAULT_CIPHERSUITES)
-            .with_safe_default_kx_groups()
-            .with_protocol_versions(crate::PROTOCOL_VERSIONS)?
-            .with_no_client_auth();
+        let builder = default_config_builder()?.with_no_client_auth();
 
         let mut config = if let Some(cert_resolver) = self.cert_resolver {
             builder.with_cert_resolver(cert_resolver)
@@ -159,6 +165,7 @@ impl Builder {
     }
 }
 
+#[derive(Debug)]
 struct AlwaysResolvesChain(Arc<rustls::sign::CertifiedKey>);
 
 impl AlwaysResolvesChain {
@@ -166,7 +173,7 @@ impl AlwaysResolvesChain {
         chain: certificate::Certificate,
         priv_key: certificate::PrivateKey,
     ) -> Result<Self, rustls::Error> {
-        let key = rustls::sign::any_supported_type(&priv_key.0)
+        let key = aws_lc_rs::sign::any_supported_type(&priv_key.0)
             .map_err(|_| rustls::Error::General("invalid private key".into()))?;
         Ok(Self(Arc::new(rustls::sign::CertifiedKey::new(
             chain.0, key,

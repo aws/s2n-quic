@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2023-11-27
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2024-03-21
   CDN: https://dnglbrstg7yg.cloudfront.net
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
@@ -215,6 +215,10 @@ jobs:
           - rust: stable
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
+          - rust: stable
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            args: --features aws-lc-bindgen
           # test with different platform features
           - rust: stable
             os: ubuntu-latest
@@ -225,6 +229,7 @@ jobs:
             target: native
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE="mtu_disc,pktinfo,tos,socket_msg"
     steps:
+      - uses: ilammy/setup-nasm@v1
       - uses: actions/checkout@v4
         with:
           lfs: true
@@ -261,14 +266,14 @@ jobs:
         uses: actions-rs/cargo@v1.0.3
         with:
           command: build
-          args: --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
+          args: --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
           use-cross: ${{ matrix.target != 'native' }}
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1.0.3
         with:
           command: test
-          args: ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
+          args: ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
           use-cross: ${{ matrix.target != 'native' }}
 
   miri:

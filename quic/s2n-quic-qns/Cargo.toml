@@ -23,8 +23,6 @@ http = "1.0"
 humansize = "2"
 lru = "0.10"
 rand = "0.8"
-# dangerous_configuration is used to allow for cert verification to be disabled for the amplification limit interop test
-rustls = { version = "0.21", features = ["dangerous_configuration", "quic"] }
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-h3 = { path = "../s2n-quic-h3" }
