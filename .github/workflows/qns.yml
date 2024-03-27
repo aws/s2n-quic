@@ -84,7 +84,6 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup --version
           rustup toolchain install stable --profile minimal
           rustup override set stable
 
@@ -345,7 +344,6 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup --version
           rustup toolchain install stable
           rustup override set stable
 
@@ -475,7 +473,6 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup --version
           rustup toolchain install stable --profile minimal
           rustup override set stable
 
@@ -592,7 +589,6 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup --version
           rustup toolchain install stable --profile minimal
           rustup override set stable
 
