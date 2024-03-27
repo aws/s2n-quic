@@ -262,13 +262,16 @@ jobs:
         run: echo ${{ matrix.env }} >> $GITHUB_ENV
 
       # Build the tests before running to improve cross compilation speed
+      #
+      # `cross` falls back to `cargo` if no --target is specified
       - name: Run cargo/cross build
         run: |
-          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} build --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
+          cross build --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
+      # `cross` falls back to `cargo` if no --target is specified
       - name: Run cargo/cross test
         run: |
-          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
+          cross test ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
   miri:
     # miri needs quite a bit of memory so use a larger instance
