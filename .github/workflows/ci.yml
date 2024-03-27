@@ -243,7 +243,7 @@ jobs:
           rustup toolchain install ${{ matrix.rust }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
 
       - name: Install cross
-        if: ${{ matrix.target != 'native' }}
+        # if: ${{ matrix.target != 'native' }}
         uses: camshaft/install@v1
         with:
           crate: cross
