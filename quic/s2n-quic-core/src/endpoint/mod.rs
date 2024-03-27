@@ -3,8 +3,7 @@
 
 use crate::{
     io::{rx, tx},
-    path,
-    path::mtu,
+    path::{self, mtu},
     time::{Clock, Timestamp},
 };
 use core::{
