@@ -1,5 +1,8 @@
 name: 'Duvet'
 description: 'Uses Duvet to generate a compliance report and uploads it to S3'
+defaults:
+  run:
+    shell: bash
 inputs:
   report-script:
     description: 'Path to script that generates a Duvet report'
@@ -32,10 +35,8 @@ runs:
     - name: Install rust toolchain
       id: toolchain
       run: |
-        rustup --version
         rustup toolchain install stable
         rustup override set stable
-      shell: bash
 
     - uses: camshaft/rust-cache@v1
 
@@ -45,7 +46,6 @@ runs:
 
     - name: Generate Duvet report
       run: ${{ inputs.report-script }} ${{ github.sha }}
-      shell: bash
 
     - uses: aws-actions/configure-aws-credentials@v1.6.1
       if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -75,7 +75,6 @@ runs:
         URL="$PREFIX/$TARGET"
 
         echo "::set-output name=URL::$URL"
-      shell: bash
 
     - uses: ouzi-dev/commit-status-updater@v1.1.2
       if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
