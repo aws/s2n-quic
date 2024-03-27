@@ -249,8 +249,8 @@ impl Builder {
         Ok(Io { builder: self })
     }
 
-    pub fn with_min_mtu(mut self, min_mtu: u16) -> Self {
-        self.mtu_config.min_mtu = min_mtu.try_into().unwrap();
+    pub fn with_base_mtu(mut self, base_mtu: u16) -> Self {
+        self.mtu_config.base_mtu = base_mtu.try_into().unwrap();
         self
     }
 

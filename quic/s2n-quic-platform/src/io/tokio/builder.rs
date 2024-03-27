@@ -126,9 +126,9 @@ impl Builder {
     /// Sets the smallest maximum transmission unit (MTU) to use when transmitting
     ///
     /// Note: Only configure this value if it is certain the network path and peer can
-    ///       support the given `min_mtu`.
-    pub fn with_min_mtu(mut self, min_mtu: u16) -> io::Result<Self> {
-        self.mtu_config.min_mtu = min_mtu
+    ///       support the given `base_mtu`.
+    pub fn with_base_mtu(mut self, base_mtu: u16) -> io::Result<Self> {
+        self.mtu_config.base_mtu = base_mtu
             .try_into()
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
         Ok(self)

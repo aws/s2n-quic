@@ -208,13 +208,13 @@ macro_rules! impl_mtu {
 // TODO decide on better defaults
 // Safety: 1500 and MINIMUM_MTU are greater than zero
 const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
-const DEFAULT_MIN_MTU: MinMtu = MinMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
+const DEFAULT_BASE_MTU: BaseMtu = BaseMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
 const DEFAULT_INITIAL_MTU: InitialMtu =
     InitialMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
 
 impl_mtu!(MaxMtu, DEFAULT_MAX_MTU);
 impl_mtu!(InitialMtu, DEFAULT_INITIAL_MTU);
-impl_mtu!(MinMtu, DEFAULT_MIN_MTU);
+impl_mtu!(BaseMtu, DEFAULT_BASE_MTU);
 
 #[derive(Debug)]
 pub struct MtuError(NonZeroU16);
@@ -231,14 +231,14 @@ impl std::error::Error for MtuError {}
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Config {
     pub initial_mtu: InitialMtu,
-    pub min_mtu: MinMtu,
+    pub base_mtu: BaseMtu,
     pub max_mtu: MaxMtu,
 }
 
 impl Config {
     pub const MIN: Self = Self {
         initial_mtu: InitialMtu::MIN,
-        min_mtu: MinMtu::MIN,
+        base_mtu: BaseMtu::MIN,
         max_mtu: MaxMtu::MIN,
     };
 
@@ -247,7 +247,7 @@ impl Config {
     /// A valid MTU configuration must have min_mtu <= initial_mtu <= max_mtu
     #[inline]
     pub fn is_valid(&self) -> bool {
-        self.min_mtu.0 <= self.initial_mtu.0 && self.initial_mtu.0 <= self.max_mtu.0
+        self.base_mtu.0 <= self.initial_mtu.0 && self.initial_mtu.0 <= self.max_mtu.0
     }
 }
 
@@ -308,7 +308,7 @@ impl Controller {
         //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
         //# datagram size.
 
-        let base_plpmtu = config.min_mtu.max_datagram_size(peer_socket_address);
+        let base_plpmtu = config.base_mtu.max_datagram_size(peer_socket_address);
         let max_udp_payload = config.max_mtu.max_datagram_size(peer_socket_address);
         let plpmtu = config.initial_mtu.max_datagram_size(peer_socket_address);
         let initial_probed_size = if u16::from(config.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD

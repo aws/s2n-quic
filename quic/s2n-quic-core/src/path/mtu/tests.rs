@@ -31,7 +31,7 @@ fn pn(nr: usize) -> PacketNumber {
 fn mtu_config_is_valid() {
     let config = Config {
         initial_mtu: 1500.try_into().unwrap(),
-        min_mtu: 1228.try_into().unwrap(),
+        base_mtu: 1228.try_into().unwrap(),
         max_mtu: 9000.try_into().unwrap(),
     };
 
@@ -39,7 +39,7 @@ fn mtu_config_is_valid() {
 
     let config = Config {
         initial_mtu: 1500.try_into().unwrap(),
-        min_mtu: 1500.try_into().unwrap(),
+        base_mtu: 1500.try_into().unwrap(),
         max_mtu: 1500.try_into().unwrap(),
     };
 
@@ -47,7 +47,7 @@ fn mtu_config_is_valid() {
 
     let config = Config {
         initial_mtu: 1500.try_into().unwrap(),
-        min_mtu: 1501.try_into().unwrap(),
+        base_mtu: 1501.try_into().unwrap(),
         max_mtu: 9000.try_into().unwrap(),
     };
 
@@ -55,7 +55,7 @@ fn mtu_config_is_valid() {
 
     let config = mtu::Config {
         initial_mtu: 1500.try_into().unwrap(),
-        min_mtu: 1228.try_into().unwrap(),
+        base_mtu: 1228.try_into().unwrap(),
         max_mtu: 1400.try_into().unwrap(),
     };
 
@@ -172,7 +172,7 @@ fn new_initial_and_min_mtu() {
     let mut controller = Controller::new(
         Config {
             max_mtu: 2600.try_into().unwrap(),
-            min_mtu: 1400.try_into().unwrap(),
+            base_mtu: 1400.try_into().unwrap(),
             initial_mtu: 2500.try_into().unwrap(),
         },
         &addr.into(),
@@ -683,7 +683,7 @@ fn on_packet_loss_initial_mtu_configured() {
                 let mtu_config = Config {
                     max_mtu: max_mtu.try_into().unwrap(),
                     initial_mtu: initial_mtu.min(max_mtu).try_into().unwrap(),
-                    min_mtu: min_mtu.min(initial_mtu).min(max_mtu).try_into().unwrap(),
+                    base_mtu: min_mtu.min(initial_mtu).min(max_mtu).try_into().unwrap(),
                 };
                 let mut controller = Controller::new(mtu_config, &addr);
                 let base_plpmtu = controller.base_plpmtu;

@@ -6,7 +6,7 @@ use s2n_codec::encoder::scatter;
 use s2n_quic_core::{
     event::api::Subject,
     packet::interceptor::{Interceptor, Packet},
-    path::{InitialMtu, MinMtu},
+    path::{BaseMtu, InitialMtu},
 };
 
 // Construct a simulation where a client sends some data, which the server echos
@@ -14,7 +14,7 @@ use s2n_quic_core::{
 // returns at the end of the simulation.
 fn mtu_updates(
     initial_mtu: u16,
-    min_mtu: u16,
+    base_mtu: u16,
     max_mtu: u16,
     network_max_udp_payload: u16,
 ) -> Vec<events::MtuUpdated> {
@@ -31,7 +31,7 @@ fn mtu_updates(
                     .builder()
                     .with_max_mtu(max_mtu)
                     .with_initial_mtu(initial_mtu)
-                    .with_min_mtu(min_mtu)
+                    .with_base_mtu(base_mtu)
                     .build()?,
             )?
             .with_tls(SERVER_CERTS)?
@@ -44,7 +44,7 @@ fn mtu_updates(
                     .builder()
                     .with_max_mtu(max_mtu)
                     .with_initial_mtu(initial_mtu)
-                    .with_min_mtu(min_mtu)
+                    .with_base_mtu(base_mtu)
                     .build()
                     .unwrap(),
             )?
@@ -69,7 +69,7 @@ fn mtu_updates(
 fn mtu_probe_jumbo_frame_test() {
     let events = mtu_updates(
         InitialMtu::default().into(),
-        MinMtu::default().into(),
+        BaseMtu::default().into(),
         9_001,
         10_000,
     );
@@ -100,7 +100,7 @@ fn mtu_probe_jumbo_frame_test() {
 fn mtu_probe_jumbo_frame_unsupported_test() {
     let events = mtu_updates(
         InitialMtu::default().into(),
-        MinMtu::default().into(),
+        BaseMtu::default().into(),
         9_001,
         1472,
     );
@@ -109,38 +109,38 @@ fn mtu_probe_jumbo_frame_unsupported_test() {
     assert_eq!(last_mtu.mtu, 1472);
 }
 
-// The configured minimum mtu is the smallest MTU used
+// The configured base mtu is the smallest MTU used
 #[test]
-fn min_mtu() {
+fn base_mtu() {
     let events = mtu_updates(1250, 1250, 9_001, 10_000);
-    let min_mtu = events
+    let base_mtu = events
         .iter()
         .min_by_key(|&mtu_event| mtu_event.mtu)
         .unwrap();
     // 1250 - UDP_HEADER_LEN - IPV4_HEADER_LEN
-    assert_eq!(min_mtu.mtu, 1222);
+    assert_eq!(base_mtu.mtu, 1222);
 }
 
 // The configured initial mtu is the first MTU used
 #[test]
 fn initial_mtu() {
-    let events = mtu_updates(2000, MinMtu::default().into(), 9_001, 10_000);
+    let events = mtu_updates(2000, BaseMtu::default().into(), 9_001, 10_000);
     let first_mtu = events.first().unwrap();
     // 2000 - UDP_HEADER_LEN - IPV4_HEADER_LEN
     assert_eq!(first_mtu.mtu, 1972);
 }
 
 // The configured initial mtu is the first MTU used. It is not supported by the network, so
-// the MTU drops to the minimum MTU, before increasing back to what the network supports.
+// the MTU drops to the base MTU, before increasing back to what the network supports.
 #[test]
 fn initial_mtu_not_supported() {
-    let events = mtu_updates(2000, MinMtu::default().into(), 9_001, 1500);
+    let events = mtu_updates(2000, BaseMtu::default().into(), 9_001, 1500);
     let first_mtu = events.first().unwrap();
     let second_mtu = events.get(1).unwrap();
     let last_mtu = events.last().unwrap();
     // First try the initial MTU
     assert_eq!(first_mtu.mtu, 1972);
-    // Next drop down to the minimum MTU
+    // Next drop down to the base MTU
     assert_eq!(second_mtu.mtu, 1200);
     // Eventually reach the MTU the network supports
     assert_eq!(last_mtu.mtu, 1500);
@@ -149,7 +149,7 @@ fn initial_mtu_not_supported() {
 // The configured initial MTU is jumbo and the network supports it.
 #[test]
 fn initial_mtu_is_jumbo() {
-    let events = mtu_updates(9_001, MinMtu::default().into(), 9_001, 10_000);
+    let events = mtu_updates(9_001, BaseMtu::default().into(), 9_001, 10_000);
     let first_mtu = events.first().unwrap();
     let last_mtu = events.last().unwrap();
     // First try the initial MTU
@@ -168,7 +168,7 @@ fn initial_mtu_is_jumbo_not_supported() {
     let last_mtu = events.last().unwrap();
     // First try the initial MTU
     assert_eq!(first_mtu.mtu, 8_973);
-    // Next drop down to the minimum MTU
+    // Next drop down to the base MTU
     assert_eq!(second_mtu.mtu, 1472);
     // Eventually reach the MTU the network supports
     assert_eq!(last_mtu.mtu, 2_496);
