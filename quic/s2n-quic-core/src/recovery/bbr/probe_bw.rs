@@ -800,7 +800,7 @@ mod tests {
     use super::*;
     use crate::{
         path,
-        path::MINIMUM_MTU,
+        path::MINIMUM_MAX_DATAGRAM_SIZE,
         recovery::{
             bandwidth::{Bandwidth, PacketInfo},
             congestion_controller::PathPublisher,
@@ -1114,7 +1114,7 @@ mod tests {
 
     #[test]
     fn enter_probe_bw() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let mut rng = random::testing::Generator::default();
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
@@ -1139,7 +1139,7 @@ mod tests {
 
     #[test]
     fn update_ack_phase() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let mut rng = random::testing::Generator::default();
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());

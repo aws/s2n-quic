@@ -3,7 +3,7 @@
 
 use crate::io::tokio::Clock;
 use s2n_quic_core::{
-    endpoint::Endpoint, inet::SocketAddress, io::event_loop::EventLoop, path::MaxMtu,
+    endpoint::Endpoint, inet::SocketAddress, io::event_loop::EventLoop, path::mtu,
 };
 pub use s2n_quic_core::{
     io::rx,
@@ -115,7 +115,7 @@ pub use builder::Builder;
 pub struct Provider<Rx, Tx> {
     rx: Rx,
     tx: Tx,
-    max_mtu: MaxMtu,
+    mtu_config: mtu::Config,
     handle: Option<tokio::runtime::Handle>,
 }
 
@@ -138,12 +138,12 @@ where
         let Self {
             tx,
             rx,
-            max_mtu,
+            mtu_config,
             handle,
         } = self;
 
         // tell the endpoint what our MTU is
-        endpoint.set_max_mtu(max_mtu);
+        endpoint.set_mtu_config(mtu_config);
 
         // create a tokio clock
         let clock = Clock::new();

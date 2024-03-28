@@ -29,7 +29,7 @@ use s2n_quic_core::{
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRtt,
     },
-    path::MaxMtu,
+    path::mtu,
     query,
     time::{Timer, Timestamp},
 };
@@ -235,7 +235,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         _path_migration: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
-        _max_mtu: MaxMtu,
+        _mtu_config: mtu::Config,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, DatagramDropReason> {
         todo!()

@@ -11,7 +11,7 @@ use s2n_quic_core::{
     event,
     inet::ExplicitCongestionNotification,
     io::{rx, tx},
-    path::Handle as _,
+    path::{mtu, Handle as _},
     time::{Clock, Duration, Timestamp},
 };
 use std::{collections::BTreeMap, net::ToSocketAddrs};
@@ -129,7 +129,7 @@ impl<const IS_SERVER: bool> Endpoint for TestEndpoint<IS_SERVER> {
         self.now.map(|now| now + Duration::from_millis(50))
     }
 
-    fn set_max_mtu(&mut self, _max_mtu: MaxMtu) {
+    fn set_mtu_config(&mut self, _mtu_config: mtu::Config) {
         // noop
     }
 

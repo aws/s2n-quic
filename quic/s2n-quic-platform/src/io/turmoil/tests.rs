@@ -113,7 +113,7 @@ impl Endpoint for TestEndpoint {
         self.close_timer.next_expiration()
     }
 
-    fn set_max_mtu(&mut self, _max_mtu: MaxMtu) {
+    fn set_mtu_config(&mut self, _mtu_config: mtu::Config) {
         // noop
     }
 

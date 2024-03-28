@@ -4,8 +4,8 @@
 use crate::endpoint;
 use alloc::collections::VecDeque;
 use s2n_quic_core::{
-    event, inet::ExplicitCongestionNotification, io::tx, packet, path, path::MINIMUM_MTU, random,
-    stateless_reset, time,
+    event, inet::ExplicitCongestionNotification, io::tx, packet, path,
+    path::MINIMUM_MAX_DATAGRAM_SIZE, random, stateless_reset, time,
 };
 
 #[derive(Debug)]
@@ -73,7 +73,7 @@ impl<Path: path::Handle> Dispatch<Path> {
 
 pub struct Transmission<Path: path::Handle> {
     path: Path,
-    packet: [u8; MINIMUM_MTU as usize],
+    packet: [u8; MINIMUM_MAX_DATAGRAM_SIZE as usize],
     packet_len: usize,
 }
 
@@ -96,7 +96,7 @@ impl<Path: path::Handle> Transmission<Path> {
         triggering_packet_len: usize,
         random_generator: &mut dyn random::Generator,
     ) -> Option<Self> {
-        let mut packet_buf = [0u8; MINIMUM_MTU as usize];
+        let mut packet_buf = [0u8; MINIMUM_MAX_DATAGRAM_SIZE as usize];
 
         let packet_len = packet::stateless_reset::encode_packet(
             token,

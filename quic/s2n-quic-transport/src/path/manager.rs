@@ -13,14 +13,18 @@ use core::time::Duration;
 use s2n_quic_core::{
     ack,
     connection::{self, PeerId},
-    event::{self, builder::DatagramDropReason, IntoEvent},
+    event::{
+        self,
+        builder::{DatagramDropReason, MtuUpdatedCause},
+        IntoEvent,
+    },
     frame,
     frame::path_validation,
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
     path::{
         migration::{self, Validator as _},
-        Handle as _, Id, MaxMtu,
+        mtu, Handle as _, Id, MaxMtu,
     },
     random,
     recovery::congestion_controller::{self, Endpoint as _},
@@ -240,7 +244,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        max_mtu: MaxMtu,
+        mtu_config: mtu::Config,
         initial_rtt: Duration,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -303,7 +307,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             datagram,
             congestion_controller_endpoint,
             migration_validator,
-            max_mtu,
+            mtu_config,
             initial_rtt,
             publisher,
         )
@@ -316,7 +320,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        max_mtu: MaxMtu,
+        mtu_config: mtu::Config,
         initial_rtt: Duration,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -400,7 +404,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         // we do not need to reset congestion controller and round-trip time estimator
         // again on confirming the peer's ownership of its new address.
         let rtt = self.active_path().rtt_estimator.for_new_path(initial_rtt);
-        let path_info = congestion_controller::PathInfo::new(&remote_address);
+        let path_info =
+            congestion_controller::PathInfo::new(mtu_config.initial_mtu, &remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
         let peer_connection_id = {
@@ -443,7 +448,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             rtt,
             cc,
             true,
-            max_mtu,
+            mtu_config,
         );
 
         let amplification_outcome = path.on_bytes_received(datagram.payload_len);
@@ -973,7 +978,6 @@ macro_rules! path_event {
 }
 
 pub(crate) use path_event;
-use s2n_quic_core::event::builder::MtuUpdatedCause;
 
 #[cfg(test)]
 mod tests;

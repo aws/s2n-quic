@@ -3,7 +3,7 @@
 
 use bytes::{Bytes, BytesMut};
 use s2n_codec::{Encoder, EncoderBuffer};
-use s2n_quic_core::path::MINIMUM_MTU;
+use s2n_quic_core::path::MINIMUM_MAX_DATAGRAM_SIZE;
 
 /// Allocates a large single buffer, rather than several small buffers
 ///
@@ -24,7 +24,7 @@ impl Default for Buffer {
     fn default() -> Self {
         Self {
             buffer: BytesMut::new(),
-            max_size: MINIMUM_MTU as usize,
+            max_size: MINIMUM_MAX_DATAGRAM_SIZE as usize,
             count: DEFAULT_PACKETS,
         }
     }
@@ -94,8 +94,8 @@ mod tests {
             .write(|mut buffer| {
                 assert_eq!(
                     buffer.remaining_capacity(),
-                    MINIMUM_MTU as usize,
-                    "the provider buffer should be the MINIMUM_MTU"
+                    MINIMUM_MAX_DATAGRAM_SIZE as usize,
+                    "the provider buffer should be the MINIMUM_MAX_DATAGRAM_SIZE"
                 );
                 buffer.encode(&1337u16);
                 buffer
@@ -106,7 +106,7 @@ mod tests {
 
         assert!(buffer.buffer.capacity() > 0);
         assert!(
-            buffer.buffer.capacity() < MINIMUM_MTU as usize * DEFAULT_PACKETS,
+            buffer.buffer.capacity() < MINIMUM_MAX_DATAGRAM_SIZE as usize * DEFAULT_PACKETS,
             "space should be trimmed off for the returned packet"
         );
     }

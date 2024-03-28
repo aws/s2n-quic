@@ -11,7 +11,7 @@ use s2n_quic_core::{
     inet::ExplicitCongestionNotification,
     io::tx,
     packet,
-    path::{self, MINIMUM_MTU},
+    path::{self, MINIMUM_MAX_DATAGRAM_SIZE},
     random, time, token,
 };
 
@@ -84,7 +84,7 @@ impl<Path: path::Handle> Dispatch<Path> {
 
 pub struct Transmission<Path: path::Handle> {
     path: Path,
-    packet: [u8; MINIMUM_MTU as usize],
+    packet: [u8; MINIMUM_MAX_DATAGRAM_SIZE as usize],
     packet_range: Range<usize>,
     version: u32,
 }
@@ -107,7 +107,7 @@ impl<Path: path::Handle> Transmission<Path> {
         random: &mut dyn random::Generator,
         token_format: &mut T,
     ) -> Option<Self> {
-        let mut packet_buf = [0u8; MINIMUM_MTU as usize];
+        let mut packet_buf = [0u8; MINIMUM_MAX_DATAGRAM_SIZE as usize];
         let packet_range = packet::retry::Retry::encode_packet::<_, C>(
             &path.remote_address(),
             packet,

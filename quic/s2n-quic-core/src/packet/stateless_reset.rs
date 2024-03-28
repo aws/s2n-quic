@@ -125,7 +125,7 @@ fn generate_unpredictable_bits(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{path::MINIMUM_MTU, stateless_reset::token::testing::TEST_TOKEN_1};
+    use crate::{path::MINIMUM_MAX_DATAGRAM_SIZE, stateless_reset::token::testing::TEST_TOKEN_1};
 
     #[test]
     #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
@@ -170,7 +170,7 @@ mod tests {
         let triggering_packet_len = 600;
         let mut generator = random::testing::Generator(123);
 
-        let mut buffer = [0; MINIMUM_MTU as usize];
+        let mut buffer = [0; MINIMUM_MAX_DATAGRAM_SIZE as usize];
 
         let packet_len = encode_packet(
             TEST_TOKEN_1,
@@ -211,7 +211,7 @@ mod tests {
         let max_tag_len = 16;
         let mut triggering_packet_len = min_indistinguishable_packet_len(max_tag_len) + 1;
         let mut generator = random::testing::Generator(123);
-        let mut buffer = [0; MINIMUM_MTU as usize];
+        let mut buffer = [0; MINIMUM_MAX_DATAGRAM_SIZE as usize];
 
         let packet_len = encode_packet(
             TEST_TOKEN_1,
@@ -251,9 +251,9 @@ mod tests {
     #[test]
     fn max_packet_test() {
         let max_tag_len = 16;
-        let triggering_packet_len = (MINIMUM_MTU * 2) as usize;
+        let triggering_packet_len = (MINIMUM_MAX_DATAGRAM_SIZE * 2) as usize;
         let mut generator = random::testing::Generator(123);
-        let mut buffer = [0; MINIMUM_MTU as usize];
+        let mut buffer = [0; MINIMUM_MAX_DATAGRAM_SIZE as usize];
 
         let packet_len = encode_packet(
             TEST_TOKEN_1,
@@ -265,13 +265,13 @@ mod tests {
 
         assert!(packet_len.is_some());
 
-        assert!(packet_len.unwrap() <= MINIMUM_MTU as usize);
+        assert!(packet_len.unwrap() <= MINIMUM_MAX_DATAGRAM_SIZE as usize);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)] // This test breaks in CI but can't be reproduced locally - https://github.com/aws/s2n-quic/issues/867
     fn packet_encoding_test() {
-        let mut buffer = [0; MINIMUM_MTU as usize];
+        let mut buffer = [0; MINIMUM_MAX_DATAGRAM_SIZE as usize];
 
         bolero::check!()
             .with_type::<(u8, usize, u16)>()

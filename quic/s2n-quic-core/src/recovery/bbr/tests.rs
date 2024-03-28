@@ -5,7 +5,7 @@ use crate::{
     assert_delta,
     counter::Counter,
     event, path,
-    path::MINIMUM_MTU,
+    path::MINIMUM_MAX_DATAGRAM_SIZE,
     random,
     recovery::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
@@ -26,7 +26,7 @@ use std::time::Duration;
 //# ProbeBW_DOWN, ProbeBW_CRUISE), BBR responds to loss by slowing down to some extent.
 #[test]
 fn is_probing_for_bandwidth() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let mut publisher = event::testing::Publisher::snapshot();
     let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
@@ -77,7 +77,7 @@ fn inflight_hi_from_lost_packet() {
         is_app_limited: false,
     };
 
-    let inflight_prev = packet_info.bytes_in_flight - MINIMUM_MTU as u32;
+    let inflight_prev = packet_info.bytes_in_flight - MINIMUM_MAX_DATAGRAM_SIZE as u32;
     assert_eq!(inflight_prev, 1800);
 
     // lost prefix = (BBRLossThresh * inflight_prev - lost_prev) / (1 - BBRLossThresh)
@@ -85,7 +85,7 @@ fn inflight_hi_from_lost_packet() {
     assert_eq!(
         inflight_prev + 26,
         BbrCongestionController::inflight_hi_from_lost_packet(
-            MINIMUM_MTU as u32,
+            MINIMUM_MAX_DATAGRAM_SIZE as u32,
             1210,
             packet_info
         )
@@ -95,7 +95,7 @@ fn inflight_hi_from_lost_packet() {
     assert_eq!(
         inflight_prev,
         BbrCongestionController::inflight_hi_from_lost_packet(
-            MINIMUM_MTU as u32,
+            MINIMUM_MAX_DATAGRAM_SIZE as u32,
             3000,
             packet_info
         )
@@ -119,8 +119,8 @@ fn inflight_hi_from_lost_packet() {
     assert_eq!(
         inflight_prev,
         BbrCongestionController::inflight_hi_from_lost_packet(
-            MINIMUM_MTU as u32,
-            MINIMUM_MTU as u32,
+            MINIMUM_MAX_DATAGRAM_SIZE as u32,
+            MINIMUM_MAX_DATAGRAM_SIZE as u32,
             packet_info
         )
     );
@@ -159,7 +159,7 @@ fn pacing_cwnd_gain() {
     assert_eq!(State::Drain.pacing_gain(), State::Startup.cwnd_gain().inv());
     assert_eq!(State::Drain.cwnd_gain(), State::Startup.cwnd_gain());
 
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let now = NoopClock.get_time();
     bbr.enter_drain(&mut publisher);
     bbr.enter_probe_bw(
@@ -229,7 +229,7 @@ fn pacing_cwnd_gain() {
 //#   BBREnterStartup()
 #[test]
 fn new() {
-    let bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
 
     assert_eq!(Bandwidth::ZERO, bbr.data_rate_model.max_bw());
     assert_eq!(None, bbr.data_volume_model.min_rtt());
@@ -264,7 +264,7 @@ fn new() {
 //#     return gain * BBR.bdp
 #[test]
 fn bdp_multiple() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let now = NoopClock.get_time();
 
     // No min_rtt yet, so bdp is the initial window
@@ -293,7 +293,7 @@ fn bdp_multiple() {
 //#   return min(BBR.bdp, cwnd)
 #[test]
 fn target_inflight() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let now = NoopClock.get_time();
 
     let rate_sample = RateSample {
@@ -329,12 +329,12 @@ fn target_inflight() {
 //#   BBR.max_inflight = BBRQuantizationBudget(inflight)
 #[test]
 fn max_inflight() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
 
     bbr.data_volume_model.set_extra_acked_for_test(1000, 0);
     // bdp = initial_window = 12000 since min_rtt is not populated
     // inflight = bdp + extra_acked = 13000
-    // max_inflight = quantization_budget(13000) = 3 * MAX_BURST_PACKETS * MINIMUM_MTU = 36000
+    // max_inflight = quantization_budget(13000) = 3 * MAX_BURST_PACKETS * MINIMUM_MAX_DATAGRAM_SIZE = 36000
     assert_eq!(36000, bbr.max_inflight());
 }
 
@@ -345,7 +345,7 @@ fn max_inflight() {
 //#   return BBRQuantizationBudget(inflight)
 #[test]
 fn inflight() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let now = NoopClock.get_time();
 
     // Set an RTT so min_rtt is populated
@@ -375,7 +375,7 @@ fn inflight() {
 //#                BBRMinPipeCwnd)
 #[test]
 fn inflight_with_headroom() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
 
     // inflight_hi has not been initialized so inflight is u32::MAX
     assert_eq!(u32::MAX, bbr.inflight_with_headroom());
@@ -404,7 +404,7 @@ fn inflight_with_headroom() {
 //#   return inflight
 #[test]
 fn quantization_budget() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let mut publisher = event::testing::Publisher::snapshot();
     let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     bbr.pacer.set_send_quantum_for_test(4000);
@@ -430,7 +430,10 @@ fn quantization_budget() {
     assert!(bbr.state.is_probing_bw_up());
 
     // since probe bw up, add 2 packets to the budget
-    assert_eq!(4800 + 2 * MINIMUM_MTU as u64, bbr.quantization_budget(2000));
+    assert_eq!(
+        4800 + 2 * MINIMUM_MAX_DATAGRAM_SIZE as u64,
+        bbr.quantization_budget(2000)
+    );
 }
 
 #[test]
@@ -443,7 +446,7 @@ fn is_inflight_too_high() {
     // loss rate higher than 2% threshold and loss bursts = limit
     assert!(BbrCongestionController::is_inflight_too_high(
         rate_sample,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         2,
         2
     ));
@@ -451,7 +454,7 @@ fn is_inflight_too_high() {
     // loss rate higher than 2% threshold but loss bursts < limit
     assert!(!BbrCongestionController::is_inflight_too_high(
         rate_sample,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         1,
         2
     ));
@@ -464,33 +467,33 @@ fn is_inflight_too_high() {
     // loss rate <= 2% threshold
     assert!(!BbrCongestionController::is_inflight_too_high(
         rate_sample,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         2,
         2
     ));
 
     let rate_sample = RateSample {
-        delivered_bytes: 100 * MINIMUM_MTU as u64,
+        delivered_bytes: 100 * MINIMUM_MAX_DATAGRAM_SIZE as u64,
         ecn_ce_count: 51,
         ..Default::default()
     };
     // ecn rate higher than 50% threshold
     assert!(BbrCongestionController::is_inflight_too_high(
         rate_sample,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         0,
         2
     ));
 
     let rate_sample = RateSample {
-        delivered_bytes: 100 * MINIMUM_MTU as u64,
+        delivered_bytes: 100 * MINIMUM_MAX_DATAGRAM_SIZE as u64,
         ecn_ce_count: 50,
         ..Default::default()
     };
     // ecn rate <= 50% threshold
     assert!(!BbrCongestionController::is_inflight_too_high(
         rate_sample,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         0,
         2,
     ));
@@ -513,7 +516,7 @@ fn is_inflight_too_high() {
 //#   cwnd = min(cwnd, cap)
 #[test]
 fn bound_cwnd_for_model() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let mut publisher = event::testing::Publisher::snapshot();
     let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     enter_probe_bw_state(&mut bbr, CyclePhase::Down, &mut publisher);
@@ -555,7 +558,7 @@ fn bound_cwnd_for_model() {
 //#       cwnd = min(cwnd + rs.newly_acked, BBR.max_inflight)
 #[test]
 fn set_cwnd_filled_pipe() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     assert_eq!(36_000, bbr.max_inflight());
 
     bbr.full_pipe_estimator.set_filled_pipe_for_test(true);
@@ -578,7 +581,7 @@ fn set_cwnd_filled_pipe() {
 //#       cwnd = cwnd + rs.newly_acked
 #[test]
 fn set_cwnd_not_filled_pipe() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let mut publisher = event::testing::Publisher::snapshot();
     let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
@@ -606,7 +609,7 @@ fn set_cwnd_not_filled_pipe() {
         is_app_limited: false,
     };
     bbr.bw_estimator.on_ack(
-        2 * BbrCongestionController::initial_window(MINIMUM_MTU) as usize + 1,
+        2 * BbrCongestionController::initial_window(MINIMUM_MAX_DATAGRAM_SIZE) as usize + 1,
         now,
         packet_info,
         now,
@@ -631,7 +634,7 @@ fn set_cwnd_not_filled_pipe() {
 //#     cwnd = min(cwnd, BBRProbeRTTCwnd())
 #[test]
 fn set_cwnd_probing_rtt() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     assert_eq!(36_000, bbr.max_inflight());
     assert_eq!(12_000, bbr.probe_rtt_cwnd());
 
@@ -650,7 +653,7 @@ fn set_cwnd_probing_rtt() {
 
 #[test]
 fn set_cwnd_clamp() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     assert_eq!(36_000, bbr.max_inflight());
 
     // cwnd < min
@@ -676,7 +679,7 @@ fn set_cwnd_clamp() {
 //#     return max(BBR.prior_cwnd, cwnd)
 #[test]
 fn save_cwnd() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     bbr.state = State::ProbeRtt(probe_rtt::State::default());
 
     bbr.prior_cwnd = 2000;
@@ -696,7 +699,7 @@ fn save_cwnd() {
 //#   cwnd = max(cwnd, BBR.prior_cwnd)
 #[test]
 fn restore_cwnd() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     bbr.state = State::ProbeRtt(probe_rtt::State::default());
 
     bbr.prior_cwnd = 1000;
@@ -736,7 +739,7 @@ fn restore_cwnd() {
 //#   BBRHandleInflightTooHigh(rs)
 #[test]
 fn handle_lost_packet() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let now = NoopClock.get_time();
     let mut publisher = event::testing::Publisher::snapshot();
     let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
@@ -785,7 +788,7 @@ fn handle_lost_packet() {
         panic!("Must be in ProbeBw Down state");
     }
 
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     bbr.bw_estimator.on_loss(1000);
 
     // This time set cwnd and max_bw higher so that BETA * target_inflight is higher than inflight_hi_from_lost_packet
@@ -836,7 +839,7 @@ fn handle_lost_packet() {
 //#       BBRSetPacingRateWithGain(1)
 #[test]
 fn handle_restart_from_idle() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let mut publisher = event::testing::Publisher::snapshot();
     let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
     let now = NoopClock.get_time();
@@ -886,7 +889,7 @@ fn handle_restart_from_idle() {
 
 #[test]
 fn model_update_required() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let rate_sample = RateSample {
         delivered_bytes: 100_000,
         interval: Duration::from_millis(1),
@@ -966,7 +969,7 @@ fn model_update_required() {
 
 #[test]
 fn control_update_required() {
-    let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+    let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
     let now = NoopClock.get_time();
 
     bbr.try_fast_path = true;

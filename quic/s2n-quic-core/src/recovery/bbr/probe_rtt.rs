@@ -224,7 +224,7 @@ mod tests {
     use super::*;
     use crate::{
         event, path,
-        path::MINIMUM_MTU,
+        path::MINIMUM_MAX_DATAGRAM_SIZE,
         recovery::{
             bandwidth::{Bandwidth, PacketInfo, RateSample},
             bbr::windowed_filter::PROBE_RTT_INTERVAL,
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn check_probe_rtt_enter_probe_rtt() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let now = NoopClock.get_time();
         let mut rng = random::testing::Generator::default();
         let mut publisher = event::testing::Publisher::snapshot();
@@ -337,12 +337,12 @@ mod tests {
     //#    return probe_rtt_cwnd
     #[test]
     fn probe_rtt_cwnd() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let now = NoopClock.get_time();
 
         // bdp_multiple > minimum_window
         assert_eq!(
-            BbrCongestionController::initial_window(MINIMUM_MTU),
+            BbrCongestionController::initial_window(MINIMUM_MAX_DATAGRAM_SIZE),
             bbr.probe_rtt_cwnd()
         );
 
@@ -356,7 +356,7 @@ mod tests {
     /// Helper method to return a BBR congestion controller in the ProbeRtt
     /// but ready to exit that state
     fn bbr_in_probe_rtt_ready_to_exit() -> BbrCongestionController {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let now = NoopClock.get_time();
         let mut probe_rtt_state = probe_rtt::State {
             timer: Default::default(),

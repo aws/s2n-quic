@@ -3,7 +3,7 @@
 
 use crate::{
     io::{rx, tx},
-    path::{self, MaxMtu},
+    path::{self, mtu},
     time::{Clock, Timestamp},
 };
 use core::{
@@ -129,8 +129,8 @@ pub trait Endpoint: 'static + Send + Sized {
     /// Returns the latest Timestamp at which `transmit` should be called
     fn timeout(&self) -> Option<Timestamp>;
 
-    /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
-    fn set_max_mtu(&mut self, max_mtu: MaxMtu);
+    /// Sets configuration for the maximum transmission unit (MTU) that can be sent on a path
+    fn set_mtu_config(&mut self, mtu_config: mtu::Config);
 
     /// Returns the endpoint's event subscriber
     fn subscriber(&mut self) -> &mut Self::Subscriber;

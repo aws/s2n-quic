@@ -5,7 +5,7 @@ use crate::{
     event,
     packet::number::PacketNumberSpace,
     path,
-    path::MINIMUM_MTU,
+    path::MINIMUM_MAX_DATAGRAM_SIZE,
     random,
     recovery::{
         bbr::BbrCongestionController, congestion_controller::PathPublisher, CongestionController,
@@ -245,7 +245,11 @@ impl<CC: CongestionController> Model<CC> {
 #[test]
 fn cubic_fuzz() {
     check!()
-        .with_generator((MINIMUM_MTU..=9000, gen(), gen::<Vec<Operation>>()))
+        .with_generator((
+            MINIMUM_MAX_DATAGRAM_SIZE..=9000,
+            gen(),
+            gen::<Vec<Operation>>(),
+        ))
         .for_each(|(max_datagram_size, seed, operations)| {
             let mut model = Model::new(CubicCongestionController::new(*max_datagram_size));
             let mut rng = random::testing::Generator(*seed);
@@ -262,7 +266,11 @@ fn cubic_fuzz() {
 #[test]
 fn bbr_fuzz() {
     check!()
-        .with_generator((MINIMUM_MTU..=9000, gen(), gen::<Vec<Operation>>()))
+        .with_generator((
+            MINIMUM_MAX_DATAGRAM_SIZE..=9000,
+            gen(),
+            gen::<Vec<Operation>>(),
+        ))
         .for_each(|(max_datagram_size, seed, operations)| {
             let mut model = Model::new(BbrCongestionController::new(*max_datagram_size));
             let mut rng = random::testing::Generator(*seed);

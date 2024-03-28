@@ -62,8 +62,8 @@ if [ "$QNS_MODE" == "interop" ]; then
       # multiconnect refers to the HandshakeLoss and HandshakeCorruption tests. Due to the
       # severe loss/corrupt rates these tests use (30%), we also disable MTU probing for
       # them to not waste any packets on MTU probes, increasing the chance for success.
-      SERVER_PARAMS+=" --max-mtu 1228"
-      CLIENT_PARAMS+=" --max-mtu 1228"
+      SERVER_PARAMS+=" --initial-mtu 1228 --max-mtu 1228"
+      CLIENT_PARAMS+=" --initial-mtu 1228 --max-mtu 1228"
     fi
 
     if [ "$TESTCASE" == "transfer" ]; then

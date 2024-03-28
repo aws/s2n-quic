@@ -8,7 +8,6 @@ use crate::{
         self,
         testing::{Client as ClientConfig, Server as ServerConfig},
     },
-    path::MINIMUM_MTU,
     recovery,
 };
 use bolero::TypeGenerator;
@@ -19,7 +18,7 @@ use s2n_quic_core::{
     frame::ack_elicitation::AckElicitation,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     packet::number::PacketNumberSpace,
-    path::{migration, RemoteAddress, DEFAULT_MAX_MTU, INITIAL_PTO_BACKOFF},
+    path::{migration, mtu, RemoteAddress, INITIAL_PTO_BACKOFF, MINIMUM_MAX_DATAGRAM_SIZE},
     random,
     recovery::{
         congestion_controller::testing::mock::{
@@ -58,7 +57,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
 
     manager
@@ -436,7 +435,7 @@ fn on_ack_frame() {
         context.path().rtt_estimator,
         MockCongestionController::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     context.path_manager.activate_path_for_test(path_id);
     context.path_mut().pto_backoff = 2;
@@ -2009,7 +2008,7 @@ fn detect_and_remove_lost_packets_mtu_probe() {
     let outcome = transmission::Outcome {
         ack_elicitation: AckElicitation::Eliciting,
         is_congestion_controlled: true,
-        bytes_sent: MINIMUM_MTU as usize + 1,
+        bytes_sent: MINIMUM_MAX_DATAGRAM_SIZE as usize + 1,
         bytes_progressed: 0,
     };
 
@@ -2027,7 +2026,7 @@ fn detect_and_remove_lost_packets_mtu_probe() {
     );
     assert_eq!(
         context.path().congestion_controller.bytes_in_flight,
-        MINIMUM_MTU as u32 + 1
+        MINIMUM_MAX_DATAGRAM_SIZE as u32 + 1
     );
 
     manager.detect_and_remove_lost_packets(time_sent, random, &mut context, &mut publisher);
@@ -2671,7 +2670,7 @@ fn update_pto_timer() {
         rtt_estimator,
         MockCongestionController::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     context.path_manager.activate_path_for_test(path_id);
     // simulate receiving a handshake packet to force path validation
@@ -2764,7 +2763,7 @@ fn pto_armed_if_handshake_not_confirmed() {
         RttEstimator::new(Duration::from_millis(10)),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     path_manager.activate_path_for_test(path_id);
 
@@ -2792,7 +2791,7 @@ fn pto_must_be_at_least_k_granularity() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
 
     // Update RTT with the smallest possible sample
@@ -3359,7 +3358,7 @@ fn helper_generate_multi_path_manager(
                 true,
                 &mut Endpoint::default(),
                 &mut migration::allow_all::Validator,
-                DEFAULT_MAX_MTU,
+                mtu::Config::default(),
                 DEFAULT_INITIAL_RTT,
                 publisher,
             )
@@ -3425,7 +3424,7 @@ fn helper_generate_path_manager_with_first_addr(
         rtt_estimator,
         MockCongestionController::new(first_addr),
         true,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
 
     path::Manager::new(path, registry)
@@ -3448,7 +3447,7 @@ fn helper_generate_client_path_manager(
         rtt_estimator,
         MockCongestionController::new(first_addr),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
 
     path::Manager::new(path, registry)

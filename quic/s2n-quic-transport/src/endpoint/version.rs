@@ -11,7 +11,7 @@ use s2n_quic_core::{
     io::tx,
     packet,
     packet::ProtectedPacket,
-    path::{self, MINIMUM_MTU},
+    path::{self, MINIMUM_MAX_DATAGRAM_SIZE},
 };
 
 #[derive(Debug)]
@@ -129,7 +129,7 @@ impl<Config: endpoint::Config> Negotiator<Config> {
         //# A server might not send a Version
         //# Negotiation packet if the datagram it receives is smaller than the
         //# minimum size specified in a different version;
-        if payload_len < (MINIMUM_MTU as usize) {
+        if payload_len < (MINIMUM_MAX_DATAGRAM_SIZE as usize) {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
             //# Servers MUST
             //# drop smaller packets that specify unsupported versions.
@@ -194,8 +194,8 @@ impl<Config: endpoint::Config> Negotiator<Config> {
 
 struct Transmission<Path: path::Handle> {
     path: Path,
-    // The MINIMUM_MTU size allows for at least 170 supported versions
-    packet: [u8; MINIMUM_MTU as usize],
+    // The MINIMUM_MAX_DATAGRAM_SIZE size allows for at least 170 supported versions
+    packet: [u8; MINIMUM_MAX_DATAGRAM_SIZE as usize],
     packet_len: usize,
 }
 
@@ -212,7 +212,7 @@ impl<Path: path::Handle> core::fmt::Debug for Transmission<Path> {
 
 impl<Path: path::Handle> Transmission<Path> {
     pub fn new(path: Path, initial_packet: &packet::initial::ProtectedInitial) -> Self {
-        let mut packet_buf = [0u8; MINIMUM_MTU as usize];
+        let mut packet_buf = [0u8; MINIMUM_MAX_DATAGRAM_SIZE as usize];
         let version_packet = packet::version_negotiation::VersionNegotiation::from_initial(
             initial_packet,
             SupportedVersions,

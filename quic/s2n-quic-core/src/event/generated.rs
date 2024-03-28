@@ -562,6 +562,9 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " A blackhole was detected"]
         Blackhole {},
+        #[non_exhaustive]
+        #[doc = " An early packet using the configured InitialMtu was lost"]
+        InitialMtuPacketLost {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -3409,6 +3412,8 @@ pub mod builder {
         ProbeAcknowledged,
         #[doc = " A blackhole was detected"]
         Blackhole,
+        #[doc = " An early packet using the configured InitialMtu was lost"]
+        InitialMtuPacketLost,
     }
     impl IntoEvent<api::MtuUpdatedCause> for MtuUpdatedCause {
         #[inline]
@@ -3418,6 +3423,7 @@ pub mod builder {
                 Self::NewPath => NewPath {},
                 Self::ProbeAcknowledged => ProbeAcknowledged {},
                 Self::Blackhole => Blackhole {},
+                Self::InitialMtuPacketLost => InitialMtuPacketLost {},
             }
         }
     }

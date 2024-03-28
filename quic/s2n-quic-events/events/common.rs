@@ -925,6 +925,8 @@ enum MtuUpdatedCause {
     ProbeAcknowledged,
     /// A blackhole was detected
     Blackhole,
+    /// An early packet using the configured InitialMtu was lost
+    InitialMtuPacketLost,
 }
 
 /// A bandwidth delivery rate estimate with associated metadata

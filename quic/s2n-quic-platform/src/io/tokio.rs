@@ -7,7 +7,7 @@ use s2n_quic_core::{
     event::{self, EndpointPublisher as _},
     inet::{self, SocketAddress},
     io::event_loop::EventLoop,
-    path::MaxMtu,
+    path::{mtu, MaxMtu},
     task::cooldown::Cooldown,
     time::Clock as ClockTrait,
 };
@@ -54,7 +54,7 @@ impl Io {
             socket_send_buffer_size,
             queue_recv_buffer_size,
             queue_send_buffer_size,
-            mut max_mtu,
+            mut mtu_config,
             max_segments,
             gro_enabled,
             reuse_address,
@@ -122,12 +122,12 @@ impl Io {
         // Configure MTU discovery
         if !syscall::configure_mtu_disc(&tx_socket) {
             // disable MTU probing if we can't prevent fragmentation
-            max_mtu = MaxMtu::MIN;
+            mtu_config = mtu::Config::MIN;
         }
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::MaxMtu {
-                mtu: max_mtu.into(),
+                mtu: mtu_config.max_mtu.into(),
             },
         });
 
@@ -159,7 +159,7 @@ impl Io {
             } else {
                 // Use the originally configured MTU to allow larger packets to be received
                 // even if the tx MTU has been reduced due to configure_mtu_disc failing
-                self.builder.max_mtu.into()
+                self.builder.mtu_config.max_mtu.into()
             } as u32;
 
             let rx_buffer_size = queue_recv_buffer_size.unwrap_or(8 * (1 << 20));
@@ -205,7 +205,7 @@ impl Io {
             // compute the payload size for each message from the number of GSO segments we can
             // fill
             let payload_len = {
-                let max_mtu: u16 = max_mtu.into();
+                let max_mtu: u16 = mtu_config.max_mtu.into();
                 (max_mtu as u32 * gso.max_segments() as u32).min(u16::MAX as u32)
             };
 
@@ -246,11 +246,11 @@ impl Io {
             }
 
             // construct the TX side for the endpoint event loop
-            socket::io::tx::Tx::new(producers, gso, max_mtu)
+            socket::io::tx::Tx::new(producers, gso, mtu_config.max_mtu)
         };
 
         // Notify the endpoint of the MTU that we chose
-        endpoint.set_max_mtu(max_mtu);
+        endpoint.set_mtu_config(mtu_config);
 
         let task = handle.spawn(
             EventLoop {
