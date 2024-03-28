@@ -558,7 +558,7 @@ impl Controller {
     ) {
         self.black_hole_counter = Default::default();
         self.largest_acked_mtu_sized_packet = None;
-        // Reset the plpmtu back to the BASE_PLPMTU and notify the congestion controller
+        // Reset the plpmtu back to the base_plpmtu and notify the congestion controller
         self.plpmtu = self.base_plpmtu;
         congestion_controller.on_mtu_update(
             self.plpmtu,
