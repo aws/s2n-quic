@@ -415,7 +415,7 @@ impl<Config: endpoint::Config> Path<Config> {
             // lost when the previously confirmed path MTU is no longer supported.
             //
             // The priority during PathValidationOnly is to validate the path, so the
-            // minimum MTU is used to avoid packet loss due to MTU limits.
+            // minimum max datagram size is used to avoid packet loss due to MTU limits.
             Mode::LossRecoveryProbing | Mode::PathValidationOnly => {
                 MINIMUM_MAX_DATAGRAM_SIZE as usize
             }
