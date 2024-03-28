@@ -307,10 +307,14 @@ impl Controller {
         //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
         //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
         //# datagram size.
-
         let base_plpmtu = config.base_mtu.max_datagram_size(peer_socket_address);
         let max_udp_payload = config.max_mtu.max_datagram_size(peer_socket_address);
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
+        //# Datagrams containing Initial packets MAY exceed 1200 bytes if the sender
+        //# believes that the network path and peer both support the size that it chooses.
         let plpmtu = config.initial_mtu.max_datagram_size(peer_socket_address);
+
         let initial_probed_size = if u16::from(config.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD
         {
             // An initial MTU was provided within the probe threshold of the Ethernet MTU, so we can

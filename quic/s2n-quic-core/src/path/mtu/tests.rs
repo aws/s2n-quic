@@ -166,6 +166,10 @@ fn new_ipv6() {
     );
 }
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
+//= type=test
+//# Datagrams containing Initial packets MAY exceed 1200 bytes if the sender
+//# believes that the network path and peer both support the size that it chooses.
 #[test]
 fn new_initial_and_min_mtu() {
     let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
