@@ -13,14 +13,18 @@ use core::time::Duration;
 use s2n_quic_core::{
     ack,
     connection::{self, PeerId},
-    event::{self, builder::DatagramDropReason, IntoEvent},
+    event::{
+        self,
+        builder::{DatagramDropReason, MtuUpdatedCause},
+        IntoEvent,
+    },
     frame,
     frame::path_validation,
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
     path::{
         migration::{self, Validator as _},
-        Handle as _, Id, MaxMtu,
+        mtu, Handle as _, Id, MaxMtu,
     },
     random,
     recovery::congestion_controller::{self, Endpoint as _},
@@ -974,7 +978,6 @@ macro_rules! path_event {
 }
 
 pub(crate) use path_event;
-use s2n_quic_core::{event::builder::MtuUpdatedCause, path::mtu};
 
 #[cfg(test)]
 mod tests;
