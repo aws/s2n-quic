@@ -170,6 +170,7 @@ macro_rules! impl_mtu {
         }
 
         impl Default for $name {
+            #[inline]
             fn default() -> Self {
                 $default
             }
