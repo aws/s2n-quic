@@ -442,7 +442,9 @@ impl Controller {
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
-        // MTU probes are only sent in application data space
+        // MTU probes are only sent in the application data space, but since early packet
+        // spaces will use the `InitialMtu` prior to MTU probing being enabled, we need
+        // to check for potentially MTU-related packet loss even when MTU probing is disabled
         ensure!(self.state.is_disabled() || packet_number.space().is_application_data());
 
         match &self.state {
