@@ -206,7 +206,6 @@ macro_rules! impl_mtu {
     };
 }
 
-// TODO decide on better defaults
 // Safety: 1500 and MINIMUM_MTU are greater than zero
 const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
 const DEFAULT_BASE_MTU: BaseMtu = BaseMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
