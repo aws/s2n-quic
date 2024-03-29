@@ -171,7 +171,7 @@ fn new_ipv6() {
 //# Datagrams containing Initial packets MAY exceed 1200 bytes if the sender
 //# believes that the network path and peer both support the size that it chooses.
 #[test]
-fn new_initial_and_min_mtu() {
+fn new_initial_and_base_mtu() {
     let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
     let mut controller = Controller::new(
         Config {
@@ -683,11 +683,11 @@ fn on_packet_loss_initial_mtu_configured() {
 
     for max_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
         for initial_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
-            for min_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
+            for base_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
                 let mtu_config = Config {
                     max_mtu: max_mtu.try_into().unwrap(),
                     initial_mtu: initial_mtu.min(max_mtu).try_into().unwrap(),
-                    base_mtu: min_mtu.min(initial_mtu).min(max_mtu).try_into().unwrap(),
+                    base_mtu: base_mtu.min(initial_mtu).min(max_mtu).try_into().unwrap(),
                 };
                 let mut controller = Controller::new(mtu_config, &addr);
                 let base_plpmtu = controller.base_plpmtu;

@@ -199,7 +199,7 @@ impl Builder {
             self.mtu_config.is_valid(),
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "the MTU configuration must have min_mtu <= initial_mtu <= max_mtu"
+                "the MTU configuration must have base_mtu <= initial_mtu <= max_mtu"
             ))
         );
 

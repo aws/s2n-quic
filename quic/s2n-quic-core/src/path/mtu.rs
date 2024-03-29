@@ -244,7 +244,7 @@ impl Config {
 
     /// Returns true if the MTU configuration is valid
     ///
-    /// A valid MTU configuration must have min_mtu <= initial_mtu <= max_mtu
+    /// A valid MTU configuration must have base_mtu <= initial_mtu <= max_mtu
     #[inline]
     pub fn is_valid(&self) -> bool {
         self.base_mtu.0 <= self.initial_mtu.0 && self.initial_mtu.0 <= self.max_mtu.0
