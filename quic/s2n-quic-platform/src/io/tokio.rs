@@ -131,6 +131,18 @@ impl Io {
         }
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::BaseMtu {
+                mtu: mtu_config.base_mtu.into(),
+            },
+        });
+
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::InitialMtu {
+                mtu: mtu_config.initial_mtu.into(),
+            },
+        });
+
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::MaxMtu {
                 mtu: mtu_config.max_mtu.into(),
             },
