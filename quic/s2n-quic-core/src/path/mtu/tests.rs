@@ -71,8 +71,8 @@ fn mtu_config_builder() {
     let builder = mtu::Config::builder();
     let builder = builder.with_base_mtu(1300).unwrap();
     let config = builder.build().unwrap();
-    assert_eq!(1300_u16, config.base_mtu.into());
-    assert_eq!(1300_u16, config.initial_mtu.into());
+    assert_eq!(1300_u16, u16::from(config.base_mtu));
+    assert_eq!(1300_u16, u16::from(config.initial_mtu));
 
     // Setting the base MTU higher than the default max MTU results in an error
     let builder = mtu::Config::builder();
