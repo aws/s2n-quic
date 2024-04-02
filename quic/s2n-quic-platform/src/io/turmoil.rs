@@ -17,7 +17,7 @@ use s2n_quic_core::{
     io::event_loop::{select::Select, EventLoop},
     path::{self, mtu},
 };
-use std::{convert::TryInto, io, io::ErrorKind};
+use std::{io, io::ErrorKind};
 use tokio::runtime::Handle;
 use turmoil::net::UdpSocket;
 

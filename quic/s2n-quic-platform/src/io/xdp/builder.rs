@@ -4,7 +4,7 @@
 use core::mem::size_of;
 use s2n_quic_core::{
     inet::{ethernet, ipv4, udp},
-    path::{mtu, MaxMtu, MtuError},
+    path::{mtu, MtuError},
 };
 use s2n_quic_xdp::umem::DEFAULT_FRAME_SIZE;
 use tokio::runtime::Handle;
@@ -18,7 +18,7 @@ const MIN_FRAME_OVERHEAD: u16 =
 pub struct Builder<Rx = (), Tx = ()> {
     rx: Rx,
     tx: Tx,
-    mtu_config: mtu::Config,
+    mtu_config_builder: mtu::Builder,
     handle: Option<Handle>,
 }
 
@@ -27,10 +27,9 @@ impl Default for Builder<(), ()> {
         Self {
             rx: (),
             tx: (),
-            mtu_config: mtu::Config {
-                max_mtu: MaxMtu::try_from(DEFAULT_FRAME_SIZE as u16 - MIN_FRAME_OVERHEAD).unwrap(),
-                ..Default::default()
-            },
+            mtu_config_builder: mtu::Config::builder()
+                .with_max_mtu(DEFAULT_FRAME_SIZE as u16 - MIN_FRAME_OVERHEAD)
+                .unwrap(),
             handle: None,
         }
     }
@@ -45,7 +44,9 @@ impl<Rx, Tx> Builder<Rx, Tx> {
 
     /// Sets the UMEM frame size for the provider
     pub fn with_frame_size(mut self, frame_size: u16) -> Result<Self, MtuError> {
-        self.mtu_config.max_mtu = frame_size.saturating_sub(MIN_FRAME_OVERHEAD).try_into()?;
+        self.mtu_config_builder = self
+            .mtu_config_builder
+            .with_max_mtu(frame_size.saturating_sub(MIN_FRAME_OVERHEAD))?;
         Ok(self)
     }
 
@@ -57,14 +58,14 @@ impl<Rx, Tx> Builder<Rx, Tx> {
         let Self {
             tx,
             handle,
-            mtu_config,
+            mtu_config_builder,
             ..
         } = self;
         Builder {
             rx,
             tx,
             handle,
-            mtu_config,
+            mtu_config_builder,
         }
     }
 
@@ -76,14 +77,14 @@ impl<Rx, Tx> Builder<Rx, Tx> {
         let Self {
             rx,
             handle,
-            mtu_config,
+            mtu_config_builder,
             ..
         } = self;
         Builder {
             rx,
             tx,
             handle,
-            mtu_config,
+            mtu_config_builder,
         }
     }
 }
@@ -98,13 +99,13 @@ where
             rx,
             tx,
             handle,
-            mtu_config,
+            mtu_config_builder,
         } = self;
         super::Provider {
             rx,
             tx,
             handle,
-            mtu_config,
+            mtu_config_builder,
         }
     }
 }
