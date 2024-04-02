@@ -59,7 +59,7 @@ index 09e2fdd..72513c8 100644
      "role": "both"
    },
 diff --git a/interop.py b/interop.py
-index 8f2769b..5a20a80 100644
+index 8f2769b..7af0657 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -123,6 +123,7 @@ class InteropRunner:
@@ -91,14 +91,15 @@ index 8f2769b..5a20a80 100644
          res = MeasurementResult()
          res.result = TestResult.SUCCEEDED
 -        res.details = "{:.0f} (± {:.0f}) {}".format(
+-            statistics.mean(values), statistics.stdev(values), test.unit()
+-        )
 +        if len(values) == 1:
 +            res.details = "{:.0f} {}".format(
 +                values[0], test.unit()
 +            )
 +        else:
 +            res.details = "{:.0f} (± {:.0f}) {}".format(
-             statistics.mean(values), statistics.stdev(values), test.unit()
--        )
++                statistics.mean(values), statistics.stdev(values), test.unit()
 +            )
          return res
  
