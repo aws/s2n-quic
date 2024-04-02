@@ -11,6 +11,7 @@ pub use s2n_quic_core::{
     xdp::path::Tuple as PathHandle,
 };
 pub use s2n_quic_xdp::*;
+use std::io::ErrorKind;
 
 // export the encoder configuration for writing packets
 pub mod encoder {
@@ -115,7 +116,7 @@ pub use builder::Builder;
 pub struct Provider<Rx, Tx> {
     rx: Rx,
     tx: Tx,
-    mtu_config: mtu::Config,
+    mtu_config_builder: mtu::Builder,
     handle: Option<tokio::runtime::Handle>,
 }
 
@@ -138,9 +139,13 @@ where
         let Self {
             tx,
             rx,
-            mtu_config,
+            mtu_config_builder,
             handle,
         } = self;
+
+        let mtu_config = mtu_config_builder
+            .build()
+            .map_err(|err| std::io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
 
         // tell the endpoint what our MTU is
         endpoint.set_mtu_config(mtu_config);

@@ -228,7 +228,7 @@ impl Handle {
             handle: self.clone(),
             address: None,
             on_socket: None,
-            mtu_config: mtu::Config::default(),
+            mtu_config_builder: mtu::Config::builder(),
             queue_recv_buffer_size: None,
             queue_send_buffer_size: None,
         }
@@ -239,7 +239,7 @@ pub struct Builder {
     handle: Handle,
     address: Option<SocketAddress>,
     on_socket: Option<Box<dyn FnOnce(socket::Socket)>>,
-    mtu_config: mtu::Config,
+    mtu_config_builder: mtu::Builder,
     queue_recv_buffer_size: Option<u32>,
     queue_send_buffer_size: Option<u32>,
 }
@@ -250,17 +250,20 @@ impl Builder {
     }
 
     pub fn with_base_mtu(mut self, base_mtu: u16) -> Self {
-        self.mtu_config.base_mtu = base_mtu.try_into().unwrap();
+        self.mtu_config_builder = self.mtu_config_builder.with_base_mtu(base_mtu).unwrap();
         self
     }
 
     pub fn with_initial_mtu(mut self, initial_mtu: u16) -> Self {
-        self.mtu_config.initial_mtu = initial_mtu.try_into().unwrap();
+        self.mtu_config_builder = self
+            .mtu_config_builder
+            .with_initial_mtu(initial_mtu)
+            .unwrap();
         self
     }
 
     pub fn with_max_mtu(mut self, max_mtu: u16) -> Self {
-        self.mtu_config.max_mtu = max_mtu.try_into().unwrap();
+        self.mtu_config_builder = self.mtu_config_builder.with_max_mtu(max_mtu).unwrap();
         self
     }
 
@@ -306,14 +309,14 @@ impl Io {
             },
             address,
             on_socket,
-            mtu_config,
+            mtu_config_builder,
             queue_recv_buffer_size: _,
             queue_send_buffer_size: _,
         } = self.builder;
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());
 
-        let socket = buffers.register(handle, mtu_config.max_mtu);
+        let socket = buffers.register(handle, mtu_config_builder.build().unwrap().max_mtu);
 
         if let Some(on_socket) = on_socket {
             on_socket(socket.clone());
@@ -330,10 +333,11 @@ impl Io {
             handle: Handle { executor, buffers },
             address,
             on_socket,
-            mtu_config,
+            mtu_config_builder,
             queue_recv_buffer_size,
             queue_send_buffer_size,
         } = self.builder;
+        let mtu_config = mtu_config_builder.build().unwrap();
         endpoint.set_mtu_config(mtu_config);
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());

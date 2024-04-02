@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_quic_core::ensure;
 
 #[derive(Debug, Default)]
 pub struct Builder {
@@ -15,7 +14,7 @@ pub struct Builder {
     pub(super) socket_send_buffer_size: Option<usize>,
     pub(super) queue_recv_buffer_size: Option<u32>,
     pub(super) queue_send_buffer_size: Option<u32>,
-    pub(super) mtu_config: mtu::Config,
+    pub(super) mtu_config_builder: mtu::Builder,
     pub(super) max_segments: gso::MaxSegments,
     pub(super) gro_enabled: Option<bool>,
     pub(super) reuse_address: bool,
@@ -120,8 +119,9 @@ impl Builder {
     ///
     /// Note: `max_mtu` must be >= `initial_mtu` and `base_mtu`
     pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
-        self.mtu_config.max_mtu = max_mtu
-            .try_into()
+        self.mtu_config_builder = self
+            .mtu_config_builder
+            .with_max_mtu(max_mtu)
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
         Ok(self)
     }
@@ -145,8 +145,9 @@ impl Builder {
     ///
     /// Note: `initial_mtu` must be >= `base_mtu` and <= `max_mtu`
     pub fn with_initial_mtu(mut self, initial_mtu: u16) -> io::Result<Self> {
-        self.mtu_config.initial_mtu = initial_mtu
-            .try_into()
+        self.mtu_config_builder = self
+            .mtu_config_builder
+            .with_initial_mtu(initial_mtu)
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
         Ok(self)
     }
@@ -168,8 +169,9 @@ impl Builder {
     ///
     /// Note: `base_mtu` must be >= 1228 and <= `initial_mtu` and `max_mtu`
     pub fn with_base_mtu(mut self, base_mtu: u16) -> io::Result<Self> {
-        self.mtu_config.base_mtu = base_mtu
-            .try_into()
+        self.mtu_config_builder = self
+            .mtu_config_builder
+            .with_base_mtu(base_mtu)
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
         Ok(self)
     }
@@ -235,14 +237,6 @@ impl Builder {
     }
 
     pub fn build(self) -> io::Result<Io> {
-        ensure!(
-            self.mtu_config.is_valid(),
-            Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "the MTU configuration must have base_mtu <= initial_mtu <= max_mtu"
-            ))
-        );
-
         Ok(Io { builder: self })
     }
 }

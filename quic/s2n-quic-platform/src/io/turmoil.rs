@@ -51,8 +51,12 @@ impl Io {
             handle: _,
             socket,
             addr,
-            mtu_config,
+            mtu_config_builder,
         } = self.builder;
+
+        let mtu_config = mtu_config_builder
+            .build()
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
 
         endpoint.set_mtu_config(mtu_config);
 

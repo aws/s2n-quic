@@ -181,7 +181,7 @@ macro_rules! impl_mtu {
 
             fn try_from(value: u16) -> Result<Self, Self::Error> {
                 if value < MINIMUM_MTU {
-                    return Err(MtuError(MINIMUM_MTU.try_into().unwrap()));
+                    return Err(MtuError);
                 }
 
                 Ok($name(value.try_into().expect(
@@ -216,12 +216,16 @@ impl_mtu!(MaxMtu, DEFAULT_MAX_MTU);
 impl_mtu!(InitialMtu, DEFAULT_INITIAL_MTU);
 impl_mtu!(BaseMtu, DEFAULT_BASE_MTU);
 
-#[derive(Debug)]
-pub struct MtuError(NonZeroU16);
+#[derive(Debug, Eq, PartialEq)]
+pub struct MtuError;
 
 impl Display for MtuError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Mtu must be at least {}", self.0)
+        write!(
+            f,
+            "MTU must have {} <= base_mtu (default: {}) <= initial_mtu (default: {}) <= max_mtu (default: {})",
+            MINIMUM_MTU, DEFAULT_BASE_MTU.0, DEFAULT_INITIAL_MTU.0, DEFAULT_MAX_MTU.0
+        )
     }
 }
 
@@ -242,12 +246,90 @@ impl Config {
         max_mtu: MaxMtu::MIN,
     };
 
+    pub fn builder() -> Builder {
+        Builder::default()
+    }
+
     /// Returns true if the MTU configuration is valid
     ///
     /// A valid MTU configuration must have base_mtu <= initial_mtu <= max_mtu
     #[inline]
     pub fn is_valid(&self) -> bool {
         self.base_mtu.0 <= self.initial_mtu.0 && self.initial_mtu.0 <= self.max_mtu.0
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Builder {
+    initial_mtu: Option<InitialMtu>,
+    base_mtu: Option<BaseMtu>,
+    max_mtu: Option<MaxMtu>,
+}
+
+impl Builder {
+    pub fn with_initial_mtu(mut self, initial_mtu: u16) -> Result<Self, MtuError> {
+        if let Some(base_mtu) = self.base_mtu {
+            ensure!(initial_mtu >= base_mtu.0.get(), Err(MtuError));
+        }
+
+        if let Some(max_mtu) = self.max_mtu {
+            ensure!(initial_mtu <= max_mtu.0.get(), Err(MtuError));
+        }
+
+        self.initial_mtu = Some(initial_mtu.try_into()?);
+        Ok(self)
+    }
+
+    pub fn with_base_mtu(mut self, base_mtu: u16) -> Result<Self, MtuError> {
+        if let Some(initial_mtu) = self.initial_mtu {
+            ensure!(initial_mtu.0.get() >= base_mtu, Err(MtuError));
+        }
+
+        if let Some(max_mtu) = self.max_mtu {
+            ensure!(base_mtu <= max_mtu.0.get(), Err(MtuError));
+        }
+
+        self.base_mtu = Some(base_mtu.try_into()?);
+        Ok(self)
+    }
+
+    pub fn with_max_mtu(mut self, max_mtu: u16) -> Result<Self, MtuError> {
+        if let Some(initial_mtu) = self.initial_mtu {
+            ensure!(initial_mtu.0.get() <= max_mtu, Err(MtuError));
+        }
+
+        if let Some(base_mtu) = self.base_mtu {
+            ensure!(base_mtu.0.get() <= max_mtu, Err(MtuError));
+        }
+
+        self.max_mtu = Some(max_mtu.try_into()?);
+        Ok(self)
+    }
+
+    pub fn build(self) -> Result<Config, MtuError> {
+        let base_mtu = self.base_mtu.unwrap_or_default();
+        let max_mtu = self.max_mtu.unwrap_or_default();
+        let mut initial_mtu = self.initial_mtu.unwrap_or_default();
+
+        if self.initial_mtu.is_none() {
+            // The initial_mtu was not configured, so adjust the value from the default
+            // based on the default or configured base and max MTUs
+            initial_mtu = initial_mtu
+                .0
+                .max(base_mtu.0)
+                .min(max_mtu.0)
+                .get()
+                .try_into()?
+        };
+
+        let config = Config {
+            initial_mtu,
+            max_mtu,
+            base_mtu,
+        };
+
+        ensure!(config.is_valid(), Err(MtuError));
+        Ok(config)
     }
 }
 

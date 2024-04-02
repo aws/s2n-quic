@@ -54,7 +54,7 @@ impl Io {
             socket_send_buffer_size,
             queue_recv_buffer_size,
             queue_send_buffer_size,
-            mut mtu_config,
+            mtu_config_builder,
             max_segments,
             gro_enabled,
             reuse_address,
@@ -119,6 +119,11 @@ impl Io {
             rx_socket.set_recv_buffer_size(size)?;
         }
 
+        let mut mtu_config = mtu_config_builder
+            .build()
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
+        let original_max_mtu = mtu_config.max_mtu;
+
         // Configure MTU discovery
         if !syscall::configure_mtu_disc(&tx_socket) {
             // disable MTU probing if we can't prevent fragmentation
@@ -159,7 +164,7 @@ impl Io {
             } else {
                 // Use the originally configured MTU to allow larger packets to be received
                 // even if the tx MTU has been reduced due to configure_mtu_disc failing
-                self.builder.mtu_config.max_mtu.into()
+                original_max_mtu.into()
             } as u32;
 
             let rx_buffer_size = queue_recv_buffer_size.unwrap_or(8 * (1 << 20));
