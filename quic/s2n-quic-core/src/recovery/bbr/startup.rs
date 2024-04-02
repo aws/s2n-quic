@@ -79,14 +79,14 @@ mod tests {
     use super::*;
     use crate::{
         event, path,
-        path::MINIMUM_MTU,
+        path::MINIMUM_MAX_DATAGRAM_SIZE,
         recovery::{bandwidth::PacketInfo, bbr::probe_rtt, congestion_controller::PathPublisher},
         time::{Clock, NoopClock},
     };
 
     #[test]
     fn enter_startup() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
@@ -108,7 +108,7 @@ mod tests {
     //#     BBREnterDrain()
     #[test]
     fn check_startup_done() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
@@ -136,15 +136,17 @@ mod tests {
 
     #[test]
     fn check_startup_done_filled_pipe_on_round_start() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let now = NoopClock.get_time();
 
         // Set ECN state to be too high, which would cause the full pipe estimator to be filled
         bbr.ecn_state.on_explicit_congestion(1000);
-        bbr.ecn_state
-            .on_round_start(1000 * MINIMUM_MTU as u64, MINIMUM_MTU);
+        bbr.ecn_state.on_round_start(
+            1000 * MINIMUM_MAX_DATAGRAM_SIZE as u64,
+            MINIMUM_MAX_DATAGRAM_SIZE,
+        );
         assert!(!bbr.round_counter.round_start());
 
         // ECN must be too high over 2 rounds to fill the pipe
@@ -178,7 +180,7 @@ mod tests {
 
     #[test]
     fn check_startup_done_filled_pipe_on_loss_round_start() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MTU);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let now = NoopClock.get_time();

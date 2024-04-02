@@ -85,7 +85,7 @@ impl AckTransmissionState {
         //
         // Increment retransmissions for every N intervals we are ACKing
         //
-        // TODO: 2 was chosen as an initial hunch - we need to do some experiements to improve
+        // TODO: 2 was chosen as an initial hunch - we need to do some experiments to improve
         const INTERVAL_SCALE: usize = 2;
         new_retransmissions += ack_ranges.interval_len() / INTERVAL_SCALE;
 
@@ -96,7 +96,7 @@ impl AckTransmissionState {
         // Increment retransmissions for every N packets we are ACKing to increase
         // the likelihood of ACK frames being received by the peer.
         //
-        // TODO: 10 was chosen as an initial hunch - we need to do some experiements to improve
+        // TODO: 10 was chosen as an initial hunch - we need to do some experiments to improve
         const RANGE_SCALE: usize = 10;
         new_retransmissions += ack_ranges.spread() / RANGE_SCALE;
 

@@ -14,7 +14,7 @@ pub struct Builder {
     pub(super) socket_send_buffer_size: Option<usize>,
     pub(super) queue_recv_buffer_size: Option<u32>,
     pub(super) queue_send_buffer_size: Option<u32>,
-    pub(super) max_mtu: MaxMtu,
+    pub(super) mtu_config_builder: mtu::Builder,
     pub(super) max_segments: gso::MaxSegments,
     pub(super) gro_enabled: Option<bool>,
     pub(super) reuse_address: bool,
@@ -106,10 +106,72 @@ impl Builder {
         Ok(self)
     }
 
-    /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
+    /// Sets the largest maximum transmission unit (MTU) that can be sent on a path (default: 1500)
+    ///
+    /// MTU is the size of the largest IP packet that can be transmitted on a path. This includes the
+    /// size of the IP header, the size of the UDP header, and the size of the UDP payload containing
+    /// the QUIC packet(s).
+    ///
+    /// Most networks can support the Ethernet II framing MTU of 1500 bytes. If your network supports
+    /// Ethernet jumbo frames, you can set `max_mtu` to a higher value (~9000). This will enable
+    /// s2n-quic to send probe packets at larger sizes to validate the MTU the network can support, giving a
+    /// significant throughput improvement if a large MTU is confirmed.
+    ///
+    /// Note: `max_mtu` must be >= `initial_mtu` and `base_mtu`
     pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
-        self.max_mtu = max_mtu
-            .try_into()
+        self.mtu_config_builder = self
+            .mtu_config_builder
+            .with_max_mtu(max_mtu)
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
+        Ok(self)
+    }
+
+    /// Sets the maximum transmission unit (MTU) to use when initiating a connection (default: 1228)
+    ///
+    /// MTU is the size of the largest IP packet that can be transmitted on a path. This includes the
+    /// size of the IP header, the size of the UDP header, and the size of the UDP payload containing
+    /// the QUIC packet(s).
+    ///
+    /// By default, s2n-quic will complete the QUIC handshake using packets limited to the `base_mtu`
+    /// (default: 1228). Following the handshake, s2n-quic will send probe packets at larger sizes
+    /// to validate the MTU the network can support, up to the `max_mtu` (default: 1500).
+    ///
+    /// If you have high confidence your network can support an MTU larger than the default
+    /// `initial_mtu`, you can set this to a higher value and immediately start using a larger MTU
+    /// before the handshake completes. Any packet loss during the handshake suspected of being
+    /// caused by this `initial_mtu` setting will cause the MTU to drop back to the `base_mtu` to
+    /// allow the handshake to complete. MTU probing will then begin as usual when the handshake
+    /// completes.
+    ///
+    /// Note: `initial_mtu` must be >= `base_mtu` and <= `max_mtu`
+    pub fn with_initial_mtu(mut self, initial_mtu: u16) -> io::Result<Self> {
+        self.mtu_config_builder = self
+            .mtu_config_builder
+            .with_initial_mtu(initial_mtu)
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
+        Ok(self)
+    }
+
+    /// Sets the smallest maximum transmission unit (MTU) to use when transmitting (default: 1228)
+    ///
+    /// MTU is the size of the largest IP packet that can be transmitted on a path. This includes the
+    /// size of the IP header, the size of the UDP header, and the size of the UDP payload containing
+    /// the QUIC packet(s).
+    ///
+    /// QUIC requires that a network path support at least a 1200 byte datagram size, which translates
+    /// to 1228 bytes including the minimum IP header size (20 bytes) + UDP header size (8 bytes).
+    ///
+    /// If you have high confidence your network can support an MTU larger than the default `base_mtu`,
+    /// you can set this to a higher value. This will allow every packet s2n-quic transmits to reach
+    /// this MTU, even if packet loss results in MTU probing failing. Only configure this value if
+    /// it is certain the network path and peer can support the given `base_mtu`, as if it cannot
+    /// support the `base_mtu`, connections will not be able to opened to or from the endpoint.
+    ///
+    /// Note: `base_mtu` must be >= 1228 and <= `initial_mtu` and `max_mtu`
+    pub fn with_base_mtu(mut self, base_mtu: u16) -> io::Result<Self> {
+        self.mtu_config_builder = self
+            .mtu_config_builder
+            .with_base_mtu(base_mtu)
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
         Ok(self)
     }

@@ -9,12 +9,16 @@ use crate::{
     inet::SocketAddress,
     packet::number::PacketNumber,
     path,
-    path::{MaxMtu, IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN, MINIMUM_MTU, UDP_HEADER_LEN},
     recovery::{congestion_controller, CongestionController},
     time::{timer, Timer, Timestamp},
     transmission,
 };
-use core::time::Duration;
+use core::{
+    fmt,
+    fmt::{Display, Formatter},
+    num::NonZeroU16,
+    time::Duration,
+};
 use s2n_codec::EncoderValue;
 
 #[cfg(test)]
@@ -29,7 +33,13 @@ pub mod testing {
     pub fn new_controller(max_mtu: u16) -> Controller {
         let ip = IpV4Address::new([127, 0, 0, 1]);
         let addr = SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
-        Controller::new(max_mtu.try_into().unwrap(), &addr)
+        Controller::new(
+            Config {
+                max_mtu: max_mtu.try_into().unwrap(),
+                ..Default::default()
+            },
+            &addr,
+        )
     }
 
     /// Creates a new mtu::Controller with the given mtu and probed size
@@ -57,15 +67,12 @@ enum State {
     SearchComplete,
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
-//# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
-//# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
-//# datagram size.
-
-//= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
-//# When using IPv4, there is no currently equivalent size specified,
-//# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
-const BASE_PLPMTU: u16 = MINIMUM_MTU;
+impl State {
+    /// Returns true if the MTU controller is in the disabled state
+    fn is_disabled(&self) -> bool {
+        matches!(self, State::Disabled)
+    }
+}
 
 //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
 //# The MAX_PROBES is the maximum value of the PROBE_COUNT
@@ -106,9 +113,234 @@ const BLACK_HOLE_COOL_OFF_DURATION: Duration = Duration::from_secs(60);
 //# seconds, as recommended by PLPMTUD [RFC4821].
 const PMTU_RAISE_TIMER_DURATION: Duration = Duration::from_secs(600);
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-14
+//# QUIC MUST NOT be used if the network path cannot support a
+//# maximum datagram size of at least 1200 bytes.
+
+//= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
+//# When using IPv4, there is no currently equivalent size specified,
+//# and a default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
+pub const MINIMUM_MAX_DATAGRAM_SIZE: u16 = 1200;
+
+// Length is the length in octets of this user datagram  including  this
+// header and the data. (This means the minimum value of the length is
+// eight.)
+// See https://www.rfc-editor.org/rfc/rfc768.txt
+const UDP_HEADER_LEN: u16 = 8;
+
+// IPv4 header ranges from 20-60 bytes, depending on Options
+const IPV4_MIN_HEADER_LEN: u16 = 20;
+// IPv6 header is always 40 bytes, plus extensions
+const IPV6_MIN_HEADER_LEN: u16 = 40;
+
+// The minimum allowed Max MTU is the minimum UDP datagram size of 1200 bytes plus
+// the UDP header length and minimal IP header length
+const fn const_min(a: u16, b: u16) -> u16 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+const MINIMUM_MTU: u16 = MINIMUM_MAX_DATAGRAM_SIZE
+    + UDP_HEADER_LEN
+    + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);
+
+macro_rules! impl_mtu {
+    ($name:ident, $default:expr) => {
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        pub struct $name(NonZeroU16);
+
+        impl $name {
+            /// The minimum value required for path MTU
+            pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
+
+            /// The largest size of a QUIC datagram that can be sent on a path that supports this
+            /// MTU. This does not include the size of UDP and IP headers.
+            #[inline]
+            pub fn max_datagram_size(&self, peer_socket_address: &SocketAddress) -> u16 {
+                let min_ip_header_len = match peer_socket_address {
+                    SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
+                    SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
+                };
+                (u16::from(*self) - UDP_HEADER_LEN - min_ip_header_len)
+                    .max(MINIMUM_MAX_DATAGRAM_SIZE)
+            }
+        }
+
+        impl Default for $name {
+            #[inline]
+            fn default() -> Self {
+                $default
+            }
+        }
+
+        impl TryFrom<u16> for $name {
+            type Error = MtuError;
+
+            fn try_from(value: u16) -> Result<Self, Self::Error> {
+                if value < MINIMUM_MTU {
+                    return Err(MtuError);
+                }
+
+                Ok($name(value.try_into().expect(
+                    "Value must be greater than zero according to the check above",
+                )))
+            }
+        }
+
+        impl From<$name> for usize {
+            #[inline]
+            fn from(value: $name) -> Self {
+                value.0.get() as usize
+            }
+        }
+
+        impl From<$name> for u16 {
+            #[inline]
+            fn from(value: $name) -> Self {
+                value.0.get()
+            }
+        }
+    };
+}
+
+// Safety: 1500 and MINIMUM_MTU are greater than zero
+const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
+const DEFAULT_BASE_MTU: BaseMtu = BaseMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
+const DEFAULT_INITIAL_MTU: InitialMtu =
+    InitialMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
+
+impl_mtu!(MaxMtu, DEFAULT_MAX_MTU);
+impl_mtu!(InitialMtu, DEFAULT_INITIAL_MTU);
+impl_mtu!(BaseMtu, DEFAULT_BASE_MTU);
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct MtuError;
+
+impl Display for MtuError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MTU must have {} <= base_mtu (default: {}) <= initial_mtu (default: {}) <= max_mtu (default: {})",
+            MINIMUM_MTU, DEFAULT_BASE_MTU.0, DEFAULT_INITIAL_MTU.0, DEFAULT_MAX_MTU.0
+        )
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for MtuError {}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct Config {
+    pub initial_mtu: InitialMtu,
+    pub base_mtu: BaseMtu,
+    pub max_mtu: MaxMtu,
+}
+
+impl Config {
+    pub const MIN: Self = Self {
+        initial_mtu: InitialMtu::MIN,
+        base_mtu: BaseMtu::MIN,
+        max_mtu: MaxMtu::MIN,
+    };
+
+    pub fn builder() -> Builder {
+        Builder::default()
+    }
+
+    /// Returns true if the MTU configuration is valid
+    ///
+    /// A valid MTU configuration must have base_mtu <= initial_mtu <= max_mtu
+    #[inline]
+    pub fn is_valid(&self) -> bool {
+        self.base_mtu.0 <= self.initial_mtu.0 && self.initial_mtu.0 <= self.max_mtu.0
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Builder {
+    initial_mtu: Option<InitialMtu>,
+    base_mtu: Option<BaseMtu>,
+    max_mtu: Option<MaxMtu>,
+}
+
+impl Builder {
+    pub fn with_initial_mtu(mut self, initial_mtu: u16) -> Result<Self, MtuError> {
+        if let Some(base_mtu) = self.base_mtu {
+            ensure!(initial_mtu >= base_mtu.0.get(), Err(MtuError));
+        }
+
+        if let Some(max_mtu) = self.max_mtu {
+            ensure!(initial_mtu <= max_mtu.0.get(), Err(MtuError));
+        }
+
+        self.initial_mtu = Some(initial_mtu.try_into()?);
+        Ok(self)
+    }
+
+    pub fn with_base_mtu(mut self, base_mtu: u16) -> Result<Self, MtuError> {
+        if let Some(initial_mtu) = self.initial_mtu {
+            ensure!(initial_mtu.0.get() >= base_mtu, Err(MtuError));
+        }
+
+        if let Some(max_mtu) = self.max_mtu {
+            ensure!(base_mtu <= max_mtu.0.get(), Err(MtuError));
+        }
+
+        self.base_mtu = Some(base_mtu.try_into()?);
+        Ok(self)
+    }
+
+    pub fn with_max_mtu(mut self, max_mtu: u16) -> Result<Self, MtuError> {
+        if let Some(initial_mtu) = self.initial_mtu {
+            ensure!(initial_mtu.0.get() <= max_mtu, Err(MtuError));
+        }
+
+        if let Some(base_mtu) = self.base_mtu {
+            ensure!(base_mtu.0.get() <= max_mtu, Err(MtuError));
+        }
+
+        self.max_mtu = Some(max_mtu.try_into()?);
+        Ok(self)
+    }
+
+    pub fn build(self) -> Result<Config, MtuError> {
+        let base_mtu = self.base_mtu.unwrap_or_default();
+        let max_mtu = self.max_mtu.unwrap_or_default();
+        let mut initial_mtu = self.initial_mtu.unwrap_or_default();
+
+        if self.initial_mtu.is_none() {
+            // The initial_mtu was not configured, so adjust the value from the default
+            // based on the default or configured base and max MTUs
+            initial_mtu = initial_mtu
+                .0
+                .max(base_mtu.0)
+                .min(max_mtu.0)
+                .get()
+                .try_into()?
+        };
+
+        let config = Config {
+            initial_mtu,
+            max_mtu,
+            base_mtu,
+        };
+
+        ensure!(config.is_valid(), Err(MtuError));
+        Ok(config)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Controller {
     state: State,
+    //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
+    //# The BASE_PLPMTU is a configured size expected to work for most paths.
+    //# The size is equal to or larger than the MIN_PLPMTU and smaller than
+    //# the MAX_PLPMTU.
+    base_plpmtu: u16,
     //= https://www.rfc-editor.org/rfc/rfc8899#section-2
     //# The Packetization Layer PMTU is an estimate of the largest size
     //# of PL datagram that can be sent by a path, controlled by PLPMTUD
@@ -129,7 +361,7 @@ pub struct Controller {
     //# The PROBE_COUNT is a count of the number of successive
     //# unsuccessful probe packets that have been sent.
     probe_count: u8,
-    /// A count of the number of packets with a size > MINIMUM_MTU lost since
+    /// A count of the number of packets with a size > base_plpmtu lost since
     /// the last time a packet with size equal to the current MTU was acknowledged.
     black_hole_counter: Counter<u8, Saturating>,
     /// The largest acknowledged packet with size >= the plpmtu. Used when tracking
@@ -150,24 +382,43 @@ impl Controller {
     /// max_mtu is the maximum allowed mtu, e.g. for jumbo frames this value is expected to
     /// be over 9000.
     #[inline]
-    pub fn new(max_mtu: MaxMtu, peer_socket_address: &SocketAddress) -> Self {
-        let min_ip_header_len = match peer_socket_address {
-            SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
-            SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
-        };
-        let max_udp_payload =
-            (u16::from(max_mtu) - UDP_HEADER_LEN - min_ip_header_len).max(BASE_PLPMTU);
+    pub fn new(config: Config, peer_socket_address: &SocketAddress) -> Self {
+        debug_assert!(config.is_valid(), "Invalid MTU configuration {:?}", config);
 
-        // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
-        // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
-        let initial_probed_size =
-            (ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len).min(max_udp_payload);
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
+        //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
+        //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
+        //# datagram size.
+        let base_plpmtu = config.base_mtu.max_datagram_size(peer_socket_address);
+        let max_udp_payload = config.max_mtu.max_datagram_size(peer_socket_address);
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
+        //# Datagrams containing Initial packets MAY exceed 1200 bytes if the sender
+        //# believes that the network path and peer both support the size that it chooses.
+        let plpmtu = config.initial_mtu.max_datagram_size(peer_socket_address);
+
+        let initial_probed_size = if u16::from(config.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD
+        {
+            // An initial MTU was provided within the probe threshold of the Ethernet MTU, so we can
+            // instead try probing for an MTU larger than the Ethernet MTU
+            Self::next_probe_size(plpmtu, max_udp_payload)
+        } else {
+            // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
+            // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
+            let min_ip_header_len = match peer_socket_address {
+                SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
+                SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
+            };
+            ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len
+        }
+        .min(max_udp_payload);
 
         Self {
             state: State::Disabled,
-            plpmtu: BASE_PLPMTU,
+            base_plpmtu,
+            plpmtu,
             probed_size: initial_probed_size,
-            max_mtu,
+            max_mtu: config.max_mtu,
             max_udp_payload,
             max_probe_size: max_udp_payload,
             probe_count: 0,
@@ -273,11 +524,31 @@ impl Controller {
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
-        // MTU probes are only sent in application data space
-        ensure!(packet_number.space().is_application_data());
+        // MTU probes are only sent in the application data space, but since early packet
+        // spaces will use the `InitialMtu` prior to MTU probing being enabled, we need
+        // to check for potentially MTU-related packet loss even when MTU probing is disabled
+        ensure!(self.state.is_disabled() || packet_number.space().is_application_data());
 
         match &self.state {
-            State::Disabled => {}
+            State::Disabled => {
+                if lost_bytes > self.base_plpmtu && self.plpmtu > self.base_plpmtu {
+                    // MTU probing hasn't been enabled yet, but since the initial MTU was configured
+                    // higher than the base PLPMTU and this setting resulted in a lost packet
+                    // we drop back down to the base PLPMTU.
+                    self.plpmtu = self.base_plpmtu;
+
+                    congestion_controller.on_mtu_update(
+                        self.plpmtu,
+                        &mut congestion_controller::PathPublisher::new(publisher, path_id),
+                    );
+
+                    publisher.on_mtu_updated(event::builder::MtuUpdated {
+                        path_id: path_id.into_event(),
+                        mtu: self.plpmtu,
+                        cause: MtuUpdatedCause::InitialMtuPacketLost,
+                    })
+                }
+            }
             State::Searching(probe_pn, _) if *probe_pn == packet_number => {
                 // The MTU probe was lost
                 if self.probe_count == MAX_PROBES {
@@ -292,7 +563,7 @@ impl Controller {
                 }
             }
             State::Searching(_, _) | State::SearchComplete | State::SearchRequested => {
-                if (BASE_PLPMTU + 1..=self.plpmtu).contains(&lost_bytes)
+                if (self.base_plpmtu + 1..=self.plpmtu).contains(&lost_bytes)
                     && self
                         .largest_acked_mtu_sized_packet
                         .map_or(true, |pn| packet_number > pn)
@@ -316,7 +587,7 @@ impl Controller {
         self.plpmtu as usize
     }
 
-    /// Returns the maximum size any packet can reach
+    /// Returns the maximum size any packet can reach, including IP and UDP headers
     #[inline]
     pub fn max_mtu(&self) -> MaxMtu {
         self.max_mtu
@@ -334,7 +605,13 @@ impl Controller {
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.3.2
         //# Implementations SHOULD select the set of probe packet sizes to
         //# maximize the gain in PLPMTU from each search step.
-        self.probed_size = self.plpmtu + ((self.max_probe_size - self.plpmtu) / 2);
+        self.probed_size = Self::next_probe_size(self.plpmtu, self.max_probe_size);
+    }
+
+    /// Calculates the next probe size as halfway from the current to the max size
+    #[inline]
+    fn next_probe_size(current: u16, max: u16) -> u16 {
+        current + ((max - current) / 2)
     }
 
     /// Requests a new search to be initiated
@@ -369,10 +646,10 @@ impl Controller {
     ) {
         self.black_hole_counter = Default::default();
         self.largest_acked_mtu_sized_packet = None;
-        // Reset the plpmtu back to the BASE_PLPMTU and notify the congestion controller
-        self.plpmtu = BASE_PLPMTU;
+        // Reset the plpmtu back to the base_plpmtu and notify the congestion controller
+        self.plpmtu = self.base_plpmtu;
         congestion_controller.on_mtu_update(
-            BASE_PLPMTU,
+            self.plpmtu,
             &mut congestion_controller::PathPublisher::new(publisher, path_id),
         );
         // Cancel any current probes

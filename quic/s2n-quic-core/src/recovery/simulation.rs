@@ -5,7 +5,7 @@ use crate::{
     event,
     packet::number::PacketNumberSpace,
     path,
-    path::MINIMUM_MTU,
+    path::MINIMUM_MAX_DATAGRAM_SIZE,
     random,
     recovery::{
         congestion_controller::PathPublisher, CongestionController, CubicCongestionController,
@@ -31,7 +31,7 @@ fn type_name<T>() -> &'static str {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn slow_start_unlimited_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MTU);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
 
     slow_start_unlimited(cc, 12).finish();
 }
@@ -39,7 +39,7 @@ fn slow_start_unlimited_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn loss_at_3mb_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MTU);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
 
     loss_at_3mb(cc, 135).finish();
 }
@@ -47,7 +47,7 @@ fn loss_at_3mb_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn app_limited_1mb_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MTU);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
 
     app_limited_1mb(cc, 120).finish();
 }
@@ -55,7 +55,7 @@ fn app_limited_1mb_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn minimum_window_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MTU);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
 
     minimum_window(cc, 10).finish();
 }
@@ -63,7 +63,7 @@ fn minimum_window_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn loss_at_3mb_and_2_75mb_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MTU);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
 
     loss_at_3mb_and_2_75mb(cc, 120).finish();
 }
@@ -88,7 +88,7 @@ impl fmt::Debug for Round {
         //
         // Floating point numbers are not guaranteed to be deterministic between CPU
         // architectures, compilers, or libc implementations.
-        let packets = self.cwnd / MINIMUM_MTU as u32;
+        let packets = self.cwnd / MINIMUM_MAX_DATAGRAM_SIZE as u32;
 
         write!(f, "{:>3}: pkts: {}", self.number, packets)
     }
@@ -227,14 +227,14 @@ fn minimum_window<CC: CongestionController>(
 
     let packet_info = congestion_controller.on_packet_sent(
         time_zero,
-        MINIMUM_MTU as usize,
+        MINIMUM_MAX_DATAGRAM_SIZE as usize,
         None,
         &rtt_estimator,
         &mut publisher,
     );
     // Experience persistent congestion to drop to the minimum window
     congestion_controller.on_packet_lost(
-        MINIMUM_MTU as u32,
+        MINIMUM_MAX_DATAGRAM_SIZE as u32,
         packet_info,
         true,
         false,
@@ -244,14 +244,14 @@ fn minimum_window<CC: CongestionController>(
     );
     let packet_info = congestion_controller.on_packet_sent(
         time_zero,
-        MINIMUM_MTU as usize,
+        MINIMUM_MAX_DATAGRAM_SIZE as usize,
         None,
         &rtt_estimator,
         &mut publisher,
     );
     // Lose a packet to exit slow start
     congestion_controller.on_packet_lost(
-        MINIMUM_MTU as u32,
+        MINIMUM_MAX_DATAGRAM_SIZE as u32,
         packet_info,
         false,
         false,
@@ -327,13 +327,13 @@ fn simulate_constant_rtt<CC: CongestionController>(
             // Drop a packet
             let packet_info = congestion_controller.on_packet_sent(
                 round_start,
-                MINIMUM_MTU as usize,
+                MINIMUM_MAX_DATAGRAM_SIZE as usize,
                 None,
                 &rtt_estimator,
                 &mut publisher,
             );
             congestion_controller.on_packet_lost(
-                MINIMUM_MTU as u32,
+                MINIMUM_MAX_DATAGRAM_SIZE as u32,
                 packet_info,
                 false,
                 false,
@@ -390,7 +390,7 @@ fn send_and_ack<CC: CongestionController>(
                 }
             }
 
-            let bytes_sent = tx_remaining.min(MINIMUM_MTU as usize);
+            let bytes_sent = tx_remaining.min(MINIMUM_MAX_DATAGRAM_SIZE as usize);
             let app_limited = tx_remaining - bytes_sent == 0 && !sending_full_cwnd;
 
             packet_info = Some(congestion_controller.on_packet_sent(
@@ -410,7 +410,7 @@ fn send_and_ack<CC: CongestionController>(
         }
 
         while now >= earliest_ack_receive_time && rx_remaining > 0 {
-            let bytes_acked = rx_remaining.min(MINIMUM_MTU as usize);
+            let bytes_acked = rx_remaining.min(MINIMUM_MAX_DATAGRAM_SIZE as usize);
 
             congestion_controller.on_ack(
                 now,

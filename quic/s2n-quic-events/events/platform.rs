@@ -66,7 +66,11 @@ enum PlatformFeatureConfiguration {
     Gro { enabled: bool },
     /// Emitted when ECN support is configured
     Ecn { enabled: bool },
-    /// Emitted when the maximum transmission unit is configured
+    /// Emitted when the base maximum transmission unit is configured
+    BaseMtu { mtu: u16 },
+    /// Emitted when the initial maximum transmission unit is configured
+    InitialMtu { mtu: u16 },
+    /// Emitted when the max maximum transmission unit is configured
     MaxMtu { mtu: u16 },
 }
 

@@ -8,7 +8,7 @@ pub struct Builder {
     pub(super) handle: Option<Handle>,
     pub(super) socket: Option<UdpSocket>,
     pub(super) addr: Option<Box<dyn turmoil::ToSocketAddrs + Send + Sync + 'static>>,
-    pub(super) max_mtu: MaxMtu,
+    pub(super) mtu_config_builder: mtu::Builder,
 }
 
 impl Builder {
@@ -41,8 +41,9 @@ impl Builder {
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path
     pub fn with_max_mtu(mut self, max_mtu: u16) -> io::Result<Self> {
-        self.max_mtu = max_mtu
-            .try_into()
+        self.mtu_config_builder = self
+            .mtu_config_builder
+            .with_max_mtu(max_mtu)
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
         Ok(self)
     }

@@ -5,11 +5,7 @@ use crate::{
     event,
     inet::{IpV4Address, IpV6Address, SocketAddress, SocketAddressV4, SocketAddressV6},
 };
-use core::{
-    fmt,
-    fmt::{Display, Formatter},
-    num::NonZeroU16,
-};
+use core::fmt;
 
 #[cfg(any(test, feature = "generator"))]
 use bolero_generator::*;
@@ -18,37 +14,7 @@ pub mod ecn;
 pub mod migration;
 pub mod mtu;
 
-//= https://www.rfc-editor.org/rfc/rfc9000#section-14
-//# QUIC MUST NOT be used if the network path cannot support a
-//# maximum datagram size of at least 1200 bytes.
-pub const MINIMUM_MTU: u16 = 1200;
-
-// TODO decide on better defaults
-// Safety: 1500 is greater than zero
-pub const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
-
-// Length is the length in octets of this user datagram  including  this
-// header and the data. (This means the minimum value of the length is
-// eight.)
-// See https://www.rfc-editor.org/rfc/rfc768.txt
-pub const UDP_HEADER_LEN: u16 = 8;
-
-// IPv4 header ranges from 20-60 bytes, depending on Options
-pub const IPV4_MIN_HEADER_LEN: u16 = 20;
-// IPv6 header is always 40 bytes, plus extensions
-pub const IPV6_MIN_HEADER_LEN: u16 = 40;
-
-// The minimum allowed Max MTU is the minimum UDP datagram size of 1200 bytes plus
-// the UDP header length and minimal IP header length
-const fn const_min(a: u16, b: u16) -> u16 {
-    if a < b {
-        a
-    } else {
-        b
-    }
-}
-const MIN_ALLOWED_MAX_MTU: u16 =
-    MINIMUM_MTU + UDP_HEADER_LEN + const_min(IPV4_MIN_HEADER_LEN, IPV6_MIN_HEADER_LEN);
+pub use mtu::*;
 
 // Initial PTO backoff multiplier is 1 indicating no additional increase to the backoff.
 pub const INITIAL_PTO_BACKOFF: u32 = 1;
@@ -284,60 +250,6 @@ impl Handle for Tuple {
         }
     }
 }
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MaxMtu(NonZeroU16);
-
-impl MaxMtu {
-    /// The minimum value required for path MTU
-    pub const MIN: Self = Self(unsafe { NonZeroU16::new_unchecked(MIN_ALLOWED_MAX_MTU) });
-}
-
-impl Default for MaxMtu {
-    fn default() -> Self {
-        DEFAULT_MAX_MTU
-    }
-}
-
-impl TryFrom<u16> for MaxMtu {
-    type Error = MaxMtuError;
-
-    fn try_from(value: u16) -> Result<Self, Self::Error> {
-        if value < MIN_ALLOWED_MAX_MTU {
-            return Err(MaxMtuError(MIN_ALLOWED_MAX_MTU.try_into().unwrap()));
-        }
-
-        Ok(MaxMtu(value.try_into().expect(
-            "Value must be greater than zero according to the check above",
-        )))
-    }
-}
-
-impl From<MaxMtu> for usize {
-    #[inline]
-    fn from(value: MaxMtu) -> Self {
-        value.0.get() as usize
-    }
-}
-
-impl From<MaxMtu> for u16 {
-    #[inline]
-    fn from(value: MaxMtu) -> Self {
-        value.0.get()
-    }
-}
-
-#[derive(Debug)]
-pub struct MaxMtuError(NonZeroU16);
-
-impl Display for MaxMtuError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "MaxMtu must be at least {}", self.0)
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for MaxMtuError {}
 
 //= https://www.rfc-editor.org/rfc/rfc9308#section-8.1
 //# Some UDP protocols are vulnerable to reflection attacks, where an

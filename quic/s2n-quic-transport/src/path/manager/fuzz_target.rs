@@ -177,7 +177,7 @@ impl Model {
             true,
             &mut Default::default(),
             &mut migration_validator,
-            MaxMtu::default(),
+            mtu::Config::default(),
             DEFAULT_INITIAL_RTT,
             &mut publisher,
         ) {

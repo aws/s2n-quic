@@ -37,7 +37,7 @@ use s2n_quic_core::{
     io::{rx, tx},
     packet::{initial::ProtectedInitial, interceptor::Interceptor, ProtectedPacket},
     path,
-    path::{Handle as _, MaxMtu},
+    path::{mtu, Handle as _},
     random::Generator as _,
     stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
@@ -85,8 +85,8 @@ pub struct Endpoint<Cfg: Config> {
     retry_dispatch: retry::Dispatch<Cfg::PathHandle>,
     stateless_reset_dispatch: stateless_reset::Dispatch<Cfg::PathHandle>,
     close_packet_buffer: packet_buffer::Buffer,
-    /// The largest maximum transmission unit (MTU) that can be sent on a path
-    max_mtu: MaxMtu,
+    /// Configuration for the maximum transmission unit (MTU) that can be sent on a path
+    mtu_config: mtu::Config,
 }
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
@@ -262,8 +262,8 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     }
 
     #[inline]
-    fn set_max_mtu(&mut self, max_mtu: MaxMtu) {
-        self.max_mtu = max_mtu
+    fn set_mtu_config(&mut self, mtu_config: mtu::Config) {
+        self.mtu_config = mtu_config
     }
 
     #[inline]
@@ -314,7 +314,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
             close_packet_buffer: Default::default(),
-            max_mtu: Default::default(),
+            mtu_config: Default::default(),
         };
 
         (endpoint, handle)
@@ -552,7 +552,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .lookup_internal_connection_id(&destination_connection_id)
         {
             let mut check_for_stateless_reset = false;
-            let max_mtu = self.max_mtu;
+            let mtu_config = self.mtu_config;
 
             datagram.destination_connection_id_classification = dcid_classification;
 
@@ -565,7 +565,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         &datagram,
                         endpoint_context.congestion_controller,
                         endpoint_context.path_migration,
-                        max_mtu,
+                        mtu_config,
                         endpoint_context.event_subscriber,
                     )
                     .map_err(|datagram_drop_reason| {
@@ -1005,7 +1005,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .create_client_peer_id_registry(internal_connection_id, rotate_handshake_connection_id);
 
         let congestion_controller = {
-            let path_info = congestion_controller::PathInfo::new(&remote_address);
+            let path_info =
+                congestion_controller::PathInfo::new(self.mtu_config.initial_mtu, &remote_address);
             endpoint_context
                 .congestion_controller
                 .new_congestion_controller(path_info)
@@ -1109,7 +1110,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             timestamp,
             quic_version,
             limits,
-            max_mtu: self.max_mtu,
+            mtu_config: self.mtu_config,
             event_context,
             supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,

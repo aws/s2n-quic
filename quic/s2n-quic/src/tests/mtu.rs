@@ -6,27 +6,48 @@ use s2n_codec::encoder::scatter;
 use s2n_quic_core::{
     event::api::Subject,
     packet::interceptor::{Interceptor, Packet},
+    path::{BaseMtu, InitialMtu},
 };
 
 // Construct a simulation where a client sends some data, which the server echos
 // back. The MtuUpdated events that the server experiences are recorded and
 // returns at the end of the simulation.
-fn mtu_updates(max_mtu: u16) -> Vec<events::MtuUpdated> {
+fn mtu_updates(
+    initial_mtu: u16,
+    base_mtu: u16,
+    max_mtu: u16,
+    network_max_udp_payload: u16,
+) -> Vec<events::MtuUpdated> {
     let model = Model::default();
-    model.set_max_udp_payload(max_mtu);
+    model.set_max_udp_payload(network_max_udp_payload);
 
     let subscriber = recorder::MtuUpdated::new();
     let events = subscriber.events();
 
     test(model, |handle| {
         let server = Server::builder()
-            .with_io(handle.builder().with_max_mtu(max_mtu).build()?)?
+            .with_io(
+                handle
+                    .builder()
+                    .with_max_mtu(max_mtu)
+                    .with_initial_mtu(initial_mtu)
+                    .with_base_mtu(base_mtu)
+                    .build()?,
+            )?
             .with_tls(SERVER_CERTS)?
             .with_event((tracing_events(), subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
         let client = Client::builder()
-            .with_io(handle.builder().with_max_mtu(max_mtu).build().unwrap())?
+            .with_io(
+                handle
+                    .builder()
+                    .with_max_mtu(max_mtu)
+                    .with_initial_mtu(initial_mtu)
+                    .with_base_mtu(base_mtu)
+                    .build()
+                    .unwrap(),
+            )?
             .with_tls(certificates::CERT_PEM)?
             .with_event(tracing_events())?
             .with_random(Random::with_seed(456))?
@@ -46,9 +67,14 @@ fn mtu_updates(max_mtu: u16) -> Vec<events::MtuUpdated> {
 // then jumbo frames should be negotiated.
 #[test]
 fn mtu_probe_jumbo_frame_test() {
-    let events = mtu_updates(9_001);
+    let events = mtu_updates(
+        InitialMtu::default().into(),
+        BaseMtu::default().into(),
+        9_001,
+        10_000,
+    );
 
-    // handshake is padded to 1200, so we should immediate have an mtu of 1200
+    // handshake is padded to 1200, so we should immediately have an mtu of 1200
     // since the handshake successfully completes
     let handshake_mtu = events[0].clone();
     assert_eq!(handshake_mtu.mtu, 1200);
@@ -72,10 +98,80 @@ fn mtu_probe_jumbo_frame_test() {
 // them, the connection should gracefully complete with a smaller mtu
 #[test]
 fn mtu_probe_jumbo_frame_unsupported_test() {
-    let events = mtu_updates(1_500);
+    let events = mtu_updates(
+        InitialMtu::default().into(),
+        BaseMtu::default().into(),
+        9_001,
+        1472,
+    );
     let last_mtu = events.last().unwrap();
     // ETHERNET_MTU - UDP_HEADER_LEN - IPV4_HEADER_LEN
     assert_eq!(last_mtu.mtu, 1472);
+}
+
+// The configured base mtu is the smallest MTU used
+#[test]
+fn base_mtu() {
+    let events = mtu_updates(1250, 1250, 9_001, 10_000);
+    let base_mtu = events
+        .iter()
+        .min_by_key(|&mtu_event| mtu_event.mtu)
+        .unwrap();
+    // 1250 - UDP_HEADER_LEN - IPV4_HEADER_LEN
+    assert_eq!(base_mtu.mtu, 1222);
+}
+
+// The configured initial mtu is the first MTU used
+#[test]
+fn initial_mtu() {
+    let events = mtu_updates(2000, BaseMtu::default().into(), 9_001, 10_000);
+    let first_mtu = events.first().unwrap();
+    // 2000 - UDP_HEADER_LEN - IPV4_HEADER_LEN
+    assert_eq!(first_mtu.mtu, 1972);
+}
+
+// The configured initial mtu is the first MTU used. It is not supported by the network, so
+// the MTU drops to the base MTU, before increasing back to what the network supports.
+#[test]
+fn initial_mtu_not_supported() {
+    let events = mtu_updates(2000, BaseMtu::default().into(), 9_001, 1500);
+    let first_mtu = events.first().unwrap();
+    let second_mtu = events.get(1).unwrap();
+    let last_mtu = events.last().unwrap();
+    // First try the initial MTU
+    assert_eq!(first_mtu.mtu, 1972);
+    // Next drop down to the base MTU
+    assert_eq!(second_mtu.mtu, 1200);
+    // Eventually reach the MTU the network supports
+    assert_eq!(last_mtu.mtu, 1500);
+}
+
+// The configured initial MTU is jumbo and the network supports it.
+#[test]
+fn initial_mtu_is_jumbo() {
+    let events = mtu_updates(9_001, BaseMtu::default().into(), 9_001, 10_000);
+    let first_mtu = events.first().unwrap();
+    let last_mtu = events.last().unwrap();
+    // First try the initial MTU
+    assert_eq!(first_mtu.mtu, 8973);
+    // Stay on this MTU since the network supports it
+    assert_eq!(last_mtu.mtu, 8973);
+}
+
+// The configured initial MTU is jumbo and the network does not support it. The configured minimum
+// MTU is used next.
+#[test]
+fn initial_mtu_is_jumbo_not_supported() {
+    let events = mtu_updates(9_001, 1_500, 9_001, 2_500);
+    let first_mtu = events.first().unwrap();
+    let second_mtu = events.get(1).unwrap();
+    let last_mtu = events.last().unwrap();
+    // First try the initial MTU
+    assert_eq!(first_mtu.mtu, 8_973);
+    // Next drop down to the base MTU
+    assert_eq!(second_mtu.mtu, 1472);
+    // Eventually reach the MTU the network supports
+    assert_eq!(last_mtu.mtu, 2_496);
 }
 
 // if we lose every packet during a round trip and then allow packets through,
