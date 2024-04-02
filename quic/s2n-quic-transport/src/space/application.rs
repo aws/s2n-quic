@@ -990,7 +990,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 .with_reason(Self::INVALID_FRAME_ERROR)
                 .with_frame_type(frame.tag().into()));
         }
-        // TODO add support for NEW_TOKEN_FRAMEs on the client
+        // TODO add support for the NEW_TOKEN_FRAME on the client
         Ok(())
     }
 
