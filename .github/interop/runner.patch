@@ -1,43 +1,19 @@
+diff --git a/cert_config.txt b/cert_config.txt
+index 9ef33b9..3130e16 100644
+--- a/cert_config.txt
++++ b/cert_config.txt
+@@ -8,3 +8,7 @@ keyUsage=critical, keyCertSign
+ subjectKeyIdentifier=hash
+ authorityKeyIdentifier=keyid:always,issuer:always
+ basicConstraints=critical,CA:TRUE,pathlen:100
++subjectAltName = @alt_names
++
++[alt_names]
++DNS.1       = QGHetXUtpDSqKeHHGmUYhaKjvzKZzqxxgWBwfupLguKzqZTLiuyzzfGLNLuvuAdRDdjyXzLvyegRJbNLxqmmSukiGhzfJEviPCNUuvigcLjkyuUhyEyYpcRVCkDJuwGEXbdVbwNnAULfHYznSmZpGNLcuGGqpfnFEnJkPxPrvTSDeFPkQheuYRRwSvGqzPaqcKvBgAKrrTrgZuzMYXjQLcEXXHVMhYvwLCBaDPXXCjyTVwJctKHvMhTrdnEJTKa
 diff --git a/certs.sh b/certs.sh
-index 603dade..c32782b 100755
+index 603dade..7a50f7a 100755
 --- a/certs.sh
 +++ b/certs.sh
-@@ -13,8 +13,8 @@ CHAINLEN=$2
- mkdir -p "$CERTDIR" || true
- 
- # Generate Root CA and certificate
--openssl ecparam -name prime256v1 -genkey -out "$CERTDIR"/ca_0.key
--openssl req -x509 -sha256 -nodes -days 10 -key "$CERTDIR"/ca_0.key \
-+openssl ecparam -name secp384r1 -genkey -out "$CERTDIR"/ca_0.key
-+openssl req -x509 -sha384 -nodes -days 10 -key "$CERTDIR"/ca_0.key \
-   -out "$CERTDIR"/cert_0.pem \
-   -subj "/O=interop runner Root Certificate Authority/" \
-   -config cert_config.txt \
-@@ -28,7 +28,7 @@ for i in $(seq 1 "$CHAINLEN"); do
-     SUBJ="interop runner leaf"
-   fi
- 
--  openssl ecparam -name prime256v1 -genkey -out "$CERTDIR"/ca_"$i".key
-+  openssl ecparam -name secp384r1 -genkey -out "$CERTDIR"/ca_"$i".key
-   openssl req -out "$CERTDIR"/cert.csr -new -key "$CERTDIR"/ca_"$i".key -nodes \
-     -subj "/O=$SUBJ/" \
-     2> /dev/null
-@@ -36,13 +36,13 @@ for i in $(seq 1 "$CHAINLEN"); do
-   # Sign the certificate
-   j=$((i-1))
-   if [[ $i < "$CHAINLEN" ]]; then
--    openssl x509 -req -sha256 -days 10 -in "$CERTDIR"/cert.csr -out "$CERTDIR"/cert_"$i".pem \
-+    openssl x509 -req -sha384 -days 10 -in "$CERTDIR"/cert.csr -out "$CERTDIR"/cert_"$i".pem \
-       -CA "$CERTDIR"/cert_"$j".pem -CAkey "$CERTDIR"/ca_"$j".key -CAcreateserial \
-       -extfile cert_config.txt \
-       -extensions v3_ca \
-       2> /dev/null
-   else
--    openssl x509 -req -sha256 -days 10 -in "$CERTDIR"/cert.csr -out "$CERTDIR"/cert_"$i".pem \
-+    openssl x509 -req -sha384 -days 10 -in "$CERTDIR"/cert.csr -out "$CERTDIR"/cert_"$i".pem \
-       -CA "$CERTDIR"/cert_"$j".pem -CAkey "$CERTDIR"/ca_"$j".key -CAcreateserial \
-       -extfile <(printf "subjectAltName=DNS:server,DNS:server4,DNS:server6,DNS:server46") \
-       2> /dev/null
 @@ -55,6 +55,6 @@ cp "$CERTDIR"/ca_"$CHAINLEN".key "$CERTDIR"/priv.key
  # combine certificates
  for i in $(seq "$CHAINLEN" -1 1); do
