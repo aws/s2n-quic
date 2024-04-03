@@ -1,5 +1,5 @@
 diff --git a/cert_config.txt b/cert_config.txt
-index 9ef33b9..d8b8dd8 100644
+index 9ef33b9..b80f533 100644
 --- a/cert_config.txt
 +++ b/cert_config.txt
 @@ -8,3 +8,8 @@ keyUsage=critical, keyCertSign
@@ -11,7 +11,6 @@ index 9ef33b9..d8b8dd8 100644
 +[alt_names]
 +DNS.1       = QGHetXUtpDSqKeHHGmUYhaKjvzKZzqxxgWBwfupLguKzqZTLiuyzzfGLNLuvuAdRDdjyXzLvyegRJbNLxqmmSukiGhzfJEviPCNUuvigcLjkyuUhyEyYpcRVCkDJuwGEXbdVbwNnAULfHYznSmZpGNLcuGGqpfnFEnJkPxPrvTSDeFPkQheuYRRwSvGqzPaqcKvBgAKrrTrgZuzMYXjQLcEXXHVMhYvwLCBaDPXXCjyTVwJctKHvMhTrdnEJTKa
 +DNS.2       = WjyzJAxdbakAnQZkuMPFFRzEZtqziRwukLVcfnKvEQELVmdEnuFjKLtvDnhwwqNWhXgiHVqVQmVDTQMqCdUymBnmCZgbnqURVErcCRRLzMpDRDTfqXmUwjhnMgPqqdSxWXvqBRhevKMgJWibajdgaRSagYYZPmfdccGDXxuSvJRHEkkZhMZiixvWXQYppMVciRHESwjHmrTkhLtXmzCRSuccbLZmYKCqWYrjCCLfPzPnmnVNwWBtkpJMJqWjvbb
-\ No newline at end of file
 diff --git a/certs.sh b/certs.sh
 index 603dade..7a50f7a 100755
 --- a/certs.sh
