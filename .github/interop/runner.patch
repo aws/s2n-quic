@@ -1,15 +1,8 @@
 diff --git a/certs.sh b/certs.sh
-index 603dade..aafdfe1 100755
+index 603dade..7a50f7a 100755
 --- a/certs.sh
 +++ b/certs.sh
-@@ -52,9 +52,13 @@ done
- mv "$CERTDIR"/cert_0.pem "$CERTDIR"/ca.pem
- cp "$CERTDIR"/ca_"$CHAINLEN".key "$CERTDIR"/priv.key
- 
-+# convert key to PKCS#8
-+openssl pkcs8 -in "$CERTDIR"/priv.key -topk8 -nocrypt -out enckey.pem
-+mv enckey.pem "$CERTDIR"/priv.key
-+
+@@ -55,6 +55,6 @@ cp "$CERTDIR"/ca_"$CHAINLEN".key "$CERTDIR"/priv.key
  # combine certificates
  for i in $(seq "$CHAINLEN" -1 1); do
    cat "$CERTDIR"/cert_"$i".pem >> "$CERTDIR"/cert.pem
@@ -66,7 +59,7 @@ index 09e2fdd..72513c8 100644
      "role": "both"
    },
 diff --git a/interop.py b/interop.py
-index 8f2769b..7af0657 100644
+index 8f2769b..ddc290a 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -123,6 +123,7 @@ class InteropRunner:
@@ -85,6 +78,15 @@ index 8f2769b..7af0657 100644
              "SERVER_LOGS=" + server_log_dir.name + " "
              "CLIENT_LOGS=/dev/null "
              "WWW=" + www_dir.name + " "
+@@ -240,7 +242,7 @@ class InteropRunner:
+                         results.append(colored(measurement.abbreviation(), "grey"))
+                     elif res.result == TestResult.FAILED:
+                         results.append(colored(measurement.abbreviation(), "red"))
+-                row[server] = "\n".join(results)
++                    row[server] = "\n".join(results)
+             t.field_names = [""] + [column for column, _ in columns.items()]
+             for client, results in rows.items():
+                 row = [client]
 @@ -373,6 +375,7 @@ class InteropRunner:
              "CERTS=" + testcase.certs_dir() + " "
              "TESTCASE_SERVER=" + testcase.testname(Perspective.SERVER) + " "

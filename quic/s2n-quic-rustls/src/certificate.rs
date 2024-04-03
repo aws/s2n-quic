@@ -135,6 +135,8 @@ mod pem {
         parse_key!(pkcs8_private_keys, PrivateKeyDer::Pkcs8);
         // attempt to parse RSA key. Returns early if a key is found
         parse_key!(rsa_private_keys, PrivateKeyDer::Pkcs1);
+        // attempt to parse a SEC1-encoded EC key. Returns early if a key is found
+        parse_key!(ec_private_keys, PrivateKeyDer::Sec1);
 
         Err(Error::General(
             "could not load any valid private keys".to_string(),
