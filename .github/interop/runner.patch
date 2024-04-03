@@ -1,26 +1,41 @@
 diff --git a/certs.sh b/certs.sh
-index b26b2f8..1547dae 100755
+index 603dade..320f1c0 100755
 --- a/certs.sh
 +++ b/certs.sh
-@@ -1,4 +1,4 @@
--#!/bin/bash
-+#!/usr/bin/env bash
+@@ -21,6 +21,14 @@ openssl req -x509 -sha256 -nodes -days 10 -key "$CERTDIR"/ca_0.key \
+   -extensions v3_ca \
+   2> /dev/null
  
- set -e
- 
-@@ -52,8 +52,8 @@ cp $CERTDIR/ca_$CHAINLEN.key $CERTDIR/priv.key
- # combine certificates
- for i in $(seq $CHAINLEN -1 1); do
-   cat $CERTDIR/cert_$i.pem >> $CERTDIR/cert.pem
--  rm $CERTDIR/cert_$i.pem $CERTDIR/ca_$i.key
-+  rm -f $CERTDIR/cert_$i.pem $CERTDIR/ca_$i.key
++ # Inflate certificate for the amplification test
++ fakedns=""
++ if [ "$CHAINLEN" != "1" ]; then
++   for i in $(seq 1 20); do
++     fakedns="$fakedns,DNS:$(LC_CTYPE=C tr -dc 0-9A-Za-z < /dev/urandom | head -c 250)"
++   done
++ fi
++
+ for i in $(seq 1 "$CHAINLEN"); do
+   # Generate a CSR
+   SUBJ="interop runner intermediate $i"
+@@ -44,7 +52,7 @@ for i in $(seq 1 "$CHAINLEN"); do
+   else
+     openssl x509 -req -sha256 -days 10 -in "$CERTDIR"/cert.csr -out "$CERTDIR"/cert_"$i".pem \
+       -CA "$CERTDIR"/cert_"$j".pem -CAkey "$CERTDIR"/ca_"$j".key -CAcreateserial \
+-      -extfile <(printf "subjectAltName=DNS:server,DNS:server4,DNS:server6,DNS:server46") \
++      -extfile <(printf "subjectAltName=DNS:server,DNS:server4,DNS:server6,DNS:server46$fakedns") \
+       2> /dev/null
+   fi
  done
--rm $CERTDIR/*.srl $CERTDIR/ca_0.key $CERTDIR/cert.csr
-+rm -f $CERTDIR/*.srl $CERTDIR/ca_0.key $CERTDIR/cert.csr
- 
- 
+@@ -55,6 +63,6 @@ cp "$CERTDIR"/ca_"$CHAINLEN".key "$CERTDIR"/priv.key
+ # combine certificates
+ for i in $(seq "$CHAINLEN" -1 1); do
+   cat "$CERTDIR"/cert_"$i".pem >> "$CERTDIR"/cert.pem
+-  rm "$CERTDIR"/cert_"$i".pem "$CERTDIR"/ca_"$i".key
++  rm -f "$CERTDIR"/cert_"$i".pem "$CERTDIR"/ca_"$i".key
+ done
+ rm -f "$CERTDIR"/*.srl "$CERTDIR"/ca_0.key "$CERTDIR"/cert.csr
 diff --git a/docker-compose.yml b/docker-compose.yml
-index 7541cae..ba1b4da 100644
+index 496d7aa..42822d6 100644
 --- a/docker-compose.yml
 +++ b/docker-compose.yml
 @@ -2,7 +2,7 @@ version: "2.4"
@@ -32,7 +47,7 @@ index 7541cae..ba1b4da 100644
      container_name: sim
      hostname: sim
      stdin_open: true
-@@ -40,6 +40,7 @@ services:
+@@ -41,6 +41,7 @@ services:
        - SSLKEYLOGFILE=/logs/keys.log
        - QLOGDIR=/logs/qlog/
        - TESTCASE=$TESTCASE_SERVER
@@ -40,7 +55,7 @@ index 7541cae..ba1b4da 100644
        - VERSION=$VERSION
      depends_on:
        - sim
-@@ -68,6 +69,7 @@ services:
+@@ -69,6 +70,7 @@ services:
        - SSLKEYLOGFILE=/logs/keys.log
        - QLOGDIR=/logs/qlog/
        - TESTCASE=$TESTCASE_CLIENT
@@ -49,34 +64,10 @@ index 7541cae..ba1b4da 100644
        - VERSION=$VERSION
      depends_on:
 diff --git a/implementations.json b/implementations.json
-index 9150551..fc21610 100644
+index 09e2fdd..72513c8 100644
 --- a/implementations.json
 +++ b/implementations.json
-@@ -9,11 +9,6 @@
-     "url": "https://github.com/ngtcp2/ngtcp2",
-     "role": "both"
-   },
--  "quant": {
--    "image": "ntap/quant:interop",
--    "url": "https://github.com/NTAP/quant",
--    "role": "both"
--  },
-   "mvfst": {
-     "image": "lnicco/mvfst-qns:latest",
-     "url": "https://github.com/facebookincubator/mvfst",
-@@ -49,11 +44,6 @@
-     "url": "https://quic.nginx.org/",
-     "role": "server"
-   },
--  "msquic": {
--    "image": "ghcr.io/microsoft/msquic/qns:main",
--    "url": "https://github.com/microsoft/msquic",
--    "role": "both"
--  },
-   "chrome": {
-     "image": "martenseemann/chrome-quic-interop-runner",
-     "url": "https://github.com/marten-seemann/chrome-quic-interop-runner",
-@@ -79,8 +69,13 @@
+@@ -74,8 +74,13 @@
      "url": "https://github.com/quinn-rs/quinn",
      "role": "both"
    },
@@ -86,16 +77,16 @@ index 9150551..fc21610 100644
 +    "role": "both"
 +  },
    "s2n-quic": {
--    "image": "public.ecr.aws/s2n/s2n-quic-qns:latest",
+-    "image": "ghcr.io/aws/s2n-quic/s2n-quic-qns:latest",
 +    "image": "aws/s2n-quic-qns:latest",
      "url": "https://github.com/aws/s2n-quic",
      "role": "both"
-   }
+   },
 diff --git a/interop.py b/interop.py
-index 4dea51d..3239567 100644
+index 8f2769b..df430a9 100644
 --- a/interop.py
 +++ b/interop.py
-@@ -124,6 +124,7 @@ class InteropRunner:
+@@ -123,6 +123,7 @@ class InteropRunner:
          cmd = (
              "CERTS=" + certs_dir.name + " "
              "TESTCASE_CLIENT=" + random_string(6) + " "
@@ -103,7 +94,7 @@ index 4dea51d..3239567 100644
              "SERVER_LOGS=/dev/null "
              "CLIENT_LOGS=" + client_log_dir.name + " "
              "WWW=" + www_dir.name + " "
-@@ -148,6 +149,7 @@ class InteropRunner:
+@@ -150,6 +151,7 @@ class InteropRunner:
          cmd = (
              "CERTS=" + certs_dir.name + " "
              "TESTCASE_SERVER=" + random_string(6) + " "
@@ -111,7 +102,15 @@ index 4dea51d..3239567 100644
              "SERVER_LOGS=" + server_log_dir.name + " "
              "CLIENT_LOGS=/dev/null "
              "WWW=" + www_dir.name + " "
-@@ -344,6 +346,7 @@ class InteropRunner:
+@@ -217,7 +219,6 @@ class InteropRunner:
+             t = prettytable.PrettyTable()
+             t.hrules = prettytable.ALL
+             t.vrules = prettytable.ALL
+-            t.field_names = [""]
+             rows = {}
+             columns = {}
+             for client, server in self._client_server_pairs:
+@@ -373,6 +374,7 @@ class InteropRunner:
              "CERTS=" + testcase.certs_dir() + " "
              "TESTCASE_SERVER=" + testcase.testname(Perspective.SERVER) + " "
              "TESTCASE_CLIENT=" + testcase.testname(Perspective.CLIENT) + " "
@@ -119,7 +118,7 @@ index 4dea51d..3239567 100644
              "WWW=" + testcase.www_dir() + " "
              "DOWNLOADS=" + testcase.download_dir() + " "
              "SERVER_LOGS=" + server_log_dir.name + " "
-@@ -456,9 +459,14 @@ class InteropRunner:
+@@ -490,9 +492,14 @@ class InteropRunner:
          logging.debug(values)
          res = MeasurementResult()
          res.result = TestResult.SUCCEEDED
@@ -137,38 +136,38 @@ index 4dea51d..3239567 100644
          return res
  
      def run(self):
-@@ -474,23 +482,26 @@ class InteropRunner:
-                     client,
-                     self._implementations[client]["image"],
-                 )
--                if not (
--                    self._check_impl_is_compliant(server)
--                    and self._check_impl_is_compliant(client)
--                ):
--                    logging.info("Not compliant, skipping")
--                    continue
+@@ -507,23 +514,26 @@ class InteropRunner:
+                 client,
+                 self._implementations[client]["image"],
+             )
+-            if not (
+-                self._check_impl_is_compliant(server)
+-                and self._check_impl_is_compliant(client)
+-            ):
+-                logging.info("Not compliant, skipping")
+-                continue
  
-+                transfer_succeeded = True
-                 # run the test cases
-                 for testcase in self._tests:
-                     status = self._run_testcase(server, client, testcase)
-                     self.test_results[server][client][testcase] = status
-                     if status == TestResult.FAILED:
-                         nr_failed += 1
-+                        if testcase == testcases.TestCaseTransfer:
-+                            transfer_succeeded = False
++            transfer_succeeded = True
+             # run the test cases
+             for testcase in self._tests:
+                 status = self._run_testcase(server, client, testcase)
+                 self.test_results[server][client][testcase] = status
+                 if status == TestResult.FAILED:
+                     nr_failed += 1
++                    if testcase == testcases.TestCaseTransfer:
++                        transfer_succeeded = False
  
-                 # run the measurements
-                 for measurement in self._measurements:
--                    res = self._run_measurement(server, client, measurement)
-+                    if transfer_succeeded:
-+                        res = self._run_measurement(server, client, measurement)
-+                    else:
-+                        logging.debug("Skipping measurements as Transfer testcase was unsuccessful")
-+                        res = MeasurementResult()
-+                        res.result = TestResult.UNSUPPORTED
-+                        res.details = "Skipping measurements as Transfer testcase was unsuccessful"
-                     self.measurement_results[server][client][measurement] = res
+             # run the measurements
+             for measurement in self._measurements:
+-                res = self._run_measurement(server, client, measurement)
++                if transfer_succeeded:
++                    res = self._run_measurement(server, client, measurement)
++                else:
++                    logging.debug("Skipping measurements as Transfer testcase was unsuccessful")
++                    res = MeasurementResult()
++                    res.result = TestResult.UNSUPPORTED
++                    res.details = "Skipping measurements as Transfer testcase was unsuccessful"
+                 self.measurement_results[server][client][measurement] = res
  
          self._print_results()
 diff --git a/pull.py b/pull.py
@@ -197,21 +196,21 @@ index 131cf94..ce5960d 100644
 +pyshark==0.5.2
 \ No newline at end of file
 diff --git a/run.py b/run.py
-index fbd9515..aa8d6ed 100755
+index 4564681..3a28eec 100755
 --- a/run.py
 +++ b/run.py
-@@ -136,4 +136,4 @@ def main():
+@@ -165,4 +165,4 @@ def main():
  
  
  if __name__ == "__main__":
 -    sys.exit(main())
 +    main()
 diff --git a/testcases.py b/testcases.py
-index 6d7ecfb..d7c323c 100644
+index df0fac5..91f0261 100644
 --- a/testcases.py
 +++ b/testcases.py
-@@ -90,6 +90,10 @@ class TestCase(abc.ABC):
-         """ The name of testcase presented to the endpoint Docker images"""
+@@ -97,6 +97,10 @@ class TestCase(abc.ABC):
+         """The name of testcase presented to the endpoint Docker images"""
          return self.name()
  
 +    @staticmethod
@@ -220,17 +219,17 @@ index 6d7ecfb..d7c323c 100644
 +
      @staticmethod
      def scenario() -> str:
-         """ Scenario for the ns3 simulator """
-@@ -1181,7 +1185,7 @@ class TestCasePortRebinding(TestCaseTransfer):
+         """Scenario for the ns3 simulator"""
+@@ -1207,7 +1211,7 @@ class TestCasePortRebinding(TestCaseTransfer):
      @staticmethod
      def scenario() -> str:
-         """ Scenario for the ns3 simulator """
+         """Scenario for the ns3 simulator"""
 -        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=1s --rebind-freq=5s"
 +        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=2s --rebind-freq=5s"
-
+ 
      def check(self) -> TestResult:
          if not self._keylog_file():
-@@ -1203,54 +1207,26 @@ class TestCasePortRebinding(TestCaseTransfer):
+@@ -1229,56 +1233,26 @@ class TestCasePortRebinding(TestCaseTransfer):
              logging.info("Server saw only a single client port in use; test broken?")
              return TestResult.FAILED
  
@@ -238,9 +237,11 @@ index 6d7ecfb..d7c323c 100644
 -        num_migrations = 0
 -        for p in tr_server:
 -            cur = (
--                getattr(p["ipv6"], "dst")
--                if "IPV6" in str(p.layers)
--                else getattr(p["ip"], "dst"),
+-                (
+-                    getattr(p["ipv6"], "dst")
+-                    if "IPV6" in str(p.layers)
+-                    else getattr(p["ip"], "dst")
+-                ),
 -                int(getattr(p["udp"], "dstport")),
 -            )
 -            if last is None:
@@ -293,9 +294,9 @@ index 6d7ecfb..d7c323c 100644
                  if hasattr(p["quic"], "path_response.data")
              )
          )
-@@ -1532,6 +1508,10 @@ class MeasurementGoodput(Measurement):
-     def testname(p: Perspective):
-         return "transfer"
+@@ -1296,6 +1270,10 @@ class TestCaseAddressRebinding(TestCasePortRebinding):
+     def name():
+         return "rebind-addr"
  
 +    @staticmethod
 +    def test_type() -> str:
@@ -303,8 +304,8 @@ index 6d7ecfb..d7c323c 100644
 +
      @staticmethod
      def abbreviation():
-         return "G"
-@@ -1542,7 +1522,7 @@ class MeasurementGoodput(Measurement):
+         return "BA"
+@@ -1575,7 +1553,7 @@ class MeasurementGoodput(Measurement):
  
      @staticmethod
      def repetitions() -> int:
@@ -313,8 +314,7 @@ index 6d7ecfb..d7c323c 100644
  
      def get_paths(self):
          self._files = [self._generate_random_file(self.FILESIZE)]
-@@ -1610,8 +1590,8 @@ TESTCASES = [
-     TestCaseChaCha20,
+@@ -1646,7 +1624,7 @@ TESTCASES = [
      TestCaseMultiplexing,
      TestCaseRetry,
      TestCaseResumption,
@@ -323,7 +323,7 @@ index 6d7ecfb..d7c323c 100644
      TestCaseHTTP3,
      TestCaseBlackhole,
      TestCaseKeyUpdate,
-@@ -1622,12 +1602,11 @@ TESTCASES = [
+@@ -1657,12 +1635,11 @@ TESTCASES = [
      TestCaseHandshakeCorruption,
      TestCaseTransferCorruption,
      TestCaseIPv6,
