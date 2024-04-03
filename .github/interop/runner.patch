@@ -1,8 +1,15 @@
 diff --git a/certs.sh b/certs.sh
-index 603dade..7a50f7a 100755
+index 603dade..aafdfe1 100755
 --- a/certs.sh
 +++ b/certs.sh
-@@ -55,6 +55,6 @@ cp "$CERTDIR"/ca_"$CHAINLEN".key "$CERTDIR"/priv.key
+@@ -52,9 +52,13 @@ done
+ mv "$CERTDIR"/cert_0.pem "$CERTDIR"/ca.pem
+ cp "$CERTDIR"/ca_"$CHAINLEN".key "$CERTDIR"/priv.key
+ 
++# convert key to PKCS#8
++openssl pkcs8 -in "$CERTDIR"/priv.key -topk8 -nocrypt -out enckey.pem
++mv enckey.pem "$CERTDIR"/priv.key
++
  # combine certificates
  for i in $(seq "$CHAINLEN" -1 1); do
    cat "$CERTDIR"/cert_"$i".pem >> "$CERTDIR"/cert.pem
@@ -59,7 +66,7 @@ index 09e2fdd..72513c8 100644
      "role": "both"
    },
 diff --git a/interop.py b/interop.py
-index 8f2769b..2ab8475 100644
+index 8f2769b..7af0657 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -123,6 +123,7 @@ class InteropRunner:
@@ -94,7 +101,7 @@ index 8f2769b..2ab8475 100644
 -            statistics.mean(values), statistics.stdev(values), test.unit()
 -        )
 +        if len(values) == 1:
-+            res.details = "{:.0f} (± 0.0) {}".format(
++            res.details = "{:.0f} {}".format(
 +                values[0], test.unit()
 +            )
 +        else:
