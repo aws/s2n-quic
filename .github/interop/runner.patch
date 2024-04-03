@@ -59,7 +59,7 @@ index 09e2fdd..72513c8 100644
      "role": "both"
    },
 diff --git a/interop.py b/interop.py
-index 8f2769b..ddc290a 100644
+index 8f2769b..df430a9 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -123,6 +123,7 @@ class InteropRunner:
@@ -78,16 +78,15 @@ index 8f2769b..ddc290a 100644
              "SERVER_LOGS=" + server_log_dir.name + " "
              "CLIENT_LOGS=/dev/null "
              "WWW=" + www_dir.name + " "
-@@ -240,7 +242,7 @@ class InteropRunner:
-                         results.append(colored(measurement.abbreviation(), "grey"))
-                     elif res.result == TestResult.FAILED:
-                         results.append(colored(measurement.abbreviation(), "red"))
--                row[server] = "\n".join(results)
-+                    row[server] = "\n".join(results)
-             t.field_names = [""] + [column for column, _ in columns.items()]
-             for client, results in rows.items():
-                 row = [client]
-@@ -373,6 +375,7 @@ class InteropRunner:
+@@ -217,7 +219,6 @@ class InteropRunner:
+             t = prettytable.PrettyTable()
+             t.hrules = prettytable.ALL
+             t.vrules = prettytable.ALL
+-            t.field_names = [""]
+             rows = {}
+             columns = {}
+             for client, server in self._client_server_pairs:
+@@ -373,6 +374,7 @@ class InteropRunner:
              "CERTS=" + testcase.certs_dir() + " "
              "TESTCASE_SERVER=" + testcase.testname(Perspective.SERVER) + " "
              "TESTCASE_CLIENT=" + testcase.testname(Perspective.CLIENT) + " "
@@ -95,7 +94,7 @@ index 8f2769b..ddc290a 100644
              "WWW=" + testcase.www_dir() + " "
              "DOWNLOADS=" + testcase.download_dir() + " "
              "SERVER_LOGS=" + server_log_dir.name + " "
-@@ -490,9 +493,14 @@ class InteropRunner:
+@@ -490,9 +492,14 @@ class InteropRunner:
          logging.debug(values)
          res = MeasurementResult()
          res.result = TestResult.SUCCEEDED
@@ -113,7 +112,7 @@ index 8f2769b..ddc290a 100644
          return res
  
      def run(self):
-@@ -507,23 +515,26 @@ class InteropRunner:
+@@ -507,23 +514,26 @@ class InteropRunner:
                  client,
                  self._implementations[client]["image"],
              )
