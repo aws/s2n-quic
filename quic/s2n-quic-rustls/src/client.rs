@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{certificate, session::Session};
+use crate::{certificate, session::Session, Error};
 use core::convert::TryFrom;
 use rustls::ClientConfig;
 use s2n_codec::EncoderValue;
@@ -14,6 +14,7 @@ pub struct Client {
 }
 
 impl Client {
+    #[deprecated = "client and server builders should be used instead"]
     pub fn new(config: ClientConfig) -> Self {
         Self {
             config: Arc::new(config),
@@ -34,12 +35,14 @@ impl Default for Client {
     }
 }
 
+// TODO this should be removed after removing deprecated re-exports
 impl From<ClientConfig> for Client {
     fn from(config: ClientConfig) -> Self {
-        Self::new(config)
+        Self::from(Arc::new(config))
     }
 }
 
+// TODO this should be removed after removing deprecated re-exports
 impl From<Arc<ClientConfig>> for Client {
     fn from(config: Arc<ClientConfig>) -> Self {
         Self { config }
@@ -108,7 +111,7 @@ impl Builder {
     pub fn with_certificate<C: certificate::IntoCertificate>(
         mut self,
         certificate: C,
-    ) -> Result<Self, rustls::Error> {
+    ) -> Result<Self, Error> {
         let certificates = certificate.into_certificate()?;
         let root_certificate = certificates.0.first().ok_or_else(|| {
             rustls::Error::General("Certificate chain needs to have at least one entry".to_string())
@@ -119,7 +122,7 @@ impl Builder {
         Ok(self)
     }
 
-    pub fn with_max_cert_chain_depth(self, len: u16) -> Result<Self, rustls::Error> {
+    pub fn with_max_cert_chain_depth(self, len: u16) -> Result<Self, Error> {
         // TODO is there a way to configure this?
         let _ = len;
         Ok(self)
@@ -133,19 +136,19 @@ impl Builder {
         Ok(self)
     }
 
-    pub fn with_key_logging(mut self) -> Result<Self, rustls::Error> {
+    pub fn with_key_logging(mut self) -> Result<Self, Error> {
         self.key_log = Some(Arc::new(rustls::KeyLogFile::new()));
         Ok(self)
     }
 
-    pub fn build(self) -> Result<Client, rustls::Error> {
+    pub fn build(self) -> Result<Client, Error> {
         // TODO load system root store?
         if self.cert_store.is_empty() {
             //= https://www.rfc-editor.org/rfc/rfc9001#section-4.4
             //# A client MUST authenticate the identity of the server.
-            return Err(rustls::Error::General(
-                "missing trusted root certificate(s)".to_string(),
-            ));
+            return Err(
+                rustls::Error::General("missing trusted root certificate(s)".to_string()).into(),
+            );
         }
 
         let mut config = ClientConfig::builder()
@@ -162,6 +165,7 @@ impl Builder {
             config.key_log = key_log;
         }
 
+        #[allow(deprecated)]
         Ok(Client::new(config))
     }
 }

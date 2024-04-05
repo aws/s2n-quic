@@ -3,7 +3,17 @@
 
 #![forbid(unsafe_code)]
 
-pub use rustls::{self, Certificate, PrivateKey};
+/// *WARNING*: These are deprecated and should not be used.
+#[deprecated = "client and server builders should be used instead"]
+pub use ::rustls::{Certificate, PrivateKey};
+
+#[deprecated = "client and server builders should be used instead"]
+pub mod rustls {
+    pub use ::rustls::*;
+}
+
+/// Wrap error types in Box to avoid leaking rustls types
+type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 mod cipher_suite;
 mod error;
@@ -13,7 +23,10 @@ pub mod certificate;
 pub mod client;
 pub mod server;
 
-pub use cipher_suite::DEFAULT_CIPHERSUITES;
+#[deprecated = "client and server builders should be used instead"]
+pub static DEFAULT_CIPHERSUITES: &[rustls::SupportedCipherSuite] =
+    cipher_suite::DEFAULT_CIPHERSUITES;
+
 pub use client::Client;
 pub use server::Server;
 
