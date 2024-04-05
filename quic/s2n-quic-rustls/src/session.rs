@@ -6,7 +6,9 @@ use crate::cipher_suite::{
 };
 use bytes::Bytes;
 use core::{fmt, fmt::Debug, task::Poll};
-use rustls::quic::{self, Connection};
+use rustls::quic::{
+    Connection, {self},
+};
 use s2n_quic_core::{
     application::ServerName,
     crypto::{self, tls, tls::CipherSuite},
@@ -102,12 +104,9 @@ impl Session {
 
                 self.connection
                     .alert()
-                    .map(|alert| {
-                        // Explicitly annotate the type to detect if rustls starts
-                        // returning a large array
-                        let code: [u8; 1] = alert.to_array();
-                        let code = code[0];
-                        tls::Error { code, reason }
+                    .map(|alert| tls::Error {
+                        code: alert.get_u8(),
+                        reason,
                     })
                     .unwrap_or(tls::Error::INTERNAL_ERROR)
             })?;
