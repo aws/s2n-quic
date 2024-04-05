@@ -116,8 +116,10 @@ impl Client {
             use ::rustls::{version, ClientConfig, KeyLogFile};
             use std::sync::Arc;
 
+            #[allow(deprecated)]
+            let cipher_suites = rustls::DEFAULT_CIPHERSUITES;
             let mut config = ClientConfig::builder()
-                .with_cipher_suites(rustls::DEFAULT_CIPHERSUITES)
+                .with_cipher_suites(cipher_suites)
                 .with_safe_default_kx_groups()
                 .with_protocol_versions(&[&version::TLS13])?
                 .with_custom_certificate_verifier(Arc::new(rustls::DisabledVerifier))
@@ -125,6 +127,7 @@ impl Client {
             config.max_fragment_size = None;
             config.alpn_protocols = alpns.iter().map(|p| p.as_bytes().to_vec()).collect();
             config.key_log = Arc::new(KeyLogFile::new());
+            #[allow(deprecated)]
             rustls::Client::new(config)
         } else {
             rustls::Client::builder()
@@ -265,9 +268,11 @@ pub mod s2n_tls {
 
 pub mod rustls {
     use super::*;
+    #[allow(deprecated)]
+    pub use s2n_quic::provider::tls::rustls::DEFAULT_CIPHERSUITES;
     pub use s2n_quic::provider::tls::rustls::{
         certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
-        Client, Server, DEFAULT_CIPHERSUITES,
+        Client, Server,
     };
 
     pub fn ca(ca: Option<&PathBuf>) -> Result<Certificate> {
