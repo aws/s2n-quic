@@ -85,6 +85,7 @@ pub struct Builder {
     cert_resolver: Option<Arc<dyn rustls::server::ResolvesServerCert>>,
     application_protocols: Vec<Vec<u8>>,
     key_log: Option<Arc<dyn rustls::KeyLog>>,
+    prefer_server_cipher_suite_order: bool,
 }
 
 impl Default for Builder {
@@ -99,6 +100,7 @@ impl Builder {
             cert_resolver: None,
             application_protocols: vec![b"h3".to_vec()],
             key_log: None,
+            prefer_server_cipher_suite_order: true,
         }
     }
 
@@ -137,6 +139,13 @@ impl Builder {
         Ok(self)
     }
 
+    /// If enabled, the cipher suite order of the client is ignored, and the top cipher suite
+    /// in the server list that the client supports is chosen (default: true)
+    pub fn with_prefer_server_cipher_suite_order(mut self, enabled: bool) -> Result<Self, Error> {
+        self.prefer_server_cipher_suite_order = enabled;
+        Ok(self)
+    }
+
     pub fn build(self) -> Result<Server, Error> {
         let builder = ServerConfig::builder()
             .with_cipher_suites(crate::cipher_suite::DEFAULT_CIPHERSUITES)
@@ -153,7 +162,7 @@ impl Builder {
             .into());
         };
 
-        config.ignore_client_order = true;
+        config.ignore_client_order = self.prefer_server_cipher_suite_order;
         config.max_fragment_size = None;
         config.alpn_protocols = self.application_protocols;
 
