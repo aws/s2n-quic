@@ -102,6 +102,7 @@ mod pem {
         let parsers = [
             rustls_pemfile::rsa_private_keys,
             rustls_pemfile::pkcs8_private_keys,
+            rustls_pemfile::ec_private_keys,
         ];
 
         for parser in parsers.iter() {
