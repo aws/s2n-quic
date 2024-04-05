@@ -1,24 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use rustls::{
-    crypto::{aws_lc_rs, CryptoProvider},
-    quic, CipherSuite, SupportedCipherSuite,
-};
+use rustls::{cipher_suite as ciphers, quic, CipherSuite, SupportedCipherSuite};
 use s2n_codec::Encoder;
 use s2n_quic_core::crypto::{self, packet_protection, scatter, tls, HeaderProtectionMask, Key};
 
-/// `aws_lc_rs` is the default crypto provider since that is also the
-/// default used by rustls.
-pub fn default_crypto_provider() -> Result<CryptoProvider, rustls::Error> {
-    Ok(CryptoProvider {
-        cipher_suites: DEFAULT_CIPHERSUITES.to_vec(),
-        ..aws_lc_rs::default_provider()
-    })
-}
-
 pub struct PacketKey {
-    key: Box<dyn quic::PacketKey>,
+    key: quic::PacketKey,
     cipher_suite: tls::CipherSuite,
 }
 
@@ -171,7 +159,7 @@ impl crypto::Key for PacketKeys {
 
 impl crypto::HandshakeKey for PacketKeys {}
 
-pub struct HeaderProtectionKey(Box<dyn quic::HeaderProtectionKey>);
+pub struct HeaderProtectionKey(quic::HeaderProtectionKey);
 
 impl HeaderProtectionKey {
     /// Returns the header protection mask for the given ciphertext sample
@@ -343,10 +331,10 @@ impl crypto::OneRttKey for OneRttKey {
 //# negotiated unless a header protection scheme is defined for the
 //# cipher suite.
 // All of the cipher_suites from the current exported list have HP schemes for QUIC
-static DEFAULT_CIPHERSUITES: &[SupportedCipherSuite] = &[
-    aws_lc_rs::cipher_suite::TLS13_AES_128_GCM_SHA256,
-    aws_lc_rs::cipher_suite::TLS13_AES_256_GCM_SHA384,
-    aws_lc_rs::cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
+pub static DEFAULT_CIPHERSUITES: &[SupportedCipherSuite] = &[
+    ciphers::TLS13_AES_128_GCM_SHA256,
+    ciphers::TLS13_AES_256_GCM_SHA384,
+    ciphers::TLS13_CHACHA20_POLY1305_SHA256,
 ];
 
 #[test]
