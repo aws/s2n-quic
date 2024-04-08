@@ -81,6 +81,17 @@ cert_type!(
     Vec<rustls::Certificate>
 );
 
+impl IntoCertificate for Vec<Vec<u8>> {
+    fn into_certificate(self) -> Result<Certificate, Error> {
+        let mut certs = vec![];
+        for der in self {
+            let der = der.into_certificate()?;
+            certs.extend(der.0);
+        }
+        Ok(Certificate(certs))
+    }
+}
+
 mod pem {
     use super::*;
 
