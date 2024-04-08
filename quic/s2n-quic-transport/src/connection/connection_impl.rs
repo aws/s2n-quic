@@ -615,7 +615,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         publisher.on_mtu_updated(event::builder::MtuUpdated {
             path_id: path_manager.active_path_id().into_event(),
-            mtu: path_manager.active_path().mtu_controller.mtu() as u16,
+            mtu: path_manager
+                .active_path()
+                .mtu_controller
+                .max_datagram_size() as u16,
             cause: MtuUpdatedCause::NewPath,
         });
 

@@ -183,7 +183,10 @@ fn new_ipv4() {
         1600 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN,
         controller.max_probe_size
     );
-    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE as usize, controller.mtu());
+    assert_eq!(
+        MINIMUM_MAX_DATAGRAM_SIZE as usize,
+        controller.max_datagram_size()
+    );
     assert_eq!(0, controller.probe_count);
     assert_eq!(State::Disabled, controller.state);
     assert!(!controller.pmtu_raise_timer.is_armed());
@@ -215,7 +218,10 @@ fn new_ipv6() {
         2000 - UDP_HEADER_LEN - IPV6_MIN_HEADER_LEN,
         controller.max_probe_size
     );
-    assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE as usize, controller.mtu());
+    assert_eq!(
+        MINIMUM_MAX_DATAGRAM_SIZE as usize,
+        controller.max_datagram_size()
+    );
     assert_eq!(0, controller.probe_count);
     assert_eq!(State::Disabled, controller.state);
     assert!(!controller.pmtu_raise_timer.is_armed());
@@ -259,7 +265,7 @@ fn new_initial_and_base_mtu() {
     );
     assert_eq!(
         (2500 - UDP_HEADER_LEN - IPV4_MIN_HEADER_LEN) as usize,
-        controller.mtu()
+        controller.max_datagram_size()
     );
     assert_eq!(0, controller.probe_count);
     assert_eq!(State::Disabled, controller.state);

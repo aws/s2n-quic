@@ -300,6 +300,7 @@ pub struct KeepAliveTimerExpired {
 /// The maximum transmission unit (MTU) for the path has changed
 struct MtuUpdated {
     path_id: u64,
+    /// The maximum QUIC datagram size, not including UDP and IP headers
     mtu: u16,
     cause: MtuUpdatedCause,
 }

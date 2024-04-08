@@ -94,8 +94,12 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
 
         // If a packet can be GSO'd it means it's limited to the previously written packet
         // size. We want to avoid sending several small packets and artificially clamping packets to
-        // less than an MTU.
-        segment_len >= self.context.path().mtu(self.context.transmission_mode)
+        // less than the max datagram size.
+        segment_len
+            >= self
+                .context
+                .path()
+                .max_datagram_size(self.context.transmission_mode)
     }
 
     #[inline]
@@ -135,18 +139,18 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
                 self.context.path().transmission_constraint()
             };
 
-        let mtu = self
+        let max_datagram_size = self
             .context
             .path()
-            .clamp_mtu(buffer.len(), self.context.transmission_mode);
+            .clamp_datagram_size(buffer.len(), self.context.transmission_mode);
         debug_assert_ne!(
-            mtu, 0,
+            max_datagram_size, 0,
             "the amplification limit should be checked before trying to transmit"
         );
 
         // limit the number of retries to the MAX_BURST_PACKETS
         for _ in 0..MAX_BURST_PACKETS {
-            let encoder = EncoderBuffer::new(&mut buffer[..mtu]);
+            let encoder = EncoderBuffer::new(&mut buffer[..max_datagram_size]);
             let initial_capacity = encoder.capacity();
 
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
