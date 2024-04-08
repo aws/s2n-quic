@@ -581,9 +581,11 @@ impl Controller {
         }
     }
 
-    /// Gets the currently validated maximum transmission unit, not including IP or UDP header len
+    /// Gets the currently validated maximum QUIC datagram size
+    ///
+    /// This does not include the size of UDP and IP headers.
     #[inline]
-    pub fn mtu(&self) -> usize {
+    pub fn max_datagram_size(&self) -> usize {
         self.plpmtu as usize
     }
 
@@ -593,7 +595,7 @@ impl Controller {
         self.max_mtu
     }
 
-    /// Gets the MTU currently being probed for
+    /// Gets the max datagram size currently being probed for
     #[inline]
     pub fn probed_sized(&self) -> usize {
         self.probed_size as usize

@@ -973,6 +973,7 @@ pub mod api {
     #[doc = " The maximum transmission unit (MTU) for the path has changed"]
     pub struct MtuUpdated {
         pub path_id: u64,
+        #[doc = " The maximum QUIC datagram size, not including UDP and IP headers"]
         pub mtu: u16,
         pub cause: MtuUpdatedCause,
     }
@@ -4134,6 +4135,7 @@ pub mod builder {
     #[doc = " The maximum transmission unit (MTU) for the path has changed"]
     pub struct MtuUpdated {
         pub path_id: u64,
+        #[doc = " The maximum QUIC datagram size, not including UDP and IP headers"]
         pub mtu: u16,
         pub cause: MtuUpdatedCause,
     }
