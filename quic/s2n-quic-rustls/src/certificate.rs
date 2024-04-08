@@ -80,6 +80,7 @@ cert_type!(
     into_certificate,
     Vec<rustls::Certificate>
 );
+
 impl IntoCertificate for Vec<Vec<u8>> {
     fn into_certificate(self) -> Result<Certificate, Error> {
         let certs = self
