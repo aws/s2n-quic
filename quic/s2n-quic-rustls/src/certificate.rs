@@ -83,13 +83,11 @@ cert_type!(
 
 impl IntoCertificate for Vec<Vec<u8>> {
     fn into_certificate(self) -> Result<Certificate, Error> {
-        let certs = self
-            .iter()
-            .map(|cert| der::into_certificate(cert.to_vec()))
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
+        let mut certs = vec![];
+        for der in self {
+            let der = der.into_certificate()?;
+            certs.extend(der.0);
+        }
         Ok(Certificate(certs))
     }
 }
