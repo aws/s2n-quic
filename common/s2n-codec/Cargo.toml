@@ -1,6 +1,6 @@
 [package]
 name = "s2n-codec"
-version = "0.36.0"
+version = "0.35.1"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
