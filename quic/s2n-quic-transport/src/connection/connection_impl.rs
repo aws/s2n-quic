@@ -1154,7 +1154,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             congestion_controller_endpoint,
             path_migration,
             mtu_config,
-            self.limits.initial_round_trip_time(),
+            &self.limits,
             &mut publisher,
         )?;
 
