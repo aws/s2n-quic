@@ -238,7 +238,7 @@ impl Limits {
         Duration
     );
     setter!(with_max_keep_alive_period, max_keep_alive_period, Duration);
-    /// Sets if active connection migration is supported for a server endpoint (default: true)
+    /// Sets whether active connection migration is supported for a server endpoint (default: true)
     ///
     /// If set to false, the `disable_active_migration` transport parameter will be sent to the
     /// peer, and any attempt by the peer to perform an active connection migration will be ignored.
