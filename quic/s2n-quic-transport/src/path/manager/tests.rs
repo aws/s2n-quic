@@ -1021,7 +1021,9 @@ fn active_connection_migration_disabled() {
         &mut migration::allow_all::Validator,
         mtu::Config::default(),
         // Active connection migration is disabled
-        &Limits::default().with_active_connection_migration(false).unwrap(),
+        &Limits::default()
+            .with_active_connection_migration(false)
+            .unwrap(),
         &mut publisher,
     );
 
@@ -1063,7 +1065,9 @@ fn active_connection_migration_disabled() {
         &mut migration::allow_all::Validator,
         mtu::Config::default(),
         // Active connection migration is disabled
-        &Limits::default().with_active_connection_migration(false).unwrap(),
+        &Limits::default()
+            .with_active_connection_migration(false)
+            .unwrap(),
         &mut publisher,
     );
 
