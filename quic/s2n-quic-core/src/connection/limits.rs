@@ -111,7 +111,7 @@ impl Limits {
             max_keep_alive_period: MAX_KEEP_ALIVE_PERIOD_DEFAULT,
             max_datagram_frame_size: MaxDatagramFrameSize::DEFAULT,
             initial_round_trip_time: recovery::DEFAULT_INITIAL_RTT,
-            migration_support: MigrationSupport::default(),
+            migration_support: MigrationSupport::RECOMMENDED,
         }
     }
 
@@ -242,7 +242,10 @@ impl Limits {
     ///
     /// If set to false, the `disable_active_migration` transport parameter will be sent to the
     /// peer, and any attempt by the peer to perform an active connection migration will be ignored.
-    pub fn with_connection_migration(mut self, enabled: bool) -> Result<Self, ValidationError> {
+    pub fn with_active_connection_migration(
+        mut self,
+        enabled: bool,
+    ) -> Result<Self, ValidationError> {
         if enabled {
             self.migration_support = MigrationSupport::Enabled
         } else {

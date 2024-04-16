@@ -853,16 +853,15 @@ impl TransportParameterValidator for MaxAckDelay {
 //#    active connection migration (Section 9) on the address being used
 //#    during the handshake.
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum MigrationSupport {
+    #[default]
     Enabled,
     Disabled,
 }
 
 impl MigrationSupport {
-    pub const fn default() -> Self {
-        MigrationSupport::Enabled
-    }
+    pub const RECOMMENDED: Self = Self::Enabled;
 }
 
 impl TransportParameter for MigrationSupport {
