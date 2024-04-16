@@ -988,6 +988,8 @@ fn active_connection_migration_disabled() {
     );
     let mut manager = manager_server(first_path);
     // Give the path manager some new CIDs so it's able to use one for an active migration
+    // id_2 will be moved to `InUse` immediately due to the handshake CID rotation feature,
+    // so id_3 is added as well to have an unused CID available for connection migration
     let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
     assert!(manager
         .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &mut publisher)
