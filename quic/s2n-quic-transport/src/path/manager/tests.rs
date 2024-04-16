@@ -1011,6 +1011,7 @@ fn active_connection_migration_disabled() {
         source_connection_id: None,
     };
 
+    // First try an active migration with active migration disabled
     let res = manager.handle_connection_migration(
         &new_addr,
         &datagram,
@@ -1022,13 +1023,14 @@ fn active_connection_migration_disabled() {
         &mut publisher,
     );
 
+    // The active migration is rejected
     assert!(matches!(
         res,
         Err(DatagramDropReason::RejectedConnectionMigration)
     ));
     assert_eq!(1, manager.paths.len());
 
-    // Active connection migration is enabled (default)
+    // Try an active connection migration with active migration enabled (default)
     let res = manager.handle_connection_migration(
         &new_addr,
         &datagram,
@@ -1039,10 +1041,11 @@ fn active_connection_migration_disabled() {
         &mut publisher,
     );
 
+    // The migration succeeds
     assert!(res.is_ok());
     assert_eq!(2, manager.paths.len());
 
-    // Now try a non-active (passive) migration
+    // Now try a non-active (passive) migration, with active migration disabled
     // the same CID is used, so it's not an active migration
     datagram.destination_connection_id = connection::LocalId::TEST_ID;
     let new_addr: SocketAddr = "127.0.0.3:1".parse().unwrap();
@@ -1062,6 +1065,7 @@ fn active_connection_migration_disabled() {
         &mut publisher,
     );
 
+    // The passive migration succeeds
     assert!(res.is_ok());
     assert_eq!(3, manager.paths.len());
 }
