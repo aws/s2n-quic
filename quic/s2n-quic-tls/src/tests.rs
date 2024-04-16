@@ -403,7 +403,7 @@ fn s2n_client_no_client_auth_s2n_server_requires_client_auth_test() {
     // but the client does not support it.
     assert!(test_result.is_err());
     let e = test_result.unwrap_err();
-    assert_eq!(e.description().unwrap(), "UNEXPECTED_MESSAGE");
+    assert_eq!(e.description().unwrap(), "CERTIFICATE_REQUIRED");
 }
 
 #[test]
