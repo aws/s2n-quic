@@ -1002,7 +1002,7 @@ fn active_connection_migration_disabled() {
     let new_addr = RemoteAddress::from(new_addr);
     let new_cid = connection::LocalId::try_from_bytes(b"id02").unwrap();
     let now = NoopClock {}.get_time();
-    let datagram = DatagramInfo {
+    let mut datagram = DatagramInfo {
         timestamp: now,
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
@@ -1011,16 +1011,14 @@ fn active_connection_migration_disabled() {
         source_connection_id: None,
     };
 
-    // Active connection migration is disabled
-    let limits = Limits::default().with_connection_migration(false).unwrap();
-
     let res = manager.handle_connection_migration(
         &new_addr,
         &datagram,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
         mtu::Config::default(),
-        &limits,
+        // Active connection migration is disabled
+        &Limits::default().with_connection_migration(false).unwrap(),
         &mut publisher,
     );
 
@@ -1043,42 +1041,15 @@ fn active_connection_migration_disabled() {
 
     assert!(res.is_ok());
     assert_eq!(2, manager.paths.len());
-}
 
-#[test]
-fn active_connection_migration_disabled_passive_migration() {
-    // Setup:
-    let mut publisher = Publisher::snapshot();
-    let new_addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
+    // Now try a non-active (passive) migration
+    // the same CID is used, so it's not an active migration
+    datagram.destination_connection_id = connection::LocalId::TEST_ID;
+    let new_addr: SocketAddr = "127.0.0.3:1".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
-    let first_path = ServerPath::new(
-        new_addr,
-        connection::PeerId::try_from_bytes(&[1]).unwrap(),
-        connection::LocalId::TEST_ID,
-        RttEstimator::default(),
-        Default::default(),
-        false,
-        mtu::Config::default(),
-    );
-    let mut manager = manager_server(first_path);
-
-    let new_addr: SocketAddr = "127.0.0.2:1".parse().unwrap();
-    let new_addr = SocketAddress::from(new_addr);
-    let new_addr = RemoteAddress::from(new_addr);
-    let now = NoopClock {}.get_time();
-    let datagram = DatagramInfo {
-        timestamp: now,
-        payload_len: 0,
-        ecn: ExplicitCongestionNotification::default(),
-        // the same CID is used, so it's not an active migration
-        destination_connection_id: connection::LocalId::TEST_ID,
-        destination_connection_id_classification: connection::id::Classification::Local,
-        source_connection_id: None,
-    };
-
-    // Active connection migration is disabled
-    let limits = Limits::default().with_connection_migration(false).unwrap();
+    // Clear the pending packet authentication to allow another migration to proceed
+    manager.pending_packet_authentication = None;
 
     let res = manager.handle_connection_migration(
         &new_addr,
@@ -1086,12 +1057,13 @@ fn active_connection_migration_disabled_passive_migration() {
         &mut Default::default(),
         &mut migration::allow_all::Validator,
         mtu::Config::default(),
-        &limits,
+        // Active connection migration is disabled
+        &Limits::default().with_connection_migration(false).unwrap(),
         &mut publisher,
     );
 
     assert!(res.is_ok());
-    assert_eq!(2, manager.paths.len());
+    assert_eq!(3, manager.paths.len());
 }
 
 #[test]
