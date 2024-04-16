@@ -987,7 +987,7 @@ fn active_connection_migration_disabled() {
         mtu::Config::default(),
     );
     let mut manager = manager_server(first_path);
-    // Give the path manager soms new CIDs so it's able to use one for an active migration
+    // Give the path manager some new CIDs so it's able to use one for an active migration
     let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
     assert!(manager
         .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &mut publisher)
