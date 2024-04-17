@@ -9,10 +9,10 @@ use crate::{
     path::{challenge, Path},
     transmission,
 };
-use core::time::Duration;
 use s2n_quic_core::{
     ack,
-    connection::{self, PeerId},
+    connection::{self, Limits, PeerId},
+    ensure,
     event::{
         self,
         builder::{DatagramDropReason, MtuUpdatedCause},
@@ -245,7 +245,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
         mtu_config: mtu::Config,
-        initial_rtt: Duration,
+        limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
         let valid_initial_received = self.valid_initial_received();
@@ -308,7 +308,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             congestion_controller_endpoint,
             migration_validator,
             mtu_config,
-            initial_rtt,
+            limits,
             publisher,
         )
     }
@@ -321,7 +321,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
         mtu_config: mtu::Config,
-        initial_rtt: Duration,
+        limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-9
@@ -332,6 +332,17 @@ impl<Config: endpoint::Config> Manager<Config> {
         let local_address = path_handle.local_address();
         let active_local_addr = self.active_path().local_address();
         let active_remote_addr = self.active_path().remote_address();
+        // The peer has intentionally tried to migrate to a new path because they changed
+        // their destination_connection_id. This is considered an "active" migration.
+        let active_migration =
+            self.active_path().local_connection_id != datagram.destination_connection_id;
+
+        if active_migration {
+            ensure!(
+                limits.active_migration_enabled(),
+                Err(DatagramDropReason::RejectedConnectionMigration)
+            )
+        }
 
         // TODO set alpn if available
         let attempt: migration::Attempt = migration::AttemptBuilder {
@@ -403,19 +414,21 @@ impl<Config: endpoint::Config> Manager<Config> {
         // estimator for the new path, and they are initialized with initial values,
         // we do not need to reset congestion controller and round-trip time estimator
         // again on confirming the peer's ownership of its new address.
-        let rtt = self.active_path().rtt_estimator.for_new_path(initial_rtt);
+        let rtt = self
+            .active_path()
+            .rtt_estimator
+            .for_new_path(limits.initial_round_trip_time());
         let path_info =
             congestion_controller::PathInfo::new(mtu_config.initial_mtu, &remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
         let peer_connection_id = {
-            if self.active_path().local_connection_id != datagram.destination_connection_id {
+            if active_migration {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-9.5
                 //# Similarly, an endpoint MUST NOT reuse a connection ID when sending to
                 //# more than one destination address.
 
-                // Peer has intentionally tried to migrate to this new path because they changed
-                // their destination_connection_id, so we will change our destination_connection_id as well.
+                // Active connection migrations must use a new connection ID
                 self.peer_id_registry
                     .consume_new_id_for_new_path()
                     .ok_or(DatagramDropReason::InsufficientConnectionIds)?

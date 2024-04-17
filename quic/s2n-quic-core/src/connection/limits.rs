@@ -9,7 +9,7 @@ use crate::{
         AckDelayExponent, ActiveConnectionIdLimit, InitialFlowControlLimits, InitialMaxData,
         InitialMaxStreamDataBidiLocal, InitialMaxStreamDataBidiRemote, InitialMaxStreamDataUni,
         InitialMaxStreamsBidi, InitialMaxStreamsUni, InitialStreamLimits, MaxAckDelay,
-        MaxDatagramFrameSize, MaxIdleTimeout, TransportParameters,
+        MaxDatagramFrameSize, MaxIdleTimeout, MigrationSupport, TransportParameters,
     },
 };
 use core::time::Duration;
@@ -66,6 +66,7 @@ pub struct Limits {
     pub(crate) max_keep_alive_period: Duration,
     pub(crate) max_datagram_frame_size: MaxDatagramFrameSize,
     pub(crate) initial_round_trip_time: Duration,
+    pub(crate) migration_support: MigrationSupport,
 }
 
 impl Default for Limits {
@@ -110,6 +111,7 @@ impl Limits {
             max_keep_alive_period: MAX_KEEP_ALIVE_PERIOD_DEFAULT,
             max_datagram_frame_size: MaxDatagramFrameSize::DEFAULT,
             initial_round_trip_time: recovery::DEFAULT_INITIAL_RTT,
+            migration_support: MigrationSupport::RECOMMENDED,
         }
     }
 
@@ -236,6 +238,21 @@ impl Limits {
         Duration
     );
     setter!(with_max_keep_alive_period, max_keep_alive_period, Duration);
+    /// Sets whether active connection migration is supported for a server endpoint (default: true)
+    ///
+    /// If set to false, the `disable_active_migration` transport parameter will be sent to the
+    /// peer, and any attempt by the peer to perform an active connection migration will be ignored.
+    pub fn with_active_connection_migration(
+        mut self,
+        enabled: bool,
+    ) -> Result<Self, ValidationError> {
+        if enabled {
+            self.migration_support = MigrationSupport::Enabled
+        } else {
+            self.migration_support = MigrationSupport::Disabled
+        }
+        Ok(self)
+    }
 
     /// Sets the initial round trip time (RTT) for use in recovery mechanisms prior to
     /// measuring an actual RTT sample.
@@ -334,6 +351,12 @@ impl Limits {
     #[inline]
     pub fn initial_round_trip_time(&self) -> Duration {
         self.initial_round_trip_time
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn active_migration_enabled(&self) -> bool {
+        matches!(self.migration_support, MigrationSupport::Enabled)
     }
 }
 

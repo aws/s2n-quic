@@ -860,6 +860,10 @@ pub enum MigrationSupport {
     Disabled,
 }
 
+impl MigrationSupport {
+    pub const RECOMMENDED: Self = Self::Enabled;
+}
+
 impl TransportParameter for MigrationSupport {
     type CodecValue = ();
 
@@ -878,7 +882,7 @@ impl TransportParameter for MigrationSupport {
     }
 
     fn default_value() -> Self {
-        MigrationSupport::Enabled
+        Self::default()
     }
 }
 
@@ -1462,5 +1466,6 @@ impl<
         load!(ack_delay_exponent, ack_delay_exponent);
         load!(max_active_connection_ids, active_connection_id_limit);
         load!(max_datagram_frame_size, max_datagram_frame_size);
+        load!(migration_support, migration_support);
     }
 }

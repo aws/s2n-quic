@@ -14,6 +14,7 @@ use bolero::TypeGenerator;
 use core::{ops::RangeInclusive, time::Duration};
 use s2n_quic_core::{
     ack, connection,
+    connection::Limits,
     event::testing::Publisher,
     frame::ack_elicitation::AckElicitation,
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
@@ -3359,7 +3360,7 @@ fn helper_generate_multi_path_manager(
                 &mut Endpoint::default(),
                 &mut migration::allow_all::Validator,
                 mtu::Config::default(),
-                DEFAULT_INITIAL_RTT,
+                &Limits::default(),
                 publisher,
             )
             .unwrap();
