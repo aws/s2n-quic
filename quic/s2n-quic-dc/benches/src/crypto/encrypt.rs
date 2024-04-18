@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use criterion::{black_box, BenchmarkId, Criterion, Throughput};
-use s2n_quic_dc::credentials::testing::iter as creds;
 
 pub fn benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("crypto/encrypt");

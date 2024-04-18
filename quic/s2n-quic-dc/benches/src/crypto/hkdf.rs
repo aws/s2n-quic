@@ -73,7 +73,6 @@ mod awslc {
     #[inline(never)]
     pub fn derive_psk(prk: &Prk, label: &[u8], out: &mut [u8]) {
         let out_len = out.len();
-        let length = (out_len as u16).to_be_bytes();
         let out_len = OutLen(out_len);
 
         prk.expand(&[&label], out_len)

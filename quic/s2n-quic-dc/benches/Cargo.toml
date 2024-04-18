@@ -8,7 +8,7 @@ publish = false
 aws-lc-rs = "1"
 criterion = { version = "0.4", features = ["html_reports"] }
 s2n-codec = { path = "../../../common/s2n-codec" }
-s2n-quic-dc = { path = "../", features = ["testing"] }
+s2n-quic-dc = { path = "../../s2n-quic-dc", features = ["testing"] }
 
 [[bench]]
 name = "bench"

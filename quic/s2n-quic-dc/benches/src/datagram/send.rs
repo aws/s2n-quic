@@ -1,15 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use criterion::{black_box, BenchmarkId, Criterion, Throughput};
-use s2n_quic_dc::credentials::testing::iter as creds;
+use criterion::{Criterion, Throughput};
+// use s2n_quic_dc::credentials::testing::iter as creds;
 
 macro_rules! impl_send {
     ($name:ident) => {
         mod $name {
-            use s2n_quic_dc::datagram::send::send as send_impl;
-            pub use s2n_quic_dc::datagram::send::testing::$name::{state, State};
+            // use s2n_quic_dc::datagram::send::send as send_impl;
+            // pub use s2n_quic_dc::datagram::send::testing::$name::{state, State};
 
+            /*
             #[inline(never)]
             pub fn send(state: &mut State, mut input: &[u8]) {
                 let _ = send_impl(state, &mut (), &mut input);
@@ -19,6 +20,7 @@ macro_rules! impl_send {
             pub fn send_header(state: &mut State, mut header: &[u8], mut input: &[u8]) {
                 let _ = send_impl(state, &mut header, &mut input);
             }
+            */
         }
     };
 }
@@ -37,18 +39,19 @@ pub fn benches(c: &mut Criterion) {
         8900,
     ];
 
-    let inline = [
-        ("aes_128_gcm", &aws_lc_rs::aead::AES_128_GCM),
-        ("aes_256_gcm", &aws_lc_rs::aead::AES_256_GCM),
-    ];
+    // let inline = [
+    //     ("aes_128_gcm", &aws_lc_rs::aead::AES_128_GCM),
+    //     ("aes_256_gcm", &aws_lc_rs::aead::AES_256_GCM),
+    // ];
 
-    for payload_size in payloads {
-        let payload = black_box(vec![42u8; payload_size]);
-        for header_size in headers {
-            let header = black_box(vec![42u8; header_size]);
+    for _payload_size in payloads {
+        // let payload = black_box(vec![42u8; payload_size]);
+        for _header_size in headers {
+            // let header = black_box(vec![42u8; header_size]);
 
             group.throughput(Throughput::Elements(1));
 
+            /*
             let input_name = format!("payload={payload_size},header={header_size}");
 
             macro_rules! bench {
@@ -121,11 +124,12 @@ pub fn benches(c: &mut Criterion) {
                     },
                 );
             }
+            */
         }
     }
 }
 
-mod inline {
+/* mod inline {
     use aws_lc_rs::aead::{Aad, Algorithm, LessSafeKey, Nonce, UnboundKey, NONCE_LEN};
 
     #[inline(never)]
@@ -169,3 +173,4 @@ mod inline {
         *packet_number += 1;
     }
 }
+*/

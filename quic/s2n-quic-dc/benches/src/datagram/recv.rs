@@ -1,8 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use criterion::{black_box, BenchmarkId, Criterion, Throughput};
-use s2n_quic_dc::credentials::testing::iter as creds;
+use criterion::{black_box, BenchmarkId, Criterion};
 
 const PACKET: [u8; 90] = [
     64, 0, 42, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 55, 67, 102, 47, 62, 183, 50, 8, 44,
@@ -25,6 +24,7 @@ macro_rules! impl_recv {
             }
             */
             #[inline(never)]
+            #[allow(dead_code)]
             pub fn parse(
                 buffer: &mut [u8],
             ) -> Option<s2n_quic_dc::packet::datagram::decoder::Packet> {
@@ -45,10 +45,11 @@ impl_recv!(null);
 impl_recv!(aes_128_gcm);
 impl_recv!(aes_256_gcm);
 
+#[allow(const_item_mutation)]
 pub fn benches(c: &mut Criterion) {
     let mut group = c.benchmark_group("datagram/recv");
 
-    let input = black_box(&mut [1u8, 2, 3][..]);
+    // let input = black_box(&mut [1u8, 2, 3][..]);
 
     group.bench_with_input(BenchmarkId::new("test", 1), &(), |b, _input| {
         b.iter(move || {
@@ -154,6 +155,7 @@ pub fn benches(c: &mut Criterion) {
     */
 }
 
+/*
 mod inline {
     use aws_lc_rs::aead::{Aad, Algorithm, LessSafeKey, Nonce, UnboundKey, NONCE_LEN};
 
@@ -198,3 +200,4 @@ mod inline {
         *packet_number += 1;
     }
 }
+*/
