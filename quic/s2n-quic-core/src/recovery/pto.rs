@@ -71,6 +71,17 @@ impl Pto {
     pub fn transmissions(&self) -> u8 {
         self.state.transmissions()
     }
+
+    #[inline]
+    pub fn on_transmit_once(&mut self) {
+        self.state.on_transmit();
+    }
+
+    #[inline]
+    pub fn force_transmit(&mut self) {
+        ensure!(matches!(self.state, State::Idle));
+        self.state = State::RequiresTransmission(1);
+    }
 }
 
 impl timer::Provider for Pto {
@@ -120,7 +131,7 @@ impl transmission::Provider for Pto {
         // The early transmission will automatically ensure all initial packets sent by the
         // client are padded to 1200 bytes
 
-        self.state.on_transmit();
+        self.on_transmit_once();
     }
 }
 
