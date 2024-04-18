@@ -180,5 +180,8 @@ mod tests {
             assert!(reader.buffer_is_empty());
             assert!(reader.is_consumed());
         }
+
+        let incremental = Incremental::new(VarInt::from_u8(100));
+        assert_eq!(incremental.current_offset(), VarInt::from_u8(100));
     }
 }
