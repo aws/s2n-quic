@@ -73,7 +73,7 @@ impl Pto {
     }
 
     #[inline]
-    pub fn transmit_once(&mut self) {
+    pub fn on_transmit_once(&mut self) {
         self.state.on_transmit();
     }
 
@@ -131,7 +131,7 @@ impl transmission::Provider for Pto {
         // The early transmission will automatically ensure all initial packets sent by the
         // client are padded to 1200 bytes
 
-        self.state.on_transmit();
+        self.on_transmit_once();
     }
 }
 
