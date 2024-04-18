@@ -12,7 +12,7 @@ use crate::{
 
 /// Implements an incremental [`Reader`] that joins to temporary [`Storage`] as the stream data
 ///
-/// This is useful for scenarios where the the stream isn't completely buffered in memory and
+/// This is useful for scenarios where the stream isn't completely buffered in memory and
 /// data come in gradually.
 #[derive(Debug, Default)]
 pub struct Incremental {
@@ -21,6 +21,14 @@ pub struct Incremental {
 }
 
 impl Incremental {
+    #[inline]
+    pub fn new(current_offset: VarInt) -> Self {
+        Self {
+            current_offset,
+            final_offset: None,
+        }
+    }
+
     #[inline]
     pub fn with_storage<'a, C: Storage>(
         &'a mut self,
