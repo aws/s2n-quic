@@ -5,7 +5,7 @@ use crate::{
     event,
     packet::number::PacketNumberSpace,
     path,
-    path::MINIMUM_MTU,
+    path::MINIMUM_MAX_DATAGRAM_SIZE,
     recovery::{
         congestion_controller::PathPublisher,
         pacing::{Pacer, INITIAL_INTERVAL, N, SLOW_START_N},
@@ -30,10 +30,10 @@ fn earliest_departure_time() {
 
     pacer.on_packet_sent(
         now,
-        MINIMUM_MTU as usize,
+        MINIMUM_MAX_DATAGRAM_SIZE as usize,
         &rtt,
         cwnd,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         false,
         &mut publisher,
     );
@@ -60,7 +60,7 @@ fn on_packet_sent_large_bytes_sent() {
         usize::MAX,
         &rtt,
         cwnd,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         false,
         &mut publisher,
     );
@@ -88,7 +88,7 @@ fn test_one_rtt(slow_start: bool) {
     let mut publisher = event::testing::Publisher::snapshot();
     let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
-    let cwnd = MINIMUM_MTU as u32 * 100;
+    let cwnd = MINIMUM_MAX_DATAGRAM_SIZE as u32 * 100;
     let n = if slow_start {
         SLOW_START_N.to_f32().unwrap()
     } else {
@@ -101,10 +101,10 @@ fn test_one_rtt(slow_start: bool) {
     // Send one packet to move beyond the initial interval
     pacer.on_packet_sent(
         now,
-        MINIMUM_MTU as usize,
+        MINIMUM_MAX_DATAGRAM_SIZE as usize,
         &rtt,
         cwnd,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         slow_start,
         &mut publisher,
     );
@@ -123,14 +123,14 @@ fn test_one_rtt(slow_start: bool) {
                 < now + rtt.smoothed_rtt()));
         pacer.on_packet_sent(
             now,
-            MINIMUM_MTU as usize,
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
             &rtt,
             cwnd,
-            MINIMUM_MTU,
+            MINIMUM_MAX_DATAGRAM_SIZE,
             slow_start,
             &mut publisher,
         );
-        sent_bytes += MINIMUM_MTU as u32;
+        sent_bytes += MINIMUM_MAX_DATAGRAM_SIZE as u32;
     }
     assert!(pacer
         .earliest_departure_time()
@@ -146,14 +146,14 @@ fn earliest_departure_time_before_now() {
     let mut publisher = event::testing::Publisher::snapshot();
     let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
-    let cwnd = MINIMUM_MTU as u32 * 100;
+    let cwnd = MINIMUM_MAX_DATAGRAM_SIZE as u32 * 100;
     loop {
         pacer.on_packet_sent(
             now,
-            MINIMUM_MTU as usize,
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
             &rtt,
             cwnd,
-            MINIMUM_MTU,
+            MINIMUM_MAX_DATAGRAM_SIZE,
             false,
             &mut publisher,
         );
@@ -172,10 +172,10 @@ fn earliest_departure_time_before_now() {
     let now = now + Duration::from_secs(1);
     pacer.on_packet_sent(
         now,
-        MINIMUM_MTU as usize,
+        MINIMUM_MAX_DATAGRAM_SIZE as usize,
         &rtt,
         cwnd,
-        MINIMUM_MTU,
+        MINIMUM_MAX_DATAGRAM_SIZE,
         false,
         &mut publisher,
     );
@@ -188,17 +188,38 @@ fn interval_change() {
     let now = NoopClock.get_time();
     let mut rtt = RttEstimator::default();
 
-    let mut cwnd = MINIMUM_MTU as u32 * 100;
+    let mut cwnd = MINIMUM_MAX_DATAGRAM_SIZE as u32 * 100;
 
     if INITIAL_INTERVAL > Duration::ZERO {
-        let interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MTU, false);
+        let interval = get_interval(
+            now,
+            &mut pacer,
+            &rtt,
+            cwnd,
+            MINIMUM_MAX_DATAGRAM_SIZE,
+            false,
+        );
         assert_eq!(INITIAL_INTERVAL, interval);
     }
 
-    let interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MTU, false);
+    let interval = get_interval(
+        now,
+        &mut pacer,
+        &rtt,
+        cwnd,
+        MINIMUM_MAX_DATAGRAM_SIZE,
+        false,
+    );
 
-    cwnd += MINIMUM_MTU as u32;
-    let new_interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MTU, false);
+    cwnd += MINIMUM_MAX_DATAGRAM_SIZE as u32;
+    let new_interval = get_interval(
+        now,
+        &mut pacer,
+        &rtt,
+        cwnd,
+        MINIMUM_MAX_DATAGRAM_SIZE,
+        false,
+    );
 
     // Interval decreases after the congestion window increases, as more bursts need to be
     // distributed evenly across the same time period (1 rtt)
@@ -212,14 +233,21 @@ fn interval_change() {
         true,
         PacketNumberSpace::ApplicationData,
     );
-    let new_interval = get_interval(now, &mut pacer, &rtt, cwnd, MINIMUM_MTU, false);
+    let new_interval = get_interval(
+        now,
+        &mut pacer,
+        &rtt,
+        cwnd,
+        MINIMUM_MAX_DATAGRAM_SIZE,
+        false,
+    );
 
     // Interval increases after the RTT increases, as the same amount of data is distributed over
     // a longer time period
     assert!(new_interval > interval);
 
     let interval = new_interval;
-    let max_datagram_size = MINIMUM_MTU + 300;
+    let max_datagram_size = MINIMUM_MAX_DATAGRAM_SIZE + 300;
     let new_interval = get_interval(now, &mut pacer, &rtt, cwnd, max_datagram_size, false);
 
     // Interval increases after the MTU increases, as each burst contains more data, so less
@@ -243,9 +271,9 @@ fn interval_change() {
 fn interval_differential_test() {
     check!()
         .with_generator((
-            1_000_000..u32::MAX, // RTT ranges from 1ms to ~4sec
-            2400..u32::MAX, // congestion window ranges from the minimum window (2 * MINIMUM_MTU) to u32::MAX
-            MINIMUM_MTU..=9000, // max_datagram_size ranges from MINIMUM_MTU to 9000
+            1_000_000..u32::MAX,              // RTT ranges from 1ms to ~4sec
+            2400..u32::MAX, // congestion window ranges from the minimum window (2 * MINIMUM_MAX_DATAGRAM_SIZE) to u32::MAX
+            MINIMUM_MAX_DATAGRAM_SIZE..=9000, // max_datagram_size ranges from MINIMUM_MAX_DATAGRAM_SIZE to 9000
             gen(),
         ))
         .cloned()

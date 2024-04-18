@@ -94,8 +94,8 @@ impl<D: Driver> Driver for WithCooldown<D> {
         }
 
         match self.cooldown.on_pending_task(cx) {
-            cooldown::Outcome::Loop => return Some(0),
-            cooldown::Outcome::Sleep => return self.driver.poll(rx, fill, cx),
+            cooldown::Outcome::Loop => Some(0),
+            cooldown::Outcome::Sleep => self.driver.poll(rx, fill, cx),
         }
     }
 }

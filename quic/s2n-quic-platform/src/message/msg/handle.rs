@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::ext::Ext as _;
-use crate::message::cmsg::Encoder;
+use crate::{features, message::cmsg::Encoder};
 use libc::msghdr;
 use s2n_quic_core::{
-    inet::{AncillaryData, SocketAddress, SocketAddressV4},
+    inet::{AncillaryData, SocketAddressV4},
     path::{self, LocalAddress, RemoteAddress},
 };
 
@@ -32,42 +32,10 @@ impl Handle {
 
         msghdr.set_remote_address(&self.remote_address.0);
 
-        #[cfg(s2n_quic_platform_pktinfo)]
-        match self.local_address.0 {
-            SocketAddress::IpV4(addr) => {
-                use s2n_quic_core::inet::Unspecified;
-
-                let ip = addr.ip();
-
-                if ip.is_unspecified() {
-                    return;
-                }
-
-                let mut pkt_info = unsafe { core::mem::zeroed::<libc::in_pktinfo>() };
-                pkt_info.ipi_spec_dst.s_addr = u32::from_ne_bytes((*ip).into());
-
-                msghdr
-                    .encode_cmsg(libc::IPPROTO_IP, libc::IP_PKTINFO, pkt_info)
-                    .unwrap();
-            }
-            SocketAddress::IpV6(addr) => {
-                use s2n_quic_core::inet::Unspecified;
-
-                let ip = addr.ip();
-
-                if ip.is_unspecified() {
-                    return;
-                }
-
-                let mut pkt_info = unsafe { core::mem::zeroed::<libc::in6_pktinfo>() };
-
-                pkt_info.ipi6_addr.s6_addr = (*ip).into();
-
-                msghdr
-                    .encode_cmsg(libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, pkt_info)
-                    .unwrap();
-            }
-        }
+        msghdr
+            .cmsg_encoder()
+            .encode_local_address(&self.local_address.0)
+            .unwrap();
     }
 }
 
@@ -100,7 +68,7 @@ impl path::Handle for Handle {
         let mut eq = true;
 
         // only compare local addresses if the OS returns them
-        if cfg!(s2n_quic_platform_pktinfo) {
+        if features::pktinfo::IS_SUPPORTED {
             eq &= self.local_address.eq(&other.local_address);
         }
 

@@ -230,7 +230,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .tls
             .new_server_session(&transport_parameters);
 
-        let path_info = congestion_controller::PathInfo::new(&remote_address);
+        let path_info =
+            congestion_controller::PathInfo::new(self.mtu_config.initial_mtu, &remote_address);
         let congestion_controller = endpoint_context
             .congestion_controller
             .new_congestion_controller(path_info);
@@ -271,7 +272,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &mut publisher,
         );
 
-        let max_mtu = self.max_mtu;
+        let mtu_config = self.mtu_config;
         let connection_parameters = connection::Parameters {
             internal_connection_id,
             local_id_registry,
@@ -288,7 +289,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             timestamp: datagram.timestamp,
             quic_version,
             limits,
-            max_mtu,
+            mtu_config,
             event_context,
             supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
@@ -305,7 +306,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     datagram,
                     endpoint_context.congestion_controller,
                     endpoint_context.path_migration,
-                    max_mtu,
+                    mtu_config,
                     endpoint_context.event_subscriber,
                 );
 

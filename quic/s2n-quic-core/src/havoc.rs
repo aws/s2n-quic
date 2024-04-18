@@ -6,7 +6,7 @@ use crate::{
     stream::StreamType,
     varint,
 };
-use core::{convert::TryInto, ops::Range};
+use core::ops::Range;
 pub use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 
 pub trait Random {

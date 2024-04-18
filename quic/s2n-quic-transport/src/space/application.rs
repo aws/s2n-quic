@@ -524,7 +524,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
 
         // bound the random value
         let pkt_per_cwnd = path.congestion_controller.congestion_window()
-            / path.mtu(transmission::Mode::Normal) as u32;
+            / path.max_datagram_size(transmission::Mode::Normal) as u32;
         let lower = pkt_per_cwnd / 2;
         let upper = pkt_per_cwnd.saturating_mul(2);
         let cardinality = upper - lower + 1;
@@ -990,7 +990,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 .with_reason(Self::INVALID_FRAME_ERROR)
                 .with_frame_type(frame.tag().into()));
         }
-        // TODO add support for NEW_TOKEN_FRAMEs on the client
+        // TODO add support for the NEW_TOKEN_FRAME on the client
         Ok(())
     }
 
@@ -1168,14 +1168,14 @@ mod tests {
         let mut skip_counter = None;
 
         let mut path = helper_path_server();
-        assert_eq!(path.mtu(transmission::Mode::Normal), 1200);
-        let mtu = path.mtu(transmission::Mode::Normal) as u32;
+        assert_eq!(path.max_datagram_size(transmission::Mode::Normal), 1200);
+        let max_datagram_size = path.max_datagram_size(transmission::Mode::Normal) as u32;
 
         check!().with_type().cloned().for_each(|(seed, cwnd)| {
             let random = &mut random::testing::Generator(seed);
             path.congestion_controller.congestion_window = cwnd;
             // calculate the bounds
-            let pkt_per_cwnd = cwnd / mtu;
+            let pkt_per_cwnd = cwnd / max_datagram_size;
             let lower = pkt_per_cwnd / 2;
             let upper = pkt_per_cwnd * 2;
             ApplicationSpace::arm_skip_counter(&mut skip_counter, &path, random);

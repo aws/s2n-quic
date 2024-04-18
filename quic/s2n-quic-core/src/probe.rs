@@ -23,7 +23,7 @@ macro_rules! __probe_define__ {
                     name: stringify!($fun),
                     target: concat!(module_path!(), "::", stringify!($fun)),
                     $(
-                        ?$arg,
+                        $arg = ?$arg,
                     )*
                 );
 

@@ -15,7 +15,7 @@ use crate::{
     },
     varint::VarInt,
 };
-use core::{convert::TryInto, mem::size_of};
+use core::mem::size_of;
 use s2n_codec::{CheckedRange, DecoderBuffer, DecoderBufferMut, DecoderError, DecoderValue};
 
 pub struct HeaderDecoder<'a> {

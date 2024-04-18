@@ -3,7 +3,7 @@
 
 use crate::{
     if_xdp::{RxTxDescriptor, UmemDescriptor, UmemFlags, UmemReg},
-    mmap::Mmap,
+    mmap::{self, Mmap},
     syscall, Result,
 };
 use core::ptr::NonNull;
@@ -22,6 +22,8 @@ pub struct Builder {
     pub frame_headroom: u32,
     /// The flags for the Umem
     pub flags: UmemFlags,
+    /// Back the umem with a hugepage
+    pub hugepage: bool,
 }
 
 impl Default for Builder {
@@ -31,6 +33,7 @@ impl Default for Builder {
             frame_count: 1024,
             frame_headroom: 0,
             flags: Default::default(),
+            hugepage: false,
         }
     }
 }
@@ -38,7 +41,12 @@ impl Default for Builder {
 impl Builder {
     pub fn build(self) -> Result<Umem> {
         let len = self.frame_size as usize * self.frame_count as usize;
-        let area = Mmap::new(len, 0, None)?;
+        let options = if self.hugepage {
+            Some(mmap::Options::Huge)
+        } else {
+            None
+        };
+        let area = Mmap::new(len, 0, options)?;
         let area = Arc::new(area);
         let mem = area.addr().cast();
 
@@ -121,6 +129,12 @@ impl Umem {
         self.area.len()
     }
 
+    /// Returns the pointer to the umem memory region
+    #[inline]
+    pub fn as_ptr(&self) -> *mut u8 {
+        self.mem.as_ptr()
+    }
+
     /// Returns `true` if the Umem is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -178,7 +192,7 @@ impl Umem {
             desc.address + desc.len as u64 <= self.area.len() as u64,
             "pointer out of bounds"
         );
-        unsafe { self.mem.as_ptr().add(desc.address as _) }
+        unsafe { self.as_ptr().add(desc.address as _) }
     }
 
     #[inline]
@@ -187,14 +201,21 @@ impl Umem {
             desc.address + self.frame_size as u64 <= self.area.len() as u64,
             "pointer out of bounds"
         );
-        unsafe { self.mem.as_ptr().add(desc.address as _) }
+        unsafe { self.as_ptr().add(desc.address as _) }
     }
 }
 
 /// Specifies an indexable value, which relies on the caller to guarantee borrowing rules are not
 /// violated.
 pub trait UnsafeIndex<T> {
+    /// # Safety
+    ///
+    /// Callers need to guarantee the reference is not already exclusively borrowed
     unsafe fn index(&self, idx: T) -> &[u8];
+
+    /// # Safety
+    ///
+    /// Callers need to guarantee the reference is not already exclusively borrowed
     #[allow(clippy::mut_from_ref)] // interior mutability safety is enforced by the caller
     unsafe fn index_mut(&self, idx: T) -> &mut [u8];
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ensure, frame,
+    frame,
     time::{timer, Timer, Timestamp},
     transmission::{self, interest::Provider as _},
 };

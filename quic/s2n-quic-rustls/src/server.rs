@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{certificate, session::Session};
+use crate::{certificate, session::Session, Error};
 use rustls::ServerConfig;
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
@@ -13,6 +13,7 @@ pub struct Server {
 }
 
 impl Server {
+    #[deprecated = "client and server builders should be used instead"]
     pub fn new(config: ServerConfig) -> Self {
         Self {
             config: Arc::new(config),
@@ -32,12 +33,14 @@ impl Default for Server {
     }
 }
 
+// TODO this should be removed after removing deprecated re-exports
 impl From<ServerConfig> for Server {
     fn from(config: ServerConfig) -> Self {
-        Self::new(config)
+        Self::from(Arc::new(config))
     }
 }
 
+// TODO this should be removed after removing deprecated re-exports
 impl From<Arc<ServerConfig>> for Server {
     fn from(config: Arc<ServerConfig>) -> Self {
         Self { config }
@@ -82,6 +85,7 @@ pub struct Builder {
     cert_resolver: Option<Arc<dyn rustls::server::ResolvesServerCert>>,
     application_protocols: Vec<Vec<u8>>,
     key_log: Option<Arc<dyn rustls::KeyLog>>,
+    prefer_server_cipher_suite_order: bool,
 }
 
 impl Default for Builder {
@@ -96,25 +100,28 @@ impl Builder {
             cert_resolver: None,
             application_protocols: vec![b"h3".to_vec()],
             key_log: None,
+            prefer_server_cipher_suite_order: true,
         }
     }
 
     pub fn with_certificate<C: certificate::IntoCertificate, PK: certificate::IntoPrivateKey>(
-        self,
+        mut self,
         certificate: C,
         private_key: PK,
-    ) -> Result<Self, rustls::Error> {
+    ) -> Result<Self, Error> {
         let certificate = certificate.into_certificate()?;
         let private_key = private_key.into_private_key()?;
         let resolver = AlwaysResolvesChain::new(certificate, private_key)?;
         let resolver = Arc::new(resolver);
-        self.with_cert_resolver(resolver)
+        self.cert_resolver = Some(resolver);
+        Ok(self)
     }
 
+    #[deprecated = "client and server builders should be used instead"]
     pub fn with_cert_resolver(
         mut self,
         cert_resolver: Arc<dyn rustls::server::ResolvesServerCert>,
-    ) -> Result<Self, rustls::Error> {
+    ) -> Result<Self, Error> {
         self.cert_resolver = Some(cert_resolver);
         Ok(self)
     }
@@ -122,17 +129,24 @@ impl Builder {
     pub fn with_application_protocols<P: Iterator<Item = I>, I: AsRef<[u8]>>(
         mut self,
         protocols: P,
-    ) -> Result<Self, rustls::Error> {
+    ) -> Result<Self, Error> {
         self.application_protocols = protocols.map(|p| p.as_ref().to_vec()).collect();
         Ok(self)
     }
 
-    pub fn with_key_logging(mut self) -> Result<Self, rustls::Error> {
+    pub fn with_key_logging(mut self) -> Result<Self, Error> {
         self.key_log = Some(Arc::new(rustls::KeyLogFile::new()));
         Ok(self)
     }
 
-    pub fn build(self) -> Result<Server, rustls::Error> {
+    /// If enabled, the cipher suite order of the client is ignored, and the top cipher suite
+    /// in the server list that the client supports is chosen (default: true)
+    pub fn with_prefer_server_cipher_suite_order(mut self, enabled: bool) -> Result<Self, Error> {
+        self.prefer_server_cipher_suite_order = enabled;
+        Ok(self)
+    }
+
+    pub fn build(self) -> Result<Server, Error> {
         let builder = ServerConfig::builder()
             .with_cipher_suites(crate::cipher_suite::DEFAULT_CIPHERSUITES)
             .with_safe_default_kx_groups()
@@ -144,10 +158,11 @@ impl Builder {
         } else {
             return Err(rustls::Error::General(
                 "Missing certificate or certificate resolver".to_string(),
-            ));
+            )
+            .into());
         };
 
-        config.ignore_client_order = true;
+        config.ignore_client_order = self.prefer_server_cipher_suite_order;
         config.max_fragment_size = None;
         config.alpn_protocols = self.application_protocols;
 
@@ -155,6 +170,7 @@ impl Builder {
             config.key_log = key_log;
         }
 
+        #[allow(deprecated)]
         Ok(Server::new(config))
     }
 }

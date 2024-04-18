@@ -190,7 +190,7 @@ impl Pacer {
 mod tests {
     use crate::{
         event, path,
-        path::MINIMUM_MTU,
+        path::MINIMUM_MAX_DATAGRAM_SIZE,
         recovery::{
             bandwidth::Bandwidth,
             bbr::{pacing::Pacer, State, State::Startup},
@@ -212,7 +212,7 @@ mod tests {
         // nominal_bandwidth = 12_000 / 1ms = ~83.3333nanos/byte
         // pacing_rate = 2.77 * 83.333nanos/byte * 99% = ~30.388nanos/byte
 
-        let pacer = Pacer::new(MINIMUM_MTU);
+        let pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
 
         assert_eq!(
             Bandwidth::new(1000, Duration::from_nanos(30388)),
@@ -226,11 +226,11 @@ mod tests {
     #[test]
     fn max_send_quantum() {
         // BBR specifies a maximum send_quantum of 64KB, but since s2n-quic has a MAX_BURST_PACKETS
-        // of 10 and 10 * MINIMUM_MTU is less than 64KB, this limit will always be higher than the
-        // limit s2n-quic imposes. This test ensures that this remains true if MAX_BURST_PACKETS is
-        // increased.
-        assert_eq!(Pacer::max_send_quantum(MINIMUM_MTU), 12_000);
-        assert!(Pacer::max_send_quantum(MINIMUM_MTU) < 64_000);
+        // of 10 and 10 * MINIMUM_MAX_DATAGRMA_SIZE is less than 64KB, this limit will always be higher
+        // than the limit s2n-quic imposes. This test ensures that this remains true if MAX_BURST_PACKETS
+        // is increased.
+        assert_eq!(Pacer::max_send_quantum(MINIMUM_MAX_DATAGRAM_SIZE), 12_000);
+        assert!(Pacer::max_send_quantum(MINIMUM_MAX_DATAGRAM_SIZE) < 64_000);
     }
 
     //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
@@ -241,7 +241,7 @@ mod tests {
     //#     BBR.pacing_rate = rate
     #[test]
     fn set_pacing_rate() {
-        let mut pacer = Pacer::new(MINIMUM_MTU);
+        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let bandwidth = Bandwidth::new(1000, Duration::from_millis(1));
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn initialize_pacing_rate() {
-        let mut pacer = Pacer::new(MINIMUM_MTU);
+        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
@@ -285,43 +285,43 @@ mod tests {
     //# BBR.send_quantum = max(BBR.send_quantum, floor)
     #[test]
     fn set_send_quantum() {
-        let mut pacer = Pacer::new(MINIMUM_MTU);
-        // pacing_rate < 1.2 Mbps, floor = MINIMUM_MTU
+        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        // pacing_rate < 1.2 Mbps, floor = MINIMUM_MAX_DATAGRAM_SIZE
         pacer.pacing_rate = Bandwidth::new(1_100_000 / 8, Duration::from_secs(1));
-        pacer.set_send_quantum(MINIMUM_MTU);
+        pacer.set_send_quantum(MINIMUM_MAX_DATAGRAM_SIZE);
         // pacing_Rate * 1ms = 137 bytes
         // send_quantum = min(137, 12_000) = 137
-        // send_quantum = max(137, MINIMUM_MTU) = MINIMUM_MTU
-        assert_eq!(MINIMUM_MTU as usize, pacer.send_quantum);
+        // send_quantum = max(137, MINIMUM_MAX_DATAGRAM_SIZE) = MINIMUM_MAX_DATAGRAM_SIZE
+        assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE as usize, pacer.send_quantum);
 
-        // pacing_rate = 1.2 Mbps, floor = 2 * MINIMUM_MTU
+        // pacing_rate = 1.2 Mbps, floor = 2 * MINIMUM_MAX_DATAGRAM_SIZE
         pacer.pacing_rate = Bandwidth::new(1_200_000 / 8, Duration::from_secs(1));
-        pacer.set_send_quantum(MINIMUM_MTU);
+        pacer.set_send_quantum(MINIMUM_MAX_DATAGRAM_SIZE);
         // pacing_Rate * 1ms = 150 bytes
         // send_quantum = min(150, 12_000) = 150
-        // send_quantum = max(150, 2 * MINIMUM_MTU) = 2 * MINIMUM_MTU
-        assert_eq!(2 * MINIMUM_MTU as usize, pacer.send_quantum);
+        // send_quantum = max(150, 2 * MINIMUM_MAX_DATAGRAM_SIZE) = 2 * MINIMUM_MAX_DATAGRAM_SIZE
+        assert_eq!(2 * MINIMUM_MAX_DATAGRAM_SIZE as usize, pacer.send_quantum);
 
-        // pacing_rate = 10.0 MBps, floor = 2 * MINIMUM_MTU
+        // pacing_rate = 10.0 MBps, floor = 2 * MINIMUM_MAX_DATAGRAM_SIZE
         pacer.pacing_rate = Bandwidth::new(10_000_000, Duration::from_secs(1));
-        pacer.set_send_quantum(MINIMUM_MTU);
+        pacer.set_send_quantum(MINIMUM_MAX_DATAGRAM_SIZE);
         // pacing_Rate * 1ms = 10000 bytes
         // send_quantum = min(10000, 12_000) = 10000
-        // send_quantum = max(10000, 2 * MINIMUM_MTU) = 10000
+        // send_quantum = max(10000, 2 * MINIMUM_MAX_DATAGRAM_SIZE) = 10000
         assert_eq!(10000, pacer.send_quantum);
 
-        // pacing_rate = 100.0 MBps, floor = 2 * MINIMUM_MTU
+        // pacing_rate = 100.0 MBps, floor = 2 * MINIMUM_MAX_DATAGRAM_SIZE
         pacer.pacing_rate = Bandwidth::new(100_000_000, Duration::from_secs(1));
-        pacer.set_send_quantum(MINIMUM_MTU);
+        pacer.set_send_quantum(MINIMUM_MAX_DATAGRAM_SIZE);
         // pacing_Rate * 1ms = 100000 bytes
         // send_quantum = min(100000, 12_000) = 12_000
-        // send_quantum = max(12_000, 2 * MINIMUM_MTU) = 12_000
+        // send_quantum = max(12_000, 2 * MINIMUM_MAX_DATAGRAM_SIZE) = 12_000
         assert_eq!(12_000, pacer.send_quantum);
     }
 
     #[test]
     fn test_one_rtt() {
-        let mut pacer = Pacer::new(MINIMUM_MTU);
+        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
         let now = NoopClock.get_time();
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
@@ -334,7 +334,7 @@ mod tests {
         let bytes_to_send = pacer.pacing_rate * rtt;
 
         // Send one packet to move beyond the initial interval
-        pacer.on_packet_sent(now, MINIMUM_MTU as usize, rtt);
+        pacer.on_packet_sent(now, MINIMUM_MAX_DATAGRAM_SIZE as usize, rtt);
         assert_eq!(
             Some(now + INITIAL_INTERVAL),
             pacer.earliest_departure_time()
@@ -347,8 +347,8 @@ mod tests {
             assert!(pacer
                 .earliest_departure_time()
                 .map_or(true, |departure_time| departure_time < now + rtt));
-            pacer.on_packet_sent(now, MINIMUM_MTU as usize, rtt);
-            sent_bytes += MINIMUM_MTU as u64;
+            pacer.on_packet_sent(now, MINIMUM_MAX_DATAGRAM_SIZE as usize, rtt);
+            sent_bytes += MINIMUM_MAX_DATAGRAM_SIZE as u64;
         }
         assert!(pacer
             .earliest_departure_time()

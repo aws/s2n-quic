@@ -29,11 +29,12 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - uses: actions-rs/toolchain@v1.0.7
+    - name: Install rust toolchain
       id: toolchain
-      with:
-        toolchain: stable
-        override: true
+      shell: bash
+      run: |
+        rustup toolchain install stable
+        rustup override set stable
 
     - uses: camshaft/rust-cache@v1
 
@@ -42,8 +43,8 @@ runs:
         crate: duvet
 
     - name: Generate Duvet report
-      run: ${{ inputs.report-script }} ${{ github.sha }}
       shell: bash
+      run: ${{ inputs.report-script }} ${{ github.sha }}
 
     - uses: aws-actions/configure-aws-credentials@v1.6.1
       if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -55,6 +56,7 @@ runs:
     - name: Upload to S3
       if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
       id: s3
+      shell: bash
       run: |
         if [ -n "${{ inputs.report-path }}" ]; then
           REPORT_PATH="${{ inputs.report-path }}"
@@ -73,7 +75,6 @@ runs:
         URL="$PREFIX/$TARGET"
 
         echo "::set-output name=URL::$URL"
-      shell: bash
 
     - uses: ouzi-dev/commit-status-updater@v1.1.2
       if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name

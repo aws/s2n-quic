@@ -10,7 +10,6 @@ use crate::{
         testing::{Client, Server},
     },
     path,
-    path::DEFAULT_MAX_MTU,
 };
 use core::time::Duration;
 use s2n_quic_core::{
@@ -18,7 +17,7 @@ use s2n_quic_core::{
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     path::{migration, RemoteAddress},
     random::{self, Generator},
-    recovery::{RttEstimator, DEFAULT_INITIAL_RTT},
+    recovery::RttEstimator,
     stateless_reset::token::testing::*,
     time::{Clock, NoopClock},
 };
@@ -60,7 +59,7 @@ fn get_path_by_address_test() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
 
     let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
@@ -71,7 +70,7 @@ fn get_path_by_address_test() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
 
     let mut manager = manager_server(first_path.clone());
@@ -102,7 +101,7 @@ fn test_invalid_path_fallback() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     // simulate receiving a handshake packet to force path validation
     first_path.on_handshake_packet();
@@ -118,7 +117,7 @@ fn test_invalid_path_fallback() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     second_path.set_challenge(challenge);
 
@@ -501,7 +500,7 @@ fn silently_return_when_there_is_no_valid_path() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     first_path.set_challenge(challenge);
     let mut manager = manager_server(first_path);
@@ -708,7 +707,7 @@ fn test_adding_new_path() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_server(first_path);
 
@@ -736,8 +735,8 @@ fn test_adding_new_path() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            DEFAULT_MAX_MTU,
-            DEFAULT_INITIAL_RTT,
+            mtu::Config::default(),
+            &Limits::default(),
             &mut publisher,
         )
         .unwrap();
@@ -771,7 +770,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_server(first_path);
 
@@ -797,8 +796,8 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         handshake_confirmed,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        DEFAULT_MAX_MTU,
-        DEFAULT_INITIAL_RTT,
+        mtu::Config::default(),
+        &Limits::default(),
         &mut publisher,
     );
 
@@ -833,7 +832,7 @@ fn do_not_add_new_path_if_client() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_client(first_path);
     let mut publisher = Publisher::snapshot();
@@ -859,8 +858,8 @@ fn do_not_add_new_path_if_client() {
         true,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        DEFAULT_MAX_MTU,
-        DEFAULT_INITIAL_RTT,
+        mtu::Config::default(),
+        &Limits::default(),
         &mut publisher,
     );
 
@@ -888,7 +887,7 @@ fn switch_destination_connection_id_after_first_server_response() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_client(zero_path);
     assert_eq!(manager[zero_path_id].peer_connection_id, initial_cid);
@@ -926,7 +925,7 @@ fn limit_number_of_connection_migrations() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_server(first_path);
     let mut total_paths = 1;
@@ -950,8 +949,8 @@ fn limit_number_of_connection_migrations() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            DEFAULT_MAX_MTU,
-            DEFAULT_INITIAL_RTT,
+            mtu::Config::default(),
+            &Limits::default(),
             &mut publisher,
         );
         match res {
@@ -972,6 +971,112 @@ fn limit_number_of_connection_migrations() {
 }
 
 #[test]
+fn active_connection_migration_disabled() {
+    // Setup:
+    let mut publisher = Publisher::snapshot();
+    let new_addr: SocketAddr = "127.0.0.1:1".parse().unwrap();
+    let new_addr = SocketAddress::from(new_addr);
+    let new_addr = RemoteAddress::from(new_addr);
+    let first_path = ServerPath::new(
+        new_addr,
+        connection::PeerId::try_from_bytes(&[1]).unwrap(),
+        connection::LocalId::TEST_ID,
+        RttEstimator::default(),
+        Default::default(),
+        false,
+        mtu::Config::default(),
+    );
+    let mut manager = manager_server(first_path);
+    // Give the path manager some new CIDs so it's able to use one for an active migration.
+    // id_2 will be moved to `InUse` immediately due to the handshake CID rotation feature,
+    // so id_3 is added as well to have an unused CID available for connection migration
+    let id_2 = connection::PeerId::try_from_bytes(b"id02").unwrap();
+    assert!(manager
+        .on_new_connection_id(&id_2, 1, 0, &TEST_TOKEN_1, &mut publisher)
+        .is_ok());
+    let id_3 = connection::PeerId::try_from_bytes(b"id03").unwrap();
+    assert!(manager
+        .on_new_connection_id(&id_3, 2, 0, &TEST_TOKEN_2, &mut publisher)
+        .is_ok());
+
+    let new_addr: SocketAddr = "127.0.0.2:1".parse().unwrap();
+    let new_addr = SocketAddress::from(new_addr);
+    let new_addr = RemoteAddress::from(new_addr);
+    let new_cid = connection::LocalId::try_from_bytes(b"id02").unwrap();
+    let now = NoopClock {}.get_time();
+    let mut datagram = DatagramInfo {
+        timestamp: now,
+        payload_len: 0,
+        ecn: ExplicitCongestionNotification::default(),
+        destination_connection_id: new_cid,
+        destination_connection_id_classification: connection::id::Classification::Local,
+        source_connection_id: None,
+    };
+
+    // First try an active migration with active migration disabled
+    let res = manager.handle_connection_migration(
+        &new_addr,
+        &datagram,
+        &mut Default::default(),
+        &mut migration::allow_all::Validator,
+        mtu::Config::default(),
+        // Active connection migration is disabled
+        &Limits::default()
+            .with_active_connection_migration(false)
+            .unwrap(),
+        &mut publisher,
+    );
+
+    // The active migration is rejected
+    assert!(matches!(
+        res,
+        Err(DatagramDropReason::RejectedConnectionMigration)
+    ));
+    assert_eq!(1, manager.paths.len());
+
+    // Try an active connection migration with active migration enabled (default)
+    let res = manager.handle_connection_migration(
+        &new_addr,
+        &datagram,
+        &mut Default::default(),
+        &mut migration::allow_all::Validator,
+        mtu::Config::default(),
+        &Limits::default(),
+        &mut publisher,
+    );
+
+    // The migration succeeds
+    assert!(res.is_ok());
+    assert_eq!(2, manager.paths.len());
+
+    // Now try a non-active (passive) migration, with active migration disabled
+    // the same CID is used, so it's not an active migration
+    datagram.destination_connection_id = connection::LocalId::TEST_ID;
+    let new_addr: SocketAddr = "127.0.0.3:1".parse().unwrap();
+    let new_addr = SocketAddress::from(new_addr);
+    let new_addr = RemoteAddress::from(new_addr);
+    // Clear the pending packet authentication to allow another migration to proceed
+    manager.pending_packet_authentication = None;
+
+    let res = manager.handle_connection_migration(
+        &new_addr,
+        &datagram,
+        &mut Default::default(),
+        &mut migration::allow_all::Validator,
+        mtu::Config::default(),
+        // Active connection migration is disabled
+        &Limits::default()
+            .with_active_connection_migration(false)
+            .unwrap(),
+        &mut publisher,
+    );
+
+    // The passive migration succeeds
+    assert!(res.is_ok());
+    assert_eq!(3, manager.paths.len());
+}
+
+#[test]
 fn connection_migration_challenge_behavior() {
     // Setup:
     let mut publisher = Publisher::snapshot();
@@ -986,7 +1091,7 @@ fn connection_migration_challenge_behavior() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1009,8 +1114,8 @@ fn connection_migration_challenge_behavior() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            DEFAULT_MAX_MTU,
-            DEFAULT_INITIAL_RTT,
+            mtu::Config::default(),
+            &Limits::default(),
             &mut publisher,
         )
         .unwrap();
@@ -1081,7 +1186,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
         RttEstimator::new(Duration::from_millis(30)),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1105,8 +1210,8 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            DEFAULT_MAX_MTU,
-            DEFAULT_INITIAL_RTT,
+            mtu::Config::default(),
+            &Limits::default(),
             &mut publisher,
         )
         .unwrap();
@@ -1161,7 +1266,7 @@ fn connection_migration_new_path_abandon_timer() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1184,8 +1289,8 @@ fn connection_migration_new_path_abandon_timer() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            DEFAULT_MAX_MTU,
-            DEFAULT_INITIAL_RTT,
+            mtu::Config::default(),
+            &Limits::default(),
             &mut publisher,
         )
         .unwrap();
@@ -1283,7 +1388,7 @@ fn stop_using_a_retired_connection_id() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1379,7 +1484,7 @@ fn pending_paths_should_return_paths_pending_validation() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let expected_response_data = [0; 8];
     third_path.on_path_challenge(&expected_response_data);
@@ -1444,7 +1549,7 @@ fn temporary_until_authenticated() {
         RttEstimator::default(),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     );
     let mut manager = manager_server(first_path);
 
@@ -1460,8 +1565,8 @@ fn temporary_until_authenticated() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            DEFAULT_MAX_MTU,
-            DEFAULT_INITIAL_RTT,
+            mtu::Config::default(),
+            &Limits::default(),
             &mut publisher,
         )
         .unwrap();
@@ -1483,8 +1588,8 @@ fn temporary_until_authenticated() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            DEFAULT_MAX_MTU,
-            DEFAULT_INITIAL_RTT,
+            mtu::Config::default(),
+            &Limits::default(),
             &mut publisher,
         )
         .unwrap();
@@ -1521,8 +1626,8 @@ fn temporary_until_authenticated() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            DEFAULT_MAX_MTU,
-            DEFAULT_INITIAL_RTT,
+            mtu::Config::default(),
+            &Limits::default(),
             &mut publisher,
         )
         .unwrap();
@@ -1830,7 +1935,7 @@ pub fn helper_path(peer_id: connection::PeerId) -> ServerPath {
         RttEstimator::new(Duration::from_millis(30)),
         Default::default(),
         false,
-        DEFAULT_MAX_MTU,
+        mtu::Config::default(),
     )
 }
 

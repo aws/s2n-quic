@@ -43,6 +43,23 @@ impl CheckedRange {
         &slice[self.start..self.end]
     }
 
+    #[cfg(feature = "checked_range_unsafe")]
+    #[inline]
+    pub fn get_mut<'a>(&self, slice: &'a mut [u8]) -> &'a mut [u8] {
+        unsafe {
+            #[cfg(debug_assertions)]
+            debug_assert_eq!(slice.as_ptr().add(self.start), self.original_ptr);
+
+            slice.get_unchecked_mut(self.start..self.end)
+        }
+    }
+
+    #[cfg(not(feature = "checked_range_unsafe"))]
+    #[inline]
+    pub fn get_mut<'a>(&self, slice: &'a mut [u8]) -> &'a mut [u8] {
+        &mut slice[self.start..self.end]
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.end - self.start

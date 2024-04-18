@@ -14,9 +14,8 @@ trace = ["s2n-quic-core/branch-tracing", "s2n-quic-core/probe-tracing", "s2n-qui
 xdp = ["s2n-quic/unstable-provider-io-xdp", "aya", "aya-log"]
 
 [dependencies]
-# TODO use the crates.io version once https://github.com/aya-rs/aya/pull/527 is merged
-aya = { git = "https://github.com/camshaft/aya", branch = "xdpmaps", optional = true }
-aya-log = { git = "https://github.com/camshaft/aya", branch = "xdpmaps", optional = true }
+aya = { version = "0.12", optional = true }
+aya-log = { version = "0.2", optional = true }
 bytes = { version = "1", default-features = false }
 cfg-if = "1"
 futures = "0.3"

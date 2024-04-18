@@ -21,7 +21,6 @@ use crate::{
 };
 use core::{
     cmp::{max, min},
-    convert::TryInto,
     time::Duration,
 };
 use num_rational::Ratio;

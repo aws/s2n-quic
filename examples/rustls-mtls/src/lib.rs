@@ -4,7 +4,9 @@
 use rustls::{
     cipher_suite, ClientConfig, Error, RootCertStore, ServerConfig, SupportedCipherSuite,
 };
-use s2n_quic::provider::{tls, tls::rustls::rustls};
+use s2n_quic::provider::tls;
+#[allow(deprecated)]
+use s2n_quic::provider::tls::rustls::rustls;
 use std::{io::Cursor, path::Path, sync::Arc};
 use tokio::{fs::File, io::AsyncReadExt};
 use tracing::Level;

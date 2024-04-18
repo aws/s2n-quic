@@ -11,6 +11,12 @@ check-filename = true
 ect = "ect"
 # num_rational uses "numer" as short for "numerator"
 numer = "numer"
+# Packet number
+pn = "pn"
+# retransmission timeout
+RTO = "RTO"
+# Web Services
+WS = "WS"
 
 [files]
 extend-exclude = [

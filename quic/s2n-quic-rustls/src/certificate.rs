@@ -1,9 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(dead_code)]
-
-use rustls::Error;
+use crate::Error;
 
 macro_rules! cert_type {
     ($name:ident, $trait:ident, $method:ident, $inner:ty) => {
@@ -57,13 +55,11 @@ macro_rules! cert_type {
             fn $method(self) -> Result<$name, Error> {
                 match self.extension() {
                     Some(ext) if ext == "der" => {
-                        let pem =
-                            std::fs::read(self).map_err(|err| Error::General(err.to_string()))?;
+                        let pem = std::fs::read(self)?;
                         pem.$method()
                     }
                     _ => {
-                        let pem = std::fs::read_to_string(self)
-                            .map_err(|err| Error::General(err.to_string()))?;
+                        let pem = std::fs::read_to_string(self)?;
                         pem.$method()
                     }
                 }
@@ -85,14 +81,24 @@ cert_type!(
     Vec<rustls::Certificate>
 );
 
+impl IntoCertificate for Vec<Vec<u8>> {
+    fn into_certificate(self) -> Result<Certificate, Error> {
+        let mut certs = vec![];
+        for der in self {
+            let der = der.into_certificate()?;
+            certs.extend(der.0);
+        }
+        Ok(Certificate(certs))
+    }
+}
+
 mod pem {
     use super::*;
 
     pub fn into_certificate(contents: &[u8]) -> Result<Vec<rustls::Certificate>, Error> {
         let mut cursor = std::io::Cursor::new(contents);
         let certs = rustls_pemfile::certs(&mut cursor)
-            .map(|certs| certs.into_iter().map(rustls::Certificate).collect())
-            .map_err(|_| Error::General("Could not read certificate".to_string()))?;
+            .map(|certs| certs.into_iter().map(rustls::Certificate).collect())?;
         Ok(certs)
     }
 
@@ -102,6 +108,7 @@ mod pem {
         let parsers = [
             rustls_pemfile::rsa_private_keys,
             rustls_pemfile::pkcs8_private_keys,
+            rustls_pemfile::ec_private_keys,
         ];
 
         for parser in parsers.iter() {
@@ -113,19 +120,18 @@ mod pem {
                     return Ok(rustls::PrivateKey(keys.pop().unwrap()))
                 }
                 Ok(keys) => {
-                    return Err(Error::General(format!(
+                    return Err(rustls::Error::General(format!(
                         "Unexpected number of keys: {} (only 1 supported)",
                         keys.len()
-                    )));
+                    ))
+                    .into());
                 }
                 // try the next parser
                 Err(_) => continue,
             }
         }
 
-        Err(Error::General(
-            "could not load any valid private keys".to_string(),
-        ))
+        Err(rustls::Error::General("could not load any valid private keys".to_string()).into())
     }
 }
 

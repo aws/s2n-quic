@@ -1,8 +1,6 @@
 ---
 source: quic/s2n-quic-transport/src/path/manager/tests.rs
-assertion_line: 253
 expression: ""
-
 ---
 ActivePathUpdated { previous: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x00, id: 0, is_active: false }, active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x01, id: 1, is_active: true } }
 ConnectionIdUpdated { path_id: 0, cid_consumer: Local, previous: 0x00, current: 0x01 }

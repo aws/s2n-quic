@@ -16,6 +16,9 @@ pub struct Server {
     #[structopt(long)]
     pub disable_gso: bool,
 
+    #[structopt(long, default_value = "1280")]
+    pub initial_mtu: u16,
+
     #[structopt(long, default_value = "9000")]
     pub max_mtu: u16,
 
@@ -46,6 +49,7 @@ impl Server {
     pub fn build(&self) -> Result<impl io::Provider> {
         let mut io_builder = io::Default::builder()
             .with_receive_address((self.ip, self.port).into())?
+            .with_initial_mtu(self.initial_mtu)?
             .with_max_mtu(self.max_mtu)?
             .with_gso(!self.disable_gso)?;
 
@@ -65,6 +69,9 @@ impl Server {
 pub struct Client {
     #[structopt(long)]
     pub disable_gso: bool,
+
+    #[structopt(long, default_value = "1280")]
+    pub initial_mtu: u16,
 
     #[structopt(long, default_value = "9000")]
     pub max_mtu: u16,
@@ -99,6 +106,7 @@ impl Client {
     pub fn build(&self) -> Result<impl io::Provider> {
         let mut io_builder = io::Default::builder()
             .with_receive_address((self.local_ip, 0u16).into())?
+            .with_initial_mtu(self.initial_mtu)?
             .with_max_mtu(self.max_mtu)?
             .with_gso(!self.disable_gso)?;
 

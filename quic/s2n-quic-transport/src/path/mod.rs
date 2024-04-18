@@ -112,7 +112,7 @@ impl<Config: endpoint::Config> Path<Config> {
         rtt_estimator: RttEstimator,
         congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
-        max_mtu: MaxMtu,
+        mtu_config: mtu::Config,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
@@ -137,7 +137,7 @@ impl<Config: endpoint::Config> Path<Config> {
             congestion_controller,
             pto_backoff: INITIAL_PTO_BACKOFF,
             state,
-            mtu_controller: mtu::Controller::new(max_mtu, &peer_socket_address),
+            mtu_controller: mtu::Controller::new(mtu_config, &peer_socket_address),
             ecn_controller: ecn::Controller::default(),
             peer_validated,
             challenge: Challenge::disabled(),
@@ -185,7 +185,7 @@ impl<Config: endpoint::Config> Path<Config> {
         }
 
         debug_assert_ne!(
-            self.clamp_mtu(bytes, transmission::Mode::Normal),
+            self.clamp_datagram_size(bytes, transmission::Mode::Normal),
             0,
             "path should not transmit when amplification limited; tried to transmit {bytes}"
         );
@@ -409,18 +409,20 @@ impl<Config: endpoint::Config> Path<Config> {
     }
 
     #[inline]
-    pub fn mtu(&self, transmission_mode: transmission::Mode) -> usize {
+    pub fn max_datagram_size(&self, transmission_mode: transmission::Mode) -> usize {
         match transmission_mode {
-            // Use the minimum MTU for loss recovery probes to allow detection of packets
-            // lost when the previously confirmed path MTU is no longer supported.
+            // Use the minimum max datagram size for loss recovery probes to allow detection of
+            // packets lost when the previously confirmed path MTU is no longer supported.
             //
             // The priority during PathValidationOnly is to validate the path, so the
-            // minimum MTU is used to avoid packet loss due to MTU limits.
-            Mode::LossRecoveryProbing | Mode::PathValidationOnly => MINIMUM_MTU as usize,
-            // When MTU Probing, clamp to the size of the MTU we are attempting to validate
+            // minimum max datagram size is used to avoid packet loss due to MTU limits.
+            Mode::LossRecoveryProbing | Mode::PathValidationOnly => {
+                MINIMUM_MAX_DATAGRAM_SIZE as usize
+            }
+            // When MTU Probing, clamp to the max datagram size we are attempting to validate
             Mode::MtuProbing => self.mtu_controller.probed_sized(),
-            // Otherwise use the confirmed MTU
-            Mode::Normal => self.mtu_controller.mtu(),
+            // Otherwise use the confirmed max datagram size
+            Mode::Normal => self.mtu_controller.max_datagram_size(),
         }
     }
 
@@ -439,19 +441,23 @@ impl<Config: endpoint::Config> Path<Config> {
     //# packet) with a size at the PL that is larger than the current
     //# PLPMTU.
 
-    /// Clamps payload sizes to the current MTU for the path
+    /// Clamps payload sizes to the current max datagram size for the path
     ///
     /// # Panics
     ///
     /// Panics if this is called when the path is amplification limited
     #[inline]
-    pub fn clamp_mtu(&self, requested_size: usize, transmission_mode: transmission::Mode) -> usize {
+    pub fn clamp_datagram_size(
+        &self,
+        requested_size: usize,
+        transmission_mode: transmission::Mode,
+    ) -> usize {
         debug_assert!(
             !self.at_amplification_limit(),
-            "amplification limits should be checked before clamping MTU values"
+            "amplification limits should be checked before clamping datagram size values"
         );
 
-        requested_size.min(self.mtu(transmission_mode))
+        requested_size.min(self.max_datagram_size(transmission_mode))
     }
 
     #[inline]
@@ -520,8 +526,8 @@ impl<Config: endpoint::Config> Path<Config> {
         self.mtu_controller.max_mtu()
     }
 
-    /// Returns `true` if the congestion window does not have sufficient space for a packet of
-    /// size `mtu` considering the current bytes in flight and the additional `bytes_sent` provided
+    /// Returns `true` if the congestion window does not have sufficient space for a packet of the maximum
+    /// datagram size considering the current bytes in flight and the additional `bytes_sent` provided
     #[inline]
     pub fn is_congestion_limited(&self, bytes_sent: usize) -> bool {
         let cwnd = self.congestion_controller.congestion_window();
@@ -529,9 +535,9 @@ impl<Config: endpoint::Config> Path<Config> {
             .congestion_controller
             .bytes_in_flight()
             .saturating_add(bytes_sent as u32);
-        let mtu = self.mtu(transmission::Mode::Normal) as u32;
+        let max_datagram_size = self.max_datagram_size(transmission::Mode::Normal) as u32;
 
-        cwnd.saturating_sub(bytes_in_flight) < mtu
+        cwnd.saturating_sub(bytes_in_flight) < max_datagram_size
     }
 
     /// Compare a Path based on its PathHandle.
@@ -587,12 +593,9 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Path<Config>
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
-    use crate::{
-        endpoint,
-        path::{Path, DEFAULT_MAX_MTU},
-    };
+    use crate::{endpoint, path::Path};
     use core::time::Duration;
-    use s2n_quic_core::{connection, recovery::RttEstimator};
+    use s2n_quic_core::{connection, path::mtu, recovery::RttEstimator};
 
     pub fn helper_path_server() -> Path<endpoint::testing::Server> {
         Path::new(
@@ -602,7 +605,7 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             true,
-            DEFAULT_MAX_MTU,
+            mtu::Config::default(),
         )
     }
 
@@ -614,7 +617,7 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            DEFAULT_MAX_MTU,
+            mtu::Config::default(),
         )
     }
 }
@@ -632,6 +635,7 @@ mod tests {
     use s2n_quic_core::{
         connection, endpoint,
         event::testing::Publisher,
+        path::MINIMUM_MAX_DATAGRAM_SIZE,
         recovery::{CongestionController, RttEstimator},
         time::{Clock, NoopClock},
         transmission,
@@ -997,15 +1001,18 @@ mod tests {
         ] {
             let mut path = testing::helper_path_server();
             // Verify we can transmit up to the mtu
-            let mtu = path.mtu(transmission_mode);
+            let max_datagram_size = path.max_datagram_size(transmission_mode);
 
             let amplification_outcome = path.on_bytes_received(3);
             path.on_bytes_transmitted(8);
 
             assert!(amplification_outcome.is_inactivate_path_unblocked());
-            assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
-            assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
-            assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
+            assert_eq!(path.clamp_datagram_size(1, transmission_mode), 1);
+            assert_eq!(path.clamp_datagram_size(10, transmission_mode), 10);
+            assert_eq!(
+                path.clamp_datagram_size(1800, transmission_mode),
+                max_datagram_size
+            );
 
             path.on_bytes_transmitted(1);
             // Verify we can't transmit any more bytes
@@ -1014,13 +1021,16 @@ mod tests {
             let amplification_outcome = path.on_bytes_received(1);
             // Verify we can transmit up to 3 more bytes
             assert!(amplification_outcome.is_inactivate_path_unblocked());
-            assert_eq!(path.clamp_mtu(1, transmission_mode), 1);
-            assert_eq!(path.clamp_mtu(10, transmission_mode), 10);
-            assert_eq!(path.clamp_mtu(1800, transmission_mode), mtu);
+            assert_eq!(path.clamp_datagram_size(1, transmission_mode), 1);
+            assert_eq!(path.clamp_datagram_size(10, transmission_mode), 10);
+            assert_eq!(
+                path.clamp_datagram_size(1800, transmission_mode),
+                max_datagram_size
+            );
 
             path.on_validated();
             // Validated paths should always be able to transmit
-            assert_eq!(path.clamp_mtu(4, transmission_mode), 4);
+            assert_eq!(path.clamp_datagram_size(4, transmission_mode), 4);
         }
     }
 
@@ -1033,20 +1043,20 @@ mod tests {
         path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
 
         assert_eq!(
-            path.mtu_controller.mtu(),
-            path.clamp_mtu(10000, transmission::Mode::Normal)
+            path.mtu_controller.max_datagram_size(),
+            path.clamp_datagram_size(10000, transmission::Mode::Normal)
         );
         assert_eq!(
-            MINIMUM_MTU as usize,
-            path.clamp_mtu(10000, transmission::Mode::PathValidationOnly)
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
+            path.clamp_datagram_size(10000, transmission::Mode::PathValidationOnly)
         );
         assert_eq!(
-            MINIMUM_MTU as usize,
-            path.clamp_mtu(10000, transmission::Mode::LossRecoveryProbing)
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
+            path.clamp_datagram_size(10000, transmission::Mode::LossRecoveryProbing)
         );
         assert_eq!(
             path.mtu_controller.probed_sized(),
-            path.clamp_mtu(10000, transmission::Mode::MtuProbing)
+            path.clamp_datagram_size(10000, transmission::Mode::MtuProbing)
         );
     }
 
@@ -1061,20 +1071,20 @@ mod tests {
         path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
 
         assert_eq!(
-            path.mtu_controller.mtu(),
-            path.mtu(transmission::Mode::Normal)
+            path.mtu_controller.max_datagram_size(),
+            path.max_datagram_size(transmission::Mode::Normal)
         );
         assert_eq!(
-            MINIMUM_MTU as usize,
-            path.mtu(transmission::Mode::PathValidationOnly)
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
+            path.max_datagram_size(transmission::Mode::PathValidationOnly)
         );
         assert_eq!(
-            MINIMUM_MTU as usize,
-            path.mtu(transmission::Mode::LossRecoveryProbing)
+            MINIMUM_MAX_DATAGRAM_SIZE as usize,
+            path.max_datagram_size(transmission::Mode::LossRecoveryProbing)
         );
         assert_eq!(
             path.mtu_controller.probed_sized(),
-            path.mtu(transmission::Mode::MtuProbing)
+            path.max_datagram_size(transmission::Mode::MtuProbing)
         );
     }
 
@@ -1086,7 +1096,10 @@ mod tests {
         let probed_size = 1500;
         path.mtu_controller = mtu::testing::test_controller(mtu, probed_size);
 
-        assert_eq!(0, path.clamp_mtu(10000, transmission::Mode::Normal));
+        assert_eq!(
+            0,
+            path.clamp_datagram_size(10000, transmission::Mode::Normal)
+        );
     }
 
     #[test]
@@ -1109,7 +1122,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            DEFAULT_MAX_MTU,
+            mtu::Config::default(),
         );
         let now = NoopClock.get_time();
         let random = &mut random::testing::Generator::default();
@@ -1176,10 +1189,10 @@ mod tests {
     #[test]
     fn is_congestion_limited() {
         let mut path = testing::helper_path_client();
-        let mtu = path.mtu_controller.mtu() as u32;
+        let max_datagram_size = path.mtu_controller.max_datagram_size() as u32;
 
         path.congestion_controller.congestion_window = 12000;
-        path.congestion_controller.bytes_in_flight = 12000 - 500 - mtu;
+        path.congestion_controller.bytes_in_flight = 12000 - 500 - max_datagram_size;
 
         // There is room for an MTU sized packet after including the 500 bytes, so the path is not congestion limited
         assert!(!path.is_congestion_limited(500));

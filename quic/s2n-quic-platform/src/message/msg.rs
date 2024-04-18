@@ -12,8 +12,8 @@ use core::{
 use libc::{iovec, msghdr, sockaddr_in, sockaddr_in6, AF_INET, AF_INET6};
 use s2n_quic_core::{
     inet::{
-        datagram, ExplicitCongestionNotification, IpV4Address, IpV6Address, SocketAddress,
-        SocketAddressV4, SocketAddressV6,
+        datagram, IpV4Address, IpV6Address, SocketAddress, SocketAddressV4, SocketAddressV6,
+        Unspecified,
     },
     io::tx,
     path::{self, Handle as _},
@@ -35,7 +35,7 @@ impl MessageTrait for msghdr {
     type Handle = Handle;
 
     const SUPPORTS_GSO: bool = features::gso::IS_SUPPORTED;
-    const SUPPORTS_ECN: bool = cfg!(s2n_quic_platform_tos);
+    const SUPPORTS_ECN: bool = features::tos::IS_SUPPORTED;
     const SUPPORTS_FLOW_LABELS: bool = true;
 
     #[inline]
@@ -60,10 +60,8 @@ impl MessageTrait for msghdr {
 
     #[inline]
     fn set_segment_size(&mut self, size: usize) {
-        let level = features::gso::LEVEL.expect("gso is unsupported");
-        let ty = features::gso::TYPE.expect("gso is unsupported");
-        self.encode_cmsg(level, ty, size as features::gso::Cmsg)
-            .unwrap();
+        debug_assert!(size <= u16::MAX as usize);
+        self.cmsg_encoder().encode_gso(size as _).unwrap();
     }
 
     #[inline]
@@ -145,7 +143,7 @@ impl MessageTrait for msghdr {
         let (mut header, cmsg) = self.header()?;
 
         // only copy the port if we are told the IP address
-        if cfg!(s2n_quic_platform_pktinfo) {
+        if !header.path.local_address.ip().is_unspecified() {
             header.path.local_address.set_port(local_address.port());
         } else {
             header.path.local_address = *local_address;
@@ -195,7 +193,9 @@ impl MessageTrait for msghdr {
 
         let handle = *message.path_handle();
         handle.update_msg_hdr(self);
-        self.set_ecn(message.ecn(), &handle.remote_address.0);
+        self.cmsg_encoder()
+            .encode_ecn(message.ecn(), &handle.remote_address.0)
+            .unwrap();
 
         Ok(len)
     }
@@ -286,7 +286,7 @@ fn layout<T: Copy + Sized>(
 struct Header {
     pub iovec: iovec,
     pub msg_name: sockaddr_in6,
-    pub cmsg: cmsg::Storage,
+    pub cmsg: cmsg::Storage<{ cmsg::MAX_LEN }>,
 }
 
 impl Header {
@@ -310,7 +310,7 @@ impl Header {
         debug_assert_eq!(
             entry
                 .msg_control
-                .align_offset(core::mem::align_of::<cmsg::Storage>()),
+                .align_offset(core::mem::align_of::<cmsg::Storage<{ cmsg::MAX_LEN }>>()),
             0
         );
     }

@@ -215,6 +215,19 @@ impl<F: FnMut(&Timer) -> Result> Query for ForEach<F> {
     }
 }
 
+#[cfg(feature = "tracing")]
+pub struct Debugger;
+
+#[cfg(feature = "tracing")]
+impl Query for Debugger {
+    #[inline]
+    #[track_caller]
+    fn on_timer(&mut self, timer: &Timer) -> Result {
+        tracing::trace!(location = %core::panic::Location::caller(), timer = ?timer);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

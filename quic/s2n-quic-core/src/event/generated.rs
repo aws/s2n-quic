@@ -562,6 +562,9 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " A blackhole was detected"]
         Blackhole {},
+        #[non_exhaustive]
+        #[doc = " An early packet using the configured InitialMtu was lost"]
+        InitialMtuPacketLost {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -970,6 +973,7 @@ pub mod api {
     #[doc = " The maximum transmission unit (MTU) for the path has changed"]
     pub struct MtuUpdated {
         pub path_id: u64,
+        #[doc = " The maximum QUIC datagram size, not including UDP and IP headers"]
         pub mtu: u16,
         pub cause: MtuUpdatedCause,
     }
@@ -1182,7 +1186,13 @@ pub mod api {
         #[doc = " Emitted when ECN support is configured"]
         Ecn { enabled: bool },
         #[non_exhaustive]
-        #[doc = " Emitted when the maximum transmission unit is configured"]
+        #[doc = " Emitted when the base maximum transmission unit is configured"]
+        BaseMtu { mtu: u16 },
+        #[non_exhaustive]
+        #[doc = " Emitted when the initial maximum transmission unit is configured"]
+        InitialMtu { mtu: u16 },
+        #[non_exhaustive]
+        #[doc = " Emitted when the max maximum transmission unit is configured"]
         MaxMtu { mtu: u16 },
     }
     impl<'a> IntoEvent<builder::PreferredAddress<'a>>
@@ -3409,6 +3419,8 @@ pub mod builder {
         ProbeAcknowledged,
         #[doc = " A blackhole was detected"]
         Blackhole,
+        #[doc = " An early packet using the configured InitialMtu was lost"]
+        InitialMtuPacketLost,
     }
     impl IntoEvent<api::MtuUpdatedCause> for MtuUpdatedCause {
         #[inline]
@@ -3418,6 +3430,7 @@ pub mod builder {
                 Self::NewPath => NewPath {},
                 Self::ProbeAcknowledged => ProbeAcknowledged {},
                 Self::Blackhole => Blackhole {},
+                Self::InitialMtuPacketLost => InitialMtuPacketLost {},
             }
         }
     }
@@ -4122,6 +4135,7 @@ pub mod builder {
     #[doc = " The maximum transmission unit (MTU) for the path has changed"]
     pub struct MtuUpdated {
         pub path_id: u64,
+        #[doc = " The maximum QUIC datagram size, not including UDP and IP headers"]
         pub mtu: u16,
         pub cause: MtuUpdatedCause,
     }
@@ -4470,7 +4484,11 @@ pub mod builder {
         Gro { enabled: bool },
         #[doc = " Emitted when ECN support is configured"]
         Ecn { enabled: bool },
-        #[doc = " Emitted when the maximum transmission unit is configured"]
+        #[doc = " Emitted when the base maximum transmission unit is configured"]
+        BaseMtu { mtu: u16 },
+        #[doc = " Emitted when the initial maximum transmission unit is configured"]
+        InitialMtu { mtu: u16 },
+        #[doc = " Emitted when the max maximum transmission unit is configured"]
         MaxMtu { mtu: u16 },
     }
     impl IntoEvent<api::PlatformFeatureConfiguration> for PlatformFeatureConfiguration {
@@ -4486,6 +4504,12 @@ pub mod builder {
                 },
                 Self::Ecn { enabled } => Ecn {
                     enabled: enabled.into_event(),
+                },
+                Self::BaseMtu { mtu } => BaseMtu {
+                    mtu: mtu.into_event(),
+                },
+                Self::InitialMtu { mtu } => InitialMtu {
+                    mtu: mtu.into_event(),
                 },
                 Self::MaxMtu { mtu } => MaxMtu {
                     mtu: mtu.into_event(),

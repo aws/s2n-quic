@@ -3,7 +3,6 @@
 
 //! Defines the Stateless Reset token
 
-use core::convert::{TryFrom, TryInto};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 use subtle::ConstantTimeEq;
 

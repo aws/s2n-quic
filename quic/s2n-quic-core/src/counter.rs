@@ -5,7 +5,7 @@ use crate::number::{
     CheckedAddAssign, CheckedMulAssign, CheckedSubAssign, SaturatingAddAssign, SaturatingMulAssign,
     SaturatingSubAssign, UpcastFrom,
 };
-use core::{cmp::Ordering, convert::TryFrom, marker::PhantomData, ops};
+use core::{cmp::Ordering, marker::PhantomData, ops};
 
 /// A checked-overflow counter
 ///

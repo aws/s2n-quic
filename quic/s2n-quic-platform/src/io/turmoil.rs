@@ -15,9 +15,9 @@ use s2n_quic_core::{
     endpoint::Endpoint,
     inet::{self, SocketAddress},
     io::event_loop::{select::Select, EventLoop},
-    path::{self, MaxMtu},
+    path::{self, mtu},
 };
-use std::{convert::TryInto, io, io::ErrorKind};
+use std::{io, io::ErrorKind};
 use tokio::runtime::Handle;
 use turmoil::net::UdpSocket;
 
@@ -51,10 +51,14 @@ impl Io {
             handle: _,
             socket,
             addr,
-            max_mtu,
+            mtu_config_builder,
         } = self.builder;
 
-        endpoint.set_max_mtu(max_mtu);
+        let mtu_config = mtu_config_builder
+            .build()
+            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
+
+        endpoint.set_mtu_config(mtu_config);
 
         let clock = Clock::default();
 
@@ -71,7 +75,7 @@ impl Io {
 
         let local_addr = socket.local_addr()?;
         let local_addr: inet::SocketAddress = local_addr.into();
-        let payload_len: usize = max_mtu.into();
+        let payload_len: usize = mtu_config.max_mtu.into();
         let payload_len = payload_len as u32;
 
         // This number is somewhat arbitrary but it's a decent number of messages without it consuming
@@ -85,7 +89,7 @@ impl Io {
             let (producer, consumer) = ring::pair(entries, payload_len);
             consumers.push(consumer);
 
-            let rx = rx::Rx::new(consumers, max_mtu, local_addr.into());
+            let rx = rx::Rx::new(consumers, mtu_config.max_mtu, local_addr.into());
 
             (rx, producer)
         };
@@ -101,7 +105,7 @@ impl Io {
             // GSO is not supported by turmoil so disable it
             gso.disable();
 
-            let tx = tx::Tx::new(producers, gso, max_mtu);
+            let tx = tx::Tx::new(producers, gso, mtu_config.max_mtu);
 
             (tx, consumer)
         };

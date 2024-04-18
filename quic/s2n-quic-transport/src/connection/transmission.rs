@@ -94,8 +94,12 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
 
         // If a packet can be GSO'd it means it's limited to the previously written packet
         // size. We want to avoid sending several small packets and artificially clamping packets to
-        // less than an MTU.
-        segment_len >= self.context.path().mtu(self.context.transmission_mode)
+        // less than the max datagram size.
+        segment_len
+            >= self
+                .context
+                .path()
+                .max_datagram_size(self.context.transmission_mode)
     }
 
     #[inline]
@@ -111,49 +115,49 @@ impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<
             buffer.into_mut_slice()
         };
 
-        let mtu = self
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-7
+        //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
+        //# (see Appendix B.2) to be larger than the congestion window, unless
+        //# the packet is sent on a PTO timer expiration (see Section 6.2) or
+        //# when entering recovery (see Section 7.3.2).
+        let transmission_constraint =
+            if space_manager.requires_probe() && self.context.transmission_mode.is_normal() {
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
+                //# When a PTO timer expires, a sender MUST send at least one ack-
+                //# eliciting packet in the packet number space as a probe.
+
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
+                //# An endpoint SHOULD include new data in packets that are sent on PTO
+                //# expiration.  Previously sent data MAY be sent if no new data can be
+                //# sent.
+
+                //= https://www.rfc-editor.org/rfc/rfc9002#section-7.5
+                //# Probe packets MUST NOT be blocked by the congestion controller.
+                self.context.transmission_mode = transmission::Mode::LossRecoveryProbing;
+                transmission::Constraint::None
+            } else {
+                self.context.path().transmission_constraint()
+            };
+
+        let max_datagram_size = self
             .context
             .path()
-            .clamp_mtu(buffer.len(), self.context.transmission_mode);
+            .clamp_datagram_size(buffer.len(), self.context.transmission_mode);
         debug_assert_ne!(
-            mtu, 0,
+            max_datagram_size, 0,
             "the amplification limit should be checked before trying to transmit"
         );
 
         // limit the number of retries to the MAX_BURST_PACKETS
         for _ in 0..MAX_BURST_PACKETS {
-            let encoder = EncoderBuffer::new(&mut buffer[..mtu]);
+            let encoder = EncoderBuffer::new(&mut buffer[..max_datagram_size]);
             let initial_capacity = encoder.capacity();
-
-            //= https://www.rfc-editor.org/rfc/rfc9002#section-7
-            //# An endpoint MUST NOT send a packet if it would cause bytes_in_flight
-            //# (see Appendix B.2) to be larger than the congestion window, unless
-            //# the packet is sent on a PTO timer expiration (see Section 6.2) or
-            //# when entering recovery (see Section 7.3.2).
 
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# In addition to sending data in the packet number space for which the
             //# timer expired, the sender SHOULD send ack-eliciting packets from
             //# other packet number spaces with in-flight data, coalescing packets if
             //# possible.
-            let transmission_constraint =
-                if space_manager.requires_probe() && self.context.transmission_mode.is_normal() {
-                    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-                    //# When a PTO timer expires, a sender MUST send at least one ack-
-                    //# eliciting packet in the packet number space as a probe.
-
-                    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
-                    //# An endpoint SHOULD include new data in packets that are sent on PTO
-                    //# expiration.  Previously sent data MAY be sent if no new data can be
-                    //# sent.
-
-                    //= https://www.rfc-editor.org/rfc/rfc9002#section-7.5
-                    //# Probe packets MUST NOT be blocked by the congestion controller.
-                    self.context.transmission_mode = transmission::Mode::LossRecoveryProbing;
-                    transmission::Constraint::None
-                } else {
-                    self.context.path().transmission_constraint()
-                };
 
             //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
             //# A client MUST expand the payload of all UDP datagrams carrying

@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # This kept breaking builds so we're pinning for now. We should do our best to keep
   # up with the changes, though.
-  INTEROP_RUNNER_REF: e73ec56cdf5423fa6b1576a2b5fec5eb2171ec5d
+  INTEROP_RUNNER_REF: 4be6491794a08899f295dc5cdf9eeba8e9fa5431
   # This should be updated when updating wesleyrosenblum/quic-network-simulator
   NETWORK_SIMULATOR_REF: sha256:20abe0bed8c0e39e1d8750507b24295f7c978bdd7e05fa6f3a5afed4b76dc191
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
@@ -81,22 +81,18 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
         with:
           key: ${{ matrix.mode }}-${{ env.RUSTFLAGS }}
 
       - name: Run cargo build
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: build
-          args: --bin s2n-quic-qns ${{ matrix.mode == 'release' && '--release' || '' }}
+        run: cargo build --bin s2n-quic-qns ${{ matrix.mode == 'release' && '--release' || '' }}
 
       - name: Prepare artifact
         run: |
@@ -345,11 +341,11 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          override: true
+        run: |
+          rustup toolchain install stable
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
 
@@ -368,7 +364,7 @@ jobs:
       # authenticate pull to avoid hitting pull quota
       - name: Login to Amazon Elastic Container Registry Public
         if: github.repository == github.event.pull_request.head.repo.full_name
-        uses: docker/login-action@v3.0.0
+        uses: docker/login-action@v3.1.0
         with:
           registry: public.ecr.aws
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -474,12 +470,11 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - name: Install perf
         run: |
@@ -591,12 +586,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1.0.7
+      - name: Install rust toolchain
         id: toolchain
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - uses: actions/download-artifact@v4
         with:

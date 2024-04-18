@@ -87,7 +87,7 @@ macro_rules! decoder_value_unaligned_integer {
                     let (value, buffer) = buffer.decode_slice($bitsize / 8)?;
                     let value = value.as_less_safe_slice();
                     let value = NetworkEndian::$call(value);
-                    Ok(($ty(value), buffer))
+                    Ok(($ty::new_truncated(value), buffer))
                 }
             }
         );

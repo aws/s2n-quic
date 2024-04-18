@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::Request;
+use crate::{
+    buffer::{writer::Storage as _, Reader},
+    varint::VarInt,
+};
 use bytes::{Buf, BufMut, BytesMut};
 use core::fmt;
 
@@ -25,13 +28,6 @@ impl fmt::Debug for Slot {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Outcome<'a> {
-    pub lower: Request<'a>,
-    pub mid: Option<Slot>,
-    pub upper: Request<'a>,
-}
-
 impl Slot {
     #[inline]
     pub fn new(start: u64, end: u64, data: BytesMut) -> Self {
@@ -42,48 +38,108 @@ impl Slot {
     }
 
     #[inline(always)]
-    pub fn try_write<'a>(&mut self, request: Request<'a>) -> Outcome<'a> {
-        // trim off chunks lower than the start
-        let (lower, request) = request.split(self.start());
+    pub fn try_write_reader<R: Reader>(
+        &mut self,
+        reader: &mut R,
+        filled_slot: &mut bool,
+    ) -> Result<Option<Slot>, R::Error>
+    where
+        R: Reader + ?Sized,
+    {
+        debug_assert!(self.start() <= reader.current_offset().as_u64());
 
-        // trim off chunks we've already copied
-        let (_, request) = request.split(self.end());
+        let end = self.end();
 
-        // trim off chunks higher than the allocated end
-        let (to_write, upper) = request.split(self.end_allocated());
-
-        let mut mid = None;
-
-        if let Some(to_write) = to_write.into_option() {
-            if to_write.start() > self.end() {
-                // find the split point between the buffers
-                let len = to_write.start() - self.start();
-
-                // create a new mid slot
-                let start = to_write.start();
-                let mut data = unsafe {
-                    assume!(self.data.len() < len as usize);
-                    self.data.split_off(len as usize)
-                };
-
-                // copy the data to the buffer
-                to_write.write(&mut data);
-
-                mid = Some(Self {
-                    start,
-                    end: self.end,
-                    data,
-                });
-                self.end = start;
-            } else {
-                // copy the data to the buffer
-                to_write.write(&mut self.data);
-            }
+        if end < self.end_allocated() {
+            // trim off chunks we've already copied
+            reader.skip_until(unsafe { VarInt::new_unchecked(end) })?;
+        } else {
+            // we've already filled this slot so skip the entire thing on the reader
+            reader.skip_until(unsafe { VarInt::new_unchecked(self.end_allocated()) })?;
+            return Ok(None);
         }
 
-        self.invariants();
+        ensure!(!reader.buffer_is_empty(), Ok(None));
 
-        Outcome { lower, mid, upper }
+        // make sure this slot owns this range of data
+        ensure!(
+            reader.current_offset().as_u64() < self.end_allocated(),
+            Ok(None)
+        );
+
+        // if the current offsets match just do a straight copy
+        if reader.current_offset().as_u64() == end {
+            self.write_reader_end(reader, filled_slot)?;
+            self.invariants();
+            return Ok(None);
+        }
+
+        // split off the unfilled chunk from the filled chunk and return this filled one
+
+        // find the split point between the buffers
+        let unfilled_len = reader.current_offset().as_u64() - self.start();
+
+        // create a new mid slot
+        let start = reader.current_offset().as_u64();
+        let data = unsafe {
+            assume!(self.data.len() < unfilled_len as usize,);
+            self.data.split_off(unfilled_len as usize)
+        };
+
+        let mut filled = Self {
+            start,
+            end: self.end,
+            data,
+        };
+
+        // copy the data to the buffer
+        if let Err(err) = filled.write_reader_end(reader, filled_slot) {
+            // revert the split since the reader failed
+            self.data.unsplit(filled.data);
+            return Err(err);
+        }
+
+        self.end = start;
+
+        self.invariants();
+        filled.invariants();
+
+        Ok(Some(filled))
+    }
+
+    #[inline(always)]
+    fn write_reader_end<R: Reader>(
+        &mut self,
+        reader: &mut R,
+        filled_slot: &mut bool,
+    ) -> Result<(), R::Error>
+    where
+        R: Reader + ?Sized,
+    {
+        debug_assert_eq!(reader.current_offset().as_u64(), self.end());
+
+        unsafe {
+            // SAFETY: the data buffer should have at least one byte of spare capacity if we got to
+            // this point
+            assume!(self.data.capacity() > self.data.len());
+        }
+        let chunk = self.data.spare_capacity_mut();
+        let mut chunk = bytes::buf::UninitSlice::uninit(chunk);
+        let chunk_len = chunk.len();
+        let mut chunk = chunk.track_write();
+        reader.copy_into(&mut chunk)?;
+        let len = chunk.written_len();
+
+        super::probe::write(self.end(), len);
+
+        unsafe {
+            // SAFETY: we should not have written more than the spare capacity
+            assume!(self.data.len() + len <= self.data.capacity());
+            self.data.advance_mut(len);
+        }
+        *filled_slot |= chunk_len == len;
+
+        Ok(())
     }
 
     #[inline]
@@ -99,51 +155,52 @@ impl Slot {
         }
         self.data.unsplit(next.data);
         self.end = next.end;
+
         self.invariants();
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn is_full(&self) -> bool {
         self.end() == self.end_allocated()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn is_occupied(&self, prev_offset: u64) -> bool {
         !self.is_empty() && self.start() == prev_offset
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn as_slice(&self) -> &[u8] {
         &self.data
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn data_mut(&mut self) -> &mut BytesMut {
         &mut self.data
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn start(&self) -> u64 {
         self.start
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn add_start(&mut self, len: usize) {
         self.start += len as u64;
         self.invariants()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn end(&self) -> u64 {
-        self.start() + self.data.len() as u64
+        self.start + self.data.len() as u64
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn end_allocated(&self) -> u64 {
         self.end
     }
@@ -173,12 +230,12 @@ impl Slot {
     }
 
     /// Indicates the slot isn't capable of storing any more data and should be dropped
-    #[inline]
+    #[inline(always)]
     pub fn should_drop(&self) -> bool {
         self.start() == self.end_allocated()
     }
 
-    #[inline]
+    #[inline(always)]
     fn invariants(&self) {
         if cfg!(debug_assertions) {
             assert!(self.data.capacity() <= 1 << 16, "{:?}", self);
@@ -186,112 +243,5 @@ impl Slot {
             assert!(self.start() <= self.end_allocated(), "{:?}", self);
             assert!(self.end() <= self.end_allocated(), "{:?}", self);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::varint::VarInt;
-
-    #[test]
-    fn bytes_assumption() {
-        let mut data = BytesMut::with_capacity(100);
-        let half = data.split_off(50);
-
-        // after splitting a BytesMut the capacity should also be split
-        assert_eq!(data.capacity(), 50);
-        assert_eq!(half.capacity(), 50);
-    }
-
-    fn slot(range: core::ops::Range<u64>, data: &[u8]) -> Slot {
-        let mut buffer = BytesMut::with_capacity((range.end - range.start) as usize);
-        buffer.extend_from_slice(data);
-        Slot::new(range.start, range.end, buffer)
-    }
-
-    fn req(offset: u64, data: &[u8]) -> Request {
-        Request::new(VarInt::new(offset).unwrap(), data).unwrap()
-    }
-
-    macro_rules! assert_write {
-        ($slot:expr, $request:expr, $expected_slot:expr, $result:expr) => {{
-            let mut slot = $slot;
-            let req = $request;
-
-            let result = slot.try_write(req);
-            assert_eq!(slot, $expected_slot);
-            assert_eq!(result, $result);
-        }};
-    }
-
-    #[test]
-    fn overlap() {
-        assert_write!(
-            slot(4..8, &[1]),
-            req(0, &[42; 12]),
-            slot(4..8, &[1, 42, 42, 42]),
-            Outcome {
-                lower: req(0, &[42; 4]),
-                mid: None,
-                upper: req(8, &[42; 4]),
-            }
-        );
-    }
-
-    #[test]
-    fn upper() {
-        assert_write!(
-            slot(4..8, &[1]),
-            req(8, &[42; 4]),
-            slot(4..8, &[1]),
-            Outcome {
-                lower: req(4, &[]),
-                mid: None,
-                upper: req(8, &[42; 4]),
-            }
-        );
-    }
-
-    #[test]
-    fn lower() {
-        assert_write!(
-            slot(4..8, &[1]),
-            req(0, &[42; 4]),
-            slot(4..8, &[1]),
-            Outcome {
-                lower: req(0, &[42; 4]),
-                mid: None,
-                upper: req(8, &[]),
-            }
-        );
-    }
-
-    #[test]
-    fn mid() {
-        assert_write!(
-            slot(4..8, &[1]),
-            req(6, &[42; 1]),
-            slot(4..6, &[1]),
-            Outcome {
-                lower: req(4, &[]),
-                mid: Some(slot(6..8, &[42])),
-                upper: req(8, &[]),
-            }
-        );
-    }
-
-    #[test]
-    fn mid_upper() {
-        assert_write!(
-            slot(4..8, &[1]),
-            req(6, &[42; 4]),
-            slot(4..6, &[1]),
-            Outcome {
-                lower: req(4, &[]),
-                mid: Some(slot(6..8, &[42; 2])),
-                upper: req(8, &[42; 2]),
-            }
-        );
     }
 }

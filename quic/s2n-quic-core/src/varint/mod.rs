@@ -1,11 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::{
-    convert::{TryFrom, TryInto},
-    fmt,
-    ops::Deref,
-};
+use core::{fmt, ops::Deref};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
 #[cfg(any(test, feature = "generator"))]

@@ -280,7 +280,7 @@ impl<D: Driver> tx::Tx for Tx<D> {
 
         // use the first channel that had entries, otherwise return the length, which will indicate
         // the queue has no free items
-        let channel_index = first_channel_with_entries.unwrap_or_else(|| channels.len());
+        let channel_index = first_channel_with_entries.unwrap_or(channels.len());
 
         let mut queue = Queue {
             channels,

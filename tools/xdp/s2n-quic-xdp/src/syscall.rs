@@ -195,12 +195,15 @@ pub fn busy_poll<Fd: AsRawFd>(fd: &Fd) -> Result<u32> {
 ///
 /// See [xsk.c](https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L273).
 #[inline]
-pub fn mmap(len: usize, offset: usize, fd: Option<RawFd>) -> Result<NonNull<c_void>> {
-    let flags = if fd.is_some() {
+pub fn mmap(len: usize, offset: usize, fd: Option<RawFd>, huge: bool) -> Result<NonNull<c_void>> {
+    let mut flags = if fd.is_some() {
         libc::MAP_SHARED | libc::MAP_POPULATE
     } else {
         libc::MAP_PRIVATE | libc::MAP_ANONYMOUS
     };
+    if huge {
+        flags |= libc::MAP_HUGETLB;
+    }
 
     // See:
     // * Fill https://github.com/xdp-project/xdp-tools/blob/a76e7a2b156b8cfe38992206abe9df1df0a29e38/lib/libxdp/xsk.c#L273

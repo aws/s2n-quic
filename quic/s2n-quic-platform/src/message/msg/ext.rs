@@ -3,20 +3,26 @@
 
 use super::*;
 
-pub trait Ext: cmsg::Encoder {
+pub trait Ext {
+    type Encoder<'a>: cmsg::Encoder
+    where
+        Self: 'a;
+
     fn header(&self) -> Option<(datagram::Header<Handle>, datagram::AncillaryData)>;
-    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress);
+    fn cmsg_encoder(&mut self) -> Self::Encoder<'_>;
     fn remote_address(&self) -> Option<SocketAddress>;
     fn set_remote_address(&mut self, remote_address: &SocketAddress);
 }
 
 impl Ext for msghdr {
+    type Encoder<'a> = MsghdrEncoder<'a>;
+
     #[inline]
     fn header(&self) -> Option<(datagram::Header<Handle>, datagram::AncillaryData)> {
         let addr = self.remote_address()?;
         let mut path = Handle::from_remote_address(addr.into());
 
-        let ancillary_data = cmsg::decode(self);
+        let ancillary_data = unsafe { cmsg::decode::Iter::from_msghdr(self) }.collect();
         let ecn = ancillary_data.ecn;
 
         path.with_ancillary_data(ancillary_data);
@@ -27,26 +33,8 @@ impl Ext for msghdr {
     }
 
     #[inline]
-    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification, remote_address: &SocketAddress) {
-        if ecn == ExplicitCongestionNotification::NotEct {
-            return;
-        }
-
-        // the remote address needs to be unmapped in order to set the appropriate cmsg
-        match remote_address.unmap() {
-            SocketAddress::IpV4(_) => {
-                use features::tos_v4 as tos;
-                if let (Some(level), Some(ty)) = (tos::LEVEL, tos::TYPE) {
-                    self.encode_cmsg(level, ty, ecn as tos::Cmsg).unwrap();
-                }
-            }
-            SocketAddress::IpV6(_) => {
-                use features::tos_v6 as tos;
-                if let (Some(level), Some(ty)) = (tos::LEVEL, tos::TYPE) {
-                    self.encode_cmsg(level, ty, ecn as tos::Cmsg).unwrap();
-                }
-            }
-        };
+    fn cmsg_encoder(&mut self) -> Self::Encoder<'_> {
+        MsghdrEncoder { msghdr: self }
     }
 
     #[inline]
@@ -89,5 +77,32 @@ impl Ext for msghdr {
                 self.msg_namelen = size_of::<sockaddr_in6>() as _;
             }
         }
+    }
+}
+
+pub struct MsghdrEncoder<'a> {
+    msghdr: &'a mut msghdr,
+}
+
+impl<'a> Encoder for MsghdrEncoder<'a> {
+    #[inline]
+    fn encode_cmsg<T: Copy + ?Sized>(
+        &mut self,
+        level: libc::c_int,
+        ty: libc::c_int,
+        value: T,
+    ) -> Result<usize, cmsg::encode::Error> {
+        let storage =
+            unsafe { &mut *(self.msghdr.msg_control as *mut cmsg::Storage<{ cmsg::MAX_LEN }>) };
+
+        let mut encoder = storage.encoder();
+        encoder.seek(self.msghdr.msg_controllen as _);
+
+        let msg_len = encoder.encode_cmsg(level, ty, value)?;
+
+        // update the cursor
+        self.msghdr.msg_controllen = encoder.len() as _;
+
+        Ok(msg_len)
     }
 }
