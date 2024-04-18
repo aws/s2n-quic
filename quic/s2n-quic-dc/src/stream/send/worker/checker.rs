@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 #![cfg_attr(not(debug_assertions), allow(dead_code, unused_imports))]
 
 use s2n_quic_core::{buffer::Reader, interval_set::IntervalSet, varint::VarInt};

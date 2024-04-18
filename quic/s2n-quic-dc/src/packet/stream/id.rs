@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use core::fmt;
 use s2n_codec::{decoder_invariant, decoder_value, Encoder, EncoderValue};
 use s2n_quic_core::{assume, ensure, probe, varint::VarInt};

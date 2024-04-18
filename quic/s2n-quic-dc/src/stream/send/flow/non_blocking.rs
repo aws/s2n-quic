@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use super::Credits;
 use crate::stream::send::{error::Error, flow};
 use atomic_waker::AtomicWaker;

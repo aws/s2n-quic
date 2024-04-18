@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use super::*;
 
 pub fn new(id: u16, generation_id: u32, sequence_id: u16) -> Credentials {

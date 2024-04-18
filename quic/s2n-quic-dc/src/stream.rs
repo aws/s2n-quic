@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use core::time::Duration;
 
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(10);

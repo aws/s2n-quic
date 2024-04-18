@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{allocator, stream::send::transmission};
 use core::cmp::Ordering;
 use s2n_quic_core::varint::VarInt;

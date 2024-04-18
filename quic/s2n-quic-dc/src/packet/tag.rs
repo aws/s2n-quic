@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use s2n_codec::{decoder_invariant, decoder_value};
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 

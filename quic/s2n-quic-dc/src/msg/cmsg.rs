@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use libc::msghdr;
 use s2n_quic_core::{ensure, inet::ExplicitCongestionNotification};
 use s2n_quic_platform::{features, message::cmsg};

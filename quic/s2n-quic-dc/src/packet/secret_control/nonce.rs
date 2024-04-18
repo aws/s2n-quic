@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use super::{
     NOTIFY_GENERATION_RANGE, REJECT_SEQUENCE_ID, REQUEST_ADDITIONAL_GENERATION, UNKNOWN_PATH_SECRET,
 };

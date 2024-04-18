@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use super::tag::Common;
 use core::fmt;
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
