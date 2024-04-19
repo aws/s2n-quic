@@ -15,11 +15,7 @@ use aws_lc_rs as ring;
 
 #[doc(hidden)]
 pub use ring::{
-    aead as ring_aead,
-    aead::{Algorithm, MAX_TAG_LEN},
-    constant_time, digest, hkdf,
-    hkdf::Prk,
-    hmac,
+    aead as ring_aead, aead::MAX_TAG_LEN, constant_time, digest, hkdf, hkdf::Prk, hmac,
 };
 
 #[derive(Clone)]
@@ -48,4 +44,3 @@ impl s2n_quic_core::crypto::CryptoSuite for Suite {
     type ZeroRttHeaderKey = zero_rtt::ZeroRttHeaderKey;
     type RetryKey = retry::RetryKey;
 }
-

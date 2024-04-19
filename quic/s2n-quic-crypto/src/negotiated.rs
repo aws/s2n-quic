@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    cipher_suite::NegotiatedCipherSuite as CipherSuite, header_key::HeaderKeyPair, Algorithm,
-    SecretPair,
+    cipher_suite::NegotiatedCipherSuite as CipherSuite, header_key::HeaderKeyPair,
+    ring_aead::Algorithm, SecretPair,
 };
 use s2n_quic_core::{
     crypto::{packet_protection, scatter, Key},
@@ -100,7 +100,7 @@ macro_rules! negotiated_crypto {
         impl $name {
             /// Create a server cipher suite with a given negotiated algorithm and secret
             pub fn new_server(
-                algorithm: &$crate::Algorithm,
+                algorithm: &$crate::ring_aead::Algorithm,
                 secrets: $crate::SecretPair,
             ) -> Option<(Self, $header_key)> {
                 Self::new(s2n_quic_core::endpoint::Type::Server, algorithm, secrets)
@@ -108,7 +108,7 @@ macro_rules! negotiated_crypto {
 
             /// Create a client cipher suite with a given negotiated algorithm and secret
             pub fn new_client(
-                algorithm: &$crate::Algorithm,
+                algorithm: &$crate::ring_aead::Algorithm,
                 secrets: $crate::SecretPair,
             ) -> Option<(Self, $header_key)> {
                 Self::new(s2n_quic_core::endpoint::Type::Client, algorithm, secrets)
@@ -117,7 +117,7 @@ macro_rules! negotiated_crypto {
             /// Create a cipher_suite for an endpoint type with a given negotiated algorithm and secret
             pub fn new(
                 endpoint: s2n_quic_core::endpoint::Type,
-                algorithm: &$crate::Algorithm,
+                algorithm: &$crate::ring_aead::Algorithm,
                 secrets: $crate::SecretPair,
             ) -> Option<(Self, $header_key)> {
                 let (key, header_key) =
