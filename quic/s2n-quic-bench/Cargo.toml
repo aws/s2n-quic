@@ -15,7 +15,6 @@ crossbeam-channel = { version = "0.5" }
 internet-checksum = "0.2"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
-s2n-quic-crypto = { path = "../s2n-quic-crypto", features = ["testing"] }
 
 [[bench]]
 name = "bench"
