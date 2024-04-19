@@ -765,7 +765,7 @@ jobs:
 
       - name: ${{ matrix.crate }}
         # run the tests with release mode since some of the loom models can be expensive
-        run: cd ${{ matrix.crate }} && cargo test --release --workspace loom
+        run: cd ${{ matrix.crate }} && cargo test --release loom
         env:
           RUSTFLAGS: --cfg loom -Cdebug-assertions
 
