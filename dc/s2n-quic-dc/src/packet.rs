@@ -23,9 +23,9 @@ pub enum Packet<'a> {
     Stream(stream::decoder::Packet<'a>),
     Datagram(datagram::decoder::Packet<'a>),
     Control(control::decoder::Packet<'a>),
-    NotifyGenerationRange(secret_control::notify_generation_range::Packet<'a>),
-    RejectSequenceId(secret_control::reject_sequence_id::Packet<'a>),
-    RequestAdditionalGeneration(secret_control::request_additional_generation::Packet<'a>),
+    StaleKey(secret_control::stale_key::Packet<'a>),
+    ReplayDetected(secret_control::replay_detected::Packet<'a>),
+    RequestShards(secret_control::request_shards::Packet<'a>),
     UnknownPathSecret(secret_control::unknown_path_secret::Packet<'a>),
 }
 
@@ -50,15 +50,15 @@ impl<'a> s2n_codec::DecoderParameterizedValueMut<'a> for Packet<'a> {
                 let (packet, decoder) = datagram::decoder::Packet::decode(decoder, (), tag_len)?;
                 Ok((Self::Datagram(packet), decoder))
             }
-            Tag::NotifyGenerationRange(_) => {
+            Tag::StaleKey(_) => {
                 // TODO
                 todo!()
             }
-            Tag::RejectSequenceId(_) => {
+            Tag::ReplayDetected(_) => {
                 // TODO
                 todo!()
             }
-            Tag::RequestAdditionalGeneration(_) => {
+            Tag::RequestShards(_) => {
                 // TODO
                 todo!()
             }

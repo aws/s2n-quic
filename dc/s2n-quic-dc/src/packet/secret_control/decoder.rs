@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_codec::{
-    DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult as Rm, DecoderBufferResult as R,
-    DecoderError, DecoderValue,
+    DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult as Rm, DecoderError, DecoderValue,
 };
-use s2n_quic_core::varint::VarInt;
 
 macro_rules! impl_packet {
     ($name:ident) => {
@@ -90,16 +88,4 @@ where
     let crypto_tag = crypto_tag.into_less_safe_slice();
 
     Ok(((header, value, crypto_tag), buffer))
-}
-
-#[inline]
-pub fn sized<T>(buffer: DecoderBuffer) -> R<T>
-where
-    VarInt: TryInto<T>,
-{
-    let (value, buffer) = buffer.decode::<VarInt>()?;
-    let value = value
-        .try_into()
-        .map_err(|_| DecoderError::InvariantViolation("value overflow"))?;
-    Ok((value, buffer))
 }

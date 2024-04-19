@@ -19,9 +19,9 @@ mod encoder;
 mod nonce;
 
 const UNKNOWN_PATH_SECRET: u8 = 0b0110_0000;
-const NOTIFY_GENERATION_RANGE: u8 = 0b0110_0001;
-const REJECT_SEQUENCE_ID: u8 = 0b0110_0010;
-const REQUEST_ADDITIONAL_GENERATION: u8 = 0b0110_0011;
+const STALE_KEY: u8 = 0b0110_0001;
+const REPLAY_DETECTED: u8 = 0b0110_0010;
+const REQUEST_SHARDS: u8 = 0b0110_0011;
 
 macro_rules! impl_tag {
     ($tag:expr) => {
@@ -67,7 +67,7 @@ macro_rules! impl_tag {
 
 #[cfg(test)]
 macro_rules! impl_tests {
-    ($ty:ty) => {
+    ($ty:ident) => {
         #[test]
         fn round_trip_test() {
             use crate::crypto::awslc::{DecryptKey, EncryptKey, AES_128_GCM};
@@ -99,28 +99,44 @@ macro_rules! impl_tests {
                         let decoded = decoded.authenticate(&mut &decrypt).unwrap();
                         assert_eq!(value, decoded);
                     }
+
+                    {
+                        use decrypt::Key as _;
+                        let buffer = s2n_codec::DecoderBufferMut::new(&mut buffer[..len]);
+                        let (decoded, _) = crate::packet::secret_control::Packet::decode(
+                            buffer,
+                            decrypt.tag_len(),
+                        )
+                        .unwrap();
+                        if let crate::packet::secret_control::Packet::$ty(decoded) = decoded {
+                            let decoded = decoded.authenticate(&mut &decrypt).unwrap();
+                            assert_eq!(value, decoded);
+                        } else {
+                            panic!("decoded as the wrong packet type");
+                        }
+                    }
                 });
         }
     };
 }
 
-pub mod notify_generation_range;
-pub mod reject_sequence_id;
-pub mod request_additional_generation;
+pub mod replay_detected;
+pub mod request_shards;
+pub mod stale_key;
 pub mod unknown_path_secret;
 
 pub use nonce::Nonce;
-pub use notify_generation_range::NotifyGenerationRange;
-pub use reject_sequence_id::RejectSequenceId;
-pub use request_additional_generation::RequestAdditionalGeneration;
+pub use replay_detected::ReplayDetected;
+pub use request_shards::RequestShards;
+pub use stale_key::StaleKey;
 pub use unknown_path_secret::UnknownPathSecret;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Packet<'a> {
     UnknownPathSecret(unknown_path_secret::Packet<'a>),
-    NotifyGenerationRange(notify_generation_range::Packet<'a>),
-    RejectSequenceId(reject_sequence_id::Packet<'a>),
-    RequestAdditionalGeneration(request_additional_generation::Packet<'a>),
+    StaleKey(stale_key::Packet<'a>),
+    ReplayDetected(replay_detected::Packet<'a>),
+    RequestShards(request_shards::Packet<'a>),
 }
 
 impl<'a> Packet<'a> {
@@ -133,19 +149,17 @@ impl<'a> Packet<'a> {
                 let (packet, buffer) = unknown_path_secret::Packet::decode(buffer)?;
                 (Self::UnknownPathSecret(packet), buffer)
             }
-            NOTIFY_GENERATION_RANGE => {
-                let (packet, buffer) =
-                    notify_generation_range::Packet::decode(buffer, crypto_tag_len)?;
-                (Self::NotifyGenerationRange(packet), buffer)
+            STALE_KEY => {
+                let (packet, buffer) = stale_key::Packet::decode(buffer, crypto_tag_len)?;
+                (Self::StaleKey(packet), buffer)
             }
-            REJECT_SEQUENCE_ID => {
-                let (packet, buffer) = reject_sequence_id::Packet::decode(buffer, crypto_tag_len)?;
-                (Self::RejectSequenceId(packet), buffer)
+            REPLAY_DETECTED => {
+                let (packet, buffer) = replay_detected::Packet::decode(buffer, crypto_tag_len)?;
+                (Self::ReplayDetected(packet), buffer)
             }
-            REQUEST_ADDITIONAL_GENERATION => {
-                let (packet, buffer) =
-                    request_additional_generation::Packet::decode(buffer, crypto_tag_len)?;
-                (Self::RequestAdditionalGeneration(packet), buffer)
+            REQUEST_SHARDS => {
+                let (packet, buffer) = request_shards::Packet::decode(buffer, crypto_tag_len)?;
+                (Self::RequestShards(packet), buffer)
             }
             _ => return Err(DecoderError::InvariantViolation("invalid tag")),
         })
@@ -155,9 +169,9 @@ impl<'a> Packet<'a> {
     pub fn credential_id(&self) -> &credentials::Id {
         match self {
             Self::UnknownPathSecret(p) => p.credential_id(),
-            Self::NotifyGenerationRange(p) => p.credential_id(),
-            Self::RejectSequenceId(p) => p.credential_id(),
-            Self::RequestAdditionalGeneration(p) => p.credential_id(),
+            Self::StaleKey(p) => p.credential_id(),
+            Self::ReplayDetected(p) => p.credential_id(),
+            Self::RequestShards(p) => p.credential_id(),
         }
     }
 }

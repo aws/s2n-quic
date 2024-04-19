@@ -31,9 +31,9 @@ pub enum Tag {
     Stream(super::stream::Tag),
     Datagram(super::datagram::Tag),
     Control(super::control::Tag),
-    NotifyGenerationRange(super::secret_control::notify_generation_range::Tag),
-    RejectSequenceId(super::secret_control::reject_sequence_id::Tag),
-    RequestAdditionalGeneration(super::secret_control::request_additional_generation::Tag),
+    StaleKey(super::secret_control::stale_key::Tag),
+    ReplayDetected(super::secret_control::replay_detected::Tag),
+    RequestShards(super::secret_control::request_shards::Tag),
     UnknownPathSecret(super::secret_control::unknown_path_secret::Tag),
 }
 
@@ -53,17 +53,17 @@ decoder_value!(
                     let (tag, buffer) = buffer.decode()?;
                     Ok((Self::Control(tag), buffer))
                 }
-                super::secret_control::notify_generation_range::Tag::VALUE => {
+                super::secret_control::stale_key::Tag::VALUE => {
                     let (tag, buffer) = buffer.decode()?;
-                    Ok((Self::NotifyGenerationRange(tag), buffer))
+                    Ok((Self::StaleKey(tag), buffer))
                 }
-                super::secret_control::reject_sequence_id::Tag::VALUE => {
+                super::secret_control::replay_detected::Tag::VALUE => {
                     let (tag, buffer) = buffer.decode()?;
-                    Ok((Self::RejectSequenceId(tag), buffer))
+                    Ok((Self::ReplayDetected(tag), buffer))
                 }
-                super::secret_control::request_additional_generation::Tag::VALUE => {
+                super::secret_control::request_shards::Tag::VALUE => {
                     let (tag, buffer) = buffer.decode()?;
-                    Ok((Self::RequestAdditionalGeneration(tag), buffer))
+                    Ok((Self::RequestShards(tag), buffer))
                 }
                 super::secret_control::unknown_path_secret::Tag::VALUE => {
                     let (tag, buffer) = buffer.decode()?;
