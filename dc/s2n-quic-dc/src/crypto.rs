@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use crate::credentials::Credentials;
 pub use bytes::buf::UninitSlice;
 use core::fmt;
@@ -12,24 +9,6 @@ pub mod testing;
 
 pub mod encrypt {
     use super::*;
-
-    #[derive(Clone, Copy, Debug)]
-    pub enum Error {
-        Retired,
-    }
-
-    impl fmt::Display for Error {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            match self {
-                Self::Retired => "retired key",
-            }
-            .fmt(f)
-        }
-    }
-
-    impl std::error::Error for Error {}
-
-    pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
     pub trait Key {
         fn credentials(&self) -> &Credentials;
@@ -43,7 +22,7 @@ pub mod encrypt {
             header: &[u8],
             extra_payload: Option<&[u8]>,
             payload_and_tag: &mut [u8],
-        ) -> Result;
+        );
 
         fn retransmission_tag(
             &self,

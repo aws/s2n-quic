@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use crate::{
     crypto::encrypt,
     packet::stream::{self, Tag},
@@ -31,7 +28,7 @@ pub fn encode<H, CD, P, C>(
     control_data: &CD,
     payload: &mut P,
     crypto: &C,
-) -> Result<usize, encrypt::Error>
+) -> usize
 where
     H: buffer::reader::Storage<Error = core::convert::Infallible>,
     P: buffer::Reader<Error = core::convert::Infallible>,
@@ -158,7 +155,7 @@ where
             slice.split_at_mut(payload_offset)
         };
 
-        crypto.encrypt(nonce, header, last_chunk, payload_and_tag)?;
+        crypto.encrypt(nonce, header, last_chunk, payload_and_tag);
     }
 
     if cfg!(debug_assertions) {
@@ -169,5 +166,5 @@ where
         assert_eq!(packet.packet_number(), packet_number);
     }
 
-    Ok(packet_len)
+    packet_len
 }

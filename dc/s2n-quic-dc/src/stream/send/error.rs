@@ -1,7 +1,4 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
-use crate::{crypto::encrypt, stream::packet_number};
+use crate::stream::packet_number;
 use s2n_quic_core::{buffer, varint::VarInt};
 
 #[derive(Clone, Copy, Debug, thiserror::Error)]
@@ -20,8 +17,6 @@ pub enum Error {
     FinalSizeChanged,
     #[error("the sender idle timer expired")]
     IdleTimeout,
-    #[error("the crypto was retired by the peer")]
-    CryptoRetired,
     #[error("the stream was reset by the peer with code {code}")]
     TransportError { code: VarInt },
     #[error("the stream was closed with application code {error}")]
@@ -46,21 +41,12 @@ impl From<Error> for std::io::Error {
             Error::StreamFinished => ErrorKind::UnexpectedEof,
             Error::FinalSizeChanged => ErrorKind::InvalidInput,
             Error::IdleTimeout => ErrorKind::TimedOut,
-            Error::CryptoRetired => ErrorKind::ConnectionAborted,
             Error::ApplicationError { .. } => ErrorKind::ConnectionReset,
             Error::TransportError { .. } => ErrorKind::ConnectionAborted,
             Error::FrameError { .. } => ErrorKind::InvalidData,
             Error::FatalError => ErrorKind::BrokenPipe,
         };
         Self::new(kind, error)
-    }
-}
-
-impl From<encrypt::Error> for Error {
-    fn from(value: encrypt::Error) -> Self {
-        match value {
-            encrypt::Error::Retired => Self::CryptoRetired,
-        }
     }
 }
 

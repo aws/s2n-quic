@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use super::*;
 
 impl_tag!(NOTIFY_GENERATION_RANGE);
@@ -16,7 +13,7 @@ pub struct NotifyGenerationRange {
 
 impl NotifyGenerationRange {
     #[inline]
-    pub fn encode<C>(&self, mut encoder: EncoderBuffer, crypto: &mut C) -> encrypt::Result<usize>
+    pub fn encode<C>(&self, mut encoder: EncoderBuffer, crypto: &mut C) -> usize
     where
         C: encrypt::Key,
     {

@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use crate::{
     allocator::{Allocator, Segment},
     congestion,
@@ -915,7 +912,7 @@ impl<S: Segment, R: Segment> State<S, R> {
             &(),
             cleartext_payload,
             encrypt_key,
-        )?;
+        );
 
         // no need to keep going if the output is empty
         ensure!(

@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use crate::{
     crypto::encrypt,
     packet::stream::{self, encoder},
@@ -21,13 +18,13 @@ use s2n_quic_core::{
 pub trait Message {
     fn max_segments(&self) -> usize;
     fn set_ecn(&mut self, ecn: ExplicitCongestionNotification);
-    fn push<Clk: Clock, P: FnOnce(&mut [u8]) -> Result<usize, E>, E>(
+    fn push<Clk: Clock, P: FnOnce(&mut [u8]) -> usize>(
         &mut self,
         clock: &Clk,
         is_reliable: bool,
         buffer_len: usize,
         p: P,
-    ) -> Result<(), E>;
+    );
 }
 
 pub struct State {
@@ -94,7 +91,7 @@ impl State {
                     &mut reader,
                     encrypt_key,
                 )
-            })?;
+            });
 
             // bail if we've transmitted everything
             ensure!(!reader.buffer_is_empty(), break);

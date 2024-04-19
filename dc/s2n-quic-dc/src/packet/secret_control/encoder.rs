@@ -1,17 +1,10 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use super::Nonce;
 use crate::crypto::encrypt;
 use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::assume;
 
 #[inline]
-pub fn finish<C>(
-    mut encoder: EncoderBuffer,
-    nonce: Nonce,
-    crypto: &mut C,
-) -> Result<usize, encrypt::Error>
+pub fn finish<C>(mut encoder: EncoderBuffer, nonce: Nonce, crypto: &mut C) -> usize
 where
     C: encrypt::Key,
 {
@@ -27,7 +20,7 @@ where
         slice.split_at_mut(header_offset)
     };
 
-    crypto.encrypt(nonce, header, None, payload_and_tag)?;
+    crypto.encrypt(nonce, header, None, payload_and_tag);
 
-    Ok(packet_len)
+    packet_len
 }

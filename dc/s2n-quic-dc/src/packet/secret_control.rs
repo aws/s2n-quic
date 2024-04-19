@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use crate::{
     credentials,
     crypto::{decrypt, encrypt},
@@ -89,7 +86,7 @@ macro_rules! impl_tests {
                     let mut buffer = [0u8; 64];
                     let len = {
                         let encoder = s2n_codec::EncoderBuffer::new(&mut buffer);
-                        value.encode(encoder, (&mut &encrypt)).unwrap()
+                        value.encode(encoder, (&mut &encrypt))
                     };
 
                     {

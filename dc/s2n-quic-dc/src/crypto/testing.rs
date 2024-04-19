@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use super::IntoNonce;
 use crate::credentials::Credentials;
 use s2n_quic_core::assume;
@@ -39,7 +36,7 @@ impl super::encrypt::Key for Key {
         _header: &[u8],
         extra_payload: Option<&[u8]>,
         payload_and_tag: &mut [u8],
-    ) -> Result<(), super::encrypt::Error> {
+    ) {
         if let Some(extra_payload) = extra_payload {
             let offset = payload_and_tag.len() - self.tag_len() - extra_payload.len();
             let dest = &mut payload_and_tag[offset..];
@@ -50,8 +47,6 @@ impl super::encrypt::Key for Key {
             dest.copy_from_slice(extra_payload);
             tag.fill(0);
         }
-
-        Ok(())
     }
 
     #[inline]

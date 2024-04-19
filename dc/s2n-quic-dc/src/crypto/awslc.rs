@@ -1,6 +1,3 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 use super::IntoNonce;
 use crate::credentials::Credentials;
 use aws_lc_rs::aead::{Aad, Algorithm, LessSafeKey, Nonce, UnboundKey, NONCE_LEN};
@@ -54,7 +51,7 @@ impl super::encrypt::Key for &EncryptKey {
         header: &[u8],
         extra_payload: Option<&[u8]>,
         payload_and_tag: &mut [u8],
-    ) -> super::encrypt::Result {
+    ) {
         let nonce = self.iv.nonce(nonce);
         let aad = Aad::from(header);
 
@@ -78,8 +75,6 @@ impl super::encrypt::Key for &EncryptKey {
         unsafe {
             assume!(result.is_ok());
         }
-
-        Ok(())
     }
 
     #[inline]
@@ -117,7 +112,7 @@ impl super::encrypt::Key for EncryptKey {
         header: &[u8],
         extra_payload: Option<&[u8]>,
         payload_and_tag: &mut [u8],
-    ) -> super::encrypt::Result {
+    ) {
         <&Self as super::encrypt::Key>::encrypt(
             &self,
             nonce,
