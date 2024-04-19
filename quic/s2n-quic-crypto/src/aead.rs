@@ -31,7 +31,7 @@ impl Aead for LessSafeKey {
         nonce: &[u8; NONCE_LEN],
         aad: &[u8],
         payload: &mut scatter::Buffer,
-    ) -> aead::Result {
+    ) -> Result {
         use s2n_codec::Encoder;
 
         let nonce = Nonce::assume_unique_for_key(*nonce);
@@ -43,7 +43,7 @@ impl Aead for LessSafeKey {
             let (input, _) = buffer.split_mut();
 
             self.seal_in_place_separate_tag(nonce, aad, input)
-                .map_err(|_| aead::Error::INTERNAL_ERROR)?
+                .map_err(|_| Error::INTERNAL_ERROR)?
         };
 
         buffer.write_slice(tag.as_ref());
