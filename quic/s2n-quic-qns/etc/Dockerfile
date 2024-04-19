@@ -26,8 +26,9 @@ FROM rust-base AS sources
 COPY Cargo.toml /app
 COPY common /app/common
 COPY quic /app/quic
-# Don't include testing crates
+# Don't include testing crates or s2n-quic-dc
 RUN set -eux; \
+  sed -i '/dc/d' Cargo.toml; \
   sed -i '/xdp/d' quic/s2n-quic-platform/Cargo.toml; \
   sed -i '/xdp/d' quic/s2n-quic-qns/Cargo.toml; \
   sed -i '/xdp/d' quic/s2n-quic/Cargo.toml; \
