@@ -21,3 +21,8 @@ updates:
     directory: "/tools/xdp"
     schedule:
       interval: "daily"
+
+  - package-ecosystem: "cargo"
+    directory: "/tools/dc"
+    schedule:
+      interval: "daily"

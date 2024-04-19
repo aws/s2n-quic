@@ -1,0 +1,3 @@
+[workspace]
+members = ["s2n-quic-dc"]
+resolver = "2"
