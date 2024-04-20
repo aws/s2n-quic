@@ -2,6 +2,11 @@
 members = [
     "common/s2n-*",
     "quic/s2n-*",
+    "dc/s2n-*",
+]
+default-members = [
+    "common/s2n-*",
+    "quic/s2n-*",
 ]
 resolver = "2"
 # don't include any workspaces outside of the main project

@@ -43,7 +43,7 @@ jobs:
       # find all child folders in the examples directory
       # jq -R - raw content is passed in (not json, just strings)
       # jq -s - slurp the content into an object
-      # jq '. += ' adds the s2n-quic-xdp crate to the list of crates we build
+      # jq '. += ' adds the s2n-quic-xdp and s2n-quic-dc crates to the list of crates we build
       # Many of the xdp crates have much more complex build processes, so we
       # don't try to build all of them.
       # jq -c - output the object in (c)ompact mode on a single line, github
@@ -63,7 +63,7 @@ jobs:
           export EXAMPLES=$(find examples/ -maxdepth 1 -mindepth 1 -type d | jq -R | jq -sc)
           echo "examples=$EXAMPLES"
           echo "examples=$EXAMPLES" >> $GITHUB_OUTPUT
-          export CRATES=$(find quic common -name *Cargo.toml | jq -R | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml"]' | jq -c)
+          export CRATES=$(find quic common -name *Cargo.toml | jq -R | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml","dc/s2n-quic-dc/Cargo.toml"]' | jq -c)
           echo "crates=$CRATES"
           echo "crates=$CRATES" >> $GITHUB_OUTPUT
 
@@ -115,7 +115,7 @@ jobs:
           #
           # manual_clamp will panic when min > max
           # See https://github.com/rust-lang/rust-clippy/pull/10101
-          cargo clippy --all-features --all-targets -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
+          cargo clippy --all-features --all-targets --workspace -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
 
   udeps:
     runs-on: ubuntu-latest
@@ -196,11 +196,13 @@ jobs:
         env: [default]
         include:
           - os: windows-latest
-            # s2n-tls doesn't currently build on windows
-            exclude: --workspace --exclude s2n-quic-tls
+            # s2n-tls and s2n-quic-dc don't currently build on windows
+            exclude: --exclude s2n-quic-tls --exclude s2n-quic-dc
           - rust: stable
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
+            # s2n-quic-dc doesn't currently build on aarch64
+            exclude: --exclude s2n-quic-dc
           - rust: stable
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
@@ -213,6 +215,8 @@ jobs:
             os: ubuntu-latest
             target: native
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=""
+            # s2n-quic-dc requires platform features
+            exclude: --exclude s2n-quic-dc
           - rust: stable
             os: ubuntu-latest
             target: native
@@ -259,11 +263,11 @@ jobs:
       # Build the tests before running to improve cross compilation speed
       - name: Run cargo/cross build
         run: |
-          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} build --tests ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
+          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} build --tests --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
       - name: Run cargo/cross test
         run: |
-          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
+          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
   miri:
     # miri needs quite a bit of memory so use a larger instance
@@ -593,7 +597,7 @@ jobs:
 
       - name: Run cargo insta test
         run: |
-          cargo insta test --delete-unreferenced-snapshots
+          cargo insta test --all --delete-unreferenced-snapshots
 
       - name: Check to make sure there are no unused snapshots
         run: |
@@ -618,7 +622,7 @@ jobs:
       - name: Run cargo build
         run: |
           cd examples/echo
-          cargo build --timings --release
+          cargo build --timings --release --workspace
 
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -698,7 +702,7 @@ jobs:
 
       - name: Run cargo build
         working-directory: tools/memory-report
-        run: cargo build --release
+        run: cargo build --release --workspace
 
       - name: Run server
         working-directory: tools/memory-report
