@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-dc"
-version = "0.36.0"
+version = "0.37.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -21,9 +21,9 @@ crossbeam-channel = "0.5"
 libc = "0.2"
 num-rational = { version = "0.4", default-features = false }
 once_cell = "1"
-s2n-codec = { version = "=0.36.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.36.0", path = "../../quic/s2n-quic-core", default-features = false }
-s2n-quic-platform = { version = "=0.36.0", path = "../../quic/s2n-quic-platform" }
+s2n-codec = { version = "=0.37.0", path = "../../common/s2n-codec", default-features = false }
+s2n-quic-core = { version = "=0.37.0", path = "../../quic/s2n-quic-core", default-features = false }
+s2n-quic-platform = { version = "=0.37.0", path = "../../quic/s2n-quic-platform" }
 thiserror = "1"
 tokio = { version = "1", features = ["io-util"], optional = true }
 tracing = "0.1"
