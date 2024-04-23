@@ -21,12 +21,12 @@ pub struct Message {
 
 impl Message {
     #[inline]
-    pub(crate) fn remote_address(&self) -> &SocketAddress {
+    pub fn remote_address(&self) -> &SocketAddress {
         &self.address
     }
 
     #[inline]
-    pub(crate) fn set_remote_address(&mut self, remote_address: &SocketAddress) {
+    pub fn set_remote_address(&mut self, remote_address: &SocketAddress) {
         let remote_address = *remote_address;
 
         self.address = remote_address;
