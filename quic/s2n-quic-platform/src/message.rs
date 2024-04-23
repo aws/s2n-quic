@@ -46,13 +46,13 @@ impl Storage {
     }
 
     #[inline]
-    pub(crate) fn as_ptr(&self) -> *mut u8 {
+    pub fn as_ptr(&self) -> *mut u8 {
         self.ptr.as_ptr()
     }
 
     /// Asserts that the pointer is in bounds of the allocation
     #[inline]
-    pub(crate) fn check_bounds<T: Sized>(&self, ptr: *mut T) {
+    pub fn check_bounds<T: Sized>(&self, ptr: *mut T) {
         let start = self.as_ptr();
         let end = unsafe {
             // Safety: pointer is allocated with the self.layout
