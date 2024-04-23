@@ -4,11 +4,8 @@ This folder contains example code to do resumption handshakes in s2n-quic. This 
 
 # Set-up
 
-Currently resumption is disabled by default as it is still in development. It can be enabled by passing a compiler flag:
-```sh
-export RUSTFLAGS="--cfg s2n_quic_unstable"
-```
-and adding this line to your Cargo.toml file:
+Currently resumption is disabled by default as it is still in development. It can be enabled by adding this line to your Cargo.toml file:
+
 ```toml
 [dependencies]
 s2n-quic = { version = "1", features = ["unstable-resumption"]}

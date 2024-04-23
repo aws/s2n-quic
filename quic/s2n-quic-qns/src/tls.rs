@@ -37,10 +37,9 @@ impl Server {
             .with_key_logging()?;
 
         cfg_if::cfg_if! {
-            if #[cfg(all(
-                s2n_quic_unstable,
+            if #[cfg(
                 feature = "unstable_client_hello"
-            ))] {
+            )] {
                 use super::unstable::MyClientHelloHandler;
                 let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
             }

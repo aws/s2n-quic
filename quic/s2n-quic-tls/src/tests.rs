@@ -16,9 +16,9 @@ use s2n_quic_core::{
     },
     transport,
 };
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+#[cfg(any(test, feature = "unstable_client_hello"))]
 use s2n_tls::callbacks::ClientHelloCallback;
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+#[cfg(any(test, feature = "unstable_client_hello"))]
 use s2n_tls::callbacks::{PrivateKeyCallback, PrivateKeyOperation};
 use s2n_tls::{
     callbacks::{ConnectionFuture, VerifyHostNameCallback},
@@ -41,7 +41,7 @@ impl MyCallbackHandler {
     }
 }
 
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+#[cfg(any(test, feature = "unstable_client_hello"))]
 impl ClientHelloCallback for MyCallbackHandler {
     fn on_client_hello(
         &self,
@@ -100,7 +100,7 @@ impl crate::ConfigLoader for ResumptionConfig {
     }
 }
 
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_private_key")))]
+#[cfg(any(test, feature = "unstable_private_key"))]
 impl PrivateKeyCallback for MyCallbackHandler {
     fn handle_operation(
         &self,
@@ -263,7 +263,7 @@ fn s2n_server_with_client_auth_verifier_rejects_client_certs() -> Result<server:
         .build()
 }
 
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+#[cfg(any(test, feature = "unstable_client_hello"))]
 fn s2n_server_with_client_hello_callback(wait_counter: u8) -> (server::Server, Arc<AtomicBool>) {
     let handle = MyCallbackHandler::new(wait_counter);
     let done = handle.done.clone();
@@ -277,7 +277,7 @@ fn s2n_server_with_client_hello_callback(wait_counter: u8) -> (server::Server, A
     (tls, done)
 }
 
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_private_key")))]
+#[cfg(any(test, feature = "unstable_private_key"))]
 fn s2n_server_with_private_key_callback(wait_counter: u8) -> (server::Server, Arc<AtomicBool>) {
     let handle = MyCallbackHandler::new(wait_counter);
     let done = handle.done.clone();

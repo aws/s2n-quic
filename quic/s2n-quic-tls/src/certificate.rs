@@ -109,5 +109,5 @@ macro_rules! cert_type {
 cert_type!(PrivateKey, IntoPrivateKey, into_private_key);
 cert_type!(Certificate, IntoCertificate, into_certificate);
 
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_private_key")))]
+#[cfg(any(test, feature = "unstable_private_key"))]
 pub const OFFLOAD_PRIVATE_KEY: PrivateKey = PrivateKey(Format::None);

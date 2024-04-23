@@ -10,9 +10,9 @@ use crate::{
 };
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls, endpoint};
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+#[cfg(any(test, feature = "unstable_client_hello"))]
 use s2n_tls::callbacks::ClientHelloCallback;
-#[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_private_key")))]
+#[cfg(any(test, feature = "unstable_private_key"))]
 use s2n_tls::callbacks::PrivateKeyCallback;
 use s2n_tls::{
     callbacks::VerifyHostNameCallback,
@@ -98,7 +98,7 @@ impl Builder {
         &mut self.config
     }
 
-    #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_client_hello")))]
+    #[cfg(any(test, feature = "unstable_client_hello"))]
     pub fn with_client_hello_handler<T: 'static + ClientHelloCallback>(
         mut self,
         handler: T,
@@ -107,7 +107,7 @@ impl Builder {
         Ok(self)
     }
 
-    #[cfg(any(test, all(s2n_quic_unstable, feature = "unstable_private_key")))]
+    #[cfg(any(test, feature = "unstable_private_key"))]
     pub fn with_private_key_handler<T: 'static + PrivateKeyCallback>(
         mut self,
         handler: T,

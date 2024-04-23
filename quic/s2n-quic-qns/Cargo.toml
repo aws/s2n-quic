@@ -46,7 +46,7 @@ mimalloc = { version = "0.1", default-features = false }
 
 # Use unstable s2n-quic features
 # unstable_client_hello and unstable_resumption use s2n-tls, and thus are only enabled for unix platforms
-[target.'cfg(all(any(s2n_quic_unstable, s2n_internal_dev), unix))'.dependencies]
+[target.'cfg(all(s2n_internal_dev, unix))'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["unstable_client_hello", "unstable_resumption"] }
-[target.'cfg(any(s2n_quic_unstable, s2n_internal_dev))'.dependencies]
+[target.'cfg(s2n_internal_dev)'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["unstable-provider-packet-interceptor"] }
