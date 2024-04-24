@@ -8,9 +8,9 @@ use s2n_quic_core::application::ServerName;
 #[global_allocator]
 static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 
-#[cfg(all(s2n_quic_unstable, s2n_quic_enable_pq_tls))]
+#[cfg(s2n_quic_enable_pq_tls)]
 static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::TESTING_PQ;
-#[cfg(not(all(s2n_quic_unstable, s2n_quic_enable_pq_tls)))]
+#[cfg(not(s2n_quic_enable_pq_tls))]
 static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_TLS13;
 
 #[non_exhaustive]

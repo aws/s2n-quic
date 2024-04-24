@@ -5,11 +5,9 @@ This folder contains an example of implementing and configuring a custom congest
 
 # Set-up
 
-The `CongestionController` trait is considered unstable and may be subject to change in a future release. In order to build it you must pass a compiler flag:
-```sh
-export RUSTFLAGS="--cfg s2n_quic_unstable"
-```
-and add this line to your Cargo.toml file:
+The `CongestionController` trait is considered unstable and may be subject to change in a future release. In order to build it you must
+add this line to your Cargo.toml file:
+
 ```toml
 [dependencies]
 s2n-quic = { version = "1", features = ["unstable-congestion-controller"]}
