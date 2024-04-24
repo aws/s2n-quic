@@ -183,10 +183,8 @@
 <p>This folder contains an example of implementing and configuring a custom congestion controller in <code>s2n-quic</code>. <code>s2n-quic</code> includes <a href="https://www.rfc-editor.org/rfc/rfc8312">CUBIC</a> and <a href="https://datatracker.ietf.org/doc/html/draft-cardwell-iccrg-bbr-congestion-control">BBRv2</a> congestion controller implementations, but you may
 implement the <code>CongestionController</code> trait, found in <a href="../../quic/s2n-quic-core/src/recovery/congestion_controller.rs">congestion_controller.rs</a>, to provide your own.</p>
 <h1 id="set-up"><a class="header" href="#set-up">Set-up</a></h1>
-<p>The <code>CongestionController</code> trait is considered unstable and may be subject to change in a future release. In order to build it you must pass a compiler flag:</p>
-<pre><code class="language-sh">export RUSTFLAGS="--cfg s2n_quic_unstable"
-</code></pre>
-<p>and add this line to your Cargo.toml file:</p>
+<p>The <code>CongestionController</code> trait is considered unstable and may be subject to change in a future release. In order to build it you must
+add this line to your Cargo.toml file:</p>
 <pre><code class="language-toml">[dependencies]
 s2n-quic = { version = "1", features = ["unstable-congestion-controller"]}
 </code></pre>
