@@ -29,7 +29,6 @@ aws-lc-rs = { version = "1.6" }
 ring = { version = "0.16", default-features = false }
 
 [dev-dependencies]
-bolero = "0.10"
 hex-literal = "0.4"
 insta = { version = "1", features = ["json"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
