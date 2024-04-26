@@ -648,7 +648,6 @@
       "server"
     ],
     "neqo": [
-      "client",
       "server"
     ],
     "ngtcp2": [
