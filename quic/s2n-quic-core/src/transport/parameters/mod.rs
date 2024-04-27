@@ -10,7 +10,6 @@ use crate::{
     varint::VarInt,
 };
 use core::{mem::size_of, time::Duration};
-use num_traits::Zero;
 use s2n_codec::{
     decoder_invariant, decoder_value, DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult,
     DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderValue,
@@ -1108,7 +1107,7 @@ impl DcSupportedVersions {
         let mut selected_version = None;
 
         for version in self.into_iter() {
-            if !version.is_zero() {
+            if version > 0 {
                 decoder_invariant!(
                     selected_version.is_none(),
                     "multiple versions selected by the server"

@@ -12,10 +12,7 @@ use crate::{
         CryptoSuite, HeaderKey, Key,
     },
     endpoint, transport,
-    transport::{
-        parameters::{ClientTransportParameters, ServerTransportParameters},
-        Error,
-    },
+    transport::parameters::{ClientTransportParameters, ServerTransportParameters},
 };
 use alloc::sync::Arc;
 use bytes::Bytes;
@@ -648,7 +645,7 @@ where
         &mut self,
         _client_params: ApplicationParameters,
         _server_params: &mut Vec<u8>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), transport::Error> {
         self.log("client application params");
         Ok(())
     }
