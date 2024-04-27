@@ -43,7 +43,8 @@ pub trait TransportParameter: Sized {
 
     /// Appends this `TransportParameter` to the given buffer containing
     /// already encoded TransportParameters
-    fn append_to_buffer(&self, buffer: &mut Vec<u8>) {
+    #[cfg(feature = "alloc")]
+    fn append_to_buffer(&self, buffer: &mut alloc::vec::Vec<u8>) {
         buffer.extend(TransportParameterCodec(self).encode_to_vec());
     }
 }

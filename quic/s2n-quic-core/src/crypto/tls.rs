@@ -64,7 +64,7 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     fn on_client_application_params(
         &mut self,
         client_params: ApplicationParameters,
-        server_params: &mut Vec<u8>,
+        server_params: &mut alloc::vec::Vec<u8>,
     ) -> Result<(), crate::transport::Error>;
 
     fn on_handshake_keys(
