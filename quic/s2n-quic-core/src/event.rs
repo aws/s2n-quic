@@ -58,6 +58,7 @@ ident_into_event!(
     bool,
     connection::Error,
     endpoint::Location,
+    [u32; 4],
 );
 borrowed_into_event!([u8; 4], [u8; 16], [u8], [u32], [&'a [u8]]);
 

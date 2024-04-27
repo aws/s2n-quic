@@ -10,6 +10,7 @@ use crate::{
     varint::VarInt,
 };
 use core::{mem::size_of, time::Duration};
+use num_traits::Zero;
 use s2n_codec::{
     decoder_invariant, decoder_value, DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult,
     DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderValue,
@@ -27,7 +28,7 @@ pub trait TransportParameter: Sized {
     const ENABLED: bool = true;
 
     /// Associated type for decoding/encoding the TransportParameter
-    type CodecValue;
+    type CodecValue: EncoderValue;
 
     /// Create a `TransportParameter` from the CodecValue
     fn from_codec_value(value: Self::CodecValue) -> Self;
@@ -39,6 +40,12 @@ pub trait TransportParameter: Sized {
     /// This is used instead of `Default::default` so it is
     /// easily overridable
     fn default_value() -> Self;
+
+    /// Appends this `TransportParameter` to the given buffer containing
+    /// already encoded TransportParameters
+    fn append_to_buffer(&self, buffer: &mut Vec<u8>) {
+        buffer.extend(TransportParameterCodec(self).encode_to_vec());
+    }
 }
 
 /// Trait for validating transport parameter values
@@ -1063,6 +1070,119 @@ impl From<connection::id::LocalId> for InitialSourceConnectionId {
 connection_id_parameter!(RetrySourceConnectionId, LocalId, 0x10);
 optional_transport_parameter!(RetrySourceConnectionId);
 
+/// Used by the client to indicate which versions of s2n-quic-dc it supports
+/// and by the server to indicate which version it is using
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, Eq, Ord)]
+pub struct DcSupportedVersions([VarInt; 4]);
+
+impl DcSupportedVersions {
+    /// Create a `DcSupportedVersions` for the given `supported_versions` the client supports
+    pub fn for_client<I: IntoIterator<Item = u32>>(supported_versions: I) -> Self {
+        let mut value = [VarInt::default(); 4];
+
+        for (index, version) in supported_versions.into_iter().enumerate() {
+            value[index] = VarInt::from_u32(version);
+
+            debug_assert!(index < 4, "Only 4 supported versions are supported");
+            ensure!(index < 4, break);
+        }
+
+        DcSupportedVersions(value)
+    }
+
+    /// Create a `DcSupportedVersions` for the `supported_version` the server has selected
+    pub fn for_server(supported_version: u32) -> Self {
+        DcSupportedVersions([
+            VarInt::from_u32(supported_version),
+            VarInt::default(),
+            VarInt::default(),
+            VarInt::default(),
+        ])
+    }
+
+    /// The version the server has selected
+    ///
+    /// Returns `None` if no version was selected
+    pub fn selected_version(&self) -> Result<Option<u32>, DecoderError> {
+        let mut selected_version = None;
+
+        for version in self.into_iter() {
+            if !version.is_zero() {
+                decoder_invariant!(
+                    selected_version.is_none(),
+                    "multiple versions selected by the server"
+                );
+                selected_version = Some(version);
+            }
+        }
+
+        Ok(selected_version)
+    }
+}
+
+impl TransportParameter for DcSupportedVersions {
+    const ID: TransportParameterId = TransportParameterId::from_u32(0xdc0000);
+    type CodecValue = Self;
+
+    fn from_codec_value(value: Self::CodecValue) -> Self {
+        Self(value.0)
+    }
+
+    fn try_into_codec_value(&self) -> Option<&Self::CodecValue> {
+        if *self == Self::default_value() {
+            None
+        } else {
+            Some(self)
+        }
+    }
+
+    fn default_value() -> Self {
+        Self::default()
+    }
+}
+
+impl EncoderValue for DcSupportedVersions {
+    fn encode<E: Encoder>(&self, buffer: &mut E) {
+        for version in self.0 {
+            version.encode(buffer)
+        }
+    }
+}
+
+decoder_value!(
+    impl<'a> DcSupportedVersions {
+        fn decode(buffer: Buffer) -> Result<Self> {
+            let mut versions = [VarInt::default(); 4];
+
+            let (version, buffer) = buffer.decode::<VarInt>()?;
+            versions[0] = version;
+            let (version, buffer) = buffer.decode::<VarInt>()?;
+            versions[1] = version;
+            let (version, buffer) = buffer.decode::<VarInt>()?;
+            versions[2] = version;
+            let (version, buffer) = buffer.decode::<VarInt>()?;
+            versions[3] = version;
+
+            // Skip the rest of the buffer to allow for future versions of
+            // `DcSupportedVersions` that may support more than 4 versions
+            let remaining_capacity = buffer.len();
+            let buffer = buffer.skip(remaining_capacity)?;
+            Ok((Self(versions), buffer))
+        }
+    }
+);
+
+impl TransportParameterValidator for DcSupportedVersions {}
+
+impl IntoIterator for DcSupportedVersions {
+    type Item = u32;
+    type IntoIter = core::array::IntoIter<u32, 4>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIterator::into_iter(self.0.map(|v| v.as_u64() as u32))
+    }
+}
+
 //= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# If present, transport parameters that set initial per-stream flow
 //# control limits (initial_max_stream_data_bidi_local,
@@ -1244,6 +1364,11 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ServerTransp
             initial_max_streams_bidi: self.initial_max_streams_bidi.into_event(),
             initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
             max_datagram_frame_size: self.max_datagram_frame_size.into_event(),
+            dc_supported_versions: self
+                .dc_supported_versions
+                .0
+                .map(|v| v.as_u64() as u32)
+                .into_event(),
         }
     }
 }
@@ -1275,6 +1400,11 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ClientTransp
             initial_max_streams_bidi: self.initial_max_streams_bidi.into_event(),
             initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
             max_datagram_frame_size: self.max_datagram_frame_size.into_event(),
+            dc_supported_versions: self
+                .dc_supported_versions
+                .0
+                .map(|v| v.as_u64() as u32)
+                .into_event(),
         }
     }
 }
@@ -1419,6 +1549,7 @@ impl_transport_parameters!(
         preferred_address: PreferredAddress,
         initial_source_connection_id: Option<InitialSourceConnectionId>,
         retry_source_connection_id: RetrySourceConnectionId,
+        dc_supported_versions: DcSupportedVersions,
     }
 );
 

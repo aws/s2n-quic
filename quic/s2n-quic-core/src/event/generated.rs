@@ -46,6 +46,7 @@ pub mod api {
         pub initial_max_streams_bidi: u64,
         pub initial_max_streams_uni: u64,
         pub max_datagram_frame_size: u64,
+        pub dc_supported_versions: [u32; 4],
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2472,6 +2473,7 @@ pub mod builder {
         pub initial_max_streams_bidi: u64,
         pub initial_max_streams_uni: u64,
         pub max_datagram_frame_size: u64,
+        pub dc_supported_versions: [u32; 4],
     }
     impl<'a> IntoEvent<api::TransportParameters<'a>> for TransportParameters<'a> {
         #[inline]
@@ -2494,6 +2496,7 @@ pub mod builder {
                 initial_max_streams_bidi,
                 initial_max_streams_uni,
                 max_datagram_frame_size,
+                dc_supported_versions,
             } = self;
             api::TransportParameters {
                 original_destination_connection_id: original_destination_connection_id.into_event(),
@@ -2514,6 +2517,7 @@ pub mod builder {
                 initial_max_streams_bidi: initial_max_streams_bidi.into_event(),
                 initial_max_streams_uni: initial_max_streams_uni.into_event(),
                 max_datagram_frame_size: max_datagram_frame_size.into_event(),
+                dc_supported_versions: dc_supported_versions.into_event(),
             }
         }
     }

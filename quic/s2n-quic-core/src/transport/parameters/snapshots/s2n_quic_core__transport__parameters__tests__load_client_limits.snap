@@ -67,4 +67,20 @@ TransportParameters {
     preferred_address: DisabledParameter,
     initial_source_connection_id: None,
     retry_source_connection_id: DisabledParameter,
+    dc_supported_versions: DcSupportedVersions(
+        [
+            VarInt(
+                0,
+            ),
+            VarInt(
+                0,
+            ),
+            VarInt(
+                0,
+            ),
+            VarInt(
+                0,
+            ),
+        ],
+    ),
 }

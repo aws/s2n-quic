@@ -80,6 +80,12 @@ fn server_transport_parameters() -> ServerTransportParameters {
         }),
         initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         retry_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
+        dc_supported_versions: DcSupportedVersions([
+            VarInt::from_u8(5),
+            VarInt::from_u8(6),
+            VarInt::from_u8(7),
+            VarInt::from_u8(8),
+        ]),
     }
 }
 
@@ -117,6 +123,12 @@ fn client_transport_parameters() -> ClientTransportParameters {
         preferred_address: Default::default(),
         initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         retry_source_connection_id: Default::default(),
+        dc_supported_versions: DcSupportedVersions([
+            VarInt::from_u8(1),
+            VarInt::from_u8(2),
+            VarInt::from_u8(3),
+            VarInt::from_u8(4),
+        ]),
     }
 }
 
@@ -198,4 +210,98 @@ fn compute_data_window_test() {
         *compute_data_window(1500, Duration::from_millis(100), 2),
         37_500_000
     );
+}
+
+#[test]
+fn append_to_buffer() {
+    let mut value = client_transport_parameters();
+
+    // Clear the `dc_supported_versions`
+    value.dc_supported_versions = DcSupportedVersions::default();
+
+    let versions = [1, 2, 3, 4];
+
+    let mut buffer = value.encode_to_vec();
+
+    // Append `DcSupportedVersions`
+    DcSupportedVersions::for_client(versions).append_to_buffer(&mut buffer);
+
+    let decoder = DecoderBuffer::new(&buffer);
+    let (mut decoded_params, remaining) =
+        ClientTransportParameters::decode(decoder).expect("Decoding succeeds");
+    assert_eq!(4, decoded_params.dc_supported_versions.into_iter().len());
+    for (index, version) in decoded_params.dc_supported_versions.into_iter().enumerate() {
+        assert_eq!(versions[index], version);
+    }
+
+    // Clear the `dc_supported_versions` to check the rest of the params
+    decoded_params.dc_supported_versions = DcSupportedVersions::default();
+    assert_eq!(value, decoded_params);
+    assert_eq!(0, remaining.len());
+}
+
+#[test]
+fn future_larger_supported_versions() {
+    use s2n_codec::EncoderBuffer;
+
+    let mut value = client_transport_parameters();
+
+    // Clear the `dc_supported_versions`
+    value.dc_supported_versions = DcSupportedVersions::default();
+
+    let mut buffer = vec![0; 32 * 1024];
+    let mut encoder = EncoderBuffer::new(&mut buffer);
+
+    encoder.encode(&value);
+
+    encoder.encode(&DcSupportedVersions::ID);
+    encoder.encode(&VarInt::from_u8(
+        (7 * VarInt::from_u8(1).encoding_size()) as u8,
+    ));
+    encoder.encode(&VarInt::from_u8(1));
+    encoder.encode(&VarInt::from_u8(2));
+    encoder.encode(&VarInt::from_u8(3));
+    encoder.encode(&VarInt::from_u8(4));
+    encoder.encode(&VarInt::from_u8(5));
+    encoder.encode(&VarInt::from_u8(6));
+    encoder.encode(&VarInt::from_u8(7));
+
+    let (encoded, _) = encoder.split_off();
+    let decoder = DecoderBuffer::new(encoded);
+    let (decoded_params, remaining) =
+        ClientTransportParameters::decode(decoder).expect("Decoding succeeds");
+    assert_eq!(
+        VarInt::from_u8(1),
+        decoded_params.dc_supported_versions.0[0]
+    );
+    assert_eq!(
+        VarInt::from_u8(2),
+        decoded_params.dc_supported_versions.0[1]
+    );
+    assert_eq!(
+        VarInt::from_u8(3),
+        decoded_params.dc_supported_versions.0[2]
+    );
+    assert_eq!(
+        VarInt::from_u8(4),
+        decoded_params.dc_supported_versions.0[3]
+    );
+    assert_eq!(0, remaining.len());
+}
+
+#[test]
+fn dc_selected_version() {
+    assert_eq!(
+        Some(1),
+        DcSupportedVersions::for_server(1)
+            .selected_version()
+            .unwrap()
+    );
+    assert_eq!(
+        None,
+        DcSupportedVersions::default().selected_version().unwrap()
+    );
+    assert!(DcSupportedVersions::for_client([1, 2])
+        .selected_version()
+        .is_err());
 }

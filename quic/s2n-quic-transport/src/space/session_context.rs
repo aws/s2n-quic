@@ -19,7 +19,7 @@ use s2n_quic_core::{
     application::ServerName,
     connection::{InitialId, PeerId},
     crypto,
-    crypto::{tls, CryptoSuite, Key},
+    crypto::{tls, tls::ApplicationParameters, CryptoSuite, Key},
     ct::ConstantTimeEq,
     datagram::{ConnectionInfo, Endpoint},
     event,
@@ -30,9 +30,10 @@ use s2n_quic_core::{
         self,
         parameters::{
             ActiveConnectionIdLimit, ClientTransportParameters, DatagramLimits,
-            InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
-            ServerTransportParameters,
+            DcSupportedVersions, InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
+            ServerTransportParameters, TransportParameter,
         },
+        Error,
     },
 };
 
@@ -602,5 +603,18 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
     fn waker(&self) -> &Waker {
         self.waker
+    }
+
+    fn on_client_application_params(
+        &mut self,
+        _client_params: ApplicationParameters,
+        server_params: &mut Vec<u8>,
+    ) -> Result<(), Error> {
+        debug_assert!(Config::ENDPOINT_TYPE.is_server());
+
+        // TODO: Append `DcSupportedVersion` based on dc negotiation
+        //      DcSupportedVersions::for_server(1).append_to_buffer(server_params)
+        DcSupportedVersions::for_server(1).append_to_buffer(server_params);
+        Ok(())
     }
 }

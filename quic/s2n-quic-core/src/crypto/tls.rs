@@ -55,6 +55,18 @@ pub trait TlsSession: Send {
 //# implementation to communicate its buffering limits.
 #[cfg(feature = "alloc")]
 pub trait Context<Crypto: crate::crypto::CryptoSuite> {
+    /// Called when the client's application parameters are available
+    ///
+    /// The `server_params` is provided as a mutable Vec<u8> of encoded
+    /// server transport parameters to allow for additional parameters
+    /// dependent on the `client_params` to be appended before transmitting
+    /// them to the client.
+    fn on_client_application_params(
+        &mut self,
+        client_params: ApplicationParameters,
+        server_params: &mut Vec<u8>,
+    ) -> Result<(), crate::transport::Error>;
+
     fn on_handshake_keys(
         &mut self,
         key: Crypto::HandshakeKey,
