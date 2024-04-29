@@ -220,7 +220,9 @@ where
                         let (key, header_key) = HandshakeKey::new(self.endpoint, aead_algo, pair)
                             .expect("invalid cipher");
 
-                        if self.endpoint.is_server() {
+                        if self.server_params.len() > 0 {
+                            debug_assert!(self.endpoint.is_server());
+
                             // Since the client transport parameters are sent in the Initial packet space
                             // we can access them early on in the handshake, allowing the server transport
                             // parameters to be configured based on the client's parameters.
@@ -243,6 +245,9 @@ where
                                     self.server_params.len() as _,
                                 );
                             }
+                            // We've given the transport parameters to s2n-tls, so clear
+                            // `server_params` to ensure they are not set again.
+                            self.server_params.clear();
                         }
 
                         self.context.on_handshake_keys(key, header_key)?;
