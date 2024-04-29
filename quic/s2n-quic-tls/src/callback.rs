@@ -220,7 +220,7 @@ where
                         let (key, header_key) = HandshakeKey::new(self.endpoint, aead_algo, pair)
                             .expect("invalid cipher");
 
-                        if self.server_params.len() > 0 {
+                        if !self.server_params.is_empty() {
                             debug_assert!(self.endpoint.is_server());
 
                             // Since the client transport parameters are sent in the Initial packet space
