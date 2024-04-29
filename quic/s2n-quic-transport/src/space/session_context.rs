@@ -30,8 +30,8 @@ use s2n_quic_core::{
         self,
         parameters::{
             ActiveConnectionIdLimit, ClientTransportParameters, DatagramLimits,
-            DcSupportedVersions, InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
-            ServerTransportParameters, TransportParameter,
+            InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
+            ServerTransportParameters,
         },
         Error,
     },
@@ -608,13 +608,12 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     fn on_client_application_params(
         &mut self,
         _client_params: ApplicationParameters,
-        server_params: &mut Vec<u8>,
+        _server_params: &mut Vec<u8>,
     ) -> Result<(), Error> {
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
 
         // TODO: Append `DcSupportedVersion` based on dc negotiation
         //      DcSupportedVersions::for_server(1).append_to_buffer(server_params)
-        DcSupportedVersions::for_server(1).append_to_buffer(server_params);
         Ok(())
     }
 }
