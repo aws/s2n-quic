@@ -80,12 +80,15 @@ fn server_transport_parameters() -> ServerTransportParameters {
         }),
         initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         retry_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
-        dc_supported_versions: DcSupportedVersions([
-            VarInt::from_u8(5),
-            VarInt::from_u8(6),
-            VarInt::from_u8(7),
-            VarInt::from_u8(8),
-        ]),
+        dc_supported_versions: DcSupportedVersions {
+            len: 1,
+            versions: [
+                VarInt::from_u8(3),
+                VarInt::default(),
+                VarInt::default(),
+                VarInt::default(),
+            ],
+        },
     }
 }
 
@@ -123,12 +126,15 @@ fn client_transport_parameters() -> ClientTransportParameters {
         preferred_address: Default::default(),
         initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         retry_source_connection_id: Default::default(),
-        dc_supported_versions: DcSupportedVersions([
-            VarInt::from_u8(1),
-            VarInt::from_u8(2),
-            VarInt::from_u8(3),
-            VarInt::from_u8(4),
-        ]),
+        dc_supported_versions: DcSupportedVersions {
+            len: 4,
+            versions: [
+                VarInt::from_u8(1),
+                VarInt::from_u8(2),
+                VarInt::from_u8(3),
+                VarInt::from_u8(4),
+            ],
+        },
     }
 }
 
@@ -241,6 +247,32 @@ fn append_to_buffer() {
 }
 
 #[test]
+fn dc_supported_versions() {
+    for len in 0..=DC_SUPPORTED_VERSIONS_MAX_LEN {
+        let mut versions = Vec::new();
+        for i in 0..len {
+            versions.push((i + 1) as u32);
+        }
+
+        let dc_supported_versions = DcSupportedVersions::for_client(versions);
+        let encoded = dc_supported_versions.encode_to_vec();
+
+        let decoder = DecoderBuffer::new(encoded.as_slice());
+        let (dc_supported_versions, remaining) =
+            DcSupportedVersions::decode(decoder).expect("Decoding succeeds");
+
+        assert_eq!(len, dc_supported_versions.len);
+        assert!(remaining.is_empty());
+        for i in 0..len {
+            assert_eq!(
+                VarInt::from_u8(i + 1),
+                dc_supported_versions.versions[i as usize]
+            );
+        }
+    }
+}
+
+#[test]
 fn future_larger_supported_versions() {
     use s2n_codec::EncoderBuffer;
 
@@ -272,21 +304,52 @@ fn future_larger_supported_versions() {
         ClientTransportParameters::decode(decoder).expect("Decoding succeeds");
     assert_eq!(
         VarInt::from_u8(1),
-        decoded_params.dc_supported_versions.0[0]
+        decoded_params.dc_supported_versions.versions[0]
     );
     assert_eq!(
         VarInt::from_u8(2),
-        decoded_params.dc_supported_versions.0[1]
+        decoded_params.dc_supported_versions.versions[1]
     );
     assert_eq!(
         VarInt::from_u8(3),
-        decoded_params.dc_supported_versions.0[2]
+        decoded_params.dc_supported_versions.versions[2]
     );
     assert_eq!(
         VarInt::from_u8(4),
-        decoded_params.dc_supported_versions.0[3]
+        decoded_params.dc_supported_versions.versions[3]
     );
     assert_eq!(0, remaining.len());
+}
+
+#[test]
+#[should_panic]
+fn dc_selected_versions_for_client_too_big() {
+    let mut versions = Vec::new();
+    for i in 0..DC_SUPPORTED_VERSIONS_MAX_LEN + 1 {
+        versions.push((i + 1) as u32);
+    }
+
+    DcSupportedVersions::for_client(versions);
+}
+
+#[test]
+fn dc_selected_versions_for_client_zero_versions() {
+    let versions = [1, 0, 2, 0, 3];
+
+    let supported_versions = DcSupportedVersions::for_client(versions);
+    assert_eq!(3, supported_versions.len);
+
+    let encoded = supported_versions.encode_to_vec();
+
+    let decoder = DecoderBuffer::new(encoded.as_slice());
+    let (supported_versions, remaining) =
+        DcSupportedVersions::decode(decoder).expect("Decoding succeeds");
+
+    assert_eq!(3, supported_versions.len);
+    assert_eq!(1, supported_versions.versions[0].as_u64());
+    assert_eq!(2, supported_versions.versions[1].as_u64());
+    assert_eq!(3, supported_versions.versions[2].as_u64());
+    assert!(remaining.is_empty());
 }
 
 #[test]
