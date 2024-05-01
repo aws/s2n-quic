@@ -22,10 +22,10 @@ pub struct FipsKey {
 impl FipsKey {
     #[inline]
     pub fn new(algorithm: &'static ring_aead::Algorithm, key_bytes: &[u8]) -> Result<Self> {
-        let opener =
-            TlsRecordOpeningKey::new(algorithm, TlsProtocolId::TLS13, key_bytes).expect("key size verified");
-        let sealer =
-            TlsRecordSealingKey::new(algorithm, TlsProtocolId::TLS13, key_bytes).expect("key size verified");
+        let opener = TlsRecordOpeningKey::new(algorithm, TlsProtocolId::TLS13, key_bytes)
+            .expect("key size verified");
+        let sealer = TlsRecordSealingKey::new(algorithm, TlsProtocolId::TLS13, key_bytes)
+            .expect("key size verified");
         Ok(FipsKey { opener, sealer })
     }
 }
