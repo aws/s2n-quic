@@ -1093,11 +1093,7 @@ impl DcSupportedVersions {
         let mut versions = [0; DC_SUPPORTED_VERSIONS_MAX_LEN as usize];
         let mut len = 0;
 
-        for (index, version) in supported_versions
-            .into_iter()
-            .filter(|&version| version > 0)
-            .enumerate()
-        {
+        for (index, version) in supported_versions.into_iter().enumerate() {
             versions[index] = version;
             len += 1;
 
@@ -1157,7 +1153,6 @@ impl TransportParameter for DcSupportedVersions {
 impl EncoderValue for DcSupportedVersions {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         for &version in self.versions.iter().take(self.len as usize) {
-            debug_assert!(version > 0);
             VarInt::from_u32(version).encode(buffer);
         }
     }

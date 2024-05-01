@@ -241,10 +241,10 @@ fn dc_supported_versions() {
     for len in 0..=DC_SUPPORTED_VERSIONS_MAX_LEN {
         let mut versions = Vec::new();
         for i in 0..len {
-            versions.push((i + 1) as u32);
+            versions.push(i as u32);
         }
 
-        let dc_supported_versions = DcSupportedVersions::for_client(versions);
+        let dc_supported_versions = DcSupportedVersions::for_client(versions.clone());
         let encoded = dc_supported_versions.encode_to_vec();
 
         let decoder = DecoderBuffer::new(encoded.as_slice());
@@ -254,7 +254,16 @@ fn dc_supported_versions() {
         assert_eq!(len, dc_supported_versions.len);
         assert!(remaining.is_empty());
         for i in 0..len {
-            assert_eq!(i as u32 + 1, dc_supported_versions.versions[i as usize]);
+            assert_eq!(i as u32, dc_supported_versions.versions[i as usize]);
+        }
+
+        match len {
+            0 => assert!(dc_supported_versions.selected_version().unwrap().is_none()),
+            1 => assert_eq!(
+                Some(versions[0]),
+                dc_supported_versions.selected_version().unwrap()
+            ),
+            _ => assert!(dc_supported_versions.selected_version().is_err()),
         }
     }
 }
@@ -305,26 +314,6 @@ fn dc_selected_versions_for_client_too_big() {
     }
 
     DcSupportedVersions::for_client(versions);
-}
-
-#[test]
-fn dc_selected_versions_for_client_zero_versions() {
-    let versions = [1, 0, 2, 0, 3];
-
-    let supported_versions = DcSupportedVersions::for_client(versions);
-    assert_eq!(3, supported_versions.len);
-
-    let encoded = supported_versions.encode_to_vec();
-
-    let decoder = DecoderBuffer::new(encoded.as_slice());
-    let (supported_versions, remaining) =
-        DcSupportedVersions::decode(decoder).expect("Decoding succeeds");
-
-    assert_eq!(3, supported_versions.len);
-    assert_eq!(1, supported_versions.versions[0]);
-    assert_eq!(2, supported_versions.versions[1]);
-    assert_eq!(3, supported_versions.versions[2]);
-    assert!(remaining.is_empty());
 }
 
 #[test]
