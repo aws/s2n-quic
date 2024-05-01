@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(all(feature = "fips", target_os = "windows"))]
+std::compile_error!("feature `fips` is not supported on windows");
+
 #[macro_use]
 mod negotiated;
 #[macro_use]

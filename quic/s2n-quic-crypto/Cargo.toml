@@ -13,6 +13,7 @@ exclude = ["corpus.tar.gz"]
 [features]
 default = []
 aws-lc-bindgen = ["aws-lc-rs/bindgen"]
+fips = ["aws-lc-rs/fips"]
 testing = []
 
 [dependencies]

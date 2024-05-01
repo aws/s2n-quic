@@ -16,7 +16,7 @@ pub trait Key: Send {
 
     /// Encrypt a payload
     fn encrypt(
-        &self,
+        &mut self,
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
@@ -88,7 +88,7 @@ pub mod testing {
 
         /// Encrypt a payload
         fn encrypt(
-            &self,
+            &mut self,
             _packet_number: u64,
             _header: &[u8],
             payload: &mut scatter::Buffer,

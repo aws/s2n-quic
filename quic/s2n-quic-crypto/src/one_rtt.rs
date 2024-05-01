@@ -95,7 +95,7 @@ mod tests {
         ];
 
         for (secret, ku_secret, should_match) in tests {
-            let (next_cipher, expected_next_cipher) = generate_ciphers(secret, ku_secret);
+            let (mut next_cipher, mut expected_next_cipher) = generate_ciphers(secret, ku_secret);
 
             // Encrypt two empty blocks to verify the ciphers are the same
             let mut next_cipher_output = [0; 32];

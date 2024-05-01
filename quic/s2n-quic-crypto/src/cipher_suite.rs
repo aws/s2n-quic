@@ -150,7 +150,7 @@ macro_rules! impl_cipher_suite {
 
                 #[inline]
                 fn encrypt(
-                    &self,
+                    &mut self,
                     packet_number: u64,
                     header: &[u8],
                     payload: &mut scatter::Buffer,

@@ -63,7 +63,7 @@ impl Key for KeyPair {
 
     #[inline]
     fn encrypt(
-        &self,
+        &mut self,
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
@@ -150,7 +150,7 @@ macro_rules! negotiated_crypto {
 
             #[inline]
             fn encrypt(
-                &self,
+                &mut self,
                 packet_number: u64,
                 header: &[u8],
                 payload: &mut s2n_quic_core::crypto::scatter::Buffer,

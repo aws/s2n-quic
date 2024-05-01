@@ -50,6 +50,34 @@
 //!
 //! **NOTE**: this will override the platform detection and always use [`s2n-tls`][s2n-tls] by default.
 //!
+//! ### `provider-tls-fips`
+//!
+//! FIPS mode is currently only supported with the [`s2n-tls`][s2n-tls] TLS provider.
+//! Applications wanting to use FIPS-approved cryptography with s2n-quic should:
+//!
+//! 1. Use enable the following features:
+//!
+//!```ignore
+//! s2n-quic = { version = "1", features = ["provider-tls-fips", "provider-tls-s2n"] }
+//!```
+//!
+//! 2. Build a custom s2n-tls TLS provider configured with a FIPS approved
+//! [security policy](https://aws.github.io/s2n-tls/usage-guide/ch06-security-policies.html):
+//!
+//!```rust,no_run
+//! use s2n_quic::provider::tls::s2n_tls;
+//! use s2n_quic::provider::tls::s2n_tls::security::Policy;
+//!
+//! let mut tls = s2n_tls::Server::builder();
+//! let policy = Policy::from_version("select_a_fips_security_policy").unwrap();
+//! tls.config_mut().set_security_policy(&policy).unwrap();
+//! let tls = tls.build().unwrap();
+//!
+//! let mut server = s2n_quic::Server::builder()
+//!     .with_tls(tls).unwrap()
+//!     .start().unwrap();
+//!```
+//!
 //! [s2n-tls]: https://github.com/aws/s2n-tls
 //! [rustls]: https://github.com/rustls/rustls
 

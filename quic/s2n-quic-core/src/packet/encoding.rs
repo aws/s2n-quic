@@ -114,7 +114,7 @@ pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncode
     // Encodes, encrypts, and header-protects a packet into a buffer
     fn encode_packet<'a>(
         mut self,
-        key: &K,
+        key: &mut K,
         header_key: &H,
         largest_acknowledged_packet_number: PacketNumber,
         min_packet_len: Option<usize>,
