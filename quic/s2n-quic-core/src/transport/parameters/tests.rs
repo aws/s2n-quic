@@ -80,6 +80,10 @@ fn server_transport_parameters() -> ServerTransportParameters {
         }),
         initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         retry_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
+        dc_supported_versions: DcSupportedVersions {
+            len: 1,
+            versions: [3, 0, 0, 0],
+        },
     }
 }
 
@@ -117,6 +121,10 @@ fn client_transport_parameters() -> ClientTransportParameters {
         preferred_address: Default::default(),
         initial_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         retry_source_connection_id: Default::default(),
+        dc_supported_versions: DcSupportedVersions {
+            len: 4,
+            versions: [1, 2, 3, 4],
+        },
     }
 }
 
@@ -198,4 +206,131 @@ fn compute_data_window_test() {
         *compute_data_window(1500, Duration::from_millis(100), 2),
         37_500_000
     );
+}
+
+#[test]
+fn append_to_buffer() {
+    let mut value = client_transport_parameters();
+
+    // Clear the `dc_supported_versions`
+    value.dc_supported_versions = DcSupportedVersions::default();
+
+    let versions = [1, 2, 3, 4];
+
+    let mut buffer = value.encode_to_vec();
+
+    // Append `DcSupportedVersions`
+    DcSupportedVersions::for_client(versions).append_to_buffer(&mut buffer);
+
+    let decoder = DecoderBuffer::new(&buffer);
+    let (mut decoded_params, remaining) =
+        ClientTransportParameters::decode(decoder).expect("Decoding succeeds");
+    assert_eq!(4, decoded_params.dc_supported_versions.into_iter().len());
+    for (index, &version) in decoded_params.dc_supported_versions.into_iter().enumerate() {
+        assert_eq!(versions[index], version);
+    }
+
+    // Clear the `dc_supported_versions` to check the rest of the params
+    decoded_params.dc_supported_versions = DcSupportedVersions::default();
+    assert_eq!(value, decoded_params);
+    assert_eq!(0, remaining.len());
+}
+
+#[test]
+fn dc_supported_versions() {
+    for len in 0..=DC_SUPPORTED_VERSIONS_MAX_LEN {
+        let mut versions = Vec::new();
+        for i in 0..len {
+            versions.push(i as u32);
+        }
+
+        let dc_supported_versions = DcSupportedVersions::for_client(versions.clone());
+        assert_eq!(len as usize, dc_supported_versions.into_iter().len());
+
+        let encoded = dc_supported_versions.encode_to_vec();
+
+        let decoder = DecoderBuffer::new(encoded.as_slice());
+        let (dc_supported_versions, remaining) =
+            DcSupportedVersions::decode(decoder).expect("Decoding succeeds");
+
+        assert_eq!(len, dc_supported_versions.len);
+        assert!(remaining.is_empty());
+        for i in 0..len {
+            assert_eq!(i as u32, dc_supported_versions.versions[i as usize]);
+        }
+
+        match len {
+            0 => assert!(dc_supported_versions.selected_version().unwrap().is_none()),
+            1 => assert_eq!(
+                Some(versions[0]),
+                dc_supported_versions.selected_version().unwrap()
+            ),
+            _ => assert!(dc_supported_versions.selected_version().is_err()),
+        }
+    }
+}
+
+#[test]
+fn future_larger_supported_versions() {
+    use s2n_codec::EncoderBuffer;
+
+    let mut value = client_transport_parameters();
+
+    // Clear the `dc_supported_versions`
+    value.dc_supported_versions = DcSupportedVersions::default();
+
+    let mut buffer = vec![0; 32 * 1024];
+    let mut encoder = EncoderBuffer::new(&mut buffer);
+
+    encoder.encode(&value);
+
+    encoder.encode(&DcSupportedVersions::ID);
+    encoder.encode(&VarInt::from_u8(
+        (7 * VarInt::from_u8(1).encoding_size()) as u8,
+    ));
+    encoder.encode(&VarInt::from_u8(1));
+    encoder.encode(&VarInt::from_u8(2));
+    encoder.encode(&VarInt::from_u8(3));
+    encoder.encode(&VarInt::from_u8(4));
+    encoder.encode(&VarInt::from_u8(5));
+    encoder.encode(&VarInt::from_u8(6));
+    encoder.encode(&VarInt::from_u8(7));
+
+    let (encoded, _) = encoder.split_off();
+    let decoder = DecoderBuffer::new(encoded);
+    let (decoded_params, remaining) =
+        ClientTransportParameters::decode(decoder).expect("Decoding succeeds");
+    assert_eq!(1, decoded_params.dc_supported_versions.versions[0]);
+    assert_eq!(2, decoded_params.dc_supported_versions.versions[1]);
+    assert_eq!(3, decoded_params.dc_supported_versions.versions[2]);
+    assert_eq!(4, decoded_params.dc_supported_versions.versions[3]);
+    assert_eq!(0, remaining.len());
+}
+
+#[test]
+#[should_panic]
+fn dc_selected_versions_for_client_too_big() {
+    let mut versions = Vec::new();
+    for i in 0..DC_SUPPORTED_VERSIONS_MAX_LEN + 1 {
+        versions.push((i + 1) as u32);
+    }
+
+    DcSupportedVersions::for_client(versions);
+}
+
+#[test]
+fn dc_selected_version() {
+    assert_eq!(
+        Some(1),
+        DcSupportedVersions::for_server(1)
+            .selected_version()
+            .unwrap()
+    );
+    assert_eq!(
+        None,
+        DcSupportedVersions::default().selected_version().unwrap()
+    );
+    assert!(DcSupportedVersions::for_client([1, 2])
+        .selected_version()
+        .is_err());
 }

@@ -29,6 +29,7 @@ pub struct Callback<'a, T, C> {
     pub send_buffer: &'a mut BytesMut,
     pub emitted_server_name: &'a mut bool,
     pub server_name: &'a Option<ServerName>,
+    pub server_params: &'a mut Vec<u8>,
 }
 
 impl<'a, T, C> Callback<'a, T, C>
@@ -218,6 +219,36 @@ where
                     HandshakePhase::Initial => {
                         let (key, header_key) = HandshakeKey::new(self.endpoint, aead_algo, pair)
                             .expect("invalid cipher");
+
+                        if !self.server_params.is_empty() {
+                            debug_assert!(self.endpoint.is_server());
+
+                            // Since the client transport parameters are sent in the Initial packet space
+                            // we can access them early on in the handshake, allowing the server transport
+                            // parameters to be configured based on the client's parameters.
+                            unsafe {
+                                // Safety: conn needs to outlive params
+                                let client_params = get_application_params(conn)?;
+
+                                // Allow for additional server params to be appended that depend
+                                // on the given client params
+                                self.context.on_client_application_params(
+                                    client_params,
+                                    self.server_params,
+                                )?;
+
+                                // Now set the server transport parameters on the connection for
+                                // transmission to the client
+                                s2n_connection_set_quic_transport_parameters(
+                                    conn,
+                                    self.server_params.as_ptr(),
+                                    self.server_params.len() as _,
+                                );
+                            }
+                            // We've given the transport parameters to s2n-tls, so clear
+                            // `server_params` to ensure they are not set again.
+                            self.server_params.clear();
+                        }
 
                         self.context.on_handshake_keys(key, header_key)?;
                         self.state.tx_phase.transition();

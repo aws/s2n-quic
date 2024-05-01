@@ -28,6 +28,7 @@ pub struct Session {
     // This is only set for the client to avoid an extra allocation
     server_name: Option<ServerName>,
     received_ticket: bool,
+    server_params: Vec<u8>,
 }
 
 impl Session {
@@ -44,7 +45,18 @@ impl Session {
 
         connection.set_config(config)?;
         connection.enable_quic()?;
-        connection.set_quic_transport_parameters(params)?;
+
+        let server_params = {
+            if endpoint.is_client() {
+                connection.set_quic_transport_parameters(params)?;
+                Vec::new()
+            } else {
+                // Save the server's transport parameters for later, in case
+                // additional values need to be appended
+                params.to_vec()
+            }
+        };
+
         // QUIC handles sending alerts, so no need to apply TLS blinding
         connection.set_blinding(Blinding::SelfService)?;
 
@@ -63,6 +75,7 @@ impl Session {
             emitted_server_name: false,
             server_name,
             received_ticket: false,
+            server_params,
         })
     }
 }
@@ -110,6 +123,7 @@ impl tls::Session for Session {
             send_buffer: &mut self.send_buffer,
             emitted_server_name: &mut self.emitted_server_name,
             server_name: &self.server_name,
+            server_params: &mut self.server_params,
         };
 
         unsafe {
@@ -155,6 +169,7 @@ impl tls::Session for Session {
             send_buffer: &mut self.send_buffer,
             emitted_server_name: &mut self.emitted_server_name,
             server_name: &self.server_name,
+            server_params: &mut self.server_params,
         };
 
         unsafe {

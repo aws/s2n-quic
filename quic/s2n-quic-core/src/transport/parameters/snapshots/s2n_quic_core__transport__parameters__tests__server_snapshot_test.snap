@@ -126,4 +126,10 @@ expression: encoded_output
     2,
     3,
     4,
+    128,
+    220,
+    0,
+    0,
+    1,
+    3,
 ]

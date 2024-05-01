@@ -7,7 +7,9 @@ use crate::{
     application::ServerName,
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
-        scatter, tls, CryptoSuite, HeaderKey, Key,
+        scatter, tls,
+        tls::ApplicationParameters,
+        CryptoSuite, HeaderKey, Key,
     },
     endpoint, transport,
     transport::parameters::{ClientTransportParameters, ServerTransportParameters},
@@ -639,6 +641,15 @@ impl<C: CryptoSuite, State: Debug, Params> tls::Context<C> for Context<C, State,
 where
     for<'a> Params: DecoderValue<'a>,
 {
+    fn on_client_application_params(
+        &mut self,
+        _client_params: ApplicationParameters,
+        _server_params: &mut Vec<u8>,
+    ) -> Result<(), transport::Error> {
+        self.log("client application params");
+        Ok(())
+    }
+
     fn on_handshake_keys(
         &mut self,
         key: C::HandshakeKey,
