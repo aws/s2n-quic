@@ -12,7 +12,8 @@ use crate::{
 use core::{mem::size_of, time::Duration};
 use s2n_codec::{
     decoder_invariant, decoder_value, DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult,
-    DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderValue,
+    DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderBuffer,
+    EncoderValue,
 };
 
 #[cfg(test)]
@@ -44,7 +45,12 @@ pub trait TransportParameter: Sized {
     /// already encoded TransportParameters
     #[cfg(feature = "alloc")]
     fn append_to_buffer(&self, buffer: &mut alloc::vec::Vec<u8>) {
-        buffer.extend(TransportParameterCodec(self).encode_to_vec());
+        let original_size = buffer.len();
+        let new_parameter_size = TransportParameterCodec(self).encoding_size();
+        buffer.resize(original_size + new_parameter_size, 0);
+        let mut buffer = EncoderBuffer::new(buffer);
+        buffer.set_position(original_size);
+        buffer.encode(&TransportParameterCodec(self));
     }
 }
 
