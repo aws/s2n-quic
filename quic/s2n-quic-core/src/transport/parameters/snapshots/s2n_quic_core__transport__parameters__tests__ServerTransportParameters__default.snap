@@ -70,18 +70,10 @@ TransportParameters {
     dc_supported_versions: DcSupportedVersions {
         len: 0,
         versions: [
-            VarInt(
-                0,
-            ),
-            VarInt(
-                0,
-            ),
-            VarInt(
-                0,
-            ),
-            VarInt(
-                0,
-            ),
+            0,
+            0,
+            0,
+            0,
         ],
     },
 }

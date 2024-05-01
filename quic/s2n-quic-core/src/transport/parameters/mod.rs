@@ -1075,7 +1075,7 @@ optional_transport_parameter!(RetrySourceConnectionId);
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, Eq, Ord)]
 pub struct DcSupportedVersions {
     len: u8,
-    versions: [VarInt; DC_SUPPORTED_VERSIONS_MAX_LEN as usize],
+    versions: [u32; DC_SUPPORTED_VERSIONS_MAX_LEN as usize],
 }
 // The maximum number of supported versions that may be transmitted using
 // the `DcSupportedVersions` transport parameter
@@ -1084,7 +1084,7 @@ const DC_SUPPORTED_VERSIONS_MAX_LEN: u8 = 4;
 impl DcSupportedVersions {
     /// Create a `DcSupportedVersions` for the given `supported_versions` the client supports
     pub fn for_client<I: IntoIterator<Item = u32>>(supported_versions: I) -> Self {
-        let mut versions = [VarInt::default(); DC_SUPPORTED_VERSIONS_MAX_LEN as usize];
+        let mut versions = [0; DC_SUPPORTED_VERSIONS_MAX_LEN as usize];
         let mut len = 0;
 
         for (index, version) in supported_versions
@@ -1092,7 +1092,7 @@ impl DcSupportedVersions {
             .filter(|&version| version > 0)
             .enumerate()
         {
-            versions[index] = VarInt::from_u32(version);
+            versions[index] = version;
             len += 1;
 
             debug_assert!(
@@ -1109,12 +1109,7 @@ impl DcSupportedVersions {
     pub fn for_server(supported_version: u32) -> Self {
         DcSupportedVersions {
             len: 1,
-            versions: [
-                VarInt::from_u32(supported_version),
-                VarInt::default(),
-                VarInt::default(),
-                VarInt::default(),
-            ],
+            versions: [supported_version, 0, 0, 0],
         }
     }
 
@@ -1124,7 +1119,7 @@ impl DcSupportedVersions {
     pub fn selected_version(&self) -> Result<Option<u32>, DecoderError> {
         match self.len {
             0 => Ok(None),
-            1 => Ok(Some(self.versions[0].as_u64() as u32)),
+            1 => Ok(Some(self.versions[0])),
             _ => Err(DecoderError::InvariantViolation(
                 "multiple versions selected by the server",
             )),
@@ -1155,9 +1150,9 @@ impl TransportParameter for DcSupportedVersions {
 
 impl EncoderValue for DcSupportedVersions {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
-        for version in self.versions.iter().take(self.len as usize) {
-            debug_assert!(*version != VarInt::default());
-            version.encode(buffer);
+        for &version in self.versions.iter().take(self.len as usize) {
+            debug_assert!(version > 0);
+            VarInt::from_u32(version).encode(buffer);
         }
     }
 }
@@ -1165,13 +1160,18 @@ impl EncoderValue for DcSupportedVersions {
 decoder_value!(
     impl<'a> DcSupportedVersions {
         fn decode(buffer: Buffer) -> Result<Self> {
-            let mut versions = [VarInt::default(); DC_SUPPORTED_VERSIONS_MAX_LEN as usize];
+            let mut versions = [0; DC_SUPPORTED_VERSIONS_MAX_LEN as usize];
             let mut len = 0;
             let mut buffer = buffer;
             while !buffer.is_empty() {
-                let (version, remaining) = buffer.decode()?;
+                let (version, remaining) = buffer.decode::<VarInt>()?;
                 buffer = remaining;
-                versions[len] = version;
+
+                decoder_invariant!(
+                    version.as_u64() <= u32::MAX as u64,
+                    "the largest supported version is u32::MAX"
+                );
+                versions[len] = version.as_u64() as u32;
                 len += 1;
                 ensure!(len < DC_SUPPORTED_VERSIONS_MAX_LEN as usize, break);
             }
@@ -1198,7 +1198,13 @@ impl IntoIterator for DcSupportedVersions {
     type IntoIter = core::array::IntoIter<u32, 4>;
 
     fn into_iter(self) -> Self::IntoIter {
-        IntoIterator::into_iter(self.versions.map(|v| v.as_u64() as u32))
+        self.versions.into_iter()
+    }
+}
+
+impl<'a> IntoEvent<&'a [u32]> for &'a DcSupportedVersions {
+    fn into_event(self) -> &'a [u32] {
+        self.versions.as_slice()
     }
 }
 
@@ -1383,11 +1389,7 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ServerTransp
             initial_max_streams_bidi: self.initial_max_streams_bidi.into_event(),
             initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
             max_datagram_frame_size: self.max_datagram_frame_size.into_event(),
-            dc_supported_versions: self
-                .dc_supported_versions
-                .versions
-                .map(|v| v.as_u64() as u32)
-                .into_event(),
+            dc_supported_versions: self.dc_supported_versions.into_event(),
         }
     }
 }
@@ -1419,11 +1421,7 @@ impl<'a> IntoEvent<event::builder::TransportParameters<'a>> for &'a ClientTransp
             initial_max_streams_bidi: self.initial_max_streams_bidi.into_event(),
             initial_max_streams_uni: self.initial_max_streams_uni.into_event(),
             max_datagram_frame_size: self.max_datagram_frame_size.into_event(),
-            dc_supported_versions: self
-                .dc_supported_versions
-                .versions
-                .map(|v| v.as_u64() as u32)
-                .into_event(),
+            dc_supported_versions: self.dc_supported_versions.into_event(),
         }
     }
 }

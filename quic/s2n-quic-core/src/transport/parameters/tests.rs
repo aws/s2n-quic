@@ -82,12 +82,7 @@ fn server_transport_parameters() -> ServerTransportParameters {
         retry_source_connection_id: Some([1, 2, 3, 4][..].try_into().unwrap()),
         dc_supported_versions: DcSupportedVersions {
             len: 1,
-            versions: [
-                VarInt::from_u8(3),
-                VarInt::default(),
-                VarInt::default(),
-                VarInt::default(),
-            ],
+            versions: [3, 0, 0, 0],
         },
     }
 }
@@ -128,12 +123,7 @@ fn client_transport_parameters() -> ClientTransportParameters {
         retry_source_connection_id: Default::default(),
         dc_supported_versions: DcSupportedVersions {
             len: 4,
-            versions: [
-                VarInt::from_u8(1),
-                VarInt::from_u8(2),
-                VarInt::from_u8(3),
-                VarInt::from_u8(4),
-            ],
+            versions: [1, 2, 3, 4],
         },
     }
 }
@@ -264,10 +254,7 @@ fn dc_supported_versions() {
         assert_eq!(len, dc_supported_versions.len);
         assert!(remaining.is_empty());
         for i in 0..len {
-            assert_eq!(
-                VarInt::from_u8(i + 1),
-                dc_supported_versions.versions[i as usize]
-            );
+            assert_eq!(i as u32 + 1, dc_supported_versions.versions[i as usize]);
         }
     }
 }
@@ -302,22 +289,10 @@ fn future_larger_supported_versions() {
     let decoder = DecoderBuffer::new(encoded);
     let (decoded_params, remaining) =
         ClientTransportParameters::decode(decoder).expect("Decoding succeeds");
-    assert_eq!(
-        VarInt::from_u8(1),
-        decoded_params.dc_supported_versions.versions[0]
-    );
-    assert_eq!(
-        VarInt::from_u8(2),
-        decoded_params.dc_supported_versions.versions[1]
-    );
-    assert_eq!(
-        VarInt::from_u8(3),
-        decoded_params.dc_supported_versions.versions[2]
-    );
-    assert_eq!(
-        VarInt::from_u8(4),
-        decoded_params.dc_supported_versions.versions[3]
-    );
+    assert_eq!(1, decoded_params.dc_supported_versions.versions[0]);
+    assert_eq!(2, decoded_params.dc_supported_versions.versions[1]);
+    assert_eq!(3, decoded_params.dc_supported_versions.versions[2]);
+    assert_eq!(4, decoded_params.dc_supported_versions.versions[3]);
     assert_eq!(0, remaining.len());
 }
 
@@ -346,9 +321,9 @@ fn dc_selected_versions_for_client_zero_versions() {
         DcSupportedVersions::decode(decoder).expect("Decoding succeeds");
 
     assert_eq!(3, supported_versions.len);
-    assert_eq!(1, supported_versions.versions[0].as_u64());
-    assert_eq!(2, supported_versions.versions[1].as_u64());
-    assert_eq!(3, supported_versions.versions[2].as_u64());
+    assert_eq!(1, supported_versions.versions[0]);
+    assert_eq!(2, supported_versions.versions[1]);
+    assert_eq!(3, supported_versions.versions[2]);
     assert!(remaining.is_empty());
 }
 
