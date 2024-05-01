@@ -10,12 +10,7 @@ use s2n_quic_core::{
 use zeroize::{Zeroize, Zeroizing};
 
 mod negotiated;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[path = "cipher_suite/x86.rs"]
-mod platform;
 mod ring;
-
-#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 use self::ring as platform;
 
 pub use negotiated::NegotiatedCipherSuite;
@@ -41,7 +36,7 @@ macro_rules! impl_cipher_suite {
 
             pub const KEY_LEN: usize = $cipher_key_len;
             pub const TAG_LEN: usize = 16;
-            pub const NONCE_LEN: usize = crate::aesgcm::NONCE_LEN;
+            pub const NONCE_LEN: usize = crate::ring_aead::NONCE_LEN;
 
             type Key = platform::$lower::Key;
 
