@@ -1194,18 +1194,18 @@ decoder_value!(
 
 impl TransportParameterValidator for DcSupportedVersions {}
 
-impl IntoIterator for DcSupportedVersions {
-    type Item = u32;
-    type IntoIter = core::array::IntoIter<u32, 4>;
+impl<'a> IntoIterator for &'a DcSupportedVersions {
+    type Item = &'a u32;
+    type IntoIter = core::slice::Iter<'a, u32>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.versions.into_iter()
+        self.versions[..self.len as usize].iter()
     }
 }
 
 impl<'a> IntoEvent<&'a [u32]> for &'a DcSupportedVersions {
     fn into_event(self) -> &'a [u32] {
-        self.versions.as_slice()
+        &self.versions[..self.len as usize]
     }
 }
 

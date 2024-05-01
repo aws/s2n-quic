@@ -226,7 +226,7 @@ fn append_to_buffer() {
     let (mut decoded_params, remaining) =
         ClientTransportParameters::decode(decoder).expect("Decoding succeeds");
     assert_eq!(4, decoded_params.dc_supported_versions.into_iter().len());
-    for (index, version) in decoded_params.dc_supported_versions.into_iter().enumerate() {
+    for (index, &version) in decoded_params.dc_supported_versions.into_iter().enumerate() {
         assert_eq!(versions[index], version);
     }
 
@@ -245,6 +245,8 @@ fn dc_supported_versions() {
         }
 
         let dc_supported_versions = DcSupportedVersions::for_client(versions.clone());
+        assert_eq!(len as usize, dc_supported_versions.into_iter().len());
+
         let encoded = dc_supported_versions.encode_to_vec();
 
         let decoder = DecoderBuffer::new(encoded.as_slice());
