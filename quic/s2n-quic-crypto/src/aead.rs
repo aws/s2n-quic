@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::ring_aead::{Aad, LessSafeKey, Nonce, MAX_TAG_LEN, NONCE_LEN};
-pub use s2n_quic_core::crypto::{packet_protection::Error, scatter};
+use s2n_quic_core::crypto::{packet_protection::Error, scatter};
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
 pub trait Aead {

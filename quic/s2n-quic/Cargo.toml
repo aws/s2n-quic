@@ -15,7 +15,7 @@ default = [
     "provider-address-token-default",
     "provider-tls-default",
 ]
-
+provider-fips-crypto = ["s2n-quic-crypto/fips"]
 provider-address-token-default = [
     "cuckoofilter",
     "hash_hasher",
