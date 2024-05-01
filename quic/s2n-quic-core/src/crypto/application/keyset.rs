@@ -142,7 +142,7 @@ impl<K: OneRttKey> KeySet<K> {
 
         let key = &mut self.crypto[phase_to_use.into()];
 
-        let result = packet.decrypt(key.key());
+        let result = packet.decrypt(key.key_mut());
 
         key.on_packet_decryption(&self.limits);
 
@@ -229,7 +229,7 @@ impl<K: OneRttKey> KeySet<K> {
     where
         F: FnOnce(
             EncoderBuffer<'a>,
-            &K,
+            &mut K,
             KeyPhase,
         )
             -> Result<(ProtectedPayload<'a>, EncoderBuffer<'a>), PacketEncodingError<'a>>,
@@ -249,7 +249,7 @@ impl<K: OneRttKey> KeySet<K> {
             return Err(PacketEncodingError::AeadLimitReached(buffer));
         }
 
-        let r = f(buffer, self.crypto[phase].key(), phase)?;
+        let r = f(buffer, self.crypto[phase].key_mut(), phase)?;
 
         //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
         //# Endpoints MUST count the number of encrypted packets for each set of
@@ -288,8 +288,8 @@ impl<K: OneRttKey> KeySet<K> {
         self.packet_decryption_failures
     }
 
-    pub fn cipher_suite(&self) -> crate::crypto::tls::CipherSuite {
-        self.crypto.0[0].key().cipher_suite()
+    pub fn cipher_suite(&mut self) -> crate::crypto::tls::CipherSuite {
+        self.crypto.0[0].key_mut().cipher_suite()
     }
 }
 
@@ -355,7 +355,7 @@ mod tests {
         //# An endpoint SHOULD
         //# retain old keys for some time after unprotecting a packet sent using
         //# the new keys.
-        assert_eq!(keyset.crypto[KeyPhase::Zero].key().derivations, 0);
+        assert_eq!(keyset.crypto[KeyPhase::Zero].key_mut().derivations, 0);
 
         clock.inc_by(Duration::from_millis(8));
         keyset.on_timeout(clock.get_time());
@@ -364,7 +364,7 @@ mod tests {
         //= type=test
         //# After this period, old read keys and their corresponding secrets
         //# SHOULD be discarded.
-        assert_eq!(keyset.crypto[KeyPhase::Zero].key().derivations, 2);
+        assert_eq!(keyset.crypto[KeyPhase::Zero].key_mut().derivations, 2);
     }
 
     #[test]
@@ -374,19 +374,19 @@ mod tests {
         //# For this reason, endpoints MUST be able to retain two sets of packet
         //# protection keys for receiving packets: the current and the next.
 
-        let keyset = KeySet::new(TestKey::default(), Default::default());
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
 
-        assert_eq!(keyset.crypto[KeyPhase::Zero].key().derivations, 0);
-        assert_eq!(keyset.crypto[KeyPhase::One].key().derivations, 1);
+        assert_eq!(keyset.crypto[KeyPhase::Zero].key_mut().derivations, 0);
+        assert_eq!(keyset.crypto[KeyPhase::One].key_mut().derivations, 1);
     }
 
     #[test]
     fn test_phase_rotation() {
         let mut keyset = KeySet::new(TestKey::default(), Default::default());
 
-        assert_eq!(keyset.active_key().key().derivations, 0);
+        assert_eq!(keyset.active_key_mut().key_mut().derivations, 0);
         keyset.rotate_phase();
-        assert_eq!(keyset.active_key().key().derivations, 1);
+        assert_eq!(keyset.active_key_mut().key_mut().derivations, 1);
     }
 
     #[test]
@@ -396,7 +396,7 @@ mod tests {
         keyset.rotate_phase();
         keyset.derive_and_store_next_key();
         keyset.rotate_phase();
-        assert_eq!(keyset.active_key().key().derivations, 2);
+        assert_eq!(keyset.active_key_mut().key_mut().derivations, 2);
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6

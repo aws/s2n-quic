@@ -86,7 +86,7 @@ fn fuzz_protect(
     let packet_number_len = truncated_packet_number.len();
 
     let (payload, _remaining) = crate::crypto::encrypt(
-        &FuzzCrypto,
+        &mut FuzzCrypto,
         packet_number,
         packet_number_len,
         header_len,
@@ -117,7 +117,7 @@ impl Key for FuzzCrypto {
     }
 
     fn encrypt<'a>(
-        &self,
+        &mut self,
         packet_number: u64,
         _header: &[u8],
         payload: &mut scatter::Buffer,

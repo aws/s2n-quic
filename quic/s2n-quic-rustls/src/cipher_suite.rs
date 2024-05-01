@@ -41,7 +41,7 @@ impl crypto::Key for PacketKey {
 
     #[inline]
     fn encrypt(
-        &self,
+        &mut self,
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
@@ -128,7 +128,7 @@ impl crypto::Key for PacketKeys {
 
     #[inline]
     fn encrypt(
-        &self,
+        &mut self,
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
@@ -268,7 +268,7 @@ impl crypto::Key for OneRttKey {
 
     #[inline]
     fn encrypt(
-        &self,
+        &mut self,
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,

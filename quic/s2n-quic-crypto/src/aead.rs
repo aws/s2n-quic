@@ -9,7 +9,8 @@ pub trait Aead {
     type Nonce;
     type Tag;
 
-    fn encrypt(&self, nonce: &Self::Nonce, aad: &[u8], payload: &mut scatter::Buffer) -> Result;
+    fn encrypt(&mut self, nonce: &Self::Nonce, aad: &[u8], payload: &mut scatter::Buffer)
+        -> Result;
 
     fn decrypt(
         &self,
@@ -27,7 +28,7 @@ impl Aead for LessSafeKey {
     #[inline]
     #[cfg(target_os = "windows")]
     fn encrypt(
-        &self,
+        &mut self,
         nonce: &[u8; NONCE_LEN],
         aad: &[u8],
         payload: &mut scatter::Buffer,
@@ -55,7 +56,7 @@ impl Aead for LessSafeKey {
     #[inline]
     #[cfg(not(target_os = "windows"))]
     fn encrypt(
-        &self,
+        &mut self,
         nonce: &[u8; NONCE_LEN],
         aad: &[u8],
         payload: &mut scatter::Buffer,
