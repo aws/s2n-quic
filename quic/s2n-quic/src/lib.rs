@@ -50,6 +50,10 @@
 //!
 //! **NOTE**: this will override the platform detection and always use [`s2n-tls`][s2n-tls] by default.
 //!
+//! ### `provider-fips-crypto`
+//!
+//! Enables use of FIPS-approved cryptography with s2n-quic.
+//!
 //! [s2n-tls]: https://github.com/aws/s2n-tls
 //! [rustls]: https://github.com/rustls/rustls
 
