@@ -11,6 +11,7 @@ license = "Apache-2.0"
 exclude = ["corpus.tar.gz"]
 
 [features]
+fips = []
 unstable_client_hello = []
 unstable_private_key = []
 

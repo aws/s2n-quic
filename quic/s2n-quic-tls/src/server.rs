@@ -98,16 +98,15 @@ impl Builder {
         &mut self.config
     }
 
-    pub fn with_security_policy(
-        mut self,
-        security_policy: crate::SecurityPolicy,
-    ) -> Result<Self, Error> {
-        match security_policy {
-            crate::SecurityPolicy::TLS13 => self.config.set_security_policy(crate::DEFAULT_POLICY).unwrap(),
-            crate::SecurityPolicy::FIPS => self.config.set_security_policy(crate::DEFAULT_FIPS_POLICY).unwrap(),
-        };
-
-        Ok(self)
+    /// Use FIPS approved cryptography.
+    ///
+    /// By default s2n-quic negotiates AES-128, AES-256 and ChaCha20-Poly1305 for AEAD
+    /// operations. In order to comply with FIPS, this option configures s2n-quic to not
+    /// negotiate ChaCha20-Poly1305.
+    #[cfg(any(test, feature = "fips"))]
+    pub fn with_fips(mut self) -> Self {
+        self.config.set_security_policy(crate::DEFAULT_FIPS_POLICY).unwrap();
+        self
     }
 
     #[cfg(any(test, feature = "unstable_client_hello"))]

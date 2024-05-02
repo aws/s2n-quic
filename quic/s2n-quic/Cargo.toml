@@ -15,7 +15,6 @@ default = [
     "provider-address-token-default",
     "provider-tls-default",
 ]
-provider-fips-crypto = ["s2n-quic-crypto/fips"]
 provider-address-token-default = [
     "cuckoofilter",
     "hash_hasher",
@@ -30,6 +29,11 @@ provider-event-tracing = ["s2n-quic-core/event-tracing"]
 provider-tls-default = ["s2n-quic-tls-default"]
 provider-tls-rustls = ["s2n-quic-rustls"]
 provider-tls-s2n = ["s2n-quic-tls"]
+provider-fips-crypto = [
+    "s2n-quic-crypto/fips",
+    "s2n-quic-tls?/fips",
+    "s2n-quic-tls-default?/fips"
+]
 
 # List of unstable features. Add new unstable features to the check in s2n-quic/src/lib.rs
 #
