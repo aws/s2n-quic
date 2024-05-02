@@ -12,6 +12,14 @@ static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::TESTING_PQ;
 #[cfg(not(s2n_quic_enable_pq_tls))]
 static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_TLS13;
+// TODO expose a fips policy
+static DEFAULT_FIPS_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_TLS13;
+
+#[non_exhaustive]
+pub enum SecurityPolicy {
+    TLS13,
+    FIPS
+}
 
 #[non_exhaustive]
 pub struct ConnectionContext<'a> {

@@ -98,6 +98,18 @@ impl Builder {
         &mut self.config
     }
 
+    pub fn with_security_policy(
+        mut self,
+        security_policy: crate::SecurityPolicy,
+    ) -> Result<Self, Error> {
+        match security_policy {
+            crate::SecurityPolicy::TLS13 => self.config.set_security_policy(crate::DEFAULT_POLICY).unwrap(),
+            crate::SecurityPolicy::FIPS => self.config.set_security_policy(crate::DEFAULT_FIPS_POLICY).unwrap(),
+        };
+
+        Ok(self)
+    }
+
     #[cfg(any(test, feature = "unstable_client_hello"))]
     pub fn with_client_hello_handler<T: 'static + ClientHelloCallback>(
         mut self,
