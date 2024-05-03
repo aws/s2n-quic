@@ -10,18 +10,6 @@ license = "Apache-2.0"
 # Exclude corpus files when publishing to crates.io
 exclude = ["corpus.tar.gz"]
 
-# FIXME Cargo currently doesn't support platform specific feature flags: https://github.com/rust-lang/cargo/issues/1197
-# So essentially the s2n-quic-tls dependency is always enabled when fips is set. We might also expose a fips
-# flag for rustls in the future.
-#
-# Option 1: is to ask the application to explicitly specify the tls provider (s2n/rustls) when using fips.
-#
-# Option 2: is that we don't gate `with_fips` helper functions on the `fips` feature flag. This should be ok since it
-# only sets the security policy. This is bad because its potentially confusing user experience since fips wont be enabled
-# until the fips feature flag is set.
-[features]
-fips = ["s2n-quic-tls/fips"]
-
 [target.'cfg(unix)'.dependencies]
 s2n-quic-tls = { version = "=0.37.0", path = "../s2n-quic-tls" }
 

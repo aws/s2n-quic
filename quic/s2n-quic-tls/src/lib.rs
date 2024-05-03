@@ -12,7 +12,8 @@ static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::TESTING_PQ;
 #[cfg(not(s2n_quic_enable_pq_tls))]
 static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_TLS13;
-// FIXME expose a fips policy
+// FIXME use fips policy when its available in s2n-tls
+#[cfg(feature = "fips")]
 static DEFAULT_FIPS_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_TLS13;
 
 #[non_exhaustive]

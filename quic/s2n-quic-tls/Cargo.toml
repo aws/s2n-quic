@@ -11,7 +11,9 @@ license = "Apache-2.0"
 exclude = ["corpus.tar.gz"]
 
 [features]
-fips = []
+# FIXME enable fips for s2n-tls once the new crate version is released
+# fips = ["s2n-tls/fips", "s2n-quic-crypto/fips"]
+fips = ["s2n-quic-crypto/fips"]
 unstable_client_hello = []
 unstable_private_key = []
 
