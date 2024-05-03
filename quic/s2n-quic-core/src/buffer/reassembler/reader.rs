@@ -29,11 +29,40 @@ impl Storage for Reassembler {
 
     #[inline]
     fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
-        if let Some(chunk) = self.pop_watermarked(watermark) {
-            return Ok(chunk.into());
+        let Some(slot) = self.slots.front_mut() else {
+            return Ok(BytesMut::new().into());
+        };
+
+        // make sure the slot has some data
+        ensure!(
+            slot.is_occupied(self.cursors.start_offset),
+            Ok(BytesMut::new().into())
+        );
+
+        // if we have a final size and this slot overlaps it then return the entire thing
+        let chunk = if self.cursors.final_size().map_or(false, |final_size| {
+            final_size <= slot.end_allocated() && watermark >= slot.buffered_len()
+        }) {
+            slot.consume()
+        } else {
+            let Chunk::BytesMut(chunk) = slot.read_chunk(watermark)? else {
+                unsafe { assume!(false) }
+            };
+            chunk
+        };
+
+        if slot.should_drop() {
+            // remove empty buffers
+            self.slots.pop_front();
         }
 
-        Ok(Default::default())
+        super::probe::pop(self.cursors.start_offset, chunk.len());
+
+        self.cursors.start_offset += chunk.len() as u64;
+
+        self.invariants();
+
+        Ok(chunk.into())
     }
 
     #[inline]
@@ -55,34 +84,25 @@ impl Storage for Reassembler {
 
             debug_assert!(remaining > 0);
 
-            match self.pop_watermarked(watermark) {
-                Some(chunk) => {
-                    debug_assert!(!chunk.is_empty(), "pop should never return an empty chunk");
-                    debug_assert!(
-                        chunk.len() <= watermark,
-                        "chunk should never exceed watermark"
-                    );
+            let Chunk::BytesMut(chunk) = self.infallible_read_chunk(watermark) else {
+                unsafe { assume!(false) }
+            };
 
-                    // flush the previous chunk if needed
-                    if !prev.is_empty() {
-                        dest.put_bytes_mut(prev);
-                    }
+            // if the chunk is empty then return the previous value
+            ensure!(!chunk.is_empty(), Ok(prev.into()));
 
-                    // if the chunk is exactly the same size as the watermark, then return it
-                    if chunk.len() == watermark {
-                        return Ok(chunk.into());
-                    }
-
-                    // store the chunk for another iteration, in case we can pull more
-                    prev = chunk;
-                }
-                None if prev.is_empty() => {
-                    return Ok(Default::default());
-                }
-                None => {
-                    return Ok(prev.into());
-                }
+            // flush the previous chunk if needed
+            if !prev.is_empty() {
+                dest.put_bytes_mut(prev);
             }
+
+            // if the chunk is exactly the same size as the watermark, then return it
+            if chunk.len() == watermark {
+                return Ok(chunk.into());
+            }
+
+            // store the chunk for another iteration, in case we can pull more
+            prev = chunk;
         }
     }
 
@@ -91,19 +111,38 @@ impl Storage for Reassembler {
     where
         Dest: writer::Storage + ?Sized,
     {
+        // if the destination wants bytes then use the partial copy logic instead
+        if Dest::SPECIALIZES_BYTES || Dest::SPECIALIZES_BYTES_MUT {
+            let mut chunk = self.infallible_partial_copy_into(dest);
+            chunk.infallible_copy_into(dest);
+            return Ok(());
+        }
+
         loop {
             // ensure we have enough capacity in the destination buf
             ensure!(dest.has_remaining_capacity(), Ok(()));
 
-            let transform = |buffer: &mut BytesMut, _is_final_offset| {
-                let mut dest = dest.track_write();
-                buffer.infallible_copy_into(&mut dest);
-                ((), dest.written_len())
+            let Some(slot) = self.slots.front_mut() else {
+                return Ok(());
             };
 
-            if self.pop_transform(transform).is_none() {
-                return Ok(());
+            // make sure the slot has some data
+            ensure!(slot.is_occupied(self.cursors.start_offset), Ok(()));
+
+            // avoid refcounting if the destination wants slices
+            let mut dest = dest.track_write();
+            slot.infallible_copy_into(&mut dest);
+
+            if slot.should_drop() {
+                // remove empty buffers
+                self.slots.pop_front();
             }
+
+            super::probe::pop(self.cursors.start_offset, dest.written_len());
+
+            self.cursors.start_offset += dest.written_len() as u64;
+
+            self.invariants();
         }
     }
 }
