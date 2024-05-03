@@ -219,6 +219,9 @@ impl Builder {
     }
 
     pub fn build(self) -> Result<Server, Error> {
+        #[cfg(feature = "fips")]
+        assert!(s2n_tls::init::fips_mode()?.is_enabled());
+
         Ok(Server {
             loader: self.config.build()?,
             keylog: self.keylog,

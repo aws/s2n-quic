@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use cfg_if::cfg_if;
 use rustls::{
     crypto::{aws_lc_rs, CryptoProvider},
     quic, CipherSuite, SupportedCipherSuite,
@@ -11,9 +12,18 @@ use s2n_quic_core::crypto::{self, packet_protection, scatter, tls, HeaderProtect
 /// `aws_lc_rs` is the default crypto provider since that is also the
 /// default used by rustls.
 pub(crate) fn default_crypto_provider() -> Result<CryptoProvider, rustls::Error> {
+    cfg_if!(
+        if #[cfg(feature = "fips")] {
+            let crypto = rustls::crypto::default_fips_provider();
+            assert!(crypto.fips());
+        } else {
+            let crypto = aws_lc_rs::default_provider();
+        }
+    );
+
     Ok(CryptoProvider {
         cipher_suites: DEFAULT_CIPHERSUITES.to_vec(),
-        ..aws_lc_rs::default_provider()
+        ..crypto
     })
 }
 
