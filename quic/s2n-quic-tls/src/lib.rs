@@ -12,9 +12,11 @@ static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::TESTING_PQ;
 #[cfg(not(s2n_quic_enable_pq_tls))]
 static DEFAULT_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_TLS13;
-// FIXME use fips policy when its available in s2n-tls
+
+// https://aws.github.io/s2n-tls/usage-guide/ch06-security-policies.html
+// "20230317" is the recommended FIPS compliant security policy that supports TLS1.3
 #[cfg(feature = "fips")]
-static DEFAULT_FIPS_POLICY: &s2n_tls::security::Policy = &s2n_tls::security::DEFAULT_TLS13;
+static DEFAULT_FIPS_POLICY: &s2n_tls::security::Policy = &Policy::from_version("20230317");
 
 #[non_exhaustive]
 pub struct ConnectionContext<'a> {

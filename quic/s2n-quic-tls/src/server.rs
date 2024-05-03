@@ -105,7 +105,9 @@ impl Builder {
     /// negotiate ChaCha20-Poly1305.
     #[cfg(any(test, feature = "fips"))]
     pub fn with_fips(mut self) -> Self {
-        self.config.set_security_policy(crate::DEFAULT_FIPS_POLICY).unwrap();
+        self.config
+            .set_security_policy(crate::DEFAULT_FIPS_POLICY)
+            .unwrap();
         self
     }
 
