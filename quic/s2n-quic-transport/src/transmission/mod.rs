@@ -23,18 +23,13 @@ use s2n_codec::{encoder::scatter, Encoder};
 use s2n_quic_core::{
     event,
     frame::Padding,
-    packet::{
-        encoding::PacketPayloadEncoder,
-        number::{PacketNumber, PacketNumberSpace},
-        stateless_reset,
-    },
+    packet::{encoding::PacketPayloadEncoder, number::PacketNumber, stateless_reset},
     time::Timestamp,
 };
 
 pub trait Payload: interest::Provider {
     fn size_hint(&self, payload_range: RangeInclusive<usize>) -> usize;
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W);
-    fn packet_number_space(&self) -> PacketNumberSpace;
 }
 
 pub struct Transmission<'a, 'sub, Config: endpoint::Config, P: Payload> {

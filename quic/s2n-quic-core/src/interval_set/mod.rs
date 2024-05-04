@@ -375,7 +375,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     #[inline]
     pub fn union(&mut self, other: &Self) -> Result<(), IntervalSetError> {
         if self.intervals.is_empty() {
-            self.intervals = other.intervals.clone();
+            self.intervals.clone_from(&other.intervals);
             return Ok(());
         }
 

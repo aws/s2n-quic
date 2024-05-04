@@ -48,10 +48,6 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
             self.ack_manager.on_transmit_complete(context);
         }
     }
-
-    fn packet_number_space(&self) -> PacketNumberSpace {
-        self.packet_number_space
-    }
 }
 
 impl<'a, Config: endpoint::Config> transmission::interest::Provider for Payload<'a, Config> {

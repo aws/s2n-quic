@@ -17,6 +17,16 @@ extern crate alloc;
 /// may optimize based on false assumptions and behave incorrectly.
 #[macro_export]
 macro_rules! assume {
+    (false) => {
+        assume!(false, "assumption failed")
+    };
+    (false $(, $fmtarg:expr)* $(,)?) => {{
+        if cfg!(not(debug_assertions)) {
+            core::hint::unreachable_unchecked();
+        }
+
+        panic!($($fmtarg),*)
+    }};
     ($cond:expr) => {
         $crate::assume!($cond, "assumption failed: {}", stringify!($cond));
     };

@@ -164,14 +164,15 @@ impl Default for TlsProviders {
     }
 }
 
-impl ToString for TlsProviders {
-    fn to_string(&self) -> String {
-        match self {
+impl core::fmt::Display for TlsProviders {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
             #[cfg(unix)]
             TlsProviders::S2N => String::from("s2n-tls"),
             TlsProviders::Rustls => String::from("rustls"),
             TlsProviders::Null => String::from("null"),
-        }
+        };
+        write!(f, "{}", str)
     }
 }
 
