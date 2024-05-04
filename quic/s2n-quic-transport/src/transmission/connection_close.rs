@@ -19,10 +19,6 @@ impl<'a> super::Payload for Payload<'a> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         context.write_frame(self.connection_close);
     }
-
-    fn packet_number_space(&self) -> PacketNumberSpace {
-        self.packet_number_space
-    }
 }
 
 impl<'a> transmission::interest::Provider for Payload<'a> {
