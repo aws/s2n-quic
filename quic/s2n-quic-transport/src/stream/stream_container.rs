@@ -227,7 +227,7 @@ impl<S: StreamTrait> InterestLists<S> {
             waiting_for_stream_flow_control_credits
         );
 
-        if !interests.retained != node.done_streams_link.is_linked() {
+        if interests.retained == node.done_streams_link.is_linked() {
             if !interests.retained {
                 self.done_streams.push_back(node.clone());
             } else {

@@ -38,7 +38,7 @@ impl Slot {
     }
 
     #[inline(always)]
-    pub fn try_write_reader<R: Reader>(
+    pub fn try_write_reader<R>(
         &mut self,
         reader: &mut R,
         filled_slot: &mut bool,
@@ -108,7 +108,7 @@ impl Slot {
     }
 
     #[inline(always)]
-    fn write_reader_end<R: Reader>(
+    fn write_reader_end<R>(
         &mut self,
         reader: &mut R,
         filled_slot: &mut bool,

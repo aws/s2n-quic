@@ -44,6 +44,8 @@ impl Batch {
             plan.run(out, &command, self.skip_run, &mut reports)?;
         }
 
+        // See https://github.com/rust-lang/rust-clippy/pull/12756
+        #[allow(clippy::assigning_clones)]
         for (_title, report) in reports.iter_mut() {
             *report = report.strip_prefix(out).unwrap().to_owned();
         }
