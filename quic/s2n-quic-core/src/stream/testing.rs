@@ -155,7 +155,7 @@ impl reader::Storage for Data {
 
     #[inline]
     fn buffered_len(&self) -> usize {
-        (self.len - self.offset).try_into().unwrap()
+        (self.len - self.offset).try_into().unwrap_or(usize::MAX)
     }
 
     #[inline]
@@ -189,12 +189,14 @@ impl reader::Storage for Data {
 impl reader::Reader for Data {
     #[inline]
     fn current_offset(&self) -> crate::varint::VarInt {
-        self.offset().try_into().unwrap()
+        self.offset()
+            .try_into()
+            .unwrap_or(crate::varint::VarInt::MAX)
     }
 
     #[inline]
     fn final_offset(&self) -> Option<crate::varint::VarInt> {
-        Some(self.len.try_into().unwrap())
+        self.len.try_into().ok()
     }
 }
 
