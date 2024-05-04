@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::buffer::{
-    reader::{storage::Chunk, Storage},
+    reader::{
+        storage::{Chunk, Infallible as _},
+        Storage,
+    },
     writer,
 };
 use bytes::{Bytes, BytesMut};
@@ -18,7 +21,15 @@ impl Storage for BytesMut {
     #[inline]
     fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
         let len = self.len().min(watermark);
-        Ok(self.split_to(len).into())
+
+        ensure!(len > 0, Ok(Self::new().into()));
+
+        // if this is reading the entire thing then swap `self` for an empty value
+        if self.capacity() == len {
+            Ok(core::mem::replace(self, Self::new()).into())
+        } else {
+            Ok(self.split_to(len).into())
+        }
     }
 
     #[inline]
@@ -37,11 +48,15 @@ impl Storage for BytesMut {
         let watermark = self.len().min(dest.remaining_capacity());
 
         if Dest::SPECIALIZES_BYTES_MUT {
-            let buffer = self.split_to(watermark);
-            dest.put_bytes_mut(buffer);
+            let Chunk::BytesMut(chunk) = self.infallible_read_chunk(watermark) else {
+                unsafe { assume!(false) }
+            };
+            dest.put_bytes_mut(chunk);
         } else if Dest::SPECIALIZES_BYTES {
-            let buffer = self.split_to(watermark);
-            dest.put_bytes(buffer.freeze());
+            let Chunk::BytesMut(chunk) = self.infallible_read_chunk(watermark) else {
+                unsafe { assume!(false) }
+            };
+            dest.put_bytes(chunk.freeze());
         } else {
             // copy bytes into the destination buf
             dest.put_slice(&self[..watermark]);
@@ -83,8 +98,10 @@ impl Storage for Bytes {
         let watermark = self.len().min(dest.remaining_capacity());
 
         if Dest::SPECIALIZES_BYTES {
-            let buffer = self.split_to(watermark);
-            dest.put_bytes(buffer);
+            let Chunk::Bytes(chunk) = self.infallible_read_chunk(watermark) else {
+                unsafe { assume!(false) }
+            };
+            dest.put_bytes(chunk);
         } else {
             // copy bytes into the destination buf
             dest.put_slice(&self[..watermark]);

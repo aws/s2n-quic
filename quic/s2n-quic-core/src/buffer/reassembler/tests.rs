@@ -3,6 +3,10 @@
 
 use super::*;
 use crate::{
+    buffer::{
+        reader::{testing::Fallible, Storage as _},
+        writer::Storage as _,
+    },
     stream::testing::Data,
     varint::{VarInt, MAX_VARINT_VALUE},
 };
@@ -15,6 +19,7 @@ enum Op {
         #[generator(0..=Data::MAX_CHUNK_LEN)]
         len: usize,
         is_fin: bool,
+        is_error: bool,
     },
     Pop {
         watermark: Option<u16>,
@@ -24,51 +29,87 @@ enum Op {
     },
 }
 
+#[derive(Debug)]
+struct Model {
+    buffer: Reassembler,
+    recv: Data,
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self {
+            buffer: Reassembler::new(),
+            recv: Data::new(u64::MAX),
+        }
+    }
+}
+
+impl Model {
+    fn apply_all(&mut self, ops: &[Op]) {
+        for op in ops {
+            self.apply(op);
+        }
+    }
+
+    fn apply(&mut self, op: &Op) {
+        let Self { buffer, recv } = self;
+
+        match *op {
+            Op::Write {
+                offset,
+                len,
+                is_fin,
+                is_error,
+            } => {
+                let mut send = if is_fin {
+                    Data::new(offset.as_u64() + len as u64)
+                } else {
+                    Data::new(u64::MAX)
+                };
+                send.seek_forward(offset.as_u64());
+                let mut send = send.with_read_limit(len);
+
+                // inject errors
+                if is_error {
+                    let mut send = Fallible::new(&mut send).with_error(());
+                    let _ = buffer.write_reader(&mut send);
+                } else {
+                    let _ = buffer.write_reader(&mut send);
+                }
+            }
+            Op::Pop { watermark } => {
+                if let Some(watermark) = watermark {
+                    let mut recv = recv.with_write_limit(watermark as _);
+                    let _ = buffer.copy_into(&mut recv);
+                } else {
+                    let _ = buffer.copy_into(recv);
+                }
+            }
+            Op::Skip { len } => {
+                let consumed_len = buffer.consumed_len();
+                if buffer.skip(len).is_ok() {
+                    let new_consumed_len = buffer.consumed_len();
+                    assert_eq!(new_consumed_len, consumed_len + len.as_u64());
+                    recv.seek_forward(len.as_u64());
+                }
+            }
+        }
+    }
+
+    fn finish(&mut self) {
+        // make sure a cleared buffer is the same as a new one
+        self.buffer.reset();
+        assert_eq!(self.buffer, Reassembler::new());
+    }
+}
+
 #[test]
 #[cfg_attr(miri, ignore)] // This test is too expensive for miri to complete in a reasonable amount of time
 fn model_test() {
     check!().with_type::<Vec<Op>>().for_each(|ops| {
-        let mut buffer = Reassembler::new();
-        let mut recv = Data::new(u64::MAX);
-        for op in ops {
-            match *op {
-                Op::Write {
-                    offset,
-                    len,
-                    is_fin,
-                } => {
-                    let chunk = Data::send_one_at(offset.as_u64(), len);
-                    if is_fin {
-                        let _ = buffer.write_at_fin(offset, &chunk);
-                    } else {
-                        let _ = buffer.write_at(offset, &chunk);
-                    }
-                }
-                Op::Pop { watermark } => {
-                    if let Some(watermark) = watermark {
-                        if let Some(chunk) = buffer.pop_watermarked(watermark as _) {
-                            assert!(chunk.len() <= watermark as usize);
-                            recv.receive(&[&chunk]);
-                        }
-                    } else if let Some(chunk) = buffer.pop() {
-                        assert!(!chunk.is_empty(), "popped chunks should never be empty");
-                        recv.receive(&[&chunk]);
-                    }
-                }
-                Op::Skip { len } => {
-                    let consumed_len = buffer.consumed_len();
-                    if buffer.skip(len).is_ok() {
-                        let new_consumed_len = buffer.consumed_len();
-                        assert_eq!(new_consumed_len, consumed_len + len.as_u64());
-                        recv.seek_forward(len.as_u64());
-                    }
-                }
-            }
-        }
-
-        // make sure a cleared buffer is the same as a new one
-        buffer.reset();
-        assert_eq!(buffer, Reassembler::new());
+        let mut model = Model::default();
+        model.apply_all(ops);
+        model.finish();
     })
 }
 
@@ -868,16 +909,16 @@ fn write_partial_fin_test() {
                 for buf in [&mut buffer, &mut oracle] {
                     let mut chunks = vec![];
                     let mut actual_len = 0;
-                    let mut allocated_len = 0;
 
-                    // use pop_transform so we can take the entire buffer and get an accurate `capacity` value
-                    while let Some(chunk) = buf.pop_transform(|chunk, _is_final_chunk| {
-                        let chunk = core::mem::take(chunk);
-                        let len = chunk.len();
-                        (chunk, len)
-                    }) {
+                    // look at how many bytes we actually allocated
+                    let allocated_len: u64 = buf
+                        .slots
+                        .iter()
+                        .map(|slot| slot.end_allocated() - slot.start())
+                        .sum();
+
+                    while let Some(chunk) = buf.pop() {
                         actual_len += chunk.len();
-                        allocated_len += chunk.capacity();
                         chunks.push(chunk);
                     }
 
@@ -911,7 +952,7 @@ fn write_partial_fin_test() {
                 );
 
                 if reverse {
-                    let ideal_allocation = (partial_size + fin_size) as usize;
+                    let ideal_allocation = (partial_size + fin_size) as u64;
                     assert_eq!(
                         actual_results.2, ideal_allocation,
                         "if the chunks were reversed, the allocation should be ideal"

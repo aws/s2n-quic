@@ -17,6 +17,9 @@ pub use incremental::Incremental;
 pub use limit::Limit;
 pub use storage::Storage;
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 /// A buffer that can be read with a tracked offset and final position.
 pub trait Reader: Storage {
     /// Returns the currently read offset for the stream
