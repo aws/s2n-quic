@@ -840,7 +840,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
             ($frame:ident) => {{
                 let frame_type = $frame.tag();
                 processed_packet.on_processed_frame(&$frame);
-                move |err: transport::Error| err.with_frame_type(VarInt::from_u8(frame_type))
+                move |err: transport::Error| err.with_frame_type(frame_type.into())
             }};
         }
 
@@ -1041,6 +1041,13 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                         publisher,
                     )
                     .map_err(on_error)?;
+                }
+                Frame::DcStatelessResetTokens(frame) => {
+                    let on_error = on_frame_processed!(frame);
+                    Err(on_error(
+                        transport::Error::PROTOCOL_VIOLATION.with_reason("invalid frame"),
+                    ))?
+                    // TODO: Process DcStatelessResetTokens in dc provider
                 }
             }
 

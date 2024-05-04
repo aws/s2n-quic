@@ -370,6 +370,7 @@ enum Frame {
     Datagram {
         len: u16,
     },
+    DcStatelessResetTokens,
 }
 
 impl IntoEvent<builder::Frame> for &crate::frame::Padding {
@@ -570,6 +571,13 @@ where
         builder::Frame::Datagram {
             len: self.data.encoding_size() as _,
         }
+    }
+}
+
+impl<'a> IntoEvent<builder::Frame> for &crate::frame::DcStatelessResetTokens<'a> {
+    #[inline]
+    fn into_event(self) -> builder::Frame {
+        builder::Frame::DcStatelessResetTokens {}
     }
 }
 

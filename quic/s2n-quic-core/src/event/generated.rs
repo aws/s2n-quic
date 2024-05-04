@@ -203,6 +203,8 @@ pub mod api {
         HandshakeDone {},
         #[non_exhaustive]
         Datagram { len: u16 },
+        #[non_exhaustive]
+        DcStatelessResetTokens {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1565,6 +1567,12 @@ pub mod api {
             }
         }
     }
+    impl<'a> IntoEvent<builder::Frame> for &crate::frame::DcStatelessResetTokens<'a> {
+        #[inline]
+        fn into_event(self) -> builder::Frame {
+            builder::Frame::DcStatelessResetTokens {}
+        }
+    }
     impl IntoEvent<builder::StreamType> for &crate::stream::StreamType {
         #[inline]
         fn into_event(self) -> builder::StreamType {
@@ -2775,6 +2783,7 @@ pub mod builder {
         Datagram {
             len: u16,
         },
+        DcStatelessResetTokens,
     }
     impl IntoEvent<api::Frame> for Frame {
         #[inline]
@@ -2869,6 +2878,7 @@ pub mod builder {
                 Self::Datagram { len } => Datagram {
                     len: len.into_event(),
                 },
+                Self::DcStatelessResetTokens => DcStatelessResetTokens {},
             }
         }
     }

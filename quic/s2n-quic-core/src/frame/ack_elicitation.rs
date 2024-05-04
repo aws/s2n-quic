@@ -79,6 +79,10 @@ impl<Data> AckElicitable for crate::frame::Crypto<Data> {}
 //# they are ack-eliciting ([RFC9002]).
 impl<Data> AckElicitable for crate::frame::Datagram<Data> {}
 impl AckElicitable for crate::frame::DataBlocked {}
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.21
+//# Extension frames MUST be congestion controlled and MUST cause
+//# an ACK frame to be sent.
+impl AckElicitable for crate::frame::DcStatelessResetTokens<'_> {}
 impl AckElicitable for crate::frame::HandshakeDone {}
 impl AckElicitable for crate::frame::MaxData {}
 impl AckElicitable for crate::frame::MaxStreamData {}
