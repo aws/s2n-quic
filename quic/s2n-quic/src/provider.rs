@@ -18,14 +18,18 @@ pub mod stateless_reset_token;
 pub mod tls;
 
 // These providers are not currently exposed to applications
+#[allow(dead_code)]
 pub(crate) mod connection_close_formatter;
+#[allow(dead_code)]
 pub(crate) mod path_migration;
+#[allow(dead_code)]
 pub(crate) mod sync;
 
 cfg_if!(
     if #[cfg(any(test, feature = "unstable-provider-packet-interceptor"))] {
         pub mod packet_interceptor;
     } else {
+        #[allow(dead_code)]
         pub(crate) mod packet_interceptor;
     }
 );
@@ -34,6 +38,7 @@ cfg_if!(
     if #[cfg(any(test, feature = "unstable-provider-random"))] {
         pub mod random;
     } else {
+        #[allow(dead_code)]
         pub(crate) mod random;
     }
 );
@@ -42,6 +47,7 @@ cfg_if!(
     if #[cfg(any(test, feature = "unstable-provider-datagram"))] {
         pub mod datagram;
     } else {
+        #[allow(dead_code)]
         pub(crate) mod datagram;
     }
 );

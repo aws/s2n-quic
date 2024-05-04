@@ -14,7 +14,6 @@ use crate::{
     transmission::{self, Mode, Provider as _},
 };
 use core::ops::RangeInclusive;
-use s2n_quic_core::packet::number::PacketNumberSpace;
 
 pub enum Payload<'a, Config: endpoint::Config> {
     Normal(Normal<'a, Config>),
@@ -83,10 +82,6 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
             Payload::MtuProbe(inner) => inner.on_transmit(context),
             Payload::PathValidationOnly(inner) => inner.on_transmit(context),
         }
-    }
-
-    fn packet_number_space(&self) -> PacketNumberSpace {
-        PacketNumberSpace::ApplicationData
     }
 }
 

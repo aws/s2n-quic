@@ -99,7 +99,7 @@ impl<L: LocalLimits, OpenNotify: OpenNotifyBehavior> LocalInitiated<L, OpenNotif
                 let prev = &self.wakers[index];
                 // update the waker if it's changed
                 if !prev.will_wake(context.waker()) {
-                    self.wakers[index] = context.waker().clone();
+                    self.wakers[index].clone_from(context.waker())
                 }
             } else {
                 // Store a waker that can be woken when we get more credit

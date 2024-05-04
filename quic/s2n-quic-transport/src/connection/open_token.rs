@@ -30,6 +30,12 @@ impl Pair {
     }
 }
 
+impl Default for Pair {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Token(Option<NonZeroU64>);
 
