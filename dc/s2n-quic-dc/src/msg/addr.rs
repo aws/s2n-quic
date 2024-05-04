@@ -71,7 +71,6 @@ impl Addr {
             }
             _ => unsafe {
                 assume!(false, "invalid remote address");
-                unreachable!()
             },
         }
     }
@@ -113,7 +112,6 @@ impl Addr {
             }
             _ => unsafe {
                 assume!(false, "invalid remote address");
-                unreachable!()
             },
         }
     }
