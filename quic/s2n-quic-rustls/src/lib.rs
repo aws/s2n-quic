@@ -3,10 +3,6 @@
 
 #![forbid(unsafe_code)]
 
-/// *WARNING*: These are deprecated and should not be used.
-#[deprecated = "client and server builders should be used instead"]
-pub use ::rustls::{Certificate, PrivateKey};
-
 #[deprecated = "client and server builders should be used instead"]
 pub mod rustls {
     pub use ::rustls::*;
@@ -23,12 +19,9 @@ pub mod certificate;
 pub mod client;
 pub mod server;
 
-#[deprecated = "client and server builders should be used instead"]
-pub static DEFAULT_CIPHERSUITES: &[rustls::SupportedCipherSuite] =
-    cipher_suite::DEFAULT_CIPHERSUITES;
-
-pub use client::Client;
-pub use server::Server;
+pub use cipher_suite::default_crypto_provider;
+pub use client::{default_config_builder as client_config_builder, Client};
+pub use server::{default_config_builder as server_config_builder, Server};
 
 //= https://www.rfc-editor.org/rfc/rfc9001#section-4.2
 //# Clients MUST NOT offer TLS versions older than 1.3.
@@ -52,6 +45,52 @@ mod tests {
 
         let mut server = server::Builder::new()
             .with_certificate(CERT_PEM, KEY_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut pair = tls::testing::Pair::new(&mut server, &mut client, "localhost".into());
+
+        while pair.is_handshaking() {
+            pair.poll(None).unwrap();
+        }
+
+        pair.finish();
+    }
+
+    #[test]
+    fn client_server_der_test() {
+        let mut client = client::Builder::new()
+            .with_certificate(CERT_DER)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut server = server::Builder::new()
+            .with_certificate(CERT_DER, KEY_DER)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut pair = tls::testing::Pair::new(&mut server, &mut client, "localhost".into());
+
+        while pair.is_handshaking() {
+            pair.poll(None).unwrap();
+        }
+
+        pair.finish();
+    }
+
+    #[test]
+    fn client_server_pkcs1_test() {
+        let mut client = client::Builder::new()
+            .with_certificate(CERT_PKCS1_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut server = server::Builder::new()
+            .with_certificate(CERT_PKCS1_PEM, KEY_PKCS1_PEM)
             .unwrap()
             .build()
             .unwrap();

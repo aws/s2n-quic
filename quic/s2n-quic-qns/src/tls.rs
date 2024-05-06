@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::Result;
+use crate::{tls::rustls::DisabledVerifier, Result};
+use s2n_quic::provider::tls as s2n_quic_tls_provider;
+#[allow(deprecated)]
+use s2n_quic::provider::tls::rustls::rustls as rustls_crate;
 use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 
@@ -112,16 +115,12 @@ impl Client {
 
     pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Client> {
         let tls = if self.disable_cert_verification {
-            use ::rustls::{version, ClientConfig, KeyLogFile};
+            use rustls_crate::KeyLogFile;
             use std::sync::Arc;
 
-            #[allow(deprecated)]
-            let cipher_suites = rustls::DEFAULT_CIPHERSUITES;
-            let mut config = ClientConfig::builder()
-                .with_cipher_suites(cipher_suites)
-                .with_safe_default_kx_groups()
-                .with_protocol_versions(&[&version::TLS13])?
-                .with_custom_certificate_verifier(Arc::new(rustls::DisabledVerifier))
+            let mut config = s2n_quic_tls_provider::rustls::client_config_builder()?
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(DisabledVerifier))
                 .with_no_client_auth();
             config.max_fragment_size = None;
             config.alpn_protocols = alpns.iter().map(|p| p.as_bytes().to_vec()).collect();
@@ -268,11 +267,13 @@ pub mod s2n_tls {
 
 pub mod rustls {
     use super::*;
-    #[allow(deprecated)]
-    pub use s2n_quic::provider::tls::rustls::DEFAULT_CIPHERSUITES;
+    use rustls_crate::{
+        client::danger,
+        pki_types::{CertificateDer, ServerName, UnixTime},
+    };
     pub use s2n_quic::provider::tls::rustls::{
         certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
-        Client, Server,
+        default_crypto_provider, Client, Server,
     };
 
     pub fn ca(ca: Option<&PathBuf>) -> Result<Certificate> {
@@ -291,19 +292,54 @@ pub mod rustls {
         })
     }
 
+    #[derive(Debug)]
     pub struct DisabledVerifier;
 
-    impl ::rustls::client::ServerCertVerifier for DisabledVerifier {
+    impl danger::ServerCertVerifier for DisabledVerifier {
         fn verify_server_cert(
             &self,
-            _end_entity: &::rustls::Certificate,
-            _intermediates: &[::rustls::Certificate],
-            _server_name: &::rustls::ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _end_entity: &CertificateDer<'_>,
+            _intermediates: &[CertificateDer<'_>],
+            _server_name: &ServerName,
             _ocsp_response: &[u8],
-            _now: std::time::SystemTime,
-        ) -> Result<::rustls::client::ServerCertVerified, ::rustls::Error> {
-            Ok(::rustls::client::ServerCertVerified::assertion())
+            _now: UnixTime,
+        ) -> Result<danger::ServerCertVerified, rustls_crate::Error> {
+            Ok(danger::ServerCertVerified::assertion())
+        }
+
+        fn verify_tls12_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &rustls_crate::DigitallySignedStruct,
+        ) -> Result<danger::HandshakeSignatureValid, rustls_crate::Error> {
+            rustls_crate::crypto::verify_tls12_signature(
+                message,
+                cert,
+                dss,
+                &default_crypto_provider()?.signature_verification_algorithms,
+            )
+        }
+
+        fn verify_tls13_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &rustls_crate::DigitallySignedStruct,
+        ) -> Result<danger::HandshakeSignatureValid, rustls_crate::Error> {
+            rustls_crate::crypto::verify_tls13_signature(
+                message,
+                cert,
+                dss,
+                &default_crypto_provider()?.signature_verification_algorithms,
+            )
+        }
+
+        fn supported_verify_schemes(&self) -> Vec<rustls_crate::SignatureScheme> {
+            default_crypto_provider()
+                .unwrap()
+                .signature_verification_algorithms
+                .supported_schemes()
         }
     }
 }
