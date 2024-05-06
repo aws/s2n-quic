@@ -14,13 +14,16 @@ macro_rules! dc_stateless_reset_tokens_tag {
 
 //# DC_STATELESS_RESET_TOKENS Frame {
 //#   Type (i) = 0xdc0000,
+//#   Length (i),
 //#   Stateless Reset Tokens [(128)],
 //# }
 
-//# DC_STATELESS_RESET_TOKENS frames contain the following field:
+//# DC_STATELESS_RESET_TOKENS frames contain the following fields:
 //#
+//# Length: A variable-length integer specifying the length of the stateless
+//#     reset tokens field in this DC_STATELESS_RESET_TOKENS frame.
 //# Stateless Reset Tokens: 1 or more 128-bit values that will be used
-//#     for a stateless reset of dc path secrets
+//#     for a stateless reset of dc path secrets.
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct DcStatelessResetTokens<'a> {
@@ -75,16 +78,16 @@ impl<'a> IntoIterator for DcStatelessResetTokens<'a> {
 decoder_parameterized_value!(
     impl<'a> DcStatelessResetTokens<'a> {
         fn decode(_tag: ExtensionTag, buffer: Buffer) -> Result<Self> {
-            let len = buffer.len();
+            let (stateless_reset_tokens, buffer) =
+                buffer.decode_slice_with_len_prefix::<VarInt>()?;
+            let stateless_reset_tokens: &[u8] = stateless_reset_tokens.into_less_safe_slice();
 
+            let len = stateless_reset_tokens.len();
             decoder_invariant!(len > 0, "at least one stateless token must be supplied");
             decoder_invariant!(
                 len % stateless_reset::token::LEN == 0,
                 "invalid dc stateless token length"
             );
-
-            let (stateless_reset_tokens, buffer) = buffer.decode_slice(len)?;
-            let stateless_reset_tokens: &[u8] = stateless_reset_tokens.into_less_safe_slice();
 
             let frame = DcStatelessResetTokens {
                 stateless_reset_tokens,
@@ -98,7 +101,7 @@ decoder_parameterized_value!(
 impl<'a> EncoderValue for DcStatelessResetTokens<'a> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&TAG);
-        buffer.encode(&self.stateless_reset_tokens);
+        buffer.encode_with_len_prefix::<VarInt, _>(&self.stateless_reset_tokens);
     }
 }
 
