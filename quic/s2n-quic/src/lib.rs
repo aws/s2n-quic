@@ -64,18 +64,22 @@
 //! 2. Build a custom s2n-tls TLS provider configured with a FIPS approved
 //! [security policy](https://aws.github.io/s2n-tls/usage-guide/ch06-security-policies.html):
 //!
-//!```rust,no_run
+//!```ignore
 //! use s2n_quic::provider::tls::s2n_tls;
 //! use s2n_quic::provider::tls::s2n_tls::security::Policy;
 //!
 //! let mut tls = s2n_tls::Server::builder();
-//! let policy = Policy::from_version("select_a_fips_security_policy").unwrap();
-//! tls.config_mut().set_security_policy(&policy).unwrap();
-//! let tls = tls.build().unwrap();
+//! let policy = Policy::from_version("select_a_fips_security_policy")?;
+//! tls.config_mut().set_security_policy(&policy)?;
+//! let tls = tls
+//!     .with_certificate(..)?
+//!     ...
+//!     .build()?;
 //!
 //! let mut server = s2n_quic::Server::builder()
-//!     .with_tls(tls).unwrap()
-//!     .start().unwrap();
+//!     .with_tls(tls)?
+//!     ...
+//!     .start()?;
 //!```
 //!
 //! [s2n-tls]: https://github.com/aws/s2n-tls
