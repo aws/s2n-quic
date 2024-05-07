@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Use keys backed by FIPs-approved cryptography if the `fips` flag is set.
-macro_rules! key_cipher_supports_fips {
+macro_rules! key {
     ($name:ident, $ring_cipher:path, $key_size:expr, $tag_len:expr) => {
         pub mod $name {
             use super::super::$name::{KEY_LEN, NONCE_LEN, TAG_LEN};
@@ -39,7 +39,7 @@ macro_rules! key_cipher_supports_fips {
     };
 }
 
-macro_rules! key {
+macro_rules! key_no_fips_support {
     ($name:ident, $ring_cipher:path, $key_size:expr, $tag_len:expr) => {
         pub mod $name {
             use super::super::$name::{KEY_LEN, NONCE_LEN, TAG_LEN};
@@ -124,11 +124,11 @@ macro_rules! key_impl {
     };
 }
 
-key_cipher_supports_fips!(aes128_gcm, aead::AES_128_GCM, 128 / 8, 16);
-key_cipher_supports_fips!(aes256_gcm, aead::AES_256_GCM, 256 / 8, 16);
+key!(aes128_gcm, aead::AES_128_GCM, 128 / 8, 16);
+key!(aes256_gcm, aead::AES_256_GCM, 256 / 8, 16);
 // FipsKey is backed by TlsRecordSealingKey/TlsRecordOpeningKey which doesn't
 // support CHACHA20_POLY1305.
 //
 // https://docs.rs/aws-lc-rs/latest/aws_lc_rs/aead/struct.TlsRecordSealingKey.html
 // https://docs.rs/aws-lc-rs/latest/aws_lc_rs/aead/struct.TlsRecordOpeningKey.html
-key!(chacha20_poly1305, aead::CHACHA20_POLY1305, 256 / 8, 16);
+key_no_fips_support!(chacha20_poly1305, aead::CHACHA20_POLY1305, 256 / 8, 16);
