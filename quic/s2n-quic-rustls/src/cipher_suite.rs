@@ -6,6 +6,7 @@ use rustls::{
     crypto::{CryptoProvider},
     quic, CipherSuite
 };
+use rustls::crypto::aws_lc_rs;
 use s2n_codec::Encoder;
 use s2n_quic_core::crypto::{self, packet_protection, scatter, tls, HeaderProtectionMask, Key};
 
@@ -370,4 +371,12 @@ static DEFAULT_CIPHERSUITES: &[CipherSuite] = &[
 #[test]
 fn test_default_cipher_suites() {
     insta::assert_debug_snapshot!("default_cipher_suites", DEFAULT_CIPHERSUITES);
+}
+
+
+#[test]
+fn test_default_crypto_provider() {
+    let _ = aws_lc_rs::default_provider().install_default();
+    let provider = default_crypto_provider().unwrap();
+    assert_eq!(provider.cipher_suites.iter().map(|scs| scs.suite()).collect::<Vec<_>>().as_slice(), DEFAULT_CIPHERSUITES);
 }

@@ -26,6 +26,7 @@ use s2n_tls::{
     error::Error,
 };
 use std::{sync::Arc, time::SystemTime};
+use s2n_quic_rustls::rustls::crypto::aws_lc_rs;
 
 pub struct MyCallbackHandler {
     done: Arc<AtomicBool>,
@@ -332,6 +333,7 @@ fn s2n_client_s2n_server_pkey_callback_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn s2n_client_s2n_server_test() {
+
     let mut client_endpoint = s2n_client();
     let mut server_endpoint = s2n_server();
 
@@ -354,6 +356,8 @@ fn s2n_client_s2n_server_resumption_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn rustls_client_s2n_server_resumption_test() {
+    let _ = aws_lc_rs::default_provider().install_default();
+
     let mut client_endpoint = rustls_client();
     let mut server_endpoint = s2n_server_with_resumption();
 
@@ -367,6 +371,8 @@ fn rustls_client_s2n_server_resumption_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn rustls_client_s2n_server_test() {
+    let _ = aws_lc_rs::default_provider().install_default();
+
     let mut client_endpoint = rustls_client();
     let mut server_endpoint = s2n_server();
 
@@ -376,6 +382,8 @@ fn rustls_client_s2n_server_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn s2n_client_rustls_server_test() {
+    let _ = aws_lc_rs::default_provider().install_default();
+
     let mut client_endpoint = s2n_client();
     let mut server_endpoint = rustls_server();
 
