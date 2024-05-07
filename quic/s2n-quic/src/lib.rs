@@ -52,10 +52,11 @@
 //!
 //! ### `provider-tls-fips`
 //!
-//! FIPS mode is currently only supported with the [`s2n-tls`][s2n-tls] TLS provider.
+//! FIPS mode is only supported with the [`s2n-tls`][s2n-tls] TLS provider on
+//! non-windows platforms.
 //! Applications wanting to use FIPS-approved cryptography with s2n-quic should:
 //!
-//! 1. Use enable the following features:
+//! 1. Enable the following features:
 //!
 //!```ignore
 //! s2n-quic = { version = "1", features = ["provider-tls-fips", "provider-tls-s2n"] }

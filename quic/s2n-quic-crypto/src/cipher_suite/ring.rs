@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-macro_rules! fips_supported_key {
+// Use keys backed by FIPs-approved cryptography if the `fips` flag is set.
+macro_rules! key_cipher_supports_fips {
     ($name:ident, $ring_cipher:path, $key_size:expr, $tag_len:expr) => {
         pub mod $name {
             use super::super::$name::{KEY_LEN, NONCE_LEN, TAG_LEN};
@@ -17,18 +18,18 @@ macro_rules! fips_supported_key {
             }
 
             impl Key {
-                #[cfg(feature = "fips")]
                 pub fn new(secret: &[u8; KEY_LEN]) -> Self {
-                    let key = crate::aead::fips::FipsKey::new(&$ring_cipher, secret)
-                        .expect("key successfully created");
-                    Self { key }
-                }
+                    cfg_if::cfg_if! {
+                        if #[cfg(feature = "fips")] {
+                            let key = crate::aead::fips::FipsKey::new(&$ring_cipher, secret)
+                                .expect("key successfully created");
+                        } else {
+                            let unbound_key =
+                                aead::UnboundKey::new(&$ring_cipher, secret).expect("key size verified");
+                            let key = aead::LessSafeKey::new(unbound_key);
+                        }
+                    }
 
-                #[cfg(not(feature = "fips"))]
-                pub fn new(secret: &[u8; KEY_LEN]) -> Self {
-                    let unbound_key =
-                        aead::UnboundKey::new(&$ring_cipher, secret).expect("key size verified");
-                    let key = aead::LessSafeKey::new(unbound_key);
                     Self { key }
                 }
             }
@@ -123,8 +124,11 @@ macro_rules! key_impl {
     };
 }
 
-fips_supported_key!(aes128_gcm, aead::AES_128_GCM, 128 / 8, 16);
-fips_supported_key!(aes256_gcm, aead::AES_256_GCM, 256 / 8, 16);
-// Don't create a FipsKey for CHACHA20_POLY1305 since TlsRecordSealingKey and
-// TlsRecordOpeningKey don't support CHACHA20_POLY1305
+key_cipher_supports_fips!(aes128_gcm, aead::AES_128_GCM, 128 / 8, 16);
+key_cipher_supports_fips!(aes256_gcm, aead::AES_256_GCM, 256 / 8, 16);
+// FipsKey is backed by TlsRecordSealingKey/TlsRecordOpeningKey which doesn't
+// support CHACHA20_POLY1305.
+//
+// https://docs.rs/aws-lc-rs/latest/aws_lc_rs/aead/struct.TlsRecordSealingKey.html
+// https://docs.rs/aws-lc-rs/latest/aws_lc_rs/aead/struct.TlsRecordOpeningKey.html
 key!(chacha20_poly1305, aead::CHACHA20_POLY1305, 256 / 8, 16);

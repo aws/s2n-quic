@@ -12,7 +12,7 @@ exclude = ["corpus.tar.gz"]
 
 [features]
 # The [`?`](https://doc.rust-lang.org/cargo/reference/features.html?highlight=addative#dependency-features)
-# syntax only enable `fips` for `s2n-quic-tls` if something else enables `s2n-quic-tls`. This
+# syntax only enables `fips` for `s2n-quic-tls` if something else enables `s2n-quic-tls`. This
 # preserves the selective compilation of the two tls crates.
 fips = ["s2n-quic-tls?/fips"]
 
