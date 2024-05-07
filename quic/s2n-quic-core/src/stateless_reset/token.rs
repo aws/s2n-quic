@@ -3,7 +3,11 @@
 
 //! Defines the Stateless Reset token
 
-use s2n_codec::{decoder_value, Encoder, EncoderValue};
+use s2n_codec::{
+    decoder_value,
+    zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned},
+    Encoder, EncoderValue,
+};
 use subtle::ConstantTimeEq;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
@@ -18,11 +22,12 @@ pub const LEN: usize = 128 / 8;
 // a derived version, except it is constant-time. Therefore
 // Hash can still be derived.
 #[allow(clippy::derived_hash_with_manual_eq)]
-#[derive(Copy, Clone, Debug, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, Hash, FromBytes, FromZeroes, AsBytes, Unaligned)]
 #[cfg_attr(
     any(test, feature = "generator"),
     derive(bolero_generator::TypeGenerator)
 )]
+#[repr(C)]
 pub struct Token([u8; LEN]);
 
 impl Token {
