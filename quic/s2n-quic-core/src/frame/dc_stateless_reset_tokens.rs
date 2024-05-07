@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{frame::ExtensionTag, stateless_reset, varint::VarInt};
-use s2n_codec::{decoder_invariant, zerocopy::FromBytes as _, DecoderError, Encoder, EncoderValue};
+use s2n_codec::{
+    decoder_invariant,
+    zerocopy::{AsBytes as _, FromBytes as _},
+    DecoderError, Encoder, EncoderValue,
+};
 
 const TAG: VarInt = VarInt::from_u32(0xdc0000);
 
@@ -127,16 +131,12 @@ impl<'a> ::s2n_codec::DecoderParameterizedValueMut<'a> for DcStatelessResetToken
 impl<'a> EncoderValue for DcStatelessResetTokens<'a> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&TAG);
-        let count = self.stateless_reset_tokens.len();
-        buffer.encode::<VarInt>(
-            &count.try_into().expect(
+        let count =
+            self.stateless_reset_tokens.len().try_into().expect(
                 "count is limited to MAX_STATELESS_RESET_TOKEN_COUNT, which fits in VarInt",
-            ),
-        );
-
-        for token in self.stateless_reset_tokens {
-            buffer.encode(token);
-        }
+            );
+        buffer.encode::<VarInt>(&count);
+        buffer.encode(&self.stateless_reset_tokens.as_bytes());
     }
 }
 
