@@ -13,6 +13,7 @@ pub static MY_KEY_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/client
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     initialize_logger("client");
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let provider = MtlsProvider::new(CACERT_PEM, MY_CERT_PEM, MY_KEY_PEM).await?;
     let client = Client::builder()
         .with_event(s2n_quic::provider::event::tracing::Subscriber::default())?
