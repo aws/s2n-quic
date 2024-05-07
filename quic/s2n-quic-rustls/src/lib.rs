@@ -37,6 +37,7 @@ mod tests {
 
     #[test]
     fn client_server_test() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let mut client = client::Builder::new()
             .with_certificate(CERT_PEM)
             .unwrap()
@@ -60,6 +61,8 @@ mod tests {
 
     #[test]
     fn client_server_der_test() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
         let mut client = client::Builder::new()
             .with_certificate(CERT_DER)
             .unwrap()
@@ -83,6 +86,8 @@ mod tests {
 
     #[test]
     fn client_server_pkcs1_test() {
+        let _ =  rustls::crypto::aws_lc_rs::default_provider().install_default();
+
         let mut client = client::Builder::new()
             .with_certificate(CERT_PKCS1_PEM)
             .unwrap()

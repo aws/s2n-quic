@@ -1,20 +1,35 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::ops::Deref;
 use rustls::{
-    crypto::{aws_lc_rs, CryptoProvider},
-    quic, CipherSuite, SupportedCipherSuite,
+    crypto::{CryptoProvider},
+    quic, CipherSuite
 };
 use s2n_codec::Encoder;
 use s2n_quic_core::crypto::{self, packet_protection, scatter, tls, HeaderProtectionMask, Key};
 
-/// `aws_lc_rs` is the default crypto provider since that is also the
-/// default used by rustls.
 pub fn default_crypto_provider() -> Result<CryptoProvider, rustls::Error> {
-    Ok(CryptoProvider {
-        cipher_suites: DEFAULT_CIPHERSUITES.to_vec(),
-        ..aws_lc_rs::default_provider()
-    })
+    let mut provider = CryptoProvider::get_default().ok_or_else(|| {
+        rustls::Error::General("No default crypto provider available".to_string())
+    })?.deref().clone();
+
+    let mut tmp = Vec::new();
+    std::mem::swap(&mut provider.cipher_suites, &mut tmp);
+
+
+    // Remove unwanted cipher suite and sort them in our preferred order
+
+    let tmp = tmp.into_iter().map(|scs| {
+        (DEFAULT_CIPHERSUITES.iter().position(|x| *x == scs.suite()), scs)
+    }).filter_map(|(pos, scs)| pos.map(|pos| (pos, scs))).fold(Vec::new(), |mut vec, (pos, scs)| {
+        vec.push((pos, scs));
+        vec
+    });
+
+    provider.cipher_suites = tmp.into_iter().map(|(_, scs)| scs).collect();
+
+    Ok(provider)
 }
 
 pub struct PacketKey {
@@ -248,6 +263,7 @@ impl crypto::HeaderKey for HeaderProtectionKeys {
 }
 
 impl crypto::HandshakeHeaderKey for HeaderProtectionKeys {}
+
 impl crypto::OneRttHeaderKey for HeaderProtectionKeys {}
 
 pub struct OneRttKey {
@@ -343,10 +359,10 @@ impl crypto::OneRttKey for OneRttKey {
 //# negotiated unless a header protection scheme is defined for the
 //# cipher suite.
 // All of the cipher_suites from the current exported list have HP schemes for QUIC
-static DEFAULT_CIPHERSUITES: &[SupportedCipherSuite] = &[
-    aws_lc_rs::cipher_suite::TLS13_AES_128_GCM_SHA256,
-    aws_lc_rs::cipher_suite::TLS13_AES_256_GCM_SHA384,
-    aws_lc_rs::cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
+static DEFAULT_CIPHERSUITES: &[CipherSuite] = &[
+    CipherSuite::TLS13_AES_128_GCM_SHA256,
+    CipherSuite::TLS13_AES_256_GCM_SHA384,
+    CipherSuite::TLS13_CHACHA20_POLY1305_SHA256,
 ];
 
 #[test]

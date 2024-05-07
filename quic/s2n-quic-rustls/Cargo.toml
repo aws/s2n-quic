@@ -12,7 +12,7 @@ exclude = ["corpus.tar.gz"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }
-rustls = "0.23"
+rustls = { version = "0.23", default-features = false, features=["std", "logging"] }
 rustls-pemfile = "2"
 s2n-codec = { version = "=0.37.0", path = "../../common/s2n-codec", default-features = false, features = ["alloc"] }
 s2n-quic-core = { version = "=0.37.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
@@ -21,3 +21,4 @@ s2n-quic-crypto = { version = "=0.37.0", path = "../s2n-quic-crypto", default-fe
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
+rustls = { version = "0.23", default-features=true }

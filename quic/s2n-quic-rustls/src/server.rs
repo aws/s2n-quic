@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{certificate, cipher_suite::default_crypto_provider, session::Session, Error};
-use rustls::{crypto::aws_lc_rs, ConfigBuilder, ServerConfig, WantsVerifier};
+use rustls::{ConfigBuilder, ServerConfig, WantsVerifier};
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
 use std::sync::Arc;
 
-/// Create a QUIC server specific [rustls::ConfigBuilder].
+/// Create a QUIC server specific [ConfigBuilder].
 ///
 /// Uses aws_lc_rs as the crypto provider and sets QUIC specific protocol versions.
 pub fn default_config_builder() -> Result<ConfigBuilder<ServerConfig, WantsVerifier>, rustls::Error>
@@ -189,10 +189,12 @@ impl AlwaysResolvesChain {
         chain: certificate::Certificate,
         priv_key: certificate::PrivateKey,
     ) -> Result<Self, rustls::Error> {
-        let key = aws_lc_rs::sign::any_supported_type(&priv_key.0)
+
+        let signing_key = rustls::crypto::CryptoProvider::get_default().unwrap().key_provider.load_private_key(priv_key.0)
             .map_err(|_| rustls::Error::General("invalid private key".into()))?;
+
         Ok(Self(Arc::new(rustls::sign::CertifiedKey::new(
-            chain.0, key,
+            chain.0, signing_key
         ))))
     }
 }
