@@ -6,6 +6,7 @@
 use crate::{
     event,
     frame::{ack_elicitation::AckElicitable, congestion_controlled::CongestionControlled},
+    varint::VarInt,
 };
 use core::fmt;
 use s2n_codec::{
@@ -26,6 +27,7 @@ mod tests;
 //# frame types.
 
 pub(crate) type Tag = u8;
+pub(crate) type ExtensionTag = VarInt;
 
 pub type FrameRef<'a> = Frame<'a, ack::AckRangesDecoder<'a>, DecoderBuffer<'a>>;
 pub type FrameMut<'a> = Frame<'a, ack::AckRangesDecoder<'a>, DecoderBufferMut<'a>>;
@@ -36,7 +38,7 @@ pub trait FrameTrait: AckElicitable + CongestionControlled + path_validation::Pr
 impl<T: AckElicitable + CongestionControlled + path_validation::Probing> FrameTrait for T {}
 
 macro_rules! frames {
-    ($ack:ident, $data:ident | $($tag_macro:ident => $module:ident, $handler:ident, $ty:ident $([$($generics:tt)+])?;)*) => {
+    ($ack:ident, $data:ident | $($([$tag_macro:ident])? $(extension[$extension_tag_macro:ident])? => $module:ident, $handler:ident, $ty:ident $([$($generics:tt)+])?;)*) => {
         $(
             #[macro_use]
             pub mod $module;
@@ -50,17 +52,6 @@ macro_rules! frames {
             $(
                 $ty($module::$ty $(<$($generics)*>)?),
             )*
-        }
-
-        impl<'a, $ack, $data> Frame<'a, $ack, $data> {
-            #[inline]
-            pub fn tag(&self) -> Tag {
-                match self {
-                    $(
-                        Frame::$ty(frame) => frame.tag(),
-                    )*
-                }
-            }
         }
 
         impl<'a, $ack, $data> event::IntoEvent<event::builder::Frame> for &Frame<'a, $ack, $data>
@@ -152,9 +143,23 @@ macro_rules! frames {
 
             #[inline]
             fn handle_extension_frame(&mut self, buffer: DecoderBufferMut<'a>) -> DecoderBufferMutResult<'a, Self::Output> {
-                let _ = buffer;
+                let (tag, buffer) = buffer.decode::<ExtensionTag>()?;
 
-                Err(DecoderError::InvariantViolation("invalid frame"))
+                match tag.as_u64() {
+                    $(
+                        $(
+                            $extension_tag_macro!() => {
+                                let (frame, buffer) = buffer.decode_parameterized(tag)?;
+                                let output = self.$handler(frame)?;
+                                Ok((output, buffer))
+                            },
+                        )?
+                    )*
+                    _ => {
+                        let _ = buffer;
+                        Err(DecoderError::InvariantViolation("invalid frame"))
+                    }
+                }
             }
 
             #[inline]
@@ -168,12 +173,14 @@ macro_rules! frames {
                     // otherwise fallback to extension selection
                     0b0100_0000..=0xff => self.handle_extension_frame(buffer),
                     $(
-                        $tag_macro!() => {
-                            let buffer = buffer.skip(core::mem::size_of::<Tag>())?;
-                            let (frame, buffer) = buffer.decode_parameterized(tag)?;
-                            let output = self.$handler(frame)?;
-                            Ok((output, buffer))
-                        },
+                        $(
+                            $tag_macro!() => {
+                                let buffer = buffer.skip(core::mem::size_of::<Tag>())?;
+                                let (frame, buffer) = buffer.decode_parameterized(tag)?;
+                                let output = self.$handler(frame)?;
+                                Ok((output, buffer))
+                            },
+                        )?
                     )*
                     _ => self.handle_extension_frame(buffer),
                 }
@@ -235,27 +242,28 @@ macro_rules! simple_frame_codec {
 
 frames! {
     AckRanges, Data |
-    padding_tag => padding, handle_padding_frame, Padding;
-    ping_tag => ping, handle_ping_frame, Ping;
-    ack_tag => ack, handle_ack_frame, Ack[AckRanges];
-    reset_stream_tag => reset_stream, handle_reset_stream_frame, ResetStream;
-    stop_sending_tag => stop_sending, handle_stop_sending_frame, StopSending;
-    crypto_tag => crypto, handle_crypto_frame, Crypto[Data];
-    new_token_tag => new_token, handle_new_token_frame, NewToken['a];
-    stream_tag => stream, handle_stream_frame, Stream[Data];
-    max_data_tag => max_data, handle_max_data_frame, MaxData;
-    max_stream_data_tag => max_stream_data, handle_max_stream_data_frame, MaxStreamData;
-    max_streams_tag => max_streams, handle_max_streams_frame, MaxStreams;
-    data_blocked_tag => data_blocked, handle_data_blocked_frame, DataBlocked;
-    stream_data_blocked_tag => stream_data_blocked, handle_stream_data_blocked_frame, StreamDataBlocked;
-    streams_blocked_tag => streams_blocked, handle_streams_blocked_frame, StreamsBlocked;
-    new_connection_id_tag => new_connection_id, handle_new_connection_id_frame, NewConnectionId['a];
-    retire_connection_id_tag => retire_connection_id, handle_retire_connection_id_frame, RetireConnectionId;
-    path_challenge_tag => path_challenge, handle_path_challenge_frame, PathChallenge['a];
-    path_response_tag => path_response, handle_path_response_frame, PathResponse['a];
-    connection_close_tag => connection_close, handle_connection_close_frame, ConnectionClose['a];
-    handshake_done_tag => handshake_done, handle_handshake_done_frame, HandshakeDone;
-    datagram_tag => datagram, handle_datagram_frame, Datagram[Data];
+    [padding_tag] => padding, handle_padding_frame, Padding;
+    [ping_tag] => ping, handle_ping_frame, Ping;
+    [ack_tag] => ack, handle_ack_frame, Ack[AckRanges];
+    [reset_stream_tag] => reset_stream, handle_reset_stream_frame, ResetStream;
+    [stop_sending_tag] => stop_sending, handle_stop_sending_frame, StopSending;
+    [crypto_tag] => crypto, handle_crypto_frame, Crypto[Data];
+    [new_token_tag] => new_token, handle_new_token_frame, NewToken['a];
+    [stream_tag] => stream, handle_stream_frame, Stream[Data];
+    [max_data_tag] => max_data, handle_max_data_frame, MaxData;
+    [max_stream_data_tag] => max_stream_data, handle_max_stream_data_frame, MaxStreamData;
+    [max_streams_tag] => max_streams, handle_max_streams_frame, MaxStreams;
+    [data_blocked_tag] => data_blocked, handle_data_blocked_frame, DataBlocked;
+    [stream_data_blocked_tag] => stream_data_blocked, handle_stream_data_blocked_frame, StreamDataBlocked;
+    [streams_blocked_tag] => streams_blocked, handle_streams_blocked_frame, StreamsBlocked;
+    [new_connection_id_tag] => new_connection_id, handle_new_connection_id_frame, NewConnectionId['a];
+    [retire_connection_id_tag] => retire_connection_id, handle_retire_connection_id_frame, RetireConnectionId;
+    [path_challenge_tag] => path_challenge, handle_path_challenge_frame, PathChallenge['a];
+    [path_response_tag] => path_response, handle_path_response_frame, PathResponse['a];
+    [connection_close_tag] => connection_close, handle_connection_close_frame, ConnectionClose['a];
+    [handshake_done_tag] => handshake_done, handle_handshake_done_frame, HandshakeDone;
+    [datagram_tag] => datagram, handle_datagram_frame, Datagram[Data];
+    extension[dc_stateless_reset_tokens_tag] => dc_stateless_reset_tokens, handle_dc_stateless_reset_tokens_frame, DcStatelessResetTokens['a];
 }
 
 #[derive(Clone, Copy, Debug, Default)]

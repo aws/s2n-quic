@@ -1,0 +1,52 @@
+---
+source: quic/s2n-quic-core/src/frame/mod.rs
+expression: values
+---
+[
+    DcStatelessResetTokens(
+        DcStatelessResetTokens {
+            stateless_reset_tokens: [
+                Token(
+                    [
+                        17,
+                        34,
+                        51,
+                        68,
+                        85,
+                        102,
+                        119,
+                        136,
+                        136,
+                        119,
+                        102,
+                        85,
+                        68,
+                        51,
+                        34,
+                        17,
+                    ],
+                ),
+                Token(
+                    [
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        8,
+                        7,
+                        6,
+                        5,
+                        4,
+                        3,
+                        2,
+                        1,
+                    ],
+                ),
+            ],
+        },
+    ),
+]

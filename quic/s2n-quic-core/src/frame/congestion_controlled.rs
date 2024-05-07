@@ -25,6 +25,10 @@ impl<Data> CongestionControlled for crate::frame::Crypto<Data> {}
 //# DATAGRAM frames employ the QUIC connection's congestion controller.
 impl<Data> CongestionControlled for crate::frame::Datagram<Data> {}
 impl CongestionControlled for crate::frame::DataBlocked {}
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.21
+//# Extension frames MUST be congestion controlled and MUST cause
+//# an ACK frame to be sent.
+impl CongestionControlled for crate::frame::DcStatelessResetTokens<'_> {}
 impl CongestionControlled for crate::frame::HandshakeDone {}
 impl CongestionControlled for crate::frame::MaxData {}
 impl CongestionControlled for crate::frame::MaxStreamData {}
