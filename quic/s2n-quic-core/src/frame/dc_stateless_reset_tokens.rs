@@ -128,7 +128,11 @@ impl<'a> EncoderValue for DcStatelessResetTokens<'a> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&TAG);
         let count = self.stateless_reset_tokens.len();
-        buffer.encode::<VarInt>(&VarInt::try_from(count).unwrap());
+        buffer.encode::<VarInt>(
+            &count.try_into().expect(
+                "count is limited to MAX_STATELESS_RESET_TOKEN_COUNT, which fits in VarInt",
+            ),
+        );
 
         for token in self.stateless_reset_tokens {
             buffer.encode(token);
