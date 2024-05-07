@@ -20,12 +20,14 @@ pub fn default_crypto_provider() -> Result<CryptoProvider, rustls::Error> {
 
     // Remove unwanted cipher suite and sort them in our preferred order
 
-    let tmp = tmp.into_iter().map(|scs| {
+    let mut tmp = tmp.into_iter().map(|scs| {
         (DEFAULT_CIPHERSUITES.iter().position(|x| *x == scs.suite()), scs)
     }).filter_map(|(pos, scs)| pos.map(|pos| (pos, scs))).fold(Vec::new(), |mut vec, (pos, scs)| {
         vec.push((pos, scs));
         vec
     });
+
+    tmp.sort_by_key(|(pos, _)| *pos);
 
     provider.cipher_suites = tmp.into_iter().map(|(_, scs)| scs).collect();
 
