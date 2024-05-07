@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::*;
+use crate::state::{event, is};
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.1
 //#        o
@@ -50,58 +50,32 @@ pub enum Sender {
 }
 
 impl Sender {
-    is!(Ready, is_ready);
-    is!(Send, is_sending);
-    is!(DataSent, is_data_sent);
-    is!(DataRecvd, is_data_received);
-    is!(ResetQueued, is_reset_queued);
-    is!(ResetSent, is_reset_sent);
-    is!(ResetRecvd, is_reset_received);
-    is!(DataRecvd | ResetRecvd, is_terminal);
+    is!(is_ready, Ready);
+    is!(is_sending, Send);
+    is!(is_data_sent, DataSent);
+    is!(is_data_received, DataRecvd);
+    is!(is_reset_queued, ResetQueued);
+    is!(is_reset_sent, ResetSent);
+    is!(is_reset_received, ResetRecvd);
+    is!(is_terminal, DataRecvd | ResetRecvd);
 
-    #[inline]
-    pub fn on_send_stream(&mut self) -> Result<Self> {
-        use Sender::*;
-        transition!(self,  Ready => Send)
-    }
-
-    #[inline]
-    pub fn on_send_fin(&mut self) -> Result<Self> {
-        use Sender::*;
+    event! {
+        on_send_stream(Ready => Send);
         // we can jump from Ready to DataSent even though the
         // diagram doesn't explicitly highlight this transition
-        transition!(self,  Ready | Send => DataSent)
-    }
+        on_send_fin(Ready | Send => DataSent);
+        on_recv_all_acks(DataSent | ResetQueued => DataRecvd);
 
-    #[inline]
-    pub fn on_queue_reset(&mut self) -> Result<Self> {
-        use Sender::*;
-        transition!(self, Ready | Send | DataSent => ResetQueued)
-    }
-
-    #[inline]
-    pub fn on_send_reset(&mut self) -> Result<Self> {
-        use Sender::*;
-        transition!(self, Ready | Send | DataSent | ResetQueued => ResetSent)
-    }
-
-    #[inline]
-    pub fn on_recv_all_acks(&mut self) -> Result<Self> {
-        use Sender::*;
-        transition!(self, DataSent | ResetQueued => DataRecvd)
-    }
-
-    #[inline]
-    pub fn on_recv_reset_ack(&mut self) -> Result<Self> {
-        use Sender::*;
-        transition!(self, ResetSent => ResetRecvd)
+        on_queue_reset(Ready | Send | DataSent => ResetQueued);
+        on_send_reset(Ready | Send | DataSent | ResetQueued => ResetSent);
+        on_recv_reset_ack(ResetSent => ResetRecvd);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use insta::assert_debug_snapshot;
+    use insta::{assert_debug_snapshot, assert_snapshot};
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -133,5 +107,11 @@ mod tests {
         }
 
         assert_debug_snapshot!(outcomes);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn dot_test() {
+        assert_snapshot!(Sender::dot());
     }
 }

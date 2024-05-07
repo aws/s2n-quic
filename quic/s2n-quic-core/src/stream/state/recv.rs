@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::*;
+use crate::state::{event, is};
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.2
 //#        o
@@ -48,49 +48,28 @@ pub enum Receiver {
 }
 
 impl Receiver {
-    is!(Recv, is_receiving);
-    is!(SizeKnown, is_size_known);
-    is!(DataRecvd, is_data_received);
-    is!(DataRead, is_data_read);
-    is!(ResetRecvd, is_reset_received);
-    is!(ResetRead, is_reset_read);
-    is!(DataRead | ResetRead, is_terminal);
+    is!(is_receiving, Recv);
+    is!(is_size_known, SizeKnown);
+    is!(is_data_received, DataRecvd);
+    is!(is_data_read, DataRead);
+    is!(is_reset_received, ResetRecvd);
+    is!(is_reset_read, ResetRead);
+    is!(is_terminal, DataRead | ResetRead);
 
-    #[inline]
-    pub fn on_receive_fin(&mut self) -> Result<Self> {
-        use Receiver::*;
-        transition!(self,  Recv => SizeKnown)
-    }
+    event! {
+        on_receive_fin(Recv => SizeKnown);
+        on_receive_all_data(SizeKnown => DataRecvd);
+        on_app_read_all_data(DataRecvd => DataRead);
 
-    #[inline]
-    pub fn on_receive_all_data(&mut self) -> Result<Self> {
-        use Receiver::*;
-        transition!(self, SizeKnown => DataRecvd)
-    }
-
-    #[inline]
-    pub fn on_app_read_all_data(&mut self) -> Result<Self> {
-        use Receiver::*;
-        transition!(self, DataRecvd => DataRead)
-    }
-
-    #[inline]
-    pub fn on_reset(&mut self) -> Result<Self> {
-        use Receiver::*;
-        transition!(self, Recv | SizeKnown => ResetRecvd)
-    }
-
-    #[inline]
-    pub fn on_app_read_reset(&mut self) -> Result<Self> {
-        use Receiver::*;
-        transition!(self, ResetRecvd => ResetRead)
+        on_reset(Recv | SizeKnown => ResetRecvd);
+        on_app_read_reset(ResetRecvd => ResetRead);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use insta::assert_debug_snapshot;
+    use insta::{assert_debug_snapshot, assert_snapshot};
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -120,5 +99,11 @@ mod tests {
         }
 
         assert_debug_snapshot!(outcomes);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn dot_test() {
+        assert_snapshot!(Receiver::dot());
     }
 }

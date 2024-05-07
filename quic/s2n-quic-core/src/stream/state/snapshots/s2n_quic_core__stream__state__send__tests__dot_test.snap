@@ -1,0 +1,26 @@
+---
+source: quic/s2n-quic-core/src/stream/state/send.rs
+expression: "Sender::dot()"
+---
+digraph {
+  DataRecvd;
+  DataSent;
+  Ready;
+  ResetQueued;
+  ResetRecvd;
+  ResetSent;
+  Send;
+  Ready -> Send [label = "on_send_stream"];
+  Ready -> DataSent [label = "on_send_fin"];
+  Send -> DataSent [label = "on_send_fin"];
+  DataSent -> DataRecvd [label = "on_recv_all_acks"];
+  ResetQueued -> DataRecvd [label = "on_recv_all_acks"];
+  Ready -> ResetQueued [label = "on_queue_reset"];
+  Send -> ResetQueued [label = "on_queue_reset"];
+  DataSent -> ResetQueued [label = "on_queue_reset"];
+  Ready -> ResetSent [label = "on_send_reset"];
+  Send -> ResetSent [label = "on_send_reset"];
+  DataSent -> ResetSent [label = "on_send_reset"];
+  ResetQueued -> ResetSent [label = "on_send_reset"];
+  ResetSent -> ResetRecvd [label = "on_recv_reset_ack"];
+}
