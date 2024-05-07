@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{frame::ExtensionTag, stateless_reset, varint::VarInt};
-use s2n_codec::{
-    decoder_invariant, decoder_parameterized_value, zerocopy::FromBytes as _, DecoderError,
-    Encoder, EncoderValue,
-};
+use s2n_codec::{decoder_invariant, zerocopy::FromBytes as _, DecoderError, Encoder, EncoderValue};
 
 const TAG: VarInt = VarInt::from_u32(0xdc0000);
 
@@ -72,42 +69,60 @@ impl<'a> IntoIterator for DcStatelessResetTokens<'a> {
     }
 }
 
-decoder_parameterized_value!(
-    impl<'a> DcStatelessResetTokens<'a> {
-        fn decode(_tag: ExtensionTag, buffer: Buffer) -> Result<Self> {
-            let (count, buffer) = buffer.decode::<VarInt>()?;
+macro_rules! impl_decode_parameterized {
+    ($slice_from_prefix:ident, $buffer:ident) => {{
+        let (count, buffer) = $buffer.decode::<VarInt>()?;
 
-            decoder_invariant!(
-                count > VarInt::ZERO,
-                "at least one stateless token must be supplied"
-            );
+        decoder_invariant!(
+            count > VarInt::ZERO,
+            "at least one stateless token must be supplied"
+        );
 
-            decoder_invariant!(
-                count <= MAX_STATELESS_RESET_TOKEN_COUNT,
-                "too many stateless reset tokens"
-            );
+        decoder_invariant!(
+            count <= MAX_STATELESS_RESET_TOKEN_COUNT,
+            "too many stateless reset tokens"
+        );
 
-            let count: usize = count
-                .try_into()
-                .expect("MAX_STATELESS_RESET_TOKEN_COUNT fits in usize");
-            let len = count * stateless_reset::token::LEN;
+        let count: usize = count
+            .try_into()
+            .expect("MAX_STATELESS_RESET_TOKEN_COUNT fits in usize");
 
-            let (stateless_reset_tokens, buffer) = buffer.decode_slice(len)?;
-            let stateless_reset_tokens = stateless_reset_tokens.into_less_safe_slice();
+        let buffer = buffer.into_less_safe_slice();
+        let (stateless_reset_tokens, remaining) =
+            stateless_reset::Token::$slice_from_prefix(buffer, count)
+                .ok_or(DecoderError::InvariantViolation("invalid encoding"))?;
 
-            let (stateless_reset_tokens, remaining) =
-                stateless_reset::Token::slice_from_prefix(stateless_reset_tokens, count)
-                    .ok_or(DecoderError::InvariantViolation("invalid encoding"))?;
-            debug_assert_eq!(0, remaining.len());
+        let frame = DcStatelessResetTokens {
+            stateless_reset_tokens,
+        };
 
-            let frame = DcStatelessResetTokens {
-                stateless_reset_tokens,
-            };
+        Ok((frame, remaining.into()))
+    }};
+}
 
-            Ok((frame, buffer))
-        }
+impl<'a> ::s2n_codec::DecoderParameterizedValue<'a> for DcStatelessResetTokens<'a> {
+    type Parameter = ExtensionTag;
+
+    #[inline]
+    fn decode_parameterized(
+        _tag: Self::Parameter,
+        buffer: ::s2n_codec::DecoderBuffer<'a>,
+    ) -> ::s2n_codec::DecoderBufferResult<'a, Self> {
+        impl_decode_parameterized!(slice_from_prefix, buffer)
     }
-);
+}
+
+impl<'a> ::s2n_codec::DecoderParameterizedValueMut<'a> for DcStatelessResetTokens<'a> {
+    type Parameter = ExtensionTag;
+
+    #[inline]
+    fn decode_parameterized_mut(
+        _tag: Self::Parameter,
+        buffer: ::s2n_codec::DecoderBufferMut<'a>,
+    ) -> ::s2n_codec::DecoderBufferMutResult<'a, Self> {
+        impl_decode_parameterized!(mut_slice_from_prefix, buffer)
+    }
+}
 
 impl<'a> EncoderValue for DcStatelessResetTokens<'a> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
