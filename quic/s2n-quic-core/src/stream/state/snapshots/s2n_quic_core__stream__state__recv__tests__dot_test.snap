@@ -1,0 +1,18 @@
+---
+source: quic/s2n-quic-core/src/stream/state/recv.rs
+expression: "Receiver::dot()"
+---
+digraph {
+  DataRead;
+  DataRecvd;
+  Recv;
+  ResetRead;
+  ResetRecvd;
+  SizeKnown;
+  Recv -> SizeKnown [label = "on_receive_fin"];
+  SizeKnown -> DataRecvd [label = "on_receive_all_data"];
+  DataRecvd -> DataRead [label = "on_app_read_all_data"];
+  Recv -> ResetRecvd [label = "on_reset"];
+  SizeKnown -> ResetRecvd [label = "on_reset"];
+  ResetRecvd -> ResetRead [label = "on_app_read_reset"];
+}

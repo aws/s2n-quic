@@ -20,6 +20,7 @@ checked-counters = []
 branch-tracing = ["tracing"]
 event-tracing = ["tracing"]
 probe-tracing = ["tracing"]
+state-tracing = ["tracing"]
 # This feature enables support for third party congestion controller implementations
 unstable-congestion-controller = []
 usdt = ["dep:probe"]
