@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{tls::rustls::DisabledVerifier, Result};
+use crate::Result;
 use s2n_quic::provider::tls as s2n_quic_tls_provider;
 #[allow(deprecated)]
 use s2n_quic::provider::tls::rustls::rustls as rustls_crate;
@@ -115,12 +115,12 @@ impl Client {
 
     pub fn build_rustls(&self, alpns: &[String]) -> Result<rustls::Client> {
         let tls = if self.disable_cert_verification {
-            use rustls_crate::KeyLogFile;
+            use rustls_crate::{ClientConfig, KeyLogFile};
             use std::sync::Arc;
 
-            let mut config = s2n_quic_tls_provider::rustls::client_config_builder()?
+            let mut config = ClientConfig::builder()
                 .dangerous()
-                .with_custom_certificate_verifier(Arc::new(DisabledVerifier))
+                .with_custom_certificate_verifier(Arc::new(rustls::DisabledVerifier::new()))
                 .with_no_client_auth();
             config.max_fragment_size = None;
             config.alpn_protocols = alpns.iter().map(|p| p.as_bytes().to_vec()).collect();
@@ -269,11 +269,12 @@ pub mod rustls {
     use super::*;
     use rustls_crate::{
         client::danger,
+        crypto::CryptoProvider,
         pki_types::{CertificateDer, ServerName, UnixTime},
     };
     pub use s2n_quic::provider::tls::rustls::{
         certificate::{Certificate, IntoCertificate, IntoPrivateKey, PrivateKey},
-        default_crypto_provider, Client, Server,
+        Client, Server,
     };
 
     pub fn ca(ca: Option<&PathBuf>) -> Result<Certificate> {
@@ -293,7 +294,21 @@ pub mod rustls {
     }
 
     #[derive(Debug)]
-    pub struct DisabledVerifier;
+    pub struct DisabledVerifier(CryptoProvider);
+
+    impl DisabledVerifier {
+        pub fn new() -> Self {
+            #[allow(deprecated)]
+            let cipher_suites = s2n_quic_tls_provider::rustls::DEFAULT_CIPHERSUITES;
+
+            let default_crypto_provider = CryptoProvider {
+                cipher_suites: cipher_suites.to_vec(),
+                ..rustls_crate::crypto::aws_lc_rs::default_provider()
+            };
+
+            DisabledVerifier(default_crypto_provider)
+        }
+    }
 
     impl danger::ServerCertVerifier for DisabledVerifier {
         fn verify_server_cert(
@@ -317,7 +332,7 @@ pub mod rustls {
                 message,
                 cert,
                 dss,
-                &default_crypto_provider()?.signature_verification_algorithms,
+                &self.0.signature_verification_algorithms,
             )
         }
 
@@ -331,15 +346,12 @@ pub mod rustls {
                 message,
                 cert,
                 dss,
-                &default_crypto_provider()?.signature_verification_algorithms,
+                &self.0.signature_verification_algorithms,
             )
         }
 
         fn supported_verify_schemes(&self) -> Vec<rustls_crate::SignatureScheme> {
-            default_crypto_provider()
-                .unwrap()
-                .signature_verification_algorithms
-                .supported_schemes()
+            self.0.signature_verification_algorithms.supported_schemes()
         }
     }
 }

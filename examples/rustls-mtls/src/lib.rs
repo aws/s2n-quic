@@ -4,6 +4,8 @@
 use s2n_quic::provider::tls as s2n_quic_tls_provider;
 #[allow(deprecated)]
 use s2n_quic::provider::tls::rustls::rustls::{
+    self as rustls_crate,
+    crypto::CryptoProvider,
     pki_types::{CertificateDer, PrivateKeyDer},
     server::WebPkiClientVerifier,
     Error as RustlsError, RootCertStore,
@@ -46,16 +48,25 @@ impl s2n_quic_tls_provider::Provider for MtlsProvider {
     type Error = RustlsError;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
-        let default_crypto_provider = s2n_quic_tls_provider::rustls::default_crypto_provider()?;
+        #[allow(deprecated)]
+        let cipher_suites = s2n_quic_tls_provider::rustls::DEFAULT_CIPHERSUITES;
+        let default_crypto_provider = CryptoProvider {
+            cipher_suites: cipher_suites.to_vec(),
+            ..rustls_crate::crypto::aws_lc_rs::default_provider()
+        };
+
         let verifier = WebPkiClientVerifier::builder_with_provider(
             Arc::new(self.root_store),
             default_crypto_provider.into(),
         )
         .build()
         .unwrap();
-        let mut cfg = s2n_quic_tls_provider::rustls::server_config_builder()?
-            .with_client_cert_verifier(verifier)
-            .with_single_cert(self.my_cert_chain, self.my_private_key)?;
+
+        let mut cfg = rustls_crate::ServerConfig::builder_with_protocol_versions(&[
+            &rustls_crate::version::TLS13,
+        ])
+        .with_client_cert_verifier(verifier)
+        .with_single_cert(self.my_cert_chain, self.my_private_key)?;
 
         cfg.ignore_client_order = true;
         cfg.max_fragment_size = None;
@@ -64,7 +75,7 @@ impl s2n_quic_tls_provider::Provider for MtlsProvider {
     }
 
     fn start_client(self) -> Result<Self::Client, Self::Error> {
-        let mut cfg = s2n_quic_tls_provider::rustls::client_config_builder()?
+        let mut cfg = rustls_crate::ClientConfig::builder()
             .with_root_certificates(self.root_store)
             .with_client_auth_cert(self.my_cert_chain, self.my_private_key)?;
 

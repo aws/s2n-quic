@@ -10,8 +10,7 @@ use std::sync::Arc;
 /// Create a QUIC server specific [rustls::ConfigBuilder].
 ///
 /// Uses aws_lc_rs as the crypto provider and sets QUIC specific protocol versions.
-pub fn default_config_builder() -> Result<ConfigBuilder<ServerConfig, WantsVerifier>, rustls::Error>
-{
+fn default_config_builder() -> Result<ConfigBuilder<ServerConfig, WantsVerifier>, rustls::Error> {
     let tls13_cipher_suite_crypto_provider = default_crypto_provider()?;
     ServerConfig::builder_with_provider(tls13_cipher_suite_crypto_provider.into())
         .with_protocol_versions(crate::PROTOCOL_VERSIONS)
