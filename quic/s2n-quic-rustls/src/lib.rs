@@ -3,6 +3,14 @@
 
 #![forbid(unsafe_code)]
 
+//! This crate depends on [rustls](https://github.com/rustls/rustls) which is currently
+//! 0.x and has not stabilized its APIs. Applications depending on the rustls provider
+//! should expect breaking changes to methods marked "deprecated" when the underlying
+//! rustls dependency is updated.
+
+// WARNING: Avoid adding new APIs which directly expose the underlying rustls API. If
+//          it's absolutely necessary, all rustls types must be marked as `#[deprecated]`
+//          since it's possible for those types to change in newer rustls versions.
 #[deprecated = "client and server builders should be used instead"]
 pub mod rustls {
     pub use ::rustls::*;

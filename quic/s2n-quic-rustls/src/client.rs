@@ -23,6 +23,13 @@ pub struct Client {
 }
 
 impl Client {
+    /// Build a Client using a custom [rustls::ClientConfig]
+    ///
+    /// In addition to necessary configuration, the applications is responsible for correctly
+    /// setting:
+    /// - QUIC compliant application_protocol
+    /// - QUIC compliant TLS protocol version
+    /// - QUIC compliant ciphersuites
     #[deprecated = "client and server builders should be used instead"]
     pub fn new(config: ClientConfig) -> Self {
         Self {
