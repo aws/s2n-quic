@@ -157,7 +157,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         };
 
         let (_protected_packet, buffer) = packet.encode_packet(
-            &self.key,
+            &mut self.key,
             &self.header_key,
             packet_number_encoder,
             context.min_packet_len,
@@ -243,7 +243,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         };
 
         let (_protected_packet, buffer) = packet.encode_packet(
-            &self.key,
+            &mut self.key,
             &self.header_key,
             packet_number_encoder,
             context.min_packet_len,

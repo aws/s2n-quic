@@ -269,6 +269,25 @@ jobs:
         run: |
           ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
+  fips:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install rust stable toolchain
+        id: stable-toolchain
+        run: |
+          rustup toolchain install stable
+          rustup override set stable
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Run test
+        run: |
+          cargo test --features provider-tls-fips
+
   miri:
     # miri needs quite a bit of memory so use a larger instance
     runs-on:

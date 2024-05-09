@@ -1,24 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ring_aead::{Aad, LessSafeKey, Nonce, MAX_TAG_LEN, NONCE_LEN};
-pub use s2n_quic_core::crypto::{packet_protection::Error, scatter};
-pub type Result<T = (), E = Error> = core::result::Result<T, E>;
-
-pub trait Aead {
-    type Nonce;
-    type Tag;
-
-    fn encrypt(&self, nonce: &Self::Nonce, aad: &[u8], payload: &mut scatter::Buffer) -> Result;
-
-    fn decrypt(
-        &self,
-        nonce: &Self::Nonce,
-        aad: &[u8],
-        payload: &mut [u8],
-        tag: &Self::Tag,
-    ) -> Result;
-}
+use crate::{
+    aead::{Aead, Result},
+    ring_aead::{Aad, LessSafeKey, Nonce, MAX_TAG_LEN, NONCE_LEN},
+};
+use s2n_quic_core::crypto::{packet_protection::Error, scatter};
 
 impl Aead for LessSafeKey {
     type Nonce = [u8; NONCE_LEN];
@@ -27,7 +14,7 @@ impl Aead for LessSafeKey {
     #[inline]
     #[cfg(target_os = "windows")]
     fn encrypt(
-        &self,
+        &mut self,
         nonce: &[u8; NONCE_LEN],
         aad: &[u8],
         payload: &mut scatter::Buffer,
@@ -55,7 +42,7 @@ impl Aead for LessSafeKey {
     #[inline]
     #[cfg(not(target_os = "windows"))]
     fn encrypt(
-        &self,
+        &mut self,
         nonce: &[u8; NONCE_LEN],
         aad: &[u8],
         payload: &mut scatter::Buffer,

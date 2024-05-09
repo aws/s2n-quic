@@ -125,14 +125,14 @@ fn encode_packet<'a>(packet: CleartextPacket, mut encoder: EncoderBuffer<'a>) ->
     use CleartextPacket::*;
     let result = match packet {
         Handshake(packet) => packet.encode_packet(
-            &testing::Key::new(),
+            &mut testing::Key::new(),
             &testing::HeaderKey::new(),
             PacketNumberSpace::Handshake.new_packet_number(Default::default()),
             None,
             encoder,
         ),
         Initial(packet) => packet.encode_packet(
-            &testing::Key::new(),
+            &mut testing::Key::new(),
             &testing::HeaderKey::new(),
             PacketNumberSpace::Initial.new_packet_number(Default::default()),
             None,
@@ -143,14 +143,14 @@ fn encode_packet<'a>(packet: CleartextPacket, mut encoder: EncoderBuffer<'a>) ->
             return encoder;
         }
         Short(packet) => packet.encode_packet(
-            &testing::Key::new(),
+            &mut testing::Key::new(),
             &testing::HeaderKey::new(),
             PacketNumberSpace::ApplicationData.new_packet_number(Default::default()),
             None,
             encoder,
         ),
         ZeroRtt(packet) => packet.encode_packet(
-            &testing::Key::new(),
+            &mut testing::Key::new(),
             &testing::HeaderKey::new(),
             PacketNumberSpace::ApplicationData.new_packet_number(Default::default()),
             None,

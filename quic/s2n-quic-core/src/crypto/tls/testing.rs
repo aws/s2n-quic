@@ -281,8 +281,8 @@ impl<S: tls::Session, C: tls::Session> Pair<S, C> {
     }
 
     /// Finished the test
-    pub fn finish(&self) {
-        self.client.context.finish(&self.server.context);
+    pub fn finish(&mut self) {
+        self.client.context.finish(&mut self.server.context);
 
         assert_eq!(
             self.client.context.transport_parameters.as_ref().unwrap(),
@@ -442,7 +442,7 @@ where
     }
 
     /// Finishes the test and asserts consistency
-    pub fn finish<O: CryptoSuite, OS: Debug, OP>(&self, other: &Context<O, OS, OP>)
+    pub fn finish<O: CryptoSuite, OS: Debug, OP>(&mut self, other: &mut Context<O, OS, OP>)
     where
         for<'a> OP: DecoderValue<'a>,
     {
@@ -464,9 +464,9 @@ where
             "0-rtt keys are not consistent between endpoints"
         );
 
-        self.initial.finish(&other.initial);
-        self.handshake.finish(&other.handshake);
-        self.application.finish(&other.application);
+        self.initial.finish(&mut other.initial);
+        self.handshake.finish(&mut other.handshake);
+        self.application.finish(&mut other.application);
     }
 
     fn assert_done(&self) {
@@ -566,9 +566,9 @@ impl<K: Key, Hk: HeaderKey> Space<K, Hk> {
         }
     }
 
-    fn finish<O: Key, Ohk: HeaderKey>(&self, other: &Space<O, Ohk>) {
-        let (crypto_a, crypto_a_hk) = self.crypto.as_ref().expect("missing crypto");
-        let (crypto_b, crypto_b_hk) = other.crypto.as_ref().expect("missing crypto");
+    fn finish<O: Key, Ohk: HeaderKey>(&mut self, other: &mut Space<O, Ohk>) {
+        let (crypto_a, crypto_a_hk) = self.crypto.as_mut().expect("missing crypto");
+        let (crypto_b, crypto_b_hk) = other.crypto.as_mut().expect("missing crypto");
 
         // ensure payloads can be encrypted and decrypted in both directions
         seal_open(crypto_a, crypto_b);
@@ -582,7 +582,7 @@ impl<K: Key, Hk: HeaderKey> Space<K, Hk> {
     }
 }
 
-fn seal_open<S: Key, O: Key>(sealer: &S, opener: &O) {
+fn seal_open<S: Key, O: Key>(sealer: &mut S, opener: &O) {
     let packet_number = 123;
     let header = &[1, 2, 3, 4, 5, 6];
 

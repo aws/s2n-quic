@@ -102,7 +102,7 @@ impl<K: OneRttKey> Key<K> {
     }
 
     #[inline]
-    pub fn key(&self) -> &K {
-        &self.key
+    pub fn key_mut(&mut self) -> &mut K {
+        &mut self.key
     }
 }

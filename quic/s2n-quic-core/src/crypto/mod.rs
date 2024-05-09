@@ -206,7 +206,7 @@ pub fn unprotect<'a, K: HeaderKey>(
 /// Encrypts a cleartext payload with a crypto key into a `EncryptedPayload`
 #[inline]
 pub fn encrypt<'a, K: Key>(
-    key: &K,
+    key: &mut K,
     packet_number: PacketNumber,
     packet_number_len: PacketNumberLen,
     header_len: usize,

@@ -95,7 +95,7 @@ impl crypto::Key for NegotiatedCipherSuite {
 
     #[inline]
     fn encrypt(
-        &self,
+        &mut self,
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,

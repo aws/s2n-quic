@@ -92,7 +92,7 @@ impl Key for InitialKey {
 
     #[inline]
     fn encrypt(
-        &self,
+        &mut self,
         packet_number: u64,
         header: &[u8],
         payload: &mut scatter::Buffer,
@@ -142,7 +142,7 @@ mod tests {
     #[test]
     fn rfc_example_server_test() {
         test_round_trip(
-            &InitialKey::new_client(&EXAMPLE_DCID),
+            &mut InitialKey::new_client(&EXAMPLE_DCID),
             &InitialKey::new_server(&EXAMPLE_DCID),
             &EXAMPLE_CLIENT_INITIAL_PROTECTED_PACKET,
             &EXAMPLE_CLIENT_INITIAL_PAYLOAD,
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn rfc_example_client_test() {
         test_round_trip(
-            &InitialKey::new_server(&EXAMPLE_DCID),
+            &mut InitialKey::new_server(&EXAMPLE_DCID),
             &InitialKey::new_client(&EXAMPLE_DCID),
             &EXAMPLE_SERVER_INITIAL_PROTECTED_PACKET,
             &EXAMPLE_SERVER_INITIAL_PAYLOAD,
@@ -160,7 +160,7 @@ mod tests {
     }
 
     fn test_round_trip(
-        sealer: &(InitialKey, InitialHeaderKey),
+        sealer: &mut (InitialKey, InitialHeaderKey),
         opener: &(InitialKey, InitialHeaderKey),
         protected_packet: &[u8],
         cleartext_payload: &[u8],
