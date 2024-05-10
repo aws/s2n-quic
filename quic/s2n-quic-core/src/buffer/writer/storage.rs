@@ -11,6 +11,7 @@ mod empty;
 mod limit;
 mod tracked;
 mod uninit_slice;
+mod vec_deque;
 mod write_once;
 
 pub use buf::BufMut;

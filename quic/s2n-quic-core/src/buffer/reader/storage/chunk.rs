@@ -63,6 +63,13 @@ impl<'a> core::ops::Deref for Chunk<'a> {
     }
 }
 
+impl<'a> AsRef<[u8]> for Chunk<'a> {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self
+    }
+}
+
 impl<'a> Storage for Chunk<'a> {
     type Error = core::convert::Infallible;
 

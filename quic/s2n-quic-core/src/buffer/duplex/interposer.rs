@@ -33,7 +33,9 @@ where
     pub fn new(storage: &'a mut S, duplex: &'a mut D) -> Self {
         debug_assert!(
             !storage.has_remaining_capacity() || duplex.buffer_is_empty(),
-            "`duplex` should be drained into `storage` before constructing an Interposer"
+            "`duplex` (len={}) should be drained into `storage` (cap={}) before constructing an Interposer",
+            duplex.buffered_len(),
+            storage.remaining_capacity()
         );
 
         Self { storage, duplex }
