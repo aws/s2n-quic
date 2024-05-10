@@ -182,13 +182,13 @@ impl Builder {
                 )
                 .into());
             }
-            (true, Some(_)) => {
+            (false, Some(_)) => {
                 return Err(rustls::Error::General(
                     "custom certificate verifier and certificate(s) provided".to_string(),
                 )
                 .into());
             }
-            (false, Some(verifier)) => cfg_builder
+            (true, Some(verifier)) => cfg_builder
                 .dangerous()
                 .with_custom_certificate_verifier(verifier),
             (false, None) => cfg_builder.with_root_certificates(self.cert_store),
