@@ -3,6 +3,7 @@
 
 use crate::{certificate, cipher_suite::default_crypto_provider, session::Session, Error};
 use core::convert::TryFrom;
+use rustls::client::danger::ServerCertVerifier;
 use rustls::{ClientConfig, ConfigBuilder, WantsVerifier};
 use s2n_codec::EncoderValue;
 use s2n_quic_core::{application::ServerName, crypto::tls};
@@ -107,6 +108,7 @@ pub struct Builder {
     cert_store: rustls::RootCertStore,
     application_protocols: Vec<Vec<u8>>,
     key_log: Option<Arc<dyn rustls::KeyLog>>,
+    certificate_verifier: Option<Arc<dyn ServerCertVerifier>>,
 }
 
 impl Default for Builder {
@@ -121,6 +123,7 @@ impl Builder {
             cert_store: rustls::RootCertStore::empty(),
             application_protocols: vec![b"h3".to_vec()],
             key_log: None,
+            certificate_verifier: None,
         }
     }
 
@@ -157,19 +160,40 @@ impl Builder {
         Ok(self)
     }
 
+    pub fn with_custom_certificate_verifier<V: ServerCertVerifier + 'static>(
+        mut self,
+        verifier: V,
+    ) -> Result<Self, Error> {
+        self.certificate_verifier = Some(Arc::new(verifier));
+        Ok(self)
+    }
+
     pub fn build(self) -> Result<Client, Error> {
         // TODO load system root store?
-        if self.cert_store.is_empty() {
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.4
-            //# A client MUST authenticate the identity of the server.
-            return Err(
-                rustls::Error::General("missing trusted root certificate(s)".to_string()).into(),
-            );
-        }
+        if self.cert_store.is_empty() && self.certificate_verifier.is_none() {}
 
-        let mut config = default_config_builder()?
-            .with_root_certificates(self.cert_store)
-            .with_no_client_auth();
+        let cfg_builder = default_config_builder()?;
+        let mut config = match (self.cert_store.is_empty(), self.certificate_verifier) {
+            (true, None) => {
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.4
+                //# A client MUST authenticate the identity of the server.
+                return Err(rustls::Error::General(
+                    "missing trusted root certificate(s)".to_string(),
+                )
+                .into());
+            }
+            (true, Some(_)) => {
+                return Err(rustls::Error::General(
+                    "custom certificate verifier and certificate(s) provided".to_string(),
+                )
+                .into());
+            }
+            (false, Some(verifier)) => cfg_builder
+                .dangerous()
+                .with_custom_certificate_verifier(verifier),
+            (false, None) => cfg_builder.with_root_certificates(self.cert_store),
+        }
+        .with_no_client_auth();
 
         config.max_fragment_size = None;
         config.alpn_protocols = self.application_protocols;
