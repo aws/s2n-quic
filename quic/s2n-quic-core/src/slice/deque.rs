@@ -259,12 +259,9 @@ unsafe fn copy<T>(slice: &mut [T], src: usize, dst: usize, len: usize) {
         len,
         slice.len()
     );
+    let ptr = slice.as_mut_ptr();
     unsafe {
-        ptr::copy(
-            slice.as_mut_ptr().add(src),
-            slice.as_mut_ptr().add(dst),
-            len,
-        );
+        ptr::copy(ptr.add(src), ptr.add(dst), len);
     }
 }
 
@@ -287,11 +284,8 @@ unsafe fn copy_nonoverlapping<T>(slice: &mut [T], src: usize, dst: usize, len: u
         len,
         slice.len()
     );
+    let ptr = slice.as_mut_ptr();
     unsafe {
-        ptr::copy_nonoverlapping(
-            slice.as_mut_ptr().add(src),
-            slice.as_mut_ptr().add(dst),
-            len,
-        );
+        ptr::copy_nonoverlapping(ptr.add(src), ptr.add(dst), len);
     }
 }
