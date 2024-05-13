@@ -6,6 +6,10 @@ use crate::buffer::writer::Storage as _;
 use bolero::{check, TypeGenerator};
 use std::collections::VecDeque;
 
+// shrink the search space with kani
+const CAPACITY: usize = if cfg!(kani) { 4 } else { u8::MAX as usize + 1 };
+const OPS_LEN: usize = if cfg!(kani) { 2 } else { u8::MAX as usize + 1 };
+
 #[derive(Clone, Copy, Debug, TypeGenerator)]
 enum Op {
     Recv { amount: u16, skip: u8 },
@@ -24,7 +28,9 @@ struct Model {
 
 impl Default for Model {
     fn default() -> Self {
-        let buffer = Deque::new(u16::MAX as _);
+        let capacity = CAPACITY;
+
+        let buffer = Deque::new(capacity);
         let remaining_capacity = buffer.capacity();
         Self {
             oracle: Default::default(),
@@ -40,13 +46,14 @@ impl Model {
         for op in ops {
             self.apply(*op);
         }
+        self.invariants();
     }
 
     #[inline]
     fn pattern(&mut self, amount: usize, skip: u8) -> impl Iterator<Item = u8> + Clone {
         let base = self.byte as usize + skip as usize;
 
-        let iter = (0u8..u8::MAX).cycle().skip(base).take(amount);
+        let iter = core::iter::repeat(base as u8).take(amount);
 
         self.byte = (base + amount) as u8;
 
@@ -64,13 +71,13 @@ impl Model {
                 let mut pair = self.subject.unfilled();
 
                 if amount > 0 {
-                    assert!(!pair.is_empty());
+                    assert!(pair.has_remaining_capacity());
                 }
 
                 assert!(amount <= pair.remaining_capacity());
 
                 // copy the pattern into the unfilled portion
-                for (a, b) in pair.iter_mut().flat_map(|s| s.iter_mut()).zip(&mut pattern) {
+                for (a, b) in pair.iter_mut().zip(&mut pattern) {
                     *a = MaybeUninit::new(b);
                 }
 
@@ -100,21 +107,15 @@ impl Model {
                 self.remaining_capacity = self.subject.capacity();
             }
         }
-
-        self.invariants();
     }
 
+    #[cfg(not(kani))]
     fn invariants(&mut self) {
-        assert_eq!(self.subject.len(), self.oracle.len());
+        self.invariants_common();
 
-        let subject = {
-            let (head, tail) = self.subject.filled().into();
-            head.iter().chain(&*tail)
-        };
-        let oracle = {
-            let (head, tail) = self.oracle.as_slices();
-            head.iter().chain(tail)
-        };
+        let filled = self.subject.filled();
+        let subject = filled.iter();
+        let oracle = self.oracle.iter();
 
         assert!(
             subject.eq(oracle),
@@ -129,13 +130,39 @@ impl Model {
             }
         );
 
+        // we include the length just to make sure the case where we exceed the length returns
+        // `None`
+        for idx in 0..=self.subject.len() {
+            assert_eq!(self.oracle.get(idx), self.subject.filled().get(idx));
+        }
+    }
+
+    #[cfg(kani)]
+    fn invariants(&mut self) {
+        self.invariants_common();
+
+        let idx = kani::any();
+        // we include the length just to make sure the case where we exceed the length returns
+        // `None`
+        kani::assume(idx <= self.subject.len());
+
+        assert_eq!(self.oracle.get(idx), self.subject.filled().get(idx));
+    }
+
+    fn invariants_common(&self) {
+        assert_eq!(self.subject.len(), self.oracle.len());
         assert_eq!(self.subject.remaining_capacity(), self.remaining_capacity);
     }
 }
 
 #[test]
+#[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(cadical))]
+// even with the minimal amount of parameter bounds, this proof's memory consumption explodes
+#[cfg_attr(kani, cfg(kani_slow))]
 fn model_test() {
-    check!().with_type::<Vec<Op>>().for_each(|ops| {
+    let ops = bolero::gen::<Vec<Op>>().with().len(..=OPS_LEN);
+
+    check!().with_generator(ops).for_each(|ops| {
         let mut model = Model::default();
         model.apply_all(ops);
     })

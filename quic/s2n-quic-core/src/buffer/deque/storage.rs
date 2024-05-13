@@ -162,7 +162,7 @@ mod tests {
     impl Default for Model {
         fn default() -> Self {
             Self {
-                buffer: Deque::new(u16::MAX as _),
+                buffer: Deque::new(u8::MAX as _),
                 send: Data::new(usize::MAX as _),
                 recv: Data::new(usize::MAX as _),
             }
@@ -173,6 +173,11 @@ mod tests {
         fn apply_all(&mut self, ops: &[Op]) {
             for op in ops {
                 self.apply(op);
+            }
+            while !self.buffer.is_empty() {
+                self.apply(&Op::FullCopy {
+                    watermark: u16::MAX,
+                });
             }
         }
 

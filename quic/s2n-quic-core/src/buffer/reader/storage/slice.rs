@@ -89,6 +89,7 @@ impl_slice!(
     split_at,
     |chunk: &[u8]| unsafe {
         // SAFETY: we're using transmute to extend the lifetime of the chunk to `self`
+        // Upstream tracking: https://github.com/rust-lang/rust/issues/124659
         core::mem::transmute::<&[u8], &[u8]>(chunk)
     },
     std::io::IoSlice::new
@@ -100,6 +101,7 @@ impl_slice!(
     split_at_mut,
     |chunk: &mut [u8]| unsafe {
         // SAFETY: we're using transmute to extend the lifetime of the chunk to `self`
+        // Upstream tracking: https://github.com/rust-lang/rust/issues/124659
         core::mem::transmute::<&mut [u8], &mut [u8]>(chunk)
     },
     std::io::IoSliceMut::new

@@ -56,14 +56,15 @@ impl From<Vec<u8>> for Deque {
 
 impl Deque {
     #[inline]
-    pub fn new(mut cap: usize) -> Self {
-        if !cap.is_power_of_two() {
-            cap = cap.next_power_of_two();
-        }
+    pub fn new(mut capacity: usize) -> Self {
+        // Make sure capacity is set to a power of two
+        // https://doc.rust-lang.org/std/primitive.usize.html#method.next_power_of_two
+        //> Returns the smallest power of two greater than or equal to self.
+        capacity = capacity.next_power_of_two();
 
-        let mut bytes = Vec::<MaybeUninit<u8>>::with_capacity(cap);
+        let mut bytes = Vec::<MaybeUninit<u8>>::with_capacity(capacity);
         unsafe {
-            bytes.set_len(cap);
+            bytes.set_len(capacity);
         }
         let bytes = bytes.into_boxed_slice();
 
@@ -114,7 +115,7 @@ impl Deque {
     pub fn consume(&mut self, len: usize) {
         self.preconditions();
 
-        debug_assert!(self.len() >= len);
+        assert!(self.len() >= len);
 
         if len >= self.len() {
             self.clear();
@@ -124,6 +125,8 @@ impl Deque {
         // Wrap the head around the capacity
         self.head = deque::wrap(&self.bytes, self.head, len);
         self.len -= len;
+
+        self.postconditions()
     }
 
     /// Returns the filled bytes in the buffer
@@ -147,9 +150,10 @@ impl Deque {
         self.preconditions();
 
         let head = self.head;
-        let len = self.len.min(len);
 
         self.consume(len);
+
+        self.postconditions();
 
         unsafe {
             // SAFETY: cursors guarantee memory is filled
@@ -172,6 +176,8 @@ impl Deque {
     pub fn make_contiguous(&mut self) -> &mut [u8] {
         self.preconditions();
         deque::make_contiguous(&mut self.bytes, &mut self.head, self.len);
+        self.postconditions();
+
         let (head, tail) = self.filled().into();
         debug_assert!(tail.is_empty());
         head
@@ -188,6 +194,8 @@ impl Deque {
 
         self.len += len;
 
+        self.postconditions();
+
         Ok(())
     }
 
@@ -197,6 +205,11 @@ impl Deque {
             assume!(deque::invariants(&self.bytes, self.head, self.len));
             assume!(self.capacity().is_power_of_two());
         }
+    }
+
+    #[inline(always)]
+    fn postconditions(&self) {
+        debug_assert!(deque::invariants(&self.bytes, self.head, self.len));
     }
 }
 

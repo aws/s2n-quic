@@ -7,18 +7,9 @@ pub struct Pair<Part> {
     parts: [Part; 2],
 }
 
-impl<'a, T> From<(&'a [T], &'a [T])> for Pair<&'a [T]> {
+impl<Part> From<(Part, Part)> for Pair<Part> {
     #[inline]
-    fn from((head, tail): (&'a [T], &'a [T])) -> Self {
-        Self {
-            parts: [head, tail],
-        }
-    }
-}
-
-impl<'a, T> From<(&'a mut [T], &'a mut [T])> for Pair<&'a mut [T]> {
-    #[inline]
-    fn from((head, tail): (&'a mut [T], &'a mut [T])) -> Self {
+    fn from((head, tail): (Part, Part)) -> Self {
         Self {
             parts: [head, tail],
         }
@@ -30,22 +21,6 @@ impl<Part> From<Pair<Part>> for (Part, Part) {
     fn from(pair: Pair<Part>) -> (Part, Part) {
         let [head, tail] = pair.parts;
         (head, tail)
-    }
-}
-
-impl<Part> ops::Deref for Pair<Part> {
-    type Target = [Part];
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.parts
-    }
-}
-
-impl<Part> ops::DerefMut for Pair<Part> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.parts
     }
 }
 
@@ -61,6 +36,57 @@ impl<T> Pair<T> {
         Pair {
             parts: [head, tail],
         }
+    }
+}
+
+impl<Part, T> Pair<Part>
+where
+    Part: ops::Deref<Target = [T]>,
+{
+    #[inline]
+    pub fn get(&self, mut index: usize) -> Option<&T> {
+        for part in &self.parts {
+            if let Some(v) = part.get(index) {
+                return Some(v);
+            };
+            index -= part.len();
+        }
+
+        None
+    }
+
+    #[inline]
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T>
+    where
+        T: 'a,
+    {
+        self.parts.iter().flat_map(|p| p.iter())
+    }
+}
+
+impl<Part, T> Pair<Part>
+where
+    Part: ops::DerefMut<Target = [T]>,
+{
+    #[inline]
+    pub fn get_mut(&mut self, mut index: usize) -> Option<&mut T> {
+        for part in &mut self.parts {
+            let part_len = part.len();
+            if let Some(v) = part.get_mut(index) {
+                return Some(v);
+            };
+            index -= part_len;
+        }
+
+        None
+    }
+
+    #[inline]
+    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> + 'a
+    where
+        T: 'a,
+    {
+        self.parts.iter_mut().flat_map(|p| p.iter_mut())
     }
 }
 
