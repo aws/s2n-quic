@@ -188,6 +188,8 @@ impl Builder {
     pub fn build(self) -> Result<Client, Error> {
         #[cfg(feature = "fips")]
         assert!(s2n_tls::init::fips_mode()?.is_enabled());
+        #[cfg(feature = "fips")]
+        panic!("test s2n-tls");
 
         Ok(Client {
             loader: self.config.build()?,
