@@ -21,6 +21,7 @@ impl_providers_state! {
         sync: Sync,
         tls: Tls,
         datagram: Datagram,
+        dc: Dc,
     }
 
     /// Opaque trait containing all of the configured providers
@@ -40,6 +41,7 @@ impl<
         Sync: sync::Provider,
         Tls: tls::Provider,
         Datagram: datagram::Provider,
+        Dc: dc::Provider,
     >
     Providers<
         CongestionController,
@@ -54,6 +56,7 @@ impl<
         Sync,
         Tls,
         Datagram,
+        Dc,
     >
 {
     pub fn start(self) -> Result<Client, StartError> {
@@ -70,6 +73,7 @@ impl<
             sync,
             tls,
             datagram,
+            dc,
         } = self;
 
         let congestion_controller = congestion_controller.start().map_err(StartError::new)?;
@@ -88,6 +92,7 @@ impl<
         let path_migration = PathMigration;
         let tls = tls.start_client().map_err(StartError::new)?;
         let datagram = datagram.start().map_err(StartError::new)?;
+        let dc = dc.start().map_err(StartError::new)?;
 
         // Validate providers
         // TODO: Add more validation https://github.com/aws/s2n-quic/issues/285
@@ -117,6 +122,7 @@ impl<
             path_handle: PhantomData,
             path_migration,
             datagram,
+            dc,
         };
 
         let (endpoint, connector) = endpoint::Endpoint::new_client(endpoint_config);
@@ -202,6 +208,7 @@ struct EndpointConfig<
     Sync,
     Tls,
     Datagram,
+    Dc,
 > {
     congestion_controller: CongestionController,
     connection_close_formatter: ConnectionCloseFormatter,
@@ -218,6 +225,7 @@ struct EndpointConfig<
     path_handle: PhantomData<PathHandle>,
     path_migration: PathMigration,
     datagram: Datagram,
+    dc: Dc,
 }
 
 impl<
@@ -233,6 +241,7 @@ impl<
         Sync,
         Tls: crypto::tls::Endpoint,
         Datagram: s2n_quic_core::datagram::Endpoint,
+        Dc: s2n_quic_core::dc::Endpoint,
     > core::fmt::Debug
     for EndpointConfig<
         CongestionController,
@@ -247,6 +256,7 @@ impl<
         Sync,
         Tls,
         Datagram,
+        Dc,
     >
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -267,6 +277,7 @@ impl<
         Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
         Datagram: s2n_quic_core::datagram::Endpoint,
+        Dc: s2n_quic_core::dc::Endpoint,
     > endpoint::Config
     for EndpointConfig<
         CongestionController,
@@ -281,6 +292,7 @@ impl<
         Sync,
         Tls,
         Datagram,
+        Dc,
     >
 {
     type ConnectionIdFormat = ConnectionID;
@@ -301,6 +313,7 @@ impl<
     type PathMigrationValidator = PathMigration;
     type PacketInterceptor = PacketInterceptor;
     type DatagramEndpoint = Datagram;
+    type DcEndpoint = Dc;
 
     const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 
@@ -319,6 +332,7 @@ impl<
             event_subscriber: &mut self.event,
             path_migration: &mut self.path_migration,
             datagram: &mut self.datagram,
+            dc: &mut self.dc,
         }
     }
 }

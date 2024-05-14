@@ -269,6 +269,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
         datagram: &mut Config::DatagramEndpoint,
+        dc: &mut Config::DcEndpoint,
     ) -> Result<(), connection::Error> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
@@ -281,6 +282,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             &self.waker,
             &mut publisher,
             datagram,
+            dc,
         ) {
             Poll::Ready(res) => res?,
             Poll::Pending => return Ok(()),
@@ -644,6 +646,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 parameters.timestamp,
                 parameters.event_subscriber,
                 parameters.datagram_endpoint,
+                parameters.dc_endpoint,
             ) {
                 connection.with_event_publisher(
                     parameters.timestamp,
@@ -1109,12 +1112,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
         datagram: &mut Config::DatagramEndpoint,
+        dc: &mut Config::DcEndpoint,
     ) -> Result<(), connection::Error> {
         // reset the queued state first so that new wakeup request are not missed
         self.wakeup_handle.wakeup_handled();
 
         // check if crypto progress can be made
-        self.update_crypto_state(timestamp, subscriber, datagram)?;
+        self.update_crypto_state(timestamp, subscriber, datagram, dc)?;
 
         // return an error if the application set one
         self.error?;
@@ -1200,6 +1204,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
         datagram_endpoint: &mut Config::DatagramEndpoint,
+        dc_endpoint: &mut Config::DcEndpoint,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //= type=TODO
@@ -1240,6 +1245,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 subscriber,
                 packet_interceptor,
                 datagram_endpoint,
+                dc_endpoint,
             )?;
         }
 
@@ -1256,6 +1262,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
         datagram_endpoint: &mut Config::DatagramEndpoint,
+        dc_endpoint: &mut Config::DcEndpoint,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
@@ -1312,7 +1319,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             )?;
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(datagram.timestamp, subscriber, datagram_endpoint)?;
+            self.update_crypto_state(
+                datagram.timestamp,
+                subscriber,
+                datagram_endpoint,
+                dc_endpoint,
+            )?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
@@ -1332,6 +1344,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
         datagram_endpoint: &mut Config::DatagramEndpoint,
+        dc_endpoint: &mut Config::DcEndpoint,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1412,7 +1425,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.path_manager[path_id].on_handshake_packet();
 
             // try to move the crypto state machine forward
-            self.update_crypto_state(datagram.timestamp, subscriber, datagram_endpoint)?;
+            self.update_crypto_state(
+                datagram.timestamp,
+                subscriber,
+                datagram_endpoint,
+                dc_endpoint,
+            )?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
@@ -1431,6 +1449,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
+        dc_endpoint: &mut Config::DcEndpoint,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1546,6 +1565,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     &self.waker,
                     &mut publisher,
                     datagram_endpoint,
+                    dc_endpoint,
                 )?;
             }
             // notify the connection a packet was processed

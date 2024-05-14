@@ -294,6 +294,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
             datagram_endpoint: endpoint_context.datagram,
+            dc_endpoint: endpoint_context.dc,
         };
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
@@ -338,6 +339,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         endpoint_context.event_subscriber,
                         endpoint_context.packet_interceptor,
                         endpoint_context.datagram,
+                        endpoint_context.dc,
                     )
                     .map_err(|err| {
                         use connection::ProcessingError;
@@ -361,6 +363,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
                     endpoint_context.datagram,
+                    endpoint_context.dc,
                     &mut false,
                 )?;
 

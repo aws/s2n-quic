@@ -213,6 +213,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     timestamp,
                     endpoint_context.event_subscriber,
                     endpoint_context.datagram,
+                    endpoint_context.dc,
                 ) {
                     conn.close(
                         error,
@@ -592,6 +593,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
                     endpoint_context.datagram,
+                    endpoint_context.dc,
                     &mut check_for_stateless_reset,
                 ) {
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
@@ -617,6 +619,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.event_subscriber,
                     endpoint_context.packet_interceptor,
                     endpoint_context.datagram,
+                    endpoint_context.dc,
                     &mut check_for_stateless_reset,
                 ) {
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
@@ -1115,6 +1118,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
             datagram_endpoint: endpoint_context.datagram,
+            dc_endpoint: endpoint_context.dc,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
         self.connections
@@ -1150,6 +1154,7 @@ pub mod testing {
         type PathMigrationValidator = path::migration::allow_all::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
+        type DcEndpoint = s2n_quic_core::dc::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -1180,6 +1185,7 @@ pub mod testing {
         type PathMigrationValidator = path::migration::allow_all::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
+        type DcEndpoint = s2n_quic_core::dc::Disabled;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
