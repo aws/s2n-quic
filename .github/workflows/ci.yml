@@ -284,9 +284,13 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      - name: Run test
+      - name: Run test (rustls)
         run: |
-          cargo test --features provider-tls-fips
+          cargo test --no-default-features --features "provider-tls-fips provider-tls-rustls"
+
+      - name: Run test (s2n-tls)
+        run: |
+          cargo test --no-default-features --features "provider-tls-fips provider-tls-s2n"
 
   miri:
     # miri needs quite a bit of memory so use a larger instance

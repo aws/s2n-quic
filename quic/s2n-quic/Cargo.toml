@@ -18,6 +18,7 @@ default = [
 provider-tls-fips = [
     "s2n-quic-tls-default?/fips",
     "s2n-quic-tls?/fips",
+    "s2n-quic-rustls?/fips",
 ]
 provider-address-token-default = [
     "cuckoofilter",
