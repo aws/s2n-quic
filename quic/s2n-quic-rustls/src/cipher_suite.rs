@@ -16,7 +16,6 @@ pub(crate) fn default_crypto_provider() -> Result<CryptoProvider, rustls::Error>
         if #[cfg(feature = "fips")] {
             let crypto = rustls::crypto::default_fips_provider();
             assert!(crypto.fips());
-            panic!("test rustls");
         } else {
             let crypto = aws_lc_rs::default_provider();
         }
