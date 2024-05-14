@@ -3,6 +3,8 @@
 
 use core::ops::{Deref, DerefMut};
 
+pub mod deque;
+
 /// Copies vectored slices from one slice into another
 ///
 /// The number of copied items is limited by the minimum of the lengths of each of the slices.
