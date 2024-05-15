@@ -49,6 +49,8 @@ unstable-provider-io-xdp = ["s2n-quic-platform/xdp"]
 unstable-provider-packet-interceptor = []
 # This feature enables the random provider
 unstable-provider-random = []
+# This feature enables the dc provider
+unstable-provider-dc = []
 # This feature enables support for third party congestion controller implementations
 unstable-congestion-controller = ["s2n-quic-core/unstable-congestion-controller"]
 

@@ -269,6 +269,14 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ClientProviders
     );
 
+    #[cfg(feature = "unstable-provider-dc")]
+    impl_provider_method!(
+        /// Sets the dc provider for the [`Client`]
+        with_dc,
+        dc,
+        ClientProviders
+    );
+
     impl_provider_method!(
         /// Sets the congestion controller provider for the [`Client`]
         with_congestion_controller,
