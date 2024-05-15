@@ -13,7 +13,9 @@ pub trait Endpoint: 'static + Send {
     type Path: Path;
 
     /// Called when a dc version has been negotiated for the given `ConnectionInfo`
-    fn new_path(&mut self, connection_info: &dc::ConnectionInfo) -> Self::Path;
+    ///
+    /// Return `None` if dc should not be used for this path
+    fn new_path(&mut self, connection_info: &dc::ConnectionInfo) -> Option<Self::Path>;
 }
 
 /// A dc path

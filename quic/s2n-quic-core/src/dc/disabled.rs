@@ -13,25 +13,27 @@ pub struct Disabled(());
 impl Endpoint for Disabled {
     const ENABLED: bool = false;
 
-    type Path = DisabledPath;
+    type Path = ();
 
-    fn new_path(&mut self, _connection_info: &ConnectionInfo) -> Self::Path {
-        DisabledPath(())
+    fn new_path(&mut self, _connection_info: &ConnectionInfo) -> Option<Self::Path> {
+        None
     }
 }
 
-pub struct DisabledPath(());
-
-impl Path for DisabledPath {
-    fn on_path_secrets_ready(&mut self, _session: &impl TlsSession) {}
+// The Disabled Endpoint returns `None`, so this is not used
+impl Path for () {
+    fn on_path_secrets_ready(&mut self, _session: &impl TlsSession) {
+        unimplemented!()
+    }
 
     fn on_peer_stateless_reset_tokens<'a>(
         &mut self,
         _stateless_reset_tokens: impl Iterator<Item = &'a Token>,
     ) {
+        unimplemented!()
     }
 
     fn stateless_reset_tokens(&mut self) -> &[Token] {
-        &[]
+        unimplemented!()
     }
 }
