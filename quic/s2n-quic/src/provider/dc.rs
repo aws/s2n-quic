@@ -1,9 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic_core::dc::{Disabled, Endpoint};
+//! Provides dc support
 
-/// Provider for dc support
+use s2n_quic_core::dc::Disabled;
+
+// these imports are only accessible if the unstable feature is enabled
+#[allow(unused_imports)]
+pub use s2n_quic_core::dc::{ApplicationParams, ConnectionInfo, Endpoint, Path};
+
 pub trait Provider {
     type Endpoint: Endpoint;
     type Error: 'static + core::fmt::Display + Send + Sync;
