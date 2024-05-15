@@ -11,9 +11,13 @@ use s2n_quic_core::crypto::{self, packet_protection, scatter, tls, HeaderProtect
 /// `aws_lc_rs` is the default crypto provider since that is also the
 /// default used by rustls.
 pub(crate) fn default_crypto_provider() -> Result<CryptoProvider, rustls::Error> {
+    let crypto = aws_lc_rs::default_provider();
+    #[cfg(feature = "fips")]
+    assert!(crypto.fips());
+
     Ok(CryptoProvider {
         cipher_suites: DEFAULT_CIPHERSUITES.to_vec(),
-        ..aws_lc_rs::default_provider()
+        ..crypto
     })
 }
 
