@@ -56,6 +56,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub waker: &'a Waker,
     pub publisher: &'a mut Pub,
     pub datagram: &'a mut Config::DatagramEndpoint,
+    pub dc: &'a mut Config::DcEndpoint,
 }
 
 impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
@@ -409,6 +410,8 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             datagram_receiver,
             datagram_limits.max_datagram_payload,
         );
+
+        // TODO: call self.dc.new_path(..)
 
         self.path_manager
             .active_path_mut()

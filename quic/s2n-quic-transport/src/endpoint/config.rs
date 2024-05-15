@@ -5,8 +5,8 @@
 
 use crate::{connection, stream};
 use s2n_quic_core::{
-    crypto::tls, datagram, endpoint, event, packet, path, random, recovery::congestion_controller,
-    stateless_reset,
+    crypto::tls, datagram, dc, endpoint, event, packet, path, random,
+    recovery::congestion_controller, stateless_reset,
 };
 
 /// Configuration parameters for a QUIC endpoint
@@ -44,6 +44,8 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     type PacketInterceptor: packet::interceptor::Interceptor;
     /// The datagram implementation for the endpoint
     type DatagramEndpoint: datagram::Endpoint;
+    /// The dc implementation for the endpoint
+    type DcEndpoint: dc::Endpoint;
 
     /// The type of the local endpoint
     const ENDPOINT_TYPE: endpoint::Type;
@@ -87,4 +89,6 @@ pub struct Context<'a, Cfg: Config> {
     pub packet_interceptor: &'a mut Cfg::PacketInterceptor,
 
     pub datagram: &'a mut Cfg::DatagramEndpoint,
+
+    pub dc: &'a mut Cfg::DcEndpoint,
 }

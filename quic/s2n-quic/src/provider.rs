@@ -52,6 +52,15 @@ cfg_if!(
     }
 );
 
+cfg_if!(
+    if #[cfg(any(test, feature = "unstable-provider-dc"))] {
+        pub mod dc;
+    } else {
+        #[allow(dead_code)]
+        pub(crate) mod dc;
+    }
+);
+
 /// An error indicating a failure to start an endpoint
 pub struct StartError(Box<dyn 'static + fmt::Display + Send + Sync>);
 

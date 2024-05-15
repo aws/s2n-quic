@@ -248,6 +248,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         waker: &Waker,
         publisher: &mut Pub,
         datagram: &mut Config::DatagramEndpoint,
+        dc: &mut Config::DcEndpoint,
     ) -> Poll<Result<(), transport::Error>> {
         if let Some(session_info) = self.session_info.as_mut() {
             let mut context: SessionContext<Config, Pub> = SessionContext {
@@ -267,6 +268,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 waker,
                 publisher,
                 datagram,
+                dc,
             };
 
             match session_info.session.poll(&mut context)? {
@@ -294,6 +296,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         waker: &Waker,
         publisher: &mut Pub,
         datagram: &mut Config::DatagramEndpoint,
+        dc: &mut Config::DcEndpoint,
     ) -> Result<(), transport::Error> {
         if let Some(session_info) = self.session_info.as_mut() {
             let mut context: SessionContext<Config, Pub> = SessionContext {
@@ -313,6 +316,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 waker,
                 publisher,
                 datagram,
+                dc,
             };
 
             session_info
