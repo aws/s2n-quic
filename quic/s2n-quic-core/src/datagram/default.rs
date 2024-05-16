@@ -458,33 +458,22 @@ impl super::Sender for Sender {
             return;
         }
         self.record_capacity_stats(packet.remaining_capacity());
-        let mut has_written = false;
-        while packet.remaining_capacity() > 0 {
-            if let Some(datagram) = self.queue.pop_front() {
-                // Ensure there is enough space in the packet to send a datagram
-                if packet.remaining_capacity() >= datagram.data.len() {
-                    match packet.write_datagram(&datagram.data) {
-                        Ok(()) => has_written = true,
-                        Err(_error) => {
-                            continue;
-                        }
-                    }
+        while packet.remaining_capacity() > 0 && !self.queue.is_empty() {
+            let datagram = self.queue.front().unwrap();
+
+            // Ensure there is enough space in the packet to send a datagram
+            if packet.remaining_capacity() >= datagram.data.len() {
+                if packet.write_datagram(&datagram.data).is_ok() {
+                    self.queue.pop_front();
+
                     // Since a datagram was popped off the queue, wake the
                     // stored waker if we have one to let the application know
                     // that there is space on the queue for more datagrams.
                     if let Some(w) = self.waker.take() {
                         w.wake();
                     }
-                } else {
-                    // This check keeps us from popping all the datagrams off the
-                    // queue when packet space remaining is smaller than the datagram.
-                    if has_written {
-                        self.queue.push_front(datagram);
-                        return;
-                    }
                 }
             } else {
-                // If there are no datagrams on the queue we return
                 return;
             }
         }
@@ -707,14 +696,16 @@ mod tests {
     }
 
     #[test]
+    // Check that datagrams too large to fit into a packet are not just dropped, and that
+    // polling/waking behavior is as expected
     fn poll_send_datagram_large() {
-        let conn_info = ConnectionInfo::new(1200, noop_waker());
+        let conn_info = ConnectionInfo::new(120, noop_waker());
         let mut default_sender = Sender::builder()
             .with_capacity(1)
             .with_connection_info(&conn_info)
             .build()
             .unwrap();
-        let mut dg_large = bytes::Bytes::from(vec![0x5c; 1000]);
+        let mut dg_large = bytes::Bytes::from(vec![0x5c; 100]);
         let mut dg_small = bytes::Bytes::from(vec![0x5c; 10]);
 
         let (waker, wake_count) = new_count_waker();
@@ -739,7 +730,7 @@ mod tests {
         assert!(default_sender.waker.is_some());
 
         let mut packet = MockPacket {
-            remaining_capacity: 100,
+            remaining_capacity: 10,
             has_pending_streams: false,
             datagrams_prioritized: true,
         };
@@ -817,7 +808,7 @@ mod tests {
     #[test]
     // Check that our default on_transmit function doesn't continue to pop datagrams
     // off the send queue if the remaining packet space is too small to send datagrams.
-    fn has_written_test() {
+    fn send_datagram_large_multi() {
         let conn_info = ConnectionInfo::new(100, noop_waker());
         let mut default_sender = Sender::builder()
             .with_connection_info(&conn_info)
