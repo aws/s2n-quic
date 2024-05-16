@@ -707,6 +707,69 @@ mod tests {
     }
 
     #[test]
+    fn poll_send_datagram_large() {
+        let conn_info = ConnectionInfo::new(1200, noop_waker());
+        let mut default_sender = Sender::builder()
+            .with_capacity(1)
+            .with_connection_info(&conn_info)
+            .build()
+            .unwrap();
+        let mut dg_large = bytes::Bytes::from(vec![0x5c; 1000]);
+        let mut dg_small = bytes::Bytes::from(vec![0x5c; 10]);
+
+        let (waker, wake_count) = new_count_waker();
+        let mut cx = Context::from_waker(&waker);
+
+        assert_eq!(
+            default_sender.poll_send_datagram(&mut dg_large, &mut cx),
+            Poll::Ready(Ok(()))
+        );
+
+        // Waker has not been set up yet
+        assert!(default_sender.waker.is_none());
+
+        // Cannot fit another datagram into the queue
+        assert_eq!(
+            default_sender.poll_send_datagram(&mut dg_small, &mut cx),
+            Poll::Pending
+        );
+
+        // Since queue is at capacity default_sender is now storing a waker that will
+        // alert when the queue has more space
+        assert!(default_sender.waker.is_some());
+
+        let mut packet = MockPacket {
+            remaining_capacity: 100,
+            has_pending_streams: false,
+            datagrams_prioritized: true,
+        };
+        crate::datagram::Sender::on_transmit(&mut default_sender, &mut packet);
+
+        // dg_large should still be in the queue. The packet was not large enough to fit it so it
+        // should not be dropped
+        assert_eq!(default_sender.queue.len(), 1);
+
+        // Waker should not have been called as the queue is still full
+        assert_eq!(wake_count, 0);
+
+        // A new packet with sufficient capacity comes along
+        packet.remaining_capacity = 1200;
+        crate::datagram::Sender::on_transmit(&mut default_sender, &mut packet);
+
+        // dg_large should have been sent been sent
+        assert!(default_sender.queue.is_empty());
+
+        // Waker should have been called as there's now space in the queue
+        assert_eq!(wake_count, 1);
+
+        // Successfully add dg_small to the queue
+        assert_eq!(
+            default_sender.poll_send_datagram(&mut dg_small, &mut cx),
+            Poll::Ready(Ok(()))
+        );
+    }
+
+    #[test]
     fn retain_datagrams() {
         let conn_info = ConnectionInfo {
             max_datagram_payload: 100,
