@@ -18,7 +18,7 @@ pub use disabled::*;
 pub use traits::*;
 
 // dc versions supported by this code, in order of preference (SUPPORTED_VERSIONS[0] is most preferred)
-const SUPPORTED_VERSIONS: &[u32] = &[0x0];
+pub const SUPPORTED_VERSIONS: [u32; 1] = [0x0];
 
 /// Called on the server to select the dc version to use (if any)
 ///

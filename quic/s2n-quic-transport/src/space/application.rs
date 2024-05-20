@@ -4,7 +4,7 @@
 use crate::{
     ack::AckManager,
     connection::{self, ConnectionTransmissionContext, ProcessingError},
-    endpoint, path,
+    dc, endpoint, path,
     path::{path_event, Path},
     processed_packet::ProcessedPacket,
     recovery,
@@ -24,12 +24,13 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     counter::{Counter, Saturating},
     crypto::{application::KeySet, limited, tls, CryptoSuite},
+    dc::Endpoint as _,
     event::{self, ConnectionPublisher as _, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
-        ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
-        NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
-        StopSending, StreamDataBlocked, StreamsBlocked,
+        ConnectionClose, DataBlocked, DcStatelessResetTokens, HandshakeDone, MaxData,
+        MaxStreamData, MaxStreams, NewConnectionId, NewToken, PathChallenge, PathResponse,
+        ResetStream, RetireConnectionId, StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::{
@@ -75,6 +76,7 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     processed_packet_numbers: SlidingWindow,
     recovery_manager: recovery::Manager<Config>,
     pub datagram_manager: datagram::Manager<Config>,
+    pub dc_manager: dc::Manager<Config>,
     /// Counter used for detecting an Optimistic Ack attack
     skip_counter: Option<Counter<u32, Saturating>>,
     /// Keeps track of if the TLS session still exists. If it does, we buffer
@@ -106,6 +108,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         keep_alive: KeepAlive,
         max_mtu: MaxMtu,
         datagram_manager: datagram::Manager<Config>,
+        dc_manager: dc::Manager<Config>,
     ) -> Self {
         let key_set = KeySet::new(key, Self::key_limits(max_mtu));
 
@@ -122,6 +125,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             processed_packet_numbers: SlidingWindow::default(),
             recovery_manager: recovery::Manager::new(PacketNumberSpace::ApplicationData),
             datagram_manager,
+            dc_manager,
             skip_counter: None,
             buffer_crypto_frames: Config::ENDPOINT_TYPE.is_client(),
         }
@@ -223,6 +227,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 &mut self.recovery_manager,
                 &mut self.crypto_stream,
                 &mut self.datagram_manager,
+                &mut self.dc_manager,
             ),
             timestamp: context.timestamp,
             transmission_constraint,
@@ -574,6 +579,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 path_id,
                 path_manager,
                 tx_packet_numbers: &mut self.tx_packet_numbers,
+                dc_manager: &mut self.dc_manager,
             },
         )
     }
@@ -724,6 +730,7 @@ impl<Config: endpoint::Config> transmission::interest::Provider for ApplicationS
         self.recovery_manager.transmission_interest(query)?;
         self.stream_manager.transmission_interest(query)?;
         self.datagram_manager.transmission_interest(query)?;
+        self.dc_manager.transmission_interest(query)?;
         Ok(())
     }
 }
@@ -744,6 +751,7 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
     path_id: path::Id,
     path_manager: &'a mut path::Manager<Config>,
     tx_packet_numbers: &'a mut TxPacketNumbers,
+    dc_manager: &'a mut dc::Manager<Config>,
 }
 
 impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'a, Config> {
@@ -801,6 +809,8 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     ) {
         self.handshake_status
             .on_packet_ack(packet_number_range, publisher);
+        self.dc_manager
+            .on_packet_ack(packet_number_range, publisher);
         self.crypto_stream.on_packet_ack(packet_number_range);
         self.ping.on_packet_ack(packet_number_range);
         self.stream_manager.on_packet_ack(packet_number_range);
@@ -822,6 +832,7 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
         self.crypto_stream.on_packet_loss(packet_number_range);
         self.handshake_status
             .on_packet_loss(packet_number_range, publisher);
+        self.dc_manager.on_packet_loss(packet_number_range);
         self.ping.on_packet_loss(packet_number_range);
         self.stream_manager.on_packet_loss(packet_number_range);
         self.local_id_registry.on_packet_loss(packet_number_range);
@@ -1124,6 +1135,22 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         //# client, the handshake is considered confirmed when a HANDSHAKE_DONE
         //# frame is received.
         self.on_handshake_confirmed(path, local_id_registry, timestamp);
+
+        Ok(())
+    }
+
+    fn handle_dc_stateless_reset_tokens_frame(
+        &mut self,
+        frame: DcStatelessResetTokens,
+    ) -> Result<(), transport::Error> {
+        if Config::DcEndpoint::ENABLED {
+            self.dc_manager
+                .on_peer_dc_stateless_reset_tokens(frame.into_iter());
+        } else {
+            return Err(transport::Error::PROTOCOL_VIOLATION
+                .with_reason("Invalid frame")
+                .with_frame_type(frame.tag()));
+        }
 
         Ok(())
     }
