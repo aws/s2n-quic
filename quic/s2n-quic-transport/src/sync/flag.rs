@@ -3,10 +3,12 @@
 
 //! Sends a "flag" frame towards the peer
 //!
-//! This is intended to be used by frames, like PING and HANDSHAKE_DONE, that don't have any
+//! This can be used by frames, like PING and HANDSHAKE_DONE, that don't have any
 //! content other than the frame tag itself. At the cost of a single byte per packet, it will passively
 //! transmit the flag in any outgoing packets until the peer ACKs the frame. This is to increase
-//! the likelihood the peer receives the flag, even in a high-loss environment.
+//! the likelihood the peer receives the flag, even in a high-loss environment. It may also be used
+//! by frames that do have content, such as DC_STATELESS_RESET_TOKENS, that similarly require aggressive
+//! transmission to increase the likelihood the peer receives the frame.
 
 use crate::{
     contexts::{OnTransmitError, WriteContext},
@@ -65,6 +67,14 @@ impl Default for DeliveryState {
 }
 
 impl<W: Writer> Flag<W> {
+    /// Constructs a flag with the given `writer`
+    pub fn new(writer: W) -> Self {
+        Self {
+            writer,
+            ..Default::default()
+        }
+    }
+
     /// Returns `true` if the flag hasn't been sent
     pub fn is_idle(&self) -> bool {
         matches!(self.delivery, DeliveryState::Idle)
