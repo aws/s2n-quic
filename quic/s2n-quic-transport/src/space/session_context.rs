@@ -22,6 +22,8 @@ use s2n_quic_core::{
     crypto::{tls, tls::ApplicationParameters, CryptoSuite, Key},
     ct::ConstantTimeEq,
     datagram::{ConnectionInfo, Endpoint},
+    dc,
+    dc::Endpoint as _,
     event,
     event::IntoEvent,
     packet::number::PacketNumberSpace,
@@ -30,8 +32,8 @@ use s2n_quic_core::{
         self,
         parameters::{
             ActiveConnectionIdLimit, ClientTransportParameters, DatagramLimits,
-            InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
-            ServerTransportParameters,
+            DcSupportedVersions, InitialFlowControlLimits, InitialSourceConnectionId, MaxAckDelay,
+            ServerTransportParameters, TransportParameter as _,
         },
         Error,
     },
@@ -72,6 +74,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             ActiveConnectionIdLimit,
             DatagramLimits,
             MaxAckDelay,
+            Option<dc::Version>,
         ),
         transport::Error,
     > {
@@ -185,11 +188,24 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         let active_connection_id_limit = peer_parameters.active_connection_id_limit;
         let datagram_limits = peer_parameters.datagram_limits();
 
+        let dc_version = if Config::DcEndpoint::ENABLED {
+            peer_parameters
+                .dc_supported_versions
+                .selected_version()
+                .map_err(|_| {
+                    transport::Error::TRANSPORT_PARAMETER_ERROR
+                        .with_reason("invalid dc supported versions")
+                })?
+        } else {
+            None
+        };
+
         Ok((
             initial_flow_control_limits,
             active_connection_id_limit,
             datagram_limits,
             peer_parameters.max_ack_delay,
+            dc_version,
         ))
     }
 
@@ -203,6 +219,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             ActiveConnectionIdLimit,
             DatagramLimits,
             MaxAckDelay,
+            Option<dc::Version>,
         ),
         transport::Error,
     > {
@@ -243,11 +260,18 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         let active_connection_id_limit = peer_parameters.active_connection_id_limit;
         let datagram_limits = peer_parameters.datagram_limits();
 
+        let dc_version = if Config::DcEndpoint::ENABLED {
+            dc::select_version(peer_parameters.dc_supported_versions)
+        } else {
+            None
+        };
+
         Ok((
             initial_flow_control_limits,
             active_connection_id_limit,
             datagram_limits,
             peer_parameters.max_ack_delay,
+            dc_version,
         ))
     }
 
@@ -375,11 +399,16 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         // Parse transport parameters
         let param_decoder = DecoderBuffer::new(application_parameters.transport_parameters);
-        let (peer_flow_control_limits, active_connection_id_limit, datagram_limits, max_ack_delay) =
-            match Config::ENDPOINT_TYPE {
-                endpoint::Type::Client => self.on_server_params(param_decoder)?,
-                endpoint::Type::Server => self.on_client_params(param_decoder)?,
-            };
+        let (
+            peer_flow_control_limits,
+            active_connection_id_limit,
+            datagram_limits,
+            max_ack_delay,
+            dc_version,
+        ) = match Config::ENDPOINT_TYPE {
+            endpoint::Type::Client => self.on_server_params(param_decoder)?,
+            endpoint::Type::Server => self.on_client_params(param_decoder)?,
+        };
 
         self.local_id_registry
             .set_active_connection_id_limit(active_connection_id_limit.as_u64());
@@ -411,7 +440,19 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             datagram_limits.max_datagram_payload,
         );
 
-        // TODO: call self.dc.new_path(..)
+        let max_mtu = self.path_manager.max_mtu();
+        let application_params =
+            dc::ApplicationParams::new(max_mtu, &peer_flow_control_limits, self.limits);
+
+        let dc_manager = if let Some(dc_version) = dc_version {
+            let remote_address = self.path_manager.active_path().remote_address().0;
+            let conn_info =
+                dc::ConnectionInfo::new(&remote_address, dc_version, application_params);
+            let dc_path = self.dc.new_path(&conn_info);
+            crate::dc::Manager::new(dc_path)
+        } else {
+            crate::dc::Manager::disabled()
+        };
 
         self.path_manager
             .active_path_mut()
@@ -419,7 +460,6 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             .on_max_ack_delay(max_ack_delay);
 
         let cipher_suite = key.cipher_suite().into_event();
-        let max_mtu = self.path_manager.max_mtu();
         *self.application = Some(Box::new(ApplicationSpace::new(
             key,
             header_key,
@@ -429,6 +469,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             keep_alive,
             max_mtu,
             datagram_manager,
+            dc_manager,
         )));
         self.publisher.on_key_update(event::builder::KeyUpdate {
             key_type: event::builder::KeyType::OneRtt { generation: 0 },
@@ -466,6 +507,12 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         &mut self,
         session: &impl tls::TlsSession,
     ) -> Result<(), transport::Error> {
+        self.application
+            .as_mut()
+            .expect("application keys should be ready before the tls exporter")
+            .dc_manager
+            .on_path_secrets_ready(session);
+
         self.publisher
             .on_tls_exporter_ready(event::builder::TlsExporterReady {
                 session: s2n_quic_core::event::TlsSession::new(session),
@@ -610,13 +657,31 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
     fn on_client_application_params(
         &mut self,
-        _client_params: ApplicationParameters,
-        _server_params: &mut Vec<u8>,
+        client_params: ApplicationParameters,
+        server_params: &mut Vec<u8>,
     ) -> Result<(), Error> {
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
 
-        // TODO: Append `DcSupportedVersion` based on dc negotiation
-        //      DcSupportedVersions::for_server(1).append_to_buffer(server_params)
+        if Config::DcEndpoint::ENABLED {
+            let param_decoder = DecoderBuffer::new(client_params.transport_parameters);
+            let (client_params, remaining) = ClientTransportParameters::decode(param_decoder)
+                .map_err(|_| {
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-7.4
+                    //# An endpoint SHOULD treat receipt of
+                    //# duplicate transport parameters as a connection error of type
+                    //# TRANSPORT_PARAMETER_ERROR.
+                    transport::Error::TRANSPORT_PARAMETER_ERROR
+                        .with_reason("Invalid transport parameters")
+                })?;
+
+            debug_assert_eq!(remaining.len(), 0);
+
+            if let Some(selected_version) = dc::select_version(client_params.dc_supported_versions)
+            {
+                DcSupportedVersions::for_server(selected_version).append_to_buffer(server_params)
+            }
+        }
+
         Ok(())
     }
 }
