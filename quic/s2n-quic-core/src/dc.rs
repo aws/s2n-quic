@@ -6,7 +6,7 @@ use crate::{
     event::{api::SocketAddress, IntoEvent as _},
     inet,
     path::MaxMtu,
-    transport::parameters::InitialFlowControlLimits,
+    transport::parameters::{DcSupportedVersions, InitialFlowControlLimits},
     varint::VarInt,
 };
 use core::time::Duration;
@@ -17,13 +17,16 @@ mod traits;
 pub use disabled::*;
 pub use traits::*;
 
+pub type Version = u32;
+
 // dc versions supported by this code, in order of preference (SUPPORTED_VERSIONS[0] is most preferred)
-pub const SUPPORTED_VERSIONS: [u32; 1] = [0x0];
+pub const SUPPORTED_VERSIONS: [Version; 1] = [0x0];
 
 /// Called on the server to select the dc version to use (if any)
 ///
 /// The server's version preference takes precedence
-pub fn select_version(client_supported_versions: &[u32]) -> Option<u32> {
+pub fn select_version(client_supported_versions: DcSupportedVersions) -> Option<Version> {
+    let client_supported_versions = client_supported_versions.into_iter().as_slice();
     SUPPORTED_VERSIONS
         .iter()
         .find(|&supported_version| client_supported_versions.contains(supported_version))
@@ -48,7 +51,7 @@ impl<'a> ConnectionInfo<'a> {
     #[doc(hidden)]
     pub fn new(
         remote_address: &'a inet::SocketAddress,
-        dc_version: u32,
+        dc_version: Version,
         application_params: ApplicationParams,
     ) -> Self {
         Self {
