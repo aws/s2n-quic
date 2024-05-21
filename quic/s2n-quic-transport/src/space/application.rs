@@ -1139,13 +1139,14 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn handle_dc_stateless_reset_tokens_frame(
+    fn handle_dc_stateless_reset_tokens_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: DcStatelessResetTokens,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         if Config::DcEndpoint::ENABLED {
             self.dc_manager
-                .on_peer_dc_stateless_reset_tokens(frame.into_iter());
+                .on_peer_dc_stateless_reset_tokens(frame.into_iter(), publisher);
         } else {
             return Err(transport::Error::PROTOCOL_VIOLATION
                 .with_reason("Invalid frame")

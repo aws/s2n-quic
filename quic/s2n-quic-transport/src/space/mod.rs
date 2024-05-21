@@ -789,6 +789,16 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
             .with_frame_type(frame.tag().into()))
     }
 
+    fn handle_dc_stateless_reset_tokens_frame<Pub: event::ConnectionPublisher>(
+        &mut self,
+        frame: DcStatelessResetTokens,
+        _publisher: &mut Pub,
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag()))
+    }
+
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
     default_frame_handler!(handle_max_stream_data_frame, MaxStreamData);
@@ -798,10 +808,6 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
     default_frame_handler!(handle_stream_data_blocked_frame, StreamDataBlocked);
     default_frame_handler!(handle_streams_blocked_frame, StreamsBlocked);
     default_frame_handler!(handle_new_token_frame, NewToken);
-    default_frame_handler!(
-        handle_dc_stateless_reset_tokens_frame,
-        DcStatelessResetTokens
-    );
 
     fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
@@ -1052,7 +1058,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                 }
                 Frame::DcStatelessResetTokens(frame) => {
                     let on_error = on_frame_processed!(frame);
-                    self.handle_dc_stateless_reset_tokens_frame(frame)
+                    self.handle_dc_stateless_reset_tokens_frame(frame, publisher)
                         .map_err(on_error)?;
                 }
             }
