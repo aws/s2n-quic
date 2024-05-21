@@ -449,7 +449,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             let conn_info =
                 dc::ConnectionInfo::new(&remote_address, dc_version, application_params);
             let dc_path = self.dc.new_path(&conn_info);
-            crate::dc::Manager::new(dc_path)
+            crate::dc::Manager::new(dc_path, dc_version, self.publisher)
         } else {
             crate::dc::Manager::disabled()
         };
@@ -511,7 +511,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             .as_mut()
             .expect("application keys should be ready before the tls exporter")
             .dc_manager
-            .on_path_secrets_ready(session);
+            .on_path_secrets_ready(session, self.publisher);
 
         self.publisher
             .on_tls_exporter_ready(event::builder::TlsExporterReady {

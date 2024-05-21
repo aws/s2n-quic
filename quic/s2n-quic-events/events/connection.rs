@@ -337,3 +337,9 @@ struct BbrStateChanged {
     path_id: u64,
     state: BbrState,
 }
+
+#[event("transport:dc_state_changed")]
+/// The DC state has changed
+struct DcStateChanged {
+    state: DcState,
+}

@@ -589,6 +589,16 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub enum DcState {
+        #[non_exhaustive]
+        VersionNegotiated { version: u32 },
+        #[non_exhaustive]
+        PathSecretsReady {},
+        #[non_exhaustive]
+        Complete {},
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Application level protocol"]
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
@@ -1027,6 +1037,15 @@ pub mod api {
     }
     impl Event for BbrStateChanged {
         const NAME: &'static str = "recovery:bbr_state_changed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " The DC state has changed"]
+    pub struct DcStateChanged {
+        pub state: DcState,
+    }
+    impl Event for DcStateChanged {
+        const NAME: &'static str = "transport:dc_state_changed";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2231,6 +2250,17 @@ pub mod tracing {
             let id = context.id();
             let api::BbrStateChanged { path_id, state } = event;
             tracing :: event ! (target : "bbr_state_changed" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , state = tracing :: field :: debug (state));
+        }
+        #[inline]
+        fn on_dc_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::DcStateChanged,
+        ) {
+            let id = context.id();
+            let api::DcStateChanged { state } = event;
+            tracing :: event ! (target : "dc_state_changed" , parent : id , tracing :: Level :: DEBUG , state = tracing :: field :: debug (state));
         }
         #[inline]
         fn on_version_information(
@@ -3474,6 +3504,25 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub enum DcState {
+        VersionNegotiated { version: u32 },
+        PathSecretsReady,
+        Complete,
+    }
+    impl IntoEvent<api::DcState> for DcState {
+        #[inline]
+        fn into_event(self) -> api::DcState {
+            use api::DcState::*;
+            match self {
+                Self::VersionNegotiated { version } => VersionNegotiated {
+                    version: version.into_event(),
+                },
+                Self::PathSecretsReady => PathSecretsReady {},
+                Self::Complete => Complete {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Application level protocol"]
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
@@ -4248,6 +4297,20 @@ pub mod builder {
             let BbrStateChanged { path_id, state } = self;
             api::BbrStateChanged {
                 path_id: path_id.into_event(),
+                state: state.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " The DC state has changed"]
+    pub struct DcStateChanged {
+        pub state: DcState,
+    }
+    impl IntoEvent<api::DcStateChanged> for DcStateChanged {
+        #[inline]
+        fn into_event(self) -> api::DcStateChanged {
+            let DcStateChanged { state } = self;
+            api::DcStateChanged {
                 state: state.into_event(),
             }
         }
@@ -5214,6 +5277,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `DcStateChanged` event is triggered"]
+        #[inline]
+        fn on_dc_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &DcStateChanged,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
@@ -5846,6 +5921,16 @@ mod traits {
             (self.1).on_bbr_state_changed(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_dc_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &ConnectionMeta,
+            event: &DcStateChanged,
+        ) {
+            (self.0).on_dc_state_changed(&mut context.0, meta, event);
+            (self.1).on_dc_state_changed(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
@@ -6230,6 +6315,8 @@ mod traits {
         fn on_pacing_rate_updated(&mut self, event: builder::PacingRateUpdated);
         #[doc = "Publishes a `BbrStateChanged` event to the publisher's subscriber"]
         fn on_bbr_state_changed(&mut self, event: builder::BbrStateChanged);
+        #[doc = "Publishes a `DcStateChanged` event to the publisher's subscriber"]
+        fn on_dc_state_changed(&mut self, event: builder::DcStateChanged);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
         #[doc = r" Returns the [`Subject`] for the current publisher"]
@@ -6652,6 +6739,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_dc_state_changed(&mut self, event: builder::DcStateChanged) {
+            let event = event.into_event();
+            self.subscriber
+                .on_dc_state_changed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -6710,6 +6806,7 @@ pub mod testing {
         pub delivery_rate_sampled: u32,
         pub pacing_rate_updated: u32,
         pub bbr_state_changed: u32,
+        pub dc_state_changed: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -6790,6 +6887,7 @@ pub mod testing {
                 delivery_rate_sampled: 0,
                 pacing_rate_updated: 0,
                 bbr_state_changed: 0,
+                dc_state_changed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -7278,6 +7376,17 @@ pub mod testing {
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
+        fn on_dc_state_changed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::DcStateChanged,
+        ) {
+            self.dc_state_changed += 1;
+            if self.location.is_some() {
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+        }
         fn on_version_information(
             &mut self,
             meta: &api::EndpointMeta,
@@ -7421,6 +7530,7 @@ pub mod testing {
         pub delivery_rate_sampled: u32,
         pub pacing_rate_updated: u32,
         pub bbr_state_changed: u32,
+        pub dc_state_changed: u32,
         pub version_information: u32,
         pub endpoint_packet_sent: u32,
         pub endpoint_packet_received: u32,
@@ -7491,6 +7601,7 @@ pub mod testing {
                 delivery_rate_sampled: 0,
                 pacing_rate_updated: 0,
                 bbr_state_changed: 0,
+                dc_state_changed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -7883,6 +7994,13 @@ pub mod testing {
         }
         fn on_bbr_state_changed(&mut self, event: builder::BbrStateChanged) {
             self.bbr_state_changed += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.push(format!("{event:?}"));
+            }
+        }
+        fn on_dc_state_changed(&mut self, event: builder::DcStateChanged) {
+            self.dc_state_changed += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.push(format!("{event:?}"));
