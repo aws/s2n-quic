@@ -1,0 +1,6 @@
+---
+source: quic/s2n-quic-transport/src/dc/manager/tests.rs
+expression: ""
+---
+DcStateChanged { state: VersionNegotiated { version: 1 } }
+DcStateChanged { state: PathSecretsReady }

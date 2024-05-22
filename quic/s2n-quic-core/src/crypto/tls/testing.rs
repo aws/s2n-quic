@@ -8,7 +8,7 @@ use crate::{
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
         scatter, tls,
-        tls::ApplicationParameters,
+        tls::{ApplicationParameters, CipherSuite, TlsExportError, TlsSession},
         CryptoSuite, HeaderKey, Key,
     },
     endpoint, transport,
@@ -108,6 +108,21 @@ impl CryptoSuite for Session {
     type OneRttKey = crate::crypto::key::testing::Key;
     type OneRttHeaderKey = crate::crypto::key::testing::HeaderKey;
     type RetryKey = crate::crypto::key::testing::Key;
+}
+
+impl TlsSession for Session {
+    fn tls_exporter(
+        &self,
+        _label: &[u8],
+        _context: &[u8],
+        _output: &mut [u8],
+    ) -> Result<(), TlsExportError> {
+        Ok(())
+    }
+
+    fn cipher_suite(&self) -> CipherSuite {
+        CipherSuite::TLS_AES_128_GCM_SHA256
+    }
 }
 
 #[derive(Debug)]

@@ -1161,7 +1161,7 @@ pub mod testing {
         type PathMigrationValidator = path::migration::allow_all::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
-        type DcEndpoint = s2n_quic_core::dc::Disabled;
+        type DcEndpoint = s2n_quic_core::dc::testing::MockDcEndpoint;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -1192,7 +1192,7 @@ pub mod testing {
         type PathMigrationValidator = path::migration::allow_all::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
-        type DcEndpoint = s2n_quic_core::dc::Disabled;
+        type DcEndpoint = s2n_quic_core::dc::testing::MockDcEndpoint;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()

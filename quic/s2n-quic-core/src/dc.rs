@@ -14,6 +14,9 @@ use core::time::Duration;
 mod disabled;
 mod traits;
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 pub use disabled::*;
 pub use traits::*;
 
