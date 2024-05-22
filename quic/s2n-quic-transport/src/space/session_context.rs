@@ -441,10 +441,10 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
         );
 
         let max_mtu = self.path_manager.max_mtu();
-        let application_params =
-            dc::ApplicationParams::new(max_mtu, &peer_flow_control_limits, self.limits);
 
         let dc_manager = if let Some(dc_version) = dc_version {
+            let application_params =
+                dc::ApplicationParams::new(max_mtu, &peer_flow_control_limits, self.limits);
             let remote_address = self.path_manager.active_path().remote_address().0;
             let conn_info =
                 dc::ConnectionInfo::new(&remote_address, dc_version, application_params);
