@@ -15,7 +15,7 @@ use s2n_quic_core::{
     event::builder::{DcState, DcStateChanged},
     frame::DcStatelessResetTokens,
     packet::number::PacketNumber,
-    state::is,
+    state::{event, is},
     stateless_reset, transmission,
     transmission::interest::Query,
 };
@@ -26,23 +26,33 @@ pub struct Manager<Config: endpoint::Config> {
     path: Option<<<Config as endpoint::Config>::DcEndpoint as Endpoint>::Path>,
     version: Option<dc::Version>,
     state: State,
+    stateless_reset_token_sync: Flag,
 }
 
 type Flag = flag::Flag<DcStatelessResetTokenWriter>;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
-    #[default]
-    Init,
-    PathSecretsReady(Flag),
+    InitServer,
+    InitClient,
+    ServerPathSecretsReady,
+    ClientPathSecretsReady,
     Complete,
 }
 
 impl State {
-    is!(is_init, Init);
+    is!(is_init, InitServer | InitClient);
+    is!(
+        is_path_secrets_ready,
+        ServerPathSecretsReady | ClientPathSecretsReady
+    );
     is!(is_complete, Complete);
-    fn is_path_secrets_ready(&self) -> bool {
-        matches!(self, Self::PathSecretsReady(_))
+
+    event! {
+        on_server_path_secrets_ready(InitServer => ServerPathSecretsReady);
+        on_client_path_secrets_ready(InitClient => ClientPathSecretsReady);
+        on_peer_stateless_reset_tokens(ClientPathSecretsReady => Complete);
+        on_stateless_reset_tokens_acked(ServerPathSecretsReady => Complete);
     }
 }
 
@@ -59,10 +69,17 @@ impl<Config: endpoint::Config> Manager<Config> {
             publisher.on_dc_state_changed(DcStateChanged {
                 state: DcState::VersionNegotiated { version },
             });
+            let state = if Config::ENDPOINT_TYPE.is_server() {
+                State::InitServer
+            } else {
+                State::InitClient
+            };
+
             Self {
                 path,
                 version: Some(version),
-                state: State::Init,
+                state,
+                stateless_reset_token_sync: Flag::default(),
             }
         } else {
             Self::disabled()
@@ -75,6 +92,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             path: None,
             version: None,
             state: State::Complete,
+            stateless_reset_token_sync: Flag::default(),
         }
     }
 
@@ -102,7 +120,12 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.path.stateless_reset_tokens(),
         ));
         flag.send();
-        self.state = State::PathSecretsReady(flag);
+        let _ = if Config::ENDPOINT_TYPE.is_server() {
+            self.state.on_server_path_secrets_ready()
+        } else {
+            self.state.on_client_path_secrets_ready()
+        };
+        self.stateless_reset_token_sync = flag;
 
         publisher.on_dc_state_changed(DcStateChanged {
             state: DcState::PathSecretsReady,
@@ -122,8 +145,8 @@ impl<Config: endpoint::Config> Manager<Config> {
         self.path
             .on_peer_stateless_reset_tokens(stateless_reset_tokens);
 
-        if Config::ENDPOINT_TYPE.is_client() {
-            self.state = State::Complete;
+        if self.state.on_peer_stateless_reset_tokens().is_ok() {
+            debug_assert!(Config::ENDPOINT_TYPE.is_client());
             publisher.on_dc_state_changed(DcStateChanged {
                 state: DcState::Complete,
             });
@@ -136,21 +159,19 @@ impl<Config: endpoint::Config> Manager<Config> {
         ack_set: &A,
         publisher: &mut Pub,
     ) {
-        if let State::PathSecretsReady(ref mut flag) = &mut self.state {
-            if flag.on_packet_ack(ack_set) {
-                self.state = State::Complete;
-                publisher.on_dc_state_changed(DcStateChanged {
-                    state: DcState::Complete,
-                });
-            }
+        if self.stateless_reset_token_sync.on_packet_ack(ack_set)
+            && self.state.on_stateless_reset_tokens_acked().is_ok()
+        {
+            debug_assert!(Config::ENDPOINT_TYPE.is_server());
+            publisher.on_dc_state_changed(DcStateChanged {
+                state: DcState::Complete,
+            });
         }
     }
 
     /// Called when a range of packets has been lost
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
-        if let State::PathSecretsReady(ref mut flag) = &mut self.state {
-            flag.on_packet_loss(ack_set);
-        }
+        self.stateless_reset_token_sync.on_packet_loss(ack_set);
     }
 
     #[cfg(any(test, feature = "testing"))]
@@ -161,18 +182,20 @@ impl<Config: endpoint::Config> Manager<Config> {
 
 impl<Config: endpoint::Config> transmission::Provider for Manager<Config> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
-        if let State::PathSecretsReady(ref mut flag) = &mut self.state {
-            let _ = flag.on_transmit(context);
-        }
+        let _ = self.stateless_reset_token_sync.on_transmit(context);
     }
 }
 
 impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Config> {
     fn transmission_interest<Q: Query>(&self, query: &mut Q) -> transmission::interest::Result {
-        match &self.state {
-            State::PathSecretsReady(flag) => flag.transmission_interest(query),
-            _ => Ok(()),
+        let result = self.stateless_reset_token_sync.transmission_interest(query);
+        if cfg!(debug_assertions) {
+            if result.is_err() {
+                // We should only have transmission interest in the path secrets are ready state
+                assert!(self.state.is_path_secrets_ready());
+            }
         }
+        result
     }
 }
 

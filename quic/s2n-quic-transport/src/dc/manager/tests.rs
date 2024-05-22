@@ -23,7 +23,12 @@ fn new() {
     let mut publisher = Publisher::snapshot();
     let manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
 
-    assert!(matches!(manager.state, State::Init));
+    assert!(matches!(manager.state, State::InitServer));
+    assert_eq!(Some(1), manager.version);
+
+    let manager: Manager<Client> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+
+    assert!(matches!(manager.state, State::InitClient));
     assert_eq!(Some(1), manager.version);
 }
 
@@ -126,14 +131,42 @@ fn on_peer_dc_stateless_reset_tokens<Config, Endpoint>(
 }
 
 #[test]
-fn on_packet_ack() {
+fn on_packet_ack_client() {
     let mut publisher = Publisher::snapshot();
     let mut path = MockDcPath::default();
     let tokens = [TEST_TOKEN_1, TEST_TOKEN_2];
     path.stateless_reset_tokens.extend(tokens);
-    let expected_frame =
-        Frame::DcStatelessResetTokens(DcStatelessResetTokens::new(tokens.as_slice()).unwrap());
     let mut manager: Manager<Client> = Manager::new(Some(path), 1, &mut publisher);
+    on_packet_ack(&mut manager, tokens.as_slice(), &mut publisher);
+
+    // Client completes when it has received stateless reset tokens from the peer
+    assert!(!manager.state.is_complete());
+}
+
+#[test]
+fn on_packet_ack_server() {
+    let mut publisher = Publisher::snapshot();
+    let mut path = MockDcPath::default();
+    let tokens = [TEST_TOKEN_1, TEST_TOKEN_2];
+    path.stateless_reset_tokens.extend(tokens);
+    let mut manager: Manager<Server> = Manager::new(Some(path), 1, &mut publisher);
+    on_packet_ack(&mut manager, tokens.as_slice(), &mut publisher);
+
+    // Server completes when its stateless reset tokens are acked
+    assert!(manager.state.is_complete());
+}
+
+fn on_packet_ack<Config, Endpoint>(
+    manager: &mut Manager<Config>,
+    tokens: &[stateless_reset::Token],
+    publisher: &mut Publisher,
+) where
+    Config: endpoint::Config<DcEndpoint = Endpoint>,
+    Endpoint: dc::Endpoint<Path = MockDcPath>,
+{
+    let expected_frame =
+        Frame::DcStatelessResetTokens(DcStatelessResetTokens::new(tokens).unwrap());
+
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut context = MockWriteContext::new(
         now(),
@@ -144,7 +177,7 @@ fn on_packet_ack() {
     );
     let pn = context.packet_number();
 
-    manager.on_path_secrets_ready(&Session, &mut publisher);
+    manager.on_path_secrets_ready(&Session, publisher);
     assert!(manager.has_transmission_interest());
 
     manager.on_transmit(&mut context);
@@ -165,10 +198,9 @@ fn on_packet_ack() {
     );
 
     // Ack the first one
-    manager.on_packet_ack(&PacketNumberRange::new(pn, pn), &mut publisher);
+    manager.on_packet_ack(&PacketNumberRange::new(pn, pn), publisher);
 
     assert!(!manager.has_transmission_interest());
-    assert!(manager.state.is_complete());
 }
 
 #[test]
