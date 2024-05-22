@@ -7,6 +7,14 @@ pub struct MockDcEndpoint {
     stateless_reset_tokens: Vec<stateless_reset::Token>,
 }
 
+impl MockDcEndpoint {
+    pub fn new(tokens: &[stateless_reset::Token]) -> Self {
+        Self {
+            stateless_reset_tokens: tokens.to_vec(),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct MockDcPath {
     pub on_path_secrets_ready_count: u8,
