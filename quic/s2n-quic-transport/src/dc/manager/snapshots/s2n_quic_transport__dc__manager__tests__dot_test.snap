@@ -3,6 +3,7 @@ source: quic/s2n-quic-transport/src/dc/manager/tests.rs
 expression: "State::dot()"
 ---
 digraph {
+  label = "s2n_quic_transport::dc::manager::State";
   ClientPathSecretsReady;
   Complete;
   InitClient;
