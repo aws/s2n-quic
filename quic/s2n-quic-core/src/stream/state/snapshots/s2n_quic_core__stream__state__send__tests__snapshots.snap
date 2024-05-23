@@ -1,381 +1,227 @@
 ---
 source: quic/s2n-quic-core/src/stream/state/send.rs
-expression: outcomes
+expression: "Sender::test_transitions()"
 ---
-[
-    (
-        Ready,
-        "on_send_stream",
-        Ok(
+{
+    DataRecvd: {
+        on_send_stream: Err(
+            InvalidTransition {
+                current: DataRecvd,
+                event: "on_send_stream",
+            },
+        ),
+        on_send_fin: Err(
+            InvalidTransition {
+                current: DataRecvd,
+                event: "on_send_fin",
+            },
+        ),
+        on_recv_all_acks: Err(
+            NoOp {
+                current: DataRecvd,
+            },
+        ),
+        on_queue_reset: Err(
+            InvalidTransition {
+                current: DataRecvd,
+                event: "on_queue_reset",
+            },
+        ),
+        on_send_reset: Err(
+            InvalidTransition {
+                current: DataRecvd,
+                event: "on_send_reset",
+            },
+        ),
+        on_recv_reset_ack: Err(
+            InvalidTransition {
+                current: DataRecvd,
+                event: "on_recv_reset_ack",
+            },
+        ),
+    },
+    DataSent: {
+        on_send_stream: Err(
+            InvalidTransition {
+                current: DataSent,
+                event: "on_send_stream",
+            },
+        ),
+        on_send_fin: Err(
+            NoOp {
+                current: DataSent,
+            },
+        ),
+        on_recv_all_acks: Ok(
+            DataRecvd,
+        ),
+        on_queue_reset: Ok(
+            ResetQueued,
+        ),
+        on_send_reset: Ok(
+            ResetSent,
+        ),
+        on_recv_reset_ack: Err(
+            InvalidTransition {
+                current: DataSent,
+                event: "on_recv_reset_ack",
+            },
+        ),
+    },
+    Ready: {
+        on_send_stream: Ok(
             Send,
         ),
-    ),
-    (
-        Ready,
-        "on_send_fin",
-        Ok(
+        on_send_fin: Ok(
             DataSent,
         ),
-    ),
-    (
-        Ready,
-        "on_queue_reset",
-        Ok(
-            ResetQueued,
-        ),
-    ),
-    (
-        Ready,
-        "on_send_reset",
-        Ok(
-            ResetSent,
-        ),
-    ),
-    (
-        Ready,
-        "on_recv_all_acks",
-        Err(
+        on_recv_all_acks: Err(
             InvalidTransition {
                 current: Ready,
                 event: "on_recv_all_acks",
             },
         ),
-    ),
-    (
-        Ready,
-        "on_recv_reset_ack",
-        Err(
+        on_queue_reset: Ok(
+            ResetQueued,
+        ),
+        on_send_reset: Ok(
+            ResetSent,
+        ),
+        on_recv_reset_ack: Err(
             InvalidTransition {
                 current: Ready,
                 event: "on_recv_reset_ack",
             },
         ),
-    ),
-    (
-        Send,
-        "on_send_stream",
-        Err(
-            NoOp {
-                current: Send,
-            },
-        ),
-    ),
-    (
-        Send,
-        "on_send_fin",
-        Ok(
-            DataSent,
-        ),
-    ),
-    (
-        Send,
-        "on_queue_reset",
-        Ok(
-            ResetQueued,
-        ),
-    ),
-    (
-        Send,
-        "on_send_reset",
-        Ok(
-            ResetSent,
-        ),
-    ),
-    (
-        Send,
-        "on_recv_all_acks",
-        Err(
+    },
+    ResetQueued: {
+        on_send_stream: Err(
             InvalidTransition {
-                current: Send,
-                event: "on_recv_all_acks",
-            },
-        ),
-    ),
-    (
-        Send,
-        "on_recv_reset_ack",
-        Err(
-            InvalidTransition {
-                current: Send,
-                event: "on_recv_reset_ack",
-            },
-        ),
-    ),
-    (
-        DataSent,
-        "on_send_stream",
-        Err(
-            InvalidTransition {
-                current: DataSent,
+                current: ResetQueued,
                 event: "on_send_stream",
             },
         ),
-    ),
-    (
-        DataSent,
-        "on_send_fin",
-        Err(
-            NoOp {
-                current: DataSent,
-            },
-        ),
-    ),
-    (
-        DataSent,
-        "on_queue_reset",
-        Ok(
-            ResetQueued,
-        ),
-    ),
-    (
-        DataSent,
-        "on_send_reset",
-        Ok(
-            ResetSent,
-        ),
-    ),
-    (
-        DataSent,
-        "on_recv_all_acks",
-        Ok(
-            DataRecvd,
-        ),
-    ),
-    (
-        DataSent,
-        "on_recv_reset_ack",
-        Err(
+        on_send_fin: Err(
             InvalidTransition {
-                current: DataSent,
-                event: "on_recv_reset_ack",
-            },
-        ),
-    ),
-    (
-        DataRecvd,
-        "on_send_stream",
-        Err(
-            InvalidTransition {
-                current: DataRecvd,
-                event: "on_send_stream",
-            },
-        ),
-    ),
-    (
-        DataRecvd,
-        "on_send_fin",
-        Err(
-            InvalidTransition {
-                current: DataRecvd,
+                current: ResetQueued,
                 event: "on_send_fin",
             },
         ),
-    ),
-    (
-        DataRecvd,
-        "on_queue_reset",
-        Err(
+        on_recv_all_acks: Ok(
+            DataRecvd,
+        ),
+        on_queue_reset: Err(
+            NoOp {
+                current: ResetQueued,
+            },
+        ),
+        on_send_reset: Ok(
+            ResetSent,
+        ),
+        on_recv_reset_ack: Err(
             InvalidTransition {
-                current: DataRecvd,
+                current: ResetQueued,
+                event: "on_recv_reset_ack",
+            },
+        ),
+    },
+    ResetRecvd: {
+        on_send_stream: Err(
+            InvalidTransition {
+                current: ResetRecvd,
+                event: "on_send_stream",
+            },
+        ),
+        on_send_fin: Err(
+            InvalidTransition {
+                current: ResetRecvd,
+                event: "on_send_fin",
+            },
+        ),
+        on_recv_all_acks: Err(
+            InvalidTransition {
+                current: ResetRecvd,
+                event: "on_recv_all_acks",
+            },
+        ),
+        on_queue_reset: Err(
+            InvalidTransition {
+                current: ResetRecvd,
                 event: "on_queue_reset",
             },
         ),
-    ),
-    (
-        DataRecvd,
-        "on_send_reset",
-        Err(
+        on_send_reset: Err(
             InvalidTransition {
-                current: DataRecvd,
+                current: ResetRecvd,
                 event: "on_send_reset",
             },
         ),
-    ),
-    (
-        DataRecvd,
-        "on_recv_all_acks",
-        Err(
+        on_recv_reset_ack: Err(
             NoOp {
-                current: DataRecvd,
+                current: ResetRecvd,
             },
         ),
-    ),
-    (
-        DataRecvd,
-        "on_recv_reset_ack",
-        Err(
-            InvalidTransition {
-                current: DataRecvd,
-                event: "on_recv_reset_ack",
-            },
-        ),
-    ),
-    (
-        ResetQueued,
-        "on_send_stream",
-        Err(
-            InvalidTransition {
-                current: ResetQueued,
-                event: "on_send_stream",
-            },
-        ),
-    ),
-    (
-        ResetQueued,
-        "on_send_fin",
-        Err(
-            InvalidTransition {
-                current: ResetQueued,
-                event: "on_send_fin",
-            },
-        ),
-    ),
-    (
-        ResetQueued,
-        "on_queue_reset",
-        Err(
-            NoOp {
-                current: ResetQueued,
-            },
-        ),
-    ),
-    (
-        ResetQueued,
-        "on_send_reset",
-        Ok(
-            ResetSent,
-        ),
-    ),
-    (
-        ResetQueued,
-        "on_recv_all_acks",
-        Ok(
-            DataRecvd,
-        ),
-    ),
-    (
-        ResetQueued,
-        "on_recv_reset_ack",
-        Err(
-            InvalidTransition {
-                current: ResetQueued,
-                event: "on_recv_reset_ack",
-            },
-        ),
-    ),
-    (
-        ResetSent,
-        "on_send_stream",
-        Err(
+    },
+    ResetSent: {
+        on_send_stream: Err(
             InvalidTransition {
                 current: ResetSent,
                 event: "on_send_stream",
             },
         ),
-    ),
-    (
-        ResetSent,
-        "on_send_fin",
-        Err(
+        on_send_fin: Err(
             InvalidTransition {
                 current: ResetSent,
                 event: "on_send_fin",
             },
         ),
-    ),
-    (
-        ResetSent,
-        "on_queue_reset",
-        Err(
-            InvalidTransition {
-                current: ResetSent,
-                event: "on_queue_reset",
-            },
-        ),
-    ),
-    (
-        ResetSent,
-        "on_send_reset",
-        Err(
-            NoOp {
-                current: ResetSent,
-            },
-        ),
-    ),
-    (
-        ResetSent,
-        "on_recv_all_acks",
-        Err(
+        on_recv_all_acks: Err(
             InvalidTransition {
                 current: ResetSent,
                 event: "on_recv_all_acks",
             },
         ),
-    ),
-    (
-        ResetSent,
-        "on_recv_reset_ack",
-        Ok(
+        on_queue_reset: Err(
+            InvalidTransition {
+                current: ResetSent,
+                event: "on_queue_reset",
+            },
+        ),
+        on_send_reset: Err(
+            NoOp {
+                current: ResetSent,
+            },
+        ),
+        on_recv_reset_ack: Ok(
             ResetRecvd,
         ),
-    ),
-    (
-        ResetRecvd,
-        "on_send_stream",
-        Err(
-            InvalidTransition {
-                current: ResetRecvd,
-                event: "on_send_stream",
+    },
+    Send: {
+        on_send_stream: Err(
+            NoOp {
+                current: Send,
             },
         ),
-    ),
-    (
-        ResetRecvd,
-        "on_send_fin",
-        Err(
-            InvalidTransition {
-                current: ResetRecvd,
-                event: "on_send_fin",
-            },
+        on_send_fin: Ok(
+            DataSent,
         ),
-    ),
-    (
-        ResetRecvd,
-        "on_queue_reset",
-        Err(
+        on_recv_all_acks: Err(
             InvalidTransition {
-                current: ResetRecvd,
-                event: "on_queue_reset",
-            },
-        ),
-    ),
-    (
-        ResetRecvd,
-        "on_send_reset",
-        Err(
-            InvalidTransition {
-                current: ResetRecvd,
-                event: "on_send_reset",
-            },
-        ),
-    ),
-    (
-        ResetRecvd,
-        "on_recv_all_acks",
-        Err(
-            InvalidTransition {
-                current: ResetRecvd,
+                current: Send,
                 event: "on_recv_all_acks",
             },
         ),
-    ),
-    (
-        ResetRecvd,
-        "on_recv_reset_ack",
-        Err(
-            NoOp {
-                current: ResetRecvd,
+        on_queue_reset: Ok(
+            ResetQueued,
+        ),
+        on_send_reset: Ok(
+            ResetSent,
+        ),
+        on_recv_reset_ack: Err(
+            InvalidTransition {
+                current: Send,
+                event: "on_recv_reset_ack",
             },
         ),
-    ),
-]
+    },
+}

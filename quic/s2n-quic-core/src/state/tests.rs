@@ -34,29 +34,7 @@ impl State {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn snapshots() {
-    let mut outcomes = vec![];
-    let states = [
-        State::Init,
-        State::Left,
-        State::Right,
-        State::LeftLeft,
-        State::LeftRight,
-        State::RightLeft,
-        State::RightRight,
-    ];
-    for state in states {
-        macro_rules! push {
-            ($event:ident) => {
-                let mut target = state.clone();
-                let result = target.$event().map(|_| target);
-                outcomes.push((state.clone(), stringify!($event), result));
-            };
-        }
-        push!(on_left);
-        push!(on_right);
-    }
-
-    assert_debug_snapshot!(outcomes);
+    assert_debug_snapshot!(State::test_transitions());
 }
 
 #[test]

@@ -1,283 +1,175 @@
 ---
 source: quic/s2n-quic-core/src/stream/state/recv.rs
-expression: outcomes
+expression: "Receiver::test_transitions()"
 ---
-[
-    (
-        Recv,
-        "on_receive_fin",
-        Ok(
-            SizeKnown,
-        ),
-    ),
-    (
-        Recv,
-        "on_receive_all_data",
-        Err(
+{
+    DataRead: {
+        on_receive_fin: Err(
             InvalidTransition {
-                current: Recv,
+                current: DataRead,
+                event: "on_receive_fin",
+            },
+        ),
+        on_receive_all_data: Err(
+            InvalidTransition {
+                current: DataRead,
                 event: "on_receive_all_data",
             },
         ),
-    ),
-    (
-        Recv,
-        "on_app_read_all_data",
-        Err(
-            InvalidTransition {
-                current: Recv,
-                event: "on_app_read_all_data",
-            },
-        ),
-    ),
-    (
-        Recv,
-        "on_reset",
-        Ok(
-            ResetRecvd,
-        ),
-    ),
-    (
-        Recv,
-        "on_app_read_reset",
-        Err(
-            InvalidTransition {
-                current: Recv,
-                event: "on_app_read_reset",
-            },
-        ),
-    ),
-    (
-        SizeKnown,
-        "on_receive_fin",
-        Err(
+        on_app_read_all_data: Err(
             NoOp {
-                current: SizeKnown,
+                current: DataRead,
             },
         ),
-    ),
-    (
-        SizeKnown,
-        "on_receive_all_data",
-        Ok(
-            DataRecvd,
-        ),
-    ),
-    (
-        SizeKnown,
-        "on_app_read_all_data",
-        Err(
+        on_reset: Err(
             InvalidTransition {
-                current: SizeKnown,
-                event: "on_app_read_all_data",
+                current: DataRead,
+                event: "on_reset",
             },
         ),
-    ),
-    (
-        SizeKnown,
-        "on_reset",
-        Ok(
-            ResetRecvd,
-        ),
-    ),
-    (
-        SizeKnown,
-        "on_app_read_reset",
-        Err(
+        on_app_read_reset: Err(
             InvalidTransition {
-                current: SizeKnown,
+                current: DataRead,
                 event: "on_app_read_reset",
             },
         ),
-    ),
-    (
-        DataRecvd,
-        "on_receive_fin",
-        Err(
+    },
+    DataRecvd: {
+        on_receive_fin: Err(
             InvalidTransition {
                 current: DataRecvd,
                 event: "on_receive_fin",
             },
         ),
-    ),
-    (
-        DataRecvd,
-        "on_receive_all_data",
-        Err(
+        on_receive_all_data: Err(
             NoOp {
                 current: DataRecvd,
             },
         ),
-    ),
-    (
-        DataRecvd,
-        "on_app_read_all_data",
-        Ok(
+        on_app_read_all_data: Ok(
             DataRead,
         ),
-    ),
-    (
-        DataRecvd,
-        "on_reset",
-        Err(
+        on_reset: Err(
             InvalidTransition {
                 current: DataRecvd,
                 event: "on_reset",
             },
         ),
-    ),
-    (
-        DataRecvd,
-        "on_app_read_reset",
-        Err(
+        on_app_read_reset: Err(
             InvalidTransition {
                 current: DataRecvd,
                 event: "on_app_read_reset",
             },
         ),
-    ),
-    (
-        DataRead,
-        "on_receive_fin",
-        Err(
-            InvalidTransition {
-                current: DataRead,
-                event: "on_receive_fin",
-            },
+    },
+    Recv: {
+        on_receive_fin: Ok(
+            SizeKnown,
         ),
-    ),
-    (
-        DataRead,
-        "on_receive_all_data",
-        Err(
+        on_receive_all_data: Err(
             InvalidTransition {
-                current: DataRead,
+                current: Recv,
                 event: "on_receive_all_data",
             },
         ),
-    ),
-    (
-        DataRead,
-        "on_app_read_all_data",
-        Err(
+        on_app_read_all_data: Err(
+            InvalidTransition {
+                current: Recv,
+                event: "on_app_read_all_data",
+            },
+        ),
+        on_reset: Ok(
+            ResetRecvd,
+        ),
+        on_app_read_reset: Err(
+            InvalidTransition {
+                current: Recv,
+                event: "on_app_read_reset",
+            },
+        ),
+    },
+    ResetRead: {
+        on_receive_fin: Err(
+            InvalidTransition {
+                current: ResetRead,
+                event: "on_receive_fin",
+            },
+        ),
+        on_receive_all_data: Err(
+            InvalidTransition {
+                current: ResetRead,
+                event: "on_receive_all_data",
+            },
+        ),
+        on_app_read_all_data: Err(
+            InvalidTransition {
+                current: ResetRead,
+                event: "on_app_read_all_data",
+            },
+        ),
+        on_reset: Err(
+            InvalidTransition {
+                current: ResetRead,
+                event: "on_reset",
+            },
+        ),
+        on_app_read_reset: Err(
             NoOp {
-                current: DataRead,
+                current: ResetRead,
             },
         ),
-    ),
-    (
-        DataRead,
-        "on_reset",
-        Err(
-            InvalidTransition {
-                current: DataRead,
-                event: "on_reset",
-            },
-        ),
-    ),
-    (
-        DataRead,
-        "on_app_read_reset",
-        Err(
-            InvalidTransition {
-                current: DataRead,
-                event: "on_app_read_reset",
-            },
-        ),
-    ),
-    (
-        ResetRecvd,
-        "on_receive_fin",
-        Err(
+    },
+    ResetRecvd: {
+        on_receive_fin: Err(
             InvalidTransition {
                 current: ResetRecvd,
                 event: "on_receive_fin",
             },
         ),
-    ),
-    (
-        ResetRecvd,
-        "on_receive_all_data",
-        Err(
+        on_receive_all_data: Err(
             InvalidTransition {
                 current: ResetRecvd,
                 event: "on_receive_all_data",
             },
         ),
-    ),
-    (
-        ResetRecvd,
-        "on_app_read_all_data",
-        Err(
+        on_app_read_all_data: Err(
             InvalidTransition {
                 current: ResetRecvd,
                 event: "on_app_read_all_data",
             },
         ),
-    ),
-    (
-        ResetRecvd,
-        "on_reset",
-        Err(
+        on_reset: Err(
             NoOp {
                 current: ResetRecvd,
             },
         ),
-    ),
-    (
-        ResetRecvd,
-        "on_app_read_reset",
-        Ok(
+        on_app_read_reset: Ok(
             ResetRead,
         ),
-    ),
-    (
-        ResetRead,
-        "on_receive_fin",
-        Err(
-            InvalidTransition {
-                current: ResetRead,
-                event: "on_receive_fin",
+    },
+    SizeKnown: {
+        on_receive_fin: Err(
+            NoOp {
+                current: SizeKnown,
             },
         ),
-    ),
-    (
-        ResetRead,
-        "on_receive_all_data",
-        Err(
-            InvalidTransition {
-                current: ResetRead,
-                event: "on_receive_all_data",
-            },
+        on_receive_all_data: Ok(
+            DataRecvd,
         ),
-    ),
-    (
-        ResetRead,
-        "on_app_read_all_data",
-        Err(
+        on_app_read_all_data: Err(
             InvalidTransition {
-                current: ResetRead,
+                current: SizeKnown,
                 event: "on_app_read_all_data",
             },
         ),
-    ),
-    (
-        ResetRead,
-        "on_reset",
-        Err(
+        on_reset: Ok(
+            ResetRecvd,
+        ),
+        on_app_read_reset: Err(
             InvalidTransition {
-                current: ResetRead,
-                event: "on_reset",
+                current: SizeKnown,
+                event: "on_app_read_reset",
             },
         ),
-    ),
-    (
-        ResetRead,
-        "on_app_read_reset",
-        Err(
-            NoOp {
-                current: ResetRead,
-            },
-        ),
-    ),
-]
+    },
+}
