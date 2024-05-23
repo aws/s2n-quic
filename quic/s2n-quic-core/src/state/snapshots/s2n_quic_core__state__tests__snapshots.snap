@@ -1,128 +1,86 @@
 ---
 source: quic/s2n-quic-core/src/state/tests.rs
-expression: outcomes
+expression: "State::test_transitions()"
 ---
-[
-    (
-        Init,
-        "on_left",
-        Ok(
+{
+    Init: {
+        on_left: Ok(
             Left,
         ),
-    ),
-    (
-        Init,
-        "on_right",
-        Ok(
+        on_right: Ok(
             Right,
         ),
-    ),
-    (
-        Left,
-        "on_left",
-        Ok(
+    },
+    Left: {
+        on_left: Ok(
             LeftLeft,
         ),
-    ),
-    (
-        Left,
-        "on_right",
-        Ok(
+        on_right: Ok(
             LeftRight,
         ),
-    ),
-    (
-        Right,
-        "on_left",
-        Ok(
+    },
+    LeftLeft: {
+        on_left: Err(
+            InvalidTransition {
+                current: LeftLeft,
+                event: "on_left",
+            },
+        ),
+        on_right: Err(
+            InvalidTransition {
+                current: LeftLeft,
+                event: "on_right",
+            },
+        ),
+    },
+    LeftRight: {
+        on_left: Err(
+            InvalidTransition {
+                current: LeftRight,
+                event: "on_left",
+            },
+        ),
+        on_right: Err(
+            InvalidTransition {
+                current: LeftRight,
+                event: "on_right",
+            },
+        ),
+    },
+    Right: {
+        on_left: Ok(
             RightLeft,
         ),
-    ),
-    (
-        Right,
-        "on_right",
-        Ok(
+        on_right: Ok(
             RightRight,
         ),
-    ),
-    (
-        LeftLeft,
-        "on_left",
-        Err(
-            InvalidTransition {
-                current: LeftLeft,
-                event: "on_left",
-            },
-        ),
-    ),
-    (
-        LeftLeft,
-        "on_right",
-        Err(
-            InvalidTransition {
-                current: LeftLeft,
-                event: "on_right",
-            },
-        ),
-    ),
-    (
-        LeftRight,
-        "on_left",
-        Err(
-            InvalidTransition {
-                current: LeftRight,
-                event: "on_left",
-            },
-        ),
-    ),
-    (
-        LeftRight,
-        "on_right",
-        Err(
-            InvalidTransition {
-                current: LeftRight,
-                event: "on_right",
-            },
-        ),
-    ),
-    (
-        RightLeft,
-        "on_left",
-        Err(
+    },
+    RightLeft: {
+        on_left: Err(
             InvalidTransition {
                 current: RightLeft,
                 event: "on_left",
             },
         ),
-    ),
-    (
-        RightLeft,
-        "on_right",
-        Err(
+        on_right: Err(
             InvalidTransition {
                 current: RightLeft,
                 event: "on_right",
             },
         ),
-    ),
-    (
-        RightRight,
-        "on_left",
-        Err(
+    },
+    RightRight: {
+        on_left: Err(
             InvalidTransition {
                 current: RightRight,
                 event: "on_left",
             },
         ),
-    ),
-    (
-        RightRight,
-        "on_right",
-        Err(
+        on_right: Err(
             InvalidTransition {
                 current: RightRight,
                 event: "on_right",
             },
         ),
-    ),
-]
+    },
+}

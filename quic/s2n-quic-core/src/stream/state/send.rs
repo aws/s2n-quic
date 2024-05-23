@@ -80,33 +80,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn snapshots() {
-        let mut outcomes = vec![];
-        let states = [
-            Sender::Ready,
-            Sender::Send,
-            Sender::DataSent,
-            Sender::DataRecvd,
-            Sender::ResetQueued,
-            Sender::ResetSent,
-            Sender::ResetRecvd,
-        ];
-        for state in states {
-            macro_rules! push {
-                ($event:ident) => {
-                    let mut target = state.clone();
-                    let result = target.$event().map(|_| target);
-                    outcomes.push((state.clone(), stringify!($event), result));
-                };
-            }
-            push!(on_send_stream);
-            push!(on_send_fin);
-            push!(on_queue_reset);
-            push!(on_send_reset);
-            push!(on_recv_all_acks);
-            push!(on_recv_reset_ack);
-        }
-
-        assert_debug_snapshot!(outcomes);
+        assert_debug_snapshot!(Sender::test_transitions());
     }
 
     #[test]

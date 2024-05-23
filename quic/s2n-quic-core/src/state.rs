@@ -105,6 +105,89 @@ macro_rules! __state_event__ {
             );
         )*
 
+        #[cfg(test)]
+        pub fn test_transitions() -> impl ::core::fmt::Debug {
+            use $crate::state::Error;
+            use ::core::{fmt, result::Result};
+
+            let mut all_states = [
+                // collect all of the states we've observed
+                $($(
+                    $(
+                        (stringify!($valid), Self::$valid),
+                    )*
+                    (stringify!($target), Self::$target),
+                )*)*
+            ];
+
+            all_states.sort_unstable_by_key(|v| v.0);
+            let (sorted, _) = $crate::slice::partition_dedup(&mut all_states);
+
+            const EVENT_LEN: usize = {
+                let mut len = 0;
+                $({
+                    let _ = stringify!($event);
+                    len += 1;
+                })*
+                len
+            };
+
+            let apply = |state: &Self| {
+                [$({
+                    let mut state = state.clone();
+                    let result = state.$event().map(|_| state);
+                    (stringify!($event), result)
+                }),*]
+            };
+
+            struct Transitions<const L: usize, T, A> {
+                states: [(&'static str, T); L],
+                count: usize,
+                apply: A,
+            }
+
+            impl<const L: usize, T, A> fmt::Debug for Transitions<L, T, A>
+            where
+                T: fmt::Debug,
+                A: Fn(&T) -> [(&'static str, Result<T, Error<T>>); EVENT_LEN],
+            {
+                fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                    let mut m = f.debug_map();
+
+                    for (name, state) in self.states.iter().take(self.count) {
+                        let events = (self.apply)(state);
+                        m.entry(&format_args!("{name}"), &Entry(events));
+                    }
+
+                    m.finish()
+                }
+            }
+
+            struct Entry<T>([(&'static str, Result<T, Error<T>>); EVENT_LEN]);
+
+            impl<T> fmt::Debug for Entry<T>
+            where
+                T: fmt::Debug
+            {
+                fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                    let mut m = f.debug_map();
+
+                    for (event, outcome) in self.0.iter() {
+                        m.entry(&format_args!("{event}"), outcome);
+                    }
+
+                    m.finish()
+                }
+            }
+
+            let count = sorted.len();
+            Transitions {
+                states: all_states,
+                count,
+                apply,
+            }
+        }
+
         /// Generates a dot graph of all state transitions
         pub fn dot() -> impl ::core::fmt::Display {
             struct Dot;
