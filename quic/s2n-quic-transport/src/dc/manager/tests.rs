@@ -6,6 +6,7 @@ use crate::{
     contexts::testing::MockWriteContext,
     endpoint::testing::{Client, Server},
 };
+use insta::assert_snapshot;
 use s2n_quic_core::{
     crypto::tls::testing::Session,
     dc::testing::MockDcPath,
@@ -76,6 +77,17 @@ fn on_path_secrets_ready() {
 
     assert_eq!(1, manager.path().on_path_secrets_ready_count);
     assert!(manager.state.is_path_secrets_ready());
+    // Server doesn't transmit until it receives tokens from the client
+    assert!(!manager.has_transmission_interest());
+
+    let path = MockDcPath::default();
+    let mut manager: Manager<Client> = Manager::new(Some(path), 1, &mut publisher);
+
+    manager.on_path_secrets_ready(&Session, &mut publisher);
+
+    assert_eq!(1, manager.path().on_path_secrets_ready_count);
+    assert!(manager.state.is_path_secrets_ready());
+    // Client starts transmitting as soon as path secrets are ready
     assert!(manager.has_transmission_interest());
 }
 
@@ -124,10 +136,14 @@ fn on_peer_dc_stateless_reset_tokens<Config, Endpoint>(
     );
 
     if Config::ENDPOINT_TYPE.is_server() {
-        assert!(!manager.state.is_complete());
+        assert!(manager.state.is_server_tokens_sent());
     } else {
         assert!(manager.state.is_complete());
     }
+
+    // Receiving the peer tokens again doesn't call the provider again
+    manager.on_peer_dc_stateless_reset_tokens(tokens.iter(), publisher);
+    assert_eq!(1, manager.path().on_peer_stateless_reset_tokens_count);
 }
 
 #[test]
@@ -178,6 +194,11 @@ fn on_packet_ack<Config, Endpoint>(
     let pn = context.packet_number();
 
     manager.on_path_secrets_ready(&Session, publisher);
+
+    if Config::ENDPOINT_TYPE.is_server() {
+        // Receive tokens on the server to trigger sending
+        manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_3].iter(), publisher);
+    }
     assert!(manager.has_transmission_interest());
 
     manager.on_transmit(&mut context);
@@ -231,6 +252,12 @@ fn on_packet_loss() {
 
     // so now we have transmission interest again
     assert!(manager.has_transmission_interest());
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn dot_test() {
+    assert_snapshot!(State::dot());
 }
 
 /// Creates an application space packet number with the given value
