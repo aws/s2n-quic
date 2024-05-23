@@ -1,0 +1,208 @@
+---
+source: quic/s2n-quic-core/src/state/tests.rs
+expression: "Microwave::test_transitions()"
+---
+{
+    Idle: {
+        on_number: Ok(
+            SettingTime,
+        ),
+        on_cancel: Ok(
+            Idle,
+        ),
+        on_start: Err(
+            InvalidTransition {
+                current: Idle,
+                event: "on_start",
+            },
+        ),
+        on_door_open: Ok(
+            OpenIdle,
+        ),
+        on_door_close: Err(
+            InvalidTransition {
+                current: Idle,
+                event: "on_door_close",
+            },
+        ),
+        on_time_finished: Err(
+            NoOp {
+                current: Idle,
+            },
+        ),
+    },
+    OpenIdle: {
+        on_number: Err(
+            InvalidTransition {
+                current: OpenIdle,
+                event: "on_number",
+            },
+        ),
+        on_cancel: Ok(
+            OpenIdle,
+        ),
+        on_start: Err(
+            InvalidTransition {
+                current: OpenIdle,
+                event: "on_start",
+            },
+        ),
+        on_door_open: Err(
+            InvalidTransition {
+                current: OpenIdle,
+                event: "on_door_open",
+            },
+        ),
+        on_door_close: Ok(
+            Idle,
+        ),
+        on_time_finished: Err(
+            InvalidTransition {
+                current: OpenIdle,
+                event: "on_time_finished",
+            },
+        ),
+    },
+    OpenPaused: {
+        on_number: Err(
+            InvalidTransition {
+                current: OpenPaused,
+                event: "on_number",
+            },
+        ),
+        on_cancel: Ok(
+            OpenIdle,
+        ),
+        on_start: Err(
+            InvalidTransition {
+                current: OpenPaused,
+                event: "on_start",
+            },
+        ),
+        on_door_open: Err(
+            InvalidTransition {
+                current: OpenPaused,
+                event: "on_door_open",
+            },
+        ),
+        on_door_close: Ok(
+            Paused,
+        ),
+        on_time_finished: Err(
+            InvalidTransition {
+                current: OpenPaused,
+                event: "on_time_finished",
+            },
+        ),
+    },
+    OpenSettingTime: {
+        on_number: Ok(
+            OpenSettingTime,
+        ),
+        on_cancel: Ok(
+            OpenIdle,
+        ),
+        on_start: Err(
+            InvalidTransition {
+                current: OpenSettingTime,
+                event: "on_start",
+            },
+        ),
+        on_door_open: Err(
+            InvalidTransition {
+                current: OpenSettingTime,
+                event: "on_door_open",
+            },
+        ),
+        on_door_close: Ok(
+            SettingTime,
+        ),
+        on_time_finished: Err(
+            InvalidTransition {
+                current: OpenSettingTime,
+                event: "on_time_finished",
+            },
+        ),
+    },
+    Paused: {
+        on_number: Err(
+            InvalidTransition {
+                current: Paused,
+                event: "on_number",
+            },
+        ),
+        on_cancel: Ok(
+            Idle,
+        ),
+        on_start: Ok(
+            Running,
+        ),
+        on_door_open: Ok(
+            OpenPaused,
+        ),
+        on_door_close: Err(
+            InvalidTransition {
+                current: Paused,
+                event: "on_door_close",
+            },
+        ),
+        on_time_finished: Err(
+            InvalidTransition {
+                current: Paused,
+                event: "on_time_finished",
+            },
+        ),
+    },
+    Running: {
+        on_number: Err(
+            InvalidTransition {
+                current: Running,
+                event: "on_number",
+            },
+        ),
+        on_cancel: Ok(
+            Idle,
+        ),
+        on_start: Ok(
+            Running,
+        ),
+        on_door_open: Ok(
+            OpenPaused,
+        ),
+        on_door_close: Err(
+            InvalidTransition {
+                current: Running,
+                event: "on_door_close",
+            },
+        ),
+        on_time_finished: Ok(
+            Idle,
+        ),
+    },
+    SettingTime: {
+        on_number: Ok(
+            SettingTime,
+        ),
+        on_cancel: Ok(
+            Idle,
+        ),
+        on_start: Ok(
+            Running,
+        ),
+        on_door_open: Ok(
+            OpenSettingTime,
+        ),
+        on_door_close: Err(
+            InvalidTransition {
+                current: SettingTime,
+                event: "on_door_close",
+            },
+        ),
+        on_time_finished: Err(
+            InvalidTransition {
+                current: SettingTime,
+                event: "on_time_finished",
+            },
+        ),
+    },
+}

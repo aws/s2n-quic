@@ -3,6 +3,7 @@ source: quic/s2n-quic-core/src/stream/state/recv.rs
 expression: "Receiver::dot()"
 ---
 digraph {
+  label = "s2n_quic_core::stream::state::recv::Receiver";
   DataRead;
   DataRecvd;
   Recv;

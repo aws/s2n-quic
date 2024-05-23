@@ -3,6 +3,7 @@ source: quic/s2n-quic-core/src/stream/state/send.rs
 expression: "Sender::dot()"
 ---
 digraph {
+  label = "s2n_quic_core::stream::state::send::Sender";
   DataRecvd;
   DataSent;
   Ready;

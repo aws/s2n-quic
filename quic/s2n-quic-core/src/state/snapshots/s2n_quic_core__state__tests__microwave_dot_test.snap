@@ -1,0 +1,35 @@
+---
+source: quic/s2n-quic-core/src/state/tests.rs
+expression: "Microwave::dot()"
+---
+digraph {
+  label = "s2n_quic_core::state::tests::Microwave";
+  Idle;
+  OpenIdle;
+  OpenPaused;
+  OpenSettingTime;
+  Paused;
+  Running;
+  SettingTime;
+  Idle -> SettingTime [label = "on_number"];
+  SettingTime -> SettingTime [label = "on_number"];
+  OpenSettingTime -> OpenSettingTime [label = "on_number"];
+  Idle -> Idle [label = "on_cancel"];
+  SettingTime -> Idle [label = "on_cancel"];
+  Paused -> Idle [label = "on_cancel"];
+  Running -> Idle [label = "on_cancel"];
+  OpenIdle -> OpenIdle [label = "on_cancel"];
+  OpenSettingTime -> OpenIdle [label = "on_cancel"];
+  OpenPaused -> OpenIdle [label = "on_cancel"];
+  SettingTime -> Running [label = "on_start"];
+  Paused -> Running [label = "on_start"];
+  Running -> Running [label = "on_start"];
+  Idle -> OpenIdle [label = "on_door_open"];
+  SettingTime -> OpenSettingTime [label = "on_door_open"];
+  Paused -> OpenPaused [label = "on_door_open"];
+  Running -> OpenPaused [label = "on_door_open"];
+  OpenIdle -> Idle [label = "on_door_close"];
+  OpenSettingTime -> SettingTime [label = "on_door_close"];
+  OpenPaused -> Paused [label = "on_door_close"];
+  Running -> Idle [label = "on_time_finished"];
+}
