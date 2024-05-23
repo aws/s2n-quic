@@ -2,11 +2,48 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use crate::{client, client::ClientProviders, server, server::ServerProviders};
 use s2n_quic_core::{
     dc::testing::MockDcEndpoint,
     event::{api::DcState, Timestamp},
     stateless_reset::token::testing::{TEST_TOKEN_1, TEST_TOKEN_2},
 };
+
+// Client                                                                    Server
+//
+// Initial[0]: CRYPTO[CH (DC_SUPPORTED_VERSIONS[3,2,1]] ->
+//
+//                                      # dc_state_changed: state=VersionNegotiated
+//                                                    Initial[0]: CRYPTO[SH] ACK[0]
+//                Handshake[0]: CRYPTO[EE (DC_SUPPORTED_VERSIONS[3], CERT, CV, FIN]
+//
+// # dc_state_changed: state=VersionNegotiated
+// # handshake_status_updated: status=Complete
+// # dc_state_changed: state=PathSecretsReady
+// Initial[1]: ACK[0]
+// Handshake[0]: CRYPTO[FIN], ACK[0] ->
+// 1-RTT[0]: DC_STATELESS_RESET_TOKENS[..]
+//
+//                                       # dc_state_changed: state=PathSecretsReady
+//                                      # handshake_status_updated: status=Complete
+//                                     # handshake_status_updated: status=Confirmed
+//                                           # key_space_discarded: space=Handshake
+//               <- 1-RTT[1]: HANDSHAKE_DONE, ACK[0], DC_STATELESS_RESET_TOKENS[..]
+//
+// # handshake_status_updated: status=HandshakeDoneAcked
+// # handshake_status_updated: status=Confirmed
+// # key_space_discarded: space=Handshake
+// # dc_state_changed: state=Complete
+// 1-RTT[1]: ACK[1] ->
+//                            # handshake_status_updated: status=HandshakeDoneAcked
+//                                               # dc_state_changed: state=Complete
+#[test]
+fn dc_handshake_self_test() {
+    let server = Server::builder().with_tls(SERVER_CERTS).unwrap();
+    let client = Client::builder().with_tls(certificates::CERT_PEM).unwrap();
+
+    self_test(server, client);
+}
 
 // Client                                                                    Server
 //
@@ -26,18 +63,31 @@ use s2n_quic_core::{
 //                                       # dc_state_changed: state=PathSecretsReady
 //                                      # handshake_status_updated: status=Complete
 //                                     # handshake_status_updated: status=Confirmed
+//                                           # key_space_discarded: space=Handshake
 //               <- 1-RTT[1]: HANDSHAKE_DONE, ACK[0], DC_STATELESS_RESET_TOKENS[..]
 //
 // # handshake_status_updated: status=HandshakeDoneAcked
 // # handshake_status_updated: status=Confirmed
 // # key_space_discarded: space=Handshake
 // # dc_state_changed: state=Complete
-//
 // 1-RTT[1]: ACK[1] ->
 //                            # handshake_status_updated: status=HandshakeDoneAcked
 //                                               # dc_state_changed: state=Complete
 #[test]
 fn dc_mtls_handshake_self_test() {
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT).unwrap();
+    let server = Server::builder().with_tls(server_tls).unwrap();
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT).unwrap();
+    let client = Client::builder().with_tls(client_tls).unwrap();
+
+    self_test(server, client);
+}
+
+fn self_test<S: ServerProviders, C: ClientProviders>(
+    server: server::Builder<S>,
+    client: client::Builder<C>,
+) {
     let model = Model::default();
     let rtt = Duration::from_millis(100);
     model.set_delay(rtt / 2);
@@ -51,10 +101,8 @@ fn dc_mtls_handshake_self_test() {
     let client_tokens = [TEST_TOKEN_2];
 
     test(model, |handle| {
-        let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
-        let mut server = Server::builder()
+        let mut server = server
             .with_io(handle.builder().build()?)?
-            .with_tls(server_tls)?
             .with_event((tracing_events(), server_subscriber))?
             .with_random(Random::with_seed(456))?
             .with_dc(MockDcEndpoint::new(&server_tokens))?
@@ -68,10 +116,8 @@ fn dc_mtls_handshake_self_test() {
             stream.flush().await.unwrap();
         });
 
-        let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
-        let client = Client::builder()
+        let client = client
             .with_io(handle.builder().build().unwrap())?
-            .with_tls(client_tls)?
             .with_event((tracing_events(), client_subscriber))?
             .with_random(Random::with_seed(456))?
             .with_dc(MockDcEndpoint::new(&client_tokens))?
