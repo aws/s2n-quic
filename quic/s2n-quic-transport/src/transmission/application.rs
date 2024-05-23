@@ -5,7 +5,7 @@ use crate::{
     ack::AckManager,
     connection,
     contexts::WriteContext,
-    endpoint, path,
+    dc, endpoint, path,
     path::mtu,
     recovery,
     space::{datagram, CryptoStream, HandshakeStatus},
@@ -38,6 +38,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
         recovery_manager: &'a mut recovery::Manager<Config>,
         crypto_stream: &'a mut CryptoStream,
         datagram_manager: &'a mut datagram::Manager<Config>,
+        dc_manager: &'a mut dc::Manager<Config>,
     ) -> Self {
         if transmission_mode != Mode::PathValidationOnly {
             debug_assert_eq!(path_id, path_manager.active_path_id());
@@ -55,6 +56,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
                     recovery_manager,
                     crypto_stream,
                     datagram_manager,
+                    dc_manager,
                     prioritize_datagrams: false,
                 })
             }
@@ -108,6 +110,7 @@ pub struct Normal<'a, Config: endpoint::Config> {
     recovery_manager: &'a mut recovery::Manager<Config>,
     crypto_stream: &'a mut CryptoStream,
     datagram_manager: &'a mut datagram::Manager<Config>,
+    dc_manager: &'a mut dc::Manager<Config>,
     prioritize_datagrams: bool,
 }
 
@@ -172,6 +175,10 @@ impl<'a, Config: endpoint::Config> Normal<'a, Config> {
         // soon as possible
         self.handshake_status.on_transmit(context);
 
+        // send DC_STATELESS_RESET_FRAMES frames next, if needed, to ensure the dc handshake can
+        // complete as soon as possible
+        self.dc_manager.on_transmit(context);
+
         let _ = self.crypto_stream.tx.on_transmit((), context);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-8.2
@@ -203,6 +210,7 @@ impl<'a, Config: endpoint::Config> transmission::interest::Provider for Normal<'
             .active_path()
             .transmission_interest(query)?;
         self.ping.transmission_interest(query)?;
+        self.dc_manager.transmission_interest(query)?;
         Ok(())
     }
 }

@@ -269,7 +269,7 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ClientProviders
     );
 
-    #[cfg(feature = "unstable-provider-dc")]
+    #[cfg(any(test, feature = "unstable-provider-dc"))]
     impl_provider_method!(
         /// Sets the dc provider for the [`Client`]
         with_dc,

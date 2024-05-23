@@ -24,9 +24,9 @@ use s2n_quic_core::{
     event::{self, IntoEvent},
     frame::{
         ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
-        ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
-        NewConnectionId, NewToken, PathChallenge, PathResponse, ResetStream, RetireConnectionId,
-        StopSending, StreamDataBlocked, StreamsBlocked,
+        ConnectionClose, DataBlocked, DcStatelessResetTokens, HandshakeDone, MaxData,
+        MaxStreamData, MaxStreams, NewConnectionId, NewToken, PathChallenge, PathResponse,
+        ResetStream, RetireConnectionId, StopSending, StreamDataBlocked, StreamsBlocked,
     },
     inet::DatagramInfo,
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -789,6 +789,16 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
             .with_frame_type(frame.tag().into()))
     }
 
+    fn handle_dc_stateless_reset_tokens_frame<Pub: event::ConnectionPublisher>(
+        &mut self,
+        frame: DcStatelessResetTokens,
+        _publisher: &mut Pub,
+    ) -> Result<(), transport::Error> {
+        Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(Self::INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag()))
+    }
+
     default_frame_handler!(handle_data_blocked_frame, DataBlocked);
     default_frame_handler!(handle_max_data_frame, MaxData);
     default_frame_handler!(handle_max_stream_data_frame, MaxStreamData);
@@ -1048,10 +1058,8 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                 }
                 Frame::DcStatelessResetTokens(frame) => {
                     let on_error = on_frame_processed!(frame);
-                    Err(on_error(
-                        transport::Error::PROTOCOL_VIOLATION.with_reason("invalid frame"),
-                    ))?
-                    // TODO: Process DcStatelessResetTokens in dc provider
+                    self.handle_dc_stateless_reset_tokens_frame(frame, publisher)
+                        .map_err(on_error)?;
                 }
             }
 

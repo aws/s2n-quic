@@ -1,0 +1,17 @@
+---
+source: quic/s2n-quic-transport/src/dc/manager/tests.rs
+expression: "State::dot()"
+---
+digraph {
+  ClientPathSecretsReady;
+  Complete;
+  InitClient;
+  InitServer;
+  ServerPathSecretsReady;
+  ServerTokensSent;
+  InitServer -> ServerPathSecretsReady [label = "on_path_secrets_ready"];
+  InitClient -> ClientPathSecretsReady [label = "on_path_secrets_ready"];
+  ClientPathSecretsReady -> Complete [label = "on_peer_stateless_reset_tokens"];
+  ServerPathSecretsReady -> ServerTokensSent [label = "on_peer_stateless_reset_tokens"];
+  ServerTokensSent -> Complete [label = "on_stateless_reset_tokens_acked"];
+}

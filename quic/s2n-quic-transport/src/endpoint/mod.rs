@@ -29,6 +29,8 @@ use s2n_quic_core::{
     },
     crypto::{tls, tls::Endpoint as _, CryptoSuite, InitialKey},
     datagram::{Endpoint as DatagramEndpoint, PreConnectionInfo},
+    dc,
+    dc::Endpoint as _,
     endpoint::{limits::Outcome, Limiter as _},
     event::{
         self, supervisor, ConnectionPublisher, EndpointPublisher as _, IntoEvent, Subscriber as _,
@@ -42,7 +44,7 @@ use s2n_quic_core::{
     stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
     token::{self, Format},
-    transport::parameters::ClientTransportParameters,
+    transport::parameters::{ClientTransportParameters, DcSupportedVersions},
 };
 
 pub mod close;
@@ -1063,6 +1065,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
         .try_into()
         .unwrap();
 
+        if Cfg::DcEndpoint::ENABLED {
+            transport_parameters.dc_supported_versions =
+                DcSupportedVersions::for_client(dc::SUPPORTED_VERSIONS);
+        }
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //# The Destination Connection ID field from the first Initial packet
         //# sent by a client is used to determine packet protection keys for
@@ -1154,7 +1161,7 @@ pub mod testing {
         type PathMigrationValidator = path::migration::allow_all::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
-        type DcEndpoint = s2n_quic_core::dc::Disabled;
+        type DcEndpoint = s2n_quic_core::dc::testing::MockDcEndpoint;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()
@@ -1185,7 +1192,7 @@ pub mod testing {
         type PathMigrationValidator = path::migration::allow_all::Validator;
         type PacketInterceptor = s2n_quic_core::packet::interceptor::Disabled;
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
-        type DcEndpoint = s2n_quic_core::dc::Disabled;
+        type DcEndpoint = s2n_quic_core::dc::testing::MockDcEndpoint;
 
         fn context(&mut self) -> super::Context<Self> {
             todo!()

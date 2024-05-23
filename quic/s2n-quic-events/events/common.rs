@@ -972,3 +972,9 @@ enum BbrState {
     ProbeBwUp,
     ProbeRtt,
 }
+
+enum DcState {
+    VersionNegotiated { version: u32 },
+    PathSecretsReady,
+    Complete,
+}
