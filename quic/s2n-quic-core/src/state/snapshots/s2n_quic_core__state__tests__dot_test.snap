@@ -1,0 +1,19 @@
+---
+source: quic/s2n-quic-core/src/state/tests.rs
+expression: "State::dot()"
+---
+digraph {
+  Init;
+  Left;
+  LeftLeft;
+  LeftRight;
+  Right;
+  RightLeft;
+  RightRight;
+  Init -> Left [label = "on_left"];
+  Left -> LeftLeft [label = "on_left"];
+  Right -> RightLeft [label = "on_left"];
+  Init -> Right [label = "on_right"];
+  Left -> LeftRight [label = "on_right"];
+  Right -> RightRight [label = "on_right"];
+}

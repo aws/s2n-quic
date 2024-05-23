@@ -130,6 +130,65 @@ where
     count
 }
 
+/// Deduplicates elements in a slice
+///
+/// # Note
+///
+/// Items must be sorted before performing this function
+#[inline]
+pub fn partition_dedup<T>(slice: &mut [T]) -> (&mut [T], &mut [T])
+where
+    T: PartialEq,
+{
+    // TODO replace with
+    // https://doc.rust-lang.org/std/primitive.slice.html#method.partition_dedup
+    // when stable
+    //
+    // For now, we've just inlined their implementation
+
+    let len = slice.len();
+    if len <= 1 {
+        return (slice, &mut []);
+    }
+
+    let ptr = slice.as_mut_ptr();
+    let mut next_read: usize = 1;
+    let mut next_write: usize = 1;
+
+    // SAFETY: the `while` condition guarantees `next_read` and `next_write`
+    // are less than `len`, thus are inside `self`. `prev_ptr_write` points to
+    // one element before `ptr_write`, but `next_write` starts at 1, so
+    // `prev_ptr_write` is never less than 0 and is inside the slice.
+    // This fulfils the requirements for dereferencing `ptr_read`, `prev_ptr_write`
+    // and `ptr_write`, and for using `ptr.add(next_read)`, `ptr.add(next_write - 1)`
+    // and `prev_ptr_write.offset(1)`.
+    //
+    // `next_write` is also incremented at most once per loop at most meaning
+    // no element is skipped when it may need to be swapped.
+    //
+    // `ptr_read` and `prev_ptr_write` never point to the same element. This
+    // is required for `&mut *ptr_read`, `&mut *prev_ptr_write` to be safe.
+    // The explanation is simply that `next_read >= next_write` is always true,
+    // thus `next_read > next_write - 1` is too.
+    unsafe {
+        // Avoid bounds checks by using raw pointers.
+        while next_read < len {
+            let ptr_read = ptr.add(next_read);
+            let prev_ptr_write = ptr.add(next_write - 1);
+            if *ptr_read != *prev_ptr_write {
+                if next_read != next_write {
+                    let ptr_write = prev_ptr_write.add(1);
+                    core::ptr::swap(ptr_read, ptr_write);
+                }
+                next_write += 1;
+            }
+            next_read += 1;
+        }
+    }
+
+    slice.split_at_mut(next_write)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

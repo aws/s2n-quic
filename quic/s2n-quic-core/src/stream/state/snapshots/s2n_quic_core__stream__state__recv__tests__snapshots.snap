@@ -16,7 +16,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: Recv,
-                target: DataRecvd,
+                event: "on_receive_all_data",
             },
         ),
     ),
@@ -26,7 +26,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: Recv,
-                target: DataRead,
+                event: "on_app_read_all_data",
             },
         ),
     ),
@@ -43,7 +43,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: Recv,
-                target: ResetRead,
+                event: "on_app_read_reset",
             },
         ),
     ),
@@ -69,7 +69,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: SizeKnown,
-                target: DataRead,
+                event: "on_app_read_all_data",
             },
         ),
     ),
@@ -86,7 +86,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: SizeKnown,
-                target: ResetRead,
+                event: "on_app_read_reset",
             },
         ),
     ),
@@ -96,7 +96,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRecvd,
-                target: SizeKnown,
+                event: "on_receive_fin",
             },
         ),
     ),
@@ -122,7 +122,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRecvd,
-                target: ResetRecvd,
+                event: "on_reset",
             },
         ),
     ),
@@ -132,7 +132,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRecvd,
-                target: ResetRead,
+                event: "on_app_read_reset",
             },
         ),
     ),
@@ -142,7 +142,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRead,
-                target: SizeKnown,
+                event: "on_receive_fin",
             },
         ),
     ),
@@ -152,7 +152,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRead,
-                target: DataRecvd,
+                event: "on_receive_all_data",
             },
         ),
     ),
@@ -171,7 +171,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRead,
-                target: ResetRecvd,
+                event: "on_reset",
             },
         ),
     ),
@@ -181,7 +181,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRead,
-                target: ResetRead,
+                event: "on_app_read_reset",
             },
         ),
     ),
@@ -191,7 +191,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRecvd,
-                target: SizeKnown,
+                event: "on_receive_fin",
             },
         ),
     ),
@@ -201,7 +201,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRecvd,
-                target: DataRecvd,
+                event: "on_receive_all_data",
             },
         ),
     ),
@@ -211,7 +211,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRecvd,
-                target: DataRead,
+                event: "on_app_read_all_data",
             },
         ),
     ),
@@ -237,7 +237,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRead,
-                target: SizeKnown,
+                event: "on_receive_fin",
             },
         ),
     ),
@@ -247,7 +247,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRead,
-                target: DataRecvd,
+                event: "on_receive_all_data",
             },
         ),
     ),
@@ -257,7 +257,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRead,
-                target: DataRead,
+                event: "on_app_read_all_data",
             },
         ),
     ),
@@ -267,7 +267,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRead,
-                target: ResetRecvd,
+                event: "on_reset",
             },
         ),
     ),
