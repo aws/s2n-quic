@@ -37,7 +37,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: Ready,
-                target: DataRecvd,
+                event: "on_recv_all_acks",
             },
         ),
     ),
@@ -47,7 +47,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: Ready,
-                target: ResetRecvd,
+                event: "on_recv_reset_ack",
             },
         ),
     ),
@@ -87,7 +87,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: Send,
-                target: DataRecvd,
+                event: "on_recv_all_acks",
             },
         ),
     ),
@@ -97,7 +97,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: Send,
-                target: ResetRecvd,
+                event: "on_recv_reset_ack",
             },
         ),
     ),
@@ -107,7 +107,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataSent,
-                target: Send,
+                event: "on_send_stream",
             },
         ),
     ),
@@ -147,7 +147,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataSent,
-                target: ResetRecvd,
+                event: "on_recv_reset_ack",
             },
         ),
     ),
@@ -157,7 +157,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRecvd,
-                target: Send,
+                event: "on_send_stream",
             },
         ),
     ),
@@ -167,7 +167,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRecvd,
-                target: DataSent,
+                event: "on_send_fin",
             },
         ),
     ),
@@ -177,7 +177,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRecvd,
-                target: ResetQueued,
+                event: "on_queue_reset",
             },
         ),
     ),
@@ -187,7 +187,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRecvd,
-                target: ResetSent,
+                event: "on_send_reset",
             },
         ),
     ),
@@ -206,7 +206,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: DataRecvd,
-                target: ResetRecvd,
+                event: "on_recv_reset_ack",
             },
         ),
     ),
@@ -216,7 +216,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetQueued,
-                target: Send,
+                event: "on_send_stream",
             },
         ),
     ),
@@ -226,7 +226,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetQueued,
-                target: DataSent,
+                event: "on_send_fin",
             },
         ),
     ),
@@ -259,7 +259,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetQueued,
-                target: ResetRecvd,
+                event: "on_recv_reset_ack",
             },
         ),
     ),
@@ -269,7 +269,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetSent,
-                target: Send,
+                event: "on_send_stream",
             },
         ),
     ),
@@ -279,7 +279,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetSent,
-                target: DataSent,
+                event: "on_send_fin",
             },
         ),
     ),
@@ -289,7 +289,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetSent,
-                target: ResetQueued,
+                event: "on_queue_reset",
             },
         ),
     ),
@@ -308,7 +308,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetSent,
-                target: DataRecvd,
+                event: "on_recv_all_acks",
             },
         ),
     ),
@@ -325,7 +325,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRecvd,
-                target: Send,
+                event: "on_send_stream",
             },
         ),
     ),
@@ -335,7 +335,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRecvd,
-                target: DataSent,
+                event: "on_send_fin",
             },
         ),
     ),
@@ -345,7 +345,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRecvd,
-                target: ResetQueued,
+                event: "on_queue_reset",
             },
         ),
     ),
@@ -355,7 +355,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRecvd,
-                target: ResetSent,
+                event: "on_send_reset",
             },
         ),
     ),
@@ -365,7 +365,7 @@ expression: outcomes
         Err(
             InvalidTransition {
                 current: ResetRecvd,
-                target: DataRecvd,
+                event: "on_recv_all_acks",
             },
         ),
     ),
