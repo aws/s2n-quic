@@ -11,7 +11,7 @@ use s2n_quic_core::{
     crypto::tls,
     dc,
     dc::{Endpoint, Path},
-    event,
+    ensure, event,
     event::builder::{DcState, DcStateChanged},
     frame::DcStatelessResetTokens,
     packet::number::PacketNumber,
@@ -72,24 +72,22 @@ impl<Config: endpoint::Config> Manager<Config> {
         version: dc::Version,
         publisher: &mut Pub,
     ) -> Self {
-        if path.is_some() {
-            publisher.on_dc_state_changed(DcStateChanged {
-                state: DcState::VersionNegotiated { version },
-            });
-            let state = if Config::ENDPOINT_TYPE.is_server() {
-                State::InitServer
-            } else {
-                State::InitClient
-            };
+        ensure!(path.is_some(), Self::disabled());
 
-            Self {
-                path,
-                version: Some(version),
-                state,
-                stateless_reset_token_sync: Flag::default(),
-            }
+        publisher.on_dc_state_changed(DcStateChanged {
+            state: DcState::VersionNegotiated { version },
+        });
+        let state = if Config::ENDPOINT_TYPE.is_server() {
+            State::InitServer
         } else {
-            Self::disabled()
+            State::InitClient
+        };
+
+        Self {
+            path,
+            version: Some(version),
+            state,
+            stateless_reset_token_sync: Flag::default(),
         }
     }
 
@@ -120,23 +118,23 @@ impl<Config: endpoint::Config> Manager<Config> {
         session: &impl tls::TlsSession,
         publisher: &mut Pub,
     ) {
-        if self.state.on_path_secrets_ready().is_ok() {
-            let tokens = self.path.on_path_secrets_ready(session);
-            let flag = Flag::new(DcStatelessResetTokenWriter::new(tokens));
-            self.stateless_reset_token_sync = flag;
+        ensure!(self.state.on_path_secrets_ready().is_ok());
 
-            if Config::ENDPOINT_TYPE.is_client() {
-                // Start sending the `DC_STATELESS_RESET_TOKENS` frame on the client
-                // The server will wait until it has received tokens from the client
-                // before sending its own, though typically this will happen immediately
-                // after path secrets are ready
-                self.stateless_reset_token_sync.send();
-            }
+        let tokens = self.path.on_path_secrets_ready(session);
+        let flag = Flag::new(DcStatelessResetTokenWriter::new(tokens));
+        self.stateless_reset_token_sync = flag;
 
-            publisher.on_dc_state_changed(DcStateChanged {
-                state: DcState::PathSecretsReady,
-            })
+        if Config::ENDPOINT_TYPE.is_client() {
+            // Start sending the `DC_STATELESS_RESET_TOKENS` frame on the client
+            // The server will wait until it has received tokens from the client
+            // before sending its own, though typically this will happen immediately
+            // after path secrets are ready
+            self.stateless_reset_token_sync.send();
         }
+
+        publisher.on_dc_state_changed(DcStateChanged {
+            state: DcState::PathSecretsReady,
+        })
     }
 
     /// Called when a `DC_STATELESS_RESET_TOKENS` frame is received from the peer
@@ -148,16 +146,16 @@ impl<Config: endpoint::Config> Manager<Config> {
         stateless_reset_tokens: impl Iterator<Item = &'a stateless_reset::Token>,
         publisher: &mut Pub,
     ) {
-        if self.state.on_peer_stateless_reset_tokens().is_ok() {
-            self.path
-                .on_peer_stateless_reset_tokens(stateless_reset_tokens);
-            if Config::ENDPOINT_TYPE.is_server() {
-                self.stateless_reset_token_sync.send();
-            } else {
-                publisher.on_dc_state_changed(DcStateChanged {
-                    state: DcState::Complete,
-                });
-            }
+        ensure!(self.state.on_peer_stateless_reset_tokens().is_ok());
+
+        self.path
+            .on_peer_stateless_reset_tokens(stateless_reset_tokens);
+        if Config::ENDPOINT_TYPE.is_server() {
+            self.stateless_reset_token_sync.send();
+        } else {
+            publisher.on_dc_state_changed(DcStateChanged {
+                state: DcState::Complete,
+            });
         }
     }
 
@@ -167,14 +165,13 @@ impl<Config: endpoint::Config> Manager<Config> {
         ack_set: &A,
         publisher: &mut Pub,
     ) {
-        if self.stateless_reset_token_sync.on_packet_ack(ack_set)
-            && self.state.on_stateless_reset_tokens_acked().is_ok()
-        {
-            debug_assert!(Config::ENDPOINT_TYPE.is_server());
-            publisher.on_dc_state_changed(DcStateChanged {
-                state: DcState::Complete,
-            });
-        }
+        ensure!(self.stateless_reset_token_sync.on_packet_ack(ack_set));
+        ensure!(self.state.on_stateless_reset_tokens_acked().is_ok());
+
+        debug_assert!(Config::ENDPOINT_TYPE.is_server());
+        publisher.on_dc_state_changed(DcStateChanged {
+            state: DcState::Complete,
+        });
     }
 
     /// Called when a range of packets has been lost
