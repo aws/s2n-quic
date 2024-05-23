@@ -22,6 +22,7 @@ pub mod counter;
 pub mod crypto;
 pub mod ct;
 pub mod datagram;
+#[cfg(feature = "alloc")]
 pub mod dc;
 pub mod endpoint;
 pub mod event;

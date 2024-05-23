@@ -115,10 +115,8 @@ impl<Config: endpoint::Config> Manager<Config> {
     ) {
         ensure!(!self.state.is_complete());
 
-        self.path.on_path_secrets_ready(session);
-        let mut flag = Flag::new(DcStatelessResetTokenWriter::new(
-            self.path.stateless_reset_tokens(),
-        ));
+        let tokens = self.path.on_path_secrets_ready(session);
+        let mut flag = Flag::new(DcStatelessResetTokenWriter::new(tokens));
         flag.send();
         let _ = if Config::ENDPOINT_TYPE.is_server() {
             self.state.on_server_path_secrets_ready()
@@ -203,10 +201,8 @@ struct DcStatelessResetTokenWriter {
 }
 
 impl DcStatelessResetTokenWriter {
-    fn new(tokens: &[stateless_reset::Token]) -> Self {
-        Self {
-            tokens: tokens.to_vec(),
-        }
+    fn new(tokens: Vec<stateless_reset::Token>) -> Self {
+        Self { tokens }
     }
 }
 

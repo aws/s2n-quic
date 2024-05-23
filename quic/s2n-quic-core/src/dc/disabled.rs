@@ -4,7 +4,7 @@
 use crate::{
     crypto::tls::TlsSession,
     dc::{ConnectionInfo, Endpoint, Path},
-    stateless_reset::Token,
+    stateless_reset,
 };
 
 #[derive(Debug, Default)]
@@ -22,18 +22,14 @@ impl Endpoint for Disabled {
 
 // The Disabled Endpoint returns `None`, so this is not used
 impl Path for () {
-    fn on_path_secrets_ready(&mut self, _session: &impl TlsSession) {
+    fn on_path_secrets_ready(&mut self, _session: &impl TlsSession) -> Vec<stateless_reset::Token> {
         unimplemented!()
     }
 
     fn on_peer_stateless_reset_tokens<'a>(
         &mut self,
-        _stateless_reset_tokens: impl Iterator<Item = &'a Token>,
+        _stateless_reset_tokens: impl Iterator<Item = &'a stateless_reset::Token>,
     ) {
-        unimplemented!()
-    }
-
-    fn stateless_reset_tokens(&mut self) -> &[Token] {
         unimplemented!()
     }
 }

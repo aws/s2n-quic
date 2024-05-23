@@ -21,24 +21,25 @@ pub trait Endpoint: 'static + Send {
 /// A dc path
 pub trait Path: 'static + Send {
     /// Called when path secrets are ready to be derived from the given `TlsSession`
-    fn on_path_secrets_ready(&mut self, session: &impl TlsSession);
+    ///
+    /// Returns the stateless reset tokens to include in a `DC_STATELESS_RESET_TOKENS`
+    /// frame sent to the peer.
+    fn on_path_secrets_ready(&mut self, session: &impl TlsSession) -> Vec<stateless_reset::Token>;
 
     /// Called when a `DC_STATELESS_RESET_TOKENS` frame has been received from the peer
     fn on_peer_stateless_reset_tokens<'a>(
         &mut self,
         stateless_reset_tokens: impl Iterator<Item = &'a stateless_reset::Token>,
     );
-
-    /// Returns the stateless reset tokens to include in a `DC_STATELESS_RESET_TOKENS`
-    /// frame sent to the peer.
-    fn stateless_reset_tokens(&mut self) -> &[stateless_reset::Token];
 }
 
 impl<P: Path> Path for Option<P> {
     #[inline]
-    fn on_path_secrets_ready(&mut self, session: &impl TlsSession) {
+    fn on_path_secrets_ready(&mut self, session: &impl TlsSession) -> Vec<stateless_reset::Token> {
         if let Some(path) = self {
             path.on_path_secrets_ready(session)
+        } else {
+            Vec::default()
         }
     }
 
@@ -49,15 +50,6 @@ impl<P: Path> Path for Option<P> {
     ) {
         if let Some(path) = self {
             path.on_peer_stateless_reset_tokens(stateless_reset_tokens)
-        }
-    }
-
-    #[inline]
-    fn stateless_reset_tokens(&mut self) -> &[stateless_reset::Token] {
-        if let Some(path) = self {
-            path.stateless_reset_tokens()
-        } else {
-            &[]
         }
     }
 }

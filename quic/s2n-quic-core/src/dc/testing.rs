@@ -19,7 +19,6 @@ impl MockDcEndpoint {
 pub struct MockDcPath {
     pub on_path_secrets_ready_count: u8,
     pub on_peer_stateless_reset_tokens_count: u8,
-    pub stateless_reset_tokens_count: u8,
     pub stateless_reset_tokens: Vec<stateless_reset::Token>,
     pub peer_stateless_reset_tokens: Vec<stateless_reset::Token>,
 }
@@ -36,8 +35,9 @@ impl dc::Endpoint for MockDcEndpoint {
 }
 
 impl dc::Path for MockDcPath {
-    fn on_path_secrets_ready(&mut self, _session: &impl TlsSession) {
+    fn on_path_secrets_ready(&mut self, _session: &impl TlsSession) -> Vec<stateless_reset::Token> {
         self.on_path_secrets_ready_count += 1;
+        self.stateless_reset_tokens.clone()
     }
 
     fn on_peer_stateless_reset_tokens<'a>(
@@ -47,10 +47,5 @@ impl dc::Path for MockDcPath {
         self.on_peer_stateless_reset_tokens_count += 1;
         self.peer_stateless_reset_tokens
             .extend(stateless_reset_tokens);
-    }
-
-    fn stateless_reset_tokens(&mut self) -> &[stateless_reset::Token] {
-        self.stateless_reset_tokens_count += 1;
-        self.stateless_reset_tokens.as_slice()
     }
 }
