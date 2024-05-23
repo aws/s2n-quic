@@ -6,6 +6,7 @@ use crate::{
     dc::{ConnectionInfo, Endpoint, Path},
     stateless_reset,
 };
+use alloc::vec::Vec;
 
 #[derive(Debug, Default)]
 pub struct Disabled(());

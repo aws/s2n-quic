@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{crypto::tls::TlsSession, dc, stateless_reset};
+use alloc::vec::Vec;
 
 /// The `dc::Endpoint` trait provides a way to support dc functionality
 pub trait Endpoint: 'static + Send {
