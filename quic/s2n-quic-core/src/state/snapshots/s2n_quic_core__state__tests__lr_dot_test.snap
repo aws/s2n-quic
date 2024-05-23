@@ -1,8 +1,9 @@
 ---
 source: quic/s2n-quic-core/src/state/tests.rs
-expression: "State::dot()"
+expression: "Lr::dot()"
 ---
 digraph {
+  label = "s2n_quic_core::state::tests::Lr";
   Init;
   Left;
   LeftLeft;

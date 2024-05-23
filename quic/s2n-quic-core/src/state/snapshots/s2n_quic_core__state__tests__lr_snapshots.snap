@@ -1,6 +1,6 @@
 ---
 source: quic/s2n-quic-core/src/state/tests.rs
-expression: "State::test_transitions()"
+expression: "Lr::test_transitions()"
 ---
 {
     Init: {

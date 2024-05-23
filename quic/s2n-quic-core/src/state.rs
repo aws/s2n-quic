@@ -190,11 +190,12 @@ macro_rules! __state_event__ {
 
         /// Generates a dot graph of all state transitions
         pub fn dot() -> impl ::core::fmt::Display {
-            struct Dot;
+            struct Dot(&'static str);
 
             impl ::core::fmt::Display for Dot {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     writeln!(f, "digraph {{")?;
+                    writeln!(f, "  label = {:?};", self.0)?;
 
                     let mut all_states = [
                         // collect all of the states we've observed
@@ -230,7 +231,7 @@ macro_rules! __state_event__ {
                 }
             }
 
-            Dot
+            Dot(::core::any::type_name::<Self>())
         }
     }
 }
