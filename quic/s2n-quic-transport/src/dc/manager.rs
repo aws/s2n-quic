@@ -189,11 +189,9 @@ impl<Config: endpoint::Config> transmission::Provider for Manager<Config> {
 impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Config> {
     fn transmission_interest<Q: Query>(&self, query: &mut Q) -> transmission::interest::Result {
         let result = self.stateless_reset_token_sync.transmission_interest(query);
-        if cfg!(debug_assertions) {
-            if result.is_err() {
-                // We should only have transmission interest in the path secrets are ready state
-                assert!(self.state.is_path_secrets_ready());
-            }
+        if result.is_err() {
+            // We should only have transmission interest in the path secrets are ready state
+            debug_assert!(self.state.is_path_secrets_ready());
         }
         result
     }

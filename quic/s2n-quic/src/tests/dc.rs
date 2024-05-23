@@ -111,6 +111,15 @@ fn dc_mtls_handshake_self_test() {
         assert!(matches!(events[2].state, DcState::Complete { .. }));
     }
 
+    // Server path secrets are ready in 1.5 RTTs measured from the start of the test, since it takes
+    // .5 RTT for the Initial from the client to reach the server
+    assert_eq!(
+        // remove floating point division error
+        Duration::from_millis(rtt.mul_f32(1.5).as_millis() as u64),
+        server_events[1].timestamp.duration_since_start()
+    );
+    assert_eq!(rtt, client_events[1].timestamp.duration_since_start());
+
     // Server completes in 2.5 RTTs measured from the start of the test, since it takes .5 RTT
     // for the Initial from the client to reach the server
     assert_eq!(
