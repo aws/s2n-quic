@@ -1,0 +1,110 @@
+---
+source: quic/s2n-quic-transport/src/dc/manager/tests.rs
+expression: "State::test_transitions()"
+---
+{
+    ClientPathSecretsReady: {
+        on_path_secrets_ready: Err(
+            InvalidTransition {
+                current: ClientPathSecretsReady,
+                event: "on_path_secrets_ready",
+            },
+        ),
+        on_peer_stateless_reset_tokens: Ok(
+            Complete,
+        ),
+        on_stateless_reset_tokens_acked: Err(
+            InvalidTransition {
+                current: ClientPathSecretsReady,
+                event: "on_stateless_reset_tokens_acked",
+            },
+        ),
+    },
+    Complete: {
+        on_path_secrets_ready: Err(
+            InvalidTransition {
+                current: Complete,
+                event: "on_path_secrets_ready",
+            },
+        ),
+        on_peer_stateless_reset_tokens: Err(
+            InvalidTransition {
+                current: Complete,
+                event: "on_peer_stateless_reset_tokens",
+            },
+        ),
+        on_stateless_reset_tokens_acked: Err(
+            NoOp {
+                current: Complete,
+            },
+        ),
+    },
+    InitClient: {
+        on_path_secrets_ready: Ok(
+            ClientPathSecretsReady,
+        ),
+        on_peer_stateless_reset_tokens: Err(
+            InvalidTransition {
+                current: InitClient,
+                event: "on_peer_stateless_reset_tokens",
+            },
+        ),
+        on_stateless_reset_tokens_acked: Err(
+            InvalidTransition {
+                current: InitClient,
+                event: "on_stateless_reset_tokens_acked",
+            },
+        ),
+    },
+    InitServer: {
+        on_path_secrets_ready: Ok(
+            ServerPathSecretsReady,
+        ),
+        on_peer_stateless_reset_tokens: Err(
+            InvalidTransition {
+                current: InitServer,
+                event: "on_peer_stateless_reset_tokens",
+            },
+        ),
+        on_stateless_reset_tokens_acked: Err(
+            InvalidTransition {
+                current: InitServer,
+                event: "on_stateless_reset_tokens_acked",
+            },
+        ),
+    },
+    ServerPathSecretsReady: {
+        on_path_secrets_ready: Err(
+            InvalidTransition {
+                current: ServerPathSecretsReady,
+                event: "on_path_secrets_ready",
+            },
+        ),
+        on_peer_stateless_reset_tokens: Ok(
+            ServerTokensSent,
+        ),
+        on_stateless_reset_tokens_acked: Err(
+            InvalidTransition {
+                current: ServerPathSecretsReady,
+                event: "on_stateless_reset_tokens_acked",
+            },
+        ),
+    },
+    ServerTokensSent: {
+        on_path_secrets_ready: Err(
+            InvalidTransition {
+                current: ServerTokensSent,
+                event: "on_path_secrets_ready",
+            },
+        ),
+        on_peer_stateless_reset_tokens: Err(
+            InvalidTransition {
+                current: ServerTokensSent,
+                event: "on_peer_stateless_reset_tokens",
+            },
+        ),
+        on_stateless_reset_tokens_acked: Ok(
+            Complete,
+        ),
+    },
+}

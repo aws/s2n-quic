@@ -6,7 +6,7 @@ use crate::{
     contexts::testing::MockWriteContext,
     endpoint::testing::{Client, Server},
 };
-use insta::assert_snapshot;
+use insta::{assert_debug_snapshot, assert_snapshot};
 use s2n_quic_core::{
     crypto::tls::testing::Session,
     dc::testing::MockDcPath,
@@ -252,6 +252,12 @@ fn on_packet_loss() {
 
     // so now we have transmission interest again
     assert!(manager.has_transmission_interest());
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn snapshots() {
+    assert_debug_snapshot!(State::test_transitions());
 }
 
 #[test]
