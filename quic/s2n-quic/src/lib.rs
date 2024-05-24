@@ -52,9 +52,12 @@
 //!
 //! ### `provider-tls-fips`
 //!
-//! FIPS mode is only supported with the [`s2n-tls`][s2n-tls] TLS provider on
+//! **FIPS mode with `provider-tls-s2n`**
+//!
+//! FIPS mode can be enabled with the [`s2n-tls`][s2n-tls] TLS provider on
 //! non-windows platforms.
-//! Applications wanting to use FIPS-approved cryptography with s2n-quic should:
+//!
+//! Applications wanting to use FIPS-approved cryptography with `provider-tls-s2n` should:
 //!
 //! 1. Enable the following features:
 //!
@@ -81,6 +84,20 @@
 //!     .with_tls(tls)?
 //!     ...
 //!     .start()?;
+//!```
+//!
+//! **FIPS mode with `provider-tls-rustls`**
+//!
+//! FIPS mode can be enabled with the [`rustls`][rustls] TLS provider. Applications are
+//! responsible for meeting guidelines for using rustls with
+//! [FIPS-approved cryptography](https://docs.rs/rustls/latest/rustls/manual/_06_fips/index.html).
+//!
+//! Applications wanting to use FIPS-approved cryptography with `provider-tls-rustls` should:
+//!
+//! 1. Enable the following features:
+//!
+//!```ignore
+//! s2n-quic = { version = "1", features = ["provider-tls-fips", "provider-tls-rustls"] }
 //!```
 //!
 //! [s2n-tls]: https://github.com/aws/s2n-tls
