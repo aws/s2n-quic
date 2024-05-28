@@ -364,7 +364,7 @@ jobs:
       # authenticate pull to avoid hitting pull quota
       - name: Login to Amazon Elastic Container Registry Public
         if: github.repository == github.event.pull_request.head.repo.full_name
-        uses: docker/login-action@v3.1.0
+        uses: docker/login-action@v3.2.0
         with:
           registry: public.ecr.aws
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
