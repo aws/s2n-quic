@@ -3,7 +3,11 @@
 
 use crate::{
     counter::{Counter, Saturating},
-    recovery::{bandwidth, bandwidth::Bandwidth, bbr::BbrCongestionController},
+    recovery::{
+        bandwidth,
+        bandwidth::Bandwidth,
+        bbr::{ApplicationSettings, BbrCongestionController},
+    },
 };
 use num_rational::Ratio;
 
@@ -65,13 +69,18 @@ impl Estimator {
         rate_sample: bandwidth::RateSample,
         loss_bursts_in_round: u8,
         max_datagram_size: u16,
+        app_settings: &ApplicationSettings,
     ) {
         if self.filled_pipe {
             return;
         }
 
-        self.filled_pipe =
-            self.excessive_inflight(rate_sample, loss_bursts_in_round, max_datagram_size);
+        self.filled_pipe = self.excessive_inflight(
+            rate_sample,
+            loss_bursts_in_round,
+            max_datagram_size,
+            app_settings,
+        );
     }
 
     /// Determines if the rate of increase of bandwidth has decreased enough to estimate the
@@ -135,6 +144,7 @@ impl Estimator {
         rate_sample: bandwidth::RateSample,
         loss_bursts_in_round: u8,
         max_datagram_size: u16,
+        app_settings: &ApplicationSettings,
     ) -> bool {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.1.3
         //# A second method BBR uses for estimating the bottleneck is full is by looking at sustained
@@ -176,6 +186,7 @@ impl Estimator {
             max_datagram_size,
             loss_bursts_in_round,
             STARTUP_FULL_LOSS_COUNT,
+            app_settings,
         )
     }
 
@@ -266,12 +277,22 @@ mod tests {
         };
 
         // Only 7 loss bursts, not enough to be considered excessive loss
-        fp_estimator.on_loss_round_start(rate_sample, 7, MINIMUM_MAX_DATAGRAM_SIZE);
+        fp_estimator.on_loss_round_start(
+            rate_sample,
+            7,
+            MINIMUM_MAX_DATAGRAM_SIZE,
+            &Default::default(),
+        );
         // The pipe has not been filled yet since there were only 2 loss bursts
         assert!(!fp_estimator.filled_pipe());
 
         // 3 loss bursts, enough to be considered excessive loss
-        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MAX_DATAGRAM_SIZE);
+        fp_estimator.on_loss_round_start(
+            rate_sample,
+            8,
+            MINIMUM_MAX_DATAGRAM_SIZE,
+            &Default::default(),
+        );
         // The pipe has been filled due to loss
         assert!(fp_estimator.filled_pipe());
     }
@@ -289,9 +310,19 @@ mod tests {
         };
 
         // Only 7 loss bursts, not enough to be considered excessive loss
-        fp_estimator.on_loss_round_start(rate_sample, 7, MINIMUM_MAX_DATAGRAM_SIZE);
+        fp_estimator.on_loss_round_start(
+            rate_sample,
+            7,
+            MINIMUM_MAX_DATAGRAM_SIZE,
+            &Default::default(),
+        );
 
-        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MAX_DATAGRAM_SIZE);
+        fp_estimator.on_loss_round_start(
+            rate_sample,
+            8,
+            MINIMUM_MAX_DATAGRAM_SIZE,
+            &Default::default(),
+        );
         // The pipe has been filled due to ECN
         assert!(fp_estimator.filled_pipe());
     }
@@ -308,7 +339,12 @@ mod tests {
             ..Default::default()
         };
         // 8 loss bursts, enough to be considered excessive loss
-        fp_estimator.on_loss_round_start(rate_sample, 8, MINIMUM_MAX_DATAGRAM_SIZE);
+        fp_estimator.on_loss_round_start(
+            rate_sample,
+            8,
+            MINIMUM_MAX_DATAGRAM_SIZE,
+            &Default::default(),
+        );
         // The pipe has not been filled yet since the loss rate was not high enough
         assert!(!fp_estimator.filled_pipe());
     }

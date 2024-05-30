@@ -496,13 +496,18 @@ impl CongestionController for CubicCongestionController {
 impl CubicCongestionController {
     // max_datagram_size is the current max_datagram_size, and is
     // expected to be 1200 when the congestion controller is created.
-    pub fn new(max_datagram_size: u16) -> Self {
+    pub fn new(max_datagram_size: u16, app_settings: ApplicationSettings) -> Self {
+        let congestion_window = app_settings
+            .cwnd
+            .unwrap_or(CubicCongestionController::initial_window(max_datagram_size))
+            as f32;
+
         Self {
             cubic: Cubic::new(max_datagram_size),
             slow_start: HybridSlowStart::new(max_datagram_size),
             pacer: Pacer::default(),
             max_datagram_size,
-            congestion_window: CubicCongestionController::initial_window(max_datagram_size) as f32,
+            congestion_window,
             state: SlowStart,
             bytes_in_flight: Counter::new(0),
             time_of_last_sent_packet: None,
@@ -674,6 +679,11 @@ impl CubicCongestionController {
             .saturating_sub(*self.bytes_in_flight);
         available_congestion_window > self.max_datagram_size as u32 * MAX_BURST_MULTIPLIER
     }
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct ApplicationSettings {
+    pub cwnd: Option<u32>,
 }
 
 /// Core functions of "CUBIC for Fast Long-Distance Networks" as specified in
@@ -864,7 +874,9 @@ impl Cubic {
 
 #[non_exhaustive]
 #[derive(Debug, Default)]
-pub struct Endpoint {}
+pub struct Endpoint {
+    app_settings: ApplicationSettings,
+}
 
 impl congestion_controller::Endpoint for Endpoint {
     type CongestionController = CubicCongestionController;
@@ -873,7 +885,15 @@ impl congestion_controller::Endpoint for Endpoint {
         &mut self,
         path_info: congestion_controller::PathInfo,
     ) -> Self::CongestionController {
-        CubicCongestionController::new(path_info.max_datagram_size)
+        CubicCongestionController::new(path_info.max_datagram_size, self.app_settings.clone())
+    }
+}
+
+pub struct Builder {}
+
+impl Builder {
+    pub fn build_with(app_settings: ApplicationSettings) -> Endpoint {
+        Endpoint { app_settings }
     }
 }
 

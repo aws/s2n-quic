@@ -251,7 +251,10 @@ fn cubic_fuzz() {
             gen::<Vec<Operation>>(),
         ))
         .for_each(|(max_datagram_size, seed, operations)| {
-            let mut model = Model::new(CubicCongestionController::new(*max_datagram_size));
+            let mut model = Model::new(CubicCongestionController::new(
+                *max_datagram_size,
+                Default::default(),
+            ));
             let mut rng = random::testing::Generator(*seed);
 
             for operation in operations.iter() {
@@ -272,7 +275,10 @@ fn bbr_fuzz() {
             gen::<Vec<Operation>>(),
         ))
         .for_each(|(max_datagram_size, seed, operations)| {
-            let mut model = Model::new(BbrCongestionController::new(*max_datagram_size));
+            let mut model = Model::new(BbrCongestionController::new(
+                *max_datagram_size,
+                Default::default(),
+            ));
             let mut rng = random::testing::Generator(*seed);
 
             for operation in operations.iter() {
