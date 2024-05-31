@@ -57,6 +57,7 @@ unstable-provider-random = []
 unstable-provider-dc = []
 # This feature enables support for third party congestion controller implementations
 unstable-congestion-controller = ["s2n-quic-core/unstable-congestion-controller"]
+unstable-limits = ["s2n-quic-core/unstable-limits"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }

@@ -3,7 +3,9 @@
 
 use super::*;
 use crate::{
-    connection::{ConnectionIdMapper, InternalConnectionIdGenerator},
+    connection::{
+        limits::ANTI_AMPLIFICATION_MULTIPLIER, ConnectionIdMapper, InternalConnectionIdGenerator,
+    },
     endpoint::{
         self,
         testing::{Client as ClientConfig, Server as ServerConfig},
@@ -59,6 +61,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
         Default::default(),
         false,
         mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
     manager
@@ -437,6 +440,7 @@ fn on_ack_frame() {
         MockCongestionController::default(),
         false,
         mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
     );
     context.path_manager.activate_path_for_test(path_id);
     context.path_mut().pto_backoff = 2;
@@ -2672,6 +2676,7 @@ fn update_pto_timer() {
         MockCongestionController::default(),
         false,
         mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
     );
     context.path_manager.activate_path_for_test(path_id);
     // simulate receiving a handshake packet to force path validation
@@ -2765,6 +2770,7 @@ fn pto_armed_if_handshake_not_confirmed() {
         Default::default(),
         false,
         mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
     );
     path_manager.activate_path_for_test(path_id);
 
@@ -2793,6 +2799,7 @@ fn pto_must_be_at_least_k_granularity() {
         Default::default(),
         false,
         mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
     // Update RTT with the smallest possible sample
@@ -3426,6 +3433,7 @@ fn helper_generate_path_manager_with_first_addr(
         MockCongestionController::new(first_addr),
         true,
         mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
     path::Manager::new(path, registry)
@@ -3449,6 +3457,7 @@ fn helper_generate_client_path_manager(
         MockCongestionController::new(first_addr),
         false,
         mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
     path::Manager::new(path, registry)

@@ -78,6 +78,7 @@ pub struct Path<Config: endpoint::Config> {
 
     /// True if the path is currently active
     is_active: bool,
+    anti_amplification_multiplier: u8,
 }
 
 impl<Config: endpoint::Config> Clone for Path<Config> {
@@ -97,6 +98,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             response_data: self.response_data,
             activated: self.activated,
             is_active: self.is_active,
+            anti_amplification_multiplier: self.anti_amplification_multiplier,
         }
     }
 }
@@ -113,6 +115,7 @@ impl<Config: endpoint::Config> Path<Config> {
         congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
         mtu_config: mtu::Config,
+        anti_amplification_multiplier: u8,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
@@ -144,6 +147,7 @@ impl<Config: endpoint::Config> Path<Config> {
             response_data: None,
             activated: false,
             is_active: false,
+            anti_amplification_multiplier,
         }
     }
 
@@ -207,14 +211,9 @@ impl<Config: endpoint::Config> Path<Config> {
         //# avoiding amplification prior to address validation, servers MUST
         //# count all of the payload bytes received in datagrams that are
         //# uniquely attributed to a single connection.
-        //
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
-        //# Prior to validating the client address, servers MUST NOT send more
-        //# than three times as many bytes as the number of bytes they have
-        //# received.
-        //
         if let State::AmplificationLimited { tx_allowance } = &mut self.state {
-            *tx_allowance += bytes.saturating_mul(3) as u32;
+            *tx_allowance +=
+                bytes.saturating_mul(self.anti_amplification_multiplier as usize) as u32;
         }
 
         let unblocked = was_at_amplification_limit && !self.at_amplification_limit();
@@ -595,7 +594,10 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Path<Config>
 pub mod testing {
     use crate::{endpoint, path::Path};
     use core::time::Duration;
-    use s2n_quic_core::{connection, path::mtu, recovery::RttEstimator};
+    use s2n_quic_core::{
+        connection, connection::limits::ANTI_AMPLIFICATION_MULTIPLIER, path::mtu,
+        recovery::RttEstimator,
+    };
 
     pub fn helper_path_server() -> Path<endpoint::testing::Server> {
         Path::new(
@@ -606,6 +608,7 @@ pub mod testing {
             Default::default(),
             true,
             mtu::Config::default(),
+            ANTI_AMPLIFICATION_MULTIPLIER,
         )
     }
 
@@ -618,6 +621,7 @@ pub mod testing {
             Default::default(),
             false,
             mtu::Config::default(),
+            ANTI_AMPLIFICATION_MULTIPLIER,
         )
     }
 }
@@ -633,7 +637,9 @@ mod tests {
     };
     use core::time::Duration;
     use s2n_quic_core::{
-        connection, endpoint,
+        connection,
+        connection::limits::ANTI_AMPLIFICATION_MULTIPLIER,
+        endpoint,
         event::testing::Publisher,
         path::MINIMUM_MAX_DATAGRAM_SIZE,
         recovery::{CongestionController, RttEstimator},
@@ -1123,6 +1129,7 @@ mod tests {
             Default::default(),
             false,
             mtu::Config::default(),
+            ANTI_AMPLIFICATION_MULTIPLIER,
         );
         let now = NoopClock.get_time();
         let random = &mut random::testing::Generator::default();
