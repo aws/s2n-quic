@@ -681,7 +681,7 @@ impl CubicCongestionController {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct ApplicationSettings {
     pub cwnd: Option<u32>,
 }
@@ -885,15 +885,30 @@ impl congestion_controller::Endpoint for Endpoint {
         &mut self,
         path_info: congestion_controller::PathInfo,
     ) -> Self::CongestionController {
-        CubicCongestionController::new(path_info.max_datagram_size, self.app_settings.clone())
+        CubicCongestionController::new(path_info.max_datagram_size, self.app_settings)
     }
 }
 
-pub struct Builder {}
+pub mod builder {
+    use super::{ApplicationSettings, Endpoint};
 
-impl Builder {
-    pub fn build_with(app_settings: ApplicationSettings) -> Endpoint {
-        Endpoint { app_settings }
+    /// Build the congestion controller with application provided overrides
+    #[derive(Default)]
+    pub struct Builder {
+        cwnd: Option<u32>,
+    }
+
+    impl Builder {
+        /// Set the initial congestion window.
+        pub fn with_congestion_window(mut self, cwnd: u32) -> Self {
+            self.cwnd = Some(cwnd);
+            self
+        }
+
+        pub fn build(self) -> Endpoint {
+            let app_settings = ApplicationSettings { cwnd: self.cwnd };
+            Endpoint { app_settings }
+        }
     }
 }
 

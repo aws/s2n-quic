@@ -217,7 +217,7 @@ impl IntoEvent<event::builder::BbrState> for &State {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct ApplicationSettings {
     pub cwnd: Option<u32>,
     pub cwnd_gain: Option<u32>,
@@ -1124,15 +1124,59 @@ impl congestion_controller::Endpoint for Endpoint {
         &mut self,
         path_info: congestion_controller::PathInfo,
     ) -> Self::CongestionController {
-        BbrCongestionController::new(path_info.max_datagram_size, self.app_settings.clone())
+        BbrCongestionController::new(path_info.max_datagram_size, self.app_settings)
     }
 }
 
-pub struct Builder {}
+pub mod builder {
+    use super::{ApplicationSettings, Endpoint};
 
-impl Builder {
-    pub fn build_with(app_settings: ApplicationSettings) -> Endpoint {
-        Endpoint { app_settings }
+    /// Build the congestion controller with application provided overrides
+    #[derive(Debug, Default)]
+    pub struct Builder {
+        cwnd: Option<u32>,
+        cwnd_gain: Option<u32>,
+        loss_threshold: Option<u32>,
+        up_pacing_gain: Option<u32>,
+    }
+
+    impl Builder {
+        /// Set the initial congestion window.
+        pub fn with_congestion_window(mut self, cwnd: u32) -> Self {
+            self.cwnd = Some(cwnd);
+            self
+        }
+
+        /// The dynamic gain factor used to scale the estimated BDP to produce a congestion window (cwnd)
+        #[cfg(feature = "unstable-congestion-controller")]
+        pub fn with_congestion_window_gain(mut self, cwnd_gain: u32) -> Self {
+            self.cwnd_gain = Some(cwnd_gain);
+            self
+        }
+
+        /// Set the gain factor used during the ProbeBW_UP phase of the BBR algorithm.
+        #[cfg(feature = "unstable-congestion-controller")]
+        pub fn with_up_pacing_gain(mut self, up_pacing_gain: u32) -> Self {
+            self.up_pacing_gain = Some(up_pacing_gain);
+            self
+        }
+
+        /// The maximum tolerated per-round-trip packet loss rate when probing for bandwidth.
+        #[cfg(feature = "unstable-congestion-controller")]
+        pub fn with_loss_threshold(mut self, loss_threshold: u32) -> Self {
+            self.loss_threshold = Some(loss_threshold);
+            self
+        }
+
+        pub fn build(self) -> Endpoint {
+            let app_settings = ApplicationSettings {
+                cwnd: self.cwnd,
+                cwnd_gain: self.cwnd_gain,
+                loss_threshold: self.loss_threshold,
+                up_pacing_gain: self.up_pacing_gain,
+            };
+            Endpoint { app_settings }
+        }
     }
 }
 
