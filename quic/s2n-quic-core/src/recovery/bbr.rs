@@ -109,8 +109,7 @@ impl State {
     /// The dynamic gain factor used to scale the estimated BDP to produce a congestion window (cwnd)
     fn cwnd_gain(&self, app_settings: &ApplicationSettings) -> Ratio<u64> {
         let cwnd_gain = app_settings
-            .probe_bw_cwnd_gain
-            .map(|cwnd_gain| Ratio::new_raw(cwnd_gain as u64, 100))
+            .probe_bw_cwnd_gain()
             .unwrap_or(probe_bw::CWND_GAIN);
 
         match self {
@@ -219,10 +218,27 @@ impl IntoEvent<event::builder::BbrState> for &State {
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ApplicationSettings {
-    pub initial_congestion_window: Option<u32>,
-    pub probe_bw_cwnd_gain: Option<u32>,
-    pub probe_bw_up_pacing_gain: Option<u32>,
-    pub loss_threshold: Option<u32>,
+    initial_congestion_window: Option<u32>,
+    probe_bw_cwnd_gain: Option<u32>,
+    probe_bw_up_pacing_gain: Option<u32>,
+    loss_threshold: Option<u32>,
+}
+
+impl ApplicationSettings {
+    fn probe_bw_cwnd_gain(&self) -> Option<Ratio<u64>> {
+        self.probe_bw_cwnd_gain
+            .map(|cwnd_gain| Ratio::new_raw(cwnd_gain as u64, 100))
+    }
+
+    fn probe_bw_up_pacing_gain(&self) -> Option<Ratio<u64>> {
+        self.probe_bw_up_pacing_gain
+            .map(|pacing_gain| Ratio::new_raw(pacing_gain as u64, 100))
+    }
+
+    fn loss_threshold(&self) -> Option<Ratio<u32>> {
+        self.loss_threshold
+            .map(|loss_threshold| Ratio::new_raw(loss_threshold, 100))
+    }
 }
 
 /// A congestion controller that implements "Bottleneck Bandwidth and Round-trip propagation time"
@@ -1044,10 +1060,7 @@ impl BbrCongestionController {
 
     #[inline]
     fn loss_thresh(app_settings: &ApplicationSettings) -> Ratio<u32> {
-        app_settings
-            .loss_threshold
-            .map(|loss_threshold| Ratio::new_raw(loss_threshold, 100))
-            .unwrap_or(LOSS_THRESH)
+        app_settings.loss_threshold().unwrap_or(LOSS_THRESH)
     }
 
     /// Handles when the connection resumes transmitting after an idle period
@@ -1155,8 +1168,8 @@ pub mod builder {
 
     impl Builder {
         /// Set the initial congestion window in bytes.
-        pub fn with_initial_congestion_window(mut self, intial_congestion_window: u32) -> Self {
-            self.initial_congestion_window = Some(intial_congestion_window);
+        pub fn with_initial_congestion_window(mut self, initial_congestion_window: u32) -> Self {
+            self.initial_congestion_window = Some(initial_congestion_window);
             self
         }
 

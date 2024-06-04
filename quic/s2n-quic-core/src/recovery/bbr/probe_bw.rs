@@ -81,8 +81,7 @@ impl CyclePhase {
         const CRUISE_REFILL_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 1);
 
         let probe_bw_up_pacing_gain = app_settings
-            .probe_bw_up_pacing_gain
-            .map(|up_pacing_gain| Ratio::new_raw(up_pacing_gain as u64, 100))
+            .probe_bw_up_pacing_gain()
             .unwrap_or(UP_PACING_GAIN);
 
         match self {

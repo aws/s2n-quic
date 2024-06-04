@@ -693,7 +693,7 @@ impl CubicCongestionController {
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ApplicationSettings {
-    pub initial_congestion_window: Option<u32>,
+    initial_congestion_window: Option<u32>,
 }
 
 /// Core functions of "CUBIC for Fast Long-Distance Networks" as specified in
