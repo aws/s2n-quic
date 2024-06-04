@@ -30,6 +30,12 @@ const MAX_BW_PROBE_ROUNDS: u8 = 63;
 /// https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/quic_protocol_flags_list.h;l=139;bpv=1;bpt=0
 pub(super) const PROBE_BW_FULL_LOSS_COUNT: u8 = 2;
 
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
+//# After ProbeBW_REFILL refills the pipe, ProbeBW_UP probes for possible increases in
+//# available bandwidth by using a BBR.pacing_gain of 1.25, sending faster than the current
+//# estimated available bandwidth.
+const UP_PACING_GAIN: Ratio<u64> = Ratio::new_raw(5, 4);
+
 /// Cwnd gain used in the Probe BW state
 ///
 /// This value is defined in the table in
@@ -74,25 +80,16 @@ impl CyclePhase {
         //# pacing_gain of 1.0, sending at 100% of BBR.bw.
         const CRUISE_REFILL_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 1);
 
+        let probe_bw_up_pacing_gain = app_settings
+            .probe_bw_up_pacing_gain
+            .map(|up_pacing_gain| Ratio::new_raw(up_pacing_gain as u64, 100))
+            .unwrap_or(UP_PACING_GAIN);
+
         match self {
             CyclePhase::Down => DOWN_PACING_GAIN,
             CyclePhase::Cruise | CyclePhase::Refill => CRUISE_REFILL_PACING_GAIN,
-            CyclePhase::Up => self.probe_bw_up_pacing_gain(app_settings),
+            CyclePhase::Up => probe_bw_up_pacing_gain,
         }
-    }
-
-    #[inline]
-    fn probe_bw_up_pacing_gain(&self, app_settings: &ApplicationSettings) -> Ratio<u64> {
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
-        //# After ProbeBW_REFILL refills the pipe, ProbeBW_UP probes for possible increases in
-        //# available bandwidth by using a BBR.pacing_gain of 1.25, sending faster than the current
-        //# estimated available bandwidth.
-        const UP_PACING_GAIN: Ratio<u64> = Ratio::new_raw(5, 4);
-
-        app_settings
-            .up_pacing_gain
-            .map(|up_pacing_gain| Ratio::new_raw(up_pacing_gain as u64, 100))
-            .unwrap_or(UP_PACING_GAIN)
     }
 
     /// Transition to the given `new_phase`
@@ -189,7 +186,7 @@ pub(crate) struct State {
 
 impl State {
     /// Constructs new `probe_bw::State`
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             cycle_phase: CyclePhase::Up,
             ack_phase: AckPhase::Init,
@@ -867,6 +864,19 @@ mod tests {
         assert_eq!(
             Ratio::new_raw(1, 1),
             CyclePhase::Cruise.pacing_gain(&Default::default())
+        );
+    }
+
+    // ApplicationSettings.probe_bw_up_pacing_gain
+    #[test]
+    fn probe_bw_up_pacing_gain_with_app_settings() {
+        let mut app_settings = Default::default();
+        assert_eq!(UP_PACING_GAIN, CyclePhase::Up.pacing_gain(&app_settings));
+
+        app_settings.probe_bw_up_pacing_gain = Some(50);
+        assert_eq!(
+            Ratio::new_raw(50, 100),
+            CyclePhase::Up.pacing_gain(&app_settings)
         );
     }
 

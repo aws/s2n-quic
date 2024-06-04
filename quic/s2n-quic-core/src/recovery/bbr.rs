@@ -109,7 +109,7 @@ impl State {
     /// The dynamic gain factor used to scale the estimated BDP to produce a congestion window (cwnd)
     fn cwnd_gain(&self, app_settings: &ApplicationSettings) -> Ratio<u64> {
         let cwnd_gain = app_settings
-            .cwnd_gain
+            .probe_bw_cwnd_gain
             .map(|cwnd_gain| Ratio::new_raw(cwnd_gain as u64, 100))
             .unwrap_or(probe_bw::CWND_GAIN);
 
@@ -219,10 +219,10 @@ impl IntoEvent<event::builder::BbrState> for &State {
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ApplicationSettings {
-    pub cwnd: Option<u32>,
-    pub cwnd_gain: Option<u32>,
+    pub initial_congestion_window: Option<u32>,
+    pub probe_bw_cwnd_gain: Option<u32>,
+    pub probe_bw_up_pacing_gain: Option<u32>,
     pub loss_threshold: Option<u32>,
-    pub up_pacing_gain: Option<u32>,
 }
 
 /// A congestion controller that implements "Bottleneck Bandwidth and Round-trip propagation time"
@@ -705,7 +705,9 @@ impl BbrCongestionController {
             .try_into()
             .unwrap_or(u32::MAX);
 
-        inflight_with_headroom.max(self.minimum_window())
+        inflight_with_headroom.max(BbrCongestionController::minimum_window(
+            self.max_datagram_size,
+        ))
     }
 
     /// Calculates the quantization budget
@@ -727,7 +729,7 @@ impl BbrCongestionController {
 
         let mut inflight = inflight
             .max(offload_budget)
-            .max(self.minimum_window() as u64);
+            .max(BbrCongestionController::minimum_window(self.max_datagram_size) as u64);
 
         if self.state.is_probing_bw_up() {
             inflight = inflight.saturating_add(2 * self.max_datagram_size as u64);
@@ -796,13 +798,18 @@ impl BbrCongestionController {
             10 * max_datagram_size as u32,
             max(INITIAL_WINDOW_LIMIT, 2 * max_datagram_size as u32),
         );
-        app_settings.cwnd.unwrap_or(default)
+        app_settings
+            .initial_congestion_window
+            .map(|initial_cwnd|
+                // prevent the application from setting a value that is too small
+                max(initial_cwnd, BbrCongestionController::minimum_window(max_datagram_size)))
+            .unwrap_or(default)
     }
 
     /// The minimal cwnd value BBR targets
     #[inline]
-    fn minimum_window(&self) -> u32 {
-        (MIN_PIPE_CWND_PACKETS * self.max_datagram_size) as u32
+    fn minimum_window(max_datagram_size: u16) -> u32 {
+        (MIN_PIPE_CWND_PACKETS * max_datagram_size) as u32
     }
 
     /// Updates the congestion window based on the latest model
@@ -866,7 +873,10 @@ impl BbrCongestionController {
         // This applies regardless of whether packet conservation is in place, as the pseudocode
         // applies this clamping within BBRBoundCwndForModel(), which is called after all prior
         // cwnd adjustments have been made.
-        self.cwnd = cwnd.clamp(self.minimum_window(), self.bound_cwnd_for_model());
+        self.cwnd = cwnd.clamp(
+            BbrCongestionController::minimum_window(self.max_datagram_size),
+            self.bound_cwnd_for_model(),
+        );
     }
 
     /// Returns the maximum congestion window bound by recent congestion
@@ -905,7 +915,10 @@ impl BbrCongestionController {
             u32::MAX
         };
 
-        cap.min(inflight_lo).max(self.minimum_window())
+        cap.min(inflight_lo)
+            .max(BbrCongestionController::minimum_window(
+                self.max_datagram_size,
+            ))
     }
 
     /// Saves the last-known good congestion window (the latest cwnd unmodulated by loss recovery or ProbeRTT)
@@ -1131,38 +1144,47 @@ impl congestion_controller::Endpoint for Endpoint {
 pub mod builder {
     use super::{ApplicationSettings, Endpoint};
 
-    /// Build the congestion controller with application provided overrides
+    /// Build the congestion controller endpoint with application provided overrides
     #[derive(Debug, Default)]
     pub struct Builder {
-        cwnd: Option<u32>,
-        cwnd_gain: Option<u32>,
+        initial_congestion_window: Option<u32>,
+        probe_bw_cwnd_gain: Option<u32>,
+        probe_bw_up_pacing_gain: Option<u32>,
         loss_threshold: Option<u32>,
-        up_pacing_gain: Option<u32>,
     }
 
     impl Builder {
-        /// Set the initial congestion window.
-        pub fn with_congestion_window(mut self, cwnd: u32) -> Self {
-            self.cwnd = Some(cwnd);
+        /// Set the initial congestion window in bytes.
+        pub fn with_initial_congestion_window(mut self, intial_congestion_window: u32) -> Self {
+            self.initial_congestion_window = Some(intial_congestion_window);
             self
         }
 
-        /// The dynamic gain factor used to scale the estimated BDP to produce a congestion window (cwnd)
         #[cfg(feature = "unstable-congestion-controller")]
-        pub fn with_congestion_window_gain(mut self, cwnd_gain: u32) -> Self {
-            self.cwnd_gain = Some(cwnd_gain);
+        /// The dynamic gain factor used to scale the estimated BDP to produce a
+        /// congestion window (default: 2).
+        ///
+        /// The gain value is calculated as the ratio: `probe_bw_cwnd_gain / 100`
+        pub fn with_probe_bw_cwnd_gain(mut self, probe_bw_cwnd_gain: u32) -> Self {
+            self.probe_bw_cwnd_gain = Some(probe_bw_cwnd_gain);
             self
         }
 
-        /// Set the gain factor used during the ProbeBW_UP phase of the BBR algorithm.
         #[cfg(feature = "unstable-congestion-controller")]
-        pub fn with_up_pacing_gain(mut self, up_pacing_gain: u32) -> Self {
-            self.up_pacing_gain = Some(up_pacing_gain);
+        /// Set the gain factor used during the ProbeBW_UP phase of the BBR
+        /// algorithm (default: 5/4).
+        ///
+        /// The gain value is calculated as the ratio: `probe_bw_up_pacing_gain / 100`
+        pub fn with_probe_bw_up_pacing_gain(mut self, probe_bw_up_pacing_gain: u32) -> Self {
+            self.probe_bw_up_pacing_gain = Some(probe_bw_up_pacing_gain);
             self
         }
 
-        /// The maximum tolerated per-round-trip packet loss rate when probing for bandwidth.
         #[cfg(feature = "unstable-congestion-controller")]
+        /// The maximum tolerated per-round-trip packet loss rate when probing
+        /// for bandwidth (default: 1/50).
+        ///
+        /// The threshold value is calculated as the ratio: `loss_threshold / 100`
         pub fn with_loss_threshold(mut self, loss_threshold: u32) -> Self {
             self.loss_threshold = Some(loss_threshold);
             self
@@ -1170,10 +1192,10 @@ pub mod builder {
 
         pub fn build(self) -> Endpoint {
             let app_settings = ApplicationSettings {
-                cwnd: self.cwnd,
-                cwnd_gain: self.cwnd_gain,
+                initial_congestion_window: self.initial_congestion_window,
+                probe_bw_cwnd_gain: self.probe_bw_cwnd_gain,
+                probe_bw_up_pacing_gain: self.probe_bw_up_pacing_gain,
                 loss_threshold: self.loss_threshold,
-                up_pacing_gain: self.up_pacing_gain,
             };
             Endpoint { app_settings }
         }

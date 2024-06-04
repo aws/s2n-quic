@@ -10,7 +10,9 @@ use crate::{
     recovery::{
         bandwidth::{Bandwidth, PacketInfo, RateSample},
         bbr,
-        bbr::{probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State},
+        bbr::{
+            probe_bw, probe_bw::CyclePhase, probe_rtt, BbrCongestionController, State, LOSS_THRESH,
+        },
         congestion_controller::{PathPublisher, Publisher},
         CongestionController,
     },
@@ -19,6 +21,30 @@ use crate::{
 use num_rational::Ratio;
 use num_traits::{Inv, One, ToPrimitive};
 use std::time::Duration;
+
+// ApplicationSettings.initial_congestion_window
+#[test]
+fn initial_window_with_app_settings() {
+    let mut app_settings = Default::default();
+
+    let max_datagram_size = 1350;
+    assert_eq!(
+        (max_datagram_size * 10) as u32,
+        BbrCongestionController::initial_window(max_datagram_size, &app_settings)
+    );
+
+    app_settings.initial_congestion_window = Some(20_000);
+    assert_eq!(
+        20_000,
+        BbrCongestionController::initial_window(max_datagram_size, &app_settings)
+    );
+
+    app_settings.initial_congestion_window = Some(0);
+    assert_eq!(
+        BbrCongestionController::minimum_window(max_datagram_size),
+        BbrCongestionController::initial_window(max_datagram_size, &app_settings)
+    );
+}
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.6.3
 //= type=test
@@ -126,6 +152,22 @@ fn inflight_hi_from_lost_packet() {
             packet_info,
             &Default::default()
         )
+    );
+}
+
+// ApplicationSettings.loss_threshold
+#[test]
+fn loss_threshold_with_app_settings() {
+    let mut app_settings = Default::default();
+    assert_eq!(
+        BbrCongestionController::loss_thresh(&app_settings),
+        LOSS_THRESH
+    );
+
+    app_settings.loss_threshold = Some(500);
+    assert_eq!(
+        BbrCongestionController::loss_thresh(&app_settings),
+        Ratio::new_raw(500, 100)
     );
 }
 
@@ -238,6 +280,17 @@ fn pacing_cwnd_gain() {
         0.5,
         0.001
     );
+}
+
+// ApplicationSettings.probe_bw_cwnd_gain
+#[test]
+fn cwnd_gain_with_app_settings() {
+    let mut app_settings = Default::default();
+    let state = State::ProbeBw(probe_bw::State::new());
+    assert_eq!(state.cwnd_gain(&app_settings), probe_bw::CWND_GAIN);
+
+    app_settings.probe_bw_cwnd_gain = Some(500);
+    assert_eq!(state.cwnd_gain(&app_settings), Ratio::new_raw(500, 100));
 }
 
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.2.1
@@ -696,9 +749,12 @@ fn set_cwnd_clamp() {
     assert_eq!(36_000, bbr.max_inflight());
 
     // cwnd < min
-    bbr.cwnd = bbr.minimum_window() - 1000;
+    bbr.cwnd = BbrCongestionController::minimum_window(bbr.max_datagram_size) - 1000;
     bbr.set_cwnd(500);
-    assert_eq!(bbr.minimum_window(), bbr.cwnd);
+    assert_eq!(
+        BbrCongestionController::minimum_window(bbr.max_datagram_size),
+        bbr.cwnd
+    );
 
     // cwnd > bound_cwnd_for_model
     bbr.data_volume_model.set_inflight_lo_for_test(30_000);

@@ -215,7 +215,9 @@ impl BbrCongestionController {
         self.bdp_multiple(self.data_rate_model.bw(), probe_rtt::CWND_GAIN)
             .try_into()
             .unwrap_or(u32::MAX)
-            .max(self.minimum_window())
+            .max(BbrCongestionController::minimum_window(
+                self.max_datagram_size,
+            ))
     }
 }
 
@@ -350,7 +352,10 @@ mod tests {
             .update_min_rtt(Duration::from_millis(100), now);
 
         // bdp_multiple < minimum_window
-        assert_eq!(bbr.minimum_window(), bbr.probe_rtt_cwnd());
+        assert_eq!(
+            BbrCongestionController::minimum_window(bbr.max_datagram_size),
+            bbr.probe_rtt_cwnd()
+        );
     }
 
     /// Helper method to return a BBR congestion controller in the ProbeRtt
