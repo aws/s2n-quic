@@ -497,13 +497,13 @@ impl CubicCongestionController {
     // max_datagram_size is the current max_datagram_size, and is
     // expected to be 1200 when the congestion controller is created.
     pub fn new(max_datagram_size: u16, app_settings: ApplicationSettings) -> Self {
-        let congestion_window = app_settings
-            .cwnd
-            .unwrap_or(CubicCongestionController::initial_window(max_datagram_size))
-            as f32;
+        let cubic = Cubic::new(max_datagram_size);
+        let congestion_window =
+            CubicCongestionController::initial_window(&cubic, max_datagram_size, &app_settings)
+                as f32;
 
         Self {
-            cubic: Cubic::new(max_datagram_size),
+            cubic,
             slow_start: HybridSlowStart::new(max_datagram_size),
             pacer: Pacer::default(),
             max_datagram_size,
@@ -526,12 +526,22 @@ impl CubicCongestionController {
     //# If the maximum datagram size changes during the connection, the
     //# initial congestion window SHOULD be recalculated with the new size.
     #[inline]
-    fn initial_window(max_datagram_size: u16) -> u32 {
+    fn initial_window(
+        cubic: &Cubic,
+        max_datagram_size: u16,
+        app_settings: &ApplicationSettings,
+    ) -> u32 {
         const INITIAL_WINDOW_LIMIT: u32 = 14720;
-        min(
+        let default = min(
             10 * max_datagram_size as u32,
             max(INITIAL_WINDOW_LIMIT, 2 * max_datagram_size as u32),
-        )
+        );
+        app_settings
+            .initial_congestion_window
+            .map(|initial_cwnd|
+                // prevent the application from setting a value that is too small
+                max(initial_cwnd, cubic.minimum_window() as u32))
+            .unwrap_or(default)
     }
 
     #[inline]
@@ -683,7 +693,7 @@ impl CubicCongestionController {
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ApplicationSettings {
-    pub cwnd: Option<u32>,
+    pub initial_congestion_window: Option<u32>,
 }
 
 /// Core functions of "CUBIC for Fast Long-Distance Networks" as specified in
@@ -892,21 +902,23 @@ impl congestion_controller::Endpoint for Endpoint {
 pub mod builder {
     use super::{ApplicationSettings, Endpoint};
 
-    /// Build the congestion controller with application provided overrides
+    /// Build the congestion controller endpoint with application provided overrides
     #[derive(Default)]
     pub struct Builder {
-        cwnd: Option<u32>,
+        initial_congestion_window: Option<u32>,
     }
 
     impl Builder {
-        /// Set the initial congestion window.
-        pub fn with_congestion_window(mut self, cwnd: u32) -> Self {
-            self.cwnd = Some(cwnd);
+        /// Set the initial congestion window in bytes.
+        pub fn with_initial_congestion_window(mut self, initial_congestion_window: u32) -> Self {
+            self.initial_congestion_window = Some(initial_congestion_window);
             self
         }
 
         pub fn build(self) -> Endpoint {
-            let app_settings = ApplicationSettings { cwnd: self.cwnd };
+            let app_settings = ApplicationSettings {
+                initial_congestion_window: self.initial_congestion_window,
+            };
             Endpoint { app_settings }
         }
     }

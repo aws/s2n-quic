@@ -176,21 +176,48 @@ fn is_congestion_window_under_utilized() {
 #[test]
 fn initial_window() {
     let mut max_datagram_size = 1200;
+    let cubic = Cubic::new(max_datagram_size);
     assert_eq!(
         (max_datagram_size * 10) as u32,
-        CubicCongestionController::initial_window(max_datagram_size)
+        CubicCongestionController::initial_window(&cubic, max_datagram_size, &Default::default())
     );
 
     max_datagram_size = 2000;
+    let cubic = Cubic::new(max_datagram_size);
     assert_eq!(
         14720,
-        CubicCongestionController::initial_window(max_datagram_size)
+        CubicCongestionController::initial_window(&cubic, max_datagram_size, &Default::default())
     );
 
     max_datagram_size = 8000;
+    let cubic = Cubic::new(max_datagram_size);
     assert_eq!(
         (max_datagram_size * 2) as u32,
-        CubicCongestionController::initial_window(max_datagram_size)
+        CubicCongestionController::initial_window(&cubic, max_datagram_size, &Default::default())
+    );
+}
+
+#[test]
+fn initial_window_with_app_settings() {
+    let mut app_settings = Default::default();
+
+    let max_datagram_size = 1350;
+    let cubic = Cubic::new(max_datagram_size);
+    assert_eq!(
+        (max_datagram_size * 10) as u32,
+        CubicCongestionController::initial_window(&cubic, max_datagram_size, &app_settings)
+    );
+
+    app_settings.initial_congestion_window = Some(20_000);
+    assert_eq!(
+        20_000,
+        CubicCongestionController::initial_window(&cubic, max_datagram_size, &app_settings)
+    );
+
+    app_settings.initial_congestion_window = Some(0);
+    assert_eq!(
+        cubic.minimum_window() as u32,
+        CubicCongestionController::initial_window(&cubic, max_datagram_size, &app_settings)
     );
 }
 
