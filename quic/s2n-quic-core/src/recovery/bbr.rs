@@ -721,9 +721,7 @@ impl BbrCongestionController {
             .try_into()
             .unwrap_or(u32::MAX);
 
-        inflight_with_headroom.max(BbrCongestionController::minimum_window(
-            self.max_datagram_size,
-        ))
+        inflight_with_headroom.max(Self::minimum_window(self.max_datagram_size))
     }
 
     /// Calculates the quantization budget
@@ -745,7 +743,7 @@ impl BbrCongestionController {
 
         let mut inflight = inflight
             .max(offload_budget)
-            .max(BbrCongestionController::minimum_window(self.max_datagram_size) as u64);
+            .max(Self::minimum_window(self.max_datagram_size) as u64);
 
         if self.state.is_probing_bw_up() {
             inflight = inflight.saturating_add(2 * self.max_datagram_size as u64);
@@ -887,7 +885,7 @@ impl BbrCongestionController {
         // applies this clamping within BBRBoundCwndForModel(), which is called after all prior
         // cwnd adjustments have been made.
         self.cwnd = cwnd.clamp(
-            BbrCongestionController::minimum_window(self.max_datagram_size),
+            Self::minimum_window(self.max_datagram_size),
             self.bound_cwnd_for_model(),
         );
     }
@@ -929,9 +927,7 @@ impl BbrCongestionController {
         };
 
         cap.min(inflight_lo)
-            .max(BbrCongestionController::minimum_window(
-                self.max_datagram_size,
-            ))
+            .max(Self::minimum_window(self.max_datagram_size))
     }
 
     /// Saves the last-known good congestion window (the latest cwnd unmodulated by loss recovery or ProbeRTT)

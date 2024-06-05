@@ -215,9 +215,7 @@ impl BbrCongestionController {
         self.bdp_multiple(self.data_rate_model.bw(), probe_rtt::CWND_GAIN)
             .try_into()
             .unwrap_or(u32::MAX)
-            .max(BbrCongestionController::minimum_window(
-                self.max_datagram_size,
-            ))
+            .max(Self::minimum_window(self.max_datagram_size))
     }
 }
 
