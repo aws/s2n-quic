@@ -653,23 +653,25 @@ mod tests {
     fn custom_anti_amplification_multiplier() {
         let bytes_received = 100;
 
+        // allowance should increase based on the default anti_amplification_multiplier
         let mut default_path = testing::helper_path_server();
-        let amplification_outcome = default_path.on_bytes_received(bytes_received);
+        let _ = default_path.on_bytes_received(bytes_received);
         let allowance = match default_path.state {
             path::State::AmplificationLimited { tx_allowance } => tx_allowance,
             _ => unreachable!("path is amplification limited"),
         };
-        let expected = default_path.anti_amplification_multiplier as u32 * bytes_received as u32;
+        let expected = ANTI_AMPLIFICATION_MULTIPLIER as u32 * bytes_received as u32;
         assert_eq!(allowance, Counter::new(expected));
 
+        // allowance should increase based on the custom anti_amplification_multiplier
         let mut custom_path = testing::helper_path_server();
         custom_path.anti_amplification_multiplier = ANTI_AMPLIFICATION_MULTIPLIER + 10;
-        let amplification_outcome = custom_path.on_bytes_received(bytes_received);
+        let _ = custom_path.on_bytes_received(bytes_received);
         let allowance = match custom_path.state {
             path::State::AmplificationLimited { tx_allowance } => tx_allowance,
             _ => unreachable!("path is amplification limited"),
         };
-        let expected = custom_path.anti_amplification_multiplier as u32 * bytes_received as u32;
+        let expected = (ANTI_AMPLIFICATION_MULTIPLIER + 10) as u32 * bytes_received as u32;
         assert_eq!(allowance, Counter::new(expected));
     }
 
