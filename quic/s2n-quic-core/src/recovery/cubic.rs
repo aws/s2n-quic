@@ -536,12 +536,9 @@ impl CubicCongestionController {
             10 * max_datagram_size as u32,
             max(INITIAL_WINDOW_LIMIT, 2 * max_datagram_size as u32),
         );
-        app_settings
-            .initial_congestion_window
-            .map(|initial_cwnd|
-                // prevent the application from setting a value that is too small
-                max(initial_cwnd, cubic.minimum_window() as u32))
-            .unwrap_or(default)
+        let initial_window = app_settings.initial_congestion_window.unwrap_or(default);
+
+        max(initial_window, cubic.minimum_window() as u32)
     }
 
     #[inline]

@@ -814,12 +814,9 @@ impl BbrCongestionController {
             10 * max_datagram_size as u32,
             max(INITIAL_WINDOW_LIMIT, 2 * max_datagram_size as u32),
         );
-        app_settings
-            .initial_congestion_window
-            .map(|initial_cwnd|
-                // prevent the application from setting a value that is too small
-                max(initial_cwnd, BbrCongestionController::minimum_window(max_datagram_size)))
-            .unwrap_or(default)
+        let initial_window = app_settings.initial_congestion_window.unwrap_or(default);
+
+        max(initial_window, Self::minimum_window(max_datagram_size))
     }
 
     /// The minimal cwnd value BBR targets
