@@ -29,6 +29,12 @@ const MAX_HANDSHAKE_DURATION_DEFAULT: Duration = Duration::from_secs(10);
 //# middleboxes from losing state for UDP flows [GATEWAY].
 const MAX_KEEP_ALIVE_PERIOD_DEFAULT: Duration = Duration::from_secs(30);
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
+//# Prior to validating the client address, servers MUST NOT send more
+//# than three times as many bytes as the number of bytes they have
+//# received.
+pub const ANTI_AMPLIFICATION_MULTIPLIER: u8 = 3;
+
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct ConnectionInfo<'a> {
@@ -67,6 +73,7 @@ pub struct Limits {
     pub(crate) max_datagram_frame_size: MaxDatagramFrameSize,
     pub(crate) initial_round_trip_time: Duration,
     pub(crate) migration_support: MigrationSupport,
+    pub(crate) anti_amplification_multiplier: u8,
 }
 
 impl Default for Limits {
@@ -112,6 +119,7 @@ impl Limits {
             max_datagram_frame_size: MaxDatagramFrameSize::DEFAULT,
             initial_round_trip_time: recovery::DEFAULT_INITIAL_RTT,
             migration_support: MigrationSupport::RECOMMENDED,
+            anti_amplification_multiplier: ANTI_AMPLIFICATION_MULTIPLIER,
         }
     }
 
@@ -274,6 +282,18 @@ impl Limits {
         Ok(self)
     }
 
+    #[cfg(feature = "unstable-limits")]
+    setter!(
+        /// Limit how many bytes the Server sends prior to address validation (default: 3)
+        ///
+        /// Prior to validating the client address, servers will not send more
+        /// than `anti_amplification_multiplier` times as many bytes as the
+        /// number of bytes it has received.
+        with_anti_amplification_multiplier,
+        anti_amplification_multiplier,
+        u8
+    );
+
     // internal APIs
 
     #[doc(hidden)]
@@ -357,6 +377,12 @@ impl Limits {
     #[inline]
     pub fn active_migration_enabled(&self) -> bool {
         matches!(self.migration_support, MigrationSupport::Enabled)
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn anti_amplification_multiplier(&self) -> u8 {
+        self.anti_amplification_multiplier
     }
 }
 
