@@ -73,7 +73,7 @@ pub struct Parameters<'a, Cfg: endpoint::Config> {
     /// The limits that were advertised to the peer
     pub limits: connection::Limits,
     /// Configuration for the maximum transmission unit (MTU) that can be sent on a path
-    pub mtu_config: mtu::Config,
+    pub mtu_config: mtu::CheckedConfig,
     /// The context that should be passed to all related connection events
     pub event_context: <Cfg::EventSubscriber as event::Subscriber>::ConnectionContext,
     /// The context passed to the connection supervisor

@@ -17,6 +17,7 @@ impl_providers_state! {
         random: Random,
         event: Event,
         limits: Limits,
+        mtu: MtuConfig,
         io: IO,
         sync: Sync,
         tls: Tls,
@@ -37,6 +38,7 @@ impl<
         Random: random::Provider,
         Event: event::Provider,
         Limits: limits::Provider,
+        MtuConfig: mtu::Provider,
         IO: io::Provider,
         Sync: sync::Provider,
         Tls: tls::Provider,
@@ -52,6 +54,7 @@ impl<
         Random,
         Event,
         Limits,
+        MtuConfig,
         IO,
         Sync,
         Tls,
@@ -69,6 +72,7 @@ impl<
             random,
             event,
             limits,
+            mtu,
             io,
             sync,
             tls,
@@ -86,6 +90,7 @@ impl<
         let random = random.start().map_err(StartError::new)?;
         let endpoint_limits = EndpointLimits;
         let limits = limits.start().map_err(StartError::new)?;
+        let mtu = mtu.start().map_err(StartError::new)?;
         let event = event.start().map_err(StartError::new)?;
         let token = Token;
         let sync = sync.start().map_err(StartError::new)?;
@@ -116,6 +121,7 @@ impl<
             endpoint_limits,
             event,
             limits,
+            mtu,
             sync,
             tls,
             token,
@@ -205,6 +211,7 @@ struct EndpointConfig<
     Random,
     Event,
     Limits,
+    MtuConfig,
     Sync,
     Tls,
     Datagram,
@@ -219,6 +226,7 @@ struct EndpointConfig<
     endpoint_limits: EndpointLimits,
     event: Event,
     limits: Limits,
+    mtu: MtuConfig,
     sync: Sync,
     tls: Tls,
     token: Token,
@@ -238,6 +246,7 @@ impl<
         Random: s2n_quic_core::random::Generator,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
+        MtuConfig: s2n_quic_core::path::mtu::Configurator,
         Sync,
         Tls: crypto::tls::Endpoint,
         Datagram: s2n_quic_core::datagram::Endpoint,
@@ -253,6 +262,7 @@ impl<
         Random,
         Event,
         Limits,
+        MtuConfig,
         Sync,
         Tls,
         Datagram,
@@ -274,6 +284,7 @@ impl<
         Random: s2n_quic_core::random::Generator,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
+        MtuConfig: s2n_quic_core::path::mtu::Configurator,
         Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
         Datagram: s2n_quic_core::datagram::Endpoint,
@@ -289,6 +300,7 @@ impl<
         Random,
         Event,
         Limits,
+        MtuConfig,
         Sync,
         Tls,
         Datagram,
@@ -309,6 +321,7 @@ impl<
     type TLSEndpoint = Tls;
     type TokenFormat = Token;
     type ConnectionLimits = Limits;
+    type MtuConfig = MtuConfig;
     type StreamManager = stream::DefaultStreamManager;
     type PathMigrationValidator = PathMigration;
     type PacketInterceptor = PacketInterceptor;
@@ -329,6 +342,7 @@ impl<
             endpoint_limits: &mut self.endpoint_limits,
             token: &mut self.token,
             connection_limits: &mut self.limits,
+            mtu: &mut self.mtu,
             event_subscriber: &mut self.event,
             path_migration: &mut self.path_migration,
             datagram: &mut self.datagram,

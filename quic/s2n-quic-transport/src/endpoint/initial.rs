@@ -17,10 +17,10 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     crypto::{tls, tls::Endpoint as TLSEndpoint, CryptoSuite, InitialKey},
     datagram::{Endpoint, PreConnectionInfo},
-    event::{self, supervisor, ConnectionPublisher, IntoEvent, Subscriber as _},
+    event::{self, supervisor, ConnectionPublisher, EndpointPublisher, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
-    path::Handle as _,
+    path::{mtu, mtu::Configurator as _, CheckedConfig, Handle as _},
     stateless_reset::token::Generator as _,
     transport::{self, parameters::ServerTransportParameters},
 };
@@ -230,12 +230,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .tls
             .new_server_session(&transport_parameters);
 
-        let path_info =
-            congestion_controller::PathInfo::new(self.mtu_config.initial_mtu, &remote_address);
-        let congestion_controller = endpoint_context
-            .congestion_controller
-            .new_congestion_controller(path_info);
-
         let quic_version = packet.version;
 
         let meta = event::builder::ConnectionMeta {
@@ -256,12 +250,40 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &event::builder::ConnectionInfo {}.into_event(),
         );
 
+        let mut endpoint_publisher = event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
+                endpoint_type: Config::ENDPOINT_TYPE,
+                timestamp: datagram.timestamp,
+            },
+            Some(quic_version),
+            endpoint_context.event_subscriber,
+        );
+        let info = mtu::ConnectionInfo::new(&remote_address, self.endpoint_mtu_config);
+        let mtu_config = CheckedConfig::new(endpoint_context.mtu.on_connection(&info), &info)
+            .map_err(|_| {
+                endpoint_publisher.on_endpoint_datagram_dropped(
+                    event::builder::EndpointDatagramDropped {
+                        len: datagram.payload_len as u16,
+                        reason: event::builder::DatagramDropReason::MtuValidation {
+                            endpoint_mtu_config: self.endpoint_mtu_config.into_event(),
+                        },
+                    },
+                );
+                connection::Error::validation("failed to instantiate a valid MTU provider")
+            })?;
+
         let mut publisher = event::ConnectionPublisherSubscriber::new(
             meta,
             quic_version,
             endpoint_context.event_subscriber,
             &mut event_context,
         );
+
+        let path_info =
+            congestion_controller::PathInfo::new(mtu_config.initial_mtu(), &remote_address);
+        let congestion_controller = endpoint_context
+            .congestion_controller
+            .new_congestion_controller(path_info);
 
         let space_manager = PacketSpaceManager::new(
             original_destination_connection_id,
@@ -272,7 +294,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &mut publisher,
         );
 
-        let mtu_config = self.mtu_config;
         let connection_parameters = connection::Parameters {
             internal_connection_id,
             local_id_registry,

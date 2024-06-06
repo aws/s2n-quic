@@ -152,6 +152,45 @@ impl<Providers: ServerProviders> Builder<Providers> {
     );
 
     impl_provider_method!(
+        /// Sets the connection specific mtu config provider for the [`Server`]
+        ///
+        /// # Examples
+        ///
+        /// Set custom MTU values to use per connections, while inheriting the remaining default
+        /// config
+        ///
+        /// ```rust,no_run
+        /// # use std::{error::Error, time::Duration};
+        /// use s2n_quic::{Server, provider::mtu};
+        ///
+        /// # #[tokio::main]
+        /// # async fn main() -> Result<(), Box<dyn Error>> {
+        ///
+        /// struct MyMtuProvider(mtu::Config);
+        ///
+        /// impl mtu::Configurator for MyMtuProvider {
+        ///     fn on_connection(
+        ///         &mut self,
+        ///         info: &mtu::ConnectionInfo,
+        ///     ) -> mtu::Config {
+        ///         self.0
+        ///     }
+        /// }
+        /// let mtu = MyMtuProvider(mtu::Config::default());
+        ///
+        /// let server = Server::builder()
+        ///     .with_mtu(mtu)?
+        ///     .start()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_mtu,
+        mtu,
+        ServerProviders
+    );
+
+    impl_provider_method!(
         /// Sets the event provider for the [`Server`]
         ///
         /// # Examples

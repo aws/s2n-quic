@@ -122,7 +122,7 @@ impl Io {
         let mut mtu_config = mtu_config_builder
             .build()
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
-        let original_max_mtu = mtu_config.max_mtu;
+        let original_max_mtu = mtu_config.max_mtu();
 
         // Configure MTU discovery
         if !syscall::configure_mtu_disc(&tx_socket) {
@@ -132,19 +132,19 @@ impl Io {
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::BaseMtu {
-                mtu: mtu_config.base_mtu.into(),
+                mtu: mtu_config.base_mtu().into(),
             },
         });
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::InitialMtu {
-                mtu: mtu_config.initial_mtu.into(),
+                mtu: mtu_config.initial_mtu().into(),
             },
         });
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
             configuration: event::builder::PlatformFeatureConfiguration::MaxMtu {
-                mtu: mtu_config.max_mtu.into(),
+                mtu: mtu_config.max_mtu().into(),
             },
         });
 
@@ -222,7 +222,7 @@ impl Io {
             // compute the payload size for each message from the number of GSO segments we can
             // fill
             let payload_len = {
-                let max_mtu: u16 = mtu_config.max_mtu.into();
+                let max_mtu: u16 = mtu_config.max_mtu().into();
                 (max_mtu as u32 * gso.max_segments() as u32).min(u16::MAX as u32)
             };
 
@@ -263,7 +263,7 @@ impl Io {
             }
 
             // construct the TX side for the endpoint event loop
-            socket::io::tx::Tx::new(producers, gso, mtu_config.max_mtu)
+            socket::io::tx::Tx::new(producers, gso, mtu_config.max_mtu())
         };
 
         // Notify the endpoint of the MTU that we chose

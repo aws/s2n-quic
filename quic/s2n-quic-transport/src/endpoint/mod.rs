@@ -39,7 +39,7 @@ use s2n_quic_core::{
     io::{rx, tx},
     packet::{initial::ProtectedInitial, interceptor::Interceptor, ProtectedPacket},
     path,
-    path::{mtu, Handle as _},
+    path::{mtu, mtu::Configurator as _, CheckedConfig, Handle as _},
     random::Generator as _,
     stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
@@ -87,8 +87,9 @@ pub struct Endpoint<Cfg: Config> {
     retry_dispatch: retry::Dispatch<Cfg::PathHandle>,
     stateless_reset_dispatch: stateless_reset::Dispatch<Cfg::PathHandle>,
     close_packet_buffer: packet_buffer::Buffer,
-    /// Configuration for the maximum transmission unit (MTU) that can be sent on a path
-    mtu_config: mtu::Config,
+    /// Endpoint configuration for the maximum transmission unit (MTU) that can be sent
+    /// on a path
+    endpoint_mtu_config: mtu::Config,
 }
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
@@ -266,7 +267,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
 
     #[inline]
     fn set_mtu_config(&mut self, mtu_config: mtu::Config) {
-        self.mtu_config = mtu_config
+        self.endpoint_mtu_config = mtu_config;
     }
 
     #[inline]
@@ -317,7 +318,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
             close_packet_buffer: Default::default(),
-            mtu_config: Default::default(),
+            endpoint_mtu_config: Default::default(),
         };
 
         (endpoint, handle)
@@ -555,7 +556,22 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .lookup_internal_connection_id(&destination_connection_id)
         {
             let mut check_for_stateless_reset = false;
-            let mtu_config = self.mtu_config;
+            let info = mtu::ConnectionInfo::new(&remote_address, self.endpoint_mtu_config);
+            let mtu_config =
+                match CheckedConfig::new(endpoint_context.mtu.on_connection(&info), &info) {
+                    Ok(config) => config,
+                    Err(_) => {
+                        publisher.on_endpoint_datagram_dropped(
+                            event::builder::EndpointDatagramDropped {
+                                len: payload_len as u16,
+                                reason: event::builder::DatagramDropReason::MtuValidation {
+                                    endpoint_mtu_config: self.endpoint_mtu_config.into_event(),
+                                },
+                            },
+                        );
+                        return;
+                    }
+                };
 
             datagram.destination_connection_id_classification = dcid_classification;
 
@@ -1010,8 +1026,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .create_client_peer_id_registry(internal_connection_id, rotate_handshake_connection_id);
 
         let congestion_controller = {
-            let path_info =
-                congestion_controller::PathInfo::new(self.mtu_config.initial_mtu, &remote_address);
+            let path_info = congestion_controller::PathInfo::new(
+                self.endpoint_mtu_config.initial_mtu(),
+                &remote_address,
+            );
             endpoint_context
                 .congestion_controller
                 .new_congestion_controller(path_info)
@@ -1037,12 +1055,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             &meta.clone().into_event(),
             &event::builder::ConnectionInfo {}.into_event(),
         );
-        let mut publisher = event::ConnectionPublisherSubscriber::new(
-            meta,
-            quic_version,
-            endpoint_context.event_subscriber,
-            &mut event_context,
-        );
 
         let mut transport_parameters = ClientTransportParameters {
             initial_source_connection_id: Some(local_connection_id.into()),
@@ -1051,6 +1063,33 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let limits = endpoint_context
             .connection_limits
             .on_connection(&LimitsInfo::new(&remote_address));
+
+        let mut endpoint_publisher = event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
+                endpoint_type: Cfg::ENDPOINT_TYPE,
+                timestamp,
+            },
+            Some(quic_version),
+            endpoint_context.event_subscriber,
+        );
+        let info = mtu::ConnectionInfo::new(&remote_address, self.endpoint_mtu_config);
+        let mtu_config = CheckedConfig::new(endpoint_context.mtu.on_connection(&info), &info)
+            .map_err(|_err| {
+                let error =
+                    connection::Error::validation("failed to instantiate a valid MTU provider");
+                endpoint_publisher.on_endpoint_connection_attempt_failed(
+                    event::builder::EndpointConnectionAttemptFailed { error },
+                );
+                error
+            })?;
+
+        let mut publisher = event::ConnectionPublisherSubscriber::new(
+            meta,
+            quic_version,
+            endpoint_context.event_subscriber,
+            &mut event_context,
+        );
+
         transport_parameters.load_limits(&limits);
 
         transport_parameters.max_datagram_frame_size = endpoint_context
@@ -1120,7 +1159,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             timestamp,
             quic_version,
             limits,
-            mtu_config: self.mtu_config,
+            mtu_config,
             event_context,
             supervisor_context: &supervisor_context,
             event_subscriber: endpoint_context.event_subscriber,
@@ -1155,6 +1194,7 @@ pub mod testing {
         type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
         type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
+        type MtuConfig = s2n_quic_core::path::mtu::Config;
         type StreamManager = crate::stream::DefaultStreamManager;
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
@@ -1186,6 +1226,7 @@ pub mod testing {
         type RandomGenerator = random::testing::Generator;
         type TokenFormat = s2n_quic_core::token::testing::Format;
         type ConnectionLimits = s2n_quic_core::connection::limits::Limits;
+        type MtuConfig = s2n_quic_core::path::mtu::Config;
         type StreamManager = crate::stream::DefaultStreamManager;
         type ConnectionCloseFormatter = s2n_quic_core::connection::close::Development;
         type EventSubscriber = Subscriber;
