@@ -1152,6 +1152,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# size of packets it receives from that address.
         let handshake_confirmed = self.space_manager.is_handshake_confirmed();
 
+        // let mtu_config = mtu::Config::new(mtu_config, self.limits);
         let (id, amplification_outcome) = self.path_manager.on_datagram_received(
             path_handle,
             datagram,

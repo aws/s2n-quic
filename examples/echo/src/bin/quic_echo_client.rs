@@ -14,9 +14,8 @@ pub static CERT_PEM: &str = include_str!(concat!(
 async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::builder()
         .with_tls(CERT_PEM)?
-        .with_io("0.0.0.0:0")?
+        .with_io("0.0.0.0")?
         .start()?;
-
     let addr: SocketAddr = "127.0.0.1:4433".parse()?;
     let connect = Connect::new(addr).with_server_name("localhost");
     let mut connection = client.connect(connect).await?;

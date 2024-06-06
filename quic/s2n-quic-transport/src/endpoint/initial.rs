@@ -20,7 +20,7 @@ use s2n_quic_core::{
     event::{self, supervisor, ConnectionPublisher, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
-    path::Handle as _,
+    path::{mtu, mtu::Endpoint as _, Handle as _},
     stateless_reset::token::Generator as _,
     transport::{self, parameters::ServerTransportParameters},
 };
@@ -169,6 +169,15 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .context()
             .connection_limits
             .on_connection(&LimitsInfo::new(&remote_address));
+        let mtu_config = self
+            .config
+            .context()
+            .mtu
+            .on_connection(&mtu::ConnectionInfo::new(
+                &remote_address,
+                self.endpoint_mtu_config,
+            ))
+            .expect("todo");
 
         transport_parameters.load_limits(&limits);
 
@@ -231,7 +240,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             .new_server_session(&transport_parameters);
 
         let path_info =
-            congestion_controller::PathInfo::new(self.mtu_config.initial_mtu, &remote_address);
+            congestion_controller::PathInfo::new(mtu_config.initial_mtu(), &remote_address);
         let congestion_controller = endpoint_context
             .congestion_controller
             .new_congestion_controller(path_info);
@@ -272,7 +281,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &mut publisher,
         );
 
-        let mtu_config = self.mtu_config;
+        // let endpoint_mtu_config = self.endpoint_mtu_config;
+        // let mtu_config = mtu::Config::new(endpoint_mtu_config, limits);
         let connection_parameters = connection::Parameters {
             internal_connection_id,
             local_id_registry,

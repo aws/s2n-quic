@@ -419,7 +419,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             .rtt_estimator
             .for_new_path(limits.initial_round_trip_time());
         let path_info =
-            congestion_controller::PathInfo::new(mtu_config.initial_mtu, &remote_address);
+            congestion_controller::PathInfo::new(mtu_config.initial_mtu(), &remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
         let peer_connection_id = {

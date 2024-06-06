@@ -389,6 +389,11 @@ impl Limits {
 /// Creates limits for a given connection
 pub trait Limiter: 'static + Send {
     fn on_connection(&mut self, info: &ConnectionInfo) -> Limits;
+
+    // // we call this
+    // fn on_conection_checked(...) -> Result<Limits> {
+    //     Ok(self.on_connection(info)
+    // }
 }
 
 /// Implement Limiter for a Limits struct

@@ -30,6 +30,8 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     type EndpointLimits: endpoint::Limiter;
     /// The connection limits
     type ConnectionLimits: connection::limits::Limiter;
+    /// The mtu configuration
+    type MtuConfig: s2n_quic_core::path::mtu::Endpoint;
     /// The type of stream
     type StreamManager: stream::Manager;
     /// The connection close formatter
@@ -79,6 +81,9 @@ pub struct Context<'a, Cfg: Config> {
 
     /// The connection limits
     pub connection_limits: &'a mut Cfg::ConnectionLimits,
+
+    /// The mtu configuration
+    pub mtu: &'a mut Cfg::MtuConfig,
 
     pub connection_close_formatter: &'a mut Cfg::ConnectionCloseFormatter,
 

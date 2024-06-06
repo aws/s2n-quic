@@ -14,7 +14,7 @@ pub struct Builder {
     pub(super) socket_send_buffer_size: Option<usize>,
     pub(super) queue_recv_buffer_size: Option<u32>,
     pub(super) queue_send_buffer_size: Option<u32>,
-    pub(super) mtu_config_builder: mtu::Builder,
+    pub(super) mtu_config_builder: mtu::ConfigBuilder,
     pub(super) max_segments: gso::MaxSegments,
     pub(super) gro_enabled: Option<bool>,
     pub(super) reuse_address: bool,
