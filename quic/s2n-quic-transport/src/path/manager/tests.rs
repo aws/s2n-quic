@@ -60,7 +60,7 @@ fn get_path_by_address_test() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
@@ -72,7 +72,7 @@ fn get_path_by_address_test() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
@@ -104,7 +104,7 @@ fn test_invalid_path_fallback() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     // simulate receiving a handshake packet to force path validation
@@ -121,7 +121,7 @@ fn test_invalid_path_fallback() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     second_path.set_challenge(challenge);
@@ -505,7 +505,7 @@ fn silently_return_when_there_is_no_valid_path() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     first_path.set_challenge(challenge);
@@ -713,7 +713,7 @@ fn test_adding_new_path() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_server(first_path);
@@ -742,7 +742,7 @@ fn test_adding_new_path() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             &Limits::default(),
             &mut publisher,
         )
@@ -777,7 +777,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_server(first_path);
@@ -804,7 +804,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         handshake_confirmed,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         &Limits::default(),
         &mut publisher,
     );
@@ -840,7 +840,7 @@ fn do_not_add_new_path_if_client() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_client(first_path);
@@ -867,7 +867,7 @@ fn do_not_add_new_path_if_client() {
         true,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         &Limits::default(),
         &mut publisher,
     );
@@ -896,7 +896,7 @@ fn switch_destination_connection_id_after_first_server_response() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_client(zero_path);
@@ -935,7 +935,7 @@ fn limit_number_of_connection_migrations() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_server(first_path);
@@ -960,7 +960,7 @@ fn limit_number_of_connection_migrations() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             &Limits::default(),
             &mut publisher,
         );
@@ -995,7 +995,7 @@ fn active_connection_migration_disabled() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_server(first_path);
@@ -1031,7 +1031,7 @@ fn active_connection_migration_disabled() {
         &datagram,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         // Active connection migration is disabled
         &Limits::default()
             .with_active_connection_migration(false)
@@ -1052,7 +1052,7 @@ fn active_connection_migration_disabled() {
         &datagram,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         &Limits::default(),
         &mut publisher,
     );
@@ -1075,7 +1075,7 @@ fn active_connection_migration_disabled() {
         &datagram,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         // Active connection migration is disabled
         &Limits::default()
             .with_active_connection_migration(false)
@@ -1103,7 +1103,7 @@ fn connection_migration_challenge_behavior() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_server(first_path);
@@ -1127,7 +1127,7 @@ fn connection_migration_challenge_behavior() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             &Limits::default(),
             &mut publisher,
         )
@@ -1199,7 +1199,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
         RttEstimator::new(Duration::from_millis(30)),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_server(first_path);
@@ -1224,7 +1224,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             &Limits::default(),
             &mut publisher,
         )
@@ -1280,7 +1280,7 @@ fn connection_migration_new_path_abandon_timer() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_server(first_path);
@@ -1304,7 +1304,7 @@ fn connection_migration_new_path_abandon_timer() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             &Limits::default(),
             &mut publisher,
         )
@@ -1403,7 +1403,7 @@ fn stop_using_a_retired_connection_id() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_server(first_path);
@@ -1500,7 +1500,7 @@ fn pending_paths_should_return_paths_pending_validation() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let expected_response_data = [0; 8];
@@ -1566,7 +1566,7 @@ fn temporary_until_authenticated() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     let mut manager = manager_server(first_path);
@@ -1583,7 +1583,7 @@ fn temporary_until_authenticated() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             &Limits::default(),
             &mut publisher,
         )
@@ -1606,7 +1606,7 @@ fn temporary_until_authenticated() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             &Limits::default(),
             &mut publisher,
         )
@@ -1644,7 +1644,7 @@ fn temporary_until_authenticated() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             &Limits::default(),
             &mut publisher,
         )
@@ -1952,7 +1952,7 @@ pub fn helper_path(peer_id: connection::PeerId) -> ServerPath {
         RttEstimator::new(Duration::from_millis(30)),
         Default::default(),
         false,
-        mtu::Config::default(),
+        mtu::Config::default().into(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     )
 }

@@ -114,7 +114,7 @@ impl<Config: endpoint::Config> Path<Config> {
         rtt_estimator: RttEstimator,
         congestion_controller: <Config::CongestionControllerEndpoint as congestion_controller::Endpoint>::CongestionController,
         peer_validated: bool,
-        mtu_config: mtu::Config,
+        mtu_config: mtu::CheckedConfig,
         anti_amplification_multiplier: u8,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
@@ -612,7 +612,7 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             true,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             ANTI_AMPLIFICATION_MULTIPLIER,
         )
     }
@@ -625,7 +625,7 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             ANTI_AMPLIFICATION_MULTIPLIER,
         )
     }
@@ -1159,7 +1159,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            mtu::Config::default(),
+            mtu::Config::default().into(),
             ANTI_AMPLIFICATION_MULTIPLIER,
         );
         let now = NoopClock.get_time();

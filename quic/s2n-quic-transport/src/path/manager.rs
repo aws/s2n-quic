@@ -244,7 +244,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        mtu_config: mtu::Config,
+        mtu_config: mtu::CheckedConfig,
         limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -320,7 +320,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        mtu_config: mtu::Config,
+        mtu_config: mtu::CheckedConfig,
         limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -419,7 +419,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             .rtt_estimator
             .for_new_path(limits.initial_round_trip_time());
         let path_info =
-            congestion_controller::PathInfo::new(mtu_config.initial_mtu, &remote_address);
+            congestion_controller::PathInfo::new(mtu_config.initial_mtu(), &remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
         let peer_connection_id = {

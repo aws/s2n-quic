@@ -316,7 +316,7 @@ impl Io {
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());
 
-        let socket = buffers.register(handle, mtu_config_builder.build().unwrap().max_mtu);
+        let socket = buffers.register(handle, mtu_config_builder.build().unwrap().max_mtu());
 
         if let Some(on_socket) = on_socket {
             on_socket(socket.clone());
@@ -342,9 +342,9 @@ impl Io {
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());
 
-        let socket = buffers.register(handle, mtu_config.max_mtu);
-        let tx = socket.tx_task(mtu_config.max_mtu, queue_send_buffer_size);
-        let rx = socket.rx_task(mtu_config.max_mtu, queue_recv_buffer_size);
+        let socket = buffers.register(handle, mtu_config.max_mtu());
+        let tx = socket.tx_task(mtu_config.max_mtu(), queue_send_buffer_size);
+        let rx = socket.rx_task(mtu_config.max_mtu(), queue_recv_buffer_size);
 
         if let Some(on_socket) = on_socket {
             on_socket(socket);
