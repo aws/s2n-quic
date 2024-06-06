@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn enter_drain() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
@@ -106,7 +106,7 @@ mod tests {
     //#     BBREnterProbeBW()  /* BBR estimates the queue was drained */
     #[test]
     fn check_drain_done() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let now = NoopClock.get_time();
         let mut rng = random::testing::Generator::default();
         let mut publisher = event::testing::Publisher::snapshot();

@@ -64,6 +64,7 @@ impl BbrCongestionController {
                 self.bw_estimator.rate_sample(),
                 self.congestion_state.loss_bursts_in_round(),
                 self.max_datagram_size,
+                &self.app_settings,
             )
         }
 
@@ -86,7 +87,7 @@ mod tests {
 
     #[test]
     fn enter_startup() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
@@ -108,7 +109,7 @@ mod tests {
     //#     BBREnterDrain()
     #[test]
     fn check_startup_done() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
@@ -136,7 +137,7 @@ mod tests {
 
     #[test]
     fn check_startup_done_filled_pipe_on_round_start() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let now = NoopClock.get_time();
@@ -180,7 +181,7 @@ mod tests {
 
     #[test]
     fn check_startup_done_filled_pipe_on_loss_round_start() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let now = NoopClock.get_time();

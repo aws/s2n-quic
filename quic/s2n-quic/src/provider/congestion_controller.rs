@@ -24,6 +24,8 @@ cfg_if! {
 }
 
 pub use s2n_quic_core::recovery::{bbr::Endpoint as Bbr, cubic::Endpoint as Cubic};
+// Build congestion controllers with application provided overrides
+pub use s2n_quic_core::recovery::{bbr::builder as bbr, cubic::builder as cubic};
 pub type Default = Cubic;
 
 impl_provider_utils!();

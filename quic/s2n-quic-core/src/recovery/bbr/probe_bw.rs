@@ -9,7 +9,9 @@ use crate::{
     recovery::{
         bandwidth::RateSample,
         bbr,
-        bbr::{congestion, data_rate, data_volume, round, BbrCongestionController},
+        bbr::{
+            congestion, data_rate, data_volume, round, ApplicationSettings, BbrCongestionController,
+        },
         congestion_controller::Publisher,
     },
     time::Timestamp,
@@ -27,6 +29,12 @@ const MAX_BW_PROBE_ROUNDS: u8 = 63;
 /// Value from:
 /// https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/quic_protocol_flags_list.h;l=139;bpv=1;bpt=0
 pub(super) const PROBE_BW_FULL_LOSS_COUNT: u8 = 2;
+
+//= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
+//# After ProbeBW_REFILL refills the pipe, ProbeBW_UP probes for possible increases in
+//# available bandwidth by using a BBR.pacing_gain of 1.25, sending faster than the current
+//# estimated available bandwidth.
+const UP_PACING_GAIN: Ratio<u64> = Ratio::new_raw(5, 4);
 
 /// Cwnd gain used in the Probe BW state
 ///
@@ -51,7 +59,7 @@ pub(crate) enum CyclePhase {
 
 impl CyclePhase {
     /// The dynamic gain factor used to scale BBR.bw to produce BBR.pacing_rate
-    pub fn pacing_gain(&self) -> Ratio<u64> {
+    pub fn pacing_gain(&self, app_settings: &ApplicationSettings) -> Ratio<u64> {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.1
         //# In the ProbeBW_DOWN phase of the cycle, a BBR flow pursues the deceleration tactic,
         //# to try to send slower than the network is delivering data, to reduce the amount of data
@@ -59,15 +67,10 @@ impl CyclePhase {
         //# in "State Machine Tactics", above). It does this by switching to a BBR.pacing_gain of
         //# 0.9, sending at 90% of BBR.bw.
         const DOWN_PACING_GAIN: Ratio<u64> = Ratio::new_raw(9, 10);
-        //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
-        //# After ProbeBW_REFILL refills the pipe, ProbeBW_UP probes for possible increases in
-        //# available bandwidth by using a BBR.pacing_gain of 1.25, sending faster than the current
-        //# estimated available bandwidth.
-        const UP_PACING_GAIN: Ratio<u64> = Ratio::new_raw(5, 4);
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.3
         //# During ProbeBW_REFILL BBR uses a BBR.pacing_gain of 1.0, to send at a rate that
         //# matches the current estimated available bandwidth
-
+        //
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.2
         //# In the ProbeBW_CRUISE phase of the cycle, a BBR flow pursues the "cruising" tactic
         //# (discussed in "State Machine Tactics", above), attempting to send at the same rate
@@ -77,10 +80,14 @@ impl CyclePhase {
         //# pacing_gain of 1.0, sending at 100% of BBR.bw.
         const CRUISE_REFILL_PACING_GAIN: Ratio<u64> = Ratio::new_raw(1, 1);
 
+        let probe_bw_up_pacing_gain = app_settings
+            .probe_bw_up_pacing_gain()
+            .unwrap_or(UP_PACING_GAIN);
+
         match self {
             CyclePhase::Down => DOWN_PACING_GAIN,
             CyclePhase::Cruise | CyclePhase::Refill => CRUISE_REFILL_PACING_GAIN,
-            CyclePhase::Up => UP_PACING_GAIN,
+            CyclePhase::Up => probe_bw_up_pacing_gain,
         }
     }
 
@@ -178,7 +185,7 @@ pub(crate) struct State {
 
 impl State {
     /// Constructs new `probe_bw::State`
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             cycle_phase: CyclePhase::Up,
             ack_phase: AckPhase::Init,
@@ -526,7 +533,10 @@ impl BbrCongestionController {
         );
 
         let target_inflight = self.target_inflight();
-        let inflight = self.inflight(self.data_rate_model.max_bw(), self.state.pacing_gain());
+        let inflight = self.inflight(
+            self.data_rate_model.max_bw(),
+            self.state.pacing_gain(&self.app_settings),
+        );
         let time_to_cruise = self.is_time_to_cruise(now);
 
         if let bbr::State::ProbeBw(ref mut probe_bw_state) = self.state {
@@ -639,6 +649,7 @@ impl BbrCongestionController {
             self.max_datagram_size,
             self.congestion_state.loss_bursts_in_round(),
             PROBE_BW_FULL_LOSS_COUNT,
+            &self.app_settings,
         ) {
             if self.bw_probe_samples {
                 // Inflight is too high and the sample is from bandwidth probing: lower inflight downward
@@ -817,20 +828,29 @@ mod tests {
         //# in flight, with all of the standard motivations for the deceleration tactic (discussed
         //# in "State Machine Tactics", above). It does this by switching to a BBR.pacing_gain of
         //# 0.9, sending at 90% of BBR.bw.
-        assert_eq!(Ratio::new_raw(9, 10), CyclePhase::Down.pacing_gain());
+        assert_eq!(
+            Ratio::new_raw(9, 10),
+            CyclePhase::Down.pacing_gain(&Default::default())
+        );
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.4
         //= type=test
         //# After ProbeBW_REFILL refills the pipe, ProbeBW_UP probes for possible increases in
         //# available bandwidth by using a BBR.pacing_gain of 1.25, sending faster than the current
         //# estimated available bandwidth.
-        assert_eq!(Ratio::new_raw(5, 4), CyclePhase::Up.pacing_gain());
+        assert_eq!(
+            Ratio::new_raw(5, 4),
+            CyclePhase::Up.pacing_gain(&Default::default())
+        );
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.3
         //= type=test
         //# During ProbeBW_REFILL BBR uses a BBR.pacing_gain of 1.0, to send at a rate that
         //# matches the current estimated available bandwidth
-        assert_eq!(Ratio::new_raw(1, 1), CyclePhase::Refill.pacing_gain());
+        assert_eq!(
+            Ratio::new_raw(1, 1),
+            CyclePhase::Refill.pacing_gain(&Default::default())
+        );
 
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.3.3.2
         //= type=test
@@ -840,7 +860,23 @@ mod tests {
         //# current available bandwidth, to try to achieve high utilization of the available
         //# bandwidth without increasing queue pressure. It does this by switching to a
         //# pacing_gain of 1.0, sending at 100% of BBR.bw.
-        assert_eq!(Ratio::new_raw(1, 1), CyclePhase::Cruise.pacing_gain());
+        assert_eq!(
+            Ratio::new_raw(1, 1),
+            CyclePhase::Cruise.pacing_gain(&Default::default())
+        );
+    }
+
+    // ApplicationSettings.probe_bw_up_pacing_gain
+    #[test]
+    fn probe_bw_up_pacing_gain_with_app_settings() {
+        let mut app_settings = Default::default();
+        assert_eq!(UP_PACING_GAIN, CyclePhase::Up.pacing_gain(&app_settings));
+
+        app_settings.probe_bw_up_pacing_gain = Some(50);
+        assert_eq!(
+            Ratio::new_raw(50, 100),
+            CyclePhase::Up.pacing_gain(&app_settings)
+        );
     }
 
     #[test]
@@ -1114,7 +1150,7 @@ mod tests {
 
     #[test]
     fn enter_probe_bw() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let mut rng = random::testing::Generator::default();
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
@@ -1139,7 +1175,7 @@ mod tests {
 
     #[test]
     fn update_ack_phase() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let mut rng = random::testing::Generator::default();
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());

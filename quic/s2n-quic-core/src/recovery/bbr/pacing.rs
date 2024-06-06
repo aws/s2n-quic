@@ -5,7 +5,7 @@ use crate::{
     counter::{Counter, Saturating},
     recovery::{
         bandwidth::Bandwidth,
-        bbr::{BbrCongestionController, State},
+        bbr::{ApplicationSettings, BbrCongestionController, State},
         congestion_controller::Publisher,
         pacing::{INITIAL_INTERVAL, MINIMUM_PACING_RTT},
         MAX_BURST_PACKETS,
@@ -28,15 +28,17 @@ pub struct Pacer {
 }
 
 impl Pacer {
-    pub(super) fn new(max_datagram_size: u16) -> Self {
+    pub(super) fn new(max_datagram_size: u16, app_settings: &ApplicationSettings) -> Self {
         //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.6.2
         //# BBRInitPacingRate():
         //#   nominal_bandwidth = InitialCwnd / (SRTT ? SRTT : 1ms)
         //# BBR.pacing_rate =  BBRStartupPacingGain * nominal_bandwidth
-        let initial_cwnd = BbrCongestionController::initial_window(max_datagram_size);
+        let initial_cwnd = BbrCongestionController::initial_window(max_datagram_size, app_settings);
         let nominal_bandwidth = Bandwidth::new(initial_cwnd as u64, Duration::from_millis(1));
-        let pacing_rate =
-            Self::bandwidth_to_pacing_rate(nominal_bandwidth, State::Startup.pacing_gain());
+        let pacing_rate = Self::bandwidth_to_pacing_rate(
+            nominal_bandwidth,
+            State::Startup.pacing_gain(app_settings),
+        );
 
         Self {
             capacity: Default::default(),
@@ -212,7 +214,7 @@ mod tests {
         // nominal_bandwidth = 12_000 / 1ms = ~83.3333nanos/byte
         // pacing_rate = 2.77 * 83.333nanos/byte * 99% = ~30.388nanos/byte
 
-        let pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE, &Default::default());
 
         assert_eq!(
             Bandwidth::new(1000, Duration::from_nanos(30388)),
@@ -241,7 +243,7 @@ mod tests {
     //#     BBR.pacing_rate = rate
     #[test]
     fn set_pacing_rate() {
-        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE, &Default::default());
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
         let bandwidth = Bandwidth::new(1000, Duration::from_millis(1));
@@ -258,7 +260,7 @@ mod tests {
 
     #[test]
     fn initialize_pacing_rate() {
-        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE, &Default::default());
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
 
@@ -266,7 +268,7 @@ mod tests {
         pacer.initialize_pacing_rate(
             14_000,
             Duration::from_millis(100),
-            Startup.pacing_gain(),
+            Startup.pacing_gain(&Default::default()),
             &mut publisher,
         );
         assert_eq!(
@@ -285,7 +287,7 @@ mod tests {
     //# BBR.send_quantum = max(BBR.send_quantum, floor)
     #[test]
     fn set_send_quantum() {
-        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE, &Default::default());
         // pacing_rate < 1.2 Mbps, floor = MINIMUM_MAX_DATAGRAM_SIZE
         pacer.pacing_rate = Bandwidth::new(1_100_000 / 8, Duration::from_secs(1));
         pacer.set_send_quantum(MINIMUM_MAX_DATAGRAM_SIZE);
@@ -321,7 +323,7 @@ mod tests {
 
     #[test]
     fn test_one_rtt() {
-        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut pacer = Pacer::new(MINIMUM_MAX_DATAGRAM_SIZE, &Default::default());
         let now = NoopClock.get_time();
         let mut publisher = event::testing::Publisher::snapshot();
         let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
@@ -329,7 +331,12 @@ mod tests {
         let rtt = Duration::from_millis(100);
         let bw = Bandwidth::new(100_000, rtt);
 
-        pacer.set_pacing_rate(bw, State::Startup.pacing_gain(), true, &mut publisher);
+        pacer.set_pacing_rate(
+            bw,
+            State::Startup.pacing_gain(&Default::default()),
+            true,
+            &mut publisher,
+        );
 
         let bytes_to_send = pacer.pacing_rate * rtt;
 

@@ -31,7 +31,7 @@ fn type_name<T>() -> &'static str {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn slow_start_unlimited_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
 
     slow_start_unlimited(cc, 12).finish();
 }
@@ -39,7 +39,7 @@ fn slow_start_unlimited_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn loss_at_3mb_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
 
     loss_at_3mb(cc, 135).finish();
 }
@@ -47,7 +47,7 @@ fn loss_at_3mb_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn app_limited_1mb_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
 
     app_limited_1mb(cc, 120).finish();
 }
@@ -55,7 +55,7 @@ fn app_limited_1mb_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn minimum_window_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
 
     minimum_window(cc, 10).finish();
 }
@@ -63,7 +63,7 @@ fn minimum_window_test() {
 #[test]
 #[cfg_attr(miri, ignore)]
 fn loss_at_3mb_and_2_75mb_test() {
-    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+    let cc = CubicCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
 
     loss_at_3mb_and_2_75mb(cc, 120).finish();
 }

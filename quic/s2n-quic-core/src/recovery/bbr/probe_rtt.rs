@@ -215,7 +215,7 @@ impl BbrCongestionController {
         self.bdp_multiple(self.data_rate_model.bw(), probe_rtt::CWND_GAIN)
             .try_into()
             .unwrap_or(u32::MAX)
-            .max(self.minimum_window())
+            .max(Self::minimum_window(self.max_datagram_size))
     }
 }
 
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn check_probe_rtt_enter_probe_rtt() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let now = NoopClock.get_time();
         let mut rng = random::testing::Generator::default();
         let mut publisher = event::testing::Publisher::snapshot();
@@ -337,12 +337,12 @@ mod tests {
     //#    return probe_rtt_cwnd
     #[test]
     fn probe_rtt_cwnd() {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let now = NoopClock.get_time();
 
         // bdp_multiple > minimum_window
         assert_eq!(
-            BbrCongestionController::initial_window(MINIMUM_MAX_DATAGRAM_SIZE),
+            BbrCongestionController::initial_window(MINIMUM_MAX_DATAGRAM_SIZE, &Default::default()),
             bbr.probe_rtt_cwnd()
         );
 
@@ -350,13 +350,16 @@ mod tests {
             .update_min_rtt(Duration::from_millis(100), now);
 
         // bdp_multiple < minimum_window
-        assert_eq!(bbr.minimum_window(), bbr.probe_rtt_cwnd());
+        assert_eq!(
+            BbrCongestionController::minimum_window(bbr.max_datagram_size),
+            bbr.probe_rtt_cwnd()
+        );
     }
 
     /// Helper method to return a BBR congestion controller in the ProbeRtt
     /// but ready to exit that state
     fn bbr_in_probe_rtt_ready_to_exit() -> BbrCongestionController {
-        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE);
+        let mut bbr = BbrCongestionController::new(MINIMUM_MAX_DATAGRAM_SIZE, Default::default());
         let now = NoopClock.get_time();
         let mut probe_rtt_state = probe_rtt::State {
             timer: Default::default(),
