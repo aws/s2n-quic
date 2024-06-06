@@ -284,7 +284,7 @@ impl Limits {
 
     #[cfg(feature = "unstable-limits")]
     setter!(
-        /// Limit how many bytes the Server sends prior to address validaiton (default: 3)
+        /// Limit how many bytes the Server sends prior to address validation (default: 3)
         ///
         /// Prior to validating the client address, servers will not send more
         /// than `anti_amplification_multiplier` times as many bytes as the
@@ -381,7 +381,7 @@ impl Limits {
 
     #[doc(hidden)]
     #[inline]
-    pub fn anti_amplification_limit(&self) -> u8 {
+    pub fn anti_amplification_multiplier(&self) -> u8 {
         self.anti_amplification_multiplier
     }
 }

@@ -597,7 +597,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             parameters.congestion_controller,
             peer_validated,
             parameters.mtu_config,
-            parameters.limits.anti_amplification_limit(),
+            parameters.limits.anti_amplification_multiplier(),
         );
 
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);

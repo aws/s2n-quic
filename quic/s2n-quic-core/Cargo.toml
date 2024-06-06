@@ -23,6 +23,7 @@ probe-tracing = ["tracing"]
 state-tracing = ["tracing"]
 # This feature enables support for third party congestion controller implementations
 unstable-congestion-controller = []
+# This feature enables the use of unstable connection limits
 unstable-limits = []
 usdt = ["dep:probe"]
 

@@ -211,6 +211,11 @@ impl<Config: endpoint::Config> Path<Config> {
         //# avoiding amplification prior to address validation, servers MUST
         //# count all of the payload bytes received in datagrams that are
         //# uniquely attributed to a single connection.
+        //
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
+        //# Prior to validating the client address, servers MUST NOT send more
+        //# than three times as many bytes as the number of bytes they have
+        //# received.
         if let State::AmplificationLimited { tx_allowance } = &mut self.state {
             *tx_allowance +=
                 bytes.saturating_mul(self.anti_amplification_multiplier as usize) as u32;

@@ -462,7 +462,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             cc,
             true,
             mtu_config,
-            limits.anti_amplification_limit(),
+            limits.anti_amplification_multiplier(),
         );
 
         let amplification_outcome = path.on_bytes_received(datagram.payload_len);
