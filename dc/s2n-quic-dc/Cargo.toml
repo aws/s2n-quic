@@ -30,7 +30,7 @@ tracing = "0.1"
 zerocopy = { version = "0.7", features = ["derive"] }
 
 [dev-dependencies]
-bolero = "0.10"
+bolero = "0.11"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
 tokio = { version = "1", features = ["io-util"] }

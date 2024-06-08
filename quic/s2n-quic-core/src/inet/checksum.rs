@@ -58,9 +58,9 @@ fn write_sized_generic<'a, const MAX_LEN: usize, const CHUNK_LEN: usize>(
     //# }
 
     while bytes.len() >= MAX_LEN {
-        let (chunks, remaining) = bytes.split_at(MAX_LEN);
-
-        bytes = remaining;
+        // use `get_unchecked` to make it easier for kani to analyze
+        let chunks = unsafe { bytes.get_unchecked(..MAX_LEN) };
+        bytes = unsafe { bytes.get_unchecked(MAX_LEN..) };
 
         let mut sum = 0;
         // for each pair of bytes, interpret them as integers and sum them up

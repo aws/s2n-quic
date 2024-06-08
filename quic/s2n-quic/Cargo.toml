@@ -80,7 +80,7 @@ zerocopy = { version = "0.7", optional = true, features = ["derive"] }
 zeroize = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
-bolero = { version = "0.10" }
+bolero = { version = "0.11" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
 s2n-quic-transport = { version = "=0.37.0", path = "../s2n-quic-transport", features = ["unstable_resumption"] }

@@ -1,10 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{
-    generator::{gen_duration, gen_ecn},
-    EndpointReport, Packet,
-};
+use super::{generator::gen_duration, EndpointReport, Packet};
 use bolero::generator::*;
 use core::time::Duration;
 use s2n_quic_core::inet::ExplicitCongestionNotification;
@@ -13,7 +10,7 @@ use s2n_quic_core::inet::ExplicitCongestionNotification;
 pub enum NetworkEvent {
     Pass,
     Drop,
-    Ecn(#[generator(gen_ecn())] ExplicitCongestionNotification),
+    Ecn(ExplicitCongestionNotification),
     Delay(#[generator(gen_duration())] Duration),
 }
 
