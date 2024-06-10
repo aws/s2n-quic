@@ -28,16 +28,37 @@ const DATA_LEN: usize = (DEFAULT_STREAM_LEN as usize) * if cfg!(miri) { 1 } else
 const DEFAULT_STREAM_LEN: u64 = if cfg!(miri) { DATA_MOD as _ } else { 1024 };
 const DATA_MOD: usize = 256; // Only the first 256 offsets of DATA are unique
 
-#[cfg(any(feature = "generator", test))]
-const GENERATOR: core::ops::RangeInclusive<u64> = 0..=DEFAULT_STREAM_LEN;
-
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
-#[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
 pub struct Data {
-    #[cfg_attr(any(feature = "generator", test), generator(GENERATOR))]
-    len: u64,
-    #[cfg_attr(any(feature = "generator", test), generator(constant(0)))]
     offset: u64,
+    final_offset: Option<u64>,
+    buffered_len: u64,
+}
+
+#[cfg(any(feature = "generator", test))]
+impl TypeGenerator for Data {
+    fn generate<D: bolero_generator::Driver>(driver: &mut D) -> Option<Self> {
+        let offset = gen::<u64>().generate(driver)?;
+        let final_offset = gen::<Option<u64>>()
+            .with()
+            .value(offset..)
+            .generate(driver)?;
+
+        let max_buffered_len = if let Some(end) = final_offset {
+            let remaining = end - offset;
+            remaining.min(DEFAULT_STREAM_LEN)
+        } else {
+            DEFAULT_STREAM_LEN
+        };
+
+        let buffered_len = (..max_buffered_len).generate(driver)?;
+
+        Some(Data {
+            offset,
+            final_offset,
+            buffered_len,
+        })
+    }
 }
 
 impl Default for Data {
@@ -51,20 +72,28 @@ impl Data {
     pub const MAX_CHUNK_LEN: usize = DATA_LEN;
 
     pub const fn new(len: u64) -> Self {
-        Self { len, offset: 0 }
+        Self {
+            buffered_len: len,
+            final_offset: Some(len),
+            offset: 0,
+        }
     }
 
     /// Notifies the data that a set of chunks were received
     pub fn receive<Chunk: AsRef<[u8]>>(&mut self, chunks: &[Chunk]) {
-        Self::receive_check(&mut self.offset, self.len, chunks)
+        Self::receive_check(&mut self.offset, self.final_offset, chunks)
     }
 
     /// Notifies the data that a set of chunks were received
     pub fn receive_at<Chunk: AsRef<[u8]>>(&self, mut start: u64, chunks: &[Chunk]) {
-        Self::receive_check(&mut start, self.len, chunks)
+        Self::receive_check(&mut start, self.final_offset, chunks)
     }
 
-    fn receive_check<Chunk: AsRef<[u8]>>(start: &mut u64, len: u64, chunks: &[Chunk]) {
+    fn receive_check<Chunk: AsRef<[u8]>>(
+        start: &mut u64,
+        final_offset: Option<u64>,
+        chunks: &[Chunk],
+    ) {
         for mut chunk in chunks.iter().map(AsRef::as_ref) {
             while !chunk.is_empty() {
                 let offset = ((*start) % DATA_MOD as u64) as usize;
@@ -80,16 +109,22 @@ impl Data {
             }
         }
 
-        assert!(
-            len >= (*start),
-            "receive stream data has exceeded beyond the expected amount by {}",
-            (*start) - len
-        );
+        if let Some(final_offset) = final_offset {
+            assert!(
+                final_offset >= (*start),
+                "receive stream data has exceeded beyond the expected amount by {}",
+                (*start) - final_offset
+            );
+        }
     }
 
     /// Returns `true` if the stream is finished reading/writing
     pub fn is_finished(&self) -> bool {
-        self.len <= self.offset
+        if let Some(fin) = self.final_offset {
+            fin <= self.offset
+        } else {
+            false
+        }
     }
 
     /// Asks the data what chunks should be sent next
@@ -120,7 +155,7 @@ impl Data {
             return None;
         }
 
-        let amount = ((self.len - self.offset) as usize).min(amount);
+        let amount = (self.buffered_len as usize).min(amount);
         let chunk = Self::send_one_at(self.offset, amount);
 
         self.seek_forward(chunk.len() as u64);
@@ -147,6 +182,7 @@ impl Data {
     /// Moves the current offset forward by the provided `len`
     pub fn seek_forward(&mut self, len: u64) {
         self.offset += len;
+        self.buffered_len -= len;
     }
 }
 
@@ -155,7 +191,7 @@ impl reader::Storage for Data {
 
     #[inline]
     fn buffered_len(&self) -> usize {
-        (self.len - self.offset).try_into().unwrap_or(usize::MAX)
+        self.buffered_len as usize
     }
 
     #[inline]
@@ -196,7 +232,7 @@ impl reader::Reader for Data {
 
     #[inline]
     fn final_offset(&self) -> Option<crate::varint::VarInt> {
-        self.len.try_into().ok()
+        self.final_offset.and_then(|v| v.try_into().ok())
     }
 }
 

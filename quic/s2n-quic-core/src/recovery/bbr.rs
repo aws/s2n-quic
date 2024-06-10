@@ -617,6 +617,13 @@ impl BbrCongestionController {
             app_settings,
         }
     }
+
+    /// Returns the current pacing rate
+    #[inline]
+    pub fn pacing_rate(&self) -> Bandwidth {
+        self.pacer.pacing_rate()
+    }
+
     /// The bandwidth-delay product
     ///
     /// Based on the current estimate of maximum sending bandwidth and minimum RTT

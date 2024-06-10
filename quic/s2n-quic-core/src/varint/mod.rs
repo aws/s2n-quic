@@ -43,6 +43,28 @@ impl std::error::Error for VarIntError {}
 #[cfg_attr(any(feature = "generator", test), derive(TypeGenerator))]
 pub struct VarInt(#[cfg_attr(any(feature = "generator", test), generator(Self::GENERATOR))] u64);
 
+#[cfg(any(feature = "generator", test))]
+impl bolero_generator::bounded::BoundedValue for VarInt {
+    fn gen_bounded<D: Driver>(
+        driver: &mut D,
+        min: core::ops::Bound<&Self>,
+        max: core::ops::Bound<&Self>,
+    ) -> Option<Self> {
+        use core::ops::Bound;
+
+        let map = |v: Bound<&Self>| match v {
+            Bound::Excluded(v) => Bound::Excluded(v.0),
+            Bound::Included(v) => Bound::Included(v.0),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+
+        let min = map(min);
+        let max = map(max);
+        let bounded = u64::gen_bounded(driver, min.as_ref(), max.as_ref())?;
+        VarInt::new(bounded).ok()
+    }
+}
+
 impl fmt::Display for VarInt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
