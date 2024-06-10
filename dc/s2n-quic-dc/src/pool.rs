@@ -22,7 +22,7 @@ impl<T: 'static + Send> Clone for Pool<T> {
     #[inline]
     fn clone(&self) -> Self {
         Self {
-            release: self.release.clone().clone(),
+            release: self.release.clone(),
             acquire: self.acquire.clone(),
             stats: self.stats.clone(),
         }

@@ -33,8 +33,8 @@ impl fmt::Debug for Tag {
 }
 
 impl Tag {
-    const IS_STREAM_MASK: u8 = 0b0010;
-    const HAS_APPLICATION_HEADER_MASK: u8 = 0b00_0001;
+    pub const IS_STREAM_MASK: u8 = 0b0010;
+    pub const HAS_APPLICATION_HEADER_MASK: u8 = 0b00_0001;
 
     pub const MIN: u8 = 0b0101_0000;
     pub const MAX: u8 = 0b0101_1111;
@@ -62,7 +62,6 @@ impl Tag {
     #[inline]
     fn validate(&self) -> Result<(), s2n_codec::DecoderError> {
         let range = Self::MIN..=Self::MAX;
-        debug_assert!(range.contains(&(self.0).0), "{:?} {:?}", self, range);
         s2n_codec::decoder_invariant!(range.contains(&(self.0).0), "invalid control bit pattern");
         Ok(())
     }

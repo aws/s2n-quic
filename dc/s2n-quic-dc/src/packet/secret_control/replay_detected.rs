@@ -7,7 +7,7 @@ impl_tag!(REPLAY_DETECTED);
 impl_packet!(ReplayDetected);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(bolero::TypeGenerator))]
+#[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 pub struct ReplayDetected {
     pub credential_id: credentials::Id,
     pub rejected_key_id: VarInt,
@@ -15,7 +15,7 @@ pub struct ReplayDetected {
 
 impl ReplayDetected {
     #[inline]
-    pub fn encode<C>(&self, mut encoder: EncoderBuffer, crypto: &mut C) -> usize
+    pub fn encode<C>(&self, mut encoder: EncoderBuffer, crypto: &C) -> usize
     where
         C: encrypt::Key,
     {

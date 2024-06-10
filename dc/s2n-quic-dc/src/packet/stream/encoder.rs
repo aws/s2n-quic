@@ -3,9 +3,9 @@
 
 use crate::{
     crypto::encrypt,
-    packet::stream::{self, Tag},
+    packet::stream::{self, RelativeRetransmissionOffset, Tag},
 };
-use s2n_codec::{u24, Encoder, EncoderBuffer, EncoderValue};
+use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     assume,
     buffer::{self, reader::storage::Infallible as _},
@@ -13,8 +13,8 @@ use s2n_quic_core::{
 };
 
 // TODO make sure this is accurate
-pub const MAX_RETRANSMISSION_HEADER_LEN: usize = MAX_HEADER_LEN + (24 / 8);
-pub const MAX_HEADER_LEN: usize = 50;
+pub const MAX_RETRANSMISSION_HEADER_LEN: usize = MAX_HEADER_LEN + (32 / 8);
+pub const MAX_HEADER_LEN: usize = 64;
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
@@ -23,6 +23,7 @@ pub fn encode<H, CD, P, C>(
     source_control_port: u16,
     source_stream_port: Option<u16>,
     stream_id: stream::Id,
+    packet_space: stream::PacketSpace,
     packet_number: VarInt,
     next_expected_control_packet: VarInt,
     header_len: VarInt,
@@ -43,6 +44,9 @@ where
 
     let mut tag = Tag::default();
 
+    debug_assert_ne!(source_control_port, 0);
+    debug_assert_ne!(source_stream_port, Some(0));
+
     if *control_data_len > 0 {
         tag.set_has_control_data(true);
     }
@@ -59,7 +63,8 @@ where
         tag.set_has_source_stream_port(true);
     }
 
-    let nonce = *packet_number;
+    tag.set_packet_space(packet_space);
+    let nonce = packet_space.packet_number_into_nonce(packet_number);
 
     encoder.encode(&tag);
 
@@ -72,7 +77,7 @@ where
 
     encoder.encode(&packet_number);
     if stream_id.is_reliable {
-        encoder.encode(&u24::default());
+        encoder.encode(&RelativeRetransmissionOffset::default());
     }
     encoder.encode(&next_expected_control_packet);
     encoder.encode(&stream_offset);
@@ -166,6 +171,7 @@ where
         let (packet, remaining) =
             super::decoder::Packet::decode(decoder, (), crypto.tag_len()).unwrap();
         assert!(remaining.is_empty());
+        assert_eq!(packet.payload().len() as u64, payload_len.as_u64());
         assert_eq!(packet.packet_number(), packet_number);
     }
 

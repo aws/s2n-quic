@@ -34,7 +34,7 @@ macro_rules! impl_packet {
             }
 
             #[inline]
-            pub fn authenticate<C>(&self, crypto: &mut C) -> Option<&$name>
+            pub fn authenticate<C>(&self, crypto: &C) -> Option<&$name>
             where
                 C: decrypt::Key,
             {

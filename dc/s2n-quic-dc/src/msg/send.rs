@@ -3,11 +3,12 @@
 
 use super::{addr::Addr, cmsg};
 use crate::allocator::{self, Allocator};
-use core::{fmt, num::NonZeroU16};
+use core::{fmt, num::NonZeroU16, task::Poll};
 use libc::{iovec, msghdr, sendmsg};
 use s2n_quic_core::{
     assume, ensure,
     inet::{ExplicitCongestionNotification, SocketAddress, Unspecified},
+    ready,
 };
 use s2n_quic_platform::features;
 use std::{io, os::fd::AsRawFd};
@@ -141,7 +142,7 @@ pub struct Message {
     ecn: ExplicitCongestionNotification,
     instance_id: Instance,
     #[cfg(debug_assertions)]
-    allocated: std::collections::BTreeSet<u16>,
+    allocated: std::collections::BTreeSet<Idx>,
 }
 
 impl fmt::Debug for Message {
@@ -233,71 +234,95 @@ impl Message {
     }
 
     #[inline]
+    pub fn send_with<Snd>(&mut self, send: Snd) -> io::Result<usize>
+    where
+        Snd: FnOnce(&Addr, ExplicitCongestionNotification, &[io::IoSlice]) -> io::Result<usize>,
+    {
+        let iov = unsafe {
+            // SAFETY: IoSlice is guaranteed to have the same layout as iovec
+            &*(self.payload.as_slice() as *const [libc::iovec] as *const [io::IoSlice])
+        };
+        let res = send(&self.addr, self.ecn, iov);
+        self.on_transmit(&res);
+        res
+    }
+
+    #[inline]
+    pub fn poll_send_with<Snd>(&mut self, send: Snd) -> Poll<io::Result<usize>>
+    where
+        Snd: FnOnce(
+            &Addr,
+            ExplicitCongestionNotification,
+            &[io::IoSlice],
+        ) -> Poll<io::Result<usize>>,
+    {
+        let iov = unsafe {
+            // SAFETY: IoSlice is guaranteed to have the same layout as iovec
+            &*(self.payload.as_slice() as *const [libc::iovec] as *const [io::IoSlice])
+        };
+        let res = ready!(send(&self.addr, self.ecn, iov));
+        self.on_transmit(&res);
+        res.into()
+    }
+
+    #[inline]
     pub fn send<S: AsRawFd>(&mut self, s: &S) -> io::Result<()> {
-        use cmsg::Encoder as _;
+        let segment_len = self.segment_len;
 
-        let mut msg = unsafe { core::mem::zeroed::<msghdr>() };
+        self.send_with(|addr, ecn, iov| {
+            use cmsg::Encoder as _;
 
-        msg.msg_iov = self.payload.as_mut_ptr();
-        msg.msg_iovlen = self.payload.len() as _;
+            let mut msg = unsafe { core::mem::zeroed::<msghdr>() };
 
-        debug_assert!(
-            !self.addr.get().ip().is_unspecified(),
-            "cannot send packet to unspecified address"
-        );
-        debug_assert!(
-            self.addr.get().port() != 0,
-            "cannot send packet to unspecified port"
-        );
-        self.addr.send_with_msg(&mut msg);
+            msg.msg_iov = iov.as_ptr() as *mut _;
+            msg.msg_iovlen = iov.len() as _;
 
-        let mut cmsg_storage = cmsg::Storage::<{ cmsg::ENCODER_LEN }>::default();
-        let mut cmsg = cmsg_storage.encoder();
-        if self.ecn != ExplicitCongestionNotification::NotEct {
-            // TODO enable this once we consolidate s2n-quic-core crates
-            // let _ = cmsg.encode_ecn(ecn, &addr);
-        }
+            debug_assert!(
+                !addr.get().ip().is_unspecified(),
+                "cannot send packet to unspecified address"
+            );
+            debug_assert!(
+                addr.get().port() != 0,
+                "cannot send packet to unspecified port"
+            );
+            addr.send_with_msg(&mut msg);
 
-        if msg.msg_iovlen > 1 {
-            let _ = cmsg.encode_gso(self.segment_len);
-        }
-
-        if !cmsg.is_empty() {
-            msg.msg_control = cmsg.as_mut_ptr() as *mut _;
-            msg.msg_controllen = cmsg.len() as _;
-        }
-
-        let flags = Default::default();
-
-        let result = unsafe { sendmsg(s.as_raw_fd(), &msg, flags) };
-
-        trace!(
-            dest = %self.addr,
-            segments = self.payload.len(),
-            segment_len = self.segment_len,
-            cmsg_len = msg.msg_controllen,
-            result,
-        );
-
-        if result >= 0 {
-            self.on_transmit();
-            Ok(())
-        } else {
-            let error = io::Error::last_os_error();
-            self.gso.handle_socket_error(&error);
-
-            if !matches!(
-                error.kind(),
-                io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
-            ) {
-                tracing::error!(?error);
-
-                // if we got an unrecoverable error we need to clear the queue to make progress
-                self.force_clear();
+            let mut cmsg_storage = cmsg::Storage::<{ cmsg::ENCODER_LEN }>::default();
+            let mut cmsg = cmsg_storage.encoder();
+            if ecn != ExplicitCongestionNotification::NotEct {
+                // TODO enable this once we consolidate s2n-quic-core crates
+                // let _ = cmsg.encode_ecn(ecn, &addr);
             }
 
-            Err(error)
-        }
+            if iov.len() > 1 {
+                let _ = cmsg.encode_gso(segment_len);
+            }
+
+            if !cmsg.is_empty() {
+                msg.msg_control = cmsg.as_mut_ptr() as *mut _;
+                msg.msg_controllen = cmsg.len() as _;
+            }
+
+            let flags = Default::default();
+
+            let result = unsafe { sendmsg(s.as_raw_fd(), &msg, flags) };
+
+            trace!(
+                dest = %addr,
+                segments = iov.len(),
+                segment_len,
+                cmsg_len = msg.msg_controllen,
+                result,
+            );
+
+            if result >= 0 {
+                Ok(result as usize)
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        })?;
+
+        Ok(())
     }
 
     #[inline]
@@ -308,26 +333,28 @@ impl Message {
         }
     }
 
+    /// The maximum number of segments that can be sent in a single GSO payload
     #[inline]
-    fn on_transmit(&mut self) {
-        // reset the current payload
-        self.payload.clear();
-        self.ecn = ExplicitCongestionNotification::NotEct;
-        self.segment_len = 0;
-        self.total_len = 0;
-        self.can_push = true;
+    pub fn max_segments(&self) -> usize {
+        self.gso.max_segments()
+    }
 
-        for segment in &self.pending_free {
-            segment.get_mut(&mut self.buffers).clear();
-            #[cfg(debug_assertions)]
-            assert!(self.allocated.remove(&segment.idx));
+    #[inline]
+    fn on_transmit(&mut self, result: &io::Result<usize>) {
+        let len = match result {
+            Ok(len) => *len,
+            Err(err) => {
+                // notify the GSO impl that we got an error
+                self.gso.handle_socket_error(err);
+                return;
+            }
+        };
+
+        if self.total_len as usize > len {
+            todo!();
         }
 
-        if self.free.is_empty() {
-            core::mem::swap(&mut self.free, &mut self.pending_free);
-        } else {
-            self.free.append(&mut self.pending_free);
-        }
+        self.force_clear()
     }
 }
 
@@ -530,7 +557,24 @@ impl Allocator for Message {
 
     #[inline]
     fn force_clear(&mut self) {
-        self.on_transmit();
+        // reset the current payload
+        self.payload.clear();
+        self.ecn = ExplicitCongestionNotification::NotEct;
+        self.segment_len = 0;
+        self.total_len = 0;
+        self.can_push = true;
+
+        for segment in &self.pending_free {
+            segment.get_mut(&mut self.buffers).clear();
+            #[cfg(debug_assertions)]
+            assert!(self.allocated.remove(&segment.idx));
+        }
+
+        if self.free.is_empty() {
+            core::mem::swap(&mut self.free, &mut self.pending_free);
+        } else {
+            self.free.append(&mut self.pending_free);
+        }
     }
 }
 
@@ -567,7 +611,7 @@ impl<'a> Iterator for Drain<'a> {
 impl<'a> Drop for Drain<'a> {
     #[inline]
     fn drop(&mut self) {
-        self.message.on_transmit();
+        self.message.force_clear();
     }
 }
 

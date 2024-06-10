@@ -4,8 +4,8 @@
 use s2n_quic_core::{
     event, random,
     recovery::{
-        bbr::BbrCongestionController, congestion_controller::Publisher, CongestionController,
-        RttEstimator,
+        bandwidth::Bandwidth, bbr::BbrCongestionController, congestion_controller::Publisher,
+        CongestionController, RttEstimator,
     },
     time::{timer, Timestamp},
 };
@@ -122,6 +122,11 @@ impl Controller {
     #[inline]
     pub fn earliest_departure_time(&self) -> Option<Timestamp> {
         self.controller.earliest_departure_time()
+    }
+
+    #[inline]
+    pub fn bandwidth(&self) -> Bandwidth {
+        self.controller.pacing_rate()
     }
 }
 

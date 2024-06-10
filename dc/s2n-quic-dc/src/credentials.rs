@@ -6,11 +6,11 @@ use core::{
     ops::{Deref, DerefMut},
 };
 use s2n_codec::{
-    decoder_invariant, decoder_value,
+    decoder_value,
     zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned},
     zerocopy_value_codec, Encoder, EncoderValue,
 };
-use s2n_quic_core::{assume, varint::VarInt};
+pub use s2n_quic_core::varint::VarInt as KeyId;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -29,7 +29,10 @@ pub mod testing;
     PartialOrd,
     Ord,
 )]
-#[cfg_attr(test, derive(bolero::TypeGenerator))]
+#[cfg_attr(
+    any(test, feature = "testing"),
+    derive(bolero_generator::TypeGenerator)
+)]
 #[repr(C)]
 pub struct Id([u8; 16]);
 
@@ -75,32 +78,21 @@ impl s2n_quic_core::probe::Arg for Id {
 zerocopy_value_codec!(Id);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(bolero::TypeGenerator))]
+#[cfg_attr(
+    any(test, feature = "testing"),
+    derive(bolero_generator::TypeGenerator)
+)]
 pub struct Credentials {
     pub id: Id,
-    pub generation_id: u32,
-    pub sequence_id: u16,
+    pub key_id: KeyId,
 }
-
-const MAX_VALUE: u64 = 1 << (32 + 16);
 
 decoder_value!(
     impl<'a> Credentials {
         fn decode(buffer: Buffer) -> Result<Self> {
             let (id, buffer) = buffer.decode()?;
-            let (value, buffer) = buffer.decode::<VarInt>()?;
-            let value = *value;
-            decoder_invariant!(value <= MAX_VALUE, "invalid range");
-            let generation_id = (value >> 16) as u32;
-            let sequence_id = value as u16;
-            Ok((
-                Self {
-                    id,
-                    generation_id,
-                    sequence_id,
-                },
-                buffer,
-            ))
+            let (key_id, buffer) = buffer.decode::<KeyId>()?;
+            Ok((Self { id, key_id }, buffer))
         }
     }
 );
@@ -109,14 +101,7 @@ impl EncoderValue for Credentials {
     #[inline]
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.id.encode(encoder);
-        let generation_id = (self.generation_id as u64) << 16;
-        let sequence_id = self.sequence_id as u64;
-        let value = generation_id | sequence_id;
-        let value = unsafe {
-            assume!(value <= MAX_VALUE);
-            VarInt::new_unchecked(value)
-        };
-        value.encode(encoder)
+        self.key_id.encode(encoder);
     }
 }
 

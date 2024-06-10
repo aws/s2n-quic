@@ -161,6 +161,7 @@ mod tests {
                     loop {
                         let mut request = flow::Request {
                             len: buffer_len,
+                            initial_len: buffer_len,
                             is_fin,
                         };
                         request.clamp(path_info.max_flow_credits(max_header_len, max_segments));

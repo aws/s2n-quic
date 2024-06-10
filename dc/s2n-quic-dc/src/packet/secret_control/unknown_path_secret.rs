@@ -17,6 +17,17 @@ pub struct Packet<'a> {
 }
 
 impl<'a> Packet<'a> {
+    pub fn new_for_test(
+        id: crate::credentials::Id,
+        stateless_reset: &[u8; STATELESS_RESET_LEN],
+    ) -> Packet<'_> {
+        Packet {
+            header: &[],
+            value: UnknownPathSecret { credential_id: id },
+            crypto_tag: &stateless_reset[..],
+        }
+    }
+
     #[inline]
     pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<Packet> {
         let header_len = decoder::header_len::<UnknownPathSecret>(buffer.peek())?;
@@ -46,7 +57,7 @@ impl<'a> Packet<'a> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(bolero::TypeGenerator))]
+#[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 pub struct UnknownPathSecret {
     pub credential_id: credentials::Id,
 }

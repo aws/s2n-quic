@@ -7,7 +7,7 @@ impl_tag!(STALE_KEY);
 impl_packet!(StaleKey);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(bolero::TypeGenerator))]
+#[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 pub struct StaleKey {
     pub credential_id: credentials::Id,
     pub min_key_id: VarInt,
@@ -15,7 +15,7 @@ pub struct StaleKey {
 
 impl StaleKey {
     #[inline]
-    pub fn encode<C>(&self, mut encoder: EncoderBuffer, crypto: &mut C) -> usize
+    pub fn encode<C>(&self, mut encoder: EncoderBuffer, crypto: &C) -> usize
     where
         C: encrypt::Key,
     {

@@ -21,7 +21,8 @@ mod nonce;
 const UNKNOWN_PATH_SECRET: u8 = 0b0110_0000;
 const STALE_KEY: u8 = 0b0110_0001;
 const REPLAY_DETECTED: u8 = 0b0110_0010;
-const REQUEST_SHARDS: u8 = 0b0110_0011;
+
+pub const MAX_PACKET_SIZE: usize = 50;
 
 macro_rules! impl_tag {
     ($tag:expr) => {
@@ -37,6 +38,13 @@ macro_rules! impl_tag {
 
         impl Tag {
             pub const VALUE: u8 = $tag;
+        }
+
+        impl From<Tag> for u8 {
+            #[inline]
+            fn from(v: Tag) -> Self {
+                v.0
+            }
         }
 
         decoder_value!(
@@ -74,8 +82,7 @@ macro_rules! impl_tests {
 
             let creds = crate::credentials::Credentials {
                 id: Default::default(),
-                generation_id: Default::default(),
-                sequence_id: Default::default(),
+                key_id: Default::default(),
             };
             let key = &[0u8; 16];
             let iv = [0u8; 12];
@@ -86,17 +93,18 @@ macro_rules! impl_tests {
                 .with_type::<$ty>()
                 .filter(|v| v.validate().is_some())
                 .for_each(|value| {
-                    let mut buffer = [0u8; 64];
+                    // Also validates that all packets fit into MAX_PACKET_SIZE.
+                    let mut buffer = [0u8; MAX_PACKET_SIZE];
                     let len = {
                         let encoder = s2n_codec::EncoderBuffer::new(&mut buffer);
-                        value.encode(encoder, (&mut &encrypt))
+                        value.encode(encoder, &encrypt)
                     };
 
                     {
                         use decrypt::Key as _;
                         let buffer = s2n_codec::DecoderBufferMut::new(&mut buffer[..len]);
                         let (decoded, _) = Packet::decode(buffer, decrypt.tag_len()).unwrap();
-                        let decoded = decoded.authenticate(&mut &decrypt).unwrap();
+                        let decoded = decoded.authenticate(&decrypt).unwrap();
                         assert_eq!(value, decoded);
                     }
 
@@ -109,7 +117,7 @@ macro_rules! impl_tests {
                         )
                         .unwrap();
                         if let crate::packet::secret_control::Packet::$ty(decoded) = decoded {
-                            let decoded = decoded.authenticate(&mut &decrypt).unwrap();
+                            let decoded = decoded.authenticate(&decrypt).unwrap();
                             assert_eq!(value, decoded);
                         } else {
                             panic!("decoded as the wrong packet type");
@@ -121,13 +129,11 @@ macro_rules! impl_tests {
 }
 
 pub mod replay_detected;
-pub mod request_shards;
 pub mod stale_key;
 pub mod unknown_path_secret;
 
 pub use nonce::Nonce;
 pub use replay_detected::ReplayDetected;
-pub use request_shards::RequestShards;
 pub use stale_key::StaleKey;
 pub use unknown_path_secret::UnknownPathSecret;
 
@@ -136,7 +142,6 @@ pub enum Packet<'a> {
     UnknownPathSecret(unknown_path_secret::Packet<'a>),
     StaleKey(stale_key::Packet<'a>),
     ReplayDetected(replay_detected::Packet<'a>),
-    RequestShards(request_shards::Packet<'a>),
 }
 
 impl<'a> Packet<'a> {
@@ -157,10 +162,6 @@ impl<'a> Packet<'a> {
                 let (packet, buffer) = replay_detected::Packet::decode(buffer, crypto_tag_len)?;
                 (Self::ReplayDetected(packet), buffer)
             }
-            REQUEST_SHARDS => {
-                let (packet, buffer) = request_shards::Packet::decode(buffer, crypto_tag_len)?;
-                (Self::RequestShards(packet), buffer)
-            }
             _ => return Err(DecoderError::InvariantViolation("invalid tag")),
         })
     }
@@ -171,7 +172,21 @@ impl<'a> Packet<'a> {
             Self::UnknownPathSecret(p) => p.credential_id(),
             Self::StaleKey(p) => p.credential_id(),
             Self::ReplayDetected(p) => p.credential_id(),
-            Self::RequestShards(p) => p.credential_id(),
         }
     }
 }
+
+macro_rules! impl_convert {
+    ($name:ident, $mod:ident) => {
+        impl<'a> From<$mod::Packet<'a>> for Packet<'a> {
+            #[inline]
+            fn from(packet: $mod::Packet<'a>) -> Self {
+                Self::$name(packet)
+            }
+        }
+    };
+}
+
+impl_convert!(UnknownPathSecret, unknown_path_secret);
+impl_convert!(StaleKey, stale_key);
+impl_convert!(ReplayDetected, replay_detected);

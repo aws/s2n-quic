@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::fmt;
-use s2n_codec::{decoder_invariant, decoder_value, Encoder, EncoderValue};
-use s2n_quic_core::{assume, ensure, probe, varint::VarInt};
+use s2n_codec::{decoder_value, Encoder, EncoderValue};
+use s2n_quic_core::{probe, varint::VarInt};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(
+    any(feature = "testing", test),
+    derive(bolero_generator::TypeGenerator)
+)]
 pub struct Id {
-    pub generation_id: u32,
-    pub sequence_id: u16,
+    #[cfg_attr(any(feature = "testing", test), generator(Self::GENERATOR))]
+    pub key_id: VarInt,
     pub is_reliable: bool,
     pub is_bidirectional: bool,
 }
@@ -18,8 +22,7 @@ impl fmt::Debug for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
             f.debug_struct("stream::Id")
-                .field("generation_id", &self.generation_id)
-                .field("sequence_id", &self.sequence_id)
+                .field("key_id", &self.key_id)
                 .field("is_reliable", &self.is_reliable)
                 .field("is_bidirectional", &self.is_bidirectional)
                 .finish()
@@ -44,6 +47,10 @@ impl probe::Arg for Id {
 }
 
 impl Id {
+    #[cfg(any(feature = "testing", test))]
+    const GENERATOR: core::ops::Range<VarInt> =
+        VarInt::ZERO..unsafe { VarInt::new_unchecked(1 << 60) };
+
     #[inline]
     pub fn bidirectional(mut self) -> Self {
         self.is_bidirectional = true;
@@ -58,14 +65,8 @@ impl Id {
 
     #[inline]
     pub fn next(&self) -> Option<Self> {
-        let mut generation_id = self.generation_id;
-        let (sequence_id, overflowed) = self.sequence_id.overflowing_add(1);
-        if overflowed {
-            generation_id = generation_id.checked_add(1)?;
-        }
         Some(Self {
-            generation_id,
-            sequence_id,
+            key_id: self.key_id.checked_add_usize(1)?,
             is_reliable: self.is_reliable,
             is_bidirectional: self.is_bidirectional,
         })
@@ -83,8 +84,7 @@ impl Id {
 
     #[inline]
     pub fn into_varint(self) -> VarInt {
-        let generation_id = (self.generation_id as u64) << 18;
-        let sequence_id = (self.sequence_id as u64) << 2;
+        let key_id = *self.key_id;
         let is_reliable = if self.is_reliable {
             IS_RELIABLE_MASK
         } else {
@@ -95,65 +95,50 @@ impl Id {
         } else {
             0b00
         };
-        let value = generation_id | sequence_id | is_reliable | is_bidirectional;
-        unsafe {
-            assume!(value <= MAX_ID_VALUE);
-            VarInt::new_unchecked(value)
+        // FIXME: We may need to clamp key IDs at 2^60 or move reliable/bidirectional out of the ID
+        // entirely, or not use a VarInt.
+        //
+        // This will panic at runtime when the key ID reaches 2^60th.
+        let value = (key_id << 2) | is_reliable | is_bidirectional;
+        VarInt::new(value).unwrap()
+    }
+
+    #[inline]
+    pub fn from_varint(value: VarInt) -> Self {
+        let is_reliable = *value & IS_RELIABLE_MASK == IS_RELIABLE_MASK;
+        let is_bidirectional = *value & IS_BIDIRECTIONAL_MASK == IS_BIDIRECTIONAL_MASK;
+        Self {
+            key_id: VarInt::new(*value >> 2).unwrap(),
+            is_reliable,
+            is_bidirectional,
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TryFromIntError(());
-
-impl fmt::Display for TryFromIntError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "could not convert the provided u64 to a stream ID")
-    }
-}
-
-impl std::error::Error for TryFromIntError {}
-
+// FIXME: Try to remove this impl. It's probably misleading to allow conversion from a generic u64
+// and might get accidentally used for going from a VarInt key id which is probably not what you
+// want.
 impl TryFrom<u64> for Id {
-    type Error = TryFromIntError;
+    type Error = s2n_quic_core::varint::VarIntError;
 
     #[inline]
     fn try_from(value: u64) -> Result<Self, Self::Error> {
-        ensure!(value <= (1 << (32 + 16)), Err(TryFromIntError(())));
-        let generation_id = (value >> 16) as u32;
-        let sequence_id = value as u16;
         Ok(Self {
-            generation_id,
-            sequence_id,
+            key_id: VarInt::new(value)?,
             is_reliable: false,
             is_bidirectional: false,
         })
     }
 }
 
-const MAX_ID_VALUE: u64 = 1 << (32 + 16 + 1 + 1);
-const IS_RELIABLE_MASK: u64 = 0b10;
-const IS_BIDIRECTIONAL_MASK: u64 = 0b01;
+pub const IS_RELIABLE_MASK: u64 = 0b10;
+pub const IS_BIDIRECTIONAL_MASK: u64 = 0b01;
 
 decoder_value!(
     impl<'a> Id {
         fn decode(buffer: Buffer) -> Result<Self> {
             let (value, buffer) = buffer.decode::<VarInt>()?;
-            let value = *value;
-            decoder_invariant!(value <= MAX_ID_VALUE, "invalid range");
-            let generation_id = (value >> 18) as u32;
-            let sequence_id = (value >> 2) as u16;
-            let is_reliable = value & IS_RELIABLE_MASK == IS_RELIABLE_MASK;
-            let is_bidirectional = value & IS_BIDIRECTIONAL_MASK == IS_BIDIRECTIONAL_MASK;
-            Ok((
-                Self {
-                    generation_id,
-                    sequence_id,
-                    is_reliable,
-                    is_bidirectional,
-                },
-                buffer,
-            ))
+            Ok((Self::from_varint(value), buffer))
         }
     }
 );

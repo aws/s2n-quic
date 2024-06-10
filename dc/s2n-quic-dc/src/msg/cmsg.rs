@@ -19,7 +19,7 @@ pub const DECODER_LEN: usize = {
 
 pub const MAX_GRO_SEGMENTS: usize = features::gro::MAX_SEGMENTS;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Receiver {
     ecn: ExplicitCongestionNotification,
     segment_len: u16,
@@ -27,9 +27,9 @@ pub struct Receiver {
 
 impl Receiver {
     #[inline]
-    pub fn with_msg(&mut self, msg: &msghdr, buffer_len: usize) {
+    pub fn with_msg(&mut self, msg: &msghdr) {
         // assume we didn't get a GRO cmsg initially
-        self.segment_len = buffer_len as _;
+        self.segment_len = 0;
 
         ensure!(!msg.msg_control.is_null());
         ensure!(msg.msg_controllen > 0);

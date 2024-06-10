@@ -177,13 +177,8 @@ impl<'a> Packet<'a> {
                 (VarInt::ZERO, buffer)
             };
 
-            let (payload_len, buffer) = if tag.has_length() {
-                let (payload_len, buffer) = buffer.decode::<VarInt>()?;
-                let payload_len = (*payload_len) as usize;
-                (payload_len, buffer)
-            } else {
-                (0, buffer)
-            };
+            let (payload_len, buffer) = buffer.decode::<VarInt>()?;
+            let payload_len = (*payload_len) as usize;
 
             let (next_expected_control_packet, control_data_len, buffer) = if tag.ack_eliciting() {
                 let (packet_number, buffer) = buffer.decode::<VarInt>()?;
@@ -207,15 +202,6 @@ impl<'a> Packet<'a> {
             let buffer = buffer.skip(control_data_len)?;
 
             let total_header_len = start_len - buffer.len();
-
-            let payload_len = if tag.has_length() {
-                payload_len
-            } else {
-                buffer
-                    .len()
-                    .checked_sub(crypto_tag_len)
-                    .ok_or(DecoderError::UnexpectedEof(crypto_tag_len))?
-            };
 
             (
                 tag,

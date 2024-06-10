@@ -76,7 +76,7 @@ impl super::decrypt::Key for Key {
 
     #[inline]
     fn decrypt<N: IntoNonce>(
-        &mut self,
+        &self,
         _nonce: N,
         _header: &[u8],
         payload_in: &[u8],
@@ -89,7 +89,7 @@ impl super::decrypt::Key for Key {
 
     #[inline]
     fn decrypt_in_place<N: IntoNonce>(
-        &mut self,
+        &self,
         _nonce: N,
         _header: &[u8],
         _payload_and_tag: &mut [u8],
@@ -99,7 +99,7 @@ impl super::decrypt::Key for Key {
 
     #[inline]
     fn retransmission_tag(
-        &mut self,
+        &self,
         _original_packet_number: u64,
         _retransmission_packet_number: u64,
         _tag_out: &mut [u8],

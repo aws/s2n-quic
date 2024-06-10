@@ -33,8 +33,21 @@ pub enum Tag {
     Control(super::control::Tag),
     StaleKey(super::secret_control::stale_key::Tag),
     ReplayDetected(super::secret_control::replay_detected::Tag),
-    RequestShards(super::secret_control::request_shards::Tag),
     UnknownPathSecret(super::secret_control::unknown_path_secret::Tag),
+}
+
+impl From<Tag> for u8 {
+    #[inline]
+    fn from(tag: Tag) -> u8 {
+        match tag {
+            Tag::Stream(v) => v.into(),
+            Tag::Datagram(v) => v.into(),
+            Tag::Control(v) => v.into(),
+            Tag::StaleKey(v) => v.into(),
+            Tag::ReplayDetected(v) => v.into(),
+            Tag::UnknownPathSecret(v) => v.into(),
+        }
+    }
 }
 
 decoder_value!(
@@ -61,10 +74,6 @@ decoder_value!(
                     let (tag, buffer) = buffer.decode()?;
                     Ok((Self::ReplayDetected(tag), buffer))
                 }
-                super::secret_control::request_shards::Tag::VALUE => {
-                    let (tag, buffer) = buffer.decode()?;
-                    Ok((Self::RequestShards(tag), buffer))
-                }
                 super::secret_control::unknown_path_secret::Tag::VALUE => {
                     let (tag, buffer) = buffer.decode()?;
                     Ok((Self::UnknownPathSecret(tag), buffer))
@@ -89,6 +98,26 @@ macro_rules! impl_tag_codec {
                 self.0.encode(encoder);
             }
         }
+
+        impl From<$ty> for u8 {
+            #[inline]
+            fn from(v: $ty) -> u8 {
+                v.0.into()
+            }
+        }
+
+        /*
+        impl TryFrom<u8> for $ty {
+            type Error = s2n_codec::DecoderError;
+
+            #[inline]
+            fn try_from(v: u8) -> Result<$ty, Self::Error> {
+                let v = Self(v.try_into()?);
+                v.validate()?;
+                Ok(v)
+            }
+        }
+        */
 
         s2n_codec::decoder_value!(
             impl<'a> $ty {
