@@ -3,7 +3,7 @@
 
 //! Provides MTU configuration at the connection level.
 
-pub use s2n_quic_core::path::mtu::{Config, ConnectionInfo, Endpoint};
+pub use s2n_quic_core::path::mtu::{Config, ConnectionInfo, Endpoint, MtuError};
 
 pub trait Provider {
     type Config: 'static + Send + Endpoint;

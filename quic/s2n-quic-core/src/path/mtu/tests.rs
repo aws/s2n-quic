@@ -81,60 +81,60 @@ fn mtu_config_is_valid() {
 #[test]
 fn mtu_config_builder() {
     // Default built config is valid
-    assert!(mtu::EndpointConfig::builder().build().unwrap().is_valid());
+    assert!(mtu::Config::builder().build().unwrap().is_valid());
 
     // Setting the base MTU higher than the default adjusts the default initial MTU
-    let builder = mtu::EndpointConfig::builder();
+    let builder = mtu::Config::builder();
     let builder = builder.with_base_mtu(1300).unwrap();
     let config = builder.build().unwrap();
     assert_eq!(1300_u16, u16::from(config.base_mtu));
     assert_eq!(1300_u16, u16::from(config.initial_mtu));
 
     // Setting the base MTU higher than the default max MTU results in an error
-    let builder = mtu::EndpointConfig::builder();
+    let builder = mtu::Config::builder();
     let result = builder
         .with_base_mtu(DEFAULT_MAX_MTU.0.get() + 1_u16)
         .unwrap()
         .build();
-    assert_eq!(Some(MtuError), result.err());
+    assert_eq!(Some(MtuError::Validation), result.err());
 
     // Setting the initial MTU higher than the default max MTU results in an error
-    let builder = mtu::EndpointConfig::builder();
+    let builder = mtu::Config::builder();
     let result = builder
         .with_initial_mtu(DEFAULT_MAX_MTU.0.get() + 1_u16)
         .unwrap()
         .build();
-    assert_eq!(Some(MtuError), result.err());
+    assert_eq!(Some(MtuError::Validation), result.err());
 
     // Setting the base MTU higher than the configured initial MTU results in an error
-    let builder = mtu::EndpointConfig::builder();
+    let builder = mtu::Config::builder();
     let result = builder.with_initial_mtu(1300).unwrap().with_base_mtu(1301);
-    assert_eq!(Some(MtuError), result.err());
+    assert_eq!(Some(MtuError::Validation), result.err());
 
     // Setting the max MTU lower than the configured initial MTU results in an error
-    let builder = mtu::EndpointConfig::builder();
+    let builder = mtu::Config::builder();
     let result = builder.with_initial_mtu(1300).unwrap().with_max_mtu(1299);
-    assert_eq!(Some(MtuError), result.err());
+    assert_eq!(Some(MtuError::Validation), result.err());
 
     // Setting the initial MTU lower than the configured base MTU results in an error
-    let builder = mtu::EndpointConfig::builder();
+    let builder = mtu::Config::builder();
     let result = builder.with_base_mtu(1300).unwrap().with_initial_mtu(1299);
-    assert_eq!(Some(MtuError), result.err());
+    assert_eq!(Some(MtuError::Validation), result.err());
 
     // Setting the initial MTU higher than the configured max MTU results in an error
-    let builder = mtu::EndpointConfig::builder();
+    let builder = mtu::Config::builder();
     let result = builder.with_max_mtu(1300).unwrap().with_initial_mtu(1301);
-    assert_eq!(Some(MtuError), result.err());
+    assert_eq!(Some(MtuError::Validation), result.err());
 
     // Setting the base MTU higher than the configured max MTU results in an error
-    let builder = mtu::EndpointConfig::builder();
+    let builder = mtu::Config::builder();
     let result = builder.with_max_mtu(1300).unwrap().with_base_mtu(1301);
-    assert_eq!(Some(MtuError), result.err());
+    assert_eq!(Some(MtuError::Validation), result.err());
 
     // Setting the max MTU lower than the configured base MTU results in an error
-    let builder = mtu::EndpointConfig::builder();
+    let builder = mtu::Config::builder();
     let result = builder.with_base_mtu(1300).unwrap().with_max_mtu(1299);
-    assert_eq!(Some(MtuError), result.err());
+    assert_eq!(Some(MtuError::Validation), result.err());
 }
 
 #[test]
@@ -145,7 +145,7 @@ fn base_plpmtu_is_1200() {
     //# IPv4, there is no currently equivalent size specified, and a
     //# default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
     let ip = IpV4Address::new([127, 0, 0, 1]);
-    let addr = SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
+    let addr = inet::SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
     let controller = Controller::new(Config::default(), &addr);
     assert_eq!(controller.base_plpmtu, 1200);
 }
@@ -759,7 +759,7 @@ fn on_packet_loss_not_application_space() {
 #[test]
 fn on_packet_loss_initial_mtu_configured() {
     let ip = IpV4Address::new([127, 0, 0, 1]);
-    let addr = SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
+    let addr = inet::SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
     let mut publisher = Publisher::snapshot();
 
     for max_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {

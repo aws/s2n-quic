@@ -129,7 +129,7 @@ impl<const IS_SERVER: bool> Endpoint for TestEndpoint<IS_SERVER> {
         self.now.map(|now| now + Duration::from_millis(50))
     }
 
-    fn set_mtu_config(&mut self, _mtu_config: mtu::EndpointConfig) {
+    fn set_mtu_config(&mut self, _mtu_config: mtu::Config) {
         // noop
     }
 

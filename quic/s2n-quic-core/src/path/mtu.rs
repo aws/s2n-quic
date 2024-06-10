@@ -180,7 +180,7 @@ macro_rules! impl_mtu {
 
             fn try_from(value: u16) -> Result<Self, Self::Error> {
                 if value < MINIMUM_MTU {
-                    return Err(MtuError);
+                    return Err(MtuError::Validation);
                 }
 
                 Ok($name(value.try_into().expect(
@@ -215,16 +215,23 @@ impl_mtu!(MaxMtu, DEFAULT_MAX_MTU);
 impl_mtu!(InitialMtu, DEFAULT_INITIAL_MTU);
 impl_mtu!(BaseMtu, DEFAULT_BASE_MTU);
 
+#[non_exhaustive]
 #[derive(Debug, Eq, PartialEq)]
-pub struct MtuError;
+pub enum MtuError {
+    Validation,
+}
 
 impl Display for MtuError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "MTU must have {} <= base_mtu (default: {}) <= initial_mtu (default: {}) <= max_mtu (default: {})",
-            MINIMUM_MTU, DEFAULT_BASE_MTU.0, DEFAULT_INITIAL_MTU.0, DEFAULT_MAX_MTU.0
-        )
+        match self {
+            MtuError::Validation => {
+                write!(
+                    f,
+                    "MTU must have {} <= base_mtu (default: {}) <= initial_mtu (default: {}) <= max_mtu (default: {})",
+                    MINIMUM_MTU, DEFAULT_BASE_MTU.0, DEFAULT_INITIAL_MTU.0, DEFAULT_MAX_MTU.0
+                )
+            }
+        }
     }
 }
 
@@ -238,7 +245,7 @@ pub fn is_mtu_config_valid(initial_mtu: InitialMtu, base_mtu: BaseMtu, max_mtu: 
 
 pub struct ConnectionInfo<'a> {
     pub remote_address: event::api::SocketAddress<'a>,
-    endpoint_config: Config,
+    pub endpoint_config: Config,
 }
 
 impl<'a> ConnectionInfo<'a> {
@@ -252,9 +259,34 @@ impl<'a> ConnectionInfo<'a> {
     }
 }
 
+// // TODO maybe combine this and MtuError
+// #[non_exhaustive]
+// #[derive(Debug, Eq, PartialEq)]
+// pub enum ProviderError {
+//     Validation,
+// }
+
+// #[cfg(feature = "std")]
+// impl std::error::Error for ProviderError {}
+
+// impl Display for ProviderError {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         match self {
+//             ProviderError::Validation => {
+//                 write!(
+//                     f,
+//                     "MTU must have {} <= base_mtu (default: {}) <= initial_mtu (default: {}) <= max_mtu (default: {})",
+//                     MINIMUM_MTU, DEFAULT_BASE_MTU.0, DEFAULT_INITIAL_MTU.0, DEFAULT_MAX_MTU.0
+//                 )
+//             }
+//             _ => unreachable!(),
+//         }
+//     }
+// }
+
 /// Creates MTU config for the given connection.
 pub trait Endpoint: 'static + Send {
-    fn on_connection(&mut self, info: &mtu::ConnectionInfo) -> Result<mtu::Config, ()> {
+    fn on_connection(&mut self, info: &mtu::ConnectionInfo) -> Result<mtu::Config, MtuError> {
         Ok(info.endpoint_config)
     }
 }
@@ -310,11 +342,11 @@ pub struct ConfigBuilder {
 impl ConfigBuilder {
     pub fn with_initial_mtu(mut self, initial_mtu: u16) -> Result<Self, MtuError> {
         if let Some(base_mtu) = self.base_mtu {
-            ensure!(initial_mtu >= base_mtu.0.get(), Err(MtuError));
+            ensure!(initial_mtu >= base_mtu.0.get(), Err(MtuError::Validation));
         }
 
         if let Some(max_mtu) = self.max_mtu {
-            ensure!(initial_mtu <= max_mtu.0.get(), Err(MtuError));
+            ensure!(initial_mtu <= max_mtu.0.get(), Err(MtuError::Validation));
         }
 
         self.initial_mtu = Some(initial_mtu.try_into()?);
@@ -323,11 +355,11 @@ impl ConfigBuilder {
 
     pub fn with_base_mtu(mut self, base_mtu: u16) -> Result<Self, MtuError> {
         if let Some(initial_mtu) = self.initial_mtu {
-            ensure!(initial_mtu.0.get() >= base_mtu, Err(MtuError));
+            ensure!(initial_mtu.0.get() >= base_mtu, Err(MtuError::Validation));
         }
 
         if let Some(max_mtu) = self.max_mtu {
-            ensure!(base_mtu <= max_mtu.0.get(), Err(MtuError));
+            ensure!(base_mtu <= max_mtu.0.get(), Err(MtuError::Validation));
         }
 
         self.base_mtu = Some(base_mtu.try_into()?);
@@ -336,11 +368,11 @@ impl ConfigBuilder {
 
     pub fn with_max_mtu(mut self, max_mtu: u16) -> Result<Self, MtuError> {
         if let Some(initial_mtu) = self.initial_mtu {
-            ensure!(initial_mtu.0.get() <= max_mtu, Err(MtuError));
+            ensure!(initial_mtu.0.get() <= max_mtu, Err(MtuError::Validation));
         }
 
         if let Some(base_mtu) = self.base_mtu {
-            ensure!(base_mtu.0.get() <= max_mtu, Err(MtuError));
+            ensure!(base_mtu.0.get() <= max_mtu, Err(MtuError::Validation));
         }
 
         self.max_mtu = Some(max_mtu.try_into()?);
@@ -369,7 +401,7 @@ impl ConfigBuilder {
             base_mtu,
         };
 
-        ensure!(config.is_valid(), Err(MtuError));
+        ensure!(config.is_valid(), Err(MtuError::Validation));
         Ok(config)
     }
 }

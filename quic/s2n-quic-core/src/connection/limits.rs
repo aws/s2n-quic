@@ -390,7 +390,8 @@ impl Limits {
 pub trait Limiter: 'static + Send {
     fn on_connection(&mut self, info: &ConnectionInfo) -> Limits;
 
-    // // we call this
+    // TODO: limits should be fallible, we we should call this internally and
+    // error when creating the limits in the endpoint
     // fn on_conection_checked(...) -> Result<Limits> {
     //     Ok(self.on_connection(info)
     // }
