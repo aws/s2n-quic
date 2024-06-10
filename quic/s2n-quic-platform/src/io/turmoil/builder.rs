@@ -8,7 +8,7 @@ pub struct Builder {
     pub(super) handle: Option<Handle>,
     pub(super) socket: Option<UdpSocket>,
     pub(super) addr: Option<Box<dyn turmoil::ToSocketAddrs + Send + Sync + 'static>>,
-    pub(super) mtu_config_builder: mtu::Builder,
+    pub(super) mtu_config_builder: mtu::ConfigBuilder,
 }
 
 impl Builder {

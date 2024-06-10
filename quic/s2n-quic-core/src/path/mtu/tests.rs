@@ -34,48 +34,28 @@ fn mtu_config_is_valid() {
         base_mtu: 1228.try_into().unwrap(),
         max_mtu: 9000.try_into().unwrap(),
     };
-
-    assert!(is_mtu_config_valid(
-        config.initial_mtu,
-        config.base_mtu,
-        config.max_mtu
-    ));
+    assert!(config.is_valid());
 
     let config = Config {
         initial_mtu: 1500.try_into().unwrap(),
         base_mtu: 1500.try_into().unwrap(),
         max_mtu: 1500.try_into().unwrap(),
     };
-
-    assert!(is_mtu_config_valid(
-        config.initial_mtu,
-        config.base_mtu,
-        config.max_mtu
-    ));
+    assert!(config.is_valid());
 
     let config = Config {
         initial_mtu: 1500.try_into().unwrap(),
         base_mtu: 1501.try_into().unwrap(),
         max_mtu: 9000.try_into().unwrap(),
     };
-
-    assert!(!is_mtu_config_valid(
-        config.initial_mtu,
-        config.base_mtu,
-        config.max_mtu
-    ));
+    assert!(!config.is_valid());
 
     let config = mtu::Config {
         initial_mtu: 1500.try_into().unwrap(),
         base_mtu: 1228.try_into().unwrap(),
         max_mtu: 1400.try_into().unwrap(),
     };
-
-    assert!(!is_mtu_config_valid(
-        config.initial_mtu,
-        config.base_mtu,
-        config.max_mtu
-    ));
+    assert!(!config.is_valid());
 }
 
 #[test]

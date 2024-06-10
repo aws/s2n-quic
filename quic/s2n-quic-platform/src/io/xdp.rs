@@ -116,7 +116,7 @@ pub use builder::Builder;
 pub struct Provider<Rx, Tx> {
     rx: Rx,
     tx: Tx,
-    mtu_config_builder: mtu::Builder,
+    mtu_config_builder: mtu::ConfigBuilder,
     handle: Option<tokio::runtime::Handle>,
 }
 
