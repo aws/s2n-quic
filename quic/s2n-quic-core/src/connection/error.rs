@@ -87,7 +87,7 @@ pub enum Error {
         source: &'static panic::Location<'static>,
     },
 
-    /// The connection was closed due to an unspecified reason
+    /// The connection was closed due to validation failure during operation
     #[non_exhaustive]
     Validation {
         reason: &'static str,

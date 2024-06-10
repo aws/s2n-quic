@@ -20,7 +20,7 @@ use s2n_quic_core::{
     event::{self, supervisor, ConnectionPublisher, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
-    path::{mtu, mtu::Endpoint as _, Handle as _},
+    path::{mtu, mtu::Limiter as _, Handle as _},
     stateless_reset::token::Generator as _,
     transport::{self, parameters::ServerTransportParameters},
 };

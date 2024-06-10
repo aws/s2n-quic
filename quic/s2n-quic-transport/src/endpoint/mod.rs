@@ -39,7 +39,7 @@ use s2n_quic_core::{
     io::{rx, tx},
     packet::{initial::ProtectedInitial, interceptor::Interceptor, ProtectedPacket},
     path,
-    path::{mtu, mtu::Endpoint as _, Handle as _},
+    path::{mtu, mtu::Limiter as _, Handle as _},
     random::Generator as _,
     stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},

@@ -31,7 +31,7 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     /// The connection limits
     type ConnectionLimits: connection::limits::Limiter;
     /// The mtu configuration
-    type MtuConfig: s2n_quic_core::path::mtu::Endpoint;
+    type MtuConfig: s2n_quic_core::path::mtu::Limiter;
     /// The type of stream
     type StreamManager: stream::Manager;
     /// The connection close formatter

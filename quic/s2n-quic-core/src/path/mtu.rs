@@ -255,13 +255,13 @@ impl<'a> ConnectionInfo<'a> {
 }
 
 /// Creates MTU config for the given connection.
-pub trait Endpoint: 'static + Send {
+pub trait Limiter: 'static + Send {
     fn on_connection(&mut self, info: &mtu::ConnectionInfo) -> Result<mtu::Config, MtuError> {
         Ok(info.endpoint_config)
     }
 }
 
-impl Endpoint for Config {}
+impl Limiter for Config {}
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Config {
