@@ -25,7 +25,7 @@ bytes = { version = "1", default-features = false, optional = true }
 zerocopy = { version = "0.7", features = ["derive"] }
 
 [dev-dependencies]
-bolero = "0.10"
+bolero = "0.11"
 bolero-generator = "0.10"
 
 [package.metadata.kani]
