@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{generator::gen_default, Application, Packet};
+use super::{Application, Packet};
 use alloc::collections::BTreeMap;
 use bolero::generator::*;
 use s2n_quic_core::{endpoint, time::Timestamp};
@@ -9,7 +9,7 @@ use s2n_quic_core::{endpoint, time::Timestamp};
 #[derive(Clone, Debug, TypeGenerator)]
 pub struct NetworkInterface {
     pub application: Application,
-    #[generator(gen_default())]
+    #[generator(constant(Default::default()))]
     rx_queue: BTreeMap<Timestamp, Packet>,
 }
 
