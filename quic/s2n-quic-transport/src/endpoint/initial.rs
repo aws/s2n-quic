@@ -177,7 +177,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                 &remote_address,
                 self.endpoint_mtu_config,
             ))
-            .expect("todo");
+            .map_err(|_| {
+                connection::Error::validation("failed to instantiate a valid MTU provider")
+            })?;
 
         transport_parameters.load_limits(&limits);
 
@@ -281,8 +283,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &mut publisher,
         );
 
-        // let endpoint_mtu_config = self.endpoint_mtu_config;
-        // let mtu_config = mtu::Config::new(endpoint_mtu_config, limits);
         let connection_parameters = connection::Parameters {
             internal_connection_id,
             local_id_registry,

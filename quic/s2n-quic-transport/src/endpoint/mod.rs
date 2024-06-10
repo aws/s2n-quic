@@ -556,13 +556,18 @@ impl<Cfg: Config> Endpoint<Cfg> {
         {
             let mut check_for_stateless_reset = false;
 
-            let mtu_config = endpoint_context
+            let mtu_provider = endpoint_context
                 .mtu
                 .on_connection(&mtu::ConnectionInfo::new(
                     &remote_address,
                     self.endpoint_mtu_config,
-                ))
-                .expect("todo");
+                ));
+            let mtu_config = if let Ok(mtu_config) = mtu_provider {
+                mtu_config
+            } else {
+                // connection::Error::validation("failed to instantiate a valid MTU provider")
+                return;
+            };
 
             datagram.destination_connection_id_classification = dcid_classification;
 
@@ -1123,7 +1128,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 remote_address,
             );
 
-        // let mtu_config = mtu::Config::new(self.endpoint_mtu_config, limits);
         let connection_parameters = connection::Parameters {
             internal_connection_id,
             local_id_registry,
