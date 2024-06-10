@@ -3,6 +3,7 @@ members = [
     "common/s2n-*",
     "quic/s2n-*",
     "dc/s2n-*",
+    "dc/wireshark",
 ]
 default-members = [
     "common/s2n-*",
