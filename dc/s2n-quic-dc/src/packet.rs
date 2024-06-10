@@ -25,7 +25,6 @@ pub enum Packet<'a> {
     Control(control::decoder::Packet<'a>),
     StaleKey(secret_control::stale_key::Packet<'a>),
     ReplayDetected(secret_control::replay_detected::Packet<'a>),
-    RequestShards(secret_control::request_shards::Packet<'a>),
     UnknownPathSecret(secret_control::unknown_path_secret::Packet<'a>),
 }
 
@@ -51,20 +50,19 @@ impl<'a> s2n_codec::DecoderParameterizedValueMut<'a> for Packet<'a> {
                 Ok((Self::Datagram(packet), decoder))
             }
             Tag::StaleKey(_) => {
-                // TODO
-                todo!()
+                let (packet, decoder) =
+                    secret_control::stale_key::Packet::decode(decoder, tag_len)?;
+                Ok((Self::StaleKey(packet), decoder))
             }
             Tag::ReplayDetected(_) => {
-                // TODO
-                todo!()
-            }
-            Tag::RequestShards(_) => {
-                // TODO
-                todo!()
+                let (packet, decoder) =
+                    secret_control::replay_detected::Packet::decode(decoder, tag_len)?;
+                Ok((Self::ReplayDetected(packet), decoder))
             }
             Tag::UnknownPathSecret(_) => {
-                // TODO
-                todo!()
+                let (packet, decoder) =
+                    secret_control::unknown_path_secret::Packet::decode(decoder)?;
+                Ok((Self::UnknownPathSecret(packet), decoder))
             }
         }
     }

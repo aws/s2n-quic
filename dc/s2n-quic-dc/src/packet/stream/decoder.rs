@@ -4,11 +4,11 @@
 use crate::{
     credentials::Credentials,
     crypto,
-    packet::stream::{self, Tag},
+    packet::stream::{self, RelativeRetransmissionOffset, Tag},
 };
+use core::{fmt, mem::size_of};
 use s2n_codec::{
-    decoder_invariant, u24, CheckedRange, DecoderBufferMut, DecoderBufferMutResult as R,
-    DecoderError,
+    decoder_invariant, CheckedRange, DecoderBufferMut, DecoderBufferMutResult as R, DecoderError,
 };
 use s2n_quic_core::{assume, varint::VarInt};
 
@@ -90,7 +90,6 @@ impl<'a> From<Packet<'a>> for Owned {
     }
 }
 
-#[derive(Debug)]
 pub struct Packet<'a> {
     tag: Tag,
     credentials: Credentials,
@@ -108,6 +107,24 @@ pub struct Packet<'a> {
     control_data: CheckedRange,
     payload: &'a mut [u8],
     auth_tag: &'a mut [u8],
+}
+
+impl<'a> fmt::Debug for Packet<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("stream::Packet")
+            .field("tag", &self.tag)
+            .field("credentials", &self.credentials)
+            .field("source_control_port", &self.source_control_port)
+            .field("source_stream_port", &self.source_stream_port)
+            .field("stream_id", &self.stream_id)
+            .field("packet_number", &self.packet_number())
+            .field("stream_offset", &self.stream_offset)
+            .field("final_offset", &self.final_offset)
+            .field("header_len", &self.header.len())
+            .field("payload_len", &self.payload.len())
+            .field("auth_tag_len", &self.auth_tag.len())
+            .finish()
+    }
 }
 
 impl<'a> Packet<'a> {
@@ -198,17 +215,23 @@ impl<'a> Packet<'a> {
     }
 
     #[inline]
+    pub fn total_len(&self) -> usize {
+        self.header.len() + self.payload.len() + self.auth_tag.len()
+    }
+
+    #[inline]
     pub fn decrypt<D>(
         &mut self,
-        d: &mut D,
+        d: &D,
         payload_out: &mut crypto::UninitSlice,
     ) -> Result<(), crypto::decrypt::Error>
     where
         D: crypto::decrypt::Key,
     {
-        self.remove_retransmit(d);
+        let space = self.remove_retransmit(d);
 
-        let nonce = self.original_packet_number.as_u64();
+        let nonce = space.packet_number_into_nonce(self.original_packet_number);
+
         let header = &self.header;
         let payload = &self.payload;
         let auth_tag = &self.auth_tag;
@@ -219,13 +242,13 @@ impl<'a> Packet<'a> {
     }
 
     #[inline]
-    pub fn decrypt_in_place<D>(&mut self, d: &mut D) -> Result<(), crypto::decrypt::Error>
+    pub fn decrypt_in_place<D>(&mut self, d: &D) -> Result<(), crypto::decrypt::Error>
     where
         D: crypto::decrypt::Key,
     {
-        self.remove_retransmit(d);
+        let space = self.remove_retransmit(d);
 
-        let nonce = self.original_packet_number.as_u64();
+        let nonce = space.packet_number_into_nonce(self.original_packet_number);
         let header = &self.header;
 
         let payload_len = self.payload.len();
@@ -244,22 +267,32 @@ impl<'a> Packet<'a> {
     }
 
     #[inline]
-    fn remove_retransmit<D>(&mut self, d: &mut D)
+    fn remove_retransmit<D>(&mut self, d: &D) -> stream::PacketSpace
     where
         D: crypto::decrypt::Key,
     {
-        let original_packet_number = self.original_packet_number.as_u64();
-        let retransmission_packet_number = self.packet_number.as_u64();
+        let space = self.tag.packet_space();
+        let original_packet_number = self.original_packet_number;
+        let retransmission_packet_number = self.packet_number;
 
         if original_packet_number != retransmission_packet_number {
             d.retransmission_tag(
-                original_packet_number,
-                retransmission_packet_number,
+                original_packet_number.as_u64(),
+                stream::PacketSpace::Recovery
+                    .packet_number_into_nonce(retransmission_packet_number),
                 self.auth_tag,
             );
+            // clear the recovery packet bit, since this is a retransmission
+            self.header[0] &= !super::Tag::IS_RECOVERY_PACKET;
+
+            // update the retransmission offset to the zero value
             let offset = self.retransmission_packet_number_offset as usize;
-            let range = offset..offset + 3;
-            self.header[range].copy_from_slice(&[0; 3]);
+            let range = offset..offset + size_of::<RelativeRetransmissionOffset>();
+            self.header[range].copy_from_slice(&[0; size_of::<RelativeRetransmissionOffset>()]);
+
+            stream::PacketSpace::Stream
+        } else {
+            space
         }
     }
 
@@ -267,8 +300,9 @@ impl<'a> Packet<'a> {
     #[cfg(debug_assertions)]
     pub fn retransmit<K>(
         buffer: DecoderBufferMut,
+        space: stream::PacketSpace,
         retransmission_packet_number: VarInt,
-        key: &mut K,
+        key: &K,
     ) -> Result<(), DecoderError>
     where
         K: crypto::encrypt::Key,
@@ -276,11 +310,14 @@ impl<'a> Packet<'a> {
         let buffer = buffer.into_less_safe_slice();
 
         let mut before = Self::snapshot(buffer, key.tag_len());
+        // update the expected packet space with the new one
+        before.tag.set_packet_space(space);
         // the auth tag will have changed so clear it
         before.auth_tag.clear();
 
         Self::retransmit_impl(
             DecoderBufferMut::new(buffer),
+            space,
             retransmission_packet_number,
             key,
         )?;
@@ -300,13 +337,14 @@ impl<'a> Packet<'a> {
     #[cfg(not(debug_assertions))]
     pub fn retransmit<K>(
         buffer: DecoderBufferMut,
+        space: stream::PacketSpace,
         retransmission_packet_number: VarInt,
-        key: &mut K,
+        key: &K,
     ) -> Result<(), DecoderError>
     where
         K: crypto::encrypt::Key,
     {
-        Self::retransmit_impl(buffer, retransmission_packet_number, key)
+        Self::retransmit_impl(buffer, space, retransmission_packet_number, key)
     }
 
     #[inline]
@@ -320,8 +358,9 @@ impl<'a> Packet<'a> {
     #[inline(always)]
     fn retransmit_impl<K>(
         buffer: DecoderBufferMut,
+        space: stream::PacketSpace,
         retransmission_packet_number: VarInt,
-        key: &mut K,
+        key: &K,
     ) -> Result<(), DecoderError>
     where
         K: crypto::encrypt::Key,
@@ -330,7 +369,24 @@ impl<'a> Packet<'a> {
             assume!(key.tag_len() >= 16, "tag len needs to be at least 16 bytes");
         }
 
-        let (tag, buffer) = buffer.decode::<Tag>()?;
+        let (tag_slice, buffer) = buffer.decode_slice(1)?;
+
+        let tag: super::Tag = {
+            let tag_slice = tag_slice.into_less_safe_slice();
+
+            match space {
+                stream::PacketSpace::Stream => {
+                    tag_slice[0] &= !super::Tag::IS_RECOVERY_PACKET;
+                }
+                stream::PacketSpace::Recovery => {
+                    tag_slice[0] |= super::Tag::IS_RECOVERY_PACKET;
+                }
+            }
+
+            let tag_slice = DecoderBufferMut::new(tag_slice);
+            let (tag, _) = tag_slice.decode()?;
+            tag
+        };
 
         let (credentials, buffer) = buffer.decode::<Credentials>()?;
 
@@ -353,11 +409,13 @@ impl<'a> Packet<'a> {
         );
 
         let (original_packet_number, buffer) = buffer.decode::<VarInt>()?;
-        let (retransmission_packet_number_buffer, buffer) = buffer.decode_slice(3)?;
+        let (retransmission_packet_number_buffer, buffer) =
+            buffer.decode_slice(size_of::<RelativeRetransmissionOffset>())?;
         let retransmission_packet_number_buffer =
             retransmission_packet_number_buffer.into_less_safe_slice();
-        let retransmission_packet_number_buffer: &mut [u8; 3] =
-            retransmission_packet_number_buffer.try_into().unwrap();
+        let retransmission_packet_number_buffer: &mut [u8;
+                 size_of::<RelativeRetransmissionOffset>(
+            )] = retransmission_packet_number_buffer.try_into().unwrap();
 
         let (_next_expected_control_packet, buffer) = buffer.decode::<VarInt>()?;
         let (_stream_offset, buffer) = buffer.decode::<VarInt>()?;
@@ -375,20 +433,21 @@ impl<'a> Packet<'a> {
                 "invalid retransmission packet number",
             ))?;
 
-        let original_packet_number = original_packet_number.as_u64();
-
-        let relative: u24 = relative
+        let relative: RelativeRetransmissionOffset = relative
             .as_u64()
             .try_into()
             .map_err(|_| DecoderError::InvariantViolation("packet is too old"))?;
 
         // undo the previous retransmission if needed
-        let prev_value = u24::from_be_bytes(*retransmission_packet_number_buffer);
-        if prev_value != u24::ZERO {
-            let retransmission_packet_number = original_packet_number + *prev_value as u64;
+        let prev_value =
+            RelativeRetransmissionOffset::from_be_bytes(*retransmission_packet_number_buffer);
+        if prev_value != 0 {
+            let retransmission_packet_number =
+                original_packet_number + VarInt::from_u32(prev_value);
             key.retransmission_tag(
-                original_packet_number,
-                retransmission_packet_number,
+                original_packet_number.as_u64(),
+                stream::PacketSpace::Recovery
+                    .packet_number_into_nonce(retransmission_packet_number),
                 auth_tag,
             );
         }
@@ -396,8 +455,8 @@ impl<'a> Packet<'a> {
         retransmission_packet_number_buffer.copy_from_slice(&relative.to_be_bytes());
 
         key.retransmission_tag(
-            original_packet_number,
-            retransmission_packet_number.as_u64(),
+            original_packet_number.as_u64(),
+            stream::PacketSpace::Recovery.packet_number_into_nonce(retransmission_packet_number),
             auth_tag,
         );
 
@@ -459,8 +518,8 @@ impl<'a> Packet<'a> {
 
             let retransmission_packet_number_offset = (start_len - buffer.len()) as u8;
             let (packet_number, buffer) = if stream_id.is_reliable {
-                let (rel, buffer) = buffer.decode::<u24>()?;
-                let rel = VarInt::from_u32(*rel);
+                let (rel, buffer) = buffer.decode::<RelativeRetransmissionOffset>()?;
+                let rel = VarInt::from_u32(rel);
                 let pn = original_packet_number.checked_add(rel).ok_or(
                     DecoderError::InvariantViolation("retransmission packet number overflow"),
                 )?;

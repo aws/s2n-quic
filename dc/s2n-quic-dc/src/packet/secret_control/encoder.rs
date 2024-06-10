@@ -7,7 +7,7 @@ use s2n_codec::{Encoder, EncoderBuffer};
 use s2n_quic_core::assume;
 
 #[inline]
-pub fn finish<C>(mut encoder: EncoderBuffer, nonce: Nonce, crypto: &mut C) -> usize
+pub fn finish<C>(mut encoder: EncoderBuffer, nonce: Nonce, crypto: &C) -> usize
 where
     C: encrypt::Key,
 {

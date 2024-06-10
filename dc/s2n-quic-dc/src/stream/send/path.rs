@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::{
+    fmt,
+    sync::atomic::{AtomicU64, Ordering},
+};
 use s2n_quic_core::{inet::ExplicitCongestionNotification, varint::VarInt};
 
 /// Contains the current state of a transmission path
@@ -10,13 +13,51 @@ pub struct State {
     next_expected_control_packet: AtomicU64,
 }
 
+impl fmt::Debug for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.load().fmt(f)
+    }
+}
+
 impl State {
+    #[inline]
+    pub fn new(info: Info) -> Self {
+        Self {
+            info: AtomicU64::new(Self::encode_info(info.ecn, info.send_quantum, info.mtu)),
+            next_expected_control_packet: AtomicU64::new(
+                info.next_expected_control_packet.as_u64(),
+            ),
+        }
+    }
+
     /// Loads a relaxed view of the current path state
     #[inline]
     pub fn load(&self) -> Info {
         // use relaxed since it's ok to be slightly out of sync with the current MTU/send_quantum
-        let mut data = self.info.load(Ordering::Relaxed);
+        let data = self.info.load(Ordering::Relaxed);
+        let (ecn, send_quantum, mtu) = Self::decode_info(data);
 
+        let next_expected_control_packet =
+            self.next_expected_control_packet.load(Ordering::Relaxed);
+        let next_expected_control_packet =
+            VarInt::new(next_expected_control_packet).unwrap_or(VarInt::MAX);
+
+        Info {
+            mtu,
+            send_quantum,
+            ecn,
+            next_expected_control_packet,
+        }
+    }
+
+    #[inline]
+    pub fn update_info(&self, ecn: ExplicitCongestionNotification, send_quantum: u8, mtu: u16) {
+        let info = Self::encode_info(ecn, send_quantum, mtu);
+        self.info.store(info, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn decode_info(mut data: u64) -> (ExplicitCongestionNotification, u8, u16) {
         let mtu = data as u16;
         data >>= 16;
 
@@ -31,17 +72,28 @@ impl State {
 
         debug_assert_eq!(data, 0, "unexpected extra data");
 
-        let next_expected_control_packet =
-            self.next_expected_control_packet.load(Ordering::Relaxed);
-        let next_expected_control_packet =
-            VarInt::new(next_expected_control_packet).unwrap_or(VarInt::MAX);
+        (ecn, send_quantum, mtu)
+    }
 
-        Info {
-            mtu,
-            send_quantum,
-            ecn,
-            next_expected_control_packet,
-        }
+    #[inline]
+    fn encode_info(ecn: ExplicitCongestionNotification, send_quantum: u8, mtu: u16) -> u64 {
+        let mut data = 0u64;
+
+        data |= ecn as u8 as u64;
+        data <<= 8;
+
+        data |= send_quantum as u64;
+        data <<= 16;
+
+        data |= mtu as u64;
+
+        data
+    }
+
+    #[inline]
+    pub fn set_next_expected_control_packet(&self, next_expected_control_packet: VarInt) {
+        self.next_expected_control_packet
+            .store(next_expected_control_packet.as_u64(), Ordering::Relaxed);
     }
 }
 
@@ -65,5 +117,25 @@ impl Info {
         let max_payload_size = max_payload_size_per_segment * max_segments;
 
         max_payload_size as u64
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bolero::check;
+
+    /// Ensures encode/decode functions correctly round-trip
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn codec_inverse_pair() {
+        check!()
+            .with_type()
+            .cloned()
+            .for_each(|(ecn, send_quantum, mtu)| {
+                let actual = State::decode_info(State::encode_info(ecn, send_quantum, mtu));
+
+                assert_eq!((ecn, send_quantum, mtu), actual);
+            })
     }
 }

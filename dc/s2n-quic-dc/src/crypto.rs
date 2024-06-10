@@ -39,9 +39,10 @@ pub mod encrypt {
 pub mod decrypt {
     use super::*;
 
-    #[derive(Clone, Copy, Debug)]
+    #[derive(PartialEq, Eq, Clone, Copy, Debug)]
     pub enum Error {
-        ReplayPotentiallyDetected,
+        // None if we don't even try to look (e.g., poisoned the tracker).
+        ReplayPotentiallyDetected { gap: Option<u64> },
         ReplayDefinitelyDetected,
         InvalidTag,
     }
@@ -49,11 +50,16 @@ pub mod decrypt {
     impl fmt::Display for Error {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                Self::ReplayDefinitelyDetected => "key replay prevented",
-                Self::ReplayPotentiallyDetected => "key replay potentially detected",
-                Self::InvalidTag => "invalid tag",
+                Self::ReplayDefinitelyDetected => "key replay prevented".fmt(f),
+                Self::ReplayPotentiallyDetected { gap: Some(gap) } => write!(
+                    f,
+                    "key replay potentially detected: {gap} from latest entry"
+                ),
+                Self::ReplayPotentiallyDetected { gap: None } => {
+                    write!(f, "key replay potentially detected: unknown gap")
+                }
+                Self::InvalidTag => "invalid tag".fmt(f),
             }
-            .fmt(f)
         }
     }
 
@@ -68,7 +74,7 @@ pub mod decrypt {
 
         /// Decrypt a payload
         fn decrypt<N: IntoNonce>(
-            &mut self,
+            &self,
             nonce: N,
             header: &[u8],
             payload_in: &[u8],
@@ -78,14 +84,14 @@ pub mod decrypt {
 
         /// Decrypt a payload
         fn decrypt_in_place<N: IntoNonce>(
-            &mut self,
+            &self,
             nonce: N,
             header: &[u8],
             payload_and_tag: &mut [u8],
         ) -> Result;
 
         fn retransmission_tag(
-            &mut self,
+            &self,
             original_packet_number: u64,
             retransmission_packet_number: u64,
             tag_out: &mut [u8],

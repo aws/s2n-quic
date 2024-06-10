@@ -6,33 +6,34 @@ use crate::{
     packet::stream::{self, encoder},
     stream::{
         packet_number,
-        send::{error::Error, flow, path},
+        send::{error::Error, flow, path, probes},
     },
 };
+use bytes::buf::UninitSlice;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     buffer::{self, reader::Storage as _, Reader as _},
     ensure,
-    inet::ExplicitCongestionNotification,
     time::Clock,
     varint::VarInt,
 };
 
+pub mod transmission;
+
 pub trait Message {
     fn max_segments(&self) -> usize;
-    fn set_ecn(&mut self, ecn: ExplicitCongestionNotification);
-    fn push<Clk: Clock, P: FnOnce(&mut [u8]) -> usize>(
+    fn push<P: FnOnce(&mut UninitSlice) -> transmission::Event<()>>(
         &mut self,
-        clock: &Clk,
-        is_reliable: bool,
         buffer_len: usize,
         p: P,
     );
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct State {
-    pub source_control_port: u16,
     pub stream_id: stream::Id,
+    pub source_control_port: u16,
+    pub source_stream_port: Option<u16>,
 }
 
 impl State {
@@ -53,7 +54,10 @@ impl State {
         Clk: Clock,
         M: Message,
     {
-        ensure!(credits.len > 0 || credits.is_fin, Ok(()));
+        ensure!(
+            credits.len > 0 || storage.buffer_is_empty() || credits.is_fin,
+            Ok(())
+        );
 
         let mut reader = buffer::reader::Incremental::new(credits.offset);
         let mut reader = reader.with_storage(storage, credits.is_fin)?;
@@ -66,9 +70,7 @@ impl State {
         let stream_id = *self.stream_id();
         let max_header_len = self.max_header_len();
 
-        // TODO set destination address with the current value
-
-        message.set_ecn(path.ecn);
+        let mut total_payload_len = 0;
 
         loop {
             let packet_number = packet_number.next()?;
@@ -78,13 +80,23 @@ impl State {
                 (path.mtu as usize).min(estimated_len)
             };
 
-            message.push(clock, stream_id.is_reliable, buffer_len, |buffer| {
+            message.push(buffer_len, |buffer| {
+                let stream_offset = reader.current_offset();
+                let mut reader = reader.track_read();
+
+                let buffer = unsafe {
+                    // SAFETY: `buffer` is a valid `UninitSlice` but `EncoderBuffer` expects to
+                    // write into a `&mut [u8]`. Here we construct a `&mut [u8]` since
+                    // `EncoderBuffer` never actually reads from the slice and only writes to it.
+                    core::slice::from_raw_parts_mut(buffer.as_mut_ptr(), buffer.len())
+                };
                 let encoder = EncoderBuffer::new(buffer);
-                encoder::encode(
+                let packet_len = encoder::encode(
                     encoder,
                     self.source_control_port,
-                    None,
+                    self.source_stream_port,
                     stream_id,
+                    stream::PacketSpace::Stream,
                     packet_number,
                     path.next_expected_control_packet,
                     VarInt::ZERO,
@@ -93,7 +105,52 @@ impl State {
                     &(),
                     &mut reader,
                     encrypt_key,
-                )
+                );
+
+                // buffer is clamped to u16::MAX so this is safe to cast without loss
+                let _: u16 = path.mtu;
+                let packet_len = packet_len as u16;
+                let payload_len = reader.consumed_len() as u16;
+                total_payload_len += payload_len as usize;
+
+                let has_more_app_data = credits.initial_len > total_payload_len;
+
+                let included_fin = reader.final_offset().map_or(false, |fin| {
+                    stream_offset.as_u64() + payload_len as u64 == fin.as_u64()
+                });
+
+                let time_sent = clock.get_time();
+                probes::on_transmit_stream(
+                    encrypt_key.credentials().id,
+                    stream_id,
+                    stream::PacketSpace::Stream,
+                    s2n_quic_core::packet::number::PacketNumberSpace::Initial
+                        .new_packet_number(packet_number),
+                    stream_offset,
+                    payload_len,
+                    included_fin,
+                    false,
+                );
+
+                let info = transmission::Info {
+                    packet_len,
+                    retransmission: if stream_id.is_reliable {
+                        Some(())
+                    } else {
+                        None
+                    },
+                    stream_offset,
+                    payload_len,
+                    included_fin,
+                    time_sent,
+                    ecn: path.ecn,
+                };
+
+                transmission::Event {
+                    packet_number,
+                    info,
+                    has_more_app_data,
+                }
             });
 
             // bail if we've transmitted everything

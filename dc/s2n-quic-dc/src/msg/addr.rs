@@ -36,6 +36,15 @@ impl fmt::Display for Addr {
     }
 }
 
+impl PartialEq for Addr {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice().eq(other.as_slice())
+    }
+}
+
+impl Eq for Addr {}
+
 impl Default for Addr {
     #[inline]
     fn default() -> Self {
@@ -55,24 +64,13 @@ impl Addr {
     }
 
     #[inline]
+    fn as_slice(&self) -> &[u8] {
+        &self.msg_name[..self.msg_namelen as usize]
+    }
+
+    #[inline]
     pub fn get(&self) -> SocketAddress {
-        match self.msg_namelen as usize {
-            size if size == size_of::<sockaddr_in>() => {
-                let sockaddr: &sockaddr_in = unsafe { &*(self.msg_name.as_ptr() as *const _) };
-                let port = sockaddr.sin_port.to_be();
-                let addr: inet::IpV4Address = sockaddr.sin_addr.s_addr.to_ne_bytes().into();
-                inet::SocketAddressV4::new(addr, port).into()
-            }
-            size if size == size_of::<sockaddr_in6>() => {
-                let sockaddr: &sockaddr_in6 = unsafe { &*(self.msg_name.as_ptr() as *const _) };
-                let port = sockaddr.sin6_port.to_be();
-                let addr: inet::IpV6Address = sockaddr.sin6_addr.s6_addr.into();
-                inet::SocketAddressV6::new(addr, port).into()
-            }
-            _ => unsafe {
-                assume!(false, "invalid remote address");
-            },
-        }
+        unsafe { read(self.msg_name.as_ptr(), self.msg_namelen as _) }
     }
 
     #[inline]
@@ -117,8 +115,8 @@ impl Addr {
     }
 
     #[inline]
-    pub fn send_with_msg(&mut self, msg: &mut msghdr) {
-        msg.msg_name = self.msg_name.as_mut_ptr() as *mut _;
+    pub fn send_with_msg(&self, msg: &mut msghdr) {
+        msg.msg_name = self.msg_name.as_ptr() as *mut u8 as *mut _;
         msg.msg_namelen = self.msg_namelen as _;
     }
 
@@ -133,16 +131,41 @@ impl Addr {
     pub fn update_with_msg(&mut self, msg: &msghdr) {
         debug_assert_eq!(self.msg_name.as_ptr(), msg.msg_name as *const u8);
         match msg.msg_namelen as usize {
+            0 => {
+                // set the address to unspecified
+                self.set(SocketAddress::default());
+            }
             size if size == size_of::<sockaddr_in>() => {
                 self.msg_namelen = size as _;
             }
             size if size == size_of::<sockaddr_in6>() => {
                 self.msg_namelen = size as _;
             }
-            _ => {
-                unreachable!("invalid remote address")
-            }
+            size => unreachable!("invalid address length {size}"),
         }
+    }
+}
+
+/// # Safety
+///
+/// * `ptr` must be a valid pointer
+/// * `len` bytes must be readable from `ptr`
+#[inline]
+pub unsafe fn read(ptr: *const u8, len: usize) -> SocketAddress {
+    match len {
+        size if size == size_of::<sockaddr_in>() => {
+            let sockaddr: &sockaddr_in = unsafe { &*(ptr as *const _) };
+            let port = sockaddr.sin_port.to_be();
+            let addr: inet::IpV4Address = sockaddr.sin_addr.s_addr.to_ne_bytes().into();
+            inet::SocketAddressV4::new(addr, port).into()
+        }
+        size if size == size_of::<sockaddr_in6>() => {
+            let sockaddr: &sockaddr_in6 = unsafe { &*(ptr as *const _) };
+            let port = sockaddr.sin6_port.to_be();
+            let addr: inet::IpV6Address = sockaddr.sin6_addr.s6_addr.into();
+            inet::SocketAddressV6::new(addr, port).into()
+        }
+        size => unreachable!("invalid address length {size}"),
     }
 }
 

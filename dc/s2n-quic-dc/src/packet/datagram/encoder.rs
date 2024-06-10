@@ -3,7 +3,7 @@
 
 use crate::{credentials, crypto::encrypt, packet::datagram::Tag};
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
-use s2n_quic_core::{assume, buffer};
+use s2n_quic_core::{assume, buffer, varint::VarInt};
 
 #[inline(always)]
 pub fn estimate_len(
@@ -50,9 +50,8 @@ pub fn estimate_len(
 #[allow(clippy::too_many_arguments)]
 pub fn encode<H, CD, P, C>(
     mut encoder: EncoderBuffer,
-    tag: Tag,
     source_control_port: u16,
-    packet_number: super::PacketNumber,
+    packet_number: Option<super::PacketNumber>,
     next_expected_control_packet: Option<super::PacketNumber>,
     header_len: super::HeaderLen,
     header: &mut H,
@@ -67,11 +66,14 @@ where
     CD: EncoderValue,
     C: encrypt::Key,
 {
-    debug_assert_eq!(tag.ack_eliciting(), next_expected_control_packet.is_some());
+    let mut tag = super::Tag::default();
+    tag.set_is_connected(packet_number.is_some());
+    tag.set_has_application_header(header_len != super::HeaderLen::ZERO);
+    tag.set_ack_eliciting(next_expected_control_packet.is_some());
 
     let header_len_usize = *header_len as usize;
     let payload_len_usize = *payload_len as usize;
-    let nonce = *packet_number;
+    let nonce = *packet_number.unwrap_or(super::PacketNumber::ZERO);
 
     encoder.encode(&tag);
 
@@ -82,17 +84,13 @@ where
     if tag.is_connected() || tag.ack_eliciting() {
         unsafe {
             assume!(encoder.remaining_capacity() >= 8);
-            encoder.encode(&packet_number);
+            encoder.encode(&packet_number.unwrap());
         }
-    } else {
-        debug_assert_eq!(packet_number, super::PacketNumber::default());
     }
 
-    if tag.has_length() {
-        unsafe {
-            assume!(encoder.remaining_capacity() >= 8);
-            encoder.encode(&payload_len);
-        }
+    unsafe {
+        assume!(encoder.remaining_capacity() >= 8);
+        encoder.encode(&payload_len);
     }
 
     if let Some(packet_number) = next_expected_control_packet {
@@ -100,7 +98,10 @@ where
             assume!(encoder.remaining_capacity() >= 8);
             encoder.encode(&packet_number);
         }
-        // TODO write control data len
+
+        // FIXME: Is this right way to convert? Should we take control_data_len?
+        encoder
+            .encode(&VarInt::new(control_data.encoding_size() as u64).expect("control data fits"));
     }
 
     if !header.buffer_is_empty() {

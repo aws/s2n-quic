@@ -3,13 +3,47 @@
 
 use super::tag::Common;
 use core::fmt;
+use s2n_quic_core::{probe, varint::VarInt};
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 
 pub mod decoder;
 pub mod encoder;
-mod id;
+pub mod id;
+
+type RelativeRetransmissionOffset = u32;
 
 pub use id::Id;
+
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(
+    any(feature = "testing", test),
+    derive(bolero_generator::TypeGenerator)
+)]
+pub enum PacketSpace {
+    Stream,
+    Recovery,
+}
+
+impl PacketSpace {
+    #[inline]
+    pub fn packet_number_into_nonce(&self, packet_number: VarInt) -> u64 {
+        let mut nonce = packet_number.as_u64();
+        if let Self::Recovery = self {
+            nonce |= 1 << 62;
+        }
+        nonce
+    }
+}
+
+impl probe::Arg for PacketSpace {
+    #[inline]
+    fn into_usdt(self) -> isize {
+        match self {
+            Self::Stream => 0,
+            Self::Recovery => 1,
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, AsBytes, FromBytes, FromZeroes, Unaligned)]
 #[repr(C)]
@@ -27,7 +61,9 @@ impl Default for Tag {
 impl fmt::Debug for Tag {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("stream::Tag")
+            .field("has_source_stream_port", &self.has_source_stream_port())
             .field("has_control_data", &self.has_control_data())
+            .field("packet_space", &self.packet_space())
             .field("has_final_offset", &self.has_final_offset())
             .field("has_application_header", &self.has_application_header())
             .finish()
@@ -35,10 +71,11 @@ impl fmt::Debug for Tag {
 }
 
 impl Tag {
-    const HAS_SOURCE_STREAM_PORT: u8 = 0b01_0000;
-    const HAS_CONTROL_DATA_MASK: u8 = 0b00_0100;
-    const HAS_FINAL_OFFSET_MASK: u8 = 0b00_0010;
-    const HAS_APPLICATION_HEADER_MASK: u8 = 0b00_0001;
+    pub const HAS_SOURCE_STREAM_PORT: u8 = 0b01_0000;
+    pub const IS_RECOVERY_PACKET: u8 = 0b00_1000;
+    pub const HAS_CONTROL_DATA_MASK: u8 = 0b00_0100;
+    pub const HAS_FINAL_OFFSET_MASK: u8 = 0b00_0010;
+    pub const HAS_APPLICATION_HEADER_MASK: u8 = 0b00_0001;
 
     pub const MIN: u8 = 0b0000_0000;
     pub const MAX: u8 = 0b0011_1111;
@@ -51,6 +88,21 @@ impl Tag {
     #[inline]
     pub fn has_source_stream_port(&self) -> bool {
         self.0.get(Self::HAS_SOURCE_STREAM_PORT)
+    }
+
+    #[inline]
+    pub fn set_packet_space(&mut self, space: PacketSpace) {
+        let enabled = matches!(space, PacketSpace::Recovery);
+        self.0.set(Self::IS_RECOVERY_PACKET, enabled)
+    }
+
+    #[inline]
+    pub fn packet_space(&self) -> PacketSpace {
+        if self.0.get(Self::IS_RECOVERY_PACKET) {
+            PacketSpace::Recovery
+        } else {
+            PacketSpace::Stream
+        }
     }
 
     #[inline]

@@ -7,7 +7,7 @@ impl_tag!(REQUEST_SHARDS);
 impl_packet!(RequestShards);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(bolero::TypeGenerator))]
+#[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 pub struct RequestShards {
     pub credential_id: credentials::Id,
     pub receiving_shards: u16,

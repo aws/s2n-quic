@@ -42,6 +42,7 @@ probe::define!(
         pub fn on_packet_ack(
             credential_id: credentials::Id,
             stream_id: stream::Id,
+            packet_space: stream::PacketSpace,
             packet_number: u64,
             packet_len: u16,
             stream_offset: VarInt,
@@ -54,6 +55,7 @@ probe::define!(
         pub fn on_packet_lost(
             credential_id: credentials::Id,
             stream_id: stream::Id,
+            packet_space: stream::PacketSpace,
             packet_number: u64,
             packet_len: u16,
             stream_offset: VarInt,
@@ -84,9 +86,11 @@ probe::define!(
         pub fn on_transmit_stream(
             credential_id: credentials::Id,
             stream_id: stream::Id,
+            packet_space: stream::PacketSpace,
             packet_number: PacketNumber,
             stream_offset: VarInt,
             payload_len: u16,
+            included_fin: bool,
             is_retransmission: bool,
         );
 
@@ -95,9 +99,11 @@ probe::define!(
         pub fn on_transmit_probe(
             credential_id: credentials::Id,
             stream_id: stream::Id,
+            packet_space: stream::PacketSpace,
             packet_number: PacketNumber,
             stream_offset: VarInt,
             payload_len: u16,
+            included_fin: bool,
             is_retransmission: bool,
         );
 

@@ -5,13 +5,16 @@ use super::Credits;
 use crate::stream::send::{error::Error, flow};
 use atomic_waker::AtomicWaker;
 use core::{
+    fmt,
     sync::atomic::{AtomicU64, Ordering},
     task::{Context, Poll},
 };
 use s2n_quic_core::{ensure, varint::VarInt};
+use std::sync::OnceLock;
 
 const ERROR_MASK: u64 = 1 << 63;
 const FINISHED_MASK: u64 = 1 << 62;
+const OFFSET_MASK: u64 = !(ERROR_MASK | FINISHED_MASK);
 
 pub struct State {
     /// Monotonic offset which tracks where the application is currently writing
@@ -20,7 +23,17 @@ pub struct State {
     flow_offset: AtomicU64,
     /// Notifies an application of newly-available flow credits
     poll_waker: AtomicWaker,
+    stream_error: OnceLock<Error>,
     // TODO add a list for the `acquire` future wakers
+}
+
+impl fmt::Debug for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("flow::non_blocking::State")
+            .field("stream_offset", &self.stream_offset.load(Ordering::Relaxed))
+            .field("flow_offset", &self.flow_offset.load(Ordering::Relaxed))
+            .finish()
+    }
 }
 
 impl State {
@@ -30,18 +43,51 @@ impl State {
             stream_offset: AtomicU64::new(0),
             flow_offset: AtomicU64::new(initial_flow_offset.as_u64()),
             poll_waker: AtomicWaker::new(),
+            stream_error: OnceLock::new(),
         }
     }
 }
 
 impl State {
+    #[inline]
+    pub fn stream_offset(&self) -> VarInt {
+        let value = self.stream_offset.load(Ordering::Relaxed);
+        // mask off the two upper bits
+        let value = value & OFFSET_MASK;
+        unsafe { VarInt::new_unchecked(value) }
+    }
+
     /// Called by the background worker to release flow credits
     ///
     /// Callers MUST ensure the provided offset is monotonic.
     #[inline]
     pub fn release(&self, flow_offset: VarInt) {
+        tracing::trace!(release = %flow_offset);
         self.flow_offset
             .store(flow_offset.as_u64(), Ordering::Release);
+        self.poll_waker.wake();
+    }
+
+    /// Called by the background worker to release flow credits
+    ///
+    /// This version only releases credits if the value is strictly less than the previous value
+    #[inline]
+    pub fn release_max(&self, flow_offset: VarInt) {
+        tracing::trace!(release = %flow_offset);
+        let prev = self
+            .flow_offset
+            .fetch_max(flow_offset.as_u64(), Ordering::Release);
+
+        // if the flow offset was updated then wake the application waker
+        if prev < flow_offset.as_u64() {
+            self.poll_waker.wake();
+        }
+    }
+
+    #[inline]
+    pub fn set_error(&self, error: Error) {
+        let _ = self.stream_error.set(error);
+        self.flow_offset.fetch_and(ERROR_MASK, Ordering::Relaxed);
         self.poll_waker.wake();
     }
 
@@ -58,7 +104,7 @@ impl State {
         cx: &mut Context,
         mut request: flow::Request,
     ) -> Poll<Result<Credits, Error>> {
-        let mut current_offset = self.acquire_offset()?;
+        let mut current_offset = self.acquire_offset(&request)?;
 
         let mut stored_waker = false;
 
@@ -66,7 +112,7 @@ impl State {
             let flow_offset = self.flow_offset.load(Ordering::Acquire);
 
             let Some(flow_credits) = flow_offset
-                .checked_sub(current_offset.as_u64())
+                .checked_sub(current_offset & OFFSET_MASK)
                 .filter(|v| {
                     // if we're finishing the stream and don't have any buffered data, then we
                     // don't need any flow control
@@ -84,7 +130,7 @@ impl State {
                 self.poll_waker.register(cx.waker());
 
                 // make one last effort to acquire some flow credits before going to sleep
-                current_offset = self.acquire_offset()?;
+                current_offset = self.acquire_offset(&request)?;
 
                 continue;
             };
@@ -92,18 +138,18 @@ impl State {
             // clamp the request to the flow credits we have
             request.clamp(flow_credits);
 
-            let mut new_offset = current_offset
-                .as_u64()
+            let mut new_offset = (current_offset & OFFSET_MASK)
                 .checked_add(request.len as u64)
+                .filter(|v| *v <= VarInt::MAX.as_u64())
                 .ok_or(Error::PayloadTooLarge)?;
 
             // record that we've sent the final offset
-            if request.is_fin {
+            if request.is_fin || current_offset & FINISHED_MASK == FINISHED_MASK {
                 new_offset |= FINISHED_MASK;
             }
 
             let result = self.stream_offset.compare_exchange(
-                current_offset.as_u64(),
+                current_offset,
                 new_offset,
                 Ordering::Release, // TODO is this the correct ordering?
                 Ordering::Acquire,
@@ -112,12 +158,14 @@ impl State {
             match result {
                 Ok(_) => {
                     // the offset was correctly updated so return our acquired credits
-                    let credits = request.response(current_offset);
+                    let acquired_offset =
+                        unsafe { VarInt::new_unchecked(current_offset & OFFSET_MASK) };
+                    let credits = request.response(acquired_offset);
                     return Poll::Ready(Ok(credits));
                 }
                 Err(updated_offset) => {
                     // the offset was updated from underneath us so try again
-                    current_offset = Self::process_offset(updated_offset)?;
+                    current_offset = self.process_offset(updated_offset, &request)?;
                     // clear the fact that we stored the waker, since we need to do a full sync
                     // to get the correct state
                     stored_waker = false;
@@ -128,22 +176,26 @@ impl State {
     }
 
     #[inline]
-    fn acquire_offset(&self) -> Result<VarInt, Error> {
-        Self::process_offset(self.stream_offset.load(Ordering::Acquire))
+    fn acquire_offset(&self, request: &flow::Request) -> Result<u64, Error> {
+        self.process_offset(self.stream_offset.load(Ordering::Acquire), request)
     }
 
     #[inline]
-    fn process_offset(offset: u64) -> Result<VarInt, Error> {
+    fn process_offset(&self, offset: u64, request: &flow::Request) -> Result<u64, Error> {
         if offset & ERROR_MASK == ERROR_MASK {
-            // TODO actually load the error value for the stream
-            return Err(Error::TransportError { code: VarInt::MAX });
+            let error = self
+                .stream_error
+                .get()
+                .copied()
+                .unwrap_or(Error::FatalError);
+            return Err(error);
         }
 
         if offset & FINISHED_MASK == FINISHED_MASK {
-            return Err(Error::FinalSizeChanged);
+            ensure!(request.len == 0, Err(Error::FinalSizeChanged));
         }
 
-        Ok(unsafe { VarInt::new_unchecked(offset) })
+        Ok(offset)
     }
 }
 
@@ -186,6 +238,7 @@ mod tests {
                 loop {
                     let mut request = flow::Request {
                         len: buffer_len,
+                        initial_len: buffer_len,
                         is_fin,
                     };
                     request.clamp(path_info.max_flow_credits(max_header_len, max_segments));
@@ -195,9 +248,10 @@ mod tests {
                     };
 
                     println!(
-                        "thread={idx} offset={}..{}",
+                        "thread={idx} offset={}..{} is_fin={}",
                         credits.offset,
-                        credits.offset + credits.len
+                        credits.offset + credits.len,
+                        credits.is_fin,
                     );
                     buffer_len += 1;
                     buffer_len = buffer_len.min(
@@ -209,6 +263,10 @@ mod tests {
                     assert!(max_offset <= credits.offset);
                     max_offset = credits.offset;
                     if buffer_len == 0 {
+                        // we already wrote our fin
+                        if is_fin {
+                            break;
+                        }
                         is_fin = true;
                     }
                     total.fetch_add(credits.len as _, Ordering::Relaxed);

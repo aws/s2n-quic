@@ -35,7 +35,7 @@ impl EncryptKey {
     }
 }
 
-impl super::encrypt::Key for &EncryptKey {
+impl super::encrypt::Key for EncryptKey {
     #[inline]
     fn credentials(&self) -> &Credentials {
         &self.credentials
@@ -97,50 +97,6 @@ impl super::encrypt::Key for &EncryptKey {
     }
 }
 
-impl super::encrypt::Key for EncryptKey {
-    #[inline]
-    fn credentials(&self) -> &Credentials {
-        &self.credentials
-    }
-
-    #[inline]
-    fn tag_len(&self) -> usize {
-        <&Self as super::encrypt::Key>::tag_len(&self)
-    }
-
-    #[inline]
-    fn encrypt<N: IntoNonce>(
-        &self,
-        nonce: N,
-        header: &[u8],
-        extra_payload: Option<&[u8]>,
-        payload_and_tag: &mut [u8],
-    ) {
-        <&Self as super::encrypt::Key>::encrypt(
-            &self,
-            nonce,
-            header,
-            extra_payload,
-            payload_and_tag,
-        )
-    }
-
-    #[inline]
-    fn retransmission_tag(
-        &self,
-        original_packet_number: u64,
-        retransmission_packet_number: u64,
-        tag_out: &mut [u8],
-    ) {
-        <&Self as super::encrypt::Key>::retransmission_tag(
-            &self,
-            original_packet_number,
-            retransmission_packet_number,
-            tag_out,
-        )
-    }
-}
-
 #[derive(Debug)]
 pub struct DecryptKey {
     credentials: Credentials,
@@ -166,7 +122,7 @@ impl DecryptKey {
     }
 }
 
-impl super::decrypt::Key for &DecryptKey {
+impl super::decrypt::Key for DecryptKey {
     #[inline]
     fn credentials(&self) -> &Credentials {
         &self.credentials
@@ -180,7 +136,7 @@ impl super::decrypt::Key for &DecryptKey {
 
     #[inline]
     fn decrypt<N: IntoNonce>(
-        &mut self,
+        &self,
         nonce: N,
         header: &[u8],
         payload_in: &[u8],
@@ -206,7 +162,7 @@ impl super::decrypt::Key for &DecryptKey {
 
     #[inline]
     fn decrypt_in_place<N: IntoNonce>(
-        &mut self,
+        &self,
         nonce: N,
         header: &[u8],
         payload_and_tag: &mut [u8],
@@ -223,7 +179,7 @@ impl super::decrypt::Key for &DecryptKey {
 
     #[inline]
     fn retransmission_tag(
-        &mut self,
+        &self,
         original_packet_number: u64,
         retransmission_packet_number: u64,
         tag_out: &mut [u8],
@@ -231,66 +187,6 @@ impl super::decrypt::Key for &DecryptKey {
         retransmission_tag(
             &self.key,
             &self.iv,
-            original_packet_number,
-            retransmission_packet_number,
-            tag_out,
-        )
-    }
-}
-
-impl super::decrypt::Key for DecryptKey {
-    fn credentials(&self) -> &Credentials {
-        &self.credentials
-    }
-
-    #[inline]
-    fn tag_len(&self) -> usize {
-        <&Self as super::decrypt::Key>::tag_len(&self)
-    }
-
-    #[inline]
-    fn decrypt<N: IntoNonce>(
-        &mut self,
-        nonce: N,
-        header: &[u8],
-        payload_in: &[u8],
-        tag: &[u8],
-        payload_out: &mut bytes::buf::UninitSlice,
-    ) -> super::decrypt::Result {
-        <&Self as super::decrypt::Key>::decrypt(
-            &mut &*self,
-            nonce,
-            header,
-            payload_in,
-            tag,
-            payload_out,
-        )
-    }
-
-    #[inline]
-    fn decrypt_in_place<N: IntoNonce>(
-        &mut self,
-        nonce: N,
-        header: &[u8],
-        payload_and_tag: &mut [u8],
-    ) -> super::decrypt::Result {
-        <&Self as super::decrypt::Key>::decrypt_in_place(
-            &mut &*self,
-            nonce,
-            header,
-            payload_and_tag,
-        )
-    }
-
-    #[inline]
-    fn retransmission_tag(
-        &mut self,
-        original_packet_number: u64,
-        retransmission_packet_number: u64,
-        tag_out: &mut [u8],
-    ) {
-        <&Self as super::decrypt::Key>::retransmission_tag(
-            &mut &*self,
             original_packet_number,
             retransmission_packet_number,
             tag_out,

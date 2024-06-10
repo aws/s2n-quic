@@ -7,7 +7,7 @@ impl_tag!(REQUEST_ADDITIONAL_GENERATION);
 impl_packet!(RequestAdditionalGeneration);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(bolero::TypeGenerator))]
+#[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 pub struct RequestAdditionalGeneration {
     pub credential_id: credentials::Id,
     pub generation_id: u32,

@@ -29,6 +29,8 @@ where
     CD: EncoderValue,
     C: encrypt::Key,
 {
+    debug_assert_ne!(source_control_port, 0);
+
     let mut tag = Tag::default();
 
     if stream_id.is_some() {

@@ -35,8 +35,15 @@ pub enum Error {
 impl From<Error> for std::io::Error {
     #[inline]
     fn from(error: Error) -> Self {
+        Self::new(error.into(), error)
+    }
+}
+
+impl From<Error> for std::io::ErrorKind {
+    #[inline]
+    fn from(error: Error) -> Self {
         use std::io::ErrorKind;
-        let kind = match error {
+        match error {
             Error::PayloadTooLarge => ErrorKind::BrokenPipe,
             Error::PacketBufferTooSmall => ErrorKind::InvalidInput,
             Error::PacketNumberExhaustion => ErrorKind::BrokenPipe,
@@ -48,8 +55,7 @@ impl From<Error> for std::io::Error {
             Error::TransportError { .. } => ErrorKind::ConnectionAborted,
             Error::FrameError { .. } => ErrorKind::InvalidData,
             Error::FatalError => ErrorKind::BrokenPipe,
-        };
-        Self::new(kind, error)
+        }
     }
 }
 
