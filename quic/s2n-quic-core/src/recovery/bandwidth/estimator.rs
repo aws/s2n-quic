@@ -69,6 +69,18 @@ impl Bandwidth {
         }
     }
 
+    #[inline]
+    pub fn serialize(self) -> u64 {
+        self.nanos_per_kibibyte
+    }
+
+    #[inline]
+    pub fn deserialize(value: u64) -> Self {
+        Self {
+            nanos_per_kibibyte: value,
+        }
+    }
+
     /// Represents the bandwidth as bytes per second
     pub fn as_bytes_per_second(&self) -> u64 {
         const ONE_SECOND_IN_NANOS: u64 = Duration::from_secs(1).as_nanos() as u64;
@@ -352,7 +364,17 @@ impl Estimator {
             self.rate_sample.on_ack(newest_acked_packet_info);
             self.first_sent_time = Some(newest_acked_time_sent);
 
+            debug_assert!(
+                newest_acked_time_sent >= newest_acked_packet_info.first_sent_time,
+                "newest_acked_time_sent={newest_acked_time_sent}, first_sent_time={}",
+                newest_acked_packet_info.first_sent_time
+            );
             let send_elapsed = newest_acked_time_sent - newest_acked_packet_info.first_sent_time;
+            debug_assert!(
+                now >= newest_acked_packet_info.delivered_time,
+                "now={now}, delivered_time={}",
+                newest_acked_packet_info.delivered_time
+            );
             let ack_elapsed = now - newest_acked_packet_info.delivered_time;
 
             //= https://tools.ietf.org/id/draft-cheng-iccrg-delivery-rate-estimation-02#2.2.4

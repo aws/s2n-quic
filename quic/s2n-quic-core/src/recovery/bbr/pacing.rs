@@ -182,8 +182,7 @@ impl Pacer {
         self.send_quantum = send_quantum
     }
 
-    #[cfg(test)]
-    pub fn pacing_rate(&self) -> Bandwidth {
+    pub(super) fn pacing_rate(&self) -> Bandwidth {
         self.pacing_rate
     }
 }
