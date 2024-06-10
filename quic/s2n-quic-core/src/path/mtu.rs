@@ -238,11 +238,6 @@ impl Display for MtuError {
 #[cfg(feature = "std")]
 impl std::error::Error for MtuError {}
 
-#[inline]
-pub fn is_mtu_config_valid(initial_mtu: InitialMtu, base_mtu: BaseMtu, max_mtu: MaxMtu) -> bool {
-    base_mtu.0 <= initial_mtu.0 && initial_mtu.0 <= max_mtu.0
-}
-
 pub struct ConnectionInfo<'a> {
     pub remote_address: event::api::SocketAddress<'a>,
     pub endpoint_config: Config,
@@ -258,31 +253,6 @@ impl<'a> ConnectionInfo<'a> {
         }
     }
 }
-
-// // TODO maybe combine this and MtuError
-// #[non_exhaustive]
-// #[derive(Debug, Eq, PartialEq)]
-// pub enum ProviderError {
-//     Validation,
-// }
-
-// #[cfg(feature = "std")]
-// impl std::error::Error for ProviderError {}
-
-// impl Display for ProviderError {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         match self {
-//             ProviderError::Validation => {
-//                 write!(
-//                     f,
-//                     "MTU must have {} <= base_mtu (default: {}) <= initial_mtu (default: {}) <= max_mtu (default: {})",
-//                     MINIMUM_MTU, DEFAULT_BASE_MTU.0, DEFAULT_INITIAL_MTU.0, DEFAULT_MAX_MTU.0
-//                 )
-//             }
-//             _ => unreachable!(),
-//         }
-//     }
-// }
 
 /// Creates MTU config for the given connection.
 pub trait Endpoint: 'static + Send {
@@ -328,7 +298,7 @@ impl Config {
     /// A valid MTU configuration must have base_mtu <= initial_mtu <= max_mtu
     #[inline]
     pub fn is_valid(&self) -> bool {
-        is_mtu_config_valid(self.initial_mtu, self.base_mtu, self.max_mtu)
+        self.base_mtu.0 <= self.initial_mtu.0 && self.initial_mtu.0 <= self.max_mtu.0
     }
 }
 
@@ -456,11 +426,7 @@ impl Controller {
     /// be over 9000.
     #[inline]
     pub fn new(config: Config, peer_socket_address: &inet::SocketAddress) -> Self {
-        debug_assert!(
-            is_mtu_config_valid(config.initial_mtu, config.base_mtu, config.max_mtu),
-            "Invalid MTU configuration {:?}",
-            config
-        );
+        debug_assert!(config.is_valid(), "Invalid MTU configuration {:?}", config);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
         //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
