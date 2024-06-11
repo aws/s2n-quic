@@ -3,7 +3,10 @@
 
 use crate::{
     connection::Limits,
-    event::{api::SocketAddress, IntoEvent as _},
+    event::{
+        api::{EndpointType, SocketAddress},
+        IntoEvent as _,
+    },
     inet,
     path::MaxMtu,
     transport::parameters::{DcSupportedVersions, InitialFlowControlLimits},
@@ -47,6 +50,8 @@ pub struct ConnectionInfo<'a> {
     pub dc_version: u32,
     /// Various settings relevant to the dc path
     pub application_params: ApplicationParams,
+    /// The local endpoint type (client or server)
+    pub endpoint_type: EndpointType,
 }
 
 impl<'a> ConnectionInfo<'a> {
@@ -56,11 +61,13 @@ impl<'a> ConnectionInfo<'a> {
         remote_address: &'a inet::SocketAddress,
         dc_version: Version,
         application_params: ApplicationParams,
+        endpoint_type: EndpointType,
     ) -> Self {
         Self {
             remote_address: remote_address.into_event(),
             dc_version,
             application_params,
+            endpoint_type,
         }
     }
 }
