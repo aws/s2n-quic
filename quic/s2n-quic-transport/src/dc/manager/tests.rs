@@ -58,7 +58,9 @@ fn disabled() {
 
     // verify calling all the methods doesn't panic
     manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
-    manager.on_path_secrets_ready(&Session, &mut publisher);
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
     manager.on_packet_ack(ack_set, &mut publisher);
     manager.on_packet_loss(ack_set);
     manager.on_transmit(&mut context);
@@ -73,7 +75,9 @@ fn on_path_secrets_ready() {
     let path = MockDcPath::default();
     let mut manager: Manager<Server> = Manager::new(Some(path), 1, &mut publisher);
 
-    manager.on_path_secrets_ready(&Session, &mut publisher);
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
 
     assert_eq!(1, manager.path().on_path_secrets_ready_count);
     assert!(manager.state.is_path_secrets_ready());
@@ -83,12 +87,20 @@ fn on_path_secrets_ready() {
     let path = MockDcPath::default();
     let mut manager: Manager<Client> = Manager::new(Some(path), 1, &mut publisher);
 
-    manager.on_path_secrets_ready(&Session, &mut publisher);
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
 
     assert_eq!(1, manager.path().on_path_secrets_ready_count);
     assert!(manager.state.is_path_secrets_ready());
     // Client starts transmitting as soon as path secrets are ready
     assert!(manager.has_transmission_interest());
+
+    // Calling on_path_secrets_ready again results in an internal error
+    assert_eq!(
+        manager.on_path_secrets_ready(&Session, &mut publisher),
+        Err(transport::Error::INTERNAL_ERROR)
+    );
 }
 
 #[test]
@@ -125,7 +137,7 @@ fn on_peer_dc_stateless_reset_tokens<Config, Endpoint>(
     assert!(manager.path().peer_stateless_reset_tokens.is_empty());
 
     // Now path secrets are ready, so the peer tokens are received
-    manager.on_path_secrets_ready(&Session, publisher);
+    assert!(manager.on_path_secrets_ready(&Session, publisher).is_ok());
 
     manager.on_peer_dc_stateless_reset_tokens(tokens.iter(), publisher);
 
@@ -193,7 +205,7 @@ fn on_packet_ack<Config, Endpoint>(
     );
     let pn = context.packet_number();
 
-    manager.on_path_secrets_ready(&Session, publisher);
+    assert!(manager.on_path_secrets_ready(&Session, publisher).is_ok());
 
     if Config::ENDPOINT_TYPE.is_server() {
         // Receive tokens on the server to trigger sending
@@ -241,7 +253,9 @@ fn on_packet_loss() {
     );
     let pn = context.packet_number();
 
-    manager.on_path_secrets_ready(&Session, &mut publisher);
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
     assert!(manager.has_transmission_interest());
 
     manager.on_transmit(&mut context);

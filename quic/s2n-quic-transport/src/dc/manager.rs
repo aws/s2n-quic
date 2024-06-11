@@ -18,6 +18,7 @@ use s2n_quic_core::{
     state::{event, is},
     stateless_reset, transmission,
     transmission::interest::Query,
+    transport,
 };
 
 /// Manages transmission and receipt of `DC_STATELESS_RESET_TOKENS` and
@@ -117,10 +118,14 @@ impl<Config: endpoint::Config> Manager<Config> {
         &mut self,
         session: &impl tls::TlsSession,
         publisher: &mut Pub,
-    ) {
-        ensure!(self.state.on_path_secrets_ready().is_ok());
+    ) -> Result<(), transport::Error> {
+        ensure!(self.path.is_some(), Ok(()));
+        ensure!(
+            self.state.on_path_secrets_ready().is_ok(),
+            Err(transport::Error::INTERNAL_ERROR)
+        );
 
-        let tokens = self.path.on_path_secrets_ready(session);
+        let tokens = self.path.on_path_secrets_ready(session)?;
         let flag = Flag::new(DcStatelessResetTokenWriter::new(tokens));
         self.stateless_reset_token_sync = flag;
 
@@ -134,7 +139,9 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         publisher.on_dc_state_changed(DcStateChanged {
             state: DcState::PathSecretsReady,
-        })
+        });
+
+        Ok(())
     }
 
     /// Called when a `DC_STATELESS_RESET_TOKENS` frame is received from the peer

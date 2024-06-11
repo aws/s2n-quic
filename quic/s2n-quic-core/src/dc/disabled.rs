@@ -4,7 +4,7 @@
 use crate::{
     crypto::tls::TlsSession,
     dc::{ConnectionInfo, Endpoint, Path},
-    stateless_reset,
+    stateless_reset, transport,
 };
 use alloc::vec::Vec;
 
@@ -23,7 +23,10 @@ impl Endpoint for Disabled {
 
 // The Disabled Endpoint returns `None`, so this is not used
 impl Path for () {
-    fn on_path_secrets_ready(&mut self, _session: &impl TlsSession) -> Vec<stateless_reset::Token> {
+    fn on_path_secrets_ready(
+        &mut self,
+        _session: &impl TlsSession,
+    ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
         unimplemented!()
     }
 

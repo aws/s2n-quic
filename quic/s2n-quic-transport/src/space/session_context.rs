@@ -446,8 +446,12 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             let application_params =
                 dc::ApplicationParams::new(max_mtu, &peer_flow_control_limits, self.limits);
             let remote_address = self.path_manager.active_path().remote_address().0;
-            let conn_info =
-                dc::ConnectionInfo::new(&remote_address, dc_version, application_params);
+            let conn_info = dc::ConnectionInfo::new(
+                &remote_address,
+                dc_version,
+                application_params,
+                Config::ENDPOINT_TYPE.into_event(),
+            );
             let dc_path = self.dc.new_path(&conn_info);
             crate::dc::Manager::new(dc_path, dc_version, self.publisher)
         } else {
@@ -511,7 +515,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             .as_mut()
             .expect("application keys should be ready before the tls exporter")
             .dc_manager
-            .on_path_secrets_ready(session, self.publisher);
+            .on_path_secrets_ready(session, self.publisher)?;
 
         self.publisher
             .on_tls_exporter_ready(event::builder::TlsExporterReady {
