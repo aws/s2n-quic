@@ -11,4 +11,5 @@ pub mod packet;
 pub mod path;
 pub mod pool;
 pub mod recovery;
+pub mod socket;
 pub mod stream;
