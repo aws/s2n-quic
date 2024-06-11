@@ -1,0 +1,16 @@
+---
+source: dc/s2n-quic-dc/src/socket/bpf.rs
+expression: "(&sockets[0], &sockets[1])"
+---
+(
+    Counts {
+        stream: 0,
+        control: 64,
+        garbage: 0,
+    },
+    Counts {
+        stream: 64,
+        control: 0,
+        garbage: 128,
+    },
+)

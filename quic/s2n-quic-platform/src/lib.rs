@@ -8,6 +8,8 @@
 
 extern crate alloc;
 
+#[cfg(target_os = "linux")]
+pub mod bpf;
 pub mod features;
 pub mod io;
 pub mod message;

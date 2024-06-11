@@ -36,6 +36,7 @@ zerocopy = { version = "0.7", features = ["derive"] }
 [dev-dependencies]
 bolero = "0.11"
 bolero-generator = "0.11"
+insta = "1"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
 tokio = { version = "1", features = ["io-util"] }
