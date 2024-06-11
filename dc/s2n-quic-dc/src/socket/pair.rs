@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::Options;
+use super::{Options, ReusePort};
 use std::{io, net::UdpSocket};
 
 pub struct Pair {
@@ -15,7 +15,7 @@ impl Pair {
         // have the OS select a random port for us
         options.addr.set_port(0);
         // don't reuse the ports since we don't have a consistent way to route packets
-        options.reuse_port = Default::default();
+        options.reuse_port = ReusePort::Disabled;
 
         let writer = options.build_udp()?;
         let reader = options.build_udp()?;
