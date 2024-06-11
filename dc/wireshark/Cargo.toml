@@ -17,3 +17,6 @@ s2n-quic-dc = { path = "../s2n-quic-dc" }
 bolero = "0.11"
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing", "generator"] }
 s2n-quic-dc = { path = "../s2n-quic-dc", features = ["testing"] }
+
+[workspace]
+members = ["."]

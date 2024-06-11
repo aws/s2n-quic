@@ -821,3 +821,43 @@ jobs:
           RUST_LOG: trace
         run: cargo +stable xtask ci
 
+  dc-wireshark:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup override set stable
+
+      - uses: camshaft/install@v1
+        with:
+          crate: bindgen-cli
+          bins: bindgen
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Generate bindings
+        working-directory: dc/wireshark
+        run: ./generate-bindings.sh
+
+      - name: Run cargo fmt
+        working-directory: dc/wireshark
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        working-directory: dc/wireshark
+        run: cargo clippy --tests
+
+      - name: Run tests
+        working-directory: dc/wireshark
+        run: cargo test
+
+      - name: Run build
+        working-directory: dc/wireshark
+        run: cargo build --release

@@ -100,6 +100,7 @@ struct Env {
     out_dir: String,
     target: String,
     target_os: String,
+    rustc_linker: Option<String>,
 }
 
 impl Env {
@@ -110,6 +111,7 @@ impl Env {
             out_dir: env("OUT_DIR"),
             target: env("TARGET"),
             target_os: env("CARGO_CFG_TARGET_OS"),
+            rustc_linker: option_env("RUSTC_LINKER"),
         }
     }
 
@@ -127,6 +129,10 @@ impl Env {
             .arg("--codegen")
             .arg("opt-level=0")
             .arg(path);
+
+        if let Some(linker) = self.rustc_linker.as_ref() {
+            command.arg(format!("-Clinker={linker}"));
+        }
 
         for (key, _) in std::env::vars() {
             const CARGO_FEATURE: &str = "CARGO_FEATURE_";

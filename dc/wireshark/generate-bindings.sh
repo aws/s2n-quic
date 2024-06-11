@@ -4,6 +4,7 @@ set -xeuo pipefail
 
 VERSION="4.2.5"
 BRANCH="wireshark-$VERSION"
+PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}"
 
 # Install bindgen...
 if ! command -v bindgen &> /dev/null; then
@@ -19,28 +20,17 @@ nixpath() {
 # add nix-specific paths
 if command -v nix-shell &> /dev/null; then
   PKG_CONFIG_PATH="$(nixpath wireshark.dev)/lib/pkgconfig:$(nixpath glib.dev)/lib/pkgconfig:$PKG_CONFIG_PATH"
-  INCLUDES=("$(pkg-config --cflags-only-I glib-2.0 wireshark)")
-else
-  # This should be a checkout of the wireshark tree (e.g., https://github.com/wireshark/wireshark/)
-  # You likely want to checkout a specific tag before running this script.
-  if [ ! -d wireshark ]; then
-    git clone --branch $BRANCH https://github.com/wireshark/wireshark
-  fi
-
-  cd wireshark
-  git checkout $BRANCH
-  cd ..
-
-  INCLUDES=(
-    "-I wireshark/include"
-    "-I wireshark"
-    # Wireshark needs glib as part of its dependencies.
-    # I managed to get a working version on macOS via homebrew, it's likely
-    # there's a better option.
-    "-I /usr/local/Cellar/glib/2.80.2/lib/glib-2.0/include"
-    "-I /usr/local/Cellar/glib/2.80.2/include/glib-2.0"
-  )
+elif command -v brew &> /dev/null; then
+  brew install pkg-config wireshark
+elif command -v apt-get &> /dev/null; then
+  sudo add-apt-repository ppa:wireshark-dev/stable
+  sudo apt-get update
+  sudo apt-get install pkg-config wireshark-dev -y
 fi
+
+INCLUDES=(
+  "$(PKG_CONFIG_PATH="$PKG_CONFIG_PATH" pkg-config --cflags-only-I glib-2.0 wireshark)"
+)
 
 # This list is filtered to roughly what our current usage requires.
 # It's possible there's a better way to do this -- some of the Wireshark
