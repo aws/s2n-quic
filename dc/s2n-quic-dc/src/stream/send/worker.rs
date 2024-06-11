@@ -19,7 +19,6 @@ use crate::{
     },
 };
 use core::{task::Poll, time::Duration};
-use generational_arena::{Arena, Index as BufferIndex};
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use s2n_quic_core::{
     ensure,
@@ -37,6 +36,7 @@ use s2n_quic_core::{
     },
     varint::VarInt,
 };
+use slotmap::SlotMap;
 use std::collections::{BinaryHeap, VecDeque};
 use tracing::{debug, trace};
 
@@ -47,6 +47,10 @@ pub mod transmission;
 type PacketMap<Info> = s2n_quic_core::packet::number::Map<Info>;
 
 pub type Transmission = application::transmission::Event<buffer::Segment>;
+
+slotmap::new_key_type! {
+    pub struct BufferIndex;
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum TransmitIndex {
@@ -72,10 +76,10 @@ pub struct Worker {
     pub stream_id: stream::Id,
     pub rtt_estimator: RttEstimator,
     pub sent_stream_packets: PacketMap<SentStreamPacket>,
-    pub stream_packet_buffers: Arena<buffer::Segment>,
+    pub stream_packet_buffers: SlotMap<BufferIndex, buffer::Segment>,
     pub max_stream_packet_number: VarInt,
     pub sent_recovery_packets: PacketMap<SentRecoveryPacket>,
-    pub recovery_packet_buffers: Arena<Vec<u8>>,
+    pub recovery_packet_buffers: SlotMap<BufferIndex, Vec<u8>>,
     pub free_packet_buffers: Vec<Vec<u8>>,
     pub recovery_packet_number: u64,
     pub last_sent_recovery_packet: Option<Timestamp>,
