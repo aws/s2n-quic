@@ -17,20 +17,11 @@ new set of bindgen bindings are needed for other versions, and Wireshark will
 refuse to load the plugin outside of the 4.2.x series (without code changes to
 increment the supported minor version).
 
-Build the plugin, potentially cross-compiling to `x86_64-apple-darwin` to match where you will be using Wireshark:
+To install the plugin for the current machine, use the following command:
 
 ```
-S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=socket_msg,pktinfo,tos cargo build --release --target x86_64-apple-darwin -p wireshark
+cargo xtask install
 ```
-
-Then copy the resulting file into Wireshark's plugin directory, for example:
-
-```
-sudo cp target/release/libwireshark_dcquic.so /Applications/Wireshark.app/Contents/PlugIns/wireshark/4-2/epan/wireshark_dcquic.so
-```
-
-Note that you may need to use Finder or grant your terminal application "Full
-Disk Access" in "Privacy & Security" in order for `sudo` to work.
 
 Once this is done, Wireshark should load the plugin successfully on startup.
 You can check (even without a pcap) by (a) not seeing an error message and (b)
@@ -46,7 +37,7 @@ tshark -r stream-request-response.pcap -O dcquic 'dcquic && not tcp'
 ## Contributing changes
 
 If you need access to more Wireshark APIs that currently don't have bindings in
-`src/wireshark_sys.rs`, you can re-generate that file with
+`src/wireshark_sys`, you can re-generate that file with
 `./generate-bindings.sh`.
 
 https://www.wireshark.org/docs/wsdg_html/#ChapterDissection is a good starting

@@ -14,6 +14,9 @@ mod wireshark;
 /// Allow warnings since we don't control the bindgen generation process enough for warnings to be worthwhile to fix.
 #[allow(warnings)]
 mod wireshark_sys {
+    // when we're running tests, we just want to pull in types without any `extern fn` so we don't
+    // end up with undefined symbols.
+
     #[cfg(test)]
     #[path = "minimal.rs"]
     mod sys_impl;
