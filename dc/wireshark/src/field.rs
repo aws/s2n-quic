@@ -161,11 +161,13 @@ fn register_protocol() -> Protocol {
 
 #[cfg(not(test))]
 fn register_protocol() -> Protocol {
+    let name = concat!(env!("PLUGIN_NAME"), "\0");
+    let lower = concat!(env!("PLUGIN_NAME_LOWER"), "\0");
     Protocol(unsafe {
         wireshark_sys::proto_register_protocol(
-            c"dcQUIC".as_ptr(),
-            c"dcQUIC".as_ptr(),
-            c"dcquic".as_ptr(),
+            name.as_ptr() as *const _,
+            name.as_ptr() as *const _,
+            lower.as_ptr() as *const _,
         )
     })
 }

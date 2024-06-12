@@ -25,7 +25,7 @@ elif command -v brew &> /dev/null; then
 elif command -v apt-get &> /dev/null; then
   sudo add-apt-repository ppa:wireshark-dev/stable
   sudo apt-get update
-  sudo apt-get install pkg-config wireshark-dev -y
+  sudo apt-get install pkg-config wireshark-dev tshark -y
 fi
 
 INCLUDES=(
@@ -36,6 +36,8 @@ INCLUDES=(
 # It's possible there's a better way to do this -- some of the Wireshark
 # headers end up pulling in C++ so we do need some filtering.
 bindgen \
+  --raw-line '// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.' \
+  --raw-line '// SPDX-License-Identifier: Apache-2.0' \
   --allowlist-type 'gint' \
   --allowlist-type 'guint' \
   --allowlist-type 'guint16' \

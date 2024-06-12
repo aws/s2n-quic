@@ -844,7 +844,7 @@ jobs:
 
       - name: Generate bindings
         working-directory: dc/wireshark
-        run: ./generate-bindings.sh
+        run: cargo xtask bindings
 
       - name: Run cargo fmt
         working-directory: dc/wireshark
@@ -856,8 +856,8 @@ jobs:
 
       - name: Run tests
         working-directory: dc/wireshark
-        run: cargo test
+        run: cargo xtask test
 
       - name: Run build
         working-directory: dc/wireshark
-        run: cargo build --release
+        run: cargo xtask build

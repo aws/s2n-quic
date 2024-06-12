@@ -1,21 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::process::Command;
-
 fn main() {
-    let flags = Command::new("pkg-config")
-        .arg("--libs")
-        .arg("glib-2.0")
-        .arg("wireshark")
-        .output()
-        .unwrap();
+    let plugin_name = option_env("PLUGIN_NAME").unwrap_or_else(|| "dcQUIC".to_string());
+    println!("cargo:rustc-env=PLUGIN_NAME={plugin_name}");
+    println!(
+        "cargo:rustc-env=PLUGIN_NAME_LOWER={}",
+        plugin_name.to_lowercase()
+    );
 
-    for flag in core::str::from_utf8(&flags.stdout)
-        .unwrap()
-        .split(' ')
-        .filter(|f| !f.is_empty())
-    {
-        println!("cargo:rustc-link-arg={flag}");
-    }
+    // don't link any libraries and prefer pulling symbols from the wireshark/tshark binary
+    println!("cargo:rustc-link-arg=-U");
+    println!("cargo:rustc-link-arg=-shared");
+}
+
+fn option_env<N: AsRef<str>>(name: N) -> Option<String> {
+    let name = name.as_ref();
+    println!("cargo:rerun-if-env-changed={}", name);
+    std::env::var(name).ok()
 }

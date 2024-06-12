@@ -63,7 +63,7 @@ unsafe extern "C" fn proto_reg_handoff() {
         c"udp".as_ptr(),
         Some(dissect_heur_udp),
         c"dcQUIC over UDP".as_ptr(),
-        c"dcquic".as_ptr(),
+        concat!(env!("PLUGIN_NAME_LOWER"), "\0").as_ptr() as *const _,
         field::get().protocol,
         wireshark_sys::heuristic_enable_e_HEURISTIC_ENABLE,
     );
@@ -72,7 +72,7 @@ unsafe extern "C" fn proto_reg_handoff() {
         c"tcp".as_ptr(),
         Some(dissect_heur_tcp),
         c"dcQUIC over TCP".as_ptr(),
-        c"dcquic_tcp".as_ptr(),
+        concat!(env!("PLUGIN_NAME_LOWER"), "_tcp\0").as_ptr() as *const _,
         field::get().protocol,
         wireshark_sys::heuristic_enable_e_HEURISTIC_ENABLE,
     );
@@ -82,7 +82,7 @@ unsafe extern "C" fn proto_reg_handoff() {
             wireshark_sys::create_dissector_handle_with_name_and_description(
                 Some(dissect_heur_tcp),
                 field::get().protocol,
-                c"dcquic_tcp_stream".as_ptr(),
+                concat!(env!("PLUGIN_NAME_LOWER"), "_tcp_stream\0").as_ptr() as *const _,
                 c"dcQUIC stream".as_ptr(),
             ),
         )

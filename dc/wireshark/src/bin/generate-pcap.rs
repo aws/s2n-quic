@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_codec::{EncoderBuffer, EncoderValue};
-use std::{io::Write, net::Ipv4Addr};
+use std::{io::Write, net::Ipv4Addr, path::Path};
 
 const MAGIC_NUMBER: u32 = 0xa1b2c3d4;
 
 fn main() {
     // https://wiki.wireshark.org/Development/LibpcapFileFormat#overview
-    let mut output =
-        std::io::BufWriter::new(std::fs::File::create("generated-datagrams.pcap").unwrap());
+    let out_dir = std::env::args().nth(1).unwrap_or_default();
+
+    let output = Path::new(&out_dir).join("datagram.pcap");
+
+    let mut output = std::io::BufWriter::new(std::fs::File::create(output).unwrap());
 
     output.write_all(&MAGIC_NUMBER.to_ne_bytes()).unwrap();
 

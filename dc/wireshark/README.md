@@ -47,9 +47,7 @@ tshark -r stream-request-response.pcap -O dcquic 'dcquic && not tcp'
 
 If you need access to more Wireshark APIs that currently don't have bindings in
 `src/wireshark_sys.rs`, you can re-generate that file with
-`./generate-bindings.sh`. Note that it currently has only been run and written
-against one particular environment and isn't run in CI, so it's likely you'll
-need to tweak it to get it working. But it's a good starting point.
+`./generate-bindings.sh`.
 
 https://www.wireshark.org/docs/wsdg_html/#ChapterDissection is a good starting
 point for understanding the basics of the Wireshark interface.
