@@ -10,8 +10,17 @@ fn main() {
     );
 
     // don't link any libraries and prefer pulling symbols from the wireshark/tshark binary
-    println!("cargo:rustc-link-arg=-U");
+    if env("TARGET").contains("darwin") {
+        println!("cargo:rustc-link-arg=-Wl,-undefined,dynamic_lookup");
+    } else {
+        println!("cargo:rustc-link-arg=-U");
+    }
     println!("cargo:rustc-link-arg=-shared");
+}
+
+fn env<N: AsRef<str>>(name: N) -> String {
+    let name = name.as_ref();
+    option_env(name).unwrap_or_else(|| panic!("missing env {name}"))
 }
 
 fn option_env<N: AsRef<str>>(name: N) -> Option<String> {

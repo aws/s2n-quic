@@ -25,5 +25,5 @@ extend-exclude = [
     "*.der",
     "*.pem",
     "**/specs/**/*",
-    "**/wireshark_sys.rs",
+    "**/wireshark_sys*",
 ]

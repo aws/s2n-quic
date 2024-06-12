@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{dissect, Buffer, Parsed};
+use crate::{buffer::Buffer, dissect, value::Parsed};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     buffer::{reader::Storage, Reader},
@@ -533,6 +533,23 @@ fn random_stream_packets() {
 }
 
 #[test]
+fn random_udp_packets() {
+    // Initialize field IDs.
+    let _ = crate::field::get();
+
+    bolero::check!().for_each(|packet: &[u8]| {
+        let fields = crate::field::get();
+        let mut tracker = Tracker::default();
+        let mut buffer = unsafe { Buffer::new(ptr::null_mut(), packet) };
+        let Some(tag) = buffer.consume() else {
+            return;
+        };
+        // May fail to parse, but shouldn't panic.
+        let _ = dissect::udp_segment(&mut tracker, &mut (), fields, tag, &mut buffer, &mut ());
+    });
+}
+
+#[test]
 fn random_datagram_packets() {
     // Initialize field IDs.
     let _ = crate::field::get();
@@ -611,7 +628,7 @@ impl crate::wireshark::Node for Tracker {
         &mut self,
         _buffer: &Buffer,
         field: i32,
-        parsed: crate::Parsed<&[u8]>,
+        parsed: Parsed<&[u8]>,
     ) -> Self::AddedItem {
         self.put(field, Field::Slice(parsed.value.to_vec()));
     }
@@ -620,44 +637,24 @@ impl crate::wireshark::Node for Tracker {
         &mut self,
         _buffer: &Buffer,
         field: i32,
-        parsed: crate::Parsed<&[u8]>,
+        parsed: Parsed<&[u8]>,
     ) -> Self::AddedItem {
         self.put(field, Field::Slice(parsed.value.to_vec()));
     }
 
-    fn add_u64(
-        &mut self,
-        _buffer: &Buffer,
-        field: i32,
-        parsed: crate::Parsed<u64>,
-    ) -> Self::AddedItem {
+    fn add_u64(&mut self, _buffer: &Buffer, field: i32, parsed: Parsed<u64>) -> Self::AddedItem {
         self.put(field, Field::Integer(parsed.value));
     }
 
-    fn add_u32(
-        &mut self,
-        _buffer: &Buffer,
-        field: i32,
-        parsed: crate::Parsed<u32>,
-    ) -> Self::AddedItem {
+    fn add_u32(&mut self, _buffer: &Buffer, field: i32, parsed: Parsed<u32>) -> Self::AddedItem {
         self.put(field, Field::Integer(parsed.value as u64));
     }
 
-    fn add_u16(
-        &mut self,
-        _buffer: &Buffer,
-        field: i32,
-        parsed: crate::Parsed<u16>,
-    ) -> Self::AddedItem {
+    fn add_u16(&mut self, _buffer: &Buffer, field: i32, parsed: Parsed<u16>) -> Self::AddedItem {
         self.put(field, Field::Integer(parsed.value as u64));
     }
 
-    fn add_u8(
-        &mut self,
-        _buffer: &Buffer,
-        field: i32,
-        parsed: crate::Parsed<u8>,
-    ) -> Self::AddedItem {
+    fn add_u8(&mut self, _buffer: &Buffer, field: i32, parsed: Parsed<u8>) -> Self::AddedItem {
         self.put(field, Field::Integer(parsed.value as u64));
     }
 
@@ -665,7 +662,7 @@ impl crate::wireshark::Node for Tracker {
         &mut self,
         _buffer: &Buffer,
         field: i32,
-        parsed: crate::Parsed<T>,
+        parsed: Parsed<T>,
     ) -> Self::AddedItem {
         self.put(field, Field::Integer(parsed.value.into() as u64));
     }
@@ -674,7 +671,7 @@ impl crate::wireshark::Node for Tracker {
         &mut self,
         _buffer: &Buffer,
         field: i32,
-        parsed: crate::Parsed<Duration>,
+        parsed: Parsed<Duration>,
     ) -> Self::AddedItem {
         self.put(field, Field::Duration(parsed.value));
     }

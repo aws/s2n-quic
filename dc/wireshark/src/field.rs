@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 
 static REGISTRATION: OnceLock<Registration> = OnceLock::new();
 
+#[allow(dead_code)]
 pub unsafe extern "C" fn proto_register() {
     let _ = get();
 }
@@ -82,7 +83,7 @@ fn register_field(protocol: Protocol, field: Field) -> i32 {
             p_id: id as *mut _,
             hfinfo,
         }));
-        wireshark_sys::proto_register_field_array(protocol, registration_array, 1);
+        crate::wireshark_sys::proto_register_field_array(protocol, registration_array, 1);
         *id
     }
 
@@ -113,7 +114,7 @@ fn register_subtree() -> i32 {
     let id = Box::leak(Box::new(-1i32));
     #[cfg(not(test))]
     unsafe {
-        wireshark_sys::proto_register_subtree_array(&(id as *mut i32), 1);
+        crate::wireshark_sys::proto_register_subtree_array(&(id as *mut i32), 1);
     }
     *id
 }
