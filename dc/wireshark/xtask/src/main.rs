@@ -67,8 +67,9 @@ struct Test {}
 impl Test {
     fn run(self, sh: &Shell) -> Result {
         cmd!(sh, "cargo test").run()?;
+        let plugin_dir = plugin_dir();
 
-        sh.create_dir("target/wireshark/plugins/4.2/epan")?;
+        sh.create_dir(format!("target/wireshark/{plugin_dir}"))?;
         sh.create_dir("target/pcaps")?;
 
         // change the plugin name to avoid conflicts if it's already installed
@@ -88,7 +89,7 @@ impl Test {
         sh.copy_file(
             format!("target/{profile}/libwireshark_dcquic.{so}"),
             // wireshark always looks for `.so` regardless of platform
-            "target/wireshark/plugins/4.2/epan/libdcquic.so",
+            format!("target/wireshark/{plugin_dir}/lib{plugin_name_lower}.so"),
         )?;
 
         cmd!(
@@ -182,6 +183,14 @@ fn so() -> &'static str {
     }
 }
 
+fn plugin_dir() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "plugins/4-2/epan"
+    } else {
+        "plugins/4.2/epan"
+    }
+}
+
 #[derive(Debug, Parser)]
 struct Install {}
 
@@ -189,15 +198,13 @@ impl Install {
     fn run(self, sh: &Shell) -> Result {
         Build::default().run(sh)?;
 
-        let dir = if cfg!(target_os = "macos") {
-            "~/.local/lib/wireshark/plugins/4-2/epan"
-        } else if cfg!(target_os = "linux") {
-            "~/.local/lib/wireshark/plugins/4.2/epan"
+        let dir = if cfg!(unix) {
+            format!("~/.local/lib/wireshark/{}", plugin_dir())
         } else {
             todo!("OS is currently unsupported")
         };
 
-        sh.create_dir(dir)?;
+        sh.create_dir(&dir)?;
         let so = so();
         sh.copy_file(
             format!("target/release/libwireshark_dcquic.{so}"),
