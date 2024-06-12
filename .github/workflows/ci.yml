@@ -829,6 +829,8 @@ jobs:
         os: [ubuntu-latest, macOS-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Install rust toolchain
         run: |

@@ -14,8 +14,8 @@ fn main() {
         println!("cargo:rustc-link-arg=-Wl,-undefined,dynamic_lookup");
     } else {
         println!("cargo:rustc-link-arg=-U");
+        println!("cargo:rustc-link-arg=-shared");
     }
-    println!("cargo:rustc-link-arg=-shared");
 }
 
 fn env<N: AsRef<str>>(name: N) -> String {

@@ -84,9 +84,10 @@ impl Test {
         }
         .run(sh)?;
 
+        let so = so();
         sh.copy_file(
-            format!("target/{profile}/libwireshark_dcquic.so"),
-            "target/wireshark/plugins/4.2/epan/libwireshark_dcquic.so",
+            format!("target/{profile}/libwireshark_dcquic.{so}"),
+            format!("target/wireshark/plugins/4.2/epan/libwireshark_dcquic.{so}"),
         )?;
 
         cmd!(
@@ -162,6 +163,14 @@ fn tshark(sh: &Shell) -> Result<String> {
     }
 }
 
+fn so() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    }
+}
+
 #[derive(Debug, Parser)]
 struct Install {}
 
@@ -179,9 +188,10 @@ impl Install {
         };
 
         sh.create_dir(dir)?;
+        let so = so();
         sh.copy_file(
-            "target/release/libwireshark_dcquic.so",
-            format!("{dir}/dcquic.so"),
+            format!("target/release/libwireshark_dcquic.{so}"),
+            format!("{dir}/dcquic.{so}"),
         )?;
 
         Ok(())
