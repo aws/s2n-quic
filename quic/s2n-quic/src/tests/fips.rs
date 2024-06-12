@@ -56,6 +56,7 @@ fn test_policy(policy: &security::Policy) {
 
 #[test]
 fn default_fips_test() {
-    // TODO switch this to `default_fips` when the policy support TLS 1.3
+    // TODO switch this to `default_fips` when the policy supports TLS 1.3
+    //      see https://github.com/aws/s2n-quic/issues/2247
     test_policy(&security::Policy::from_version("20230317").unwrap());
 }
