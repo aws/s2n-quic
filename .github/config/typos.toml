@@ -25,5 +25,5 @@ extend-exclude = [
     "*.der",
     "*.pem",
     "**/specs/**/*",
-    "common/duvet/www/public/script.js",
+    "**/wireshark_sys*",
 ]

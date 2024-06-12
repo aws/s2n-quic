@@ -181,8 +181,14 @@ impl Data {
 
     /// Moves the current offset forward by the provided `len`
     pub fn seek_forward(&mut self, len: u64) {
-        self.offset += len;
+        let len = self.buffered_len.min(len);
         self.buffered_len -= len;
+        if let Some(new_offset) = self.offset.checked_add(len) {
+            self.offset = new_offset;
+        } else {
+            self.final_offset = Some(u64::MAX);
+            self.buffered_len = 0;
+        }
     }
 }
 
