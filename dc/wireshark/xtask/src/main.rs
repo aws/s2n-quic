@@ -109,11 +109,21 @@ impl Test {
         let tshark = tshark(sh)?;
 
         for pcap in pcaps {
-            let out = cmd!(
+            assert!(
+                std::path::Path::new(pcap).exists(),
+                "{pcap} is missing - git LFS is required to clone pcaps"
+            );
+
+            let cmd = cmd!(
                 sh,
                 "{tshark} -r {pcap} -2 -O {plugin_name_lower} -R {plugin_name_lower}"
-            )
-            .output()?;
+            );
+
+            let Ok(out) = cmd.output() else {
+                // if the command failed then re-run it and print it to the console
+                cmd.run()?;
+                panic!("tshark did not exit successfully");
+            };
 
             let stdout = core::str::from_utf8(&out.stdout).unwrap();
             let stderr = core::str::from_utf8(&out.stderr).unwrap();
