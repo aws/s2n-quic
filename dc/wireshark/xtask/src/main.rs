@@ -87,7 +87,8 @@ impl Test {
         let so = so();
         sh.copy_file(
             format!("target/{profile}/libwireshark_dcquic.{so}"),
-            format!("target/wireshark/plugins/4.2/epan/libwireshark_dcquic.{so}"),
+            // wireshark always looks for `.so` regardless of platform
+            "target/wireshark/plugins/4.2/epan/libdcquic.so",
         )?;
 
         cmd!(
@@ -189,10 +190,9 @@ impl Install {
         Build::default().run(sh)?;
 
         let dir = if cfg!(target_os = "macos") {
-            // TODO this will likely require `sudo` - any way to work around that?
-            "/Applications/Wireshark.app/Contents/PlugIns/wireshark/4-2/epan/"
+            "~/.local/lib/wireshark/plugins/4-2/epan"
         } else if cfg!(target_os = "linux") {
-            "~/.local/lib/wireshark/plugins/4.2/epan/"
+            "~/.local/lib/wireshark/plugins/4.2/epan"
         } else {
             todo!("OS is currently unsupported")
         };
@@ -201,7 +201,8 @@ impl Install {
         let so = so();
         sh.copy_file(
             format!("target/release/libwireshark_dcquic.{so}"),
-            format!("{dir}/dcquic.{so}"),
+            // wireshark always looks for `.so`, regardless of platform
+            format!("{dir}/libdcquic.so"),
         )?;
 
         Ok(())
