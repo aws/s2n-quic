@@ -152,15 +152,10 @@ fn tshark(sh: &Shell) -> Result<String> {
 
     if cfg!(target_os = "macos") {
         cmd!(sh, "brew install wireshark").run()?;
-        Ok("tshark".into())
     } else if cfg!(target_os = "linux") {
         let is_nix = cmd!(sh, "which nix-shell").run().is_ok();
         if is_nix {
-            return Ok(cmd!(
-                sh,
-                "nix-shell --packages wireshark --run 'echo -n $buildInputs'"
-            )
-            .read()?);
+            return Ok(cmd!(sh, "nix-shell --packages tshark --run 'which tshark'").read()?);
         }
 
         let is_apt = cmd!(sh, "which apt-get").run().is_ok();
@@ -168,11 +163,9 @@ fn tshark(sh: &Shell) -> Result<String> {
         if is_apt {
             cmd!(sh, "sudo apt-get install tshark -y").run()?;
         }
-
-        Ok("tshark".into())
-    } else {
-        Ok("tshark".into())
     }
+
+    Ok("tshark".into())
 }
 
 fn so() -> &'static str {
