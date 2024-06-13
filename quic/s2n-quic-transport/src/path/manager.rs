@@ -70,16 +70,18 @@ pub struct Manager<Config: endpoint::Config> {
     /// The `paths` data structure will need to be enhanced to include garbage collection
     /// of old paths to overcome this limitation.
     pending_packet_authentication: Option<u8>,
+    max_mtu: MaxMtu,
 }
 
 impl<Config: endpoint::Config> Manager<Config> {
-    pub fn new(initial_path: Path<Config>, peer_id_registry: PeerIdRegistry) -> Self {
+    pub fn new(initial_path: Path<Config>, peer_id_registry: PeerIdRegistry, max_mtu: MaxMtu) -> Self {
         let mut manager = Manager {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
             active: 0,
             last_known_active_validated_path: None,
             pending_packet_authentication: None,
+            max_mtu
         };
         manager.paths[0].activated = true;
         manager.paths[0].is_active = true;
@@ -855,9 +857,14 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     /// Returns the maximum size the UDP payload can reach for any probe packet.
     #[inline]
-    pub fn max_mtu(&self) -> MaxMtu {
+    pub fn amax_mtu(&self) -> MaxMtu {
         let value = self.active_path().max_mtu();
 
+        // TODO can we remove this?
+        //     I dont think so.. we need to get the max from the iter of paths.
+        //     Also this value might change.. if new paths are added.
+        // Do we just want the max? in which case we should use the endpoint_mtu_config.max_mtu value
+        //
         // This value is the same for each path so just return the active value
         if cfg!(debug_assertions) {
             for path in self.paths.iter() {

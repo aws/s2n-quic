@@ -333,6 +333,11 @@ impl CheckedConfig {
     pub fn initial_mtu(&self) -> InitialMtu {
         self.0.initial_mtu
     }
+
+    // TOD REMOVE
+    pub fn max_mtu(&self) -> MaxMtu {
+        self.0.max_mtu
+    }
 }
 
 // A CheckedConfig should be created via the Config::checked() in production.

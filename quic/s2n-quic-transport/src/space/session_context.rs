@@ -440,11 +440,12 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             datagram_limits.max_datagram_payload,
         );
 
-        let max_mtu = self.path_manager.max_mtu();
+// ======bla
+        let amax_mtu = self.path_manager.amax_mtu();
 
         let dc_manager = if let Some(dc_version) = dc_version {
             let application_params =
-                dc::ApplicationParams::new(max_mtu, &peer_flow_control_limits, self.limits);
+                dc::ApplicationParams::new(amax_mtu, &peer_flow_control_limits, self.limits);
             let remote_address = self.path_manager.active_path().remote_address().0;
             let conn_info = dc::ConnectionInfo::new(
                 &remote_address,
@@ -471,7 +472,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             stream_manager,
             ack_manager,
             keep_alive,
-            max_mtu,
+            amax_mtu,
             datagram_manager,
             dc_manager,
         )));
