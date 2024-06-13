@@ -3,10 +3,10 @@
 
 //! Provides MTU configuration at the connection level.
 
-pub use s2n_quic_core::path::mtu::{Config, Configurator, ConnectionInfo};
+pub use s2n_quic_core::path::mtu::{Config, ConnectionInfo, Endpoint};
 
 pub trait Provider {
-    type Config: 'static + Send + Configurator;
+    type Config: 'static + Send + Endpoint;
     type Error: 'static + core::fmt::Display + Send + Sync;
 
     fn start(self) -> Result<Self::Config, Self::Error>;
@@ -16,7 +16,7 @@ pub use default::Provider as Default;
 
 impl_provider_utils!();
 
-impl<T: 'static + Send + Configurator> Provider for T {
+impl<T: 'static + Send + Endpoint> Provider for T {
     type Config = T;
     type Error = core::convert::Infallible;
 

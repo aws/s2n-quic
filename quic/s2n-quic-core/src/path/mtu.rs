@@ -258,7 +258,7 @@ impl<'a> ConnectionInfo<'a> {
 }
 
 /// Creates MTU config for the given connection.
-pub trait Configurator: 'static + Send {
+pub trait Endpoint: 'static + Send {
     /// Provide connection specific MTU config.
     ///
     /// Application must ensure that `max_mtu <= info.endpoint_config.max_mtu`.
@@ -275,7 +275,7 @@ pub struct Config {
     max_mtu: MaxMtu,
 }
 
-impl Configurator for Config {}
+impl Endpoint for Config {}
 
 impl Config {
     pub const MIN: Self = Self {

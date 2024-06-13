@@ -18,7 +18,7 @@ impl_providers_state! {
         endpoint_limits: EndpointLimits,
         event: Event,
         limits: Limits,
-        mtu: MtuConfig,
+        mtu: Mtu,
         io: IO,
         path_migration: PathMigration,
         sync: Sync,
@@ -42,7 +42,7 @@ impl<
         EndpointLimits: endpoint_limits::Provider,
         Event: event::Provider,
         Limits: limits::Provider,
-        MtuConfig: mtu::Provider,
+        Mtu: mtu::Provider,
         IO: io::Provider,
         PathMigration: path_migration::Provider,
         Sync: sync::Provider,
@@ -61,7 +61,7 @@ impl<
         EndpointLimits,
         Event,
         Limits,
-        MtuConfig,
+        Mtu,
         IO,
         PathMigration,
         Sync,
@@ -168,7 +168,7 @@ struct EndpointConfig<
     EndpointLimits,
     Event,
     Limits,
-    MtuConfig,
+    Mtu,
     Sync,
     Tls,
     AddressToken,
@@ -184,7 +184,7 @@ struct EndpointConfig<
     endpoint_limits: EndpointLimits,
     event: Event,
     limits: Limits,
-    mtu: MtuConfig,
+    mtu: Mtu,
     sync: Sync,
     tls: Tls,
     address_token: AddressToken,
@@ -206,7 +206,7 @@ impl<
         EndpointLimits: s2n_quic_core::endpoint::Limiter,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
-        MtuConfig: s2n_quic_core::path::mtu::Configurator,
+        Mtu: s2n_quic_core::path::mtu::Endpoint,
         Sync,
         Tls: crypto::tls::Endpoint,
         AddressToken: address_token::Format,
@@ -225,7 +225,7 @@ impl<
         EndpointLimits,
         Event,
         Limits,
-        MtuConfig,
+        Mtu,
         Sync,
         Tls,
         AddressToken,
@@ -250,7 +250,7 @@ impl<
         EndpointLimits: s2n_quic_core::endpoint::Limiter,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
-        MtuConfig: s2n_quic_core::path::mtu::Configurator,
+        Mtu: s2n_quic_core::path::mtu::Endpoint,
         Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
         AddressToken: address_token::Format,
@@ -269,7 +269,7 @@ impl<
         EndpointLimits,
         Event,
         Limits,
-        MtuConfig,
+        Mtu,
         Sync,
         Tls,
         AddressToken,
@@ -291,7 +291,7 @@ impl<
     type TLSEndpoint = Tls;
     type TokenFormat = AddressToken;
     type ConnectionLimits = Limits;
-    type MtuConfig = MtuConfig;
+    type Mtu = Mtu;
     type StreamManager = stream::DefaultStreamManager;
     type PathMigrationValidator = PathMigration;
     type PacketInterceptor = PacketInterceptor;
