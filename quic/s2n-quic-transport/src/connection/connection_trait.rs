@@ -209,7 +209,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         migration_validator: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
-        mtu_config: mtu::CheckedConfig,
+        endpoint_mtu_config: mtu::Config,
+        mtu_provider: &mut <Self::Config as endpoint::Config>::Mtu,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, DatagramDropReason>;
 

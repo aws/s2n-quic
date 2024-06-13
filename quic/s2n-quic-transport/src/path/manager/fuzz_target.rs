@@ -177,6 +177,7 @@ impl Model {
             &mut Default::default(),
             &mut migration_validator,
             mtu::Config::default().into(),
+            &mut Default::default(),
             &Limits::default(),
             &mut publisher,
         ) {
