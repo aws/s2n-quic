@@ -73,7 +73,7 @@
 //! use s2n_quic::provider::tls::s2n_tls::security::Policy;
 //!
 //! let mut tls = s2n_tls::Server::builder();
-//! let policy = Policy::from_version("select_a_fips_security_policy")?;
+//! let policy = Policy::from_version("20230317")?;
 //! tls.config_mut().set_security_policy(&policy)?;
 //! let tls = tls
 //!     .with_certificate(..)?
