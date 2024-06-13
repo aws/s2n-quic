@@ -268,6 +268,7 @@ pub trait Endpoint: 'static + Send {
     }
 }
 
+/// MTU configuration.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Config {
     initial_mtu: InitialMtu,
