@@ -12,6 +12,7 @@ use crate::{
     },
     endpoint,
     endpoint::close::CloseHandle,
+    path::RemoteAddress,
     recovery::congestion_controller::{self, Endpoint as _},
     space::PacketSpaceManager,
     wakeup_queue::WakeupQueue,
@@ -41,7 +42,10 @@ use s2n_quic_core::{
     path,
     path::{mtu, mtu::Endpoint as _, CheckedConfig, Handle as _},
     random::Generator as _,
-    stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
+    stateless_reset::{
+        token::{Generator as _, LEN as StatelessResetTokenLen},
+        Token,
+    },
     time::{Clock, Timestamp},
     token::{self, Format},
     transport::parameters::{ClientTransportParameters, DcSupportedVersions},
@@ -429,6 +433,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         // Try to decode the first packet in the datagram
         let payload_len = payload.len();
+        let token = Endpoint::<Cfg>::retrieve_stateless_reset_token(payload);
         let buffer = DecoderBufferMut::new(payload);
 
         let buffer = {
@@ -472,7 +477,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
             //# versions might allow the use of a long header.
 
             // The packet may be a stateless reset, check before returning.
-            let internal_connection_id = self.close_on_matching_stateless_reset(payload, timestamp);
+            let internal_connection_id = if let Some(token) = token {
+                self.close_on_matching_stateless_reset(&token, timestamp)
+            } else {
+                None
+            };
 
             if internal_connection_id.is_none() {
                 // The packet didn't contain a valid stateless token
@@ -658,12 +667,50 @@ impl<Cfg: Config> Endpoint<Cfg> {
             });
 
             if check_for_stateless_reset {
-                self.close_on_matching_stateless_reset(payload, timestamp);
+                if let Some(token) = token {
+                    self.close_on_matching_stateless_reset(&token, timestamp);
+                }
             }
 
             return;
         }
 
+        // The CID match existing internal Connection Ids so this could be a new
+        // connection request
+        self.handle_new_connection_request(
+            packet,
+            payload_len,
+            token,
+            timestamp,
+            datagram,
+            header,
+            remote_address,
+            remaining,
+            destination_connection_id,
+        );
+    }
+
+    fn handle_new_connection_request(
+        &mut self,
+        packet: ProtectedPacket,
+        payload_len: usize,
+        token: Option<Token>,
+        timestamp: Timestamp,
+        datagram: DatagramInfo,
+        header: &mut datagram::Header<Cfg::PathHandle>,
+        remote_address: RemoteAddress,
+        remaining: DecoderBufferMut,
+        destination_connection_id: LocalId,
+    ) {
+        let endpoint_context = self.config.context();
+        let mut publisher = event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
+                endpoint_type: Cfg::ENDPOINT_TYPE,
+                timestamp,
+            },
+            None,
+            endpoint_context.event_subscriber,
+        );
         match (Cfg::ENDPOINT_TYPE, packet) {
             (s2n_quic_core::endpoint::Type::Server, ProtectedPacket::Initial(packet)) => {
                 let source_connection_id =
@@ -790,9 +837,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# However, endpoints MUST treat any packet ending in a
                 //# valid stateless reset token as a Stateless Reset, as other QUIC
                 //# versions might allow the use of a long header.
-                let is_stateless_reset = self
-                    .close_on_matching_stateless_reset(payload, timestamp)
-                    .is_some();
+                let is_stateless_reset = if let Some(token) = token {
+                    self.close_on_matching_stateless_reset(&token, timestamp)
+                        .is_some()
+                } else {
+                    false
+                };
 
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3.2
                 //# For instance, an endpoint MAY send a Stateless Reset in
@@ -846,14 +896,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         );
     }
 
-    /// Checks if the given payload contains a stateless reset token matching a known token.
-    /// If there is a match, the matching connection will be closed and the `InternalConnectionId`
-    /// will be returned.
-    fn close_on_matching_stateless_reset(
-        &mut self,
-        payload: &[u8],
-        timestamp: Timestamp,
-    ) -> Option<InternalConnectionId> {
+    fn retrieve_stateless_reset_token(payload: &mut [u8]) -> Option<Token> {
         let buffer = DecoderBuffer::new(payload);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
@@ -865,6 +908,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let token_index = payload.len().checked_sub(StatelessResetTokenLen)?;
         let buffer = buffer.skip(token_index).ok()?;
         let (token, _) = buffer.decode().ok()?;
+        Some(token)
+    }
+
+    /// Checks if the given payload contains a stateless reset token matching a known token.
+    /// If there is a match, the matching connection will be closed and the `InternalConnectionId`
+    /// will be returned.
+    fn close_on_matching_stateless_reset(
+        &mut self,
+        token: &Token,
+        timestamp: Timestamp,
+    ) -> Option<InternalConnectionId> {
         let endpoint_context = self.config.context();
         let internal_id = self
             .connection_id_mapper
