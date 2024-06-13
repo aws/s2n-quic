@@ -258,8 +258,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             Some(quic_version),
             endpoint_context.event_subscriber,
         );
-        let info = mtu::ConnectionInfo::new(&remote_address, self.mtu_config);
-        let mtu_config = CheckedConfig::new(endpoint_context.mtu.on_connection(&info), &info)
+        let info = mtu::PathInfo::new(&remote_address, self.mtu_config);
+        let mtu_config = CheckedConfig::new(endpoint_context.mtu.on_path(&info), &info)
             .map_err(|_| {
                 endpoint_publisher.on_endpoint_datagram_dropped(
                     event::builder::EndpointDatagramDropped {

@@ -144,9 +144,9 @@ impl<Providers: ClientProviders> Builder<Providers> {
         /// struct MyMtuProvider(mtu::Config);
         ///
         /// impl mtu::Endpoint for MyMtuProvider {
-        ///     fn on_connection(
+        ///     fn on_path(
         ///         &mut self,
-        ///         info: &mtu::ConnectionInfo,
+        ///         info: &mtu::PathInfo,
         ///     ) -> mtu::Config {
         ///         self.0
         ///     }

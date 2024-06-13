@@ -1,9 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Provides MTU configuration at the connection level.
+//! Provides a path specific MTU configuration.
 
-pub use s2n_quic_core::path::mtu::{Builder, Config, ConnectionInfo, Endpoint};
+pub use s2n_quic_core::path::mtu::{Builder, Config, PathInfo, Endpoint};
 
 pub trait Provider {
     type Config: 'static + Send + Endpoint;

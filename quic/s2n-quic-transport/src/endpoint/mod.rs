@@ -1046,8 +1046,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
             Some(quic_version),
             endpoint_context.event_subscriber,
         );
-        let info = mtu::ConnectionInfo::new(&remote_address, self.mtu_config);
-        let mtu_config = CheckedConfig::new(endpoint_context.mtu.on_connection(&info), &info)
+        let info = mtu::PathInfo::new(&remote_address, self.mtu_config);
+        let mtu_config = CheckedConfig::new(endpoint_context.mtu.on_path(&info), &info)
             .map_err(|_err| {
                 let error = connection::Error::invalid_configuration(
                     "MTU provider produced an invalid MTU configuration",
