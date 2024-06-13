@@ -43,18 +43,20 @@ macro_rules! impl_handle_api {
             stream_type: $crate::stream::Type,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<$crate::stream::LocalStream>> {
-            use s2n_quic_core::stream::StreamType;
-            use $crate::stream::{BidirectionalStream, SendStream};
+            s2n_quic_core::task::waker::contract_debug(cx, |cx| {
+                use s2n_quic_core::stream::StreamType;
+                use $crate::stream::{BidirectionalStream, SendStream};
 
-            Ok(
-                match core::task::ready!(self.0.poll_open_stream(stream_type, cx))? {
-                    stream if stream_type == StreamType::Unidirectional => {
-                        SendStream::new(stream.into()).into()
-                    }
-                    stream => BidirectionalStream::new(stream).into(),
-                },
-            )
-            .into()
+                Ok(
+                    match core::task::ready!(self.0.poll_open_stream(stream_type, cx))? {
+                        stream if stream_type == StreamType::Unidirectional => {
+                            SendStream::new(stream.into()).into()
+                        }
+                        stream => BidirectionalStream::new(stream).into(),
+                    },
+                )
+                .into()
+            })
         }
 
         /// Opens a new [`BidirectionalStream`](`crate::stream::BidirectionalStream`)
@@ -94,13 +96,15 @@ macro_rules! impl_handle_api {
             &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<$crate::stream::BidirectionalStream>> {
-            use s2n_quic_core::stream::StreamType;
-            use $crate::stream::BidirectionalStream;
+            s2n_quic_core::task::waker::contract_debug(cx, |cx| {
+                use s2n_quic_core::stream::StreamType;
+                use $crate::stream::BidirectionalStream;
 
-            let stream =
-                core::task::ready!(self.0.poll_open_stream(StreamType::Bidirectional, cx))?;
+                let stream =
+                    core::task::ready!(self.0.poll_open_stream(StreamType::Bidirectional, cx))?;
 
-            Ok(BidirectionalStream::new(stream)).into()
+                Ok(BidirectionalStream::new(stream)).into()
+            })
         }
 
         /// Opens a [`SendStream`](`crate::stream::SendStream`)
@@ -130,13 +134,15 @@ macro_rules! impl_handle_api {
             &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<$crate::stream::SendStream>> {
-            use s2n_quic_core::stream::StreamType;
-            use $crate::stream::SendStream;
+            s2n_quic_core::task::waker::contract_debug(cx, |cx| {
+                use s2n_quic_core::stream::StreamType;
+                use $crate::stream::SendStream;
 
-            let stream =
-                core::task::ready!(self.0.poll_open_stream(StreamType::Unidirectional, cx))?;
+                let stream =
+                    core::task::ready!(self.0.poll_open_stream(StreamType::Unidirectional, cx))?;
 
-            Ok(SendStream::new(stream.into())).into()
+                Ok(SendStream::new(stream.into())).into()
+            })
         }
 
         /// Returns the local address that this connection is bound to.

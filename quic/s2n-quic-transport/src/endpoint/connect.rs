@@ -103,21 +103,9 @@ impl Attempt {
             state: AttemptState::Connect(request, opener.clone(), receiver),
         }
     }
-}
 
-enum AttemptState {
-    /// The attempt is currently waiting for capacity in the `ConnectorSender` to make the `Request`
-    Connect(Request, ConnectorSender, ConnectionReceiver),
-    /// The attempt is currently waiting for a response back from the endpoint on the `ConnectionReceiver`
-    Waiting(ConnectionReceiver),
-    /// This is an intermediate state and should not persist across calls to `poll`
-    Unreachable,
-}
-
-impl Future for Attempt {
-    type Output = Result<Connection, connection::Error>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    #[inline]
+    fn poll_state(&mut self, cx: &mut Context) -> Poll<<Self as Future>::Output> {
         loop {
             match core::mem::replace(&mut self.state, AttemptState::Unreachable) {
                 AttemptState::Connect(request, mut opener, response) => {
@@ -175,5 +163,22 @@ impl Future for Attempt {
                 }
             }
         }
+    }
+}
+
+enum AttemptState {
+    /// The attempt is currently waiting for capacity in the `ConnectorSender` to make the `Request`
+    Connect(Request, ConnectorSender, ConnectionReceiver),
+    /// The attempt is currently waiting for a response back from the endpoint on the `ConnectionReceiver`
+    Waiting(ConnectionReceiver),
+    /// This is an intermediate state and should not persist across calls to `poll`
+    Unreachable,
+}
+
+impl Future for Attempt {
+    type Output = Result<Connection, connection::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        s2n_quic_core::task::waker::contract_debug(cx, |cx| self.poll_state(cx))
     }
 }

@@ -58,7 +58,7 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     /// Called when the client's application parameters are available, prior
     /// to completion of the handshake.
     ///
-    /// The `server_params` is provided as a mutable Vec<u8> of encoded
+    /// The `server_params` is provided as a mutable `Vec<u8>` of encoded
     /// server transport parameters to allow for additional parameters
     /// dependent on the `client_params` to be appended before transmitting
     /// them to the client.

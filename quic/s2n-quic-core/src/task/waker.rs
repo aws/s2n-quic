@@ -6,13 +6,18 @@ use core::{
     task::{RawWaker, RawWakerVTable, Waker},
 };
 
+#[cfg(feature = "alloc")]
+mod contract;
+#[cfg(feature = "alloc")]
+pub use contract::*;
+
 /// Creates a new `Waker` that does nothing when `wake` is called.
 ///
-/// This is mostly useful for writing tests that need a [`Context`] to poll
+/// This is mostly useful for writing tests that need a [`core::task::Context`] to poll
 /// some futures, but are not expecting those futures to wake the waker or
 /// do not need to do anything specific if it happens.
 ///
-/// Upstream Tracking issue: https://github.com/rust-lang/rust/issues/98286
+/// Upstream Tracking issue: <https://github.com/rust-lang/rust/issues/98286>
 #[inline]
 pub fn noop() -> Waker {
     const VTABLE: RawWakerVTable = RawWakerVTable::new(
