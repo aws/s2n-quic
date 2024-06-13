@@ -21,7 +21,7 @@ pub trait EncoderValue: Sized {
     /// Returns the encoding size with no buffer constrains
     #[inline]
     fn encoding_size(&self) -> usize {
-        self.encoding_size_for_encoder(&EncoderLenEstimator::new(core::usize::MAX))
+        self.encoding_size_for_encoder(&EncoderLenEstimator::new(usize::MAX))
     }
 
     /// Returns the encoding size for the given encoder's capacity

@@ -44,7 +44,7 @@ pub mod testing {
 
     /// Creates a new mtu::Controller with the given mtu and probed size
     pub fn test_controller(mtu: u16, probed_size: u16) -> Controller {
-        let mut controller = new_controller(u16::max_value());
+        let mut controller = new_controller(u16::MAX);
         controller.plpmtu = mtu;
         controller.probed_size = probed_size;
         controller

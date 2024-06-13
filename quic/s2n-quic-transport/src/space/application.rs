@@ -383,10 +383,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             config: PhantomData::<Config>,
             outcome: &mut outcome,
             packet_number,
-            payload: transmission::connection_close::Payload {
-                connection_close,
-                packet_number_space: PacketNumberSpace::ApplicationData,
-            },
+            payload: transmission::connection_close::Payload { connection_close },
             timestamp: context.timestamp,
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,

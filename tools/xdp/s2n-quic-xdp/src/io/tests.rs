@@ -125,10 +125,8 @@ async fn send(count: u32, outputs: Vec<tx::Channel<atomic_waker::Handle>>, umem:
     let mut counter = 0;
     let mut needs_poll = false;
     while counter < count {
-        if core::mem::take(&mut needs_poll) {
-            if tx.ready().await.is_err() {
-                break;
-            }
+        if core::mem::take(&mut needs_poll) && tx.ready().await.is_err() {
+            break;
         }
 
         tx.queue(|queue| {

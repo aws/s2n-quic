@@ -19,7 +19,7 @@ pub(crate) fn remove<T: IntervalBound + Ord>(
     // this range is intentionally invalid and will only be
     // valid if the `scan` method finds a match
     #[allow(clippy::reversed_empty_ranges)]
-    let replace_range = core::usize::MAX..0;
+    let replace_range = usize::MAX..0;
 
     let can_push_range = limit.map(|l| l.get() > ranges.len() + 1).unwrap_or(true);
 

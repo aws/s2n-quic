@@ -28,13 +28,13 @@ impl MessageTrait for mmsghdr {
     #[inline]
     fn payload_len(&self) -> usize {
         let payload_len = self.msg_len as usize;
-        debug_assert!(payload_len <= core::u16::MAX as usize);
+        debug_assert!(payload_len <= u16::MAX as usize);
         payload_len
     }
 
     #[inline]
     unsafe fn set_payload_len(&mut self, len: usize) {
-        debug_assert!(len <= core::u16::MAX as usize);
+        debug_assert!(len <= u16::MAX as usize);
         self.msg_len = len as _;
         self.msg_hdr.set_payload_len(len);
     }
@@ -80,7 +80,7 @@ impl MessageTrait for mmsghdr {
     ) -> Result<usize, tx::Error> {
         let len = self.msg_hdr.tx_write(message)?;
         // We need to replicate the len with the `msg_len` field after delegating to `msg_hdr`
-        debug_assert!(len <= core::u16::MAX as usize);
+        debug_assert!(len <= u16::MAX as usize);
         self.msg_len = len as _;
         Ok(len)
     }

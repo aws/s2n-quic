@@ -29,9 +29,7 @@ pub struct Padding {
 impl Padding {
     /// The maximum padding allowed. When placed at the end of the packet
     /// all of the remaining bytes will be consumed.
-    pub const MAX: Self = Self {
-        length: core::usize::MAX,
-    };
+    pub const MAX: Self = Self { length: usize::MAX };
 
     pub const fn tag(self) -> u8 {
         padding_tag!()

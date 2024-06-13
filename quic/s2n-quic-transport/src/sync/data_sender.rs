@@ -254,7 +254,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
             "Data transmission is not allowed after finish() was called"
         );
         debug_assert!(
-            data.len() <= core::u32::MAX as usize,
+            data.len() <= u32::MAX as usize,
             "Maximum data size exceeded"
         );
 

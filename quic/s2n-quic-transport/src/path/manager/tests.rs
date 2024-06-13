@@ -941,7 +941,7 @@ fn limit_number_of_connection_migrations() {
     let mut manager = manager_server(first_path);
     let mut total_paths = 1;
 
-    for i in 1..std::u8::MAX {
+    for i in 1..u8::MAX {
         let new_addr: SocketAddr = format!("127.0.0.2:{}", i).parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
         let new_addr = RemoteAddress::from(new_addr);
@@ -1934,7 +1934,6 @@ pub fn helper_manager_with_paths_base(
 
     Helper {
         now,
-        first_expected_data,
         second_expected_data,
         challenge_expiration,
         zero_path_id,
@@ -1964,7 +1963,6 @@ fn helper_manager_with_paths(publisher: &mut Publisher) -> Helper {
 
 pub struct Helper {
     pub now: Timestamp,
-    pub first_expected_data: challenge::Data,
     pub second_expected_data: challenge::Data,
     pub challenge_expiration: Duration,
     pub zero_path_id: Id,

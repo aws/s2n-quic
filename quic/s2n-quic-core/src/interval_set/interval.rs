@@ -305,7 +305,7 @@ macro_rules! integer_bounds {
             #[inline]
             fn steps_between(&self, upper: &Self) -> usize {
                 use core::convert::TryInto;
-                (upper - self).try_into().unwrap_or(core::usize::MAX)
+                (upper - self).try_into().unwrap_or(usize::MAX)
             }
 
             #[inline]

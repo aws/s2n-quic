@@ -13,7 +13,7 @@ fn round_trip() {
             return;
         }
 
-        if input[0] > core::u8::MAX / 2 {
+        if input[0] > u8::MAX / 2 {
             assert_codec_round_trip_bytes!(ClientTransportParameters, input[1..]);
         } else {
             assert_codec_round_trip_bytes!(ServerTransportParameters, input[1..]);

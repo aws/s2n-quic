@@ -619,13 +619,13 @@ mod tests {
             )
             .is_ok());
         manager.transmission_state = AckTransmissionState::Active { retransmissions: 0 };
-        manager.transmissions_since_elicitation = Counter::new(u8::max_value());
+        manager.transmissions_since_elicitation = Counter::new(u8::MAX);
 
         manager.on_transmit_complete(&mut write_context);
 
         assert_eq!(
             manager.transmissions_since_elicitation,
-            Counter::new(u8::max_value())
+            Counter::new(u8::MAX)
         );
     }
 

@@ -58,7 +58,7 @@ pub mod testing {
         }
 
         fn private_random_fill(&mut self, dest: &mut [u8]) {
-            let seed = u8::max_value() - self.0;
+            let seed = u8::MAX - self.0;
 
             for (i, elem) in dest.iter_mut().enumerate() {
                 *elem = seed ^ i as u8;

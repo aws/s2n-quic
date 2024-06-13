@@ -300,7 +300,7 @@ pub mod testing {
             type PacketInfo = PacketInfo;
 
             fn congestion_window(&self) -> u32 {
-                u32::max_value()
+                u32::MAX
             }
 
             fn bytes_in_flight(&self) -> u32 {

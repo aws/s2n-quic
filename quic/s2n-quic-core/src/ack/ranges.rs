@@ -95,7 +95,7 @@ impl Ranges {
             (Some(min), Some(max)) => {
                 let min = PacketNumber::as_varint(min);
                 let max = PacketNumber::as_varint(max);
-                (max - min).try_into().unwrap_or(core::usize::MAX)
+                (max - min).try_into().unwrap_or(usize::MAX)
             }
             _ => 0,
         }

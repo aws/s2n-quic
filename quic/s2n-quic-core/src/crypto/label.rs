@@ -58,7 +58,7 @@ pub const QUIC_KU_48: [u8; 17] = hex!("00300d746c7331332071756963206b7500");
 pub fn compute_label<T: Extend<u8>>(len: usize, label: &[u8], out: &mut T) {
     const TLS_LABEL: &[u8] = b"tls13 ";
     let label_len = TLS_LABEL.len() + label.len();
-    debug_assert!(label_len <= core::u8::MAX as usize, "label is too long");
+    debug_assert!(label_len <= u8::MAX as usize, "label is too long");
 
     out.extend((len as u16).to_be_bytes().iter().cloned());
     out.extend(Some(label_len as u8));

@@ -184,7 +184,6 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             payload: transmission::early::Payload {
                 ack_manager: &mut self.ack_manager,
                 crypto_stream: &mut self.crypto_stream,
-                packet_number_space: PacketNumberSpace::Initial,
                 recovery_manager: &mut self.recovery_manager,
             },
             timestamp: context.timestamp,
@@ -270,10 +269,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
             config: PhantomData::<Config>,
             outcome: &mut outcome,
             packet_number,
-            payload: transmission::connection_close::Payload {
-                connection_close,
-                packet_number_space: PacketNumberSpace::Initial,
-            },
+            payload: transmission::connection_close::Payload { connection_close },
             timestamp: context.timestamp,
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,

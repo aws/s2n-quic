@@ -14,7 +14,7 @@ fn round_trip() {
         for frame in frames {
             // make sure the frames encoding size matches what would actually
             // be written to an encoder
-            let mut estimator = EncoderLenEstimator::new(core::usize::MAX);
+            let mut estimator = EncoderLenEstimator::new(usize::MAX);
             frame.encode(&mut estimator);
             assert_eq!(frame.encoding_size(), estimator.len());
         }
