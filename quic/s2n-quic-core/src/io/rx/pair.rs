@@ -74,7 +74,10 @@ where
                     // See https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=9a32abe85c666f36fb2ec86496cc41b4
                     //
                     // Once https://github.com/aws/s2n-quic/issues/1742 is resolved this code can go away
-                    (core::mem::transmute(a), core::mem::transmute(b))
+                    (
+                        core::mem::transmute::<&mut <A as Rx>::Queue, &mut <A as Rx>::Queue>(a),
+                        core::mem::transmute::<&mut <B as Rx>::Queue, &mut <B as Rx>::Queue>(b),
+                    )
                 };
 
                 let mut queue = Queue { a, b };

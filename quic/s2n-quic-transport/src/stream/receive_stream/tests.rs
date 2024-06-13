@@ -76,8 +76,8 @@ fn conn_flow_control_test_env_config() -> TestEnvironmentConfig {
         StreamType::Unidirectional,
     );
     // Increase the stream window to error on the connection window
-    test_env_config.initial_receive_window = core::u32::MAX.into();
-    test_env_config.desired_flow_control_window = core::u32::MAX;
+    test_env_config.initial_receive_window = u32::MAX.into();
+    test_env_config.desired_flow_control_window = u32::MAX;
     test_env_config.initial_connection_receive_window_size = 10 * 1024;
     test_env_config.desired_connection_flow_control_window = 10 * 1024;
     test_env_config

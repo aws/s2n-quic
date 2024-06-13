@@ -281,7 +281,7 @@ pub mod rx {
             Self {
                 chunks: None,
                 low_watermark: 0,
-                high_watermark: core::usize::MAX,
+                high_watermark: usize::MAX,
                 stop_sending: None,
                 detached: false,
             }

@@ -5,12 +5,10 @@ use crate::{
     ack::AckManager, contexts::WriteContext, endpoint, recovery, space::CryptoStream, transmission,
 };
 use core::ops::RangeInclusive;
-use s2n_quic_core::packet::number::PacketNumberSpace;
 
 pub struct Payload<'a, Config: endpoint::Config> {
     pub ack_manager: &'a mut AckManager,
     pub crypto_stream: &'a mut CryptoStream,
-    pub packet_number_space: PacketNumberSpace,
     pub recovery_manager: &'a mut recovery::Manager<Config>,
 }
 

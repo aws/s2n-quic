@@ -183,7 +183,7 @@ impl Model {
 }
 
 fn rate_to_u64(rate: f64) -> u64 {
-    let value = rate.max(0.0).min(1.0);
+    let value = rate.clamp(0.0, 1.0);
     let value = value * u64::MAX as f64;
     value.round() as u64
 }

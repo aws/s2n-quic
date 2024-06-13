@@ -88,9 +88,15 @@ where
                     //
                     // Once https://github.com/aws/s2n-quic/issues/1742 is resolved this code can go away
                     (
-                        core::mem::transmute(router),
-                        core::mem::transmute(a),
-                        core::mem::transmute(b),
+                        core::mem::transmute::<&mut R, &mut R>(router),
+                        core::mem::transmute::<
+                            &mut <A as tx::Tx>::Queue,
+                            &mut <A as tx::Tx>::Queue,
+                        >(a),
+                        core::mem::transmute::<
+                            &mut <B as tx::Tx>::Queue,
+                            &mut <B as tx::Tx>::Queue,
+                        >(b),
                     )
                 };
 

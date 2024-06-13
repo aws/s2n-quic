@@ -39,6 +39,9 @@ impl Server {
         // GSO isn't currently supported for XDP so just read it to avoid a dead_code warning
         let _ = self.disable_gso;
         let _ = self.max_mtu;
+        let _ = self.initial_mtu;
+        let _ = self.queue_recv_buffer_size;
+        let _ = self.queue_send_buffer_size;
 
         let addr = (self.ip, self.port).into();
 
@@ -96,6 +99,9 @@ impl Client {
         // GSO isn't currently supported for XDP so just read it to avoid a dead_code warning
         let _ = self.disable_gso;
         let _ = self.max_mtu;
+        let _ = self.initial_mtu;
+        let _ = self.queue_recv_buffer_size;
+        let _ = self.queue_send_buffer_size;
 
         let addr = (self.local_ip, 0u16).into();
 

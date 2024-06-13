@@ -313,7 +313,7 @@ impl ReceiveStreamFlowController {
         // TODO possibly make this value configurable
         let watermark = self.desired_flow_control_window / 2;
 
-        usize::try_from(watermark).unwrap_or(core::usize::MAX)
+        usize::try_from(watermark).unwrap_or(usize::MAX)
     }
 
     /// Returns the MAX_STREAM_DATA window that is currently synchronized

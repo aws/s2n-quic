@@ -22,7 +22,7 @@ use bolero_generator::*;
 
 const PACKET_SPACE_BITLEN: usize = 2;
 const PACKET_SPACE_SHIFT: usize = (size_of::<PacketNumber>() * 8) - PACKET_SPACE_BITLEN;
-const PACKET_NUMBER_MASK: u64 = core::u64::MAX >> PACKET_SPACE_BITLEN;
+const PACKET_NUMBER_MASK: u64 = u64::MAX >> PACKET_SPACE_BITLEN;
 
 /// Contains a fully-decoded packet number in a given space
 ///
@@ -208,15 +208,15 @@ mod tests {
             VarInt::from_u8(0),
             VarInt::from_u8(1),
             VarInt::from_u8(2),
-            VarInt::from_u8(core::u8::MAX / 2),
-            VarInt::from_u8(core::u8::MAX - 1),
-            VarInt::from_u8(core::u8::MAX),
-            VarInt::from_u16(core::u16::MAX / 2),
-            VarInt::from_u16(core::u16::MAX - 1),
-            VarInt::from_u16(core::u16::MAX),
-            VarInt::from_u32(core::u32::MAX / 2),
-            VarInt::from_u32(core::u32::MAX - 1),
-            VarInt::from_u32(core::u32::MAX),
+            VarInt::from_u8(u8::MAX / 2),
+            VarInt::from_u8(u8::MAX - 1),
+            VarInt::from_u8(u8::MAX),
+            VarInt::from_u16(u16::MAX / 2),
+            VarInt::from_u16(u16::MAX - 1),
+            VarInt::from_u16(u16::MAX),
+            VarInt::from_u32(u32::MAX / 2),
+            VarInt::from_u32(u32::MAX - 1),
+            VarInt::from_u32(u32::MAX),
             VarInt::MAX,
         ];
 

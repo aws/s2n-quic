@@ -234,7 +234,7 @@ impl<S: StreamTrait> StreamManagerState<S> {
         // By representing the flow control value as a u32, we save space
         // on the connection state.
         assert!(
-            initial_receive_window <= VarInt::from_u32(core::u32::MAX),
+            initial_receive_window <= VarInt::from_u32(u32::MAX),
             "Receive window must not exceed 32bit range"
         );
 
@@ -573,7 +573,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
         // By representing the flow control value as a u32, we save space
         // on the connection state.
         assert!(
-            initial_local_limits.max_data <= VarInt::from_u32(core::u32::MAX),
+            initial_local_limits.max_data <= VarInt::from_u32(u32::MAX),
             "Receive window must not exceed 32bit range"
         );
 

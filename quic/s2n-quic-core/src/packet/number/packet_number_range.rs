@@ -177,9 +177,9 @@ mod test {
     #[test]
     fn end_is_max_packet_number() {
         let start = PacketNumberSpace::Handshake
-            .new_packet_number(VarInt::new((u64::max_value() >> 2) - 1).unwrap());
-        let end = PacketNumberSpace::Handshake
-            .new_packet_number(VarInt::new(u64::max_value() >> 2).unwrap());
+            .new_packet_number(VarInt::new((u64::MAX >> 2) - 1).unwrap());
+        let end =
+            PacketNumberSpace::Handshake.new_packet_number(VarInt::new(u64::MAX >> 2).unwrap());
 
         assert_eq!(2, PacketNumberRange::new(start, end).count());
     }

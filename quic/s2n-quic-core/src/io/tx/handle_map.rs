@@ -49,7 +49,12 @@ where
                 // See https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=9a32abe85c666f36fb2ec86496cc41b4
                 //
                 // Once https://github.com/aws/s2n-quic/issues/1742 is resolved this code can go away
-                (core::mem::transmute(map), core::mem::transmute(tx))
+                (
+                    core::mem::transmute::<&mut Map, &mut Map>(map),
+                    core::mem::transmute::<&mut <Tx as tx::Tx>::Queue, &mut <Tx as tx::Tx>::Queue>(
+                        tx,
+                    ),
+                )
             };
 
             let mut queue = Queue {

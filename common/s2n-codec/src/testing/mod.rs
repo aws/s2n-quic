@@ -217,14 +217,14 @@ mod tests {
 
     #[test]
     fn u8_round_trip_value_test() {
-        for i in 0..=core::u8::MAX {
+        for i in 0..=u8::MAX {
             ensure_codec_round_trip_value!(u8, i).unwrap();
         }
     }
 
     #[test]
     fn u8_round_trip_bytes_test() {
-        let bytes = (0..=core::u8::MAX).collect::<Vec<_>>();
+        let bytes = (0..=u8::MAX).collect::<Vec<_>>();
         ensure_codec_round_trip_bytes!(u8, &bytes).unwrap();
     }
 

@@ -140,7 +140,7 @@ impl OutgoingFrameBuffer {
         if self.max_buffer_size.is_some() {
             self.remaining_packet_space
         } else {
-            core::usize::MAX
+            usize::MAX
         }
     }
 

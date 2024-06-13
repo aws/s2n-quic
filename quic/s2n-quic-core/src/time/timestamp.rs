@@ -108,7 +108,7 @@ impl Timestamp {
     #[inline]
     fn from_duration_impl(duration: Duration) -> Self {
         // 2^64 microseconds is ~580,000 years so casting from a u128 should be ok
-        debug_assert!(duration.as_micros() <= core::u64::MAX.into());
+        debug_assert!(duration.as_micros() <= u64::MAX.into());
         let micros = duration.as_micros() as u64;
         // if the value is 0 then round up to 1us after the epoch
         let micros = NonZeroU64::new(micros).unwrap_or(ONE_MICROSECOND);
@@ -225,13 +225,11 @@ mod tests {
         let ts2 = ts1 - Duration::from_millis(110);
         assert_eq!(Duration::from_millis(440), ts2 - initial);
         // Checked Sub
-        assert!(ts2
-            .checked_sub(Duration::from_secs(std::u64::MAX))
-            .is_none());
+        assert!(ts2.checked_sub(Duration::from_secs(u64::MAX)).is_none());
         assert_eq!(Some(initial), ts2.checked_sub(Duration::from_millis(440)));
         // Checked Add
         let max_duration =
-            Duration::from_secs(std::u64::MAX) + (Duration::from_secs(1) - Duration::from_nanos(1));
+            Duration::from_secs(u64::MAX) + (Duration::from_secs(1) - Duration::from_nanos(1));
         assert_eq!(None, ts2.checked_add(max_duration));
         assert!(ts2.checked_add(Duration::from_secs(24 * 60 * 60)).is_some());
 

@@ -136,7 +136,6 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             payload: transmission::early::Payload {
                 ack_manager: &mut self.ack_manager,
                 crypto_stream: &mut self.crypto_stream,
-                packet_number_space: PacketNumberSpace::Handshake,
                 recovery_manager: &mut self.recovery_manager,
             },
             timestamp: context.timestamp,
@@ -221,10 +220,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
             config: PhantomData::<Config>,
             outcome: &mut outcome,
             packet_number,
-            payload: transmission::connection_close::Payload {
-                connection_close,
-                packet_number_space: PacketNumberSpace::Handshake,
-            },
+            payload: transmission::connection_close::Payload { connection_close },
             timestamp: context.timestamp,
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,

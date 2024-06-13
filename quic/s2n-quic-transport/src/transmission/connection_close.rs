@@ -4,11 +4,10 @@
 use crate::transmission::{self, WriteContext};
 use core::ops::RangeInclusive;
 use s2n_codec::EncoderValue;
-use s2n_quic_core::{frame, packet::number::PacketNumberSpace};
+use s2n_quic_core::frame;
 
 pub struct Payload<'a> {
     pub connection_close: &'a frame::ConnectionClose<'a>,
-    pub packet_number_space: PacketNumberSpace,
 }
 
 impl<'a> super::Payload for Payload<'a> {
