@@ -322,6 +322,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
 
         let endpoint_context = self.config.context();
+        let endpoint_mtu_config = self.mtu_config;
         let handle_first_packet =
             move |connection: &mut <Config as endpoint::Config>::Connection| {
                 let path_id = connection.on_datagram_received(
@@ -329,7 +330,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     datagram,
                     endpoint_context.congestion_controller,
                     endpoint_context.path_migration,
-                    mtu_config,
+                    endpoint_mtu_config,
+                    endpoint_context.mtu,
                     endpoint_context.event_subscriber,
                 );
 

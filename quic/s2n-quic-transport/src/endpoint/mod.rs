@@ -556,23 +556,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             .lookup_internal_connection_id(&destination_connection_id)
         {
             let mut check_for_stateless_reset = false;
-            let info = mtu::ConnectionInfo::new(&remote_address, self.mtu_config);
-            let mtu_config =
-                match CheckedConfig::new(endpoint_context.mtu.on_connection(&info), &info) {
-                    Ok(config) => config,
-                    Err(_) => {
-                        publisher.on_endpoint_datagram_dropped(
-                            event::builder::EndpointDatagramDropped {
-                                len: payload_len as u16,
-                                reason: event::builder::DatagramDropReason::MtuValidation {
-                                    endpoint_mtu_config: self.mtu_config.into_event(),
-                                },
-                            },
-                        );
-                        return;
-                    }
-                };
-
             datagram.destination_connection_id_classification = dcid_classification;
 
             let _ = self.connections.with_connection(internal_id, |conn| {
@@ -584,7 +567,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         &datagram,
                         endpoint_context.congestion_controller,
                         endpoint_context.path_migration,
-                        mtu_config,
+                        self.mtu_config,
+                        endpoint_context.mtu,
                         endpoint_context.event_subscriber,
                     )
                     .map_err(|datagram_drop_reason| {

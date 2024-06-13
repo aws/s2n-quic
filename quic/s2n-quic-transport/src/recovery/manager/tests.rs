@@ -3367,6 +3367,7 @@ fn helper_generate_multi_path_manager(
                 &mut Endpoint::default(),
                 &mut migration::allow_all::Validator,
                 mtu::Config::default().into(),
+                &mut mtu::Config::default(),
                 &Limits::default(),
                 publisher,
             )
