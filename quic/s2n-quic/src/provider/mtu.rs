@@ -3,7 +3,7 @@
 
 //! Provides MTU configuration at the connection level.
 
-pub use s2n_quic_core::path::mtu::{Config, ConnectionInfo, Endpoint};
+pub use s2n_quic_core::path::mtu::{Builder, Config, ConnectionInfo, Endpoint};
 
 pub trait Provider {
     type Config: 'static + Send + Endpoint;
@@ -12,7 +12,7 @@ pub trait Provider {
     fn start(self) -> Result<Self::Config, Self::Error>;
 }
 
-pub use default::Provider as Default;
+pub use Config as Default;
 
 impl_provider_utils!();
 
@@ -22,21 +22,5 @@ impl<T: 'static + Send + Endpoint> Provider for T {
 
     fn start(self) -> Result<Self::Config, Self::Error> {
         Ok(self)
-    }
-}
-
-pub mod default {
-    pub use s2n_quic_core::path::mtu::Builder;
-
-    #[derive(Debug, Default)]
-    pub struct Provider(());
-
-    impl super::Provider for Provider {
-        type Config = super::Config;
-        type Error = core::convert::Infallible;
-
-        fn start(self) -> Result<Self::Config, Self::Error> {
-            Ok(Self::Config::default())
-        }
     }
 }
