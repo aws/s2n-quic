@@ -156,7 +156,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// # Examples
         ///
-        /// Set custom MTU values to use per connections, while inheriting the remaining default
+        /// Set custom MTU values to use per connection, while inheriting the remaining default
         /// config
         ///
         /// ```rust,no_run
@@ -168,7 +168,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///
         /// struct MyMtuProvider(mtu::Config);
         ///
-        /// impl mtu::Configurator for MyMtuProvider {
+        /// impl mtu::Endpoint for MyMtuProvider {
         ///     fn on_connection(
         ///         &mut self,
         ///         info: &mtu::ConnectionInfo,

@@ -17,7 +17,7 @@ impl_providers_state! {
         random: Random,
         event: Event,
         limits: Limits,
-        mtu: MtuConfig,
+        mtu: Mtu,
         io: IO,
         sync: Sync,
         tls: Tls,
@@ -38,7 +38,7 @@ impl<
         Random: random::Provider,
         Event: event::Provider,
         Limits: limits::Provider,
-        MtuConfig: mtu::Provider,
+        Mtu: mtu::Provider,
         IO: io::Provider,
         Sync: sync::Provider,
         Tls: tls::Provider,
@@ -54,7 +54,7 @@ impl<
         Random,
         Event,
         Limits,
-        MtuConfig,
+        Mtu,
         IO,
         Sync,
         Tls,
@@ -211,7 +211,7 @@ struct EndpointConfig<
     Random,
     Event,
     Limits,
-    MtuConfig,
+    Mtu,
     Sync,
     Tls,
     Datagram,
@@ -226,7 +226,7 @@ struct EndpointConfig<
     endpoint_limits: EndpointLimits,
     event: Event,
     limits: Limits,
-    mtu: MtuConfig,
+    mtu: Mtu,
     sync: Sync,
     tls: Tls,
     token: Token,
@@ -246,7 +246,7 @@ impl<
         Random: s2n_quic_core::random::Generator,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
-        MtuConfig: s2n_quic_core::path::mtu::Configurator,
+        Mtu: s2n_quic_core::path::mtu::Endpoint,
         Sync,
         Tls: crypto::tls::Endpoint,
         Datagram: s2n_quic_core::datagram::Endpoint,
@@ -262,7 +262,7 @@ impl<
         Random,
         Event,
         Limits,
-        MtuConfig,
+        Mtu,
         Sync,
         Tls,
         Datagram,
@@ -284,7 +284,7 @@ impl<
         Random: s2n_quic_core::random::Generator,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
-        MtuConfig: s2n_quic_core::path::mtu::Configurator,
+        Mtu: s2n_quic_core::path::mtu::Endpoint,
         Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
         Datagram: s2n_quic_core::datagram::Endpoint,
@@ -300,7 +300,7 @@ impl<
         Random,
         Event,
         Limits,
-        MtuConfig,
+        Mtu,
         Sync,
         Tls,
         Datagram,
@@ -321,7 +321,7 @@ impl<
     type TLSEndpoint = Tls;
     type TokenFormat = Token;
     type ConnectionLimits = Limits;
-    type MtuConfig = MtuConfig;
+    type Mtu = Mtu;
     type StreamManager = stream::DefaultStreamManager;
     type PathMigrationValidator = PathMigration;
     type PacketInterceptor = PacketInterceptor;

@@ -20,7 +20,7 @@ use s2n_quic_core::{
     event::{self, supervisor, ConnectionPublisher, EndpointPublisher, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
-    path::{mtu, mtu::Configurator as _, CheckedConfig, Handle as _},
+    path::{mtu, mtu::Endpoint as _, CheckedConfig, Handle as _},
     stateless_reset::token::Generator as _,
     transport::{self, parameters::ServerTransportParameters},
 };
@@ -258,18 +258,20 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             Some(quic_version),
             endpoint_context.event_subscriber,
         );
-        let info = mtu::ConnectionInfo::new(&remote_address, self.endpoint_mtu_config);
+        let info = mtu::ConnectionInfo::new(&remote_address, self.mtu_config);
         let mtu_config = CheckedConfig::new(endpoint_context.mtu.on_connection(&info), &info)
             .map_err(|_| {
                 endpoint_publisher.on_endpoint_datagram_dropped(
                     event::builder::EndpointDatagramDropped {
                         len: datagram.payload_len as u16,
                         reason: event::builder::DatagramDropReason::MtuValidation {
-                            endpoint_mtu_config: self.endpoint_mtu_config.into_event(),
+                            endpoint_mtu_config: self.mtu_config.into_event(),
                         },
                     },
                 );
-                connection::Error::validation("failed to instantiate a valid MTU provider")
+                connection::Error::invalid_configuration(
+                    "MTU provider produced an invalid MTU configuration",
+                )
             })?;
 
         let mut publisher = event::ConnectionPublisherSubscriber::new(
@@ -279,8 +281,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             &mut event_context,
         );
 
-        let path_info =
-            congestion_controller::PathInfo::new(mtu_config.initial_mtu(), &remote_address);
+        let path_info = congestion_controller::PathInfo::new(&mtu_config, &remote_address);
         let congestion_controller = endpoint_context
             .congestion_controller
             .new_congestion_controller(path_info);

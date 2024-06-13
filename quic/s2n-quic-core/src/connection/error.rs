@@ -87,9 +87,9 @@ pub enum Error {
         source: &'static panic::Location<'static>,
     },
 
-    /// The connection was closed due to a validation failure
+    /// The connection was closed due to invalid Application provided configuration
     #[non_exhaustive]
-    Validation {
+    InvalidConfiguration {
         reason: &'static str,
         source: &'static panic::Location<'static>,
     },
@@ -156,7 +156,7 @@ impl fmt::Display for Error {
             Self::EndpointClosing { .. } => {
                 write!(f, "The connection attempt was rejected because the endpoint is closing")
             }
-            Self::Validation {reason, ..} => write!(
+            Self::InvalidConfiguration {reason, ..} => write!(
                 f,
                 "The connection was closed due to: {reason}"
             ),
@@ -246,7 +246,7 @@ impl Error {
             Error::MaxHandshakeDurationExceeded { source, .. } => source,
             Error::ImmediateClose { source, .. } => source,
             Error::EndpointClosing { source } => source,
-            Error::Validation { source, .. } => source,
+            Error::InvalidConfiguration { source, .. } => source,
             Error::Unspecified { source } => source,
         }
     }
@@ -354,9 +354,9 @@ impl Error {
     #[inline]
     #[track_caller]
     #[doc(hidden)]
-    pub fn validation(reason: &'static str) -> Error {
+    pub fn invalid_configuration(reason: &'static str) -> Error {
         let source = panic::Location::caller();
-        Error::Validation { source, reason }
+        Error::InvalidConfiguration { source, reason }
     }
 
     #[inline]
@@ -460,7 +460,7 @@ pub fn as_frame<'a, F: connection::close::Formatter>(
         Error::MaxHandshakeDurationExceeded { .. } => None,
         Error::ImmediateClose { .. } => None,
         Error::EndpointClosing { .. } => None,
-        Error::Validation { .. } => None,
+        Error::InvalidConfiguration { .. } => None,
         Error::Unspecified { .. } => {
             let error =
                 transport::Error::INTERNAL_ERROR.with_reason("an unspecified error occurred");
@@ -539,7 +539,7 @@ impl From<Error> for std::io::ErrorKind {
             Error::MaxHandshakeDurationExceeded { .. } => ErrorKind::TimedOut,
             Error::ImmediateClose { .. } => ErrorKind::Other,
             Error::EndpointClosing { .. } => ErrorKind::Other,
-            Error::Validation { .. } => ErrorKind::Other,
+            Error::InvalidConfiguration { .. } => ErrorKind::Other,
             Error::Unspecified { .. } => ErrorKind::Other,
         }
     }
