@@ -239,31 +239,31 @@ impl Display for MtuError {
 #[cfg(feature = "std")]
 impl std::error::Error for MtuError {}
 
-/// Information about the connection that may be used when generating or
+/// Information about the path that may be used when generating or
 /// validating MTU configuration.
-pub struct ConnectionInfo<'a> {
+pub struct PathInfo<'a> {
     pub remote_address: event::api::SocketAddress<'a>,
     pub endpoint_config: Config,
 }
 
-impl<'a> ConnectionInfo<'a> {
+impl<'a> PathInfo<'a> {
     #[inline]
     #[doc(hidden)]
     pub fn new(remote_address: &'a inet::SocketAddress, endpoint_mtu_config: Config) -> Self {
-        ConnectionInfo {
+        PathInfo {
             remote_address: remote_address.into_event(),
             endpoint_config: endpoint_mtu_config,
         }
     }
 }
 
-/// Creates MTU config for the given connection.
+/// Creates MTU config for the given path.
 pub trait Endpoint: 'static + Send {
-    /// Provide connection specific MTU config.
+    /// Provide path specific MTU config.
     ///
     /// Application must ensure that `max_mtu <= info.endpoint_config.max_mtu`.
     /// By default this uses the MTU config specified on the IO provider.
-    fn on_connection(&mut self, info: &mtu::ConnectionInfo) -> mtu::Config {
+    fn on_path(&mut self, info: &mtu::PathInfo) -> mtu::Config {
         info.endpoint_config
     }
 }
@@ -320,7 +320,7 @@ pub struct CheckedConfig(Config);
 
 impl CheckedConfig {
     // Check that the Application provided MTU values are valid for this endpoint.
-    pub fn new(config: Config, info: &mtu::ConnectionInfo) -> Result<CheckedConfig, MtuError> {
+    pub fn new(config: Config, info: &mtu::PathInfo) -> Result<CheckedConfig, MtuError> {
         ensure!(config.is_valid(), Err(MtuError::Validation));
         ensure!(
             u16::from(config.max_mtu) <= u16::from(info.endpoint_config.max_mtu),

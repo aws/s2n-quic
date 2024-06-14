@@ -422,9 +422,9 @@ impl<Config: endpoint::Config> Manager<Config> {
             .rtt_estimator
             .for_new_path(limits.initial_round_trip_time());
 
-        let info = mtu::ConnectionInfo::new(&remote_address, endpoint_mtu_config);
+        let info = mtu::PathInfo::new(&remote_address, endpoint_mtu_config);
         let mtu_config =
-            CheckedConfig::new(mtu_provider.on_connection(&info), &info).map_err(|_err| {
+            CheckedConfig::new(mtu_provider.on_path(&info), &info).map_err(|_err| {
                 event::builder::DatagramDropReason::MtuValidation {
                     endpoint_mtu_config: endpoint_mtu_config.into_event(),
                 }

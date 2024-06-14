@@ -12,7 +12,7 @@ use s2n_quic_core::{
 struct CustomMtu(mtu::Config);
 
 impl mtu::Endpoint for CustomMtu {
-    fn on_connection(&mut self, _info: &mtu::ConnectionInfo) -> mtu::Config {
+    fn on_connection(&mut self, _info: &mtu::PathInfo) -> mtu::Config {
         self.0
     }
 }

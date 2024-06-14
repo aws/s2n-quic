@@ -126,7 +126,7 @@ fn checked_mtu_config() {
     let remote = inet::SocketAddress::default();
     let endpoint_config = mtu::Config::builder().build().unwrap();
     assert!(endpoint_config.is_valid());
-    let info = ConnectionInfo::new(&remote, endpoint_config);
+    let info = PathInfo::new(&remote, endpoint_config);
 
     // valid: with Default config
     let conn_config = mtu::Config::builder().build().unwrap();
