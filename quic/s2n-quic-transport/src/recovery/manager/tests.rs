@@ -3439,7 +3439,7 @@ fn helper_generate_path_manager_with_first_addr(
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
-    path::Manager::new(path, registry, mtu_config)
+    path::Manager::new(path, registry)
 }
 
 fn helper_generate_client_path_manager(
@@ -3465,7 +3465,7 @@ fn helper_generate_client_path_manager(
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
-    path::Manager::new(path, registry, mtu_config)
+    path::Manager::new(path, registry)
 }
 
 struct MockContext<'a, Config: endpoint::Config> {

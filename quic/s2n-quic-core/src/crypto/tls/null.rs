@@ -394,16 +394,6 @@ mod key {
         fn derive_next_key(&self) -> Self {
             NoCrypto
         }
-
-        #[inline(always)]
-        fn update_sealer_pmtu(&mut self, _pmtu: u16) {
-            // Do nothing
-        }
-
-        #[inline(always)]
-        fn update_opener_pmtu(&mut self, _pmtu: u16) {
-            // Do nothing
-        }
     }
 
     impl crypto::OneRttHeaderKey for NoCrypto {}

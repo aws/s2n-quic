@@ -38,7 +38,7 @@ fn manager_server(first_path: ServerPath) -> ServerManager {
             first_path.peer_connection_id,
             true,
         );
-    ServerManager::new(first_path, peer_id_registry, mtu::CheckedConfig::default())
+    ServerManager::new(first_path, peer_id_registry)
 }
 
 // Helper function to easily create a PathManager as a Client
@@ -46,7 +46,7 @@ fn manager_client(first_path: ClientPath) -> ClientManager {
     let mut random_generator = random::testing::Generator(123);
     let peer_id_registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Client)
         .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id(), true);
-    ClientManager::new(first_path, peer_id_registry, mtu::CheckedConfig::default())
+    ClientManager::new(first_path, peer_id_registry)
 }
 
 #[test]
@@ -1736,7 +1736,7 @@ fn last_known_validated_path_should_update_on_path_response() {
         .on_new_connection_id(&second_conn_id, 2, 0, &TEST_TOKEN_2)
         .is_ok());
 
-    let mut manager = Manager::new(zero_path, peer_id_registry, mtu::CheckedConfig::default());
+    let mut manager = Manager::new(zero_path, peer_id_registry);
 
     assert!(!manager[zero_path_id].is_challenge_pending());
     assert!(manager[zero_path_id].is_validated());
@@ -1905,7 +1905,7 @@ pub fn helper_manager_with_paths_base(
             .is_ok());
     }
 
-    let mut manager = ServerManager::new(zero_path, peer_id_registry, CheckedConfig::default());
+    let mut manager = ServerManager::new(zero_path, peer_id_registry);
     assert!(manager.peer_id_registry.is_active(&first_conn_id));
     manager.paths.push(first_path);
     manager.paths.push(second_path);

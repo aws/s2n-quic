@@ -312,8 +312,6 @@ impl Config {
 pub struct CheckedConfig {
     // The active mtu config for the path
     active: Config,
-    // The max mtu configured on the Endpoint
-    pub endpoint: Config,
 }
 
 impl CheckedConfig {
@@ -325,10 +323,7 @@ impl CheckedConfig {
             Err(MtuError)
         );
 
-        Ok(CheckedConfig {
-            active: config,
-            endpoint: info.endpoint_config,
-        })
+        Ok(CheckedConfig { active: config })
     }
 
     pub fn initial_mtu(&self) -> InitialMtu {
@@ -340,10 +335,7 @@ impl CheckedConfig {
 #[cfg(any(test, feature = "testing"))]
 impl From<Config> for CheckedConfig {
     fn from(value: Config) -> Self {
-        CheckedConfig {
-            active: value,
-            endpoint: value,
-        }
+        CheckedConfig { active: value }
     }
 }
 

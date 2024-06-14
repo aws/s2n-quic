@@ -332,14 +332,6 @@ impl crypto::OneRttKey for OneRttKey {
             secrets,
         }
     }
-
-    fn update_sealer_pmtu(&mut self, _pmtu: u16) {
-        // rustls doesn't have any ptmu specialization
-    }
-
-    fn update_opener_pmtu(&mut self, _pmtu: u16) {
-        // rustls doesn't have any ptmu specialization
-    }
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9001#section-5.3

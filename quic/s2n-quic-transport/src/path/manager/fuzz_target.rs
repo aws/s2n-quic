@@ -95,7 +95,7 @@ impl Model {
                         true,
                     );
 
-            Manager::new(zero_path, peer_id_registry, mtu::CheckedConfig::default())
+            Manager::new(zero_path, peer_id_registry)
         };
 
         let clock = Clock::default();

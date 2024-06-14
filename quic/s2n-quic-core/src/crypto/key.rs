@@ -137,9 +137,6 @@ pub mod testing {
                 fail_on_decrypt: self.fail_on_decrypt,
             }
         }
-
-        fn update_sealer_pmtu(&mut self, _pmtu: u16) {}
-        fn update_opener_pmtu(&mut self, _pmtu: u16) {}
     }
     impl ZeroRttKey for Key {}
     impl RetryKey for Key {

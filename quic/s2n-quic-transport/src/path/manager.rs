@@ -24,7 +24,7 @@ use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::{
         migration::{self, Validator as _},
-        mtu, CheckedConfig, Endpoint as _, Handle as _, Id, MaxMtu,
+        mtu, CheckedConfig, Endpoint as _, Handle as _, Id,
     },
     random,
     recovery::congestion_controller::{self, Endpoint as _},
@@ -70,22 +70,16 @@ pub struct Manager<Config: endpoint::Config> {
     /// The `paths` data structure will need to be enhanced to include garbage collection
     /// of old paths to overcome this limitation.
     pending_packet_authentication: Option<u8>,
-    mtu_config: CheckedConfig,
 }
 
 impl<Config: endpoint::Config> Manager<Config> {
-    pub fn new(
-        initial_path: Path<Config>,
-        peer_id_registry: PeerIdRegistry,
-        mtu_config: CheckedConfig,
-    ) -> Self {
+    pub fn new(initial_path: Path<Config>, peer_id_registry: PeerIdRegistry) -> Self {
         let mut manager = Manager {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
             active: 0,
             last_known_active_validated_path: None,
             pending_packet_authentication: None,
-            mtu_config,
         };
         manager.paths[0].activated = true;
         manager.paths[0].is_active = true;
@@ -857,12 +851,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             .map(|path| path.transmission_constraint())
             .min()
             .unwrap_or(transmission::Constraint::None)
-    }
-
-    /// Returns the maximum size the UDP payload can reach for any probe packet.
-    #[inline]
-    pub fn max_mtu(&self) -> MaxMtu {
-        self.mtu_config.endpoint.max_mtu()
     }
 
     #[cfg(test)]

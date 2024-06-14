@@ -12,16 +12,6 @@ impl crypto::OneRttKey for OneRttKey {
     fn derive_next_key(&self) -> Self {
         Self(self.0.update())
     }
-
-    #[inline]
-    fn update_sealer_pmtu(&mut self, pmtu: u16) {
-        self.0.sealer.update_pmtu(pmtu)
-    }
-
-    #[inline]
-    fn update_opener_pmtu(&mut self, pmtu: u16) {
-        self.0.opener.update_pmtu(pmtu)
-    }
 }
 
 impl crypto::OneRttHeaderKey for OneRttHeaderKey {}

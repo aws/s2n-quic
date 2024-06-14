@@ -71,11 +71,6 @@ impl NegotiatedCipherSuite {
     pub fn update(&self) -> Self {
         dispatch!(self, |cipher| cipher.update().into())
     }
-
-    /// Updates the configured maximum transmission unit
-    pub fn update_pmtu(&mut self, pmtu: u16) {
-        dispatch!(self, |cipher| cipher.update_pmtu(pmtu))
-    }
 }
 
 impl crypto::Key for NegotiatedCipherSuite {
