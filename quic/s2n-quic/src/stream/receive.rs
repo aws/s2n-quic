@@ -61,7 +61,7 @@ macro_rules! impl_receive_stream_api {
                     Err($crate::stream::Error::non_readable()).into()
                 };
                 ($variant: expr) => {
-                    s2n_quic_core::task::waker::contract_debug(cx, |cx| $variant.poll_receive(cx))
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| $variant.poll_receive(cx))
                 };
             }
 
@@ -145,7 +145,7 @@ macro_rules! impl_receive_stream_api {
                     Err($crate::stream::Error::non_readable()).into()
                 };
                 ($variant: expr) => {
-                    s2n_quic_core::task::waker::contract_debug(cx, |cx| {
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
                         $variant.poll_receive_vectored(chunks, cx)
                     })
                 };
@@ -232,7 +232,7 @@ macro_rules! impl_receive_stream_api {
             high_watermark: usize,
         ) -> core::task::Poll<$crate::stream::Result<s2n_quic_transport::stream::ops::rx::Response>>
         {
-            s2n_quic_core::task::waker::contract_debug(cx, |cx| {
+            s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
                 let response = core::task::ready!(self
                     .rx_request()?
                     .receive(chunks)

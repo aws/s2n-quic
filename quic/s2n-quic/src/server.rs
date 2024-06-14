@@ -94,7 +94,7 @@ impl Server {
     /// - `Poll::Ready(None)` the attempt failed because the server has closed. Once
     ///   None is returned, this function should not be called again.
     pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<Option<Connection>> {
-        s2n_quic_core::task::waker::contract_debug(cx, |cx| match self.acceptor.poll_accept(cx) {
+        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| match self.acceptor.poll_accept(cx) {
             Poll::Ready(Some(connection)) => Poll::Ready(Some(Connection::new(connection))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,

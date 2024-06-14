@@ -36,7 +36,7 @@ impl<T: Message> rx::Rx for Rx<T> {
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        waker::contract_debug(cx, |cx| {
+        waker::debug_assert_contract(cx, |cx| {
             let mut is_any_ready = false;
             let mut is_all_closed = true;
 

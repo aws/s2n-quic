@@ -179,6 +179,6 @@ impl Future for Attempt {
     type Output = Result<Connection, connection::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        s2n_quic_core::task::waker::contract_debug(cx, |cx| self.poll_state(cx))
+        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| self.poll_state(cx))
     }
 }

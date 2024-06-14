@@ -76,7 +76,7 @@ impl Contract {
 /// [`Waker::wake`], or [`Waker::wake_by_ref`] on the [`Context`]'s [`Waker`].
 #[inline(always)]
 #[track_caller]
-pub fn contract<F: FnOnce(&mut Context) -> Poll<R>, R>(cx: &mut Context, f: F) -> Poll<R> {
+pub fn assert_contract<F: FnOnce(&mut Context) -> Poll<R>, R>(cx: &mut Context, f: F) -> Poll<R> {
     let contract = Contract::new(cx);
     let mut cx = contract.context();
     let outcome = f(&mut cx);
@@ -90,9 +90,12 @@ pub fn contract<F: FnOnce(&mut Context) -> Poll<R>, R>(cx: &mut Context, f: F) -
 /// This is only enabled with `debug_assertions`.
 #[inline(always)]
 #[track_caller]
-pub fn contract_debug<F: FnOnce(&mut Context) -> Poll<R>, R>(cx: &mut Context, f: F) -> Poll<R> {
+pub fn debug_assert_contract<F: FnOnce(&mut Context) -> Poll<R>, R>(
+    cx: &mut Context,
+    f: F,
+) -> Poll<R> {
     #[cfg(debug_assertions)]
-    return contract(cx, f);
+    return assert_contract(cx, f);
 
     #[cfg(not(debug_assertions))]
     return f(cx);
@@ -109,16 +112,16 @@ mod tests {
         let mut cx = Context::from_waker(&waker);
 
         // the contract isn't violated when returning Ready
-        let _ = contract(&mut cx, |_cx| Poll::Ready(()));
+        let _ = assert_contract(&mut cx, |_cx| Poll::Ready(()));
 
         // the contract isn't violated if the waker is immediately woken
-        let _ = contract(&mut cx, |cx| {
+        let _ = assert_contract(&mut cx, |cx| {
             cx.waker().wake_by_ref();
             Poll::<()>::Pending
         });
 
         // the contract isn't violated if the waker is cloned then immediately woken
-        let _ = contract(&mut cx, |cx| {
+        let _ = assert_contract(&mut cx, |cx| {
             let waker = cx.waker().clone();
             waker.wake();
             Poll::<()>::Pending
@@ -126,7 +129,7 @@ mod tests {
 
         // the contract isn't violated if the waker is cloned and stored for later
         let mut stored = None;
-        let _ = contract(&mut cx, |cx| {
+        let _ = assert_contract(&mut cx, |cx| {
             stored = Some(cx.waker().clone());
             Poll::<()>::Pending
         });
@@ -139,6 +142,6 @@ mod tests {
         let mut cx = Context::from_waker(&waker);
 
         // the contract is violated if we return Pending without doing anything
-        let _ = contract(&mut cx, |_cx| Poll::<()>::Pending);
+        let _ = assert_contract(&mut cx, |_cx| Poll::<()>::Pending);
     }
 }

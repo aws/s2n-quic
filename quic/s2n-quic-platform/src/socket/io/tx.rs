@@ -47,7 +47,7 @@ impl<T: Message> tx::Tx for Tx<T> {
 
         // NOTE: we don't wrap the above check in the contract as we'd technically violate the
         // contract since we're returning `Pending` without storing a waker
-        waker::contract_debug(cx, |cx| {
+        waker::debug_assert_contract(cx, |cx| {
             let mut is_any_ready = false;
             let mut is_all_closed = true;
 

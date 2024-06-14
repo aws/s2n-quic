@@ -43,7 +43,7 @@ macro_rules! impl_handle_api {
             stream_type: $crate::stream::Type,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<$crate::stream::LocalStream>> {
-            s2n_quic_core::task::waker::contract_debug(cx, |cx| {
+            s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
                 use s2n_quic_core::stream::StreamType;
                 use $crate::stream::{BidirectionalStream, SendStream};
 
@@ -96,7 +96,7 @@ macro_rules! impl_handle_api {
             &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<$crate::stream::BidirectionalStream>> {
-            s2n_quic_core::task::waker::contract_debug(cx, |cx| {
+            s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
                 use s2n_quic_core::stream::StreamType;
                 use $crate::stream::BidirectionalStream;
 
@@ -134,7 +134,7 @@ macro_rules! impl_handle_api {
             &mut self,
             cx: &mut core::task::Context,
         ) -> core::task::Poll<$crate::connection::Result<$crate::stream::SendStream>> {
-            s2n_quic_core::task::waker::contract_debug(cx, |cx| {
+            s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
                 use s2n_quic_core::stream::StreamType;
                 use $crate::stream::SendStream;
 
