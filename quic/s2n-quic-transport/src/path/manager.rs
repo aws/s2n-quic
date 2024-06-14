@@ -70,16 +70,22 @@ pub struct Manager<Config: endpoint::Config> {
     /// The `paths` data structure will need to be enhanced to include garbage collection
     /// of old paths to overcome this limitation.
     pending_packet_authentication: Option<u8>,
+    endpoint_max_mtu: MaxMtu,
 }
 
 impl<Config: endpoint::Config> Manager<Config> {
-    pub fn new(initial_path: Path<Config>, peer_id_registry: PeerIdRegistry) -> Self {
+    pub fn new(
+        initial_path: Path<Config>,
+        peer_id_registry: PeerIdRegistry,
+        max_mtu: MaxMtu,
+    ) -> Self {
         let mut manager = Manager {
             paths: SmallVec::from_elem(initial_path, 1),
             peer_id_registry,
             active: 0,
             last_known_active_validated_path: None,
             pending_packet_authentication: None,
+            endpoint_max_mtu: max_mtu,
         };
         manager.paths[0].activated = true;
         manager.paths[0].is_active = true;
@@ -856,16 +862,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Returns the maximum size the UDP payload can reach for any probe packet.
     #[inline]
     pub fn max_mtu(&self) -> MaxMtu {
-        let value = self.active_path().max_mtu();
-
-        // This value is the same for each path so just return the active value
-        if cfg!(debug_assertions) {
-            for path in self.paths.iter() {
-                assert_eq!(value, path.max_mtu());
-            }
-        }
-
-        value
+        self.endpoint_max_mtu
     }
 
     #[cfg(test)]

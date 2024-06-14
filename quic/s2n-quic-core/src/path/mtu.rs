@@ -316,7 +316,12 @@ impl Config {
 // A checked MTU Config created after validating the values from the IO provider
 // against the values from mtu provider.
 #[derive(Copy, Clone, Debug, Default)]
-pub struct CheckedConfig(Config);
+pub struct CheckedConfig {
+    // The active mtu config for the path
+    active: Config,
+    // The max mtu configured on the Endpoint
+    pub endpoint: Config,
+}
 
 impl CheckedConfig {
     // Check that the Application provided MTU values are valid for this endpoint.
@@ -327,11 +332,14 @@ impl CheckedConfig {
             Err(MtuError::Validation)
         );
 
-        Ok(CheckedConfig(config))
+        Ok(CheckedConfig {
+            active: config,
+            endpoint: info.endpoint_config,
+        })
     }
 
     pub fn initial_mtu(&self) -> InitialMtu {
-        self.0.initial_mtu
+        self.active.initial_mtu
     }
 }
 
@@ -339,7 +347,10 @@ impl CheckedConfig {
 #[cfg(any(test, feature = "testing"))]
 impl From<Config> for CheckedConfig {
     fn from(value: Config) -> Self {
-        CheckedConfig(value)
+        CheckedConfig {
+            active: value,
+            endpoint: value,
+        }
     }
 }
 
@@ -484,7 +495,7 @@ impl Controller {
     #[inline]
     pub fn new(config: CheckedConfig, peer_socket_address: &inet::SocketAddress) -> Self {
         debug_assert!(
-            config.0.is_valid(),
+            config.active.is_valid(),
             "Invalid MTU configuration {:?}",
             config
         );
@@ -493,16 +504,22 @@ impl Controller {
         //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
         //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
         //# datagram size.
-        let base_plpmtu = config.0.base_mtu.max_datagram_size(peer_socket_address);
-        let max_udp_payload = config.0.max_mtu.max_datagram_size(peer_socket_address);
+        let base_plpmtu = config
+            .active
+            .base_mtu
+            .max_datagram_size(peer_socket_address);
+        let max_udp_payload = config.active.max_mtu.max_datagram_size(peer_socket_address);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
         //# Datagrams containing Initial packets MAY exceed 1200 bytes if the sender
         //# believes that the network path and peer both support the size that it chooses.
-        let plpmtu = config.0.initial_mtu.max_datagram_size(peer_socket_address);
+        let plpmtu = config
+            .active
+            .initial_mtu
+            .max_datagram_size(peer_socket_address);
 
         let initial_probed_size =
-            if u16::from(config.0.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD {
+            if u16::from(config.active.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD {
                 // An initial MTU was provided within the probe threshold of the Ethernet MTU, so we can
                 // instead try probing for an MTU larger than the Ethernet MTU
                 Self::next_probe_size(plpmtu, max_udp_payload)
@@ -522,7 +539,7 @@ impl Controller {
             base_plpmtu,
             plpmtu,
             probed_size: initial_probed_size,
-            max_mtu: config.0.max_mtu,
+            max_mtu: config.active.max_mtu,
             max_udp_payload,
             max_probe_size: max_udp_payload,
             probe_count: 0,
