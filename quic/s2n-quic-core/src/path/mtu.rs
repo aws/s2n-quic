@@ -261,6 +261,27 @@ pub trait Endpoint: 'static + Send {
     }
 }
 
+pub trait CheckedEndpoint: Endpoint + 'static + Send {
+    fn checked(&mut self, info: &mtu::PathInfo) -> Result<Config, MtuError> {
+        let conn_config = self.on_path(info);
+
+        ensure!(conn_config.is_valid(), Err(MtuError));
+        ensure!(
+            u16::from(conn_config.max_mtu) <= u16::from(info.endpoint_config.max_mtu),
+            Err(MtuError)
+        );
+
+        Ok(conn_config)
+    }
+
+    fn endpoint_config() -> Config {
+        // not sure how this gets used
+        todo!()
+    }
+}
+
+impl CheckedEndpoint for Config {}
+
 /// MTU configuration.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Config {

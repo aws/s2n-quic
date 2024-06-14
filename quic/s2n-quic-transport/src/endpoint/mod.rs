@@ -39,7 +39,7 @@ use s2n_quic_core::{
     io::{rx, tx},
     packet::{initial::ProtectedInitial, interceptor::Interceptor, ProtectedPacket},
     path,
-    path::{mtu, mtu::Endpoint as _, CheckedConfig, Handle as _},
+    path::{mtu, mtu::Endpoint as _, CheckedConfig, CheckedEndpoint as _, Handle as _},
     random::Generator as _,
     stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
@@ -1047,6 +1047,19 @@ impl<Cfg: Config> Endpoint<Cfg> {
             endpoint_context.event_subscriber,
         );
         let info = mtu::PathInfo::new(&remote_address, self.mtu_config);
+
+        // Since all these types are the same we can't differentiate between them.
+        //
+        // We need a new type for all three to help differentiate between them
+        // otherwise we rely on developers to make assertions that we passed in
+        // the correct type, that we actually called `checked` and didn't just
+        // pass in the end_config.
+        //
+        let end_config: mtu::Config = self.mtu_config;
+        // we need to expose `on_path` so that the Application can override it.
+        let conn_config: mtu::Config = endpoint_context.mtu.on_path(&info);
+        let checked: mtu::Config = endpoint_context.mtu.checked(&info).unwrap();
+
         let mtu_config =
             CheckedConfig::new(endpoint_context.mtu.on_path(&info), &info).map_err(|_err| {
                 let error = connection::Error::invalid_configuration(
