@@ -106,7 +106,6 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
 /// A Path holds the local and peer socket addresses, connection ids, and state. It can be
 /// validated or pending validation.
 impl<Config: endpoint::Config> Path<Config> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         handle: Config::PathHandle,
         peer_connection_id: connection::PeerId,

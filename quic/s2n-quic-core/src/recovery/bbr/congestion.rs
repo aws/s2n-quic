@@ -29,7 +29,6 @@ impl State {
     /// Updates the congestion state based on the latest delivery signals
     ///
     /// Called near the start of ACK processing
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn update(
         &mut self,
         packet_info: PacketInfo,

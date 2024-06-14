@@ -186,7 +186,6 @@ pub trait CongestionController: 'static + Clone + Send + Debug + private::Sealed
     /// it is possible this method may be called multiple times for one acknowledgement. In either
     /// case, `newest_acked_time_sent` and `newest_acked_packet_info` represent the newest acknowledged
     /// packet contributing to `bytes_acknowledged`.
-    #[allow(clippy::too_many_arguments)]
     fn on_ack<Pub: Publisher>(
         &mut self,
         newest_acked_time_sent: Timestamp,
@@ -203,7 +202,6 @@ pub trait CongestionController: 'static + Clone + Send + Debug + private::Sealed
     /// `new_loss_burst` is true if the lost packet is the first in a
     /// contiguous series of lost packets. This can be used for measuring or
     /// filtering out noise from burst losses.
-    #[allow(clippy::too_many_arguments)]
     fn on_packet_lost<Pub: Publisher>(
         &mut self,
         lost_bytes: u32,

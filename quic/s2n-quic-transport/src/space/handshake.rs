@@ -260,7 +260,6 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    #[allow(clippy::too_many_arguments)]
     pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         handshake_status: &HandshakeStatus,

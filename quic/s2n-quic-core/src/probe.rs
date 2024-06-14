@@ -18,7 +18,6 @@ macro_rules! __probe_define__ {
                 #[doc = $doc]
             )*
             #[inline(always)]
-            #[allow(clippy::too_many_arguments)]
             $vis fn $fun($($arg: $arg_t),*) {
                 $crate::probe::__trace!(
                     name: stringify!($fun),

@@ -12,7 +12,6 @@ use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{assume, buffer, varint::VarInt};
 
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
 pub fn encode<H, CD, C>(
     mut encoder: EncoderBuffer,
     source_control_port: u16,

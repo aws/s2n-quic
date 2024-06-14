@@ -17,7 +17,6 @@ pub const MAX_RETRANSMISSION_HEADER_LEN: usize = MAX_HEADER_LEN + (32 / 8);
 pub const MAX_HEADER_LEN: usize = 64;
 
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
 pub fn encode<H, CD, P, C>(
     mut encoder: EncoderBuffer,
     source_control_port: u16,

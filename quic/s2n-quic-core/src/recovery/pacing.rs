@@ -43,7 +43,6 @@ pub struct Pacer {
 
 impl Pacer {
     /// Called when each packet has been written
-    #[allow(clippy::too_many_arguments)]
     #[inline]
     pub fn on_packet_sent<Pub: Publisher>(
         &mut self,

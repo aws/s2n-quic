@@ -6,7 +6,6 @@ When rejecting 0-RTT, a server MUST NOT
 process any 0-RTT packets, even if it could.
 '''
 feature = "0-RTT"
-tracking-issue = "301"
 
 [[TODO]]
 quote = '''
@@ -16,7 +15,6 @@ rejected, a client SHOULD treat receipt of an acknowledgement for a
 is able to detect the condition.
 '''
 feature = "0-RTT"
-tracking-issue = "301"
 
 [[TODO]]
 quote = '''
@@ -24,7 +22,6 @@ The client therefore MUST reset the state of all
 streams, including application state bound to those streams.
 '''
 feature = "0-RTT"
-tracking-issue = "301"
 
 [[TODO]]
 quote = '''
@@ -32,5 +29,4 @@ A client MAY reattempt 0-RTT if it receives a Retry or Version
 Negotiation packet.
 '''
 feature = "0-RTT"
-tracking-issue = "301"
 

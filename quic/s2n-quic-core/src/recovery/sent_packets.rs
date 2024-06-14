@@ -36,7 +36,6 @@ pub struct SentPacketInfo<PacketInfo> {
 }
 
 impl<PacketInfo> SentPacketInfo<PacketInfo> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         congestion_controlled: bool,
         sent_bytes: usize,

@@ -96,7 +96,6 @@ impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
 }
 
 impl<Config: endpoint::Config> ApplicationSpace<Config> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey,
         header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
@@ -453,7 +452,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
     }
 
     /// Called when the connection timer expired
-    #[allow(clippy::too_many_arguments)]
     pub fn on_timeout<Pub: event::ConnectionPublisher>(
         &mut self,
         path_manager: &mut path::Manager<Config>,
