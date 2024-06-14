@@ -600,8 +600,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             parameters.limits.anti_amplification_multiplier(),
         );
 
-        let max_mtu = parameters.mtu_config.endpoint.max_mtu();
-        let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry, max_mtu);
+        let path_manager = path::Manager::new(
+            initial_path,
+            parameters.peer_id_registry,
+            parameters.mtu_config,
+        );
 
         let mut publisher =
             event_context.publisher(parameters.timestamp, parameters.event_subscriber);

@@ -259,8 +259,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             endpoint_context.event_subscriber,
         );
         let info = mtu::PathInfo::new(&remote_address, self.mtu_config);
-        let mtu_config = CheckedConfig::new(endpoint_context.mtu.on_path(&info), &info)
-            .map_err(|_| {
+        let mtu_config =
+            CheckedConfig::new(endpoint_context.mtu.on_path(&info), &info).map_err(|_| {
                 endpoint_publisher.on_endpoint_datagram_dropped(
                     event::builder::EndpointDatagramDropped {
                         len: datagram.payload_len as u16,

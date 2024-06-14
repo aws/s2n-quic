@@ -181,7 +181,7 @@ macro_rules! impl_mtu {
 
             fn try_from(value: u16) -> Result<Self, Self::Error> {
                 if value < MINIMUM_MTU {
-                    return Err(MtuError::Validation);
+                    return Err(MtuError);
                 }
 
                 Ok($name(value.try_into().expect(
@@ -216,23 +216,16 @@ impl_mtu!(MaxMtu, DEFAULT_MAX_MTU);
 impl_mtu!(InitialMtu, DEFAULT_INITIAL_MTU);
 impl_mtu!(BaseMtu, DEFAULT_BASE_MTU);
 
-#[non_exhaustive]
 #[derive(Debug, Eq, PartialEq)]
-pub enum MtuError {
-    Validation,
-}
+pub struct MtuError;
 
 impl Display for MtuError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            MtuError::Validation => {
-                write!(
-                    f,
-                    "MTU must have {} <= base_mtu (default: {}) <= initial_mtu (default: {}) <= max_mtu (default: {})",
-                    MINIMUM_MTU, DEFAULT_BASE_MTU.0, DEFAULT_INITIAL_MTU.0, DEFAULT_MAX_MTU.0
-                )
-            }
-        }
+        write!(
+            f,
+            "MTU must have {} <= base_mtu (default: {}) <= initial_mtu (default: {}) <= max_mtu (default: {})",
+            MINIMUM_MTU, DEFAULT_BASE_MTU.0, DEFAULT_INITIAL_MTU.0, DEFAULT_MAX_MTU.0
+        )
     }
 }
 
@@ -326,10 +319,10 @@ pub struct CheckedConfig {
 impl CheckedConfig {
     // Check that the Application provided MTU values are valid for this endpoint.
     pub fn new(config: Config, info: &mtu::PathInfo) -> Result<CheckedConfig, MtuError> {
-        ensure!(config.is_valid(), Err(MtuError::Validation));
+        ensure!(config.is_valid(), Err(MtuError));
         ensure!(
             u16::from(config.max_mtu) <= u16::from(info.endpoint_config.max_mtu),
-            Err(MtuError::Validation)
+            Err(MtuError)
         );
 
         Ok(CheckedConfig {
@@ -369,11 +362,11 @@ impl Builder {
     /// [with_initial_mtu]: https://docs.rs/s2n-quic/latest/s2n_quic/provider/io/tokio/struct.Builder.html#method.with_initial_mtu
     pub fn with_initial_mtu(mut self, initial_mtu: u16) -> Result<Self, MtuError> {
         if let Some(base_mtu) = self.base_mtu {
-            ensure!(initial_mtu >= base_mtu.0.get(), Err(MtuError::Validation));
+            ensure!(initial_mtu >= base_mtu.0.get(), Err(MtuError));
         }
 
         if let Some(max_mtu) = self.max_mtu {
-            ensure!(initial_mtu <= max_mtu.0.get(), Err(MtuError::Validation));
+            ensure!(initial_mtu <= max_mtu.0.get(), Err(MtuError));
         }
 
         self.initial_mtu = Some(initial_mtu.try_into()?);
@@ -387,11 +380,11 @@ impl Builder {
     /// [with_base_mtu]: https://docs.rs/s2n-quic/latest/s2n_quic/provider/io/tokio/struct.Builder.html#method.with_base_mtu
     pub fn with_base_mtu(mut self, base_mtu: u16) -> Result<Self, MtuError> {
         if let Some(initial_mtu) = self.initial_mtu {
-            ensure!(initial_mtu.0.get() >= base_mtu, Err(MtuError::Validation));
+            ensure!(initial_mtu.0.get() >= base_mtu, Err(MtuError));
         }
 
         if let Some(max_mtu) = self.max_mtu {
-            ensure!(base_mtu <= max_mtu.0.get(), Err(MtuError::Validation));
+            ensure!(base_mtu <= max_mtu.0.get(), Err(MtuError));
         }
 
         self.base_mtu = Some(base_mtu.try_into()?);
@@ -406,11 +399,11 @@ impl Builder {
     /// [with_max_mtu]: https://docs.rs/s2n-quic/latest/s2n_quic/provider/io/tokio/struct.Builder.html#method.with_max_mtu
     pub fn with_max_mtu(mut self, max_mtu: u16) -> Result<Self, MtuError> {
         if let Some(initial_mtu) = self.initial_mtu {
-            ensure!(initial_mtu.0.get() <= max_mtu, Err(MtuError::Validation));
+            ensure!(initial_mtu.0.get() <= max_mtu, Err(MtuError));
         }
 
         if let Some(base_mtu) = self.base_mtu {
-            ensure!(base_mtu.0.get() <= max_mtu, Err(MtuError::Validation));
+            ensure!(base_mtu.0.get() <= max_mtu, Err(MtuError));
         }
 
         self.max_mtu = Some(max_mtu.try_into()?);
@@ -439,7 +432,7 @@ impl Builder {
             base_mtu,
         };
 
-        ensure!(config.is_valid(), Err(MtuError::Validation));
+        ensure!(config.is_valid(), Err(MtuError));
         Ok(config)
     }
 }

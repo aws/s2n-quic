@@ -80,7 +80,7 @@ fn mtu_config_builder() {
         .with_base_mtu(DEFAULT_MAX_MTU.0.get() + 1_u16)
         .unwrap()
         .build();
-    assert_eq!(Some(MtuError::Validation), result.err());
+    assert_eq!(Some(MtuError), result.err());
 
     // Setting the initial MTU higher than the default max MTU results in an error
     let builder = mtu::Config::builder();
@@ -88,37 +88,37 @@ fn mtu_config_builder() {
         .with_initial_mtu(DEFAULT_MAX_MTU.0.get() + 1_u16)
         .unwrap()
         .build();
-    assert_eq!(Some(MtuError::Validation), result.err());
+    assert_eq!(Some(MtuError), result.err());
 
     // Setting the base MTU higher than the configured initial MTU results in an error
     let builder = mtu::Config::builder();
     let result = builder.with_initial_mtu(1300).unwrap().with_base_mtu(1301);
-    assert_eq!(Some(MtuError::Validation), result.err());
+    assert_eq!(Some(MtuError), result.err());
 
     // Setting the max MTU lower than the configured initial MTU results in an error
     let builder = mtu::Config::builder();
     let result = builder.with_initial_mtu(1300).unwrap().with_max_mtu(1299);
-    assert_eq!(Some(MtuError::Validation), result.err());
+    assert_eq!(Some(MtuError), result.err());
 
     // Setting the initial MTU lower than the configured base MTU results in an error
     let builder = mtu::Config::builder();
     let result = builder.with_base_mtu(1300).unwrap().with_initial_mtu(1299);
-    assert_eq!(Some(MtuError::Validation), result.err());
+    assert_eq!(Some(MtuError), result.err());
 
     // Setting the initial MTU higher than the configured max MTU results in an error
     let builder = mtu::Config::builder();
     let result = builder.with_max_mtu(1300).unwrap().with_initial_mtu(1301);
-    assert_eq!(Some(MtuError::Validation), result.err());
+    assert_eq!(Some(MtuError), result.err());
 
     // Setting the base MTU higher than the configured max MTU results in an error
     let builder = mtu::Config::builder();
     let result = builder.with_max_mtu(1300).unwrap().with_base_mtu(1301);
-    assert_eq!(Some(MtuError::Validation), result.err());
+    assert_eq!(Some(MtuError), result.err());
 
     // Setting the max MTU lower than the configured base MTU results in an error
     let builder = mtu::Config::builder();
     let result = builder.with_base_mtu(1300).unwrap().with_max_mtu(1299);
-    assert_eq!(Some(MtuError::Validation), result.err());
+    assert_eq!(Some(MtuError), result.err());
 }
 
 #[test]
@@ -151,7 +151,7 @@ fn checked_mtu_config() {
     assert!(!conn_config.is_valid());
     assert_eq!(
         CheckedConfig::new(conn_config, &info).unwrap_err(),
-        MtuError::Validation
+        MtuError
     );
 
     // invalid: conn_config.max_mtu > endpoint_config.max_mtu
@@ -163,7 +163,7 @@ fn checked_mtu_config() {
     assert!(conn_config.is_valid());
     assert_eq!(
         CheckedConfig::new(conn_config, &info).unwrap_err(),
-        MtuError::Validation
+        MtuError
     );
 }
 

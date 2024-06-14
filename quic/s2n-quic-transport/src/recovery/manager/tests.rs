@@ -3426,6 +3426,8 @@ fn helper_generate_path_manager_with_first_addr(
         );
     let mut rtt_estimator = RttEstimator::default();
     rtt_estimator.on_max_ack_delay(max_ack_delay.try_into().unwrap());
+
+    let mtu_config = mtu::Config::default().into();
     let path = Path::new(
         first_addr,
         connection::PeerId::TEST_ID,
@@ -3433,11 +3435,11 @@ fn helper_generate_path_manager_with_first_addr(
         rtt_estimator,
         MockCongestionController::new(first_addr),
         true,
-        mtu::Config::default().into(),
+        mtu_config,
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
-    path::Manager::new(path, registry)
+    path::Manager::new(path, registry, mtu_config)
 }
 
 fn helper_generate_client_path_manager(
@@ -3450,6 +3452,8 @@ fn helper_generate_client_path_manager(
         .create_client_peer_id_registry(InternalConnectionIdGenerator::new().generate_id(), true);
     let mut rtt_estimator = RttEstimator::default();
     rtt_estimator.on_max_ack_delay(max_ack_delay.try_into().unwrap());
+
+    let mtu_config = mtu::Config::default().into();
     let path = super::Path::new(
         first_addr,
         connection::PeerId::TEST_ID,
@@ -3457,11 +3461,11 @@ fn helper_generate_client_path_manager(
         rtt_estimator,
         MockCongestionController::new(first_addr),
         false,
-        mtu::Config::default().into(),
+        mtu_config,
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
-    path::Manager::new(path, registry)
+    path::Manager::new(path, registry, mtu_config)
 }
 
 struct MockContext<'a, Config: endpoint::Config> {

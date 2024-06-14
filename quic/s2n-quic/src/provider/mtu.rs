@@ -3,7 +3,7 @@
 
 //! Provides a path specific MTU configuration.
 
-pub use s2n_quic_core::path::mtu::{Builder, Config, PathInfo, Endpoint};
+pub use s2n_quic_core::path::mtu::{Builder, Config, Endpoint, PathInfo};
 
 pub trait Provider {
     type Config: 'static + Send + Endpoint;

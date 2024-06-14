@@ -12,7 +12,7 @@ use s2n_quic_core::{
 struct CustomMtu(mtu::Config);
 
 impl mtu::Endpoint for CustomMtu {
-    fn on_connection(&mut self, _info: &mtu::PathInfo) -> mtu::Config {
+    fn on_path(&mut self, _info: &mtu::PathInfo) -> mtu::Config {
         self.0
     }
 }
@@ -21,7 +21,7 @@ impl mtu::Endpoint for CustomMtu {
 // back. The MtuUpdated events that the server experiences are recorded and
 // returns at the end of the simulation.
 fn mtu_updates(
-    conn_mtu_config: Option<mtu::Config>,
+    config_override: Option<mtu::Config>,
     initial_mtu: u16,
     base_mtu: u16,
     max_mtu: u16,
@@ -47,8 +47,8 @@ fn mtu_updates(
             .with_event((tracing_events(), subscriber))?
             .with_random(Random::with_seed(456))?;
 
-        let server = if let Some(conn_mtu_config) = conn_mtu_config {
-            server.with_mtu(CustomMtu(conn_mtu_config))?.start()?
+        let server = if let Some(config_override) = config_override {
+            server.with_mtu(CustomMtu(config_override))?.start()?
         } else {
             server.start()?
         };

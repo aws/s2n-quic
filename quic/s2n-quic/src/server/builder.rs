@@ -152,11 +152,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
     );
 
     impl_provider_method!(
-        /// Sets the connection specific mtu config provider for the [`Server`]
+        /// Sets the path specific mtu config provider for the [`Server`]
         ///
         /// # Examples
         ///
-        /// Set custom MTU values to use per connection, while inheriting the remaining default
+        /// Set custom MTU values to use per path, while inheriting the remaining default
         /// config
         ///
         /// ```rust,no_run
@@ -176,7 +176,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         ///         self.0
         ///     }
         /// }
-        /// let mtu = MyMtuProvider(mtu::Config::default());
+        /// let mtu = MyMtuProvider(mtu::Config::builder().build().unwrap());
         ///
         /// let server = Server::builder()
         ///     .with_mtu(mtu)?

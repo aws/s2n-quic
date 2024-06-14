@@ -95,7 +95,7 @@ impl Model {
                         true,
                     );
 
-            Manager::new(zero_path, peer_id_registry)
+            Manager::new(zero_path, peer_id_registry, mtu::CheckedConfig::default())
         };
 
         let clock = Clock::default();
@@ -177,7 +177,7 @@ impl Model {
             &mut Default::default(),
             &mut migration_validator,
             mtu::Config::default().into(),
-            &mut Default::default(),
+            &mut mtu::Config::default(),
             &Limits::default(),
             &mut publisher,
         ) {
