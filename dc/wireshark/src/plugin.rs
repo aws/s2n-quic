@@ -99,9 +99,15 @@ unsafe extern "C" fn dissect_heur_udp(
             break;
         };
         let (mut tree, mut root) = register_root_node(proto, &buffer, fields);
-        let Some(()) =
-            dissect::udp_segment(&mut tree, &mut root, fields, tag, &mut buffer, &mut info)
-        else {
+        let Some(()) = dissect::segment(
+            &mut tree,
+            &mut root,
+            fields,
+            tag,
+            &mut buffer,
+            &mut info,
+            dissect::Protocol::Udp,
+        ) else {
             break;
         };
 
@@ -146,8 +152,15 @@ unsafe extern "C" fn dissect_heur_tcp(
         };
 
         let (mut tree, mut root) = register_root_node(proto, &buffer, fields);
-        root.append_text(c" Stream");
-        let parse_res = dissect::stream(&mut tree, fields, tag, &mut buffer, &mut info);
+        let parse_res = dissect::segment(
+            &mut tree,
+            &mut root,
+            fields,
+            tag,
+            &mut buffer,
+            &mut info,
+            dissect::Protocol::Tcp,
+        );
         wireshark_sys::proto_item_set_len(root, (buffer.offset - stream_frame_start) as i32);
         if parse_res.is_none() {
             // Start parsing again from the head of this stream...

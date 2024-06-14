@@ -11,13 +11,21 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{frame::FrameMut, varint::VarInt};
 use s2n_quic_dc::packet::{self, stream};
 
-pub fn udp_segment<T: Node>(
+#[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
+pub enum Protocol {
+    Tcp,
+    Udp,
+}
+
+pub fn segment<T: Node>(
     tree: &mut T,
     root: &mut impl Item,
     fields: &Registration,
     ptag: Parsed<packet::Tag>,
     buffer: &mut Buffer,
     info: &mut impl Info,
+    protocol: Protocol,
 ) -> Option<()> {
     match ptag.value {
         packet::Tag::Stream(tag) => {
@@ -26,12 +34,18 @@ pub fn udp_segment<T: Node>(
             stream(tree, fields, tag, buffer, info)
         }
         packet::Tag::Control(tag) => {
-            root.append_text(c" Control");
+            match protocol {
+                Protocol::Tcp => root.append_text(c" Control (UNEXPECTED)"),
+                Protocol::Udp => root.append_text(c" Control"),
+            }
             let tag = ptag.map(|_| tag);
             control(tree, fields, tag, buffer, info)
         }
         packet::Tag::Datagram(tag) => {
-            root.append_text(c" Datagram");
+            match protocol {
+                Protocol::Tcp => root.append_text(c" Datagram (UNEXPECTED)"),
+                Protocol::Udp => root.append_text(c" Datagram"),
+            }
             let tag = ptag.map(|_| tag);
             datagram(tree, fields, tag, buffer, info)
         }
@@ -474,7 +488,7 @@ pub fn secret_control<T: Node>(
 
     match tag.value {
         packet::Tag::UnknownPathSecret(_) => {
-            item.append_text(c"UnknownPathSecret");
+            item.append_text(c" (UnknownPathSecret)");
 
             let path_secret_id = buffer.consume_bytes(16)?;
             path_secret_id.record(buffer, tree, fields.path_secret_id);
@@ -488,7 +502,7 @@ pub fn secret_control<T: Node>(
             Some(())
         }
         packet::Tag::StaleKey(_) => {
-            item.append_text(c"StaleKey");
+            item.append_text(c" (StaleKey)");
 
             let path_secret_id = buffer.consume_bytes(16)?;
             path_secret_id.record(buffer, tree, fields.path_secret_id);
@@ -505,7 +519,7 @@ pub fn secret_control<T: Node>(
             Some(())
         }
         packet::Tag::ReplayDetected(_) => {
-            item.append_text(c"ReplayDetected");
+            item.append_text(c" (ReplayDetected)");
 
             let path_secret_id = buffer.consume_bytes(16)?;
             path_secret_id.record(buffer, tree, fields.path_secret_id);

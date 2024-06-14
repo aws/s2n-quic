@@ -6,4 +6,5 @@ publish = false
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+homedir = "0.2"
 xshell = "0.2"
