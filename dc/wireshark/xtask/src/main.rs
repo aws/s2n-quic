@@ -192,7 +192,10 @@ impl Install {
         Build::default().run(sh)?;
 
         let dir = if cfg!(unix) {
-            format!("~/.local/lib/wireshark/{}", plugin_dir())
+            homedir::get_my_home()?
+                .expect("missing home dir")
+                .join(".local/lib/wireshark")
+                .join(plugin_dir())
         } else {
             todo!("OS is currently unsupported")
         };
@@ -202,7 +205,7 @@ impl Install {
         sh.copy_file(
             format!("target/release/libwireshark_dcquic.{so}"),
             // wireshark always looks for `.so`, regardless of platform
-            format!("{dir}/libdcquic.so"),
+            dir.join("libdcquic.so"),
         )?;
 
         Ok(())

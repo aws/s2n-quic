@@ -533,7 +533,7 @@ fn random_stream_packets() {
 }
 
 #[test]
-fn random_udp_packets() {
+fn random_segments() {
     // Initialize field IDs.
     let _ = crate::field::get();
 
@@ -545,7 +545,15 @@ fn random_udp_packets() {
             return;
         };
         // May fail to parse, but shouldn't panic.
-        let _ = dissect::udp_segment(&mut tracker, &mut (), fields, tag, &mut buffer, &mut ());
+        let _ = dissect::segment(
+            &mut tracker,
+            &mut (),
+            fields,
+            tag,
+            &mut buffer,
+            &mut (),
+            dissect::Protocol::Udp,
+        );
     });
 }
 
