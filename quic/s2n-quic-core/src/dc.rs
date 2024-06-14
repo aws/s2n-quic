@@ -8,6 +8,7 @@ use crate::{
         IntoEvent as _,
     },
     inet,
+    path::MaxMtu,
     transport::parameters::{DcSupportedVersions, InitialFlowControlLimits},
     varint::VarInt,
 };
@@ -75,6 +76,7 @@ impl<'a> ConnectionInfo<'a> {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct ApplicationParams {
+    pub max_mtu: MaxMtu,
     pub remote_max_data: VarInt,
     pub local_send_max_data: VarInt,
     pub local_recv_max_data: VarInt,
@@ -83,8 +85,13 @@ pub struct ApplicationParams {
 }
 
 impl ApplicationParams {
-    pub fn new(peer_flow_control_limits: &InitialFlowControlLimits, limits: &Limits) -> Self {
+    pub fn new(
+        max_mtu: MaxMtu,
+        peer_flow_control_limits: &InitialFlowControlLimits,
+        limits: &Limits,
+    ) -> Self {
         Self {
+            max_mtu,
             remote_max_data: peer_flow_control_limits.max_data,
             local_send_max_data: limits.initial_stream_limits().max_data_bidi_local,
             local_recv_max_data: limits.initial_stream_limits().max_data_bidi_remote,
