@@ -324,8 +324,11 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     datagram,
                     endpoint_context.congestion_controller,
                     endpoint_context.path_migration,
-                    endpoint_mtu_config,
-                    endpoint_context.mtu,
+                    // since this takes a &mut, we get borrow warning since we already have
+                    // a borrow in the endpoint_context
+                    //
+                    // &mut self.mtu,
+                    todo!(),
                     endpoint_context.event_subscriber,
                 );
 

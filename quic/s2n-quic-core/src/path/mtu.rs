@@ -255,6 +255,15 @@ pub struct MtuManager<E: mtu::Endpoint> {
     endpoint_mtu_config: Config,
 }
 
+impl<E: mtu::Endpoint> MtuManager<E> {
+    pub fn new(endpoint: &mut E, endpoint_mtu_config: Config) -> MtuManager<E> {
+        MtuManager {
+            // storing &mut E means this has a lifetime associated with it.
+            //
+            // we are borrowing from the endpoint so we lose Copy and Clone
+            //
+            // this now become more complicated to store and pollutes the codebase
+            endpoint: todo!(),
             endpoint_mtu_config,
         }
     }
