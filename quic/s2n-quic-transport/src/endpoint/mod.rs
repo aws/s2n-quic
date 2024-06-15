@@ -324,8 +324,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let connection_id_mapper =
             ConnectionIdMapper::new(config.context().random_generator, Cfg::ENDPOINT_TYPE);
 
-        let provider = config.context().mtu;
-        let mtu = mtu::MtuManager::new(provider, Default::default());
         let endpoint = Self {
             config,
             connections: ConnectionContainer::new(acceptor_sender, connector_receiver),
@@ -338,7 +336,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
             close_packet_buffer: Default::default(),
-            mtu,
+            mtu: mtu::MtuManager::default(),
         };
 
         (endpoint, handle)

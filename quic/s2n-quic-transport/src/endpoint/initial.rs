@@ -316,6 +316,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
 
+        let mtu = &mut self.mtu;
         let endpoint_context = self.config.context();
         let handle_first_packet =
             move |connection: &mut <Config as endpoint::Config>::Connection| {
@@ -324,11 +325,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     datagram,
                     endpoint_context.congestion_controller,
                     endpoint_context.path_migration,
-                    // since this takes a &mut, we get borrow warning since we already have
-                    // a borrow in the endpoint_context
-                    //
-                    // &mut self.mtu,
-                    todo!(),
+                    mtu,
                     endpoint_context.event_subscriber,
                 );
 
