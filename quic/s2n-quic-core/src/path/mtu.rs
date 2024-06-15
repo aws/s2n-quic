@@ -236,17 +236,47 @@ impl std::error::Error for MtuError {}
 /// validating MTU configuration.
 pub struct PathInfo<'a> {
     pub remote_address: event::api::SocketAddress<'a>,
-    pub endpoint_config: Config,
 }
 
 impl<'a> PathInfo<'a> {
     #[inline]
     #[doc(hidden)]
-    pub fn new(remote_address: &'a inet::SocketAddress, endpoint_mtu_config: Config) -> Self {
+    pub fn new(remote_address: &'a inet::SocketAddress) -> Self {
         PathInfo {
             remote_address: remote_address.into_event(),
-            endpoint_config: endpoint_mtu_config,
         }
+    }
+}
+
+/// MTU configuration manager.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct MtuManager<E: mtu::Endpoint> {
+    endpoint: E,
+    endpoint_mtu_config: Config,
+}
+
+            endpoint_mtu_config,
+        }
+    }
+
+    pub fn config(&mut self, info: &PathInfo) -> Result<Config, MtuError> {
+        let conn_config = self.endpoint.on_path(info, self.endpoint_mtu_config);
+
+        ensure!(conn_config.is_valid(), Err(MtuError));
+        ensure!(
+            u16::from(conn_config.max_mtu) <= u16::from(self.endpoint_mtu_config.max_mtu()),
+            Err(MtuError)
+        );
+
+        Ok(conn_config)
+    }
+
+    pub fn set_endpoint_config(&mut self, config: Config) {
+        self.endpoint_mtu_config = config;
+    }
+
+    pub fn endpoint_config(&self) -> &Config {
+        &self.endpoint_mtu_config
     }
 }
 
@@ -254,10 +284,10 @@ impl<'a> PathInfo<'a> {
 pub trait Endpoint: 'static + Send {
     /// Provide path specific MTU config.
     ///
-    /// Application must ensure that `max_mtu <= info.endpoint_config.max_mtu`.
+    /// Application must ensure that `max_mtu <= info.mtu_config.max_mtu`.
     /// By default this uses the MTU config specified on the IO provider.
-    fn on_path(&mut self, info: &mtu::PathInfo) -> mtu::Config {
-        info.endpoint_config
+    fn on_path(&mut self, _info: &mtu::PathInfo, endpoint_mtu_config: Config) -> mtu::Config {
+        endpoint_mtu_config
     }
 }
 
@@ -303,39 +333,6 @@ impl Config {
     #[inline]
     pub fn is_valid(&self) -> bool {
         self.base_mtu.0 <= self.initial_mtu.0 && self.initial_mtu.0 <= self.max_mtu.0
-    }
-}
-
-// A checked MTU Config created after validating the values from the IO provider
-// against the values from mtu provider.
-#[derive(Copy, Clone, Debug, Default)]
-pub struct CheckedConfig {
-    // The active mtu config for the path
-    active: Config,
-}
-
-impl CheckedConfig {
-    // Check that the Application provided MTU values are valid for this endpoint.
-    pub fn new(config: Config, info: &mtu::PathInfo) -> Result<CheckedConfig, MtuError> {
-        ensure!(config.is_valid(), Err(MtuError));
-        ensure!(
-            u16::from(config.max_mtu) <= u16::from(info.endpoint_config.max_mtu),
-            Err(MtuError)
-        );
-
-        Ok(CheckedConfig { active: config })
-    }
-
-    pub fn initial_mtu(&self) -> InitialMtu {
-        self.active.initial_mtu
-    }
-}
-
-// A CheckedConfig should be created via the Config::checked() in production.
-#[cfg(any(test, feature = "testing"))]
-impl From<Config> for CheckedConfig {
-    fn from(value: Config) -> Self {
-        CheckedConfig { active: value }
     }
 }
 
@@ -385,7 +382,7 @@ impl Builder {
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path (default: 1500)
     ///
-    /// Application must ensure that max_mtu <= info.endpoint_config.max_mtu. For a detailed
+    /// Application must ensure that max_mtu <= info.mtu_config.max_mtu. For a detailed
     /// description see the [with_max_mtu] documentation in the IO provider.
     ///
     /// [with_max_mtu]: https://docs.rs/s2n-quic/latest/s2n_quic/provider/io/tokio/struct.Builder.html#method.with_max_mtu
@@ -478,53 +475,43 @@ impl Controller {
     /// max_mtu is the maximum allowed mtu, e.g. for jumbo frames this value is expected to
     /// be over 9000.
     #[inline]
-    pub fn new(config: CheckedConfig, peer_socket_address: &inet::SocketAddress) -> Self {
-        debug_assert!(
-            config.active.is_valid(),
-            "Invalid MTU configuration {:?}",
-            config
-        );
+    pub fn new(config: Config, peer_socket_address: &inet::SocketAddress) -> Self {
+        debug_assert!(config.is_valid(), "Invalid MTU configuration {:?}", config);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
         //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
         //# [DPLPMTUD]) to be consistent with QUIC's smallest allowed maximum
         //# datagram size.
-        let base_plpmtu = config
-            .active
-            .base_mtu
-            .max_datagram_size(peer_socket_address);
-        let max_udp_payload = config.active.max_mtu.max_datagram_size(peer_socket_address);
+        let base_plpmtu = config.base_mtu.max_datagram_size(peer_socket_address);
+        let max_udp_payload = config.max_mtu.max_datagram_size(peer_socket_address);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
         //# Datagrams containing Initial packets MAY exceed 1200 bytes if the sender
         //# believes that the network path and peer both support the size that it chooses.
-        let plpmtu = config
-            .active
-            .initial_mtu
-            .max_datagram_size(peer_socket_address);
+        let plpmtu = config.initial_mtu.max_datagram_size(peer_socket_address);
 
-        let initial_probed_size =
-            if u16::from(config.active.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD {
-                // An initial MTU was provided within the probe threshold of the Ethernet MTU, so we can
-                // instead try probing for an MTU larger than the Ethernet MTU
-                Self::next_probe_size(plpmtu, max_udp_payload)
-            } else {
-                // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
-                // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
-                let min_ip_header_len = match peer_socket_address {
-                    inet::SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
-                    inet::SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
-                };
-                ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len
-            }
-            .min(max_udp_payload);
+        let initial_probed_size = if u16::from(config.initial_mtu) > ETHERNET_MTU - PROBE_THRESHOLD
+        {
+            // An initial MTU was provided within the probe threshold of the Ethernet MTU, so we can
+            // instead try probing for an MTU larger than the Ethernet MTU
+            Self::next_probe_size(plpmtu, max_udp_payload)
+        } else {
+            // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
+            // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
+            let min_ip_header_len = match peer_socket_address {
+                inet::SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
+                inet::SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
+            };
+            ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len
+        }
+        .min(max_udp_payload);
 
         Self {
             state: State::Disabled,
             base_plpmtu,
             plpmtu,
             probed_size: initial_probed_size,
-            max_mtu: config.active.max_mtu,
+            max_mtu: config.max_mtu,
             max_udp_payload,
             max_probe_size: max_udp_payload,
             probe_count: 0,

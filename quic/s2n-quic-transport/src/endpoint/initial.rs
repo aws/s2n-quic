@@ -20,7 +20,7 @@ use s2n_quic_core::{
     event::{self, supervisor, ConnectionPublisher, EndpointPublisher, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
-    path::{mtu, mtu::Endpoint as _, CheckedConfig, Handle as _},
+    path::{mtu, Handle as _},
     stateless_reset::token::Generator as _,
     transport::{self, parameters::ServerTransportParameters},
 };
@@ -258,21 +258,16 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             Some(quic_version),
             endpoint_context.event_subscriber,
         );
-        let info = mtu::PathInfo::new(&remote_address, self.mtu_config);
-        let mtu_config =
-            CheckedConfig::new(endpoint_context.mtu.on_path(&info), &info).map_err(|_| {
-                endpoint_publisher.on_endpoint_datagram_dropped(
-                    event::builder::EndpointDatagramDropped {
-                        len: datagram.payload_len as u16,
-                        reason: event::builder::DatagramDropReason::MtuValidation {
-                            endpoint_mtu_config: self.mtu_config.into_event(),
-                        },
-                    },
-                );
-                connection::Error::invalid_configuration(
-                    "MTU provider produced an invalid MTU configuration",
-                )
-            })?;
+        let info = mtu::PathInfo::new(&remote_address);
+        let mtu_config = self.mtu.config(&info).map_err(|_err| {
+            let error = connection::Error::invalid_configuration(
+                "MTU provider produced an invalid MTU configuration",
+            );
+            endpoint_publisher.on_endpoint_connection_attempt_failed(
+                event::builder::EndpointConnectionAttemptFailed { error },
+            );
+            error
+        })?;
 
         let mut publisher = event::ConnectionPublisherSubscriber::new(
             meta,
@@ -322,7 +317,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
 
         let endpoint_context = self.config.context();
-        let endpoint_mtu_config = self.mtu_config;
         let handle_first_packet =
             move |connection: &mut <Config as endpoint::Config>::Connection| {
                 let path_id = connection.on_datagram_received(

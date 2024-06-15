@@ -9,7 +9,7 @@ use crate::{
         IntoEvent,
     },
     inet, path,
-    path::CheckedConfig,
+    path::Config,
     random,
     recovery::{
         bandwidth::{Bandwidth, RateSample},
@@ -37,7 +37,7 @@ pub struct PathInfo<'a> {
 
 impl<'a> PathInfo<'a> {
     #[allow(deprecated)]
-    pub fn new(mtu_config: &CheckedConfig, remote_address: &'a inet::SocketAddress) -> Self {
+    pub fn new(mtu_config: &Config, remote_address: &'a inet::SocketAddress) -> Self {
         Self {
             remote_address: remote_address.into_event(),
             application_protocol: None,

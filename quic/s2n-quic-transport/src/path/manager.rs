@@ -24,7 +24,7 @@ use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::{
         migration::{self, Validator as _},
-        mtu, CheckedConfig, Endpoint as _, Handle as _, Id,
+        mtu, Handle as _, Id,
     },
     random,
     recovery::congestion_controller::{self, Endpoint as _},
@@ -244,8 +244,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        endpoint_mtu_config: mtu::Config,
-        mtu_provider: &mut Config::Mtu,
+        mtu: &mut mtu::MtuManager<Config::Mtu>,
         limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -308,8 +307,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             datagram,
             congestion_controller_endpoint,
             migration_validator,
-            endpoint_mtu_config,
-            mtu_provider,
+            mtu,
             limits,
             publisher,
         )
@@ -322,8 +320,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        endpoint_mtu_config: mtu::Config,
-        mtu_provider: &mut Config::Mtu,
+        mtu: &mut mtu::MtuManager<Config::Mtu>,
         limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -422,13 +419,12 @@ impl<Config: endpoint::Config> Manager<Config> {
             .rtt_estimator
             .for_new_path(limits.initial_round_trip_time());
 
-        let info = mtu::PathInfo::new(&remote_address, endpoint_mtu_config);
-        let mtu_config =
-            CheckedConfig::new(mtu_provider.on_path(&info), &info).map_err(|_err| {
-                event::builder::DatagramDropReason::MtuValidation {
-                    endpoint_mtu_config: endpoint_mtu_config.into_event(),
-                }
-            })?;
+        let info = mtu::PathInfo::new(&remote_address);
+        let mtu_config = mtu.config(&info).map_err(|_err| {
+            event::builder::DatagramDropReason::MtuValidation {
+                endpoint_mtu_config: mtu.endpoint_config().into_event(),
+            }
+        })?;
 
         let path_info = congestion_controller::PathInfo::new(&mtu_config, &remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);

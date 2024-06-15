@@ -39,7 +39,7 @@ use s2n_quic_core::{
     io::{rx, tx},
     packet::{initial::ProtectedInitial, interceptor::Interceptor, ProtectedPacket},
     path,
-    path::{mtu, mtu::Endpoint as _, CheckedConfig, Handle as _},
+    path::{mtu, Handle as _},
     random::Generator as _,
     stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
@@ -89,7 +89,7 @@ pub struct Endpoint<Cfg: Config> {
     close_packet_buffer: packet_buffer::Buffer,
     /// Endpoint configuration for the maximum transmission unit (MTU) that can be sent
     /// on a path
-    mtu_config: mtu::Config,
+    mtu: mtu::MtuManager<Cfg::Mtu>,
 }
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
@@ -265,9 +265,27 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         self.connections.next_expiration()
     }
 
+    // provider: mtu::Endpoint
+    // endpoint.mtu : mtu::CheckedEndpointImpl // endpoint/mod.rs
+    //
+    // struct CheckedEndpointImpl { checked_config: T, endpoint_config: Option<Config> }
+    // impl mtu::CheckedEndpoint for mtu::CheckedEndpointImpl
+    //
+    // trait mtu::CheckedEndpoint {
+    //   fn checked(endpoint: EndpointConfig) -> Config
+    //
+    //   fn set_endpoint(&mut self) {
+    //      self.endpoint_config = ...
+    //   };
+    // }
+    //
+    // mtu::Endpoint {
+    //   fn on_path() -> Config
+    // }
+
     #[inline]
     fn set_mtu_config(&mut self, mtu_config: mtu::Config) {
-        self.mtu_config = mtu_config;
+        self.mtu.set_endpoint_config(mtu_config);
     }
 
     #[inline]
@@ -306,6 +324,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let connection_id_mapper =
             ConnectionIdMapper::new(config.context().random_generator, Cfg::ENDPOINT_TYPE);
 
+        let provider = config.context().mtu;
+        let mtu = mtu::MtuManager::new(provider, Default::default());
         let endpoint = Self {
             config,
             connections: ConnectionContainer::new(acceptor_sender, connector_receiver),
@@ -318,7 +338,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
             close_packet_buffer: Default::default(),
-            mtu_config: Default::default(),
+            mtu,
         };
 
         (endpoint, handle)
@@ -567,8 +587,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         &datagram,
                         endpoint_context.congestion_controller,
                         endpoint_context.path_migration,
-                        self.mtu_config,
-                        endpoint_context.mtu,
+                        &mut self.mtu,
                         endpoint_context.event_subscriber,
                     )
                     .map_err(|datagram_drop_reason| {
@@ -1046,17 +1065,17 @@ impl<Cfg: Config> Endpoint<Cfg> {
             Some(quic_version),
             endpoint_context.event_subscriber,
         );
-        let info = mtu::PathInfo::new(&remote_address, self.mtu_config);
-        let mtu_config =
-            CheckedConfig::new(endpoint_context.mtu.on_path(&info), &info).map_err(|_err| {
-                let error = connection::Error::invalid_configuration(
-                    "MTU provider produced an invalid MTU configuration",
-                );
-                endpoint_publisher.on_endpoint_connection_attempt_failed(
-                    event::builder::EndpointConnectionAttemptFailed { error },
-                );
-                error
-            })?;
+
+        let info = mtu::PathInfo::new(&remote_address);
+        let mtu_config = self.mtu.config(&info).map_err(|_err| {
+            let error = connection::Error::invalid_configuration(
+                "MTU provider produced an invalid MTU configuration",
+            );
+            endpoint_publisher.on_endpoint_connection_attempt_failed(
+                event::builder::EndpointConnectionAttemptFailed { error },
+            );
+            error
+        })?;
 
         let mut publisher = event::ConnectionPublisherSubscriber::new(
             meta,
