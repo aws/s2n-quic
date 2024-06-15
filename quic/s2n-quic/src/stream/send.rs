@@ -58,7 +58,9 @@ macro_rules! impl_send_stream_api {
                     Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
-                    $variant.poll_send(chunk, cx)
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+                        $variant.poll_send(chunk, cx)
+                    })
                 };
             }
 
@@ -134,7 +136,9 @@ macro_rules! impl_send_stream_api {
                     Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
-                    $variant.poll_send_vectored(chunks, cx)
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+                        $variant.poll_send_vectored(chunks, cx)
+                    })
                 };
             }
 
@@ -165,7 +169,9 @@ macro_rules! impl_send_stream_api {
                     Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
-                    $variant.poll_send_ready(cx)
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+                        $variant.poll_send_ready(cx)
+                    })
                 };
             }
 
@@ -248,7 +254,9 @@ macro_rules! impl_send_stream_api {
                     Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
-                    $variant.poll_flush(cx)
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+                        $variant.poll_flush(cx)
+                    })
                 };
             }
 
@@ -339,7 +347,9 @@ macro_rules! impl_send_stream_api {
                     Err($crate::stream::Error::non_writable()).into()
                 };
                 ($variant: expr) => {
-                    $variant.poll_close(cx)
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+                        $variant.poll_close(cx)
+                    })
                 };
             }
 

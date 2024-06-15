@@ -8,6 +8,7 @@ use s2n_quic_core::{
     inet::ExplicitCongestionNotification,
     io::tx,
     path::{Handle as _, MaxMtu},
+    task::waker,
 };
 
 /// Structure for sending messages to producer channels
@@ -44,32 +45,36 @@ impl<T: Message> tx::Tx for Tx<T> {
             return Poll::Pending;
         }
 
-        let mut is_any_ready = false;
-        let mut is_all_closed = true;
+        // NOTE: we don't wrap the above check in the contract as we'd technically violate the
+        // contract since we're returning `Pending` without storing a waker
+        waker::debug_assert_contract(cx, |cx| {
+            let mut is_any_ready = false;
+            let mut is_all_closed = true;
 
-        for channel in &mut self.channels {
-            match channel.poll_acquire(1, cx) {
-                Poll::Ready(_) => {
-                    is_all_closed = false;
-                    is_any_ready = true;
-                }
-                Poll::Pending => {
-                    is_all_closed &= !channel.is_open();
+            for channel in &mut self.channels {
+                match channel.poll_acquire(1, cx) {
+                    Poll::Ready(_) => {
+                        is_all_closed = false;
+                        is_any_ready = true;
+                    }
+                    Poll::Pending => {
+                        is_all_closed &= !channel.is_open();
+                    }
                 }
             }
-        }
 
-        // if all of the channels were closed then shut the task down
-        if is_all_closed {
-            return Err(()).into();
-        }
+            // if all of the channels were closed then shut the task down
+            if is_all_closed {
+                return Err(()).into();
+            }
 
-        // if any of the channels became ready then wake the endpoint up
-        if is_any_ready {
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Pending
-        }
+            // if any of the channels became ready then wake the endpoint up
+            if is_any_ready {
+                Poll::Ready(Ok(()))
+            } else {
+                Poll::Pending
+            }
+        })
     }
 
     #[inline]

@@ -61,7 +61,9 @@ macro_rules! impl_receive_stream_api {
                     Err($crate::stream::Error::non_readable()).into()
                 };
                 ($variant: expr) => {
-                    $variant.poll_receive(cx)
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+                        $variant.poll_receive(cx)
+                    })
                 };
             }
 
@@ -145,7 +147,9 @@ macro_rules! impl_receive_stream_api {
                     Err($crate::stream::Error::non_readable()).into()
                 };
                 ($variant: expr) => {
-                    $variant.poll_receive_vectored(chunks, cx)
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+                        $variant.poll_receive_vectored(chunks, cx)
+                    })
                 };
             }
 
@@ -221,6 +225,27 @@ macro_rules! impl_receive_stream_api {
             let $stream = self;
             $dispatch_body
         }
+
+        #[inline]
+        pub(crate) fn receive_chunks(
+            &mut self,
+            cx: &mut core::task::Context,
+            chunks: &mut [bytes::Bytes],
+            high_watermark: usize,
+        ) -> core::task::Poll<$crate::stream::Result<s2n_quic_transport::stream::ops::rx::Response>>
+        {
+            s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+                let response = core::task::ready!(self
+                    .rx_request()?
+                    .receive(chunks)
+                    // don't receive more than we're capable of storing
+                    .with_high_watermark(high_watermark)
+                    .poll(Some(cx))?
+                    .into_poll());
+
+                core::task::Poll::Ready(Ok(response))
+            })
+        }
     };
 }
 
@@ -267,13 +292,8 @@ macro_rules! impl_receive_stream_trait {
 
                 let high_watermark = buf.len();
 
-                let response = core::task::ready!(self
-                    .rx_request()?
-                    .receive(&mut chunks)
-                    // don't receive more than we're capable of storing
-                    .with_high_watermark(high_watermark)
-                    .poll(Some(cx))?
-                    .into_poll());
+                let response =
+                    core::task::ready!(self.receive_chunks(cx, &mut chunks, high_watermark))?;
 
                 let chunks = &chunks[..response.chunks.consumed];
                 let mut bufs = [buf];
@@ -315,13 +335,8 @@ macro_rules! impl_receive_stream_trait {
 
                 let high_watermark = bufs.iter().map(|buf| buf.len()).sum();
 
-                let response = core::task::ready!(self
-                    .rx_request()?
-                    .receive(&mut chunks)
-                    // don't receive more than we're capable of storing
-                    .with_high_watermark(high_watermark)
-                    .poll(Some(cx))?
-                    .into_poll());
+                let response =
+                    core::task::ready!(self.receive_chunks(cx, &mut chunks, high_watermark))?;
 
                 let chunks = &chunks[..response.chunks.consumed];
                 let copied_len = s2n_quic_core::slice::vectored_copy(chunks, bufs);
@@ -359,13 +374,8 @@ macro_rules! impl_receive_stream_trait {
 
                 let high_watermark = buf.remaining();
 
-                let response = core::task::ready!(self
-                    .rx_request()?
-                    .receive(&mut chunks)
-                    // don't receive more than we're capable of storing
-                    .with_high_watermark(high_watermark)
-                    .poll(Some(cx))?
-                    .into_poll());
+                let response =
+                    core::task::ready!(self.receive_chunks(cx, &mut chunks, high_watermark))?;
 
                 for chunk in &chunks[..response.chunks.consumed] {
                     buf.put_slice(chunk);

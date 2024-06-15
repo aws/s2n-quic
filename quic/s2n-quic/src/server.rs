@@ -90,15 +90,17 @@ impl Server {
     ///
     /// - `Poll::Pending` if no new connections have been established.
     /// - `Poll::Ready(Some(connection))` once a new connection has been established.
-    /// This function can be called again to try and accept new connections.
+    ///   This function can be called again to try and accept new connections.
     /// - `Poll::Ready(None)` the attempt failed because the server has closed. Once
-    /// None is returned, this function should not be called again.
+    ///   None is returned, this function should not be called again.
     pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<Option<Connection>> {
-        match self.acceptor.poll_accept(cx) {
-            Poll::Ready(Some(connection)) => Poll::Ready(Some(Connection::new(connection))),
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
-        }
+        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+            match self.acceptor.poll_accept(cx) {
+                Poll::Ready(Some(connection)) => Poll::Ready(Some(Connection::new(connection))),
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Pending => Poll::Pending,
+            }
+        })
     }
 
     /// Returns the local address that this listener is bound to.

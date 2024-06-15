@@ -8,6 +8,7 @@ use s2n_quic_core::{
     inet::datagram,
     io::rx,
     path::{LocalAddress, MaxMtu},
+    task::waker,
 };
 
 /// Structure for receiving messages from consumer channels
@@ -35,33 +36,35 @@ impl<T: Message> rx::Rx for Rx<T> {
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        let mut is_any_ready = false;
-        let mut is_all_closed = true;
+        waker::debug_assert_contract(cx, |cx| {
+            let mut is_any_ready = false;
+            let mut is_all_closed = true;
 
-        // try to acquire any messages we can from the set of channels
-        for channel in &mut self.channels {
-            match channel.poll_acquire(u32::MAX, cx) {
-                Poll::Ready(_) => {
-                    is_all_closed = false;
-                    is_any_ready = true;
-                }
-                Poll::Pending => {
-                    is_all_closed &= !channel.is_open();
+            // try to acquire any messages we can from the set of channels
+            for channel in &mut self.channels {
+                match channel.poll_acquire(u32::MAX, cx) {
+                    Poll::Ready(_) => {
+                        is_all_closed = false;
+                        is_any_ready = true;
+                    }
+                    Poll::Pending => {
+                        is_all_closed &= !channel.is_open();
+                    }
                 }
             }
-        }
 
-        // if all of the channels are closed then shut down the task
-        if is_all_closed {
-            return Err(()).into();
-        }
+            // if all of the channels are closed then shut down the task
+            if is_all_closed {
+                return Err(()).into();
+            }
 
-        // if any have items to be consumed the wake the endpoint up
-        if is_any_ready {
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Pending
-        }
+            // if any have items to be consumed the wake the endpoint up
+            if is_any_ready {
+                Poll::Ready(Ok(()))
+            } else {
+                Poll::Pending
+            }
+        })
     }
 
     #[inline]

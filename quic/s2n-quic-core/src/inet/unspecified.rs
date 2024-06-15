@@ -9,7 +9,7 @@ pub trait Unspecified: Sized {
     /// Returns true if the value is unspecified
     fn is_unspecified(&self) -> bool;
 
-    /// Coerce a potentially unspecified value into an Option<Self>
+    /// Coerce a potentially unspecified value into an `Option<Self>`
     fn filter_unspecified(self) -> Option<Self> {
         if self.is_unspecified() {
             None
