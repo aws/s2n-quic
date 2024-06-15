@@ -61,7 +61,9 @@ macro_rules! impl_receive_stream_api {
                     Err($crate::stream::Error::non_readable()).into()
                 };
                 ($variant: expr) => {
-                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| $variant.poll_receive(cx))
+                    s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+                        $variant.poll_receive(cx)
+                    })
                 };
             }
 
