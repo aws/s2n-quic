@@ -249,24 +249,15 @@ impl<'a> PathInfo<'a> {
 }
 
 /// MTU configuration manager.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct MtuManager<E: mtu::Endpoint> {
-    configurator: E::Configurator,
+    endpoint: E,
     endpoint_mtu_config: Config,
-}
-
-impl<E: mtu::Endpoint> Default for MtuManager<E> {
-    fn default() -> Self {
-        Self {
-            configurator: E::new_configurator(),
-            endpoint_mtu_config: Default::default(),
-        }
-    }
 }
 
 impl<E: mtu::Endpoint> MtuManager<E> {
     pub fn config(&mut self, info: &PathInfo) -> Result<Config, MtuError> {
-        let conn_config = self.configurator.on_path(info, self.endpoint_mtu_config);
+        let conn_config = self.endpoint.on_path(info, self.endpoint_mtu_config);
 
         ensure!(conn_config.is_valid(), Err(MtuError));
         ensure!(
@@ -287,13 +278,7 @@ impl<E: mtu::Endpoint> MtuManager<E> {
 }
 
 /// Creates MTU config for the given path.
-pub trait Endpoint: 'static + Send {
-    type Configurator: Configurator;
-
-    fn new_configurator() -> Self::Configurator;
-}
-
-pub trait Configurator: 'static + Send {
+pub trait Endpoint: 'static + Send + Default {
     /// Provide path specific MTU config.
     ///
     /// Application must ensure that `max_mtu <= info.mtu_config.max_mtu`.
@@ -311,13 +296,7 @@ pub struct Config {
     max_mtu: MaxMtu,
 }
 
-impl Endpoint for Config {
-    type Configurator = ();
-
-    fn new_configurator() -> Self::Configurator {}
-}
-
-impl Configurator for () {}
+impl Endpoint for Config {}
 
 impl Config {
     pub const MIN: Self = Self {
