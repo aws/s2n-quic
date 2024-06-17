@@ -743,8 +743,7 @@ fn test_adding_new_path() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default().into(),
-            &mut mtu::Config::default(),
+            &mut mtu::MtuManager::new(mtu::Config::default()),
             &Limits::default(),
             &mut publisher,
         )
@@ -806,8 +805,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         handshake_confirmed,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default().into(),
-        &mut mtu::Config::default(),
+        &mut mtu::MtuManager::new(mtu::Config::default()),
         &Limits::default(),
         &mut publisher,
     );
@@ -870,8 +868,7 @@ fn do_not_add_new_path_if_client() {
         true,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default().into(),
-        &mut mtu::Config::default(),
+        &mut mtu::MtuManager::new(mtu::Config::default()),
         &Limits::default(),
         &mut publisher,
     );
@@ -964,8 +961,7 @@ fn limit_number_of_connection_migrations() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default().into(),
-            &mut mtu::Config::default(),
+            &mut mtu::MtuManager::new(mtu::Config::default()),
             &Limits::default(),
             &mut publisher,
         );
@@ -1036,8 +1032,7 @@ fn active_connection_migration_disabled() {
         &datagram,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default().into(),
-        &mut mtu::Config::default(),
+        &mut mtu::MtuManager::new(mtu::Config::default()),
         // Active connection migration is disabled
         &Limits::default()
             .with_active_connection_migration(false)
@@ -1058,8 +1053,7 @@ fn active_connection_migration_disabled() {
         &datagram,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default().into(),
-        &mut mtu::Config::default(),
+        &mut mtu::MtuManager::new(mtu::Config::default()),
         &Limits::default(),
         &mut publisher,
     );
@@ -1082,8 +1076,7 @@ fn active_connection_migration_disabled() {
         &datagram,
         &mut Default::default(),
         &mut migration::allow_all::Validator,
-        mtu::Config::default().into(),
-        &mut mtu::Config::default(),
+        &mut mtu::MtuManager::new(mtu::Config::default()),
         // Active connection migration is disabled
         &Limits::default()
             .with_active_connection_migration(false)
@@ -1135,8 +1128,7 @@ fn connection_migration_challenge_behavior() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default().into(),
-            &mut mtu::Config::default(),
+            &mut mtu::MtuManager::new(mtu::Config::default()),
             &Limits::default(),
             &mut publisher,
         )
@@ -1233,8 +1225,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default().into(),
-            &mut mtu::Config::default(),
+            &mut mtu::MtuManager::new(mtu::Config::default()),
             &Limits::default(),
             &mut publisher,
         )
@@ -1314,8 +1305,7 @@ fn connection_migration_new_path_abandon_timer() {
             &datagram,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default().into(),
-            &mut mtu::Config::default(),
+            &mut mtu::MtuManager::new(mtu::Config::default()),
             &Limits::default(),
             &mut publisher,
         )
@@ -1594,8 +1584,7 @@ fn temporary_until_authenticated() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default().into(),
-            &mut mtu::Config::default(),
+            &mut mtu::MtuManager::new(mtu::Config::default()),
             &Limits::default(),
             &mut publisher,
         )
@@ -1618,8 +1607,7 @@ fn temporary_until_authenticated() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default().into(),
-            &mut mtu::Config::default(),
+            &mut mtu::MtuManager::new(mtu::Config::default()),
             &Limits::default(),
             &mut publisher,
         )
@@ -1657,8 +1645,7 @@ fn temporary_until_authenticated() {
             true,
             &mut Default::default(),
             &mut migration::allow_all::Validator,
-            mtu::Config::default().into(),
-            &mut mtu::Config::default(),
+            &mut mtu::MtuManager::new(mtu::Config::default()),
             &Limits::default(),
             &mut publisher,
         )

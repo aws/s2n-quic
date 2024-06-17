@@ -36,8 +36,7 @@ pub mod testing {
             Config {
                 max_mtu: max_mtu.try_into().unwrap(),
                 ..Default::default()
-            }
-            .into(),
+            },
             &addr,
         )
     }
@@ -249,15 +248,24 @@ impl<'a> PathInfo<'a> {
 }
 
 /// MTU configuration manager.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug)]
 pub struct MtuManager<E: mtu::Endpoint> {
-    endpoint: E,
+    provider: E,
     endpoint_mtu_config: Config,
 }
 
 impl<E: mtu::Endpoint> MtuManager<E> {
+    pub fn new(provider: E) -> Self {
+        MtuManager {
+            provider,
+            // Instantiate the Manager with default values since the endpoint is
+            // create before the IO provider (which sets the actual config `set_mtu_config()`).
+            endpoint_mtu_config: Default::default(),
+        }
+    }
+
     pub fn config(&mut self, info: &PathInfo) -> Result<Config, MtuError> {
-        let conn_config = self.endpoint.on_path(info, self.endpoint_mtu_config);
+        let conn_config = self.provider.on_path(info, self.endpoint_mtu_config);
 
         ensure!(conn_config.is_valid(), Err(MtuError));
         ensure!(
@@ -278,12 +286,17 @@ impl<E: mtu::Endpoint> MtuManager<E> {
 }
 
 /// Creates MTU config for the given path.
-pub trait Endpoint: 'static + Send + Default {
+pub trait Endpoint: 'static + Send {
     /// Provide path specific MTU config.
     ///
     /// Application must ensure that `max_mtu <= info.mtu_config.max_mtu`.
     /// By default this uses the MTU config specified on the IO provider.
-    fn on_path(&mut self, _info: &mtu::PathInfo, endpoint_mtu_config: Config) -> mtu::Config {
+    // The default implementation doesn't use `info` and simply returns the endpoint_mtu_config
+    fn on_path(
+        &mut self,
+        #[allow(unused_variables)] info: &mtu::PathInfo,
+        endpoint_mtu_config: Config,
+    ) -> mtu::Config {
         endpoint_mtu_config
     }
 }

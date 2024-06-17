@@ -110,6 +110,7 @@ impl<
         {
             return Err(StartError::new(connection::id::Error::InvalidLifetime));
         };
+        let mtu = path::MtuManager::new(mtu);
 
         let endpoint_config = EndpointConfig {
             congestion_controller,
@@ -211,7 +212,7 @@ struct EndpointConfig<
     Random,
     Event,
     Limits,
-    Mtu,
+    Mtu: path::Endpoint,
     Sync,
     Tls,
     Datagram,
@@ -226,7 +227,7 @@ struct EndpointConfig<
     endpoint_limits: EndpointLimits,
     event: Event,
     limits: Limits,
-    mtu: Mtu,
+    mtu: path::mtu::MtuManager<Mtu>,
     sync: Sync,
     tls: Tls,
     token: Token,

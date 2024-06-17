@@ -87,9 +87,6 @@ pub struct Endpoint<Cfg: Config> {
     retry_dispatch: retry::Dispatch<Cfg::PathHandle>,
     stateless_reset_dispatch: stateless_reset::Dispatch<Cfg::PathHandle>,
     close_packet_buffer: packet_buffer::Buffer,
-    /// Endpoint configuration for the maximum transmission unit (MTU) that can be sent
-    /// on a path
-    mtu: mtu::MtuManager<Cfg::Mtu>,
 }
 
 impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
@@ -265,27 +262,9 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
         self.connections.next_expiration()
     }
 
-    // provider: mtu::Endpoint
-    // endpoint.mtu : mtu::CheckedEndpointImpl // endpoint/mod.rs
-    //
-    // struct CheckedEndpointImpl { checked_config: T, endpoint_config: Option<Config> }
-    // impl mtu::CheckedEndpoint for mtu::CheckedEndpointImpl
-    //
-    // trait mtu::CheckedEndpoint {
-    //   fn checked(endpoint: EndpointConfig) -> Config
-    //
-    //   fn set_endpoint(&mut self) {
-    //      self.endpoint_config = ...
-    //   };
-    // }
-    //
-    // mtu::Endpoint {
-    //   fn on_path() -> Config
-    // }
-
     #[inline]
     fn set_mtu_config(&mut self, mtu_config: mtu::Config) {
-        self.mtu.set_endpoint_config(mtu_config);
+        self.config.context().mtu.set_endpoint_config(mtu_config);
     }
 
     #[inline]
@@ -336,7 +315,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
             close_packet_buffer: Default::default(),
-            mtu: mtu::MtuManager::default(),
         };
 
         (endpoint, handle)
@@ -585,7 +563,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         &datagram,
                         endpoint_context.congestion_controller,
                         endpoint_context.path_migration,
-                        &mut self.mtu,
+                        endpoint_context.mtu,
                         endpoint_context.event_subscriber,
                     )
                     .map_err(|datagram_drop_reason| {
@@ -1065,7 +1043,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         );
 
         let info = mtu::PathInfo::new(&remote_address);
-        let mtu_config = self.mtu.config(&info).map_err(|_err| {
+        let mtu_config = endpoint_context.mtu.config(&info).map_err(|_err| {
             let error = connection::Error::invalid_configuration(
                 "MTU provider produced an invalid MTU configuration",
             );

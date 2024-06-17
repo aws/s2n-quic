@@ -259,7 +259,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             endpoint_context.event_subscriber,
         );
         let info = mtu::PathInfo::new(&remote_address);
-        let mtu_config = self.mtu.config(&info).map_err(|_err| {
+        let mtu_config = endpoint_context.mtu.config(&info).map_err(|_err| {
             let error = connection::Error::invalid_configuration(
                 "MTU provider produced an invalid MTU configuration",
             );
@@ -316,7 +316,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
 
-        let mtu = &mut self.mtu;
         let endpoint_context = self.config.context();
         let handle_first_packet =
             move |connection: &mut <Config as endpoint::Config>::Connection| {
@@ -325,7 +324,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     datagram,
                     endpoint_context.congestion_controller,
                     endpoint_context.path_migration,
-                    mtu,
+                    endpoint_context.mtu,
                     endpoint_context.event_subscriber,
                 );
 

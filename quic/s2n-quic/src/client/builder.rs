@@ -147,6 +147,7 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ///     fn on_path(
         ///         &mut self,
         ///         info: &mtu::PathInfo,
+        ///         endpoint_mtu_config: mtu::Config,
         ///     ) -> mtu::Config {
         ///         self.0
         ///     }
