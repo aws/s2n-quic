@@ -259,7 +259,7 @@ impl<E: mtu::Endpoint> Manager<E> {
         Manager {
             provider,
             // Instantiate the Manager with default values since the endpoint is
-            // create before the IO provider (which sets the actual config `set_mtu_config()`).
+            // created before the IO provider (IO provider sets the actual config `set_mtu_config()`).
             endpoint_mtu_config: Default::default(),
         }
     }
@@ -292,8 +292,6 @@ pub trait Endpoint: 'static + Send {
     /// Provide path specific MTU config.
     ///
     /// Application must ensure that `max_mtu <= info.mtu_config.max_mtu`.
-    /// By default this uses the MTU config specified on the IO provider.
-    // The default implementation doesn't use `info` and simply returns the endpoint_mtu_config
     fn on_path(&mut self, info: &mtu::PathInfo, endpoint_mtu_config: Config)
         -> Option<mtu::Config>;
 }

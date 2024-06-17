@@ -739,8 +739,9 @@ enum DatagramDropReason {
         /// MTU configuration for the endpoint
         endpoint_mtu_config: MtuConfig,
         // TODO expose connection level mtu config.
+        // TODO expose the remote address.
+        // https://github.com/aws/s2n-quic/issues/2254
         // error from mtu::Config
-        // TODO expose the remote address
         // remote_addr: SocketAddress<'a>,
     },
 }
