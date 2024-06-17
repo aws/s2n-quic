@@ -84,7 +84,7 @@ pub struct Context<'a, Cfg: Config> {
 
     /// Endpoint configuration for the maximum transmission unit (MTU) that can be sent
     /// on a path
-    pub mtu: &'a mut mtu::MtuManager<Cfg::Mtu>,
+    pub mtu: &'a mut mtu::Manager<Cfg::Mtu>,
 
     pub connection_close_formatter: &'a mut Cfg::ConnectionCloseFormatter,
 

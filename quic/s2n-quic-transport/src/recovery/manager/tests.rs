@@ -3366,7 +3366,7 @@ fn helper_generate_multi_path_manager(
                 true,
                 &mut Endpoint::default(),
                 &mut migration::allow_all::Validator,
-                &mut mtu::MtuManager::new(mtu::Config::default()),
+                &mut mtu::Manager::new(mtu::Config::default()),
                 &Limits::default(),
                 publisher,
             )

@@ -8,7 +8,7 @@ use crate::{
     frame::Frame,
     inet::{IpV4Address, SocketAddressV4},
     packet::number::PacketNumberSpace,
-    path::{mtu, mtu::MtuManager},
+    path::{mtu, mtu::Manager},
     recovery::congestion_controller::testing::mock::CongestionController,
     time::{clock::testing::now, timer::Provider as _},
     transmission::{
@@ -131,7 +131,7 @@ fn mtu_manager() {
     // valid: with Default config
     let mtu_provider = mtu::Config::builder().build().unwrap();
     assert!(mtu_provider.is_valid());
-    let mut manager: MtuManager<Config> = MtuManager::new(mtu_provider);
+    let mut manager: Manager<Config> = Manager::new(mtu_provider);
     manager.config(&info).unwrap();
 
     // valid: max_mtu == endpoint_config.max_mtu
@@ -141,7 +141,7 @@ fn mtu_manager() {
         .build()
         .unwrap();
     assert!(mtu_provider.is_valid());
-    let mut manager: MtuManager<Config> = MtuManager::new(mtu_provider);
+    let mut manager: Manager<Config> = Manager::new(mtu_provider);
     manager.config(&info).unwrap();
 
     // invalid: !mtu_provider.is_valid()
@@ -151,7 +151,7 @@ fn mtu_manager() {
         max_mtu: MaxMtu::MIN,
     };
     assert!(!mtu_provider.is_valid());
-    let mut manager: MtuManager<Config> = MtuManager::new(mtu_provider);
+    let mut manager: Manager<Config> = Manager::new(mtu_provider);
     assert_eq!(manager.config(&info).unwrap_err(), MtuError);
 
     // invalid: mtu_provider.max_mtu > endpoint_config.max_mtu
@@ -161,7 +161,7 @@ fn mtu_manager() {
         .build()
         .unwrap();
     assert!(mtu_provider.is_valid());
-    let mut manager: MtuManager<Config> = MtuManager::new(mtu_provider);
+    let mut manager: Manager<Config> = Manager::new(mtu_provider);
     assert_eq!(manager.config(&info).unwrap_err(), MtuError);
 }
 

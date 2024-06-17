@@ -249,14 +249,14 @@ impl<'a> PathInfo<'a> {
 
 /// MTU configuration manager.
 #[derive(Copy, Clone, Debug)]
-pub struct MtuManager<E: mtu::Endpoint> {
+pub struct Manager<E: mtu::Endpoint> {
     provider: E,
     endpoint_mtu_config: Config,
 }
 
-impl<E: mtu::Endpoint> MtuManager<E> {
+impl<E: mtu::Endpoint> Manager<E> {
     pub fn new(provider: E) -> Self {
-        MtuManager {
+        Manager {
             provider,
             // Instantiate the Manager with default values since the endpoint is
             // create before the IO provider (which sets the actual config `set_mtu_config()`).

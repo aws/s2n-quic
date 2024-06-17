@@ -240,7 +240,7 @@ impl connection::Trait for TestConnection {
         _datagram: &DatagramInfo,
         _congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         _path_migration: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
-        _mtu: &mut mtu::MtuManager<<Self::Config as endpoint::Config>::Mtu>,
+        _mtu: &mut mtu::Manager<<Self::Config as endpoint::Config>::Mtu>,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, DatagramDropReason> {
         todo!()

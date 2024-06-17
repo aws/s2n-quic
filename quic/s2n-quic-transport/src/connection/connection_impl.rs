@@ -1134,7 +1134,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         path_migration: &mut Config::PathMigrationValidator,
-        mtu: &mut mtu::MtuManager<Config::Mtu>,
+        mtu: &mut mtu::Manager<Config::Mtu>,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<path::Id, DatagramDropReason> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);

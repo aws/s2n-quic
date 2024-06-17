@@ -244,7 +244,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        mtu: &mut mtu::MtuManager<Config::Mtu>,
+        mtu: &mut mtu::Manager<Config::Mtu>,
         limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -320,7 +320,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        mtu: &mut mtu::MtuManager<Config::Mtu>,
+        mtu: &mut mtu::Manager<Config::Mtu>,
         limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
