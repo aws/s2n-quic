@@ -612,7 +612,7 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             true,
-            mtu::Config::default().into(),
+            mtu::Config::default(),
             ANTI_AMPLIFICATION_MULTIPLIER,
         )
     }
@@ -625,7 +625,7 @@ pub mod testing {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            mtu::Config::default().into(),
+            mtu::Config::default(),
             ANTI_AMPLIFICATION_MULTIPLIER,
         )
     }
@@ -1159,7 +1159,7 @@ mod tests {
             RttEstimator::new(Duration::from_millis(30)),
             Default::default(),
             false,
-            mtu::Config::default().into(),
+            mtu::Config::default(),
             ANTI_AMPLIFICATION_MULTIPLIER,
         );
         let now = NoopClock.get_time();

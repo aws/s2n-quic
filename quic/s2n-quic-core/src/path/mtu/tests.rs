@@ -8,7 +8,7 @@ use crate::{
     frame::Frame,
     inet::{IpV4Address, SocketAddressV4},
     packet::number::PacketNumberSpace,
-    path::mtu,
+    path::{mtu, mtu::MtuManager},
     recovery::congestion_controller::testing::mock::CongestionController,
     time::{clock::testing::now, timer::Provider as _},
     transmission::{
@@ -121,52 +121,49 @@ fn mtu_config_builder() {
     assert_eq!(Some(MtuError), result.err());
 }
 
-// TODO add new test
-// #[test]
-// fn checked_mtu_config() {
-//     let remote = inet::SocketAddress::default();
-//     let endpoint_config = mtu::Config::builder().build().unwrap();
-//     assert!(endpoint_config.is_valid());
-//     let info = PathInfo::new(&remote);
+#[test]
+fn mtu_manager() {
+    let remote = inet::SocketAddress::default();
+    let endpoint_config = mtu::Config::builder().build().unwrap();
+    assert!(endpoint_config.is_valid());
+    let info = PathInfo::new(&remote);
 
-//     // valid: with Default config
-//     let conn_config = mtu::Config::builder().build().unwrap();
-//     assert!(conn_config.is_valid());
-//     CheckedConfig::new(conn_config, &info).unwrap();
+    // valid: with Default config
+    let mtu_provider = mtu::Config::builder().build().unwrap();
+    assert!(mtu_provider.is_valid());
+    let mut manager: MtuManager<Config> = MtuManager::new(mtu_provider);
+    manager.config(&info).unwrap();
 
-//     // valid: max_mtu == endpoint_config.max_mtu
-//     let conn_config = mtu::Config::builder()
-//         .with_max_mtu(DEFAULT_MAX_MTU.into())
-//         .unwrap()
-//         .build()
-//         .unwrap();
-//     assert!(conn_config.is_valid());
-//     CheckedConfig::new(conn_config, &info).unwrap();
+    // valid: max_mtu == endpoint_config.max_mtu
+    let mtu_provider = mtu::Config::builder()
+        .with_max_mtu(DEFAULT_MAX_MTU.into())
+        .unwrap()
+        .build()
+        .unwrap();
+    assert!(mtu_provider.is_valid());
+    let mut manager: MtuManager<Config> = MtuManager::new(mtu_provider);
+    manager.config(&info).unwrap();
 
-//     // invalid: !conn_config.is_valid()
-//     let conn_config = mtu::Config {
-//         initial_mtu: InitialMtu::MIN,
-//         base_mtu: BaseMtu(NonZeroU16::new(1500).unwrap()),
-//         max_mtu: MaxMtu::MIN,
-//     };
-//     assert!(!conn_config.is_valid());
-//     assert_eq!(
-//         CheckedConfig::new(conn_config, &info).unwrap_err(),
-//         MtuError
-//     );
+    // invalid: !mtu_provider.is_valid()
+    let mtu_provider = mtu::Config {
+        initial_mtu: InitialMtu::MIN,
+        base_mtu: BaseMtu(NonZeroU16::new(1500).unwrap()),
+        max_mtu: MaxMtu::MIN,
+    };
+    assert!(!mtu_provider.is_valid());
+    let mut manager: MtuManager<Config> = MtuManager::new(mtu_provider);
+    assert_eq!(manager.config(&info).unwrap_err(), MtuError);
 
-//     // invalid: conn_config.max_mtu > endpoint_config.max_mtu
-//     let conn_config = mtu::Config::builder()
-//         .with_max_mtu(1501)
-//         .unwrap()
-//         .build()
-//         .unwrap();
-//     assert!(conn_config.is_valid());
-//     assert_eq!(
-//         CheckedConfig::new(conn_config, &info).unwrap_err(),
-//         MtuError
-//     );
-// }
+    // invalid: mtu_provider.max_mtu > endpoint_config.max_mtu
+    let mtu_provider = mtu::Config::builder()
+        .with_max_mtu(1501)
+        .unwrap()
+        .build()
+        .unwrap();
+    assert!(mtu_provider.is_valid());
+    let mut manager: MtuManager<Config> = MtuManager::new(mtu_provider);
+    assert_eq!(manager.config(&info).unwrap_err(), MtuError);
+}
 
 #[test]
 fn base_plpmtu_is_1200() {
@@ -177,7 +174,7 @@ fn base_plpmtu_is_1200() {
     //# default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
     let ip = IpV4Address::new([127, 0, 0, 1]);
     let addr = inet::SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
-    let controller = Controller::new(Config::default().into(), &addr);
+    let controller = Controller::new(Config::default(), &addr);
     assert_eq!(controller.base_plpmtu, 1200);
 }
 
@@ -189,8 +186,7 @@ fn min_max_mtu() {
         Config {
             max_mtu: MaxMtu::MIN,
             ..Default::default()
-        }
-        .into(),
+        },
         &addr.into(),
     );
     assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.plpmtu);
@@ -218,8 +214,7 @@ fn new_ipv4() {
         Config {
             max_mtu: 1600.try_into().unwrap(),
             ..Default::default()
-        }
-        .into(),
+        },
         &addr.into(),
     );
     assert_eq!(1600_u16, u16::from(controller.max_mtu));
@@ -254,8 +249,7 @@ fn new_ipv6() {
         Config {
             max_mtu: 2000.try_into().unwrap(),
             ..Default::default()
-        }
-        .into(),
+        },
         &addr.into(),
     );
     assert_eq!(2000_u16, u16::from(controller.max_mtu));
@@ -293,8 +287,7 @@ fn new_initial_and_base_mtu() {
             max_mtu: 2600.try_into().unwrap(),
             base_mtu: 1400.try_into().unwrap(),
             initial_mtu: 2500.try_into().unwrap(),
-        }
-        .into(),
+        },
         &addr.into(),
     );
     assert_eq!(2600_u16, u16::from(controller.max_mtu));
@@ -338,8 +331,7 @@ fn new_initial_mtu_less_than_ethernet_mtu() {
             max_mtu: 9000.try_into().unwrap(),
             initial_mtu: 1400.try_into().unwrap(),
             ..Default::default()
-        }
-        .into(),
+        },
         &addr.into(),
     );
     // probe the ethernet MTU
@@ -359,8 +351,7 @@ fn new_initial_mtu_equal_to_ethernet_mtu() {
             max_mtu: 9000.try_into().unwrap(),
             initial_mtu: ETHERNET_MTU.try_into().unwrap(),
             ..Default::default()
-        }
-        .into(),
+        },
         &addr.into(),
     );
     // probe halfway to the max MTU
@@ -807,7 +798,7 @@ fn on_packet_loss_initial_mtu_configured() {
                     initial_mtu: initial_mtu.min(max_mtu).try_into().unwrap(),
                     base_mtu: base_mtu.min(initial_mtu).min(max_mtu).try_into().unwrap(),
                 };
-                let mut controller = Controller::new(mtu_config.into(), &addr);
+                let mut controller = Controller::new(mtu_config, &addr);
                 let base_plpmtu = controller.base_plpmtu;
                 let original_plpmtu = controller.plpmtu;
                 let pn = pn(1);

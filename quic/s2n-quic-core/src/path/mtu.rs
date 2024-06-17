@@ -265,15 +265,17 @@ impl<E: mtu::Endpoint> MtuManager<E> {
     }
 
     pub fn config(&mut self, info: &PathInfo) -> Result<Config, MtuError> {
-        let conn_config = self.provider.on_path(info, self.endpoint_mtu_config);
+        if let Some(conn_config) = self.provider.on_path(info, self.endpoint_mtu_config) {
+            ensure!(conn_config.is_valid(), Err(MtuError));
+            ensure!(
+                u16::from(conn_config.max_mtu) <= u16::from(self.endpoint_mtu_config.max_mtu()),
+                Err(MtuError)
+            );
 
-        ensure!(conn_config.is_valid(), Err(MtuError));
-        ensure!(
-            u16::from(conn_config.max_mtu) <= u16::from(self.endpoint_mtu_config.max_mtu()),
-            Err(MtuError)
-        );
-
-        Ok(conn_config)
+            Ok(conn_config)
+        } else {
+            Ok(self.endpoint_mtu_config)
+        }
     }
 
     pub fn set_endpoint_config(&mut self, config: Config) {
@@ -292,12 +294,21 @@ pub trait Endpoint: 'static + Send {
     /// Application must ensure that `max_mtu <= info.mtu_config.max_mtu`.
     /// By default this uses the MTU config specified on the IO provider.
     // The default implementation doesn't use `info` and simply returns the endpoint_mtu_config
+    fn on_path(&mut self, info: &mtu::PathInfo, endpoint_mtu_config: Config)
+        -> Option<mtu::Config>;
+}
+
+/// Use the endpoint configured values.
+#[derive(Debug, Default)]
+pub struct Noop {}
+
+impl Endpoint for Noop {
     fn on_path(
         &mut self,
-        #[allow(unused_variables)] info: &mtu::PathInfo,
-        endpoint_mtu_config: Config,
-    ) -> mtu::Config {
-        endpoint_mtu_config
+        _info: &mtu::PathInfo,
+        _endpoint_mtu_config: Config,
+    ) -> Option<mtu::Config> {
+        None
     }
 }
 
@@ -309,7 +320,15 @@ pub struct Config {
     max_mtu: MaxMtu,
 }
 
-impl Endpoint for Config {}
+impl Endpoint for Config {
+    fn on_path(
+        &mut self,
+        _info: &mtu::PathInfo,
+        _endpoint_mtu_config: Config,
+    ) -> Option<mtu::Config> {
+        Some(*self)
+    }
+}
 
 impl Config {
     pub const MIN: Self = Self {

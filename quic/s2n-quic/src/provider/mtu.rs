@@ -3,7 +3,7 @@
 
 //! Provides a path specific MTU configuration.
 
-pub use s2n_quic_core::path::mtu::{Builder, Config, Endpoint, PathInfo};
+pub use s2n_quic_core::path::mtu::{Builder, Config, Endpoint, Noop, PathInfo};
 
 pub trait Provider {
     type Config: 'static + Send + Endpoint;
@@ -12,7 +12,7 @@ pub trait Provider {
     fn start(self) -> Result<Self::Config, Self::Error>;
 }
 
-pub use Config as Default;
+pub use Noop as Default;
 
 impl_provider_utils!();
 

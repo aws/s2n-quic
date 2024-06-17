@@ -60,7 +60,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default().into(),
+        mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
@@ -439,7 +439,7 @@ fn on_ack_frame() {
         context.path().rtt_estimator,
         MockCongestionController::default(),
         false,
-        mtu::Config::default().into(),
+        mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     context.path_manager.activate_path_for_test(path_id);
@@ -2675,7 +2675,7 @@ fn update_pto_timer() {
         rtt_estimator,
         MockCongestionController::default(),
         false,
-        mtu::Config::default().into(),
+        mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     context.path_manager.activate_path_for_test(path_id);
@@ -2769,7 +2769,7 @@ fn pto_armed_if_handshake_not_confirmed() {
         RttEstimator::new(Duration::from_millis(10)),
         Default::default(),
         false,
-        mtu::Config::default().into(),
+        mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
     path_manager.activate_path_for_test(path_id);
@@ -2798,7 +2798,7 @@ fn pto_must_be_at_least_k_granularity() {
         RttEstimator::default(),
         Default::default(),
         false,
-        mtu::Config::default().into(),
+        mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
@@ -3426,7 +3426,6 @@ fn helper_generate_path_manager_with_first_addr(
     let mut rtt_estimator = RttEstimator::default();
     rtt_estimator.on_max_ack_delay(max_ack_delay.try_into().unwrap());
 
-    let mtu_config = mtu::Config::default().into();
     let path = Path::new(
         first_addr,
         connection::PeerId::TEST_ID,
@@ -3434,7 +3433,7 @@ fn helper_generate_path_manager_with_first_addr(
         rtt_estimator,
         MockCongestionController::new(first_addr),
         true,
-        mtu_config,
+        mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 
@@ -3452,7 +3451,6 @@ fn helper_generate_client_path_manager(
     let mut rtt_estimator = RttEstimator::default();
     rtt_estimator.on_max_ack_delay(max_ack_delay.try_into().unwrap());
 
-    let mtu_config = mtu::Config::default().into();
     let path = super::Path::new(
         first_addr,
         connection::PeerId::TEST_ID,
@@ -3460,7 +3458,7 @@ fn helper_generate_client_path_manager(
         rtt_estimator,
         MockCongestionController::new(first_addr),
         false,
-        mtu_config,
+        mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
     );
 

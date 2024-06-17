@@ -148,8 +148,8 @@ impl<Providers: ClientProviders> Builder<Providers> {
         ///         &mut self,
         ///         info: &mtu::PathInfo,
         ///         endpoint_mtu_config: mtu::Config,
-        ///     ) -> mtu::Config {
-        ///         self.0
+        ///     ) -> Option<mtu::Config> {
+        ///         Some(self.0)
         ///     }
         /// }
         /// let mtu = MyMtuProvider(mtu::Config::builder().build().unwrap());
