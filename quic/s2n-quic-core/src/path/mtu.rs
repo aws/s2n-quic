@@ -233,6 +233,7 @@ impl std::error::Error for MtuError {}
 
 /// Information about the path that may be used when generating or
 /// validating MTU configuration.
+#[non_exhaustive]
 pub struct PathInfo<'a> {
     pub remote_address: event::api::SocketAddress<'a>,
 }
