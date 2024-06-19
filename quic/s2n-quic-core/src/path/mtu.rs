@@ -296,7 +296,7 @@ pub trait Endpoint: 'static + Send {
     /// connection. Returning `None` means that the path should inherit
     /// the endpoint configured values.
     ///
-    /// Application must ensure that `max_mtu <= endpoint_mtu_config.mtu_config.max_mtu`.
+    /// Application must ensure that `max_mtu <= endpoint_mtu_config.max_mtu()`.
     fn on_path(&mut self, info: &mtu::PathInfo, endpoint_mtu_config: Config)
         -> Option<mtu::Config>;
 }
@@ -414,7 +414,7 @@ impl Builder {
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path (default: 1500)
     ///
-    /// Application must ensure that max_mtu <= endpoint_mtu_config.mtu_config.max_mtu. For a detailed
+    /// Application must ensure that max_mtu <= endpoint_mtu_config.max_mtu(). For a detailed
     /// description see the [with_max_mtu] documentation in the IO provider.
     ///
     /// [with_max_mtu]: https://docs.rs/s2n-quic/latest/s2n_quic/provider/io/tokio/struct.Builder.html#method.with_max_mtu
