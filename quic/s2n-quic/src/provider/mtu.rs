@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Provides a path specific MTU configuration.
+//!
+//! By default paths inherit the endpoint configured MTU values. Applications
+//! should implement this provider to override the MTU configuration for
+//! specific paths.
 
-pub use s2n_quic_core::path::mtu::{Builder, Config, Endpoint, Noop, PathInfo};
+pub use s2n_quic_core::path::mtu::{Builder, Config, Endpoint, Inherit as Default, PathInfo};
 
 pub trait Provider {
     type Config: 'static + Send + Endpoint;
@@ -11,8 +15,6 @@ pub trait Provider {
 
     fn start(self) -> Result<Self::Config, Self::Error>;
 }
-
-pub use Noop as Default;
 
 impl_provider_utils!();
 

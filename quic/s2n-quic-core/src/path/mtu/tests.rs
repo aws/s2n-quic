@@ -126,13 +126,12 @@ fn mtu_manager() {
     let remote = inet::SocketAddress::default();
     let endpoint_config = mtu::Config::builder().build().unwrap();
     assert!(endpoint_config.is_valid());
-    let info = PathInfo::new(&remote);
 
     // valid: with Default config
     let mtu_provider = mtu::Config::builder().build().unwrap();
     assert!(mtu_provider.is_valid());
     let mut manager: Manager<Config> = Manager::new(mtu_provider);
-    manager.config(&info).unwrap();
+    manager.config(&remote).unwrap();
 
     // valid: max_mtu == endpoint_config.max_mtu
     let mtu_provider = mtu::Config::builder()
@@ -142,7 +141,7 @@ fn mtu_manager() {
         .unwrap();
     assert!(mtu_provider.is_valid());
     let mut manager: Manager<Config> = Manager::new(mtu_provider);
-    manager.config(&info).unwrap();
+    manager.config(&remote).unwrap();
 
     // invalid: !mtu_provider.is_valid()
     let mtu_provider = mtu::Config {
@@ -152,7 +151,7 @@ fn mtu_manager() {
     };
     assert!(!mtu_provider.is_valid());
     let mut manager: Manager<Config> = Manager::new(mtu_provider);
-    assert_eq!(manager.config(&info).unwrap_err(), MtuError);
+    assert_eq!(manager.config(&remote).unwrap_err(), MtuError);
 
     // invalid: mtu_provider.max_mtu > endpoint_config.max_mtu
     let mtu_provider = mtu::Config::builder()
@@ -162,7 +161,7 @@ fn mtu_manager() {
         .unwrap();
     assert!(mtu_provider.is_valid());
     let mut manager: Manager<Config> = Manager::new(mtu_provider);
-    assert_eq!(manager.config(&info).unwrap_err(), MtuError);
+    assert_eq!(manager.config(&remote).unwrap_err(), MtuError);
 }
 
 #[test]

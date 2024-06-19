@@ -231,8 +231,7 @@ impl Display for MtuError {
 #[cfg(feature = "std")]
 impl std::error::Error for MtuError {}
 
-/// Information about the path that may be used when generating or
-/// validating MTU configuration.
+/// Information about the path that may be used when generating MTU configuration.
 #[non_exhaustive]
 pub struct PathInfo<'a> {
     pub remote_address: event::api::SocketAddress<'a>,
@@ -249,7 +248,7 @@ impl<'a> PathInfo<'a> {
 }
 
 /// MTU configuration manager.
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 pub struct Manager<E: mtu::Endpoint> {
     provider: E,
     endpoint_mtu_config: Config,
@@ -265,8 +264,9 @@ impl<E: mtu::Endpoint> Manager<E> {
         }
     }
 
-    pub fn config(&mut self, info: &PathInfo) -> Result<Config, MtuError> {
-        if let Some(conn_config) = self.provider.on_path(info, self.endpoint_mtu_config) {
+    pub fn config(&mut self, remote_address: &inet::SocketAddress) -> Result<Config, MtuError> {
+        let info = mtu::PathInfo::new(remote_address);
+        if let Some(conn_config) = self.provider.on_path(&info, self.endpoint_mtu_config) {
             ensure!(conn_config.is_valid(), Err(MtuError));
             ensure!(
                 u16::from(conn_config.max_mtu) <= u16::from(self.endpoint_mtu_config.max_mtu()),
@@ -288,20 +288,24 @@ impl<E: mtu::Endpoint> Manager<E> {
     }
 }
 
-/// Creates MTU config for the given path.
+/// Specify MTU configuration for the given path.
 pub trait Endpoint: 'static + Send {
     /// Provide path specific MTU config.
     ///
-    /// Application must ensure that `max_mtu <= info.mtu_config.max_mtu`.
+    /// The MTU provider is invoked for each new path established during a
+    /// connection. Returning `None` means that the path should inherit
+    /// the endpoint configured values.
+    ///
+    /// Application must ensure that `max_mtu <= endpoint_mtu_config.mtu_config.max_mtu`.
     fn on_path(&mut self, info: &mtu::PathInfo, endpoint_mtu_config: Config)
         -> Option<mtu::Config>;
 }
 
-/// Use the endpoint configured values.
+/// Inherit the endpoint configured values.
 #[derive(Debug, Default)]
-pub struct Noop {}
+pub struct Inherit {}
 
-impl Endpoint for Noop {
+impl Endpoint for Inherit {
     fn on_path(
         &mut self,
         _info: &mtu::PathInfo,
@@ -410,7 +414,7 @@ impl Builder {
 
     /// Sets the largest maximum transmission unit (MTU) that can be sent on a path (default: 1500)
     ///
-    /// Application must ensure that max_mtu <= info.mtu_config.max_mtu. For a detailed
+    /// Application must ensure that max_mtu <= endpoint_mtu_config.mtu_config.max_mtu. For a detailed
     /// description see the [with_max_mtu] documentation in the IO provider.
     ///
     /// [with_max_mtu]: https://docs.rs/s2n-quic/latest/s2n_quic/provider/io/tokio/struct.Builder.html#method.with_max_mtu

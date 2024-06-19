@@ -1042,16 +1042,18 @@ impl<Cfg: Config> Endpoint<Cfg> {
             endpoint_context.event_subscriber,
         );
 
-        let info = mtu::PathInfo::new(&remote_address);
-        let mtu_config = endpoint_context.mtu.config(&info).map_err(|_err| {
-            let error = connection::Error::invalid_configuration(
-                "MTU provider produced an invalid MTU configuration",
-            );
-            endpoint_publisher.on_endpoint_connection_attempt_failed(
-                event::builder::EndpointConnectionAttemptFailed { error },
-            );
-            error
-        })?;
+        let mtu_config = endpoint_context
+            .mtu
+            .config(&remote_address)
+            .map_err(|_err| {
+                let error = connection::Error::invalid_configuration(
+                    "MTU provider produced an invalid MTU configuration",
+                );
+                endpoint_publisher.on_endpoint_connection_attempt_failed(
+                    event::builder::EndpointConnectionAttemptFailed { error },
+                );
+                error
+            })?;
 
         let mut publisher = event::ConnectionPublisherSubscriber::new(
             meta,

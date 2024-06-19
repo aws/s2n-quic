@@ -308,6 +308,12 @@ pub mod api {
         #[doc = " The peer sent an invalid Source Connection Id."]
         InvalidSourceConnectionId {},
         #[non_exhaustive]
+        #[doc = " Application provided invalid MTU configuration."]
+        InvalidMtuConfiguration {
+            #[doc = " MTU configuration for the endpoint"]
+            endpoint_mtu_config: MtuConfig,
+        },
+        #[non_exhaustive]
         #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
         #[doc = ""]
         #[doc = " Connections are mapped to Destination Connections Ids (DCID) and packets"]
@@ -333,12 +339,6 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
         InsufficientConnectionIds {},
-        #[non_exhaustive]
-        #[doc = " Application provided invalid MTU configuration."]
-        MtuValidation {
-            #[doc = " MTU configuration for the endpoint"]
-            endpoint_mtu_config: MtuConfig,
-        },
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -3106,6 +3106,11 @@ pub mod builder {
         InvalidDestinationConnectionId,
         #[doc = " The peer sent an invalid Source Connection Id."]
         InvalidSourceConnectionId,
+        #[doc = " Application provided invalid MTU configuration."]
+        InvalidMtuConfiguration {
+            #[doc = " MTU configuration for the endpoint"]
+            endpoint_mtu_config: MtuConfig,
+        },
         #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
         #[doc = ""]
         #[doc = " Connections are mapped to Destination Connections Ids (DCID) and packets"]
@@ -3125,11 +3130,6 @@ pub mod builder {
         PathLimitExceeded,
         #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
         InsufficientConnectionIds,
-        #[doc = " Application provided invalid MTU configuration."]
-        MtuValidation {
-            #[doc = " MTU configuration for the endpoint"]
-            endpoint_mtu_config: MtuConfig,
-        },
     }
     impl IntoEvent<api::DatagramDropReason> for DatagramDropReason {
         #[inline]
@@ -3141,6 +3141,11 @@ pub mod builder {
                 Self::UnsupportedVersion => UnsupportedVersion {},
                 Self::InvalidDestinationConnectionId => InvalidDestinationConnectionId {},
                 Self::InvalidSourceConnectionId => InvalidSourceConnectionId {},
+                Self::InvalidMtuConfiguration {
+                    endpoint_mtu_config,
+                } => InvalidMtuConfiguration {
+                    endpoint_mtu_config: endpoint_mtu_config.into_event(),
+                },
                 Self::UnknownDestinationConnectionId => UnknownDestinationConnectionId {},
                 Self::RejectedConnectionAttempt => RejectedConnectionAttempt {},
                 Self::UnknownServerAddress => UnknownServerAddress {},
@@ -3148,11 +3153,6 @@ pub mod builder {
                 Self::RejectedConnectionMigration => RejectedConnectionMigration {},
                 Self::PathLimitExceeded => PathLimitExceeded {},
                 Self::InsufficientConnectionIds => InsufficientConnectionIds {},
-                Self::MtuValidation {
-                    endpoint_mtu_config,
-                } => MtuValidation {
-                    endpoint_mtu_config: endpoint_mtu_config.into_event(),
-                },
             }
         }
     }

@@ -20,7 +20,7 @@ use s2n_quic_core::{
     event::{self, supervisor, ConnectionPublisher, EndpointPublisher, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     packet::initial::ProtectedInitial,
-    path::{mtu, Handle as _},
+    path::Handle as _,
     stateless_reset::token::Generator as _,
     transport::{self, parameters::ServerTransportParameters},
 };
@@ -258,16 +258,18 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             Some(quic_version),
             endpoint_context.event_subscriber,
         );
-        let info = mtu::PathInfo::new(&remote_address);
-        let mtu_config = endpoint_context.mtu.config(&info).map_err(|_err| {
-            let error = connection::Error::invalid_configuration(
-                "MTU provider produced an invalid MTU configuration",
-            );
-            endpoint_publisher.on_endpoint_connection_attempt_failed(
-                event::builder::EndpointConnectionAttemptFailed { error },
-            );
-            error
-        })?;
+        let mtu_config = endpoint_context
+            .mtu
+            .config(&remote_address)
+            .map_err(|_err| {
+                let error = connection::Error::invalid_configuration(
+                    "MTU provider produced an invalid MTU configuration",
+                );
+                endpoint_publisher.on_endpoint_connection_attempt_failed(
+                    event::builder::EndpointConnectionAttemptFailed { error },
+                );
+                error
+            })?;
 
         let mut publisher = event::ConnectionPublisherSubscriber::new(
             meta,
