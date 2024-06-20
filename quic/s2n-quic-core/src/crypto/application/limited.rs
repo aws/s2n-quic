@@ -75,12 +75,12 @@ impl<K: OneRttKey> Key<K> {
     }
 
     #[inline]
-    pub fn on_packet_encryption(&mut self, _limits: &Limits) {
+    pub fn on_packet_encryption(&mut self) {
         self.encrypted_packets += 1;
     }
 
     #[inline]
-    pub fn on_packet_decryption(&mut self, _limits: &Limits) {
+    pub fn on_packet_decryption(&mut self) {
         self.decrypted_packets += 1;
     }
 
