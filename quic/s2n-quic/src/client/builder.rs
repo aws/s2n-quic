@@ -127,6 +127,46 @@ impl<Providers: ClientProviders> Builder<Providers> {
     );
 
     impl_provider_method!(
+        /// Sets the path specific mtu config provider for the [`Client`]
+        ///
+        /// # Examples
+        ///
+        /// Set custom MTU values to use per path, while inheriting the remaining default
+        /// config
+        ///
+        /// ```rust,no_run
+        /// # use std::{error::Error, time::Duration};
+        /// use s2n_quic::{Client, provider::mtu};
+        ///
+        /// # #[tokio::main]
+        /// # async fn main() -> Result<(), Box<dyn Error>> {
+        ///
+        /// struct MyMtuProvider(mtu::Config);
+        ///
+        /// impl mtu::Endpoint for MyMtuProvider {
+        ///     fn on_path(
+        ///         &mut self,
+        ///         info: &mtu::PathInfo,
+        ///         endpoint_mtu_config: mtu::Config,
+        ///     ) -> Option<mtu::Config> {
+        ///         Some(self.0)
+        ///     }
+        /// }
+        /// let mtu = MyMtuProvider(mtu::Config::builder().build().unwrap());
+        ///
+        /// let client = Client::builder()
+        ///     .with_mtu(mtu)?
+        ///     .start()?;
+        /// #
+        /// #    Ok(())
+        /// # }
+        /// ```
+        with_mtu,
+        mtu,
+        ClientProviders
+    );
+
+    impl_provider_method!(
         /// Sets the event provider for the [`Client`]
         ///
         /// # Examples

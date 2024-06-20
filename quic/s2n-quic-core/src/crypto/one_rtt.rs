@@ -11,9 +11,6 @@ use crate::crypto::{HeaderKey, Key};
 pub trait OneRttKey: Key {
     #[must_use]
     fn derive_next_key(&self) -> Self;
-
-    fn update_sealer_pmtu(&mut self, pmtu: u16);
-    fn update_opener_pmtu(&mut self, pmtu: u16);
 }
 
 /// Types for which are able to perform 1-RTT header cryptography.

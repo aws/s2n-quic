@@ -86,6 +86,13 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct MtuConfig {
+        pub initial_mtu: u16,
+        pub base_mtu: u16,
+        pub max_mtu: u16,
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " A bandwidth delivery rate estimate with associated metadata"]
     pub struct RateSample {
         #[doc = " The length of the sampling interval"]
@@ -300,6 +307,12 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " The peer sent an invalid Source Connection Id."]
         InvalidSourceConnectionId {},
+        #[non_exhaustive]
+        #[doc = " Application provided invalid MTU configuration."]
+        InvalidMtuConfiguration {
+            #[doc = " MTU configuration for the endpoint"]
+            endpoint_mtu_config: MtuConfig,
+        },
         #[non_exhaustive]
         #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
         #[doc = ""]
@@ -1650,6 +1663,16 @@ pub mod api {
             }
         }
     }
+    impl<'a> IntoEvent<builder::MtuConfig> for &'a crate::path::mtu::Config {
+        #[inline]
+        fn into_event(self) -> builder::MtuConfig {
+            builder::MtuConfig {
+                initial_mtu: self.initial_mtu().into(),
+                base_mtu: self.base_mtu().into(),
+                max_mtu: self.max_mtu().into(),
+            }
+        }
+    }
     impl CipherSuite {
         #[inline]
         pub fn as_str(&self) -> &'static str {
@@ -2654,6 +2677,27 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct MtuConfig {
+        pub initial_mtu: u16,
+        pub base_mtu: u16,
+        pub max_mtu: u16,
+    }
+    impl IntoEvent<api::MtuConfig> for MtuConfig {
+        #[inline]
+        fn into_event(self) -> api::MtuConfig {
+            let MtuConfig {
+                initial_mtu,
+                base_mtu,
+                max_mtu,
+            } = self;
+            api::MtuConfig {
+                initial_mtu: initial_mtu.into_event(),
+                base_mtu: base_mtu.into_event(),
+                max_mtu: max_mtu.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " A bandwidth delivery rate estimate with associated metadata"]
     pub struct RateSample {
         #[doc = " The length of the sampling interval"]
@@ -3062,6 +3106,11 @@ pub mod builder {
         InvalidDestinationConnectionId,
         #[doc = " The peer sent an invalid Source Connection Id."]
         InvalidSourceConnectionId,
+        #[doc = " Application provided invalid MTU configuration."]
+        InvalidMtuConfiguration {
+            #[doc = " MTU configuration for the endpoint"]
+            endpoint_mtu_config: MtuConfig,
+        },
         #[doc = " The Destination Connection Id is unknown and does not map to a Connection."]
         #[doc = ""]
         #[doc = " Connections are mapped to Destination Connections Ids (DCID) and packets"]
@@ -3092,6 +3141,11 @@ pub mod builder {
                 Self::UnsupportedVersion => UnsupportedVersion {},
                 Self::InvalidDestinationConnectionId => InvalidDestinationConnectionId {},
                 Self::InvalidSourceConnectionId => InvalidSourceConnectionId {},
+                Self::InvalidMtuConfiguration {
+                    endpoint_mtu_config,
+                } => InvalidMtuConfiguration {
+                    endpoint_mtu_config: endpoint_mtu_config.into_event(),
+                },
                 Self::UnknownDestinationConnectionId => UnknownDestinationConnectionId {},
                 Self::RejectedConnectionAttempt => RejectedConnectionAttempt {},
                 Self::UnknownServerAddress => UnknownServerAddress {},

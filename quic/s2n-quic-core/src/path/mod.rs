@@ -14,7 +14,7 @@ pub mod ecn;
 pub mod migration;
 pub mod mtu;
 
-pub use mtu::*;
+pub use mtu::{BaseMtu, Config, Endpoint, InitialMtu, MaxMtu, MtuError, MINIMUM_MAX_DATAGRAM_SIZE};
 
 // Initial PTO backoff multiplier is 1 indicating no additional increase to the backoff.
 pub const INITIAL_PTO_BACKOFF: u32 = 1;

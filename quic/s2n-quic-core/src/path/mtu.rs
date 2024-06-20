@@ -3,12 +3,11 @@
 
 use crate::{
     counter::{Counter, Saturating},
-    event,
-    event::{builder::MtuUpdatedCause, IntoEvent},
-    frame,
-    inet::SocketAddress,
+    event::{self, builder::MtuUpdatedCause, IntoEvent},
+    frame, inet,
     packet::number::PacketNumber,
     path,
+    path::mtu,
     recovery::{congestion_controller, CongestionController},
     time::{timer, Timer, Timestamp},
     transmission,
@@ -32,7 +31,7 @@ pub mod testing {
     /// Creates a new mtu::Controller with an IPv4 address and the given `max_mtu`
     pub fn new_controller(max_mtu: u16) -> Controller {
         let ip = IpV4Address::new([127, 0, 0, 1]);
-        let addr = SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
+        let addr = inet::SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
         Controller::new(
             Config {
                 max_mtu: max_mtu.try_into().unwrap(),
@@ -159,10 +158,10 @@ macro_rules! impl_mtu {
             /// The largest size of a QUIC datagram that can be sent on a path that supports this
             /// MTU. This does not include the size of UDP and IP headers.
             #[inline]
-            pub fn max_datagram_size(&self, peer_socket_address: &SocketAddress) -> u16 {
+            pub fn max_datagram_size(&self, peer_socket_address: &inet::SocketAddress) -> u16 {
                 let min_ip_header_len = match peer_socket_address {
-                    SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
-                    SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
+                    inet::SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
+                    inet::SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
                 };
                 (u16::from(*self) - UDP_HEADER_LEN - min_ip_header_len)
                     .max(MINIMUM_MAX_DATAGRAM_SIZE)
@@ -232,11 +231,106 @@ impl Display for MtuError {
 #[cfg(feature = "std")]
 impl std::error::Error for MtuError {}
 
+/// Information about the path that may be used when generating MTU configuration.
+#[non_exhaustive]
+pub struct PathInfo<'a> {
+    pub remote_address: event::api::SocketAddress<'a>,
+}
+
+impl<'a> PathInfo<'a> {
+    #[inline]
+    #[doc(hidden)]
+    pub fn new(remote_address: &'a inet::SocketAddress) -> Self {
+        PathInfo {
+            remote_address: remote_address.into_event(),
+        }
+    }
+}
+
+/// MTU configuration manager.
+#[derive(Debug)]
+pub struct Manager<E: mtu::Endpoint> {
+    provider: E,
+    endpoint_mtu_config: Config,
+}
+
+impl<E: mtu::Endpoint> Manager<E> {
+    pub fn new(provider: E) -> Self {
+        Manager {
+            provider,
+            // Instantiate the Manager with default values since the endpoint is
+            // created before the IO provider (IO provider sets the actual config `set_mtu_config()`).
+            endpoint_mtu_config: Default::default(),
+        }
+    }
+
+    pub fn config(&mut self, remote_address: &inet::SocketAddress) -> Result<Config, MtuError> {
+        let info = mtu::PathInfo::new(remote_address);
+        if let Some(conn_config) = self.provider.on_path(&info, self.endpoint_mtu_config) {
+            ensure!(conn_config.is_valid(), Err(MtuError));
+            ensure!(
+                u16::from(conn_config.max_mtu) <= u16::from(self.endpoint_mtu_config.max_mtu()),
+                Err(MtuError)
+            );
+
+            Ok(conn_config)
+        } else {
+            Ok(self.endpoint_mtu_config)
+        }
+    }
+
+    pub fn set_endpoint_config(&mut self, config: Config) {
+        self.endpoint_mtu_config = config;
+    }
+
+    pub fn endpoint_config(&self) -> &Config {
+        &self.endpoint_mtu_config
+    }
+}
+
+/// Specify MTU configuration for the given path.
+pub trait Endpoint: 'static + Send {
+    /// Provide path specific MTU config.
+    ///
+    /// The MTU provider is invoked for each new path established during a
+    /// connection. Returning `None` means that the path should inherit
+    /// the endpoint configured values.
+    ///
+    /// Application must ensure that `max_mtu <= endpoint_mtu_config.max_mtu()`.
+    fn on_path(&mut self, info: &mtu::PathInfo, endpoint_mtu_config: Config)
+        -> Option<mtu::Config>;
+}
+
+/// Inherit the endpoint configured values.
+#[derive(Debug, Default)]
+pub struct Inherit {}
+
+impl Endpoint for Inherit {
+    fn on_path(
+        &mut self,
+        _info: &mtu::PathInfo,
+        _endpoint_mtu_config: Config,
+    ) -> Option<mtu::Config> {
+        None
+    }
+}
+
+/// MTU configuration.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Config {
-    pub initial_mtu: InitialMtu,
-    pub base_mtu: BaseMtu,
-    pub max_mtu: MaxMtu,
+    initial_mtu: InitialMtu,
+    base_mtu: BaseMtu,
+    max_mtu: MaxMtu,
+}
+
+impl Endpoint for Config {
+    fn on_path(
+        &mut self,
+        _info: &mtu::PathInfo,
+        _endpoint_mtu_config: Config,
+    ) -> Option<mtu::Config> {
+        Some(*self)
+    }
 }
 
 impl Config {
@@ -248,6 +342,21 @@ impl Config {
 
     pub fn builder() -> Builder {
         Builder::default()
+    }
+
+    /// The maximum transmission unit (MTU) to use when initiating a connection.
+    pub fn initial_mtu(&self) -> InitialMtu {
+        self.initial_mtu
+    }
+
+    /// The smallest maximum transmission unit (MTU) to use when transmitting.
+    pub fn base_mtu(&self) -> BaseMtu {
+        self.base_mtu
+    }
+
+    /// The largest maximum transmission unit (MTU) that can be sent on a path.
+    pub fn max_mtu(&self) -> MaxMtu {
+        self.max_mtu
     }
 
     /// Returns true if the MTU configuration is valid
@@ -267,6 +376,11 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Sets the maximum transmission unit (MTU) to use when initiating a connection (default: 1228)
+    ///
+    /// For a detailed description see the [with_initial_mtu] documentation in the IO provider.
+    ///
+    /// [with_initial_mtu]: https://docs.rs/s2n-quic/latest/s2n_quic/provider/io/tokio/struct.Builder.html#method.with_initial_mtu
     pub fn with_initial_mtu(mut self, initial_mtu: u16) -> Result<Self, MtuError> {
         if let Some(base_mtu) = self.base_mtu {
             ensure!(initial_mtu >= base_mtu.0.get(), Err(MtuError));
@@ -280,6 +394,11 @@ impl Builder {
         Ok(self)
     }
 
+    /// Sets the largest maximum transmission unit (MTU) that can be sent on a path (default: 1500)
+    ///
+    /// For a detailed description see the [with_base_mtu] documentation in the IO provider.
+    ///
+    /// [with_base_mtu]: https://docs.rs/s2n-quic/latest/s2n_quic/provider/io/tokio/struct.Builder.html#method.with_base_mtu
     pub fn with_base_mtu(mut self, base_mtu: u16) -> Result<Self, MtuError> {
         if let Some(initial_mtu) = self.initial_mtu {
             ensure!(initial_mtu.0.get() >= base_mtu, Err(MtuError));
@@ -293,6 +412,12 @@ impl Builder {
         Ok(self)
     }
 
+    /// Sets the largest maximum transmission unit (MTU) that can be sent on a path (default: 1500)
+    ///
+    /// Application must ensure that max_mtu <= endpoint_mtu_config.max_mtu(). For a detailed
+    /// description see the [with_max_mtu] documentation in the IO provider.
+    ///
+    /// [with_max_mtu]: https://docs.rs/s2n-quic/latest/s2n_quic/provider/io/tokio/struct.Builder.html#method.with_max_mtu
     pub fn with_max_mtu(mut self, max_mtu: u16) -> Result<Self, MtuError> {
         if let Some(initial_mtu) = self.initial_mtu {
             ensure!(initial_mtu.0.get() <= max_mtu, Err(MtuError));
@@ -382,7 +507,7 @@ impl Controller {
     /// max_mtu is the maximum allowed mtu, e.g. for jumbo frames this value is expected to
     /// be over 9000.
     #[inline]
-    pub fn new(config: Config, peer_socket_address: &SocketAddress) -> Self {
+    pub fn new(config: Config, peer_socket_address: &inet::SocketAddress) -> Self {
         debug_assert!(config.is_valid(), "Invalid MTU configuration {:?}", config);
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
@@ -406,8 +531,8 @@ impl Controller {
             // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
             // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
             let min_ip_header_len = match peer_socket_address {
-                SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
-                SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
+                inet::SocketAddress::IpV4(_) => IPV4_MIN_HEADER_LEN,
+                inet::SocketAddress::IpV6(_) => IPV6_MIN_HEADER_LEN,
             };
             ETHERNET_MTU - UDP_HEADER_LEN - min_ip_header_len
         }

@@ -6,13 +6,26 @@ use s2n_codec::encoder::scatter;
 use s2n_quic_core::{
     event::api::Subject,
     packet::interceptor::{Interceptor, Packet},
-    path::{BaseMtu, InitialMtu},
+    path::{mtu, BaseMtu, InitialMtu},
 };
+
+struct CustomMtu(mtu::Config);
+
+impl mtu::Endpoint for CustomMtu {
+    fn on_path(
+        &mut self,
+        _info: &mtu::PathInfo,
+        _endpoint_mtu_config: mtu::Config,
+    ) -> Option<mtu::Config> {
+        Some(self.0)
+    }
+}
 
 // Construct a simulation where a client sends some data, which the server echos
 // back. The MtuUpdated events that the server experiences are recorded and
 // returns at the end of the simulation.
 fn mtu_updates(
+    config_override: Option<mtu::Config>,
     initial_mtu: u16,
     base_mtu: u16,
     max_mtu: u16,
@@ -36,8 +49,14 @@ fn mtu_updates(
             )?
             .with_tls(SERVER_CERTS)?
             .with_event((tracing_events(), subscriber))?
-            .with_random(Random::with_seed(456))?
-            .start()?;
+            .with_random(Random::with_seed(456))?;
+
+        let server = if let Some(config_override) = config_override {
+            server.with_mtu(CustomMtu(config_override))?.start()?
+        } else {
+            server.start()?
+        };
+
         let client = Client::builder()
             .with_io(
                 handle
@@ -68,6 +87,7 @@ fn mtu_updates(
 #[test]
 fn mtu_probe_jumbo_frame_test() {
     let events = mtu_updates(
+        None,
         InitialMtu::default().into(),
         BaseMtu::default().into(),
         9_001,
@@ -99,6 +119,7 @@ fn mtu_probe_jumbo_frame_test() {
 #[test]
 fn mtu_probe_jumbo_frame_unsupported_test() {
     let events = mtu_updates(
+        None,
         InitialMtu::default().into(),
         BaseMtu::default().into(),
         9_001,
@@ -112,7 +133,7 @@ fn mtu_probe_jumbo_frame_unsupported_test() {
 // The configured base mtu is the smallest MTU used
 #[test]
 fn base_mtu() {
-    let events = mtu_updates(1250, 1250, 9_001, 10_000);
+    let events = mtu_updates(None, 1250, 1250, 9_001, 10_000);
     let base_mtu = events
         .iter()
         .min_by_key(|&mtu_event| mtu_event.mtu)
@@ -124,17 +145,76 @@ fn base_mtu() {
 // The configured initial mtu is the first MTU used
 #[test]
 fn initial_mtu() {
-    let events = mtu_updates(2000, BaseMtu::default().into(), 9_001, 10_000);
+    let events = mtu_updates(None, 2000, BaseMtu::default().into(), 9_001, 10_000);
     let first_mtu = events.first().unwrap();
     // 2000 - UDP_HEADER_LEN - IPV4_HEADER_LEN
     assert_eq!(first_mtu.mtu, 1972);
+}
+
+// Connection specific initial MTU
+//
+// Override the initial (first) MTU we can use for the connection.
+#[test]
+fn conn_mtu_initial() {
+    let events = mtu_updates(None, 1228, BaseMtu::default().into(), 9_001, 10_000);
+    let first_mtu = events.first().unwrap();
+    // 1228 - UDP_HEADER_LEN - IPV4_HEADER_LEN
+    assert_eq!(first_mtu.mtu, 1200);
+
+    let config = mtu::Config::builder()
+        .with_initial_mtu(1328)
+        .unwrap()
+        .build()
+        .unwrap();
+    let events = mtu_updates(Some(config), 1228, BaseMtu::default().into(), 9_001, 10_000);
+    let first_mtu = events.first().unwrap();
+    // 1528 - UDP_HEADER_LEN - IPV4_HEADER_LEN
+    assert_eq!(first_mtu.mtu, 1300);
+}
+
+// Connection specific base MTU
+//
+// Override the base (lowest) MTU we can use for the connection.
+#[test]
+fn conn_mtu_base() {
+    let events = mtu_updates(None, 1228, BaseMtu::default().into(), 9_001, 10_000);
+    let first_mtu = events.first().unwrap();
+    assert_eq!(first_mtu.mtu, 1200);
+
+    let config = mtu::Config::builder()
+        .with_base_mtu(1328)
+        .unwrap()
+        .build()
+        .unwrap();
+    let events = mtu_updates(Some(config), 1228, BaseMtu::default().into(), 9_001, 10_000);
+    let first_mtu = events.first().unwrap();
+    assert_eq!(first_mtu.mtu, 1300);
+}
+
+// Connection specific max MTU
+//
+// Override the max MTU we can use for the connection.
+#[test]
+fn conn_mtu_max() {
+    let events = mtu_updates(None, 1228, BaseMtu::default().into(), 9_001, 10_000);
+    let last_mtu = events.last().unwrap();
+    assert_eq!(last_mtu.mtu, 8943);
+
+    let config = mtu::Config::builder()
+        .with_max_mtu(6_000)
+        .unwrap()
+        .build()
+        .unwrap();
+    let events = mtu_updates(Some(config), 1228, BaseMtu::default().into(), 9_001, 10_000);
+    let last_mtu = events.last().unwrap();
+    assert_eq!(last_mtu.mtu, 5_936);
 }
 
 // The configured initial mtu is the first MTU used. It is not supported by the network, so
 // the MTU drops to the base MTU, before increasing back to what the network supports.
 #[test]
 fn initial_mtu_not_supported() {
-    let events = mtu_updates(2000, BaseMtu::default().into(), 9_001, 1500);
+    let events = mtu_updates(None, 2000, BaseMtu::default().into(), 9_001, 1500);
     let first_mtu = events.first().unwrap();
     let second_mtu = events.get(1).unwrap();
     let last_mtu = events.last().unwrap();
@@ -149,7 +229,7 @@ fn initial_mtu_not_supported() {
 // The configured initial MTU is jumbo and the network supports it.
 #[test]
 fn initial_mtu_is_jumbo() {
-    let events = mtu_updates(9_001, BaseMtu::default().into(), 9_001, 10_000);
+    let events = mtu_updates(None, 9_001, BaseMtu::default().into(), 9_001, 10_000);
     let first_mtu = events.first().unwrap();
     let last_mtu = events.last().unwrap();
     // First try the initial MTU
@@ -162,7 +242,7 @@ fn initial_mtu_is_jumbo() {
 // MTU is used next.
 #[test]
 fn initial_mtu_is_jumbo_not_supported() {
-    let events = mtu_updates(9_001, 1_500, 9_001, 2_500);
+    let events = mtu_updates(None, 9_001, 1_500, 9_001, 2_500);
     let first_mtu = events.first().unwrap();
     let second_mtu = events.get(1).unwrap();
     let last_mtu = events.last().unwrap();
@@ -325,7 +405,7 @@ fn minimum_initial_packet() {
     );
 }
 
-/// Truncates paddings
+/// Erase client hello
 struct EraseClientHello;
 
 impl Interceptor for EraseClientHello {

@@ -19,7 +19,6 @@ use crate::{
     transmission::interest::Provider,
 };
 use core::{convert::TryInto, fmt, marker::PhantomData};
-use once_cell::sync::OnceCell;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     counter::{Counter, Saturating},
@@ -38,7 +37,6 @@ use s2n_quic_core::{
         number::{PacketNumber, PacketNumberRange, PacketNumberSpace, SlidingWindow},
         short::{CleartextShort, ProtectedShort, Short, SpinBit},
     },
-    path::MaxMtu,
     random::Generator,
     recovery::MAX_BURST_PACKETS,
     time::{timer, Timestamp},
@@ -106,11 +104,10 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         stream_manager: Config::StreamManager,
         ack_manager: AckManager,
         keep_alive: KeepAlive,
-        max_mtu: MaxMtu,
         datagram_manager: datagram::Manager<Config>,
         dc_manager: dc::Manager<Config>,
     ) -> Self {
-        let key_set = KeySet::new(key, Self::key_limits(max_mtu));
+        let key_set = KeySet::new(key, Self::key_limits());
 
         Self {
             tx_packet_numbers: TxPacketNumbers::new(PacketNumberSpace::ApplicationData, now),
@@ -670,35 +667,8 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         decrypted.map(|x| x.0)
     }
 
-    fn key_limits(max_mtu: MaxMtu) -> limited::Limits {
-        let mut limits = limited::Limits::default();
-
-        limits.max_mtu = max_mtu;
-
-        // AEAD optimizations are currently in the testing phase so make them opt-in at runtime
-        limits.sealer_optimization_threshold = {
-            static THRESHOLD: OnceCell<u64> = OnceCell::new();
-
-            *THRESHOLD.get_or_init(|| {
-                std::env::var("S2N_UNSTABLE_CRYPTO_OPT_TX")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(u64::MAX)
-            })
-        };
-
-        limits.opener_optimization_threshold = {
-            static THRESHOLD: OnceCell<u64> = OnceCell::new();
-
-            *THRESHOLD.get_or_init(|| {
-                std::env::var("S2N_UNSTABLE_CRYPTO_OPT_RX")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(u64::MAX)
-            })
-        };
-
-        limits
+    fn key_limits() -> limited::Limits {
+        limited::Limits::default()
     }
 }
 

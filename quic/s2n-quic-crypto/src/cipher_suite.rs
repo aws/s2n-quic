@@ -82,14 +82,6 @@ macro_rules! impl_cipher_suite {
                     Self { secret, iv, key }
                 }
 
-                #[inline]
-                pub fn update_pmtu(&mut self, mtu: u16) {
-                    if self.key.should_update_pmtu(mtu) {
-                        let secret = Self::new_key_secret(&self.secret);
-                        self.key.update_pmtu(&*secret, mtu);
-                    }
-                }
-
                 fn new_key_secret(secret: &hkdf::Prk) -> Zeroizing<[u8; KEY_LEN]> {
                     let mut key = Zeroizing::new([0u8; KEY_LEN]);
 

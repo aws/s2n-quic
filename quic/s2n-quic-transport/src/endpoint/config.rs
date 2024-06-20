@@ -5,7 +5,7 @@
 
 use crate::{connection, stream};
 use s2n_quic_core::{
-    crypto::tls, datagram, dc, endpoint, event, packet, path, random,
+    crypto::tls, datagram, dc, endpoint, event, packet, path, path::mtu, random,
     recovery::congestion_controller, stateless_reset,
 };
 
@@ -30,6 +30,8 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     type EndpointLimits: endpoint::Limiter;
     /// The connection limits
     type ConnectionLimits: connection::limits::Limiter;
+    /// The path specific mtu config
+    type Mtu: mtu::Endpoint;
     /// The type of stream
     type StreamManager: stream::Manager;
     /// The connection close formatter
@@ -79,6 +81,10 @@ pub struct Context<'a, Cfg: Config> {
 
     /// The connection limits
     pub connection_limits: &'a mut Cfg::ConnectionLimits,
+
+    /// Endpoint configuration for the maximum transmission unit (MTU) that can be sent
+    /// on a path
+    pub mtu: &'a mut mtu::Manager<Cfg::Mtu>,
 
     pub connection_close_formatter: &'a mut Cfg::ConnectionCloseFormatter,
 

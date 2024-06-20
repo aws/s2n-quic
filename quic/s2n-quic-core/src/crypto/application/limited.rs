@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{crypto::OneRttKey, path::MaxMtu};
+use crate::crypto::OneRttKey;
 
 //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
 //# Endpoints MUST count the number of encrypted packets for each set of
@@ -21,21 +21,12 @@ pub struct Key<K> {
 pub struct Limits {
     /// The number of packets before the limit at which a key update will be scheduled
     pub key_update_window: u64,
-    /// The number of packets at which the sealer key will be optimized
-    pub sealer_optimization_threshold: u64,
-    /// The number of packets at which the opener key will be optimized
-    pub opener_optimization_threshold: u64,
-    /// The maximum MTU the connection will ever encrypt/decrypt
-    pub max_mtu: MaxMtu,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Self {
             key_update_window: KEY_UPDATE_WINDOW,
-            sealer_optimization_threshold: 100,
-            opener_optimization_threshold: 100,
-            max_mtu: MaxMtu::default(),
         }
     }
 }
@@ -84,21 +75,13 @@ impl<K: OneRttKey> Key<K> {
     }
 
     #[inline]
-    pub fn on_packet_encryption(&mut self, limits: &Limits) {
+    pub fn on_packet_encryption(&mut self, _limits: &Limits) {
         self.encrypted_packets += 1;
-
-        if self.encrypted_packets == limits.sealer_optimization_threshold {
-            self.key.update_sealer_pmtu(limits.max_mtu.into());
-        }
     }
 
     #[inline]
-    pub fn on_packet_decryption(&mut self, limits: &Limits) {
+    pub fn on_packet_decryption(&mut self, _limits: &Limits) {
         self.decrypted_packets += 1;
-
-        if self.decrypted_packets == limits.opener_optimization_threshold {
-            self.key.update_opener_pmtu(limits.max_mtu.into());
-        }
     }
 
     #[inline]

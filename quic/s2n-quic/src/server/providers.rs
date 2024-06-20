@@ -18,6 +18,7 @@ impl_providers_state! {
         endpoint_limits: EndpointLimits,
         event: Event,
         limits: Limits,
+        mtu: Mtu,
         io: IO,
         path_migration: PathMigration,
         sync: Sync,
@@ -41,6 +42,7 @@ impl<
         EndpointLimits: endpoint_limits::Provider,
         Event: event::Provider,
         Limits: limits::Provider,
+        Mtu: mtu::Provider,
         IO: io::Provider,
         PathMigration: path_migration::Provider,
         Sync: sync::Provider,
@@ -59,6 +61,7 @@ impl<
         EndpointLimits,
         Event,
         Limits,
+        Mtu,
         IO,
         PathMigration,
         Sync,
@@ -79,6 +82,7 @@ impl<
             endpoint_limits,
             event,
             limits,
+            mtu,
             address_token,
             io,
             path_migration,
@@ -98,6 +102,7 @@ impl<
         let random = random.start().map_err(StartError::new)?;
         let endpoint_limits = endpoint_limits.start().map_err(StartError::new)?;
         let limits = limits.start().map_err(StartError::new)?;
+        let mtu = mtu.start().map_err(StartError::new)?;
         let event = event.start().map_err(StartError::new)?;
         let address_token = address_token.start().map_err(StartError::new)?;
         let sync = sync.start().map_err(StartError::new)?;
@@ -117,6 +122,7 @@ impl<
         {
             return Err(StartError::new(connection::id::Error::InvalidLifetime));
         };
+        let mtu = path::mtu::Manager::new(mtu);
 
         let endpoint_config = EndpointConfig {
             congestion_controller,
@@ -128,6 +134,7 @@ impl<
             endpoint_limits,
             event,
             limits,
+            mtu,
             sync,
             tls,
             address_token,
@@ -162,6 +169,7 @@ struct EndpointConfig<
     EndpointLimits,
     Event,
     Limits,
+    Mtu: path::Endpoint,
     Sync,
     Tls,
     AddressToken,
@@ -177,6 +185,7 @@ struct EndpointConfig<
     endpoint_limits: EndpointLimits,
     event: Event,
     limits: Limits,
+    mtu: path::mtu::Manager<Mtu>,
     sync: Sync,
     tls: Tls,
     address_token: AddressToken,
@@ -198,6 +207,7 @@ impl<
         EndpointLimits: s2n_quic_core::endpoint::Limiter,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
+        Mtu: s2n_quic_core::path::mtu::Endpoint,
         Sync,
         Tls: crypto::tls::Endpoint,
         AddressToken: address_token::Format,
@@ -216,6 +226,7 @@ impl<
         EndpointLimits,
         Event,
         Limits,
+        Mtu,
         Sync,
         Tls,
         AddressToken,
@@ -240,6 +251,7 @@ impl<
         EndpointLimits: s2n_quic_core::endpoint::Limiter,
         Event: s2n_quic_core::event::Subscriber,
         Limits: s2n_quic_core::connection::limits::Limiter,
+        Mtu: s2n_quic_core::path::mtu::Endpoint,
         Sync: 'static + Send,
         Tls: crypto::tls::Endpoint,
         AddressToken: address_token::Format,
@@ -258,6 +270,7 @@ impl<
         EndpointLimits,
         Event,
         Limits,
+        Mtu,
         Sync,
         Tls,
         AddressToken,
@@ -279,6 +292,7 @@ impl<
     type TLSEndpoint = Tls;
     type TokenFormat = AddressToken;
     type ConnectionLimits = Limits;
+    type Mtu = Mtu;
     type StreamManager = stream::DefaultStreamManager;
     type PathMigrationValidator = PathMigration;
     type PacketInterceptor = PacketInterceptor;
@@ -299,6 +313,7 @@ impl<
             endpoint_limits: &mut self.endpoint_limits,
             token: &mut self.address_token,
             connection_limits: &mut self.limits,
+            mtu: &mut self.mtu,
             event_subscriber: &mut self.event,
             path_migration: &mut self.path_migration,
             datagram: &mut self.datagram,

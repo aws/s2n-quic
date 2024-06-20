@@ -70,22 +70,9 @@ macro_rules! key_impl {
         impl Key {
             #[inline]
             #[allow(dead_code)] // this is to maintain compatibility between implementations
-            pub fn should_update_pmtu(&self, _mtu: u16) -> bool {
-                // ring doesn't implement precomputed tables
-                false
-            }
-
-            #[inline]
-            #[allow(dead_code)] // this is to maintain compatibility between implementations
             pub fn update(&self, secret: &[u8; KEY_LEN]) -> Self {
                 // no state to persist
                 Self::new(secret)
-            }
-
-            #[inline]
-            #[allow(dead_code)] // this is to maintain compatibility between implementations
-            pub fn update_pmtu(&mut self, _secret: &[u8; KEY_LEN], _mtu: u16) {
-                unimplemented!();
             }
         }
 

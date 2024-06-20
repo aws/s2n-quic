@@ -8,7 +8,7 @@ use crate::{
     frame::Frame,
     inet::{IpV4Address, SocketAddressV4},
     packet::number::PacketNumberSpace,
-    path::mtu,
+    path::{mtu, mtu::Manager},
     recovery::congestion_controller::testing::mock::CongestionController,
     time::{clock::testing::now, timer::Provider as _},
     transmission::{
@@ -122,6 +122,49 @@ fn mtu_config_builder() {
 }
 
 #[test]
+fn mtu_manager() {
+    let remote = inet::SocketAddress::default();
+    let endpoint_config = mtu::Config::builder().build().unwrap();
+    assert!(endpoint_config.is_valid());
+
+    // valid: with Default config
+    let mtu_provider = mtu::Config::builder().build().unwrap();
+    assert!(mtu_provider.is_valid());
+    let mut manager: Manager<Config> = Manager::new(mtu_provider);
+    manager.config(&remote).unwrap();
+
+    // valid: max_mtu == endpoint_config.max_mtu
+    let mtu_provider = mtu::Config::builder()
+        .with_max_mtu(DEFAULT_MAX_MTU.into())
+        .unwrap()
+        .build()
+        .unwrap();
+    assert!(mtu_provider.is_valid());
+    let mut manager: Manager<Config> = Manager::new(mtu_provider);
+    manager.config(&remote).unwrap();
+
+    // invalid: !mtu_provider.is_valid()
+    let mtu_provider = mtu::Config {
+        initial_mtu: InitialMtu::MIN,
+        base_mtu: BaseMtu(NonZeroU16::new(1500).unwrap()),
+        max_mtu: MaxMtu::MIN,
+    };
+    assert!(!mtu_provider.is_valid());
+    let mut manager: Manager<Config> = Manager::new(mtu_provider);
+    assert_eq!(manager.config(&remote).unwrap_err(), MtuError);
+
+    // invalid: mtu_provider.max_mtu > endpoint_config.max_mtu
+    let mtu_provider = mtu::Config::builder()
+        .with_max_mtu(1501)
+        .unwrap()
+        .build()
+        .unwrap();
+    assert!(mtu_provider.is_valid());
+    let mut manager: Manager<Config> = Manager::new(mtu_provider);
+    assert_eq!(manager.config(&remote).unwrap_err(), MtuError);
+}
+
+#[test]
 fn base_plpmtu_is_1200() {
     //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.2
     //= type=test
@@ -129,7 +172,7 @@ fn base_plpmtu_is_1200() {
     //# IPv4, there is no currently equivalent size specified, and a
     //# default BASE_PLPMTU of 1200 bytes is RECOMMENDED.
     let ip = IpV4Address::new([127, 0, 0, 1]);
-    let addr = SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
+    let addr = inet::SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
     let controller = Controller::new(Config::default(), &addr);
     assert_eq!(controller.base_plpmtu, 1200);
 }
@@ -743,7 +786,7 @@ fn on_packet_loss_not_application_space() {
 #[test]
 fn on_packet_loss_initial_mtu_configured() {
     let ip = IpV4Address::new([127, 0, 0, 1]);
-    let addr = SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
+    let addr = inet::SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
     let mut publisher = Publisher::snapshot();
 
     for max_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {

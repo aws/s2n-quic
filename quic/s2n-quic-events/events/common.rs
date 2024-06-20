@@ -715,6 +715,16 @@ enum DatagramDropReason {
     InvalidDestinationConnectionId,
     /// The peer sent an invalid Source Connection Id.
     InvalidSourceConnectionId,
+    /// Application provided invalid MTU configuration.
+    InvalidMtuConfiguration {
+        /// MTU configuration for the endpoint
+        endpoint_mtu_config: MtuConfig,
+        // TODO expose connection level mtu config.
+        // TODO expose the remote address.
+        // https://github.com/aws/s2n-quic/issues/2254
+        // error from mtu::Config
+        // remote_addr: SocketAddress<'a>,
+    },
     /// The Destination Connection Id is unknown and does not map to a Connection.
     ///
     /// Connections are mapped to Destination Connections Ids (DCID) and packets
@@ -734,6 +744,23 @@ enum DatagramDropReason {
     PathLimitExceeded,
     /// The peer initiated a connection migration without supplying enough connection IDs to use.
     InsufficientConnectionIds,
+}
+
+struct MtuConfig {
+    initial_mtu: u16,
+    base_mtu: u16,
+    max_mtu: u16,
+}
+
+impl<'a> IntoEvent<builder::MtuConfig> for &'a crate::path::mtu::Config {
+    #[inline]
+    fn into_event(self) -> builder::MtuConfig {
+        builder::MtuConfig {
+            initial_mtu: self.initial_mtu().into(),
+            base_mtu: self.base_mtu().into(),
+            max_mtu: self.max_mtu().into(),
+        }
+    }
 }
 
 enum KeySpace {

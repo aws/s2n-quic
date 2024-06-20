@@ -75,7 +75,7 @@ impl Io {
 
         let local_addr = socket.local_addr()?;
         let local_addr: inet::SocketAddress = local_addr.into();
-        let payload_len: usize = mtu_config.max_mtu.into();
+        let payload_len: usize = mtu_config.max_mtu().into();
         let payload_len = payload_len as u32;
 
         // This number is somewhat arbitrary but it's a decent number of messages without it consuming
@@ -89,7 +89,7 @@ impl Io {
             let (producer, consumer) = ring::pair(entries, payload_len);
             consumers.push(consumer);
 
-            let rx = rx::Rx::new(consumers, mtu_config.max_mtu, local_addr.into());
+            let rx = rx::Rx::new(consumers, mtu_config.max_mtu(), local_addr.into());
 
             (rx, producer)
         };
@@ -105,7 +105,7 @@ impl Io {
             // GSO is not supported by turmoil so disable it
             gso.disable();
 
-            let tx = tx::Tx::new(producers, gso, mtu_config.max_mtu);
+            let tx = tx::Tx::new(producers, gso, mtu_config.max_mtu());
 
             (tx, consumer)
         };

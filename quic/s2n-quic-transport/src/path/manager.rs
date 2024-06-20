@@ -24,7 +24,7 @@ use s2n_quic_core::{
     packet::number::PacketNumberSpace,
     path::{
         migration::{self, Validator as _},
-        mtu, Handle as _, Id, MaxMtu,
+        mtu, Handle as _, Id,
     },
     random,
     recovery::congestion_controller::{self, Endpoint as _},
@@ -244,7 +244,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         handshake_confirmed: bool,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        mtu_config: mtu::Config,
+        mtu: &mut mtu::Manager<Config::Mtu>,
         limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -307,7 +307,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             datagram,
             congestion_controller_endpoint,
             migration_validator,
-            mtu_config,
+            mtu,
             limits,
             publisher,
         )
@@ -320,7 +320,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         datagram: &DatagramInfo,
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         migration_validator: &mut Config::PathMigrationValidator,
-        mtu_config: mtu::Config,
+        mtu: &mut mtu::Manager<Config::Mtu>,
         limits: &Limits,
         publisher: &mut Pub,
     ) -> Result<(Id, AmplificationOutcome), DatagramDropReason> {
@@ -418,8 +418,14 @@ impl<Config: endpoint::Config> Manager<Config> {
             .active_path()
             .rtt_estimator
             .for_new_path(limits.initial_round_trip_time());
-        let path_info =
-            congestion_controller::PathInfo::new(mtu_config.initial_mtu, &remote_address);
+
+        let mtu_config = mtu.config(&remote_address).map_err(|_err| {
+            event::builder::DatagramDropReason::InvalidMtuConfiguration {
+                endpoint_mtu_config: mtu.endpoint_config().into_event(),
+            }
+        })?;
+
+        let path_info = congestion_controller::PathInfo::new(&mtu_config, &remote_address);
         let cc = congestion_controller_endpoint.new_congestion_controller(path_info);
 
         let peer_connection_id = {
@@ -840,21 +846,6 @@ impl<Config: endpoint::Config> Manager<Config> {
             .map(|path| path.transmission_constraint())
             .min()
             .unwrap_or(transmission::Constraint::None)
-    }
-
-    /// Returns the maximum size the UDP payload can reach for any probe packet.
-    #[inline]
-    pub fn max_mtu(&self) -> MaxMtu {
-        let value = self.active_path().max_mtu();
-
-        // This value is the same for each path so just return the active value
-        if cfg!(debug_assertions) {
-            for path in self.paths.iter() {
-                assert_eq!(value, path.max_mtu());
-            }
-        }
-
-        value
     }
 
     #[cfg(test)]

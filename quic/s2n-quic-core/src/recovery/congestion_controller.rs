@@ -9,7 +9,7 @@ use crate::{
         IntoEvent,
     },
     inet, path,
-    path::InitialMtu,
+    path::Config,
     random,
     recovery::{
         bandwidth::{Bandwidth, RateSample},
@@ -37,11 +37,11 @@ pub struct PathInfo<'a> {
 
 impl<'a> PathInfo<'a> {
     #[allow(deprecated)]
-    pub fn new(initial_mtu: InitialMtu, remote_address: &'a inet::SocketAddress) -> Self {
+    pub fn new(mtu_config: &Config, remote_address: &'a inet::SocketAddress) -> Self {
         Self {
             remote_address: remote_address.into_event(),
             application_protocol: None,
-            max_datagram_size: initial_mtu.max_datagram_size(remote_address),
+            max_datagram_size: mtu_config.initial_mtu().max_datagram_size(remote_address),
         }
     }
 }
