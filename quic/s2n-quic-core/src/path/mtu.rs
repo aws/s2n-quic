@@ -470,8 +470,6 @@ pub struct Controller {
     //# The Packetization Layer PMTU is an estimate of the largest size
     //# of PL datagram that can be sent by a path, controlled by PLPMTUD
     plpmtu: u16,
-    /// The maximum size any packet can reach
-    max_mtu: MaxMtu,
     /// The maximum size the UDP payload can reach for any probe packet.
     max_udp_payload: u16,
     //= https://www.rfc-editor.org/rfc/rfc8899#section-5.1.3
@@ -543,7 +541,6 @@ impl Controller {
             base_plpmtu,
             plpmtu,
             probed_size: initial_probed_size,
-            max_mtu: config.max_mtu,
             max_udp_payload,
             max_probe_size: max_udp_payload,
             probe_count: 0,
@@ -712,12 +709,6 @@ impl Controller {
     #[inline]
     pub fn max_datagram_size(&self) -> usize {
         self.plpmtu as usize
-    }
-
-    /// Returns the maximum size any packet can reach, including IP and UDP headers
-    #[inline]
-    pub fn max_mtu(&self) -> MaxMtu {
-        self.max_mtu
     }
 
     /// Gets the max datagram size currently being probed for

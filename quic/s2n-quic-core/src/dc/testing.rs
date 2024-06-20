@@ -1,7 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{crypto::tls::TlsSession, dc, dc::ConnectionInfo, stateless_reset, transport};
+use crate::{
+    crypto::tls::TlsSession,
+    dc,
+    dc::{ApplicationParams, ConnectionInfo},
+    stateless_reset, transport,
+    varint::VarInt,
+};
+use core::time::Duration;
 
 pub struct MockDcEndpoint {
     stateless_reset_tokens: Vec<stateless_reset::Token>,
@@ -52,3 +59,12 @@ impl dc::Path for MockDcPath {
             .extend(stateless_reset_tokens);
     }
 }
+
+pub const TEST_APPLICATION_PARAMS: ApplicationParams = ApplicationParams {
+    max_datagram_size: 1472,
+    remote_max_data: VarInt::from_u32(1u32 << 25),
+    local_send_max_data: VarInt::from_u32(1u32 << 25),
+    local_recv_max_data: VarInt::from_u32(1u32 << 25),
+    max_idle_timeout: Some(Duration::from_secs(30)),
+    max_ack_delay: Duration::from_millis(25),
+};
