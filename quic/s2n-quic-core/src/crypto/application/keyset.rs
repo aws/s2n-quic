@@ -144,7 +144,7 @@ impl<K: OneRttKey> KeySet<K> {
 
         let result = packet.decrypt(key.key_mut());
 
-        key.on_packet_decryption(&self.limits);
+        key.on_packet_decryption();
 
         match result {
             Ok(packet) => {
@@ -254,7 +254,7 @@ impl<K: OneRttKey> KeySet<K> {
         //= https://www.rfc-editor.org/rfc/rfc9001#section-6.6
         //# Endpoints MUST count the number of encrypted packets for each set of
         //# keys.
-        self.crypto[phase].on_packet_encryption(&self.limits);
+        self.crypto[phase].on_packet_encryption();
 
         Ok(r)
     }
