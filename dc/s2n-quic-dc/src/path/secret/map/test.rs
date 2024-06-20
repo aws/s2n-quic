@@ -59,9 +59,20 @@ fn thread_shutdown() {
     let map = Map::new(signer);
     let state = Arc::downgrade(&map.state);
     drop(map);
-    // Nothing is holding on to the state, so the thread should shutdown (mpsc disconnects or on
-    // next loop around if that fails for some reason).
-    assert_eq!(state.strong_count(), 0);
+
+    let iterations = 10;
+    let max_time = core::time::Duration::from_secs(2);
+
+    for _ in 0..iterations {
+        // Nothing is holding on to the state, so the thread should shutdown (mpsc disconnects or on
+        // next loop around if that fails for some reason).
+        if state.strong_count() == 0 {
+            return;
+        }
+        std::thread::sleep(max_time / iterations);
+    }
+
+    panic!("thread did not shut down after {max_time:?}");
 }
 
 #[derive(Debug, Default)]
