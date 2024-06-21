@@ -10,12 +10,11 @@ use crate::{
     credentials::{Credentials, Id},
     crypto,
     packet::{secret_control as control, Packet},
-    path::Parameters,
 };
 use rand::Rng as _;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    dc::{self},
+    dc::{self, ApplicationParams},
     event::api::EndpointType,
 };
 use std::{
@@ -273,14 +272,13 @@ impl Map {
             && !self.state.requested_handshakes.pin().contains(&peer)
     }
 
-    pub fn sealer(&self, peer: SocketAddr) -> Option<(Sealer, Parameters)> {
+    pub fn sealer(&self, peer: SocketAddr) -> Option<(Sealer, ApplicationParams)> {
         let peers_guard = self.state.peers.guard();
         let state = self.state.peers.get(&peer, &peers_guard)?;
         state.mark_live(self.state.cleaner.epoch());
 
         let sealer = state.uni_sealer();
-        let params = state.parameters;
-        Some((sealer, params))
+        Some((sealer, state.parameters))
     }
 
     pub fn opener(&self, credentials: &Credentials, control_out: &mut Vec<u8>) -> Option<Opener> {
@@ -289,22 +287,21 @@ impl Map {
         Some(opener)
     }
 
-    pub fn pair_for_peer(&self, peer: SocketAddr) -> Option<(Sealer, Opener, Parameters)> {
+    pub fn pair_for_peer(&self, peer: SocketAddr) -> Option<(Sealer, Opener, ApplicationParams)> {
         let peers_guard = self.state.peers.guard();
         let state = self.state.peers.get(&peer, &peers_guard)?;
         state.mark_live(self.state.cleaner.epoch());
 
-        let params = state.parameters;
         let (sealer, opener) = state.bidi_local();
 
-        Some((sealer, opener, params))
+        Some((sealer, opener, state.parameters))
     }
 
     pub fn pair_for_credentials(
         &self,
         credentials: &Credentials,
         control_out: &mut Vec<u8>,
-    ) -> Option<(Sealer, Opener, Parameters)> {
+    ) -> Option<(Sealer, Opener, ApplicationParams)> {
         let state = self.pre_authentication(credentials, control_out)?;
 
         let params = state.parameters;
@@ -470,6 +467,7 @@ impl Map {
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "testing"))]
     pub fn for_test_with_peers(
         peers: Vec<(schedule::Ciphersuite, dc::Version, SocketAddr)>,
     ) -> (Self, Vec<Id>) {
@@ -498,7 +496,7 @@ impl Map {
                 secret,
                 sender,
                 receiver_shared.clone().new_receiver(),
-                Default::default(),
+                testing::test_application_params(),
             );
             let entry = Arc::new(entry);
             provider.insert(entry);
@@ -508,6 +506,7 @@ impl Map {
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "testing"))]
     pub fn test_insert(&self, peer: SocketAddr) {
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();
@@ -519,7 +518,13 @@ impl Map {
         );
         let sender = sender::State::new([0; 16]);
         let receiver = self.state.receiver_shared.clone().new_receiver();
-        let entry = Entry::new(peer, secret, sender, receiver, Default::default());
+        let entry = Entry::new(
+            peer,
+            secret,
+            sender,
+            receiver,
+            testing::test_application_params(),
+        );
         self.insert(Arc::new(entry));
     }
 
@@ -583,7 +588,7 @@ pub(super) struct Entry {
     used_at: AtomicU64,
     sender: sender::State,
     receiver: receiver::State,
-    parameters: Parameters,
+    parameters: ApplicationParams,
 }
 
 // Retired is 0 if not yet retired. Otherwise it stores the background cleaner epoch at which it
@@ -609,7 +614,7 @@ impl Entry {
         secret: schedule::Secret,
         sender: sender::State,
         receiver: receiver::State,
-        parameters: Parameters,
+        parameters: ApplicationParams,
     ) -> Self {
         Self {
             peer,
@@ -747,7 +752,7 @@ impl fmt::Debug for Dedup {
 pub struct HandshakingPath {
     peer: SocketAddr,
     dc_version: dc::Version,
-    parameters: Parameters,
+    parameters: ApplicationParams,
     endpoint_type: s2n_quic_core::endpoint::Type,
     secret: Option<schedule::Secret>,
     map: Map,
@@ -763,7 +768,7 @@ impl HandshakingPath {
         Self {
             peer: connection_info.remote_address.clone().into(),
             dc_version: connection_info.dc_version,
-            parameters: connection_info.application_params.clone().into(),
+            parameters: connection_info.application_params,
             endpoint_type,
             secret: None,
             map,
@@ -838,6 +843,21 @@ impl dc::Path for HandshakingPath {
         );
         let entry = Arc::new(entry);
         self.map.insert(entry);
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    use s2n_quic_core::{
+        connection::Limits, dc::ApplicationParams, transport::parameters::InitialFlowControlLimits,
+    };
+
+    pub fn test_application_params() -> ApplicationParams {
+        ApplicationParams::new(
+            s2n_quic_core::path::MaxMtu::default().into(),
+            &InitialFlowControlLimits::default(),
+            &Limits::default(),
+        )
     }
 }
 

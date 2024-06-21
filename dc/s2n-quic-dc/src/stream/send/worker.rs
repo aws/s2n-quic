@@ -8,7 +8,6 @@ use crate::{
         self,
         stream::{self, decoder, encoder},
     },
-    path::Parameters,
     recovery,
     stream::{
         processing,
@@ -16,11 +15,13 @@ use crate::{
             application, buffer, error::Error, filter::Filter, probes,
             transmission::Type as TransmissionType,
         },
+        DEFAULT_IDLE_TIMEOUT,
     },
 };
 use core::{task::Poll, time::Duration};
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use s2n_quic_core::{
+    dc::ApplicationParams,
     ensure,
     frame::{self, FrameMut},
     inet::ExplicitCongestionNotification,
@@ -112,8 +113,8 @@ pub struct PeerActivity {
 
 impl Worker {
     #[inline]
-    pub fn new(stream_id: stream::Id, params: &Parameters) -> Self {
-        let mtu = params.max_mtu;
+    pub fn new(stream_id: stream::Id, params: &ApplicationParams) -> Self {
+        let mtu = params.max_datagram_size;
         let initial_max_data = params.remote_max_data;
         let local_max_data = params.local_send_max_data;
 
@@ -121,7 +122,7 @@ impl Worker {
         let mut unacked_ranges = IntervalSet::new();
         unacked_ranges.insert(VarInt::ZERO..=VarInt::MAX).unwrap();
 
-        let cca = congestion::Controller::new(mtu.into());
+        let cca = congestion::Controller::new(mtu);
         let max_sent_offset = VarInt::ZERO;
 
         Self {
@@ -146,14 +147,14 @@ impl Worker {
             pto_backoff: INITIAL_PTO_BACKOFF,
             inflight_timer: Default::default(),
             idle_timer: Default::default(),
-            idle_timeout: params.idle_timeout(),
+            idle_timeout: params.max_idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT),
             error: None,
             unacked_ranges,
             max_sent_offset,
             max_data: initial_max_data,
             local_max_data_window: local_max_data,
             peer_activity: None,
-            mtu: mtu.into(),
+            mtu,
             max_sent_segment_size: 0,
         }
     }
