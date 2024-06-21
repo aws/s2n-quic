@@ -211,7 +211,6 @@ impl Controller {
     /// * `baseline_ecn_counts` - the ECN counts present in the Ack frame the last time ECN counts were processed
     /// * `ack_frame_ecn_counts` - the ECN counts present in the current Ack frame (if any)
     /// * `now` - the time the Ack frame was received
-    #[allow(clippy::too_many_arguments)]
     #[inline]
     pub fn validate<Pub: event::ConnectionPublisher>(
         &mut self,

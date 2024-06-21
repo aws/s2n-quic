@@ -238,7 +238,6 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         self.zero_rtt_crypto = None;
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn poll_crypto<Pub: event::ConnectionPublisher>(
         &mut self,
         path_manager: &mut path::Manager<Config>,
@@ -286,7 +285,6 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         Poll::Ready(Ok(()))
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn post_handshake_crypto<Pub: event::ConnectionPublisher>(
         &mut self,
         path_manager: &mut path::Manager<Config>,
@@ -686,7 +684,6 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
         publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
-    #[allow(clippy::too_many_arguments)]
     fn handle_ack_frame<A: AckRanges, Pub: event::ConnectionPublisher>(
         &mut self,
         frame: Ack<A>,
@@ -817,8 +814,6 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
         publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
-    // TODO: Reduce arguments, https://github.com/aws/s2n-quic/issues/312
-    #[allow(clippy::too_many_arguments)]
     fn handle_cleartext_payload<'a, Pub: event::ConnectionPublisher>(
         &mut self,
         packet_number: PacketNumber,

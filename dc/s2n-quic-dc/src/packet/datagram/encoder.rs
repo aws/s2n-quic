@@ -47,7 +47,6 @@ pub fn estimate_len(
 }
 
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
 pub fn encode<H, CD, P, C>(
     mut encoder: EncoderBuffer,
     source_control_port: u16,

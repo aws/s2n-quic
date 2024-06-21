@@ -36,7 +36,7 @@ macro_rules! define_inet_type {
         }
 
         impl $name {
-            #[allow(non_camel_case_types, clippy::too_many_arguments)]
+            #[allow(non_camel_case_types)]
             #[inline]
             pub fn new<$($field: Into<$field_ty>),*>($($field: $field),*) -> Self {
                 Self {

@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(clippy::too_many_arguments)]
-
 use crate::{credentials, packet::stream};
 use core::time::Duration;
 use s2n_quic_core::{packet::number::PacketNumber, probe, varint::VarInt};
