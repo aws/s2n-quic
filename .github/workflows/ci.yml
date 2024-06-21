@@ -115,7 +115,7 @@ jobs:
           #
           # manual_clamp will panic when min > max
           # See https://github.com/rust-lang/rust-clippy/pull/10101
-          cargo clippy --all-features --all-targets --workspace -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp -A clippy::too_many_arguments  ${{ matrix.args }}
+          cargo clippy --all-features --all-targets --workspace -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
 
   udeps:
     runs-on: ubuntu-latest
