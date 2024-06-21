@@ -1,7 +1,4 @@
 [advisories]
-vulnerability = "deny"
-unmaintained = "deny"
-notice = "deny"
 yanked = "deny"
 ignore = [
     "RUSTSEC-2021-0139", # criterion, structopt, and tracing-subscriber (test dependencies) use ansi_term
@@ -15,7 +12,6 @@ skip-tree = [
     { name = "cuckoofilter" },
 
     # all of these are going to be just test dependencies
-    { name = "aes-gcm" },
     { name = "bach" },
     { name = "bolero" },
     { name = "criterion" },
@@ -30,16 +26,10 @@ skip-tree = [
 ]
 
 [sources]
-allow-git = [
-    "https://github.com/camshaft/aya", # TODO: Remove once aya supports XdpMaps - https://github.com/aya-rs/aya/pull/527
-]
 unknown-registry = "deny"
 unknown-git = "deny"
 
 [licenses]
-unlicensed = "deny"
-allow-osi-fsf-free = "neither"
-copyleft = "deny"
 confidence-threshold = 0.9
 # ignore licenses for private crates
 private = { ignore = true }
@@ -47,6 +37,7 @@ allow = [
     "Apache-2.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    "CC0-1.0",
     "ISC",
     "MIT",
     "OpenSSL",

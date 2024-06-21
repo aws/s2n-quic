@@ -6,6 +6,7 @@ pub mod congestion;
 pub mod control;
 pub mod credentials;
 pub mod crypto;
+pub mod datagram;
 pub mod msg;
 pub mod packet;
 pub mod path;
@@ -13,3 +14,5 @@ pub mod pool;
 pub mod recovery;
 pub mod socket;
 pub mod stream;
+
+pub use s2n_quic_core::dc::{Version, SUPPORTED_VERSIONS};
