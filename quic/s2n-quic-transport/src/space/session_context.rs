@@ -442,7 +442,10 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let dc_manager = if let Some(dc_version) = dc_version {
             let application_params = dc::ApplicationParams::new(
-                self.path_manager.active_path().max_mtu(),
+                self.path_manager
+                    .active_path()
+                    .mtu_controller
+                    .max_datagram_size() as u16,
                 &peer_flow_control_limits,
                 self.limits,
             );

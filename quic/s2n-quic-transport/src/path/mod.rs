@@ -525,11 +525,6 @@ impl<Config: endpoint::Config> Path<Config> {
         self.pto_backoff = INITIAL_PTO_BACKOFF;
     }
 
-    #[inline]
-    pub fn max_mtu(&self) -> MaxMtu {
-        self.mtu_controller.max_mtu()
-    }
-
     /// Returns `true` if the congestion window does not have sufficient space for a packet of the maximum
     /// datagram size considering the current bytes in flight and the additional `bytes_sent` provided
     #[inline]

@@ -11,7 +11,7 @@ license = "Apache-2.0"
 exclude = ["corpus.tar.gz"]
 
 [features]
-testing = ["bolero-generator"]
+testing = ["bolero-generator", "s2n-quic-core/testing"]
 
 [dependencies]
 atomic-waker = "1"
