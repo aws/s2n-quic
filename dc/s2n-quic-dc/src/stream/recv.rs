@@ -1,17 +1,17 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::TransportFeatures;
+use super::{TransportFeatures, DEFAULT_IDLE_TIMEOUT};
 use crate::{
     allocator::Allocator,
     crypto::{decrypt, encrypt, UninitSlice},
     packet::{control, stream},
-    path::Parameters,
 };
 use core::{task::Poll, time::Duration};
 use s2n_codec::{EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     buffer::{self, reader::storage::Infallible as _},
+    dc::ApplicationParams,
     ensure,
     frame::{self, ack::EcnCounts},
     inet::ExplicitCongestionNotification,
@@ -54,7 +54,11 @@ pub struct Receiver {
 
 impl Receiver {
     #[inline]
-    pub fn new(stream_id: stream::Id, params: &Parameters, features: TransportFeatures) -> Self {
+    pub fn new(
+        stream_id: stream::Id,
+        params: &ApplicationParams,
+        features: TransportFeatures,
+    ) -> Self {
         let initial_max_data = params.local_recv_max_data;
         Self {
             stream_id,
@@ -64,7 +68,7 @@ impl Receiver {
             recovery_ack: Default::default(),
             state: Default::default(),
             idle_timer: Default::default(),
-            idle_timeout: params.idle_timeout(),
+            idle_timeout: params.max_idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT),
             tick_timer: Default::default(),
             _should_transmit: false,
             max_data: initial_max_data,
