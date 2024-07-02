@@ -458,6 +458,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
             endpoint_context.connection_id_format,
         ) {
             (packet, remaining)
+        } else if Cfg::DcEndpoint::ENABLED
+            && endpoint_context
+                .dc
+                .on_possible_secret_control_packet(&dc::DatagramInfo::new(&remote_address), payload)
+        {
+            // This was a DC secret control packet, so we don't need to proceed
+            // with checking for a stateless reset
+            return;
         } else {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
             //# Servers MUST drop incoming packets under all other circumstances.
@@ -484,7 +492,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     len: payload_len as u16,
                     reason: event::builder::DatagramDropReason::DecodingFailed,
                 });
-            }
+            };
 
             return;
         };
