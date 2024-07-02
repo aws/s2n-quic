@@ -4,7 +4,7 @@
 use crate::{
     crypto::tls::TlsSession,
     dc,
-    dc::{ApplicationParams, ConnectionInfo},
+    dc::{ApplicationParams, ConnectionInfo, DatagramInfo},
     stateless_reset, transport,
     varint::VarInt,
 };
@@ -38,6 +38,14 @@ impl dc::Endpoint for MockDcEndpoint {
             stateless_reset_tokens: self.stateless_reset_tokens.clone(),
             ..Default::default()
         })
+    }
+
+    fn on_possible_secret_control_packet(
+        &mut self,
+        _datagram_info: &DatagramInfo,
+        _payload: &mut [u8],
+    ) -> bool {
+        false
     }
 }
 

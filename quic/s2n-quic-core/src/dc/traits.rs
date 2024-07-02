@@ -17,6 +17,16 @@ pub trait Endpoint: 'static + Send {
     ///
     /// Return `None` if dc should not be used for this path
     fn new_path(&mut self, connection_info: &dc::ConnectionInfo) -> Option<Self::Path>;
+
+    /// Called when a datagram arrives that cannot be decoded as a non-DC QUIC packet, and
+    /// thus may contain a secret control packet
+    ///
+    /// Return `true` if a secret control packet was decoded from the datagram, `false` otherwise
+    fn on_possible_secret_control_packet(
+        &mut self,
+        datagram_info: &dc::DatagramInfo,
+        payload: &mut [u8],
+    ) -> bool;
 }
 
 /// A dc path

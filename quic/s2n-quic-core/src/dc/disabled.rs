@@ -3,7 +3,7 @@
 
 use crate::{
     crypto::tls::TlsSession,
-    dc::{ConnectionInfo, Endpoint, Path},
+    dc::{ConnectionInfo, DatagramInfo, Endpoint, Path},
     stateless_reset, transport,
 };
 use alloc::vec::Vec;
@@ -18,6 +18,14 @@ impl Endpoint for Disabled {
 
     fn new_path(&mut self, _connection_info: &ConnectionInfo) -> Option<Self::Path> {
         None
+    }
+
+    fn on_possible_secret_control_packet(
+        &mut self,
+        _datagram_info: &DatagramInfo,
+        _payload: &mut [u8],
+    ) -> bool {
+        unreachable!()
     }
 }
 

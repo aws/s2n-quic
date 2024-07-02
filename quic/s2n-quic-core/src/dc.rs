@@ -71,6 +71,25 @@ impl<'a> ConnectionInfo<'a> {
     }
 }
 
+/// Information about a received datagram that may be used
+/// when parsing it for a secret control packet
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct DatagramInfo<'a> {
+    /// The address (IP + Port) of the remote peer
+    pub remote_address: SocketAddress<'a>,
+}
+
+impl<'a> DatagramInfo<'a> {
+    #[inline]
+    #[doc(hidden)]
+    pub fn new( remote_address: &'a inet::SocketAddress) -> Self {
+        Self {
+            remote_address: remote_address.into_event()
+        }
+    }
+}
+
 /// Various settings relevant to the dc path
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]

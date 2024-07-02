@@ -14,7 +14,8 @@ use crate::{
 use rand::Rng as _;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
-    dc::{self, ApplicationParams},
+    dc::{self, ApplicationParams, DatagramInfo},
+    ensure,
     event::api::EndpointType,
 };
 use std::{
@@ -781,6 +782,30 @@ impl dc::Endpoint for Map {
 
     fn new_path(&mut self, connection_info: &dc::ConnectionInfo) -> Option<Self::Path> {
         Some(HandshakingPath::new(connection_info, self.clone()))
+    }
+
+    fn on_possible_secret_control_packet(
+        &mut self,
+        // TODO: Maybe we should confirm that the sender IP at least matches the IP for the
+        //       corresponding control secret?
+        _datagram_info: &DatagramInfo,
+        payload: &mut [u8],
+    ) -> bool {
+        let payload = s2n_codec::DecoderBufferMut::new(payload);
+        // TODO: Is 16 always right?
+        return match control::Packet::decode(payload, 16) {
+            Ok((packet, tail)) => {
+                // Probably a bug somewhere? There shouldn't be anything trailing in the buffer
+                // after we decode a secret control packet.
+                ensure!(tail.is_empty(), false);
+
+                // If we successfully decoded a control packet, pass it into our map to handle.
+                self.handle_control_packet(&packet);
+
+                true
+            }
+            Err(_) => false,
+        };
     }
 }
 
