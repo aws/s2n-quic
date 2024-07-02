@@ -83,9 +83,9 @@ pub struct DatagramInfo<'a> {
 impl<'a> DatagramInfo<'a> {
     #[inline]
     #[doc(hidden)]
-    pub fn new( remote_address: &'a inet::SocketAddress) -> Self {
+    pub fn new(remote_address: &'a inet::SocketAddress) -> Self {
         Self {
-            remote_address: remote_address.into_event()
+            remote_address: remote_address.into_event(),
         }
     }
 }
