@@ -13,6 +13,9 @@ use std::{
     task::{self, Poll},
 };
 
+#[cfg(feature = "tracing")]
+use tracing::instrument;
+
 pub struct Connection {
     conn: s2n_quic::connection::Handle,
     bidi_acceptor: s2n_quic::connection::BidirectionalStreamAcceptor,
@@ -66,16 +69,15 @@ impl<B> quic::Connection<B> for Connection
 where
     B: Buf,
 {
-    type BidiStream = BidiStream<B>;
-    type SendStream = SendStream<B>;
     type RecvStream = RecvStream;
     type OpenStreams = OpenStreams;
-    type Error = ConnectionError;
+    type AcceptError = ConnectionError;
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_accept_recv(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::RecvStream>, Self::Error>> {
+    ) -> Poll<Result<Option<Self::RecvStream>, Self::AcceptError>> {
         let recv = match ready!(self.recv_acceptor.poll_accept_receive_stream(cx))? {
             Some(x) => x,
             None => return Poll::Ready(Ok(None)),
@@ -83,10 +85,11 @@ where
         Poll::Ready(Ok(Some(Self::RecvStream::new(recv))))
     }
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_accept_bidi(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::BidiStream>, Self::Error>> {
+    ) -> Poll<Result<Option<Self::BidiStream>, Self::AcceptError>> {
         let (recv, send) = match ready!(self.bidi_acceptor.poll_accept_bidirectional_stream(cx))? {
             Some(x) => x.split(),
             None => return Poll::Ready(Ok(None)),
@@ -97,28 +100,41 @@ where
         })))
     }
 
-    fn poll_open_bidi(
-        &mut self,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::BidiStream, Self::Error>> {
-        let stream = ready!(self.conn.poll_open_bidirectional_stream(cx))?;
-        Ok(stream.into()).into()
-    }
-
-    fn poll_open_send(
-        &mut self,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::SendStream, Self::Error>> {
-        let stream = ready!(self.conn.poll_open_send_stream(cx))?;
-        Ok(stream.into()).into()
-    }
-
     fn opener(&self) -> Self::OpenStreams {
         OpenStreams {
             conn: self.conn.clone(),
         }
     }
+}
 
+impl<B> quic::OpenStreams<B> for Connection
+where
+    B: Buf,
+{
+    type BidiStream = BidiStream<B>;
+    type SendStream = SendStream<B>;
+    type OpenError = ConnectionError;
+
+
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
+    fn poll_open_bidi(
+        &mut self,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<Self::BidiStream, Self::OpenError>> {
+        let stream = ready!(self.conn.poll_open_bidirectional_stream(cx))?;
+        Ok(stream.into()).into()
+    }
+
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
+    fn poll_open_send(
+        &mut self,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<Self::SendStream, Self::OpenError>> {
+        let stream = ready!(self.conn.poll_open_send_stream(cx))?;
+        Ok(stream.into()).into()
+    }
+
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn close(&mut self, code: h3::error::Code, _reason: &[u8]) {
         self.conn.close(
             code.value()
@@ -138,25 +154,27 @@ where
 {
     type BidiStream = BidiStream<B>;
     type SendStream = SendStream<B>;
-    type RecvStream = RecvStream;
-    type Error = ConnectionError;
+    type OpenError = ConnectionError;
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_open_bidi(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::BidiStream, Self::Error>> {
+    ) -> Poll<Result<Self::BidiStream, Self::OpenError>> {
         let stream = ready!(self.conn.poll_open_bidirectional_stream(cx))?;
         Ok(stream.into()).into()
     }
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_open_send(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::SendStream, Self::Error>> {
+    ) -> Poll<Result<Self::SendStream, Self::OpenError>> {
         let stream = ready!(self.conn.poll_open_send_stream(cx))?;
         Ok(stream.into()).into()
     }
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn close(&mut self, code: h3::error::Code, _reason: &[u8]) {
         self.conn.close(
             code.value()
@@ -271,6 +289,7 @@ impl quic::RecvStream for RecvStream {
     type Buf = Bytes;
     type Error = ReadError;
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_data(
         &mut self,
         cx: &mut task::Context<'_>,
@@ -279,6 +298,7 @@ impl quic::RecvStream for RecvStream {
         Ok(buf).into()
     }
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn stop_sending(&mut self, error_code: u64) {
         let _ = self.stream.stop_sending(
             s2n_quic::application::Error::new(error_code)
@@ -286,6 +306,7 @@ impl quic::RecvStream for RecvStream {
         );
     }
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn recv_id(&self) -> StreamId {
         self.stream.id().try_into().expect("invalid stream id")
     }
@@ -369,6 +390,7 @@ where
 {
     type Error = SendStreamError;
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
         loop {
             // try to flush the current chunk if we have one
@@ -409,6 +431,7 @@ where
         // Poll::Ready(Ok(()))
     }
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn send_data<D: Into<WriteBuf<B>>>(&mut self, data: D) -> Result<(), Self::Error> {
         if self.buf.is_some() {
             return Err(Self::Error::NotReady);
@@ -427,6 +450,7 @@ where
         // Ok(())
     }
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
         // ensure all chunks are flushed to the QUIC stream before finishing
         ready!(self.poll_ready(cx))?;
@@ -434,12 +458,14 @@ where
         Ok(()).into()
     }
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn reset(&mut self, reset_code: u64) {
         let _ = self
             .stream
             .reset(reset_code.try_into().unwrap_or_else(|_| VarInt::MAX.into()));
     }
 
+    #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn send_id(&self) -> StreamId {
         self.stream.id().try_into().expect("invalid stream id")
     }
