@@ -19,11 +19,10 @@ pub struct Controller {
 
 impl Controller {
     #[inline]
-    pub fn new(mtu: u16) -> Self {
-        let mut controller = BbrCongestionController::new(mtu, Default::default());
-        let publisher = &mut NoopPublisher;
-        controller.on_mtu_update(mtu, publisher);
-        Self { controller }
+    pub fn new(max_datagram_size: u16) -> Self {
+        Self {
+            controller: BbrCongestionController::new(max_datagram_size, Default::default()),
+        }
     }
 
     #[inline]

@@ -79,7 +79,7 @@ pub(super) struct State {
     // can use a single map to store both kinds and treat them identically.
     //
     // In the future it's likely we'll want to build bidirectional support in which case splitting
-    // this into two maps (per the discussino in "Managing memory consumption" above) will be
+    // this into two maps (per the discussion in "Managing memory consumption" above) will be
     // needed.
     pub(super) peers: flurry::HashMap<SocketAddr, Arc<Entry>>,
 
@@ -497,7 +497,7 @@ impl Map {
                 secret,
                 sender,
                 receiver_shared.clone().new_receiver(),
-                testing::test_application_params(),
+                dc::testing::TEST_APPLICATION_PARAMS,
             );
             let entry = Arc::new(entry);
             provider.insert(entry);
@@ -524,7 +524,7 @@ impl Map {
             secret,
             sender,
             receiver,
-            testing::test_application_params(),
+            dc::testing::TEST_APPLICATION_PARAMS,
         );
         self.insert(Arc::new(entry));
     }
@@ -548,6 +548,12 @@ impl Map {
                 tracing::warn!("Failed to send control packet to {:?}: {:?}", dst, e);
             }
         }
+    }
+
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "testing"))]
+    pub fn handled_control_packets(&self) -> usize {
+        self.state.handled_control_packets.load(Ordering::Relaxed)
     }
 }
 
@@ -868,21 +874,6 @@ impl dc::Path for HandshakingPath {
         );
         let entry = Arc::new(entry);
         self.map.insert(entry);
-    }
-}
-
-#[cfg(any(test, feature = "testing"))]
-pub mod testing {
-    use s2n_quic_core::{
-        connection::Limits, dc::ApplicationParams, transport::parameters::InitialFlowControlLimits,
-    };
-
-    pub fn test_application_params() -> ApplicationParams {
-        ApplicationParams::new(
-            s2n_quic_core::path::MaxMtu::default().into(),
-            &InitialFlowControlLimits::default(),
-            &Limits::default(),
-        )
     }
 }
 

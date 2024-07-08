@@ -5,12 +5,7 @@ use s2n_quic_core::varint::VarInt;
 
 pub mod blocking;
 pub mod non_blocking;
-
-/// The maximum payload allowed in sendmsg calls
-///
-/// > https://github.com/torvalds/linux/blob/8cd26fd90c1ad7acdcfb9f69ca99d13aa7b24561/net/ipv4/ip_output.c#L987-L995
-/// > Linux enforces a u16::MAX - IP_HEADER_LEN - UDP_HEADER_LEN
-pub const MAX_PAYLOAD: u16 = u16::MAX - 50;
+pub use crate::msg::segment::MAX_TOTAL;
 
 /// Flow credits acquired by an application request
 #[derive(Debug)]
@@ -40,7 +35,7 @@ impl Request {
     /// Clamps the request with the given number of credits
     #[inline]
     pub fn clamp(&mut self, credits: u64) {
-        let len = self.len.min(credits.min(MAX_PAYLOAD as _) as usize);
+        let len = self.len.min(credits.min(MAX_TOTAL as _) as usize);
 
         // if we didn't acquire the entire len, then clear the `is_fin` flag
         if self.len != len {

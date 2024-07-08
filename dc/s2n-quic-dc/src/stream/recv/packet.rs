@@ -4,7 +4,7 @@
 use super::*;
 use s2n_quic_core::buffer::{reader, writer, Reader};
 
-pub struct Packet<'a, 'p, D: decrypt::Key, C: Clock> {
+pub struct Packet<'a, 'p, D: decrypt::Key, C: Clock + ?Sized> {
     pub packet: &'a mut stream::decoder::Packet<'p>,
     pub payload_cursor: usize,
     pub is_decrypted_in_place: bool,
@@ -14,7 +14,7 @@ pub struct Packet<'a, 'p, D: decrypt::Key, C: Clock> {
     pub receiver: &'a mut Receiver,
 }
 
-impl<'a, 'p, D: decrypt::Key, C: Clock> reader::Storage for Packet<'a, 'p, D, C> {
+impl<'a, 'p, D: decrypt::Key, C: Clock + ?Sized> reader::Storage for Packet<'a, 'p, D, C> {
     type Error = Error;
 
     #[inline]
@@ -88,7 +88,7 @@ impl<'a, 'p, D: decrypt::Key, C: Clock> reader::Storage for Packet<'a, 'p, D, C>
     }
 }
 
-impl<'a, 'p, D: decrypt::Key, C: Clock> Reader for Packet<'a, 'p, D, C> {
+impl<'a, 'p, D: decrypt::Key, C: Clock + ?Sized> Reader for Packet<'a, 'p, D, C> {
     #[inline]
     fn current_offset(&self) -> VarInt {
         self.packet.stream_offset() + self.payload_cursor

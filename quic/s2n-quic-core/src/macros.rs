@@ -153,7 +153,7 @@ macro_rules! ensure {
 /// Implements a future that wraps `T::poll_ready` and yields after ready
 macro_rules! impl_ready_future {
     ($name:ident, $fut:ident, $output:ty) => {
-        pub struct $fut<'a, T>(&'a mut T);
+        pub struct $fut<'a, T: ?Sized>(&'a mut T);
 
         impl<'a, T: $name> core::future::Future for $fut<'a, T> {
             type Output = $output;

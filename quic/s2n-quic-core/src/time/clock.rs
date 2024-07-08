@@ -27,7 +27,7 @@ pub trait ClockWithTimer: Clock {
     fn timer(&self) -> Self::Timer;
 }
 
-pub trait Timer: Sized {
+pub trait Timer {
     #[inline]
     fn ready(&mut self) -> TimerReady<Self> {
         TimerReady(self)
@@ -57,12 +57,12 @@ impl Clock for Timestamp {
 }
 
 /// A clock that caches the time query for the inner clock
-pub struct Cached<'a, C: Clock> {
+pub struct Cached<'a, C: Clock + ?Sized> {
     clock: &'a C,
     cached_value: core::cell::Cell<Option<Timestamp>>,
 }
 
-impl<'a, C: Clock> Cached<'a, C> {
+impl<'a, C: Clock + ?Sized> Cached<'a, C> {
     #[inline]
     pub fn new(clock: &'a C) -> Self {
         Self {
@@ -72,7 +72,7 @@ impl<'a, C: Clock> Cached<'a, C> {
     }
 }
 
-impl<'a, C: Clock> Clock for Cached<'a, C> {
+impl<'a, C: Clock + ?Sized> Clock for Cached<'a, C> {
     #[inline]
     fn get_time(&self) -> Timestamp {
         if let Some(time) = self.cached_value.get() {

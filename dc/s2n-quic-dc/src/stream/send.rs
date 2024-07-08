@@ -8,6 +8,8 @@ pub mod filter;
 pub mod flow;
 pub mod path;
 pub mod probes;
+pub mod queue;
+pub mod shared;
 pub mod transmission;
 pub mod worker;
 

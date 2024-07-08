@@ -211,7 +211,7 @@ mod tests {
         let expected_len = VarInt::from_u16(u16::MAX);
         let state = Arc::new(State::new(initial_offset));
         let path_info = path::Info {
-            mtu: 1500,
+            max_datagram_size: 1500,
             send_quantum: 10,
             ecn: Default::default(),
             next_expected_control_packet: Default::default(),

@@ -102,7 +102,7 @@ pub struct Worker {
     pub max_data: VarInt,
     pub local_max_data_window: VarInt,
     pub peer_activity: Option<PeerActivity>,
-    pub mtu: u16,
+    pub max_datagram_size: u16,
     pub max_sent_segment_size: u16,
 }
 
@@ -114,7 +114,7 @@ pub struct PeerActivity {
 impl Worker {
     #[inline]
     pub fn new(stream_id: stream::Id, params: &ApplicationParams) -> Self {
-        let mtu = params.max_datagram_size;
+        let max_datagram_size = params.max_datagram_size;
         let initial_max_data = params.remote_max_data;
         let local_max_data = params.local_send_max_data;
 
@@ -122,7 +122,7 @@ impl Worker {
         let mut unacked_ranges = IntervalSet::new();
         unacked_ranges.insert(VarInt::ZERO..=VarInt::MAX).unwrap();
 
-        let cca = congestion::Controller::new(mtu);
+        let cca = congestion::Controller::new(max_datagram_size);
         let max_sent_offset = VarInt::ZERO;
 
         Self {
@@ -154,7 +154,7 @@ impl Worker {
             max_data: initial_max_data,
             local_max_data_window: local_max_data,
             peer_activity: None,
-            mtu,
+            max_datagram_size,
             max_sent_segment_size: 0,
         }
     }
@@ -195,7 +195,8 @@ impl Worker {
     pub fn send_quantum_packets(&self) -> u8 {
         // TODO use div_ceil when we're on 1.73+ MSRV
         // https://doc.rust-lang.org/std/primitive.u64.html#method.div_ceil
-        let send_quantum = (self.cca.send_quantum() as u64 + self.mtu as u64 - 1) / self.mtu as u64;
+        let send_quantum = (self.cca.send_quantum() as u64 + self.max_datagram_size as u64 - 1)
+            / self.max_datagram_size as u64;
         send_quantum.try_into().unwrap_or(u8::MAX)
     }
 
