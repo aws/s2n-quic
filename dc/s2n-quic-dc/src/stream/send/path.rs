@@ -23,7 +23,11 @@ impl State {
     #[inline]
     pub fn new(info: Info) -> Self {
         Self {
-            info: AtomicU64::new(Self::encode_info(info.ecn, info.send_quantum, info.mtu)),
+            info: AtomicU64::new(Self::encode_info(
+                info.ecn,
+                info.send_quantum,
+                info.max_datagram_size,
+            )),
             next_expected_control_packet: AtomicU64::new(
                 info.next_expected_control_packet.as_u64(),
             ),
@@ -35,7 +39,7 @@ impl State {
     pub fn load(&self) -> Info {
         // use relaxed since it's ok to be slightly out of sync with the current MTU/send_quantum
         let data = self.info.load(Ordering::Relaxed);
-        let (ecn, send_quantum, mtu) = Self::decode_info(data);
+        let (ecn, send_quantum, max_datagram_size) = Self::decode_info(data);
 
         let next_expected_control_packet =
             self.next_expected_control_packet.load(Ordering::Relaxed);
@@ -43,7 +47,7 @@ impl State {
             VarInt::new(next_expected_control_packet).unwrap_or(VarInt::MAX);
 
         Info {
-            mtu,
+            max_datagram_size,
             send_quantum,
             ecn,
             next_expected_control_packet,
@@ -51,14 +55,19 @@ impl State {
     }
 
     #[inline]
-    pub fn update_info(&self, ecn: ExplicitCongestionNotification, send_quantum: u8, mtu: u16) {
-        let info = Self::encode_info(ecn, send_quantum, mtu);
+    pub fn update_info(
+        &self,
+        ecn: ExplicitCongestionNotification,
+        send_quantum: u8,
+        max_datagram_size: u16,
+    ) {
+        let info = Self::encode_info(ecn, send_quantum, max_datagram_size);
         self.info.store(info, Ordering::Relaxed);
     }
 
     #[inline]
     fn decode_info(mut data: u64) -> (ExplicitCongestionNotification, u8, u16) {
-        let mtu = data as u16;
+        let max_datagram_size = data as u16;
         data >>= 16;
 
         let send_quantum = data as u8;
@@ -72,11 +81,15 @@ impl State {
 
         debug_assert_eq!(data, 0, "unexpected extra data");
 
-        (ecn, send_quantum, mtu)
+        (ecn, send_quantum, max_datagram_size)
     }
 
     #[inline]
-    fn encode_info(ecn: ExplicitCongestionNotification, send_quantum: u8, mtu: u16) -> u64 {
+    fn encode_info(
+        ecn: ExplicitCongestionNotification,
+        send_quantum: u8,
+        max_datagram_size: u16,
+    ) -> u64 {
         let mut data = 0u64;
 
         data |= ecn as u8 as u64;
@@ -85,7 +98,7 @@ impl State {
         data |= send_quantum as u64;
         data <<= 16;
 
-        data |= mtu as u64;
+        data |= max_datagram_size as u64;
 
         data
     }
@@ -99,7 +112,7 @@ impl State {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Info {
-    pub mtu: u16,
+    pub max_datagram_size: u16,
     pub send_quantum: u8,
     pub ecn: ExplicitCongestionNotification,
     pub next_expected_control_packet: VarInt,
@@ -110,7 +123,7 @@ impl Info {
     #[inline]
     pub fn max_flow_credits(&self, max_header_len: usize, max_segments: usize) -> u64 {
         // trim off the headers since those don't count for flow control
-        let max_payload_size_per_segment = self.mtu as usize - max_header_len;
+        let max_payload_size_per_segment = self.max_datagram_size as usize - max_header_len;
         // clamp the number of segments we can transmit in a single burst
         let max_segments = max_segments.min(self.send_quantum as usize);
 
@@ -132,10 +145,11 @@ mod tests {
         check!()
             .with_type()
             .cloned()
-            .for_each(|(ecn, send_quantum, mtu)| {
-                let actual = State::decode_info(State::encode_info(ecn, send_quantum, mtu));
+            .for_each(|(ecn, send_quantum, max_datagram_size)| {
+                let actual =
+                    State::decode_info(State::encode_info(ecn, send_quantum, max_datagram_size));
 
-                assert_eq!((ecn, send_quantum, mtu), actual);
+                assert_eq!((ecn, send_quantum, max_datagram_size), actual);
             })
     }
 }

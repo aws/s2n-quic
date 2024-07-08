@@ -8,7 +8,6 @@ use s2n_quic_core::{
     buffer::Deque as Buffer,
     ensure,
     inet::{ExplicitCongestionNotification, SocketAddress},
-    path::MaxMtu,
     ready,
 };
 use std::{io, os::fd::AsRawFd};
@@ -32,8 +31,7 @@ impl fmt::Debug for Message {
 
 impl Message {
     #[inline]
-    pub fn new(max_mtu: MaxMtu) -> Self {
-        let max_mtu: u16 = max_mtu.into();
+    pub fn new(max_mtu: u16) -> Self {
         let max_mtu = max_mtu as usize;
         let buffer_len = cmsg::MAX_GRO_SEGMENTS * max_mtu;
         // the recv syscall doesn't return more than this

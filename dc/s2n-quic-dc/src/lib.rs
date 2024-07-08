@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod allocator;
+pub mod clock;
 pub mod congestion;
 pub mod control;
 pub mod credentials;
@@ -11,8 +12,10 @@ pub mod msg;
 pub mod packet;
 pub mod path;
 pub mod pool;
+pub mod random;
 pub mod recovery;
 pub mod socket;
 pub mod stream;
+pub mod task;
 
 pub use s2n_quic_core::dc::{Version, SUPPORTED_VERSIONS};

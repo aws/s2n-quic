@@ -4,6 +4,7 @@
 use super::{TransportFeatures, DEFAULT_IDLE_TIMEOUT};
 use crate::{
     allocator::Allocator,
+    clock,
     crypto::{decrypt, encrypt, UninitSlice},
     packet::{control, stream},
 };
@@ -118,7 +119,7 @@ impl Receiver {
     where
         B: buffer::Duplex<Error = core::convert::Infallible>,
         C: buffer::writer::Storage,
-        Clk: Clock,
+        Clk: Clock + ?Sized,
     {
         // try copying the out_buf into the application chunk, if possible
         if chunk.has_remaining_capacity() && !out_buf.buffer_is_empty() {
@@ -223,7 +224,7 @@ impl Receiver {
     ) -> Result<(), Error>
     where
         D: decrypt::Key,
-        Clk: Clock,
+        Clk: Clock + ?Sized,
         B: buffer::Duplex<Error = core::convert::Infallible>,
     {
         probes::on_stream_packet(
@@ -262,7 +263,7 @@ impl Receiver {
     ) -> Result<(), Error>
     where
         D: decrypt::Key,
-        Clk: Clock,
+        Clk: Clock + ?Sized,
         B: buffer::Duplex<Error = core::convert::Infallible>,
     {
         use buffer::reader::Storage as _;
@@ -320,7 +321,7 @@ impl Receiver {
     ) -> Result<(), Error>
     where
         D: decrypt::Key,
-        Clk: Clock,
+        Clk: Clock + ?Sized,
     {
         // ensure the packet is authentic before processing it
         let res = packet.decrypt_in_place(crypto);
@@ -353,7 +354,7 @@ impl Receiver {
     ) -> Result<(), Error>
     where
         D: decrypt::Key,
-        Clk: Clock,
+        Clk: Clock + ?Sized,
     {
         // ensure the packet is authentic before processing it
         let res = packet.decrypt(crypto, payload_out);
@@ -395,7 +396,7 @@ impl Receiver {
         clock: &Clk,
     ) -> Result<(), Error>
     where
-        Clk: Clock,
+        Clk: Clock + ?Sized,
     {
         tracing::trace!(
             stream_id = %packet.stream_id(),
@@ -496,7 +497,7 @@ impl Receiver {
     }
 
     #[inline]
-    fn update_idle_timer<Clk: Clock>(&mut self, clock: &Clk) {
+    fn update_idle_timer<Clk: Clock + ?Sized>(&mut self, clock: &Clk) {
         let target = clock.get_time() + self.idle_timeout;
         self.idle_timer.set(target);
 
@@ -552,7 +553,7 @@ impl Receiver {
     #[inline]
     pub fn on_timeout<Clk, Ld>(&mut self, clock: &Clk, load_last_activity: Ld)
     where
-        Clk: Clock,
+        Clk: Clock + ?Sized,
         Ld: FnOnce() -> Timestamp,
     {
         let now = clock.get_time();
@@ -584,7 +585,7 @@ impl Receiver {
     #[inline]
     fn poll_idle_timer<Clk, Ld>(&mut self, clock: &Clk, load_last_activity: Ld) -> Poll<()>
     where
-        Clk: Clock,
+        Clk: Clock + ?Sized,
         Ld: FnOnce() -> Timestamp,
     {
         let now = clock.get_time();
@@ -622,7 +623,7 @@ impl Receiver {
     ) where
         E: encrypt::Key,
         A: Allocator,
-        Clk: Clock,
+        Clk: Clock + ?Sized,
     {
         (if self.error.is_none() {
             Self::on_transmit_ack
@@ -634,7 +635,7 @@ impl Receiver {
             source_control_port,
             output,
             // avoid querying the clock for every transmitted packet
-            &s2n_quic_core::time::Cached::new(clock),
+            &clock::Cached::new(clock),
         )
     }
 
@@ -648,7 +649,7 @@ impl Receiver {
     ) where
         E: encrypt::Key,
         A: Allocator,
-        Clk: Clock,
+        Clk: Clock + ?Sized,
     {
         ensure!(self.should_transmit());
 
@@ -755,7 +756,7 @@ impl Receiver {
     ) where
         E: encrypt::Key,
         A: Allocator,
-        Clk: Clock,
+        Clk: Clock + ?Sized,
     {
         ensure!(self.should_transmit());
 

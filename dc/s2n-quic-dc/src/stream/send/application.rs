@@ -77,7 +77,7 @@ impl State {
 
             let buffer_len = {
                 let estimated_len = reader.buffered_len() + max_header_len;
-                (path.mtu as usize).min(estimated_len)
+                (path.max_datagram_size as usize).min(estimated_len)
             };
 
             message.push(buffer_len, |buffer| {
@@ -108,7 +108,7 @@ impl State {
                 );
 
                 // buffer is clamped to u16::MAX so this is safe to cast without loss
-                let _: u16 = path.mtu;
+                let _: u16 = path.max_datagram_size;
                 let packet_len = packet_len as u16;
                 let payload_len = reader.consumed_len() as u16;
                 total_payload_len += payload_len as usize;

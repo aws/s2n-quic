@@ -87,6 +87,12 @@ impl Opener {
 
         Ok(())
     }
+
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "testing"))]
+    pub fn dedup_check(&self) -> decrypt::Result {
+        self.dedup.check(&self.opener)
+    }
 }
 
 impl decrypt::Key for Opener {
