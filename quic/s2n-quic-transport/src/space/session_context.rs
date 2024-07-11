@@ -368,7 +368,7 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         let cipher_suite = key.cipher_suite().into_event();
 
-        // TODO: also store the header_key https://github.com/aws/s2n-quic/issues/319
+        // TODO: also store the header_key
         *self.zero_rtt_crypto = Some(Box::new(key));
 
         self.publisher.on_key_update(event::builder::KeyUpdate {

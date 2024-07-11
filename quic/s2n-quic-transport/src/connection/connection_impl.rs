@@ -1475,25 +1475,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 },
             });
 
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
-            //= type=TODO
-            //= tracking-issue=320
-            //# Received
-            //# packets protected with 1-RTT keys MAY be stored and later decrypted
-            //# and used once the handshake is complete.
-
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
-            //= type=TODO
-            //= tracking-issue=320
-            //= feature=0-RTT
-            //# The server MAY retain these packets for
-            //# later decryption in anticipation of receiving a ClientHello.
-
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
-            //= type=TODO
-            //# The client MAY drop these packets, or it MAY buffer them in
-            //# anticipation of later packets that allow it to compute the key.
-
             return Ok(());
         }
 

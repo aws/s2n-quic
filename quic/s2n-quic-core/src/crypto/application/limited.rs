@@ -31,16 +31,11 @@ impl Default for Limits {
     }
 }
 
-// TODO: This should be configured through the limit provider.
-// https://github.com/aws/s2n-quic/issues/322
 const KEY_UPDATE_WINDOW: u64 = 10_000;
 
 impl<K: OneRttKey> Key<K> {
     pub fn new(key: K) -> Self {
         Key {
-            // TODO: This should be configured through the limit provider, the default being the
-            // key's AEAD limit.
-            // https://github.com/aws/s2n-quic/issues/322
             confidentiality_limit: key.aead_confidentiality_limit(),
             key,
             encrypted_packets: 0,
