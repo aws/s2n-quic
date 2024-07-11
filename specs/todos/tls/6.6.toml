@@ -17,20 +17,3 @@ for the selected AEAD permits.
 '''
 tracking-issue = "450"
 feature = "AEAD limits"
-
-[[TODO]]
-quote = '''
-It is RECOMMENDED that endpoints immediately close the
-connection with a connection error of type AEAD_LIMIT_REACHED before
-reaching a state where key updates are not possible.
-'''
-tracking-issue = "322"
-feature = "AEAD limits"
-
-[[TODO]]
-quote = '''
-Endpoints that limit the size of packets MAY use higher
-confidentiality and integrity limits; see Appendix B for details.
-'''
-tracking-issue = "322"
-feature = "AEAD limits"
