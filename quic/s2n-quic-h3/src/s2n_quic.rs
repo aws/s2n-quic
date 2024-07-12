@@ -115,7 +115,6 @@ where
     type SendStream = SendStream<B>;
     type OpenError = ConnectionError;
 
-
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_open_bidi(
         &mut self,
