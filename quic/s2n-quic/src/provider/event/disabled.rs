@@ -15,6 +15,7 @@ impl super::Provider for Provider {
     }
 }
 
+#[derive(Debug, Default)]
 pub struct Subscriber;
 
 impl super::Subscriber for Subscriber {
