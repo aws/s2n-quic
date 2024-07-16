@@ -30,6 +30,7 @@ use setup::*;
 
 mod blackhole;
 mod connection_migration;
+mod deduplicate;
 mod handshake_cid_rotation;
 mod interceptor;
 mod mtu;

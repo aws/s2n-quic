@@ -155,6 +155,8 @@ impl From<connection::Error> for ConnectionState {
 pub struct ConnectionImpl<Config: endpoint::Config> {
     /// The local ID registry which should be utilized by the connection
     local_id_registry: connection::LocalIdRegistry,
+    /// The open registry (only used for its Drop impl)
+    open_registry: Option<connection::OpenRegistry>,
     /// The timers which are used within the connection
     timers: ConnectionTimers,
     /// Describes whether the connection is known to be accepted by the application
@@ -555,6 +557,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             };
 
             if is_finished {
+                self.open_registry = None;
                 self.error = Err(transport::Error::NO_ERROR.into());
                 return Poll::Ready(());
             }
@@ -629,6 +632,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let waker = Waker::from(wakeup_handle.clone());
         let mut connection = Self {
             local_id_registry: parameters.local_id_registry,
+            open_registry: parameters.open_registry,
             timers: Default::default(),
             accept_state: AcceptState::Handshaking,
             state: ConnectionState::Handshaking,
@@ -727,6 +731,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         // Update the connection state based on the type of error
         self.state = error.into();
         self.error = Err(error);
+
+        // Disable access to the connection from concurrent open attempts.
+        self.open_registry = None;
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3
         //# An endpoint that wishes to communicate a fatal
@@ -1906,6 +1913,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         if self.error.is_err() {
             return;
         }
+
+        // Disable access to the connection from concurrent open attempts.
+        self.open_registry = None;
 
         if let Some(error) = error {
             self.error = Err(connection::Error::application(error));

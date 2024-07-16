@@ -186,6 +186,23 @@ impl InitialIdMap {
     }
 }
 
+/// Bidirectional map for mapping from initial ID to internal connection ID and vice-versa
+#[derive(Debug)]
+pub(crate) struct OpenRequestMap {
+    /// Maps from initial id to internal connection ID
+    // No need for custom hashing since keys are locally controlled, not by remote.
+    open_request_map: HashMap<crate::endpoint::connect::Connect, InternalConnectionId>,
+}
+
+impl OpenRequestMap {
+    /// Constructs a new `InitialIdMap`
+    fn new() -> Self {
+        Self {
+            open_request_map: HashMap::new(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct ConnectionIdMapperState {
     /// Maps from external to internal connection IDs
@@ -194,6 +211,10 @@ pub(crate) struct ConnectionIdMapperState {
     pub(crate) stateless_reset_map: StatelessResetMap,
     /// Maps from initial id to internal connection IDs
     pub(crate) initial_id_map: InitialIdMap,
+    /// Maps from connection open request to internal connection IDs
+    /// This is used for looking up a connection handle if one is already open,
+    /// rather than opening a new one each time.
+    pub(crate) open_request_map: OpenRequestMap,
 }
 
 impl ConnectionIdMapperState {
@@ -205,6 +226,7 @@ impl ConnectionIdMapperState {
                 HashState::new(random_generator),
                 HashState::new(random_generator),
             ),
+            open_request_map: OpenRequestMap::new(),
         }
     }
 }
@@ -367,6 +389,49 @@ impl ConnectionIdMapper {
             self.state.clone(),
             rotate_handshake_connection_id,
         )
+    }
+
+    /// Returns the internal connection ID corresponding to the connect request, if there is a
+    /// pending or already open connection for that ID.
+    ///
+    /// If no such connection exists, associates the connect request with the provided internal ID,
+    /// which is returned in future requests.
+    pub(crate) fn lazy_open(
+        &self,
+        new_connection_internal_id: InternalConnectionId,
+        connect: crate::endpoint::connect::Connect,
+    ) -> Result<InternalConnectionId, OpenRegistry> {
+        let mut guard = self.state.lock().unwrap();
+        match guard.open_request_map.open_request_map.entry(connect) {
+            Entry::Occupied(e) => Ok(*e.get()),
+            Entry::Vacant(e) => {
+                let connect = e.key().clone();
+                e.insert(new_connection_internal_id);
+                Err(OpenRegistry {
+                    state: self.state.clone(),
+                    connect,
+                })
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct OpenRegistry {
+    /// The shared state between mapper and registration
+    state: Arc<Mutex<ConnectionIdMapperState>>,
+    connect: crate::endpoint::connect::Connect,
+}
+
+impl Drop for OpenRegistry {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.state.lock() {
+            // Stop tracking this open connection.
+            guard
+                .open_request_map
+                .open_request_map
+                .remove(&self.connect);
+        }
     }
 }
 

@@ -23,7 +23,7 @@ use bytes::Bytes;
 /// - It can be converted into [`Bytes`] which supports zero-copy slicing and
 /// reference counting.
 /// - It can be accessed as `&str` so that applications can reason about the string value.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ServerName(Bytes);
 
 /// A static value for localhost

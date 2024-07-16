@@ -938,16 +938,70 @@ impl<Cfg: Config> Endpoint<Cfg> {
         request: endpoint::connect::Request,
         timestamp: Timestamp,
     ) -> Result<(), connection::Error> {
+        assert!(
+            Cfg::ENDPOINT_TYPE.is_client(),
+            "only client endpoints can be created with client configurations"
+        );
+
         let endpoint::connect::Request {
             connect:
                 endpoint::connect::Connect {
                     remote_address,
                     server_name: hostname,
+                    deduplicate,
                 },
             sender,
         } = request;
 
         let internal_connection_id = self.connection_id_generator.generate_id();
+
+        if deduplicate && !Cfg::DcEndpoint::ENABLED {
+            // FIXME: Deduplication causes us to return full `Connection` handles to application
+            // via the `sender`. Currently though only a single Connection is supported, only
+            // multiple `Handle`s are allowed (largely because we only store one waker in various
+            // places internally).
+            //
+            // Just prevent that configuration for now.
+            return Err(connection::Error::invalid_configuration(
+                "Requested connection deduplication which is not supported without (unstable) dc provider configured",
+            ));
+        }
+
+        let open_registry = if deduplicate {
+            match self.connection_id_mapper.lazy_open(
+                internal_connection_id,
+                endpoint::connect::Connect {
+                    remote_address,
+                    server_name: hostname.clone(),
+                    deduplicate,
+                },
+            ) {
+                Ok(existing) => {
+                    if let Err(sender) = self
+                        .connections
+                        .register_sender_for_client_connection(&existing, sender)
+                    {
+                        // If we are in the Ok branch of lazy_open, then the connection already exists
+                        // in open_request_map (i.e., it is currently open). If we failed to register
+                        // the sender, then the connection is already fully open. So, we need to lookup
+                        // the connection handle and send it.
+                        let handle = self
+                            .connections
+                            .get_connection_handle(&existing)
+                            .expect("handle exists for active connection");
+                        let _ = sender.send(Ok(handle));
+                        return Ok(());
+                    } else {
+                        // Done, will get notified with a Result<handle> once the connection opens.
+                        return Ok(());
+                    }
+                }
+                Err(registry) => Some(registry),
+            }
+        } else {
+            None
+        };
+
         let local_connection_id = self
             .config
             .context()
@@ -1152,6 +1206,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             event_subscriber: endpoint_context.event_subscriber,
             datagram_endpoint: endpoint_context.datagram,
             dc_endpoint: endpoint_context.dc,
+            open_registry,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
         self.connections

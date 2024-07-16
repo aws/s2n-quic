@@ -21,10 +21,11 @@ pub(crate) type ConnectionReceiver = oneshot::Receiver<Result<Connection, connec
 /// its been created.
 pub(crate) type ConnectionSender = oneshot::Sender<Result<Connection, connection::Error>>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Connect {
     pub(crate) remote_address: RemoteAddress,
     pub(crate) server_name: Option<ServerName>,
+    pub(crate) deduplicate: bool,
 }
 
 impl fmt::Display for Connect {
@@ -49,6 +50,7 @@ impl Connect {
         Self {
             remote_address: addr.into().into(),
             server_name: None,
+            deduplicate: false,
         }
     }
 
@@ -57,6 +59,22 @@ impl Connect {
     pub fn with_server_name<Name: Into<ServerName>>(self, server_name: Name) -> Self {
         Self {
             server_name: Some(server_name.into()),
+            ..self
+        }
+    }
+
+    /// Specifies whether to deduplicate this connect request with other concurrent connect
+    /// requests and with any existing open connections.
+    ///
+    /// Only a connection opened with `deduplicate: true` can be later found by a subsequent
+    /// request.
+    ///
+    /// Note that this is only supported with the `dc` provider enabled on the s2n-quic endpoint.
+    #[must_use]
+    #[cfg(feature = "unstable-provider-dc")]
+    pub fn with_deduplicate(self, deduplicate: bool) -> Self {
+        Self {
+            deduplicate,
             ..self
         }
     }

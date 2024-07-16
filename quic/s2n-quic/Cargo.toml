@@ -54,7 +54,7 @@ unstable-provider-packet-interceptor = []
 # This feature enables the random provider
 unstable-provider-random = []
 # This feature enables the dc provider
-unstable-provider-dc = []
+unstable-provider-dc = ["s2n-quic-transport/unstable-provider-dc"]
 # This feature enables support for third party congestion controller implementations
 unstable-congestion-controller = ["s2n-quic-core/unstable-congestion-controller"]
 # This feature enables the use of unstable connection limits
@@ -85,7 +85,7 @@ zeroize = { version = "1", optional = true, default-features = false }
 bolero = { version = "0.11" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
-s2n-quic-transport = { version = "=0.42.0", path = "../s2n-quic-transport", features = ["unstable_resumption"] }
+s2n-quic-transport = { version = "=0.42.0", path = "../s2n-quic-transport", features = ["unstable_resumption", "unstable-provider-dc"] }
 tokio = { version = "1", features = ["full"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
