@@ -367,7 +367,11 @@ struct InterestLists<C: connection::Trait, L: connection::Lock<C>> {
     waiting_for_connection_id: LinkedList<WaitingForConnectionIdAdapter<C, L>>,
     /// Connections which are waiting for a timeout to occur
     waiting_for_timeout: RBTree<WaitingForTimeoutAdapter<C, L>>,
-    waiting_for_open: BTreeMap<InternalConnectionId, ConnectionSender>,
+    /// Connections which are waiting for a handshake to complete.
+    ///
+    /// The senders are a vector to allow multiple tasks to register interest in the same
+    /// connection being opened.
+    waiting_for_open: BTreeMap<InternalConnectionId, Vec<ConnectionSender>>,
     /// Inflight handshake count
     handshake_connections: usize,
     /// Total connection count
@@ -509,10 +513,24 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
                     }
                 }
                 endpoint::Type::Client => {
-                    if let Some(sender) = self.waiting_for_open.remove(&id) {
-                        if let Err(Ok(handle)) = sender.send(Ok(handle)) {
-                            // close the connection if the application is no longer waiting for the handshake
-                            handle.api.close_connection(None);
+                    if let Some(mut senders) = self.waiting_for_open.remove(&id) {
+                        let mut any_interest = false;
+                        let last = senders.pop();
+                        for sender in senders {
+                            if let Err(Ok(_handle)) = sender.send(Ok(handle.clone())) {
+                                // This particular handle is not interested anymore, but maybe one
+                                // of the others will be.
+                            } else {
+                                any_interest = true;
+                            }
+                        }
+                        if let Some(sender) = last {
+                            if let Err(Ok(handle)) = sender.send(Ok(handle)) {
+                                if !any_interest {
+                                    // close the connection if the application is no longer waiting for the handshake
+                                    handle.api.close_connection(None);
+                                }
+                            }
                         }
                     } else {
                         debug_assert!(false, "client connection tried to open more than once");
@@ -524,7 +542,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         if interests.finalization != node.done_connections_link.is_linked() {
             if interests.finalization {
                 if <C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client() {
-                    if let Some(sender) = self.waiting_for_open.remove(&id) {
+                    if let Some(senders) = self.waiting_for_open.remove(&id) {
                         let err = node.inner.read(|conn| conn.error());
                         let err = match err {
                             Ok(Some(err)) => {
@@ -542,7 +560,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
                                     .into()
                             }
                         };
-                        let _ = sender.send(Err(err));
+                        for sender in senders {
+                            let _ = sender.send(Err(err));
+                        }
                     }
                 }
 
@@ -772,7 +792,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
 
         self.interest_lists
             .waiting_for_open
-            .insert(internal_connection_id, connection_sender);
+            .insert(internal_connection_id, vec![connection_sender]);
 
         self.insert_connection(connection, internal_connection_id)
     }
