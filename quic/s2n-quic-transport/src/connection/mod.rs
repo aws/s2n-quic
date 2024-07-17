@@ -27,7 +27,7 @@ pub(crate) mod transmission;
 
 pub(crate) use api_provider::{ConnectionApi, ConnectionApiProvider};
 pub(crate) use connection_container::{ConnectionContainer, ConnectionContainerIterationResult};
-pub(crate) use connection_id_mapper::ConnectionIdMapper;
+pub(crate) use connection_id_mapper::{ConnectionIdMapper, OpenRegistry};
 pub(crate) use connection_interests::ConnectionInterests;
 pub(crate) use connection_timers::ConnectionTimers;
 pub(crate) use connection_trait::ConnectionTrait as Trait;
@@ -52,6 +52,9 @@ pub struct Parameters<'a, Cfg: endpoint::Config> {
     pub local_id_registry: LocalIdRegistry,
     /// The peer ID registry which should be utilized by the connection
     pub peer_id_registry: PeerIdRegistry,
+    /// The open connections registry which should be utilized by the connection
+    /// None for accepted/inbound connections.
+    pub open_registry: Option<OpenRegistry>,
     /// The last utilized remote Connection ID
     pub peer_connection_id: PeerId,
     /// The last utilized local Connection ID

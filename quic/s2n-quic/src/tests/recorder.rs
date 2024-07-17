@@ -154,3 +154,16 @@ event_recorder!(
         storage.push(event.reason.clone());
     }
 );
+
+event_recorder!(
+    ConnectionStarted,
+    ConnectionStarted,
+    on_connection_started,
+    SocketAddr,
+    |event: &events::ConnectionStarted, storage: &mut Vec<SocketAddr>| {
+        let addr: SocketAddr = event.path.local_addr.to_string().parse().unwrap();
+        if storage.last().map_or(true, |prev| *prev != addr) {
+            storage.push(addr);
+        }
+    }
+);

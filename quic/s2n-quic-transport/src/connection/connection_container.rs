@@ -40,6 +40,7 @@ use s2n_quic_core::{
     time::Timestamp,
     transport,
 };
+use smallvec::SmallVec;
 
 // Intrusive list adapter for managing the list of `done` connections
 intrusive_adapter!(DoneConnectionsAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
@@ -367,7 +368,11 @@ struct InterestLists<C: connection::Trait, L: connection::Lock<C>> {
     waiting_for_connection_id: LinkedList<WaitingForConnectionIdAdapter<C, L>>,
     /// Connections which are waiting for a timeout to occur
     waiting_for_timeout: RBTree<WaitingForTimeoutAdapter<C, L>>,
-    waiting_for_open: BTreeMap<InternalConnectionId, ConnectionSender>,
+    /// Connections which are waiting for a handshake to complete.
+    ///
+    /// The senders are a vector to allow multiple tasks to register interest in the same
+    /// connection being opened.
+    waiting_for_open: BTreeMap<InternalConnectionId, SmallVec<[ConnectionSender; 1]>>,
     /// Inflight handshake count
     handshake_connections: usize,
     /// Total connection count
@@ -509,10 +514,24 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
                     }
                 }
                 endpoint::Type::Client => {
-                    if let Some(sender) = self.waiting_for_open.remove(&id) {
-                        if let Err(Ok(handle)) = sender.send(Ok(handle)) {
-                            // close the connection if the application is no longer waiting for the handshake
-                            handle.api.close_connection(None);
+                    if let Some(mut senders) = self.waiting_for_open.remove(&id) {
+                        let mut any_interest = false;
+                        let last = senders.pop();
+                        for sender in senders {
+                            if let Err(Ok(_handle)) = sender.send(Ok(handle.clone())) {
+                                // This particular handle is not interested anymore, but maybe one
+                                // of the others will be.
+                            } else {
+                                any_interest = true;
+                            }
+                        }
+                        if let Some(sender) = last {
+                            if let Err(Ok(handle)) = sender.send(Ok(handle)) {
+                                if !any_interest {
+                                    // close the connection if the application is no longer waiting for the handshake
+                                    handle.api.close_connection(None);
+                                }
+                            }
                         }
                     } else {
                         debug_assert!(false, "client connection tried to open more than once");
@@ -524,7 +543,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         if interests.finalization != node.done_connections_link.is_linked() {
             if interests.finalization {
                 if <C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client() {
-                    if let Some(sender) = self.waiting_for_open.remove(&id) {
+                    if let Some(senders) = self.waiting_for_open.remove(&id) {
                         let err = node.inner.read(|conn| conn.error());
                         let err = match err {
                             Ok(Some(err)) => {
@@ -542,7 +561,9 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
                                     .into()
                             }
                         };
-                        let _ = sender.send(Err(err));
+                        for sender in senders {
+                            let _ = sender.send(Err(err));
+                        }
                     }
                 }
 
@@ -770,11 +791,32 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     ) {
         debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client());
 
-        self.interest_lists
-            .waiting_for_open
-            .insert(internal_connection_id, connection_sender);
+        self.interest_lists.waiting_for_open.insert(
+            internal_connection_id,
+            smallvec::smallvec![connection_sender],
+        );
 
         self.insert_connection(connection, internal_connection_id)
+    }
+
+    /// Potentially register a sender with an existing client Connection
+    pub fn register_sender_for_client_connection(
+        &mut self,
+        internal_connection_id: &InternalConnectionId,
+        connection_sender: ConnectionSender,
+    ) -> Result<(), ConnectionSender> {
+        debug_assert!(<C::Config as endpoint::Config>::ENDPOINT_TYPE.is_client());
+
+        if let Some(list) = self
+            .interest_lists
+            .waiting_for_open
+            .get_mut(internal_connection_id)
+        {
+            list.push(connection_sender);
+            Ok(())
+        } else {
+            Err(connection_sender)
+        }
     }
 
     pub(crate) fn poll_connection_request(
@@ -820,6 +862,23 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
     /// Returns the total number of connections
     pub fn len(&self) -> usize {
         self.interest_lists.connection_count
+    }
+
+    pub fn get_connection_handle(
+        &mut self,
+        id: &InternalConnectionId,
+    ) -> Option<crate::connection::api::Connection> {
+        let cursor = self.connection_map.find(id);
+        let node = cursor.get()?;
+        let handle = unsafe {
+            // We have to obtain an `Arc<ConnectionNode>` in order to be able to
+            // perform interest updates later on. However the intrusive tree
+            // API only provides us a raw reference.
+            // Safety: We know that all of our ConnectionNode's are stored in
+            // reference counted pointers.
+            node.arc_from_ref()
+        };
+        Some(crate::connection::api::Connection::new(handle))
     }
 
     /// Looks up the `Connection` with the given ID and executes the provided function

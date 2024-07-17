@@ -314,6 +314,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             event_subscriber: endpoint_context.event_subscriber,
             datagram_endpoint: endpoint_context.datagram,
             dc_endpoint: endpoint_context.dc,
+            open_registry: None,
         };
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
