@@ -88,6 +88,9 @@ fn optimistic_ack_mitigation() {
 
     // Verify that both client and server are skipping packets for Optimistic
     // Ack attack mitigation.
+    //
+    // The exact number of skipped packets depends on randomness, so this test may be changed by
+    // unrelated changes. The important thing is that both numbers are non-zero.
     assert_eq!(server_skip_count, 5);
     assert_eq!(client_skip_count, 5);
 }
