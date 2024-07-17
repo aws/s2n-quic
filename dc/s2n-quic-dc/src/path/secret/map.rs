@@ -83,13 +83,6 @@ pub(super) struct State {
     // needed.
     pub(super) peers: flurry::HashMap<SocketAddr, Arc<Entry>>,
 
-    // This is used for deduplicating outgoing handshakes. We manage this here as it's a
-    // property required for correctness (see comment on the struct).
-    //
-    // FIXME: make use of this.
-    #[allow(unused)]
-    pub(super) ongoing_handshakes: flurry::HashMap<SocketAddr, ()>,
-
     // Stores the set of SocketAddr for which we received a UnknownPathSecret packet.
     // When handshake_with is called we will allow a new handshake if this contains a socket, this
     // is a temporary solution until we implement proper background handshaking.
@@ -244,7 +237,6 @@ impl Map {
             // This is around 500MB with current entry size.
             max_capacity: 500_000,
             peers: Default::default(),
-            ongoing_handshakes: Default::default(),
             requested_handshakes: Default::default(),
             ids: Default::default(),
             cleaner: Cleaner::new(),
