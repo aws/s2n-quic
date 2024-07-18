@@ -10,6 +10,7 @@ pub type PayloadLen = VarInt;
 
 #[macro_use]
 pub mod tag;
+pub mod wire_version;
 
 pub mod control;
 pub mod datagram;
@@ -17,6 +18,17 @@ pub mod secret_control;
 pub mod stream;
 
 pub use tag::Tag;
+pub use wire_version::WireVersion;
+
+#[derive(Clone, Copy, Debug)]
+pub enum Kind {
+    Stream,
+    Datagram,
+    Control,
+    StaleKey,
+    ReplayDetected,
+    UnknownPathSecret,
+}
 
 #[derive(Debug)]
 pub enum Packet<'a> {
@@ -26,6 +38,20 @@ pub enum Packet<'a> {
     StaleKey(secret_control::stale_key::Packet<'a>),
     ReplayDetected(secret_control::replay_detected::Packet<'a>),
     UnknownPathSecret(secret_control::unknown_path_secret::Packet<'a>),
+}
+
+impl<'a> Packet<'a> {
+    #[inline]
+    pub fn kind(&self) -> Kind {
+        match self {
+            Packet::Stream(_) => Kind::Stream,
+            Packet::Datagram(_) => Kind::Datagram,
+            Packet::Control(_) => Kind::Control,
+            Packet::StaleKey(_) => Kind::StaleKey,
+            Packet::ReplayDetected(_) => Kind::ReplayDetected,
+            Packet::UnknownPathSecret(_) => Kind::UnknownPathSecret,
+        }
+    }
 }
 
 impl<'a> s2n_codec::DecoderParameterizedValueMut<'a> for Packet<'a> {

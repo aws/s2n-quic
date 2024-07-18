@@ -9,7 +9,7 @@ use crate::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{frame::FrameMut, varint::VarInt};
-use s2n_quic_dc::packet::{self, stream};
+use s2n_quic_dc::packet::{self, stream, WireVersion};
 
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
@@ -72,11 +72,15 @@ pub fn stream<T: Node>(
         fields.has_control_data,
         fields.has_final_offset,
         fields.has_application_header,
+        fields.key_phase,
     ] {
         tag_tree.add_boolean(buffer, field, tag);
     }
 
     let tag = tag.value;
+
+    let wire_version = buffer.consume::<WireVersion>()?;
+    wire_version.record(buffer, tree, fields.wire_version);
 
     let path_secret_id = buffer.consume_bytes(16)?;
     path_secret_id.record(buffer, tree, fields.path_secret_id);
@@ -166,11 +170,18 @@ pub fn control<T: Node>(
     let tag_item = tag.record(buffer, tree, fields.tag);
 
     let mut tag_tree = tree.add_subtree(tag_item, fields.tag_subtree);
-    for field in [fields.is_stream, fields.has_application_header] {
+    for field in [
+        fields.is_stream,
+        fields.has_application_header,
+        fields.key_phase,
+    ] {
         tag_tree.add_boolean(buffer, field, tag);
     }
 
     let tag = tag.value;
+
+    let wire_version = buffer.consume::<WireVersion>()?;
+    wire_version.record(buffer, tree, fields.wire_version);
 
     let path_secret_id = buffer.consume_bytes(16)?;
     path_secret_id.record(buffer, tree, fields.path_secret_id);
@@ -401,11 +412,15 @@ pub fn datagram<T: Node>(
         fields.is_ack_eliciting,
         fields.is_connected,
         fields.has_application_header,
+        fields.key_phase,
     ] {
         tag_tree.add_boolean(buffer, field, tag);
     }
 
     let tag = tag.value;
+
+    let wire_version = buffer.consume::<WireVersion>()?;
+    wire_version.record(buffer, tree, fields.wire_version);
 
     let path_secret_id = buffer.consume_bytes(16)?;
     path_secret_id.record(buffer, tree, fields.path_secret_id);
@@ -490,6 +505,9 @@ pub fn secret_control<T: Node>(
         packet::Tag::UnknownPathSecret(_) => {
             item.append_text(c" (UnknownPathSecret)");
 
+            let wire_version = buffer.consume::<WireVersion>()?;
+            wire_version.record(buffer, tree, fields.wire_version);
+
             let path_secret_id = buffer.consume_bytes(16)?;
             path_secret_id.record(buffer, tree, fields.path_secret_id);
 
@@ -503,6 +521,9 @@ pub fn secret_control<T: Node>(
         }
         packet::Tag::StaleKey(_) => {
             item.append_text(c" (StaleKey)");
+
+            let wire_version = buffer.consume::<WireVersion>()?;
+            wire_version.record(buffer, tree, fields.wire_version);
 
             let path_secret_id = buffer.consume_bytes(16)?;
             path_secret_id.record(buffer, tree, fields.path_secret_id);
@@ -520,6 +541,9 @@ pub fn secret_control<T: Node>(
         }
         packet::Tag::ReplayDetected(_) => {
             item.append_text(c" (ReplayDetected)");
+
+            let wire_version = buffer.consume::<WireVersion>()?;
+            wire_version.record(buffer, tree, fields.wire_version);
 
             let path_secret_id = buffer.consume_bytes(16)?;
             path_secret_id.record(buffer, tree, fields.path_secret_id);

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::send::worker::transmission;
+use crate::stream::send::state::transmission;
 use crossbeam_queue::{ArrayQueue, SegQueue};
 use s2n_quic_core::{ensure, varint::VarInt};
 use std::collections::VecDeque;

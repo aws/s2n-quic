@@ -31,6 +31,8 @@ pub struct Registration {
     pub is_recovery_packet: i32,
     pub has_control_data: i32,
     pub has_final_offset: i32,
+    pub key_phase: i32,
+    pub wire_version: i32,
     pub path_secret_id: i32,
     pub key_id: i32,
     pub source_control_port: i32,
@@ -267,6 +269,19 @@ fn init() -> Registration {
                 c"",
             )
             .with_mask(masks::HAS_FINAL_OFFSET)
+            .register(),
+        key_phase: protocol
+            .field(c"Key Phase", c"dcquic.tag.key_phase", BOOLEAN, SEP_DOT, c"")
+            .with_mask(masks::KEY_PHASE)
+            .register(),
+        wire_version: protocol
+            .field(
+                c"Wire Version",
+                c"dcquic.wire_version",
+                UINT32,
+                BASE_DEC,
+                c"dcQUIC wire version",
+            )
             .register(),
         path_secret_id: protocol
             .field(
@@ -546,13 +561,16 @@ mod masks {
     pub const HAS_CONTROL_DATA: u64 = stream::Tag::HAS_CONTROL_DATA_MASK as _;
     pub const HAS_FINAL_OFFSET: u64 = stream::Tag::HAS_FINAL_OFFSET_MASK as _;
 
-    pub const HAS_APPLICATION_HEADER: u64 = {
-        // Statically assert that the masks line up between all three packets.
-        const _: [(); stream::Tag::HAS_APPLICATION_HEADER_MASK as usize] =
-            [(); datagram::Tag::HAS_APPLICATION_HEADER_MASK as usize];
-        const _: [(); stream::Tag::HAS_APPLICATION_HEADER_MASK as usize] =
-            [(); control::Tag::HAS_APPLICATION_HEADER_MASK as usize];
+    macro_rules! common_tag {
+        ($name:ident) => {{
+            // Statically assert that the masks line up between all three packets.
+            const _: [(); stream::Tag::$name as usize] = [(); datagram::Tag::$name as usize];
+            const _: [(); stream::Tag::$name as usize] = [(); control::Tag::$name as usize];
 
-        datagram::Tag::HAS_APPLICATION_HEADER_MASK as _
-    };
+            datagram::Tag::$name as _
+        }};
+    }
+
+    pub const HAS_APPLICATION_HEADER: u64 = common_tag!(HAS_APPLICATION_HEADER_MASK);
+    pub const KEY_PHASE: u64 = common_tag!(KEY_PHASE_MASK);
 }

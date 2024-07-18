@@ -3,7 +3,10 @@
 
 use crate::{
     crypto::encrypt,
-    packet::stream::{self, RelativeRetransmissionOffset, Tag},
+    packet::{
+        stream::{self, RelativeRetransmissionOffset, Tag},
+        WireVersion,
+    },
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
@@ -41,31 +44,22 @@ where
     let stream_offset = payload.current_offset();
     let final_offset = payload.final_offset();
 
-    let mut tag = Tag::default();
-
     debug_assert_ne!(source_control_port, 0);
     debug_assert_ne!(source_stream_port, Some(0));
 
-    if *control_data_len > 0 {
-        tag.set_has_control_data(true);
-    }
-
-    if final_offset.is_some() {
-        tag.set_has_final_offset(true);
-    }
-
-    if *header_len > 0 {
-        tag.set_has_application_header(true);
-    }
-
-    if source_stream_port.is_some() {
-        tag.set_has_source_stream_port(true);
-    }
-
+    let mut tag = Tag::default();
+    tag.set_key_phase(crypto.key_phase());
+    tag.set_has_control_data(*control_data_len > 0);
+    tag.set_has_final_offset(final_offset.is_some());
+    tag.set_has_application_header(*header_len > 0);
+    tag.set_has_source_stream_port(source_stream_port.is_some());
     tag.set_packet_space(packet_space);
-    let nonce = packet_space.packet_number_into_nonce(packet_number);
-
     encoder.encode(&tag);
+
+    // wire version - we only support `0` currently
+    encoder.encode(&WireVersion::ZERO);
+
+    let nonce = packet_space.packet_number_into_nonce(packet_number);
 
     // encode the credentials being used
     encoder.encode(crypto.credentials());

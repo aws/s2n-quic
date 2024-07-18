@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{credentials::Credentials, packet::datagram::Tag};
+use crate::{
+    credentials::Credentials,
+    packet::{datagram::Tag, WireVersion},
+};
 use s2n_codec::{
     decoder_invariant, CheckedRange, DecoderBufferMut, DecoderBufferMutResult as R, DecoderError,
 };
@@ -43,6 +46,7 @@ where
 
 pub struct Packet<'a> {
     tag: Tag,
+    wire_version: WireVersion,
     credentials: Credentials,
     source_control_port: u16,
     packet_number: PacketNumber,
@@ -58,6 +62,7 @@ impl<'a> std::fmt::Debug for Packet<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Packet")
             .field("tag", &self.tag)
+            .field("wire_version", &self.wire_version)
             .field("credentials", &self.credentials)
             .field("source_control_port", &self.source_control_port)
             .field("packet_number", &self.packet_number)
@@ -78,6 +83,11 @@ impl<'a> Packet<'a> {
     #[inline]
     pub fn tag(&self) -> Tag {
         self.tag
+    }
+
+    #[inline]
+    pub fn wire_version(&self) -> WireVersion {
+        self.wire_version
     }
 
     #[inline]
@@ -143,6 +153,7 @@ impl<'a> Packet<'a> {
     ) -> R<Packet> {
         let (
             tag,
+            wire_version,
             credentials,
             source_control_port,
             packet_number,
@@ -166,6 +177,8 @@ impl<'a> Packet<'a> {
 
             let (tag, buffer) = buffer.decode()?;
             validator.validate_tag(tag)?;
+
+            let (wire_version, buffer) = buffer.decode()?;
 
             let (credentials, buffer) = buffer.decode()?;
 
@@ -205,6 +218,7 @@ impl<'a> Packet<'a> {
 
             (
                 tag,
+                wire_version,
                 credentials,
                 source_control_port,
                 packet_number,
@@ -250,6 +264,7 @@ impl<'a> Packet<'a> {
 
         let packet = Packet {
             tag,
+            wire_version,
             credentials,
             source_control_port,
             packet_number,

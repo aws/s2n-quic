@@ -11,7 +11,9 @@ license = "Apache-2.0"
 exclude = ["corpus.tar.gz"]
 
 [features]
+default = ["tokio"]
 testing = ["bolero-generator", "s2n-quic-core/testing"]
+tokio = ["tokio/io-util", "tokio/net", "tokio/rt-multi-thread", "tokio/time"]
 
 [dependencies]
 arrayvec = "0.7"
@@ -35,7 +37,7 @@ s2n-quic-core = { version = "=0.42.0", path = "../../quic/s2n-quic-core", defaul
 s2n-quic-platform = { version = "=0.42.0", path = "../../quic/s2n-quic-platform" }
 slotmap = "1"
 thiserror = "1"
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", default-features = false, features = ["sync"] }
 tracing = "0.1"
 zerocopy = { version = "0.7", features = ["derive"] }
 zeroize = "1"
@@ -46,4 +48,4 @@ bolero-generator = "0.11"
 insta = "1"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["full"] }

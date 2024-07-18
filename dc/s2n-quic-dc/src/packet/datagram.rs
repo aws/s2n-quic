@@ -3,6 +3,7 @@
 
 use super::{tag::Common, HeaderLen, PacketNumber, PayloadLen};
 use core::fmt;
+use s2n_quic_core::packet::KeyPhase;
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 
 pub mod decoder;
@@ -27,6 +28,7 @@ impl fmt::Debug for Tag {
             .field("ack_eliciting", &self.ack_eliciting())
             .field("is_connected", &self.is_connected())
             .field("has_application_header", &self.has_application_header())
+            .field("key_phase", &self.key_phase())
             .finish()
     }
 }
@@ -34,8 +36,8 @@ impl fmt::Debug for Tag {
 impl Tag {
     pub const ACK_ELICITING_MASK: u8 = 0b1000;
     pub const IS_CONNECTED_MASK: u8 = 0b0100;
-    const RESERVED: u8 = 0b0010;
-    pub const HAS_APPLICATION_HEADER_MASK: u8 = 0b0001;
+    pub const HAS_APPLICATION_HEADER_MASK: u8 = 0b0010;
+    pub const KEY_PHASE_MASK: u8 = 0b0001;
 
     pub const MIN: u8 = 0b0100_0000;
     pub const MAX: u8 = 0b0100_1111;
@@ -71,13 +73,27 @@ impl Tag {
     }
 
     #[inline]
+    pub fn set_key_phase(&mut self, key_phase: KeyPhase) {
+        let v = match key_phase {
+            KeyPhase::Zero => false,
+            KeyPhase::One => true,
+        };
+        self.0.set(Self::KEY_PHASE_MASK, v)
+    }
+
+    #[inline]
+    pub fn key_phase(&self) -> KeyPhase {
+        if self.0.get(Self::KEY_PHASE_MASK) {
+            KeyPhase::One
+        } else {
+            KeyPhase::Zero
+        }
+    }
+
+    #[inline]
     fn validate(&self) -> Result<(), s2n_codec::DecoderError> {
         let range = Self::MIN..=Self::MAX;
         s2n_codec::decoder_invariant!(range.contains(&(self.0).0), "invalid datagram bit pattern");
-        s2n_codec::decoder_invariant!(
-            self.0 .0 & Self::RESERVED == 0,
-            "invalid datagram bit pattern"
-        );
         Ok(())
     }
 }

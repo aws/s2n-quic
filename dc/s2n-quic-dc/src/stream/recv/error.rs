@@ -1,7 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{crypto::decrypt, packet::stream};
+use crate::{
+    crypto::decrypt,
+    packet::{self, stream},
+    stream::TransportFeatures,
+};
 use s2n_quic_core::{buffer, frame};
 
 #[derive(Clone, Copy, Debug, thiserror::Error)]
@@ -39,6 +43,8 @@ pub enum Error {
     ApplicationError {
         error: s2n_quic_core::application::Error,
     },
+    #[error("unexpected packet: {packet:?}")]
+    UnexpectedPacket { packet: packet::Kind },
 }
 
 impl From<decrypt::Error> for Error {
@@ -55,7 +61,7 @@ impl From<decrypt::Error> for Error {
 
 impl Error {
     #[inline]
-    pub(super) fn is_fatal(&self, features: &super::TransportFeatures) -> bool {
+    pub(super) fn is_fatal(&self, features: &TransportFeatures) -> bool {
         // if the transport is a stream then any error we encounter is fatal, since the stream is
         // now likely corrupted
         if features.is_stream() {
@@ -76,6 +82,7 @@ impl Error {
             | Error::Decrypt
             | Error::Duplicate
             | Error::StreamMismatch { .. }
+            | Error::UnexpectedPacket { .. }
             | Error::UnexpectedRetransmission => {
                 // return protocol violation for the errors that are only fatal for reliable
                 // transports
@@ -132,6 +139,15 @@ impl From<Error> for std::io::ErrorKind {
             Error::KeyReplayPrevented => ErrorKind::PermissionDenied,
             Error::KeyReplayMaybePrevented { .. } => ErrorKind::PermissionDenied,
             Error::ApplicationError { .. } => ErrorKind::ConnectionReset,
+            Error::UnexpectedPacket {
+                packet:
+                    packet::Kind::UnknownPathSecret
+                    | packet::Kind::StaleKey
+                    | packet::Kind::ReplayDetected,
+            } => ErrorKind::ConnectionRefused,
+            Error::UnexpectedPacket {
+                packet: packet::Kind::Stream | packet::Kind::Control | packet::Kind::Datagram,
+            } => ErrorKind::InvalidData,
         }
     }
 }

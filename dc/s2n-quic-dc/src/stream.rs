@@ -8,14 +8,19 @@ pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// The maximum time a send stream will wait for ACKs from inflight packets
 pub const DEFAULT_INFLIGHT_TIMEOUT: Duration = Duration::from_secs(5);
 
+pub mod application;
 pub mod crypto;
+pub mod endpoint;
+pub mod environment;
 pub mod pacer;
 pub mod packet_map;
 pub mod packet_number;
 pub mod processing;
 pub mod recv;
+pub mod runtime;
 pub mod send;
 pub mod server;
+pub mod shared;
 pub mod socket;
 
 bitflags::bitflags! {

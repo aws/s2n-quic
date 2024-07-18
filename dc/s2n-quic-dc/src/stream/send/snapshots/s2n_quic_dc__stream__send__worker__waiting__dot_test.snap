@@ -1,0 +1,15 @@
+---
+source: dc/s2n-quic-dc/src/stream/send/worker.rs
+expression: "State::dot()"
+---
+digraph {
+  label = "s2n_quic_dc::stream::send::worker::waiting::State";
+  Acking;
+  Detached;
+  Finished;
+  ShuttingDown;
+  Acking -> Detached [label = "on_application_detach"];
+  Acking -> ShuttingDown [label = "on_shutdown"];
+  Detached -> ShuttingDown [label = "on_shutdown"];
+  ShuttingDown -> Finished [label = "on_finished"];
+}

@@ -1,0 +1,30 @@
+---
+source: dc/s2n-quic-dc/src/stream/recv/worker.rs
+expression: "State::dot()"
+---
+digraph {
+  label = "s2n_quic_dc::stream::recv::worker::waiting::State";
+  Cooldown;
+  DataRecvd;
+  Detached;
+  EpochTimeout;
+  Finished;
+  PeekPacket;
+  PeekPacket -> EpochTimeout [label = "on_peek_packet"];
+  Cooldown -> PeekPacket [label = "on_cooldown_elapsed"];
+  EpochTimeout -> PeekPacket [label = "on_epoch_unchanged"];
+  PeekPacket -> Cooldown [label = "on_application_progress"];
+  EpochTimeout -> Cooldown [label = "on_application_progress"];
+  Cooldown -> Cooldown [label = "on_application_progress"];
+  PeekPacket -> Detached [label = "on_application_detach"];
+  EpochTimeout -> Detached [label = "on_application_detach"];
+  Cooldown -> Detached [label = "on_application_detach"];
+  PeekPacket -> DataRecvd [label = "on_data_received"];
+  EpochTimeout -> DataRecvd [label = "on_data_received"];
+  Cooldown -> DataRecvd [label = "on_data_received"];
+  PeekPacket -> Finished [label = "on_finished"];
+  EpochTimeout -> Finished [label = "on_finished"];
+  Cooldown -> Finished [label = "on_finished"];
+  Detached -> Finished [label = "on_finished"];
+  DataRecvd -> Finished [label = "on_finished"];
+}

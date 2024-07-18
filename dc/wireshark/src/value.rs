@@ -3,7 +3,7 @@
 
 use crate::{buffer::Buffer, wireshark::Node};
 use s2n_quic_core::varint::VarInt;
-use s2n_quic_dc::packet;
+use s2n_quic_dc::packet::{self, WireVersion};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Parsed<T> {
@@ -61,6 +61,12 @@ impl Parsed<u64> {
 impl Parsed<VarInt> {
     pub fn record<T: Node>(&self, buffer: &Buffer, tree: &mut T, field: i32) -> T::AddedItem {
         tree.add_u64(buffer, field, self.map(|v| v.as_u64()))
+    }
+}
+
+impl Parsed<WireVersion> {
+    pub fn record<T: Node>(&self, buffer: &Buffer, tree: &mut T, field: i32) -> T::AddedItem {
+        tree.add_u32(buffer, field, self.map(|v| v.0))
     }
 }
 

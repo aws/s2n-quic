@@ -46,6 +46,8 @@ macro_rules! impl_packet {
 
                 crypto
                     .decrypt(
+                        // these don't rotate
+                        s2n_quic_core::packet::KeyPhase::Zero,
                         value.nonce(),
                         header,
                         &[],

@@ -1,7 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{credentials, crypto::encrypt, packet::datagram::Tag};
+use crate::{
+    credentials,
+    crypto::encrypt,
+    packet::{datagram::Tag, WireVersion},
+};
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{assume, buffer, varint::VarInt};
 
@@ -19,6 +23,9 @@ pub fn estimate_len(
     let mut encoder = s2n_codec::EncoderLenEstimator::new(usize::MAX);
 
     encoder.encode(&Tag::default());
+    // wire version
+    encoder.encode(&WireVersion::ZERO);
+
     // credentials
     {
         encoder.write_zerocopy::<credentials::Id, _>(|_| {});
@@ -69,12 +76,15 @@ where
     tag.set_is_connected(packet_number.is_some());
     tag.set_has_application_header(header_len != super::HeaderLen::ZERO);
     tag.set_ack_eliciting(next_expected_control_packet.is_some());
+    tag.set_key_phase(crypto.key_phase());
+    encoder.encode(&tag);
+
+    // wire version - we only support `0` currently
+    encoder.encode(&WireVersion::ZERO);
 
     let header_len_usize = *header_len as usize;
     let payload_len_usize = *payload_len as usize;
     let nonce = *packet_number.unwrap_or(super::PacketNumber::ZERO);
-
-    encoder.encode(&tag);
 
     // encode the credentials being used
     encoder.encode(crypto.credentials());

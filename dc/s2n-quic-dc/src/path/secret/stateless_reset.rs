@@ -10,18 +10,21 @@ pub struct Signer {
     prk: Prk,
 }
 
-impl Default for Signer {
-    fn default() -> Self {
-        let mut secret = [0u8; 32];
-        aws_lc_rs::rand::fill(&mut secret).unwrap();
-        Self::new(&secret)
-    }
-}
-
 impl Signer {
+    /// Creates a signer with the given secret
     pub fn new(secret: &[u8]) -> Self {
         let prk = Salt::new(HKDF_SHA384, secret).extract(b"rst");
         Self { prk }
+    }
+
+    /// Returns a random `Signer`
+    ///
+    /// Note that this signer cannot be used across restarts and will result in an endpoint
+    /// producing invalid `UnknownPathSecret` packets.
+    pub fn random() -> Self {
+        let mut secret = [0u8; 32];
+        aws_lc_rs::rand::fill(&mut secret).unwrap();
+        Self::new(&secret)
     }
 
     pub fn sign(&self, id: &Id) -> [u8; 16] {

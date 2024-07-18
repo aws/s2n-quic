@@ -6,7 +6,7 @@ use crate::{
         packet_number,
         send::{
             application::transmission, buffer, error::Error, flow, path, queue::Queue,
-            worker::Transmission,
+            state::Transmission,
         },
     },
     task::waker::worker::Waker as WorkerWaker,

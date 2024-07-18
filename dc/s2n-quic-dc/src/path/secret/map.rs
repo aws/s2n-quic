@@ -9,7 +9,7 @@ use super::{
 use crate::{
     credentials::{Credentials, Id},
     crypto,
-    packet::{secret_control as control, Packet},
+    packet::{secret_control as control, Packet, WireVersion},
 };
 use rand::Rng as _;
 use s2n_codec::EncoderBuffer;
@@ -412,6 +412,7 @@ impl Map {
         let ids_guard = self.state.ids.guard();
         let Some(state) = self.state.ids.get(&identity.id, &ids_guard) else {
             let packet = control::UnknownPathSecret {
+                wire_version: WireVersion::ZERO,
                 credential_id: identity.id,
             };
             control_out.resize(control::UnknownPathSecret::PACKET_SIZE, 0);
@@ -472,7 +473,7 @@ impl Map {
     pub fn for_test_with_peers(
         peers: Vec<(schedule::Ciphersuite, dc::Version, SocketAddr)>,
     ) -> (Self, Vec<Id>) {
-        let provider = Self::new(Default::default());
+        let provider = Self::new(stateless_reset::Signer::random());
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();
         let mut stateless_reset = [0; 16];
@@ -568,11 +569,13 @@ impl receiver::Error {
         let encoder = EncoderBuffer::new(&mut buffer[..]);
         let length = match self {
             receiver::Error::AlreadyExists => control::ReplayDetected {
+                wire_version: WireVersion::ZERO,
                 credential_id: credentials.id,
                 rejected_key_id: credentials.key_id,
             }
             .encode(encoder, &entry.secret.control_sealer()),
             receiver::Error::Unknown => control::StaleKey {
+                wire_version: WireVersion::ZERO,
                 credential_id: credentials.id,
                 min_key_id: entry.receiver.minimum_unseen_key_id(),
             }

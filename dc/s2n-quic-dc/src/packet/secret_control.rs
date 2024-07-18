@@ -4,6 +4,7 @@
 use crate::{
     credentials,
     crypto::{decrypt, encrypt},
+    packet::WireVersion,
 };
 use s2n_codec::{
     decoder_invariant, decoder_value, DecoderBuffer, DecoderBufferMut,
