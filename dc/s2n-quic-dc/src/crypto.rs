@@ -16,6 +16,8 @@ pub mod encrypt {
     pub trait Key {
         fn credentials(&self) -> &Credentials;
 
+        fn key_phase(&self) -> KeyPhase;
+
         fn tag_len(&self) -> usize;
 
         /// Encrypt a payload
@@ -75,6 +77,7 @@ pub mod decrypt {
         /// Decrypt a payload
         fn decrypt<N: IntoNonce>(
             &self,
+            key_phase: KeyPhase,
             nonce: N,
             header: &[u8],
             payload_in: &[u8],
@@ -85,6 +88,7 @@ pub mod decrypt {
         /// Decrypt a payload
         fn decrypt_in_place<N: IntoNonce>(
             &self,
+            key_phase: KeyPhase,
             nonce: N,
             header: &[u8],
             payload_and_tag: &mut [u8],
@@ -92,6 +96,7 @@ pub mod decrypt {
 
         fn retransmission_tag(
             &self,
+            key_phase: KeyPhase,
             original_packet_number: u64,
             retransmission_packet_number: u64,
             tag_out: &mut [u8],

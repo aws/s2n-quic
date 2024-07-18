@@ -7,6 +7,7 @@ use crate::{
     crypto::{awslc, decrypt, encrypt, IntoNonce, UninitSlice},
 };
 use core::mem::MaybeUninit;
+use s2n_quic_core::packet::KeyPhase;
 use zeroize::Zeroize;
 
 #[derive(Debug)]
@@ -18,6 +19,11 @@ impl encrypt::Key for Sealer {
     #[inline]
     fn credentials(&self) -> &Credentials {
         self.sealer.credentials()
+    }
+
+    #[inline]
+    fn key_phase(&self) -> KeyPhase {
+        KeyPhase::Zero
     }
 
     #[inline]
@@ -109,6 +115,7 @@ impl decrypt::Key for Opener {
     #[inline]
     fn decrypt<N: IntoNonce>(
         &self,
+        key_phase: KeyPhase,
         nonce: N,
         header: &[u8],
         payload_in: &[u8],
@@ -116,7 +123,7 @@ impl decrypt::Key for Opener {
         payload_out: &mut UninitSlice,
     ) -> decrypt::Result {
         self.opener
-            .decrypt(nonce, header, payload_in, tag, payload_out)?;
+            .decrypt(key_phase, nonce, header, payload_in, tag, payload_out)?;
 
         self.on_decrypt_success(payload_out)?;
 
@@ -126,12 +133,13 @@ impl decrypt::Key for Opener {
     #[inline]
     fn decrypt_in_place<N: IntoNonce>(
         &self,
+        key_phase: KeyPhase,
         nonce: N,
         header: &[u8],
         payload_and_tag: &mut [u8],
     ) -> decrypt::Result {
         self.opener
-            .decrypt_in_place(nonce, header, payload_and_tag)?;
+            .decrypt_in_place(key_phase, nonce, header, payload_and_tag)?;
 
         self.on_decrypt_success(UninitSlice::new(payload_and_tag))?;
 
@@ -141,11 +149,13 @@ impl decrypt::Key for Opener {
     #[inline]
     fn retransmission_tag(
         &self,
+        key_phase: KeyPhase,
         original_packet_number: u64,
         retransmission_packet_number: u64,
         tag_out: &mut [u8],
     ) {
         self.opener.retransmission_tag(
+            key_phase,
             original_packet_number,
             retransmission_packet_number,
             tag_out,

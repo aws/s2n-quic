@@ -5,6 +5,7 @@ use core::{fmt, pin::Pin, task::Poll, time::Duration};
 use s2n_quic_core::{ensure, time};
 use tracing::trace;
 
+#[cfg(feature = "tokio")]
 pub mod tokio;
 pub use time::clock::Cached;
 

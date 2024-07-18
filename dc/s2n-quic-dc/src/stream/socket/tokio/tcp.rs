@@ -22,7 +22,7 @@ impl Socket for TcpStream {
 
     #[inline]
     fn protocol(&self) -> Protocol {
-        Protocol::Udp
+        Protocol::Tcp
     }
 
     #[inline]

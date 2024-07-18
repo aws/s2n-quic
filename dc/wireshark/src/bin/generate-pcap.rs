@@ -237,6 +237,8 @@ impl Packet {
     fn add_dcquic(&mut self, packet_idx: u64) {
         // dcQUIC datagram.
         self.buffer.write_all(&[0x46]).unwrap();
+        // wire version = 0
+        self.buffer.write_all(&[0]).unwrap();
         // Path secret ID
         self.buffer.write_all(&[0x43; 16]).unwrap();
         // Key ID

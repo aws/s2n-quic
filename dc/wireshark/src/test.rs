@@ -10,7 +10,7 @@ use s2n_quic_core::{
 };
 use s2n_quic_dc::{
     credentials::{self, Credentials},
-    packet::{self, stream},
+    packet::{self, stream, WireVersion},
 };
 use std::{collections::HashMap, num::NonZeroU16, ptr, time::Duration};
 
@@ -72,6 +72,7 @@ fn check_stream_parse() {
             let tag: Parsed<u8> = tag.map(|v| v.into());
 
             assert_eq!(tracker.remove(fields.tag), Field::Integer(tag.value as u64));
+            assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
             assert_eq!(
                 tracker.remove(fields.path_secret_id),
                 Field::Slice(packet.credentials.id.to_vec())
@@ -126,6 +127,7 @@ fn check_stream_parse() {
                 fields.has_control_data,
                 fields.has_final_offset,
                 fields.has_application_header,
+                fields.key_phase,
             ] {
                 assert_eq!(tracker.remove(field), Field::Integer(tag.value as u64));
             }
@@ -239,6 +241,7 @@ fn check_datagram_parse() {
             let tag: Parsed<u8> = tag.map(|v| v.into());
 
             assert_eq!(tracker.remove(fields.tag), Field::Integer(tag.value as u64));
+            assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
             assert_eq!(
                 tracker.remove(fields.path_secret_id),
                 Field::Slice(packet.credentials.id.to_vec())
@@ -267,6 +270,7 @@ fn check_datagram_parse() {
                 fields.is_ack_eliciting,
                 fields.has_application_header,
                 fields.is_connected,
+                fields.key_phase,
             ] {
                 assert_eq!(tracker.remove(field), Field::Integer(tag.value as u64));
             }
@@ -362,6 +366,7 @@ fn check_control_parse() {
             let tag: Parsed<u8> = tag.map(|v| v.into());
 
             assert_eq!(tracker.remove(fields.tag), Field::Integer(tag.value as u64));
+            assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
             assert_eq!(
                 tracker.remove(fields.path_secret_id),
                 Field::Slice(packet.credentials.id.to_vec())
@@ -437,11 +442,15 @@ fn check_secret_control_parse() {
             let mut buffer = vec![0; s2n_quic_dc::packet::secret_control::MAX_PACKET_SIZE];
             let length = match packet {
                 SecretControlPacket::UnknownPathSecret { id, auth_tag } => {
-                    s2n_quic_dc::packet::secret_control::UnknownPathSecret { credential_id: *id }
-                        .encode(EncoderBuffer::new(&mut buffer), auth_tag)
+                    s2n_quic_dc::packet::secret_control::UnknownPathSecret {
+                        wire_version: WireVersion::ZERO,
+                        credential_id: *id,
+                    }
+                    .encode(EncoderBuffer::new(&mut buffer), auth_tag)
                 }
                 SecretControlPacket::StaleKey { id, key_id } => {
                     s2n_quic_dc::packet::secret_control::StaleKey {
+                        wire_version: WireVersion::ZERO,
                         credential_id: *id,
                         min_key_id: *key_id,
                     }
@@ -449,6 +458,7 @@ fn check_secret_control_parse() {
                 }
                 SecretControlPacket::ReplayDetected { id, key_id } => {
                     s2n_quic_dc::packet::secret_control::ReplayDetected {
+                        wire_version: WireVersion::ZERO,
                         credential_id: *id,
                         rejected_key_id: *key_id,
                     }
@@ -468,6 +478,7 @@ fn check_secret_control_parse() {
             match packet {
                 SecretControlPacket::UnknownPathSecret { id, auth_tag } => {
                     assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0000));
+                    assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
                     assert_eq!(
                         tracker.remove(fields.path_secret_id),
                         Field::Slice(id.to_vec())
@@ -479,6 +490,7 @@ fn check_secret_control_parse() {
                 }
                 SecretControlPacket::StaleKey { id, key_id } => {
                     assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0001));
+                    assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
                     assert_eq!(
                         tracker.remove(fields.path_secret_id),
                         Field::Slice(id.to_vec())
@@ -492,6 +504,7 @@ fn check_secret_control_parse() {
                 }
                 SecretControlPacket::ReplayDetected { id, key_id } => {
                     assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0010));
+                    assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
                     assert_eq!(
                         tracker.remove(fields.path_secret_id),
                         Field::Slice(id.to_vec())

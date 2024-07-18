@@ -4,7 +4,10 @@
 use crate::{
     credentials::Credentials,
     crypto,
-    packet::stream::{self, RelativeRetransmissionOffset, Tag},
+    packet::{
+        stream::{self, RelativeRetransmissionOffset, Tag},
+        WireVersion,
+    },
 };
 use core::{fmt, mem::size_of};
 use s2n_codec::{
@@ -49,6 +52,7 @@ where
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Owned {
     pub tag: Tag,
+    pub wire_version: WireVersion,
     pub credentials: Credentials,
     pub source_control_port: u16,
     pub source_stream_port: Option<u16>,
@@ -72,6 +76,7 @@ impl<'a> From<Packet<'a>> for Owned {
 
         Self {
             tag: packet.tag,
+            wire_version: packet.wire_version,
             credentials: packet.credentials,
             source_control_port: packet.source_control_port,
             source_stream_port: packet.source_stream_port,
@@ -92,6 +97,7 @@ impl<'a> From<Packet<'a>> for Owned {
 
 pub struct Packet<'a> {
     tag: Tag,
+    wire_version: WireVersion,
     credentials: Credentials,
     source_control_port: u16,
     source_stream_port: Option<u16>,
@@ -113,6 +119,7 @@ impl<'a> fmt::Debug for Packet<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("stream::Packet")
             .field("tag", &self.tag)
+            .field("wire_version", &self.wire_version)
             .field("credentials", &self.credentials)
             .field("source_control_port", &self.source_control_port)
             .field("source_stream_port", &self.source_stream_port)
@@ -131,6 +138,11 @@ impl<'a> Packet<'a> {
     #[inline]
     pub fn tag(&self) -> Tag {
         self.tag
+    }
+
+    #[inline]
+    pub fn wire_version(&self) -> WireVersion {
+        self.wire_version
     }
 
     #[inline]
@@ -228,6 +240,7 @@ impl<'a> Packet<'a> {
     where
         D: crypto::decrypt::Key,
     {
+        let key_phase = self.tag.key_phase();
         let space = self.remove_retransmit(d);
 
         let nonce = space.packet_number_into_nonce(self.original_packet_number);
@@ -236,7 +249,7 @@ impl<'a> Packet<'a> {
         let payload = &self.payload;
         let auth_tag = &self.auth_tag;
 
-        d.decrypt(nonce, header, payload, auth_tag, payload_out)?;
+        d.decrypt(key_phase, nonce, header, payload, auth_tag, payload_out)?;
 
         Ok(())
     }
@@ -246,6 +259,7 @@ impl<'a> Packet<'a> {
     where
         D: crypto::decrypt::Key,
     {
+        let key_phase = self.tag.key_phase();
         let space = self.remove_retransmit(d);
 
         let nonce = space.packet_number_into_nonce(self.original_packet_number);
@@ -261,7 +275,7 @@ impl<'a> Packet<'a> {
             core::slice::from_raw_parts_mut(payload_ptr, payload_len + tag_len)
         };
 
-        d.decrypt_in_place(nonce, header, payload_and_tag)?;
+        d.decrypt_in_place(key_phase, nonce, header, payload_and_tag)?;
 
         Ok(())
     }
@@ -271,12 +285,14 @@ impl<'a> Packet<'a> {
     where
         D: crypto::decrypt::Key,
     {
+        let key_phase = self.tag.key_phase();
         let space = self.tag.packet_space();
         let original_packet_number = self.original_packet_number;
         let retransmission_packet_number = self.packet_number;
 
         if original_packet_number != retransmission_packet_number {
             d.retransmission_tag(
+                key_phase,
                 original_packet_number.as_u64(),
                 stream::PacketSpace::Recovery
                     .packet_number_into_nonce(retransmission_packet_number),
@@ -388,6 +404,8 @@ impl<'a> Packet<'a> {
             tag
         };
 
+        let (_wire_version, buffer) = buffer.decode::<WireVersion>()?;
+
         let (credentials, buffer) = buffer.decode::<Credentials>()?;
 
         debug_assert_eq!(&credentials, key.credentials());
@@ -471,6 +489,7 @@ impl<'a> Packet<'a> {
     ) -> R<Packet> {
         let (
             tag,
+            wire_version,
             credentials,
             source_control_port,
             source_stream_port,
@@ -500,6 +519,8 @@ impl<'a> Packet<'a> {
 
             let (tag, buffer) = buffer.decode()?;
             validator.validate_tag(tag)?;
+
+            let (wire_version, buffer) = buffer.decode::<WireVersion>()?;
 
             let (credentials, buffer) = buffer.decode()?;
 
@@ -564,6 +585,7 @@ impl<'a> Packet<'a> {
 
             (
                 tag,
+                wire_version,
                 credentials,
                 source_control_port,
                 source_stream_port,
@@ -615,6 +637,7 @@ impl<'a> Packet<'a> {
 
         let packet = Packet {
             tag,
+            wire_version,
             credentials,
             source_control_port,
             source_stream_port,

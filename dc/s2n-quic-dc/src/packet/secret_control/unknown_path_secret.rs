@@ -23,7 +23,10 @@ impl<'a> Packet<'a> {
     ) -> Packet<'_> {
         Packet {
             header: &[],
-            value: UnknownPathSecret { credential_id: id },
+            value: UnknownPathSecret {
+                wire_version: WireVersion::ZERO,
+                credential_id: id,
+            },
             crypto_tag: &stateless_reset[..],
         }
     }
@@ -59,6 +62,7 @@ impl<'a> Packet<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 pub struct UnknownPathSecret {
+    pub wire_version: WireVersion,
     pub credential_id: credentials::Id,
 }
 
@@ -74,6 +78,7 @@ impl UnknownPathSecret {
     ) -> usize {
         let before = encoder.len();
         encoder.encode(&Tag::default());
+        encoder.encode(&self.wire_version);
         encoder.encode(&&self.credential_id[..]);
         encoder.encode(&&stateless_reset_tag[..]);
         let after = encoder.len();
@@ -91,8 +96,12 @@ impl<'a> DecoderValue<'a> for UnknownPathSecret {
     fn decode(buffer: DecoderBuffer<'a>) -> R<'a, Self> {
         let (tag, buffer) = buffer.decode::<Tag>()?;
         decoder_invariant!(tag == Tag::default(), "invalid tag");
+        let (wire_version, buffer) = buffer.decode()?;
         let (credential_id, buffer) = buffer.decode()?;
-        let value = Self { credential_id };
+        let value = Self {
+            wire_version,
+            credential_id,
+        };
         Ok((value, buffer))
     }
 }

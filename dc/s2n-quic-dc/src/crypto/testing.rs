@@ -3,7 +3,7 @@
 
 use super::IntoNonce;
 use crate::credentials::Credentials;
-use s2n_quic_core::assume;
+use s2n_quic_core::{assume, packet::KeyPhase};
 
 #[derive(Clone, Debug)]
 pub struct Key {
@@ -25,6 +25,11 @@ impl super::encrypt::Key for Key {
     #[inline]
     fn credentials(&self) -> &Credentials {
         &self.credentials
+    }
+
+    #[inline]
+    fn key_phase(&self) -> KeyPhase {
+        KeyPhase::Zero
     }
 
     #[inline]
@@ -77,6 +82,7 @@ impl super::decrypt::Key for Key {
     #[inline]
     fn decrypt<N: IntoNonce>(
         &self,
+        _key_phase: KeyPhase,
         _nonce: N,
         _header: &[u8],
         payload_in: &[u8],
@@ -90,6 +96,7 @@ impl super::decrypt::Key for Key {
     #[inline]
     fn decrypt_in_place<N: IntoNonce>(
         &self,
+        _key_phase: KeyPhase,
         _nonce: N,
         _header: &[u8],
         _payload_and_tag: &mut [u8],
@@ -100,6 +107,7 @@ impl super::decrypt::Key for Key {
     #[inline]
     fn retransmission_tag(
         &self,
+        _key_phase: KeyPhase,
         _original_packet_number: u64,
         _retransmission_packet_number: u64,
         _tag_out: &mut [u8],

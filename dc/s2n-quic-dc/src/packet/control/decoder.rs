@@ -5,7 +5,7 @@ use crate::{
     credentials::Credentials,
     packet::{
         control::{self, Tag},
-        stream,
+        stream, WireVersion,
     },
 };
 use s2n_codec::{
@@ -50,6 +50,7 @@ where
 #[derive(Debug)]
 pub struct Packet<'a> {
     tag: Tag,
+    wire_version: WireVersion,
     credentials: Credentials,
     source_control_port: u16,
     stream_id: Option<stream::Id>,
@@ -64,6 +65,11 @@ impl<'a> Packet<'a> {
     #[inline]
     pub fn tag(&self) -> Tag {
         self.tag
+    }
+
+    #[inline]
+    pub fn wire_version(&self) -> WireVersion {
+        self.wire_version
     }
 
     #[inline]
@@ -124,6 +130,7 @@ impl<'a> Packet<'a> {
     ) -> R<Packet> {
         let (
             tag,
+            wire_version,
             credentials,
             source_control_port,
             stream_id,
@@ -146,6 +153,8 @@ impl<'a> Packet<'a> {
 
             let (tag, buffer) = buffer.decode()?;
             validator.validate_tag(tag)?;
+
+            let (wire_version, buffer) = buffer.decode()?;
 
             let (credentials, buffer) = buffer.decode()?;
 
@@ -181,6 +190,7 @@ impl<'a> Packet<'a> {
 
             (
                 tag,
+                wire_version,
                 credentials,
                 source_control_port,
                 stream_id,
@@ -222,6 +232,7 @@ impl<'a> Packet<'a> {
 
         let packet = Packet {
             tag,
+            wire_version,
             credentials,
             source_control_port,
             stream_id,

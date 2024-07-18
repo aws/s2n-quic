@@ -4,8 +4,9 @@
 use super::TransportFeatures;
 
 pub mod application;
-mod fd;
+pub mod fd;
 mod handle;
+#[cfg(feature = "tokio")]
 mod tokio;
 mod tracing;
 

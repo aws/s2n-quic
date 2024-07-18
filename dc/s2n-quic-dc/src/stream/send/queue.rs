@@ -6,7 +6,8 @@ use crate::{
     stream::{
         send::{
             application::{self, transmission},
-            buffer, worker,
+            buffer,
+            state::Transmission,
         },
         socket::Socket,
     },
@@ -33,13 +34,13 @@ impl Segment {
 }
 
 pub struct Message<'a> {
-    batch: &'a mut Option<Vec<worker::Transmission>>,
+    batch: &'a mut Option<Vec<Transmission>>,
     queue: &'a mut Queue,
     max_segments: usize,
     segment_alloc: &'a buffer::Allocator,
 }
 
-impl<'a> application::Message for Message<'a> {
+impl<'a> application::state::Message for Message<'a> {
     #[inline]
     fn max_segments(&self) -> usize {
         self.max_segments
@@ -125,7 +126,7 @@ impl Queue {
     pub fn push_buffer<B, F, E>(
         &mut self,
         buf: &mut B,
-        batch: &mut Option<Vec<worker::Transmission>>,
+        batch: &mut Option<Vec<Transmission>>,
         max_segments: usize,
         segment_alloc: &buffer::Allocator,
         push: F,

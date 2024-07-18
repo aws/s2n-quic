@@ -4,7 +4,7 @@
 use super::IntoNonce;
 use crate::credentials::Credentials;
 use aws_lc_rs::aead::{Aad, Algorithm, LessSafeKey, Nonce, UnboundKey, NONCE_LEN};
-use s2n_quic_core::assume;
+use s2n_quic_core::{assume, packet::KeyPhase};
 
 pub use aws_lc_rs::aead::{AES_128_GCM, AES_256_GCM};
 
@@ -39,6 +39,11 @@ impl super::encrypt::Key for EncryptKey {
     #[inline]
     fn credentials(&self) -> &Credentials {
         &self.credentials
+    }
+
+    #[inline]
+    fn key_phase(&self) -> KeyPhase {
+        KeyPhase::Zero
     }
 
     #[inline(always)]
@@ -137,6 +142,7 @@ impl super::decrypt::Key for DecryptKey {
     #[inline]
     fn decrypt<N: IntoNonce>(
         &self,
+        _key_phase: KeyPhase,
         nonce: N,
         header: &[u8],
         payload_in: &[u8],
@@ -163,6 +169,7 @@ impl super::decrypt::Key for DecryptKey {
     #[inline]
     fn decrypt_in_place<N: IntoNonce>(
         &self,
+        _key_phase: KeyPhase,
         nonce: N,
         header: &[u8],
         payload_and_tag: &mut [u8],
@@ -180,6 +187,7 @@ impl super::decrypt::Key for DecryptKey {
     #[inline]
     fn retransmission_tag(
         &self,
+        _key_phase: KeyPhase,
         original_packet_number: u64,
         retransmission_packet_number: u64,
         tag_out: &mut [u8],

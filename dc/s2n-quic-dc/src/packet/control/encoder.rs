@@ -5,7 +5,7 @@ use crate::{
     crypto::encrypt,
     packet::{
         control::{Tag, NONCE_MASK},
-        stream,
+        stream, WireVersion,
     },
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
@@ -31,18 +31,15 @@ where
     debug_assert_ne!(source_control_port, 0);
 
     let mut tag = Tag::default();
+    tag.set_key_phase(crypto.key_phase());
+    tag.set_is_stream(stream_id.is_some());
+    tag.set_has_application_header(*header_len > 0);
+    encoder.encode(&tag);
 
-    if stream_id.is_some() {
-        tag.set_is_stream(true);
-    }
-
-    if *header_len > 0 {
-        tag.set_has_application_header(true);
-    }
+    // wire version - we only support `0` currently
+    encoder.encode(&WireVersion::ZERO);
 
     let nonce = *packet_number | NONCE_MASK;
-
-    encoder.encode(&tag);
 
     // encode the credentials being used
     encoder.encode(crypto.credentials());

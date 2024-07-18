@@ -18,4 +18,7 @@ pub mod socket;
 pub mod stream;
 pub mod task;
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 pub use s2n_quic_core::dc::{Version, SUPPORTED_VERSIONS};

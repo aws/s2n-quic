@@ -10,6 +10,7 @@ pub mod path;
 pub mod probes;
 pub mod queue;
 pub mod shared;
+pub mod state;
 pub mod transmission;
 pub mod worker;
 
