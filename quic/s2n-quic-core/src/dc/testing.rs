@@ -76,3 +76,5 @@ pub const TEST_APPLICATION_PARAMS: ApplicationParams = ApplicationParams {
     max_idle_timeout: Some(Duration::from_secs(30)),
     max_ack_delay: Duration::from_millis(25),
 };
+
+pub const TEST_REHANDSHAKE_PERIOD: Duration = Duration::from_secs(3600 * 12);
