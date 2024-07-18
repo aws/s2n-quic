@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::{
-    client, client::ClientProviders, provider::dc::ClientConfirm, server, server::ServerProviders,
-};
+use crate::{client, client::ClientProviders, provider::dc, server, server::ServerProviders};
 use s2n_quic_core::{
     dc::testing::MockDcEndpoint,
     event::{api::DcState, Timestamp},
@@ -117,7 +115,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     test(model, |handle| {
         let mut server = server
             .with_io(handle.builder().build()?)?
-            .with_event((tracing_events(), server_subscriber))?
+            .with_event((dc::ConfirmComplete, (tracing_events(), server_subscriber)))?
             .with_random(Random::with_seed(456))?
             .with_dc(MockDcEndpoint::new(&server_tokens))?
             .start()?;
@@ -128,14 +126,15 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
             if expected_error.is_some() {
                 assert!(conn.is_none());
             } else {
-                // Allow the client to close the connection first
-                let _ = conn.unwrap().accept().await;
+                assert!(dc::ConfirmComplete::wait_ready(&mut conn.unwrap())
+                    .await
+                    .is_ok());
             }
         });
 
         let client = client
             .with_io(handle.builder().build().unwrap())?
-            .with_event((ClientConfirm, (tracing_events(), client_subscriber)))?
+            .with_event((dc::ConfirmComplete, (tracing_events(), client_subscriber)))?
             .with_random(Random::with_seed(456))?
             .with_dc(MockDcEndpoint::new(&client_tokens))?
             .start()?;
@@ -145,7 +144,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         primary::spawn(async move {
             let connect = Connect::new(addr).with_server_name("localhost");
             let mut conn = client.connect(connect).await.unwrap();
-            let result = ClientConfirm::wait_ready(&mut conn).await;
+            let result = dc::ConfirmComplete::wait_ready(&mut conn).await;
 
             if let Some(error) = expected_error {
                 assert_eq!(error, result.err().unwrap().kind());
