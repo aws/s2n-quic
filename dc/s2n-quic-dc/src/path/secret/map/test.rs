@@ -25,6 +25,7 @@ fn fake_entry(peer: u16) -> Arc<Entry> {
         sender::State::new([0; 16]),
         receiver::State::without_shared(),
         dc::testing::TEST_APPLICATION_PARAMS,
+        dc::testing::TEST_REHANDSHAKE_PERIOD,
     ))
 }
 
@@ -138,6 +139,7 @@ impl Model {
                     sender::State::new(stateless_reset),
                     state.state.receiver_shared.clone().new_receiver(),
                     dc::testing::TEST_APPLICATION_PARAMS,
+                    dc::testing::TEST_REHANDSHAKE_PERIOD,
                 )));
 
                 self.invariants.insert(Invariant::ContainsIp(ip));
