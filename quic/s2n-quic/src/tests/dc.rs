@@ -140,6 +140,8 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
             .with_dc(MockDcEndpoint::new(&client_tokens))?
             .start()?;
 
+        let client_events = client_events.clone();
+
         primary::spawn(async move {
             let connect = Connect::new(addr).with_server_name("localhost");
             let mut conn = client.connect(connect).await.unwrap();
@@ -149,6 +151,8 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                 assert_eq!(error, result.err().unwrap().kind());
             } else {
                 assert!(result.is_ok());
+                let client_events = client_events.events().lock().unwrap().clone();
+                assert_dc_complete(&client_events);
                 // wait briefly so the ack for the `DC_STATELESS_RESET_TOKENS` frame from the server is sent
                 // before the client closes the connection. This is only necessary to confirm the `dc::State`
                 // on the server moves to `DcState::Complete`
@@ -167,20 +171,12 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     let server_events = server_events.events().lock().unwrap().clone();
     let client_events = client_events.events().lock().unwrap().clone();
 
+    assert_dc_complete(&server_events);
+    assert_dc_complete(&client_events);
+
     // 3 state transitions (VersionNegotiated -> PathSecretsReady -> Complete)
     assert_eq!(3, server_events.len());
     assert_eq!(3, client_events.len());
-
-    for events in [server_events.clone(), client_events.clone()] {
-        if let DcState::VersionNegotiated { version, .. } = events[0].state {
-            assert_eq!(version, s2n_quic_core::dc::SUPPORTED_VERSIONS[0]);
-        } else {
-            panic!("VersionNegotiated should be the first dc state");
-        }
-
-        assert!(matches!(events[1].state, DcState::PathSecretsReady { .. }));
-        assert!(matches!(events[2].state, DcState::Complete { .. }));
-    }
 
     // Server path secrets are ready in 1.5 RTTs measured from the start of the test, since it takes
     // .5 RTT for the Initial from the client to reach the server
@@ -198,6 +194,20 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         server_events[2].timestamp.duration_since_start()
     );
     assert_eq!(rtt * 2, client_events[2].timestamp.duration_since_start());
+}
+
+fn assert_dc_complete(events: &Vec<DcStateChangedEvent>) {
+    // 3 state transitions (VersionNegotiated -> PathSecretsReady -> Complete)
+    assert_eq!(3, events.len());
+
+    if let DcState::VersionNegotiated { version, .. } = events[0].state {
+        assert_eq!(version, s2n_quic_core::dc::SUPPORTED_VERSIONS[0]);
+    } else {
+        panic!("VersionNegotiated should be the first dc state");
+    }
+
+    assert!(matches!(events[1].state, DcState::PathSecretsReady { .. }));
+    assert!(matches!(events[2].state, DcState::Complete { .. }));
 }
 
 #[derive(Clone)]

@@ -70,7 +70,9 @@ impl ClientConfirmContext {
 impl Drop for ClientConfirmContext {
     // make sure the application is notified that we're closing the connection
     fn drop(&mut self) {
-        self.state = State::Ready;
+        if matches!(self.state, State::Waiting) {
+            self.state = State::Failed(connection::Error::unspecified());
+        }
         self.wake();
     }
 }
