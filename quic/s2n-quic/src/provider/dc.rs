@@ -3,9 +3,13 @@
 
 //! Provides dc support
 
+mod confirm;
+
 use s2n_quic_core::dc::Disabled;
 
 // these imports are only accessible if the unstable feature is enabled
+#[allow(unused_imports)]
+pub use confirm::ConfirmComplete;
 #[allow(unused_imports)]
 pub use s2n_quic_core::dc::{ApplicationParams, ConnectionInfo, Endpoint, Path};
 

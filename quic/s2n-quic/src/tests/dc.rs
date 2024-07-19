@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::{client, client::ClientProviders, server, server::ServerProviders};
+use crate::{client, client::ClientProviders, provider::dc, server, server::ServerProviders};
 use s2n_quic_core::{
     dc::testing::MockDcEndpoint,
     event::{api::DcState, Timestamp},
     stateless_reset::token::testing::{TEST_TOKEN_1, TEST_TOKEN_2},
 };
+use std::io::ErrorKind;
 
 // Client                                                                    Server
 //
@@ -42,7 +43,7 @@ fn dc_handshake_self_test() {
     let server = Server::builder().with_tls(SERVER_CERTS).unwrap();
     let client = Client::builder().with_tls(certificates::CERT_PEM).unwrap();
 
-    self_test(server, client);
+    self_test(server, client, None);
 }
 
 // Client                                                                    Server
@@ -81,17 +82,28 @@ fn dc_mtls_handshake_self_test() {
     let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT).unwrap();
     let client = Client::builder().with_tls(client_tls).unwrap();
 
-    self_test(server, client);
+    self_test(server, client, None);
+}
+
+#[test]
+fn dc_mtls_handshake_auth_failure_self_test() {
+    let server_tls = build_server_mtls_provider(certificates::UNTRUSTED_CERT_PEM).unwrap();
+    let server = Server::builder().with_tls(server_tls).unwrap();
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT).unwrap();
+    let client = Client::builder().with_tls(client_tls).unwrap();
+
+    self_test(server, client, Some(ErrorKind::ConnectionReset));
 }
 
 fn self_test<S: ServerProviders, C: ClientProviders>(
     server: server::Builder<S>,
     client: client::Builder<C>,
+    expected_error: Option<ErrorKind>,
 ) {
     let model = Model::default();
     let rtt = Duration::from_millis(100);
     model.set_delay(rtt / 2);
-    const LEN: usize = 1000;
 
     let server_subscriber = DcStateChanged::new();
     let server_events = server_subscriber.clone();
@@ -103,59 +115,67 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     test(model, |handle| {
         let mut server = server
             .with_io(handle.builder().build()?)?
-            .with_event((tracing_events(), server_subscriber))?
+            .with_event((dc::ConfirmComplete, (tracing_events(), server_subscriber)))?
             .with_random(Random::with_seed(456))?
             .with_dc(MockDcEndpoint::new(&server_tokens))?
             .start()?;
 
         let addr = server.local_addr()?;
         spawn(async move {
-            let mut conn = server.accept().await.unwrap();
-            let mut stream = conn.open_bidirectional_stream().await.unwrap();
-            stream.send(vec![42; LEN].into()).await.unwrap();
-            stream.flush().await.unwrap();
+            let conn = server.accept().await;
+            if expected_error.is_some() {
+                assert!(conn.is_none());
+            } else {
+                assert!(dc::ConfirmComplete::wait_ready(&mut conn.unwrap())
+                    .await
+                    .is_ok());
+            }
         });
 
         let client = client
             .with_io(handle.builder().build().unwrap())?
-            .with_event((tracing_events(), client_subscriber))?
+            .with_event((dc::ConfirmComplete, (tracing_events(), client_subscriber)))?
             .with_random(Random::with_seed(456))?
             .with_dc(MockDcEndpoint::new(&client_tokens))?
             .start()?;
 
+        let client_events = client_events.clone();
+
         primary::spawn(async move {
             let connect = Connect::new(addr).with_server_name("localhost");
             let mut conn = client.connect(connect).await.unwrap();
-            let mut stream = conn.accept_bidirectional_stream().await.unwrap().unwrap();
+            let result = dc::ConfirmComplete::wait_ready(&mut conn).await;
 
-            let mut recv_len = 0;
-            while let Some(chunk) = stream.receive().await.unwrap() {
-                recv_len += chunk.len();
+            if let Some(error) = expected_error {
+                assert_eq!(error, result.err().unwrap().kind());
+            } else {
+                assert!(result.is_ok());
+                let client_events = client_events.events().lock().unwrap().clone();
+                assert_dc_complete(&client_events);
+                // wait briefly so the ack for the `DC_STATELESS_RESET_TOKENS` frame from the server is sent
+                // before the client closes the connection. This is only necessary to confirm the `dc::State`
+                // on the server moves to `DcState::Complete`
+                delay(Duration::from_millis(100)).await;
             }
-            assert_eq!(LEN, recv_len);
         });
 
         Ok(addr)
     })
     .unwrap();
 
+    if expected_error.is_some() {
+        return;
+    }
+
     let server_events = server_events.events().lock().unwrap().clone();
     let client_events = client_events.events().lock().unwrap().clone();
+
+    assert_dc_complete(&server_events);
+    assert_dc_complete(&client_events);
 
     // 3 state transitions (VersionNegotiated -> PathSecretsReady -> Complete)
     assert_eq!(3, server_events.len());
     assert_eq!(3, client_events.len());
-
-    for events in [server_events.clone(), client_events.clone()] {
-        if let DcState::VersionNegotiated { version, .. } = events[0].state {
-            assert_eq!(version, s2n_quic_core::dc::SUPPORTED_VERSIONS[0]);
-        } else {
-            panic!("VersionNegotiated should be the first dc state");
-        }
-
-        assert!(matches!(events[1].state, DcState::PathSecretsReady { .. }));
-        assert!(matches!(events[2].state, DcState::Complete { .. }));
-    }
 
     // Server path secrets are ready in 1.5 RTTs measured from the start of the test, since it takes
     // .5 RTT for the Initial from the client to reach the server
@@ -173,6 +193,20 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         server_events[2].timestamp.duration_since_start()
     );
     assert_eq!(rtt * 2, client_events[2].timestamp.duration_since_start());
+}
+
+fn assert_dc_complete(events: &[DcStateChangedEvent]) {
+    // 3 state transitions (VersionNegotiated -> PathSecretsReady -> Complete)
+    assert_eq!(3, events.len());
+
+    if let DcState::VersionNegotiated { version, .. } = events[0].state {
+        assert_eq!(version, s2n_quic_core::dc::SUPPORTED_VERSIONS[0]);
+    } else {
+        panic!("VersionNegotiated should be the first dc state");
+    }
+
+    assert!(matches!(events[1].state, DcState::PathSecretsReady { .. }));
+    assert!(matches!(events[2].state, DcState::Complete { .. }));
 }
 
 #[derive(Clone)]
