@@ -154,9 +154,8 @@ impl<'a> Packet<'a> {
             let (tag, buffer) = buffer.decode()?;
             validator.validate_tag(tag)?;
 
-            let (wire_version, buffer) = buffer.decode()?;
-
             let (credentials, buffer) = buffer.decode()?;
+            let (wire_version, buffer) = buffer.decode()?;
 
             let (source_control_port, buffer) = buffer.decode()?;
 

@@ -23,14 +23,14 @@ pub fn estimate_len(
     let mut encoder = s2n_codec::EncoderLenEstimator::new(usize::MAX);
 
     encoder.encode(&Tag::default());
-    // wire version
-    encoder.encode(&WireVersion::ZERO);
 
     // credentials
     {
         encoder.write_zerocopy::<credentials::Id, _>(|_| {});
         encoder.write_repeated(8, 0);
     }
+    // wire version
+    encoder.encode(&WireVersion::ZERO);
     encoder.encode(&0u16); // source control port
     encoder.write_repeated(8, 0); // packet number
     encoder.write_repeated(8, 0); // payload len
@@ -79,15 +79,16 @@ where
     tag.set_key_phase(crypto.key_phase());
     encoder.encode(&tag);
 
-    // wire version - we only support `0` currently
-    encoder.encode(&WireVersion::ZERO);
-
     let header_len_usize = *header_len as usize;
     let payload_len_usize = *payload_len as usize;
     let nonce = *packet_number.unwrap_or(super::PacketNumber::ZERO);
 
     // encode the credentials being used
     encoder.encode(crypto.credentials());
+
+    // wire version - we only support `0` currently
+    encoder.encode(&WireVersion::ZERO);
+
     encoder.encode(&source_control_port);
 
     if tag.is_connected() || tag.ack_eliciting() {

@@ -79,14 +79,14 @@ pub fn stream<T: Node>(
 
     let tag = tag.value;
 
-    let wire_version = buffer.consume::<WireVersion>()?;
-    wire_version.record(buffer, tree, fields.wire_version);
-
     let path_secret_id = buffer.consume_bytes(16)?;
     path_secret_id.record(buffer, tree, fields.path_secret_id);
 
     let key_id = buffer.consume::<VarInt>()?;
     key_id.record(buffer, tree, fields.key_id);
+
+    let wire_version = buffer.consume::<WireVersion>()?;
+    wire_version.record(buffer, tree, fields.wire_version);
 
     let source_control_port = buffer.consume::<u16>()?;
     source_control_port.record(buffer, tree, fields.source_control_port);
@@ -180,14 +180,14 @@ pub fn control<T: Node>(
 
     let tag = tag.value;
 
-    let wire_version = buffer.consume::<WireVersion>()?;
-    wire_version.record(buffer, tree, fields.wire_version);
-
     let path_secret_id = buffer.consume_bytes(16)?;
     path_secret_id.record(buffer, tree, fields.path_secret_id);
 
     let key_id = buffer.consume::<VarInt>()?;
     key_id.record(buffer, tree, fields.key_id);
+
+    let wire_version = buffer.consume::<WireVersion>()?;
+    wire_version.record(buffer, tree, fields.wire_version);
 
     let source_control_port = buffer.consume::<u16>()?;
     source_control_port.record(buffer, tree, fields.source_control_port);
@@ -419,14 +419,14 @@ pub fn datagram<T: Node>(
 
     let tag = tag.value;
 
-    let wire_version = buffer.consume::<WireVersion>()?;
-    wire_version.record(buffer, tree, fields.wire_version);
-
     let path_secret_id = buffer.consume_bytes(16)?;
     path_secret_id.record(buffer, tree, fields.path_secret_id);
 
     let key_id = buffer.consume::<VarInt>()?;
     key_id.record(buffer, tree, fields.key_id);
+
+    let wire_version = buffer.consume::<WireVersion>()?;
+    wire_version.record(buffer, tree, fields.wire_version);
 
     let source_control_port = buffer.consume::<u16>()?;
     source_control_port.record(buffer, tree, fields.source_control_port);
@@ -505,11 +505,11 @@ pub fn secret_control<T: Node>(
         packet::Tag::UnknownPathSecret(_) => {
             item.append_text(c" (UnknownPathSecret)");
 
-            let wire_version = buffer.consume::<WireVersion>()?;
-            wire_version.record(buffer, tree, fields.wire_version);
-
             let path_secret_id = buffer.consume_bytes(16)?;
             path_secret_id.record(buffer, tree, fields.path_secret_id);
+
+            let wire_version = buffer.consume::<WireVersion>()?;
+            wire_version.record(buffer, tree, fields.wire_version);
 
             let auth_tag = buffer.consume_bytes(16)?;
             auth_tag.record(buffer, tree, fields.auth_tag);
@@ -522,11 +522,11 @@ pub fn secret_control<T: Node>(
         packet::Tag::StaleKey(_) => {
             item.append_text(c" (StaleKey)");
 
-            let wire_version = buffer.consume::<WireVersion>()?;
-            wire_version.record(buffer, tree, fields.wire_version);
-
             let path_secret_id = buffer.consume_bytes(16)?;
             path_secret_id.record(buffer, tree, fields.path_secret_id);
+
+            let wire_version = buffer.consume::<WireVersion>()?;
+            wire_version.record(buffer, tree, fields.wire_version);
 
             let min_key_id = buffer.consume::<VarInt>()?;
             min_key_id.record(buffer, tree, fields.min_key_id);
@@ -542,11 +542,11 @@ pub fn secret_control<T: Node>(
         packet::Tag::ReplayDetected(_) => {
             item.append_text(c" (ReplayDetected)");
 
-            let wire_version = buffer.consume::<WireVersion>()?;
-            wire_version.record(buffer, tree, fields.wire_version);
-
             let path_secret_id = buffer.consume_bytes(16)?;
             path_secret_id.record(buffer, tree, fields.path_secret_id);
+
+            let wire_version = buffer.consume::<WireVersion>()?;
+            wire_version.record(buffer, tree, fields.wire_version);
 
             let rejected_key_id = buffer.consume::<VarInt>()?;
             rejected_key_id.record(buffer, tree, fields.rejected_key_id);
