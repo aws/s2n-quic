@@ -606,6 +606,8 @@ pub mod api {
         #[non_exhaustive]
         VersionNegotiated { version: u32 },
         #[non_exhaustive]
+        NoVersionNegotiated {},
+        #[non_exhaustive]
         PathSecretsReady {},
         #[non_exhaustive]
         Complete {},
@@ -3560,6 +3562,7 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub enum DcState {
         VersionNegotiated { version: u32 },
+        NoVersionNegotiated,
         PathSecretsReady,
         Complete,
     }
@@ -3571,6 +3574,7 @@ pub mod builder {
                 Self::VersionNegotiated { version } => VersionNegotiated {
                     version: version.into_event(),
                 },
+                Self::NoVersionNegotiated => NoVersionNegotiated {},
                 Self::PathSecretsReady => PathSecretsReady {},
                 Self::Complete => Complete {},
             }
