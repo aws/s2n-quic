@@ -195,7 +195,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     assert_eq!(rtt * 2, client_events[2].timestamp.duration_since_start());
 }
 
-fn assert_dc_complete(events: &Vec<DcStateChangedEvent>) {
+fn assert_dc_complete(events: &[DcStateChangedEvent]) {
     // 3 state transitions (VersionNegotiated -> PathSecretsReady -> Complete)
     assert_eq!(3, events.len());
 
