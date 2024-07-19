@@ -224,6 +224,14 @@ impl PartialEq for Error {
                 a.eq(b)
             }
             (Error::EndpointClosing { .. }, Error::EndpointClosing { .. }) => true,
+            (
+                Error::InvalidConfiguration {
+                    reason: a_reason, ..
+                },
+                Error::InvalidConfiguration {
+                    reason: b_reason, ..
+                },
+            ) => a_reason.eq(b_reason),
             (Error::Unspecified { .. }, Error::Unspecified { .. }) => true,
             _ => false,
         }

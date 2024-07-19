@@ -1002,6 +1002,7 @@ enum BbrState {
 
 enum DcState {
     VersionNegotiated { version: u32 },
+    NoVersionNegotiated,
     PathSecretsReady,
     Complete,
 }

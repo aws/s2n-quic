@@ -134,11 +134,17 @@ impl Subscriber for ConfirmComplete {
     ) {
         ensure!(matches!(context.state, State::Waiting(_)));
 
-        if let DcState::Complete { .. } = event.state {
-            // notify the application that the dc handshake has completed
-            context.update(State::Ready);
-        } else {
-            context.update(State::Waiting(Some(event.state.clone())));
+        match event.state {
+            DcState::NoVersionNegotiated { .. } => context.update(State::Failed(
+                Error::invalid_configuration("peer does not support specified dc versions"),
+            )),
+            DcState::Complete { .. } => {
+                // notify the application that the dc handshake has completed
+                context.update(State::Ready);
+            }
+            _ => {
+                context.update(State::Waiting(Some(event.state.clone())));
+            }
         }
     }
 }

@@ -25,7 +25,10 @@ use s2n_quic_core::{
     dc,
     dc::Endpoint as _,
     event,
-    event::IntoEvent,
+    event::{
+        builder::{DcState, DcStateChanged},
+        IntoEvent,
+    },
     packet::number::PacketNumberSpace,
     time::Timestamp,
     transport::{
@@ -459,6 +462,11 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
             let dc_path = self.dc.new_path(&conn_info);
             crate::dc::Manager::new(dc_path, dc_version, self.publisher)
         } else {
+            if Config::DcEndpoint::ENABLED {
+                self.publisher.on_dc_state_changed(DcStateChanged {
+                    state: DcState::NoVersionNegotiated,
+                });
+            }
             crate::dc::Manager::disabled()
         };
 
