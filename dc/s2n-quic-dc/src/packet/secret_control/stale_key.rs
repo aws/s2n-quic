@@ -21,8 +21,8 @@ impl StaleKey {
         C: encrypt::Key,
     {
         encoder.encode(&Tag::default());
-        encoder.encode(&self.wire_version);
         encoder.encode(&self.credential_id);
+        encoder.encode(&self.wire_version);
         encoder.encode(&self.min_key_id);
 
         encoder::finish(encoder, self.nonce(), crypto)
@@ -46,8 +46,8 @@ impl<'a> DecoderValue<'a> for StaleKey {
     fn decode(buffer: DecoderBuffer<'a>) -> R<'a, Self> {
         let (tag, buffer) = buffer.decode::<Tag>()?;
         decoder_invariant!(tag == Tag::default(), "invalid tag");
-        let (wire_version, buffer) = buffer.decode()?;
         let (credential_id, buffer) = buffer.decode()?;
+        let (wire_version, buffer) = buffer.decode()?;
         let (min_key_id, buffer) = buffer.decode()?;
         let value = Self {
             wire_version,

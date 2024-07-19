@@ -68,7 +68,7 @@ pub struct UnknownPathSecret {
 
 impl UnknownPathSecret {
     pub const PACKET_SIZE: usize =
-        size_of::<Tag>() + size_of::<credentials::Id>() + STATELESS_RESET_LEN;
+        size_of::<Tag>() + size_of::<u8>() + size_of::<credentials::Id>() + STATELESS_RESET_LEN;
 
     #[inline]
     pub fn encode(
@@ -78,8 +78,8 @@ impl UnknownPathSecret {
     ) -> usize {
         let before = encoder.len();
         encoder.encode(&Tag::default());
-        encoder.encode(&self.wire_version);
         encoder.encode(&&self.credential_id[..]);
+        encoder.encode(&self.wire_version);
         encoder.encode(&&stateless_reset_tag[..]);
         let after = encoder.len();
         after - before
@@ -96,8 +96,8 @@ impl<'a> DecoderValue<'a> for UnknownPathSecret {
     fn decode(buffer: DecoderBuffer<'a>) -> R<'a, Self> {
         let (tag, buffer) = buffer.decode::<Tag>()?;
         decoder_invariant!(tag == Tag::default(), "invalid tag");
-        let (wire_version, buffer) = buffer.decode()?;
         let (credential_id, buffer) = buffer.decode()?;
+        let (wire_version, buffer) = buffer.decode()?;
         let value = Self {
             wire_version,
             credential_id,
@@ -115,7 +115,7 @@ mod tests {
         bolero::check!()
             .with_type::<(UnknownPathSecret, [u8; 16])>()
             .for_each(|(value, stateless_reset)| {
-                let mut buffer = [0u8; 64];
+                let mut buffer = [0u8; UnknownPathSecret::PACKET_SIZE];
                 let len = {
                     let encoder = s2n_codec::EncoderBuffer::new(&mut buffer);
                     value.encode(encoder, stateless_reset)

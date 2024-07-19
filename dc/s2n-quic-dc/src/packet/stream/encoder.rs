@@ -56,13 +56,14 @@ where
     tag.set_packet_space(packet_space);
     encoder.encode(&tag);
 
-    // wire version - we only support `0` currently
-    encoder.encode(&WireVersion::ZERO);
-
     let nonce = packet_space.packet_number_into_nonce(packet_number);
 
     // encode the credentials being used
     encoder.encode(crypto.credentials());
+
+    // wire version - we only support `0` currently
+    encoder.encode(&WireVersion::ZERO);
+
     encoder.encode(&source_control_port);
     encoder.encode(&source_stream_port);
 

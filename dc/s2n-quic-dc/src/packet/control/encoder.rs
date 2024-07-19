@@ -36,13 +36,14 @@ where
     tag.set_has_application_header(*header_len > 0);
     encoder.encode(&tag);
 
-    // wire version - we only support `0` currently
-    encoder.encode(&WireVersion::ZERO);
-
     let nonce = *packet_number | NONCE_MASK;
 
     // encode the credentials being used
     encoder.encode(crypto.credentials());
+
+    // wire version - we only support `0` currently
+    encoder.encode(&WireVersion::ZERO);
+
     encoder.encode(&source_control_port);
 
     encoder.encode(&stream_id);
