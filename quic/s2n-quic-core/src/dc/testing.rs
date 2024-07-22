@@ -9,15 +9,23 @@ use crate::{
     varint::VarInt,
 };
 use core::time::Duration;
+use std::sync::{
+    atomic::{AtomicU8, Ordering},
+    Arc,
+};
 
 pub struct MockDcEndpoint {
     stateless_reset_tokens: Vec<stateless_reset::Token>,
+    pub on_possible_secret_control_packet_count: Arc<AtomicU8>,
+    pub on_possible_secret_control_packet: fn() -> bool,
 }
 
 impl MockDcEndpoint {
     pub fn new(tokens: &[stateless_reset::Token]) -> Self {
         Self {
             stateless_reset_tokens: tokens.to_vec(),
+            on_possible_secret_control_packet_count: Arc::new(AtomicU8::default()),
+            on_possible_secret_control_packet: || false,
         }
     }
 }
@@ -45,7 +53,9 @@ impl dc::Endpoint for MockDcEndpoint {
         _datagram_info: &DatagramInfo,
         _payload: &mut [u8],
     ) -> bool {
-        false
+        self.on_possible_secret_control_packet_count
+            .fetch_add(1, Ordering::Relaxed);
+        (self.on_possible_secret_control_packet)()
     }
 }
 
