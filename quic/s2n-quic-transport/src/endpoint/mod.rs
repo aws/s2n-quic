@@ -458,14 +458,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             endpoint_context.connection_id_format,
         ) {
             (packet, remaining)
-        } else if Cfg::DcEndpoint::ENABLED
-            && endpoint_context
-                .dc
-                .on_possible_secret_control_packet(&dc::DatagramInfo::new(&remote_address), payload)
-        {
-            // This was a DC secret control packet, so we don't need to proceed
-            // with checking for a stateless reset
-            return;
         } else {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
             //# Servers MUST drop incoming packets under all other circumstances.
@@ -761,12 +753,25 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 }
             }
             (_, packet) => {
+                let is_short_header_packet = matches!(packet, ProtectedPacket::Short(_));
+
+                if Cfg::DcEndpoint::ENABLED
+                    && is_short_header_packet // dc packets are short header packets
+                    && endpoint_context.dc.on_possible_secret_control_packet(
+                        &dc::DatagramInfo::new(&remote_address),
+                        payload,
+                    )
+                {
+                    // This was a DC secret control packet, so we don't need to proceed
+                    // with checking for a stateless reset
+                    return;
+                }
+
                 publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                     len: payload_len as u16,
                     reason: event::builder::DatagramDropReason::UnknownDestinationConnectionId,
                 });
 
-                let is_short_header_packet = matches!(packet, ProtectedPacket::Short(_));
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-10.3.1
                 //# Endpoints MAY skip this check if any packet from a datagram is
                 //# successfully processed.  However, the comparison MUST be performed
