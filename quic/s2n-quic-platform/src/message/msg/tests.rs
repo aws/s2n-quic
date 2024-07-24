@@ -65,7 +65,7 @@ fn address_inverse_pair_test() {
 #[cfg_attr(
     kani,
     kani::proof,
-    kani::solver(cadical),
+    kani::solver(minisat),
     kani::unwind(65),
     // it's safe to stub out cmsg::decode since the cmsg result isn't actually checked in this particular test
     kani::stub(cmsg::decode::collect, stubs::collect)

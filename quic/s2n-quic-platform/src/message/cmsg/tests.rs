@@ -23,7 +23,7 @@ fn aligned_iter(bytes: &[u8], f: impl FnOnce(decode::Iter)) {
 
 /// Ensures the cmsg iterator doesn't crash or segfault
 #[test]
-#[cfg_attr(kani, kani::proof, kani::solver(cadical), kani::unwind(17))]
+#[cfg_attr(kani, kani::proof, kani::solver(minisat), kani::unwind(17))]
 fn iter_test() {
     check!().for_each(|bytes| {
         aligned_iter(bytes, |iter| {
@@ -37,7 +37,7 @@ fn iter_test() {
 
 /// Ensures the `decode::Iter::collect` doesn't crash or segfault
 #[test]
-#[cfg_attr(kani, kani::proof, kani::solver(cadical), kani::unwind(17))]
+#[cfg_attr(kani, kani::proof, kani::solver(minisat), kani::unwind(17))]
 fn collect_test() {
     check!().for_each(|bytes| {
         aligned_iter(bytes, |iter| {
@@ -117,7 +117,7 @@ type Ops = Vec<Op>;
 type Ops = s2n_quic_core::testing::InlineVec<Op, 8>;
 
 #[test]
-#[cfg_attr(kani, kani::proof, kani::solver(cadical), kani::unwind(9))]
+#[cfg_attr(kani, kani::proof, kani::solver(kissat), kani::unwind(9))]
 fn round_trip_test() {
     check!().with_type::<Ops>().for_each(|ops| round_trip(ops));
 }
