@@ -160,7 +160,7 @@ mod tests {
     use bolero::check;
 
     #[test]
-    #[cfg_attr(kani, kani::proof, kani::unwind(17), kani::solver(cadical))]
+    #[cfg_attr(kani, kani::proof, kani::unwind(17), kani::solver(minisat))]
     fn rx_message_test() {
         let path = bolero::gen::<path::RemoteAddress>();
         let ecn = bolero::gen();
