@@ -21,7 +21,7 @@ use bytes::Bytes;
 ///
 /// `ServerName` serves a dual purpose:
 /// - It can be converted into [`Bytes`] which supports zero-copy slicing and
-/// reference counting.
+///   reference counting.
 /// - It can be accessed as `&str` so that applications can reason about the string value.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ServerName(Bytes);

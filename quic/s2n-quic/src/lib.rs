@@ -66,7 +66,7 @@
 //!```
 //!
 //! 2. Build a custom s2n-tls TLS provider configured with a FIPS approved
-//! [security policy](https://aws.github.io/s2n-tls/usage-guide/ch06-security-policies.html):
+//!    [security policy](https://aws.github.io/s2n-tls/usage-guide/ch06-security-policies.html):
 //!
 //!```ignore
 //! use s2n_quic::provider::tls::s2n_tls;
