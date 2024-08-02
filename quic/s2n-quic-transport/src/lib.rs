@@ -4,6 +4,7 @@
 //! This module contains all main runtime components for receiving and sending
 //! data via the QUIC protocol.
 
+#![allow(unexpected_cfgs)]
 #![deny(unused_must_use)]
 extern crate alloc;
 

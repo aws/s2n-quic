@@ -35,7 +35,7 @@ pub type Flag = flag::Flag<HandshakeDoneWriter>;
 /// - the handshake is complete and confirmed once the TLS-completes on the Server.
 /// - the Server is required to send a HANDSHAKE_DONE frame once the handshake completes.
 /// - the Client must wait for a HANDSHAKE_DONE (or an acked 1-rtt packet) to 'Confirm'
-/// the handshake.
+///   the handshake.
 ///
 /// Note: s2n-quic does not implement the optional 1-rtt acked requirement.
 #[derive(Debug, Default)]
