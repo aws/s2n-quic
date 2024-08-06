@@ -1,5 +1,207 @@
-<html><title>dashboard</title>
+
+<html>
+<head>
+<title>s2n-quic Issue/PR Dashboard</title>
+<link rel="stylesheet" href="dashboard.css" type="text/css" media="all">
+<script src="dashboard.js"></script>
+</head>
 <body>
-placeholder
+<div id="analytics">
+
+<h1>s2n-quic Issue/PR Dashboard</h1>
+
+<div id="main_description" class="description">
+Issues and PRs for s2n-quic
+
+</div>
+
+<div class="sections">
+<div class="section">
+<div class="section_metadata">
+<a name="issues-age-stats"></a>
+<h2 class="section_title">Issues Age stats</h2>
+
+<div class="description">
+Open issues by age.
+</div>
+
+</div> <!-- section_metadata -->
+<div class="section_widgets">
+<div class="graph_widget">
+<a name="age"></a>
+<h3 class="graph_title">Age</h3>
+<div class="graph">
+<div class="graph_item green">
+<span class="graph_item_title">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20created%3A%3E2024-07-30">
+<span class="title"><7 days</span>
+</a>
+</span>
+<span class="graph_item_value">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20created%3A%3E2024-07-30">
+<span class="value" style="width: 25%;">2</span>
+</a>
+</span>
+</div>
+<div class="graph_item yellow">
+<span class="graph_item_title">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20created%3A2024-05-08..2024-07-30">
+<span class="title">8-90 days</span>
+</a>
+</span>
+<span class="graph_item_value">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20created%3A2024-05-08..2024-07-30">
+<span class="value" style="width: 100%;">8</span>
+</a>
+</span>
+</div>
+<div class="graph_item red">
+<span class="graph_item_title">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20label%3Aapi%20created%3A%3C2023-08-07">
+<span class="title">>1 year labeled api</span>
+</a>
+</span>
+<span class="graph_item_value">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20label%3Aapi%20created%3A%3C2023-08-07">
+<span class="value" style="width: 37%;">3</span>
+</a>
+</span>
+</div>
+<div class="graph_item red">
+<span class="graph_item_title">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20label%3Atest%20created%3A%3C2023-08-07">
+<span class="title">>1 year labeled test</span>
+</a>
+</span>
+<span class="graph_item_value">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20label%3Atest%20created%3A%3C2023-08-07">
+<span class="value" style="width: 100%;">8</span>
+</a>
+</span>
+</div>
+<div class="graph_item red">
+<span class="graph_item_title">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20label%3Aci%20created%3A%3C2023-08-07">
+<span class="title">>1 year labeled ci</span>
+</a>
+</span>
+<span class="graph_item_value">
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20label%3Aci%20created%3A%3C2023-08-07">
+<span class="value" style="width: 50%;">4</span>
+</a>
+</span>
+</div>
+</div>
+</div>
+</div> <!-- section_widgets -->
+</div> <!-- section -->
+<div class="section">
+<div class="section_metadata">
+<a name="issues"></a>
+<h2 class="section_title">Issues</h2>
+
+<div class="description">
+Issues with no comments
+</div>
+
+</div> <!-- section_metadata -->
+<div class="section_widgets">
+<div class="number_widgets">
+<a name="all-issues-with-zero-comments"></a>
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Aissue%20comments%3A0">
+<div class="number_widget yellow">
+<span class="title">All Issues with zero comments</span>
+<span class="value">154</span>
+</div>
+</a>
+<a name="issues-with-updates-in-the-last-14-days"></a>
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aissue%20is%3Aopen%20updated%3A%3E2024-07-23">
+<div class="number_widget yellow">
+<span class="title">Issues with updates in the last 14 days</span>
+<span class="value">4</span>
+</div>
+</a>
+</div> <!-- number_widgets -->
+</div> <!-- section_widgets -->
+</div> <!-- section -->
+<div class="section">
+<div class="section_metadata">
+<a name="pull-requests"></a>
+<h2 class="section_title">Pull Requests</h2>
+
+</div> <!-- section_metadata -->
+<div class="section_widgets">
+<div class="number_widgets">
+<a name="ready-to-merge"></a>
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Apr%20review%3Aapproved">
+<div class="number_widget green">
+<span class="title">Ready to merge</span>
+<span class="value">0</span>
+</div>
+</a>
+<a name="no-reviews--from-dependatbot-prs"></a>
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Apr%20review%3Anone%20author%3Aapp%2Fdependabot">
+<div class="number_widget red">
+<span class="title">No reviews- from dependatbot PRs</span>
+<span class="value">5</span>
+</div>
+</a>
+<a name="prs-with-changes-requested"></a>
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Apr%20review%3Achanges_requested%20sort%3Acreated-asc%20-is%3Adraft">
+<div class="number_widget blue">
+<span class="title">PRs with changes requested</span>
+<span class="value">0</span>
+</div>
+</a>
+<a name="prs-with-zero-interactions-opened-by-a-human"></a>
+<a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Apr%20interactions%3A0%20sort%3Acreated-asc%20-author%3Aapp%2Fdependabot%20-is%3Adraft">
+<div class="number_widget blue">
+<span class="title">PRs with zero interactions (opened by a human)</span>
+<span class="value">0</span>
+</div>
+</a>
+</div> <!-- number_widgets -->
+<div class="table_widget">
+<a name="15-oldest-pull-requests-created-by-a-human-without-a-review"></a>
+<h3 class="table_title"><a href="https://github.com/aws/s2n-quic/issues?q=is%3Aopen%20is%3Apr%20review%3Anone%20sort%3Acreated-asc%20-is%3Adraft">15 Oldest Pull Requests created by a human without a review</a></h3>
+<table class="table">
+<tr class="table_header">
+<th>PR</th>
+<th>Description</th>
+</tr>
+<tr class="table_element">
+<td><a href="https://github.com/aws/s2n-quic/pull/2129">2129</a></td>
+<td><a href="https://github.com/aws/s2n-quic/pull/2129">Add client authentication support for rustls</a></td>
+</tr>
+<tr class="table_element">
+<td><a href="https://github.com/aws/s2n-quic/pull/2285">2285</a></td>
+<td><a href="https://github.com/aws/s2n-quic/pull/2285">build(deps): bump docker/setup-buildx-action from 3.5.0 to 3.6.1</a></td>
+</tr>
+<tr class="table_element">
+<td><a href="https://github.com/aws/s2n-quic/pull/2286">2286</a></td>
+<td><a href="https://github.com/aws/s2n-quic/pull/2286">build(deps): update lru requirement from 0.10 to 0.12</a></td>
+</tr>
+<tr class="table_element">
+<td><a href="https://github.com/aws/s2n-quic/pull/2287">2287</a></td>
+<td><a href="https://github.com/aws/s2n-quic/pull/2287">build(deps): update ring requirement from 0.16 to 0.17</a></td>
+</tr>
+<tr class="table_element">
+<td><a href="https://github.com/aws/s2n-quic/pull/2288">2288</a></td>
+<td><a href="https://github.com/aws/s2n-quic/pull/2288">build(deps): update toml requirement from 0.7 to 0.8</a></td>
+</tr>
+<tr class="table_element">
+<td><a href="https://github.com/aws/s2n-quic/pull/2294">2294</a></td>
+<td><a href="https://github.com/aws/s2n-quic/pull/2294">build(deps): bump EmbarkStudios/cargo-deny-action from 1 to 2</a></td>
+</tr>
+</table>
+</div>
+</div> <!-- section_widgets -->
+</div> <!-- section -->
+
+</div> <!-- sections -->
+<div id="footer">
+Generated by <a href="https://github.com/ethomson/issue-dashboard" target="_blank" rel="noopener noreferrer">ethomson/issue-dashboard</a>
+</div>
+</div> <!-- analytics -->
 </body>
 </html>
