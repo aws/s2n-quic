@@ -43,7 +43,7 @@ function ensure_executable() {
   fi
 }
 
-ensure_executable "docker-compose"
+ensure_executable "docker compose"
 ensure_executable "tshark"
 
 case "$(uname -s)" in
