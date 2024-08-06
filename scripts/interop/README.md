@@ -2,7 +2,7 @@
 
 ## Requirements
 
-* docker-compose
+* docker compose
 * tshark
 
 ## Pulling the latest images
