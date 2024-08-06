@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -7,13 +7,15 @@ RUN \
   apt-get -o Acquire::Retries=3 update; \
   apt-get -o Acquire::Retries=3 install -y cmake libglib2.0-dev libc-ares-dev libgcrypt20-dev flex bison byacc libpcap-dev ninja-build wget build-essential;
 
-ARG version="4.0.2"
+ARG version="4.2.3"
 
 RUN \
   set -eux; \
   wget https://www.wireshark.org/download/src/all-versions/wireshark-${version}.tar.xz; \
   tar xf wireshark-${version}.tar.xz; \
   cd wireshark-${version}; \
-  cmake -GNinja -DBUILD_wireshark=0 -DBUILD_qtshark=0 -DBUILD_editcap=1 -DBUILD_capinfos=0 -DBUILD_text2pcap=0 -DBUILD_rawshark=0 -DBUILD_sdjournal=0 -DBUILD_sshdump=0 -DBUILD_ciscodump=0 -DENABLE_STATIC=1 -DENABLE_PLUGINS=0 -DENABLE_LIBXML2=0 -DUSE_STATIC=1 -DENABLE_GNUTLS=1 .; \
+  cmake -GNinja \
+    -DBUILD_wireshark=0 -DBUILD_qtshark=0 -DBUILD_editcap=1 -DBUILD_capinfos=0 -DBUILD_text2pcap=0 -DBUILD_rawshark=0 -DBUILD_sdjournal=0 -DBUILD_sshdump=0 -DBUILD_ciscodump=0 -DBUILD_androiddump=0 -DBUILD_captype=0 -DBUILD_dcerpcidl2wrs=0 -DBUILD_sharkd=0 -DBUILD_wifidump=0 -DBUILD_randpktdump=0 -DBUILD_mmdbresolve=0 -DBUILD_udpdump=0 \
+    -DENABLE_STATIC=1 -DENABLE_LTO=1 -DENABLE_PCAP=0 -DENABLE_PLUGINS=0 -DENABLE_LIBXML2=0 -DUSE_STATIC=1 -DENABLE_GNUTLS=1 -DENABLE_SBC=0 -DENABLE_SPANDSP=0 -DENABLE_BCG729=0 .; \
   ninja; \
   cp run/tshark run/editcap /usr/local/bin/;
