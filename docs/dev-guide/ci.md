@@ -33,7 +33,7 @@ Fuzz tests provide large amounts of varied input data to assert `s2n-quic` behav
   * End-to-end QUIC protocol-level fuzzing using [quic-attack](https://github.com/aws/s2n-quic/blob/main/scripts/quic-attack/README.md). `quic-attack` is a collection of features that collectively turn `s2n-quic` into an online QUIC protocol fuzzer. It allows incoming and outgoing datagrams and packets, as well as the port number on incoming datagrams, to be intercepted and manipulated. 
   * UDP protocol-level fuzzing using [udp-attack](https://github.com/aws/s2n-quic/tree/main/tools/udp-attack). `udp-attack` generates random UDP packets and transmits them to `s2n-quic` to catch issues with packet handling.
 
-#### Concurrency permutation testing
+#### Concurrency Permutation Tests
 
 [loom](https://crates.io/crates/loom) is used to validate the behavior of concurrent code in `s2n-quic`. `loom` executes concurrent code using a simulation of the operating system scheduler and Rust memory model to evaluate concurrent code under all possible thread interleavings.
 
