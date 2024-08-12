@@ -66,6 +66,10 @@ jobs:
                 title: 'Issues with updates in the last 14 days'
                 issue_query: 'repo:aws/s2n-quic is:issue is:open updated:>{{ date("-14 days") }}'
                 color: 'yellow'
+              - type: 'number'
+                title: 'Issues without an assigned priority'
+                issue_query: 'repo:aws/s2n-quic is:issue is:open -label:priority/low -label:priority/medium -label:priority/high -label:MSRV'
+                color: 'yellow'
 
             - title: 'Pull Requests'
               widgets:
