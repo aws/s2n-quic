@@ -24,5 +24,5 @@ s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 structopt = "0.3"
-toml = "0.7"
+toml = "0.8"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
