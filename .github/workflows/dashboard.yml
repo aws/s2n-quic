@@ -1,7 +1,6 @@
 name: Dashboard
 
 on:
-  # TOOD: Remove before PR is out of draft
   push:
     branches: ["main"]
   schedule:
@@ -9,8 +8,7 @@ on:
 jobs:
   build:
     # This should only run in one place.
-    # TOOD: Change org before PR is out of draft
-    if: contains(github.repository, 'dougch/s2n-quic')
+    if: contains(github.repository, 'aws/s2n-quic')
     runs-on: ubuntu-latest
     permissions:
       contents: write
