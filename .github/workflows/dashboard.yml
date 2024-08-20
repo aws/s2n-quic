@@ -76,7 +76,7 @@ jobs:
                 issue_query: 'repo:aws/s2n-quic is:open is:pr review:approved'
                 color: 'green'
               - type: 'number'
-                title: 'No reviews- from dependatbot PRs'
+                title: 'No reviews- from dependabot PRs'
                 issue_query: 'repo:aws/s2n-quic is:open is:pr review:none author:app/dependabot'
                 color: 'red'
               - type: 'number'
