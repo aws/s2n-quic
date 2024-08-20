@@ -1,0 +1,106 @@
+name: Dashboard
+
+on:
+  push:
+    branches: ["main"]
+  schedule:
+    - cron: '0 0 * * 1-5'
+jobs:
+  build:
+    # This should only run in one place.
+    if: contains(github.repository, 'aws/s2n-quic')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+      - name: Check out GitHub Pages branch
+        uses: actions/checkout@v3
+        with:
+          ref: 'gh-pages'
+
+      - name: 'Generate Dashboard'
+        uses: ethomson/issue-dashboard@v1
+        with:
+          config: |
+            title: s2n-quic Issue/PR Dashboard
+            description: |
+              Issues and PRs for s2n-quic
+            output:
+              format: html
+              filename: dashboard/index.html
+            sections:
+            - title: 'Issues Age stats'
+              description: 'Open issues by age.'
+              widgets:
+              - type: 'graph'
+                title: 'Age'
+                elements:
+                - title: '<7 days'
+                  issue_query: 'repo:aws/s2n-quic is:open is:issue created:>{{ date("-7 days") }}'
+                  color: 'green'
+                - title: '8-90 days'
+                  issue_query: 'repo:aws/s2n-quic is:open is:issue created:{{ date("-90 days") }}..{{ date("-7 days") }}'
+                  color: 'yellow'
+                - title: '>1 year labeled api'
+                  issue_query: 'repo:aws/s2n-quic is:open is:issue label:api created:<{{ date("-365 days") }}'
+                  color: 'red'
+                - title: '>1 year labeled test'
+                  issue_query: 'repo:aws/s2n-quic is:open is:issue label:test created:<{{ date("-365 days") }}'
+                  color: 'red'
+                - title: '>1 year labeled ci'
+                  issue_query: 'repo:aws/s2n-quic is:open is:issue label:ci created:<{{ date("-365 days") }}'
+                  color: 'red'
+
+            - title: 'Issues'
+              description: 'Issues with no comments'
+              widgets:
+              - type: 'number'
+                title: 'All Issues with zero comments'
+                issue_query: 'repo:aws/s2n-quic is:open is:issue comments:0'
+                color: 'yellow'
+              - type: 'number'
+                title: 'Issues with updates in the last 14 days'
+                issue_query: 'repo:aws/s2n-quic is:issue is:open updated:>{{ date("-14 days") }}'
+                color: 'yellow'
+              - type: 'number'
+                title: 'Issues needing prioritization'
+                issue_query: 'repo:aws/s2n-quic is:issue is:open -label:priority/low -label:priority/medium -label:priority/high -label:MSRV'
+                color: 'yellow'
+
+            - title: 'Pull Requests'
+              widgets:
+              - type: 'number'
+                title: 'Ready to merge'
+                issue_query: 'repo:aws/s2n-quic is:open is:pr review:approved'
+                color: 'green'
+              - type: 'number'
+                title: 'No reviews- from dependabot PRs'
+                issue_query: 'repo:aws/s2n-quic is:open is:pr review:none author:app/dependabot'
+                color: 'red'
+              - type: 'number'
+                title: 'PRs with changes requested'
+                issue_query: 'repo:aws/s2n-quic is:open is:pr review:changes_requested sort:created-asc -is:draft'
+                color: 'blue'
+              - type: 'number'
+                title: 'PRs with zero interactions (opened by a human)'
+                issue_query: 'repo:aws/s2n-quic is:open is:pr interactions:0 sort:created-asc -author:app/dependabot -is:draft'
+                color: 'blue'
+              - type: 'table'
+                title: '15 Oldest Pull Requests created by a human without a review'
+                fields:
+                - title: 'PR'
+                  property: 'number'
+                - title: 'Description'
+                  property: 'title'
+                issue_query: 'repo:aws/s2n-quic is:open is:pr review:none sort:created-asc -is:draft'
+                limit: 15
+          token: ${{ github.token }}
+
+      - name: Publish Documentation
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: .
+          git-config-name: 'GitHub Actions'
+          git-config-email: 'nobody@github.com'
