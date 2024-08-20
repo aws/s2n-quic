@@ -39,23 +39,23 @@ Fuzz tests provide large amounts of varied input data to assert `s2n-quic` behav
 
 ## Interoperability
 
-The [quic-interop-runner](https://github.com/marten-seemann/quic-interop-runner) defines a suite of test cases that ensure compatibility between QUIC implementations. `s2n-quic` publishes [a report](https://dnglbrstg7yg.cloudfront.net/08c33571ee8679775e810303f65c96c1d48e270d/interop/index.html) with the results.
+The [quic-interop-runner](https://github.com/marten-seemann/quic-interop-runner) defines a suite of test cases that ensure compatibility between QUIC implementations. `s2n-quic` publishes [a report](https://dnglbrstg7yg.cloudfront.net/latest/interop/index.html) with the results.
 
 ## Compliance
 
-`s2n-quic` annotates source code with inline references to requirements in [IETF RFC](https://www.ietf.org/process/rfcs/) specifications. [Duvet](https://github.com/awslabs/duvet) is used to generate [a report](https://dnglbrstg7yg.cloudfront.net/42ee277272a079c49b4f2bbd034a3547116d71a5/interop/index.html), which makes it easy to track compliance with each requirement.
+`s2n-quic` annotates source code with inline references to requirements in [IETF RFC](https://www.ietf.org/process/rfcs/) specifications. [Duvet](https://github.com/awslabs/duvet) is used to generate [a report](https://dnglbrstg7yg.cloudfront.net/latest/interop/index.html), which makes it easy to track compliance with each requirement.
 
 ## Simulations
 
-A Monte Carlo simulation tool is used to execute thousands of randomized simulations of `s2n-quic` that vary one or more network variables, such as bandwidth, jitter, and round trip time. The [report output](https://dnglbrstg7yg.cloudfront.net/ab9723a772f03a9793c9863e73c9a48fab3c5235/sim/index.html) provides a visual representation of the relationship between the input variables and overall performance.
+A Monte Carlo simulation tool is used to execute thousands of randomized simulations of `s2n-quic` that vary one or more network variables, such as bandwidth, jitter, and round trip time. The [report output](https://dnglbrstg7yg.cloudfront.net/latest/sim/index.html) provides a visual representation of the relationship between the input variables and overall performance.
 
-A loss recovery simulation tool plots the growth of the congestion window over time under various simulated loss scenarios and publishes the results in [a report](https://dnglbrstg7yg.cloudfront.net/ab9723a772f03a9793c9863e73c9a48fab3c5235/recovery-simulations/index.html) to visualize changes to the congestion control algorithm.
+A loss recovery simulation tool plots the growth of the congestion window over time under various simulated loss scenarios and publishes the results in [a report](https://dnglbrstg7yg.cloudfront.net/latest/recovery-simulations/index.html) to visualize changes to the congestion control algorithm.
 
 ## Performance & Efficiency Profiling
 
-[Flame graphs](https://www.brendangregg.com/flamegraphs.html) are generated and published in a [report](https://dnglbrstg7yg.cloudfront.net/a9b5f7d1a688770e71ee6967699848bb616b79e6/perf/index.html) to visualize stack traces produced under a variety of data transfer scenarios. 
+[Flame graphs](https://www.brendangregg.com/flamegraphs.html) are generated and published in a [report](https://dnglbrstg7yg.cloudfront.net/latest/perf/index.html) to visualize stack traces produced under a variety of data transfer scenarios. 
 
-[dhat](https://crates.io/crates/dhat) performs heap profiling and publishes the results in [a report](https://dnglbrstg7yg.cloudfront.net/dhat/dh_view.html?url=/ab9723a772f03a9793c9863e73c9a48fab3c5235/dhat/dhat-heap.json). 
+[dhat](https://crates.io/crates/dhat) performs heap profiling and publishes the results in [a report](https://dnglbrstg7yg.cloudfront.net/dhat/dh_view.html?url=/latest/dhat/dhat-heap.json). 
 
 ## Clippy
 
@@ -71,4 +71,4 @@ A loss recovery simulation tool plots the growth of the congestion window over t
 
 ## Code Coverage
 
-[LLVM source-based code coverage](https://llvm.org/docs/CommandGuide/llvm-cov.html) measures how much of `s2n-quic` code is executed by tests. `s2n-quic` publishes [a report](https://dnglbrstg7yg.cloudfront.net/ab9723a772f03a9793c9863e73c9a48fab3c5235/coverage/index.html) with the results.
+[LLVM source-based code coverage](https://llvm.org/docs/CommandGuide/llvm-cov.html) measures how much of `s2n-quic` code is executed by tests. `s2n-quic` publishes [a report](https://dnglbrstg7yg.cloudfront.net/latest/coverage/index.html) with the results.
