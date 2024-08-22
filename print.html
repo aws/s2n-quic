@@ -245,17 +245,52 @@ rustup component add rustfmt clippy rust-analysis
 rustup toolchain install nightly
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="s2n-quic-continuous-integration"><a class="header" href="#s2n-quic-continuous-integration">s2n-quic Continuous Integration</a></h1>
-<p><code>s2n-quic</code> runs many tests on <a href="https://github.com/aws/s2n-quic/actions/workflows/ci.yml?query=event%3Apull_request">each pull request</a> and merge into <a href="https://github.com/aws/s2n-quic/actions/workflows/ci.yml?query=branch%3Amain">main</a>. This ensures each change is thoroughly tested.</p>
+<p><code>s2n-quic</code> executes a comprehensive suite of tests, linters, benchmarks, simulations and other checks on <a href="https://github.com/aws/s2n-quic/actions/workflows/ci.yml?query=event%3Apull_request">each pull request</a> and merge into <a href="https://github.com/aws/s2n-quic/actions/workflows/ci.yml?query=branch%3Amain">main</a>. Information about these checks is provided below.</p>
 <h2 id="tests"><a class="header" href="#tests">Tests</a></h2>
-<p><code>s2n-quic</code> defines many tests that can be executed with <code>cargo test</code>. These tests include unit, integration, snapshot, property, and fuzz tests.</p>
+<p><code>s2n-quic</code> defines many tests that can be executed with <code>cargo test</code>. These tests, described below, are executed across a variety of operating systems, architectures, and Rust versions.</p>
+<h4 id="unit-tests"><a class="header" href="#unit-tests">Unit Tests</a></h4>
+<p>Unit tests validate the expected behavior of individual components of <code>s2n-quic</code>. Typically, unit tests will be located in a <code>tests</code> module at the end of the file being tested. When there are a significant number of unit test functions for given component, the <code>tests</code> module may be located in a separate file.</p>
+<h4 id="integration-tests"><a class="header" href="#integration-tests">Integration Tests</a></h4>
+<p><code>s2n-quic</code> integration tests use the public API to validate the end-to-end behavior of the library under specific scenarios and configurations. Integration tests are located in the top-level <code>s2n-quic</code> crate, in the <a href="https://github.com/aws/s2n-quic/tree/main/quic/s2n-quic/src/tests">tests module</a>.</p>
+<h4 id="snapshot-tests"><a class="header" href="#snapshot-tests">Snapshot Tests</a></h4>
+<p>Snapshot tests use <a href="https://crates.io/crates/insta">insta</a> to assert complex output remains consistent with expected references values. In <code>s2n-quic</code>, snapshot tests are typically constructed in one of two ways:</p>
+<ul>
+<li>using the <code>insta::assert_debug_snapshot</code> macro to compare the <code>Debug</code> representation of an instance to the snapshot</li>
+<li>using the <code>event::testing::Publisher::snapshot()</code> event publisher to assert against a snapshot of events emitted by the <code>s2n-quic</code> <a href="https://docs.rs/s2n-quic/latest/s2n_quic/provider/event/trait.Event.html">event framework</a></li>
+</ul>
+<h4 id="property-tests"><a class="header" href="#property-tests">Property Tests</a></h4>
+<p>Property tests assert that specific properties of the output of functions and components are upheld under a variety of inputs. <code>s2n-quic</code> uses the <a href="https://camshaft.github.io/bolero/introduction.html">Bolero property-testing framework</a> to execute property-testing with multiple fuzzing engines as well as the <a href="https://model-checking.github.io/kani/">Kani Rust Verifier</a>. For more details on how Bolero and Kani are used together in <code>s2n-quic</code>, see the following blog posts from the <a href="https://model-checking.github.io/kani-verifier-blog/">Kani Rust Verifier Blog</a>:</p>
+<ul>
+<li><a href="https://model-checking.github.io/kani-verifier-blog/2022/10/27/using-kani-with-the-bolero-property-testing-framework.html">From Fuzzing to Proof: Using Kani with the Bolero Property-Testing Framework</a></li>
+<li><a href="https://model-checking.github.io/kani-verifier-blog/2023/05/30/how-s2n-quic-uses-kani-to-inspire-confidence.html">How s2n-quic uses Kani to inspire confidence</a></li>
+</ul>
+<h4 id="fuzz-tests"><a class="header" href="#fuzz-tests">Fuzz Tests</a></h4>
+<p>Fuzz tests provide large amounts of varied input data to assert <code>s2n-quic</code> behaves as expected regardless of the input. Fuzz testing in <code>s2n-quic</code> comes in three flavors:</p>
+<ul>
+<li>Component-level fuzz testing using the <a href="https://camshaft.github.io/bolero/introduction.html">Bolero property-testing framework</a>. These tests generate a corpus of inputs that is included in the <code>s2n-quic</code> repository to allow the fuzz tests to be replayed when executing <code>cargo test</code>.</li>
+<li>End-to-end QUIC protocol-level fuzzing using <a href="https://github.com/aws/s2n-quic/blob/main/scripts/quic-attack/README.md">quic-attack</a>. <code>quic-attack</code> is a collection of features that collectively turn <code>s2n-quic</code> into an online QUIC protocol fuzzer. It allows incoming and outgoing datagrams and packets, as well as the port number on incoming datagrams, to be intercepted and manipulated.</li>
+<li>UDP protocol-level fuzzing using <a href="https://github.com/aws/s2n-quic/tree/main/tools/udp-attack">udp-attack</a>. <code>udp-attack</code> generates random UDP packets and transmits them to <code>s2n-quic</code> to catch issues with packet handling.</li>
+</ul>
+<h4 id="concurrency-permutation-tests"><a class="header" href="#concurrency-permutation-tests">Concurrency Permutation Tests</a></h4>
+<p><a href="https://crates.io/crates/loom">loom</a> is used to validate the behavior of concurrent code in <code>s2n-quic</code>. <code>loom</code> executes concurrent code using a simulation of the operating system scheduler and Rust memory model to evaluate concurrent code under all possible thread interleavings.</p>
+<h2 id="interoperability"><a class="header" href="#interoperability">Interoperability</a></h2>
+<p>The <a href="https://github.com/marten-seemann/quic-interop-runner">quic-interop-runner</a> defines a suite of test cases that ensure compatibility between QUIC implementations. <code>s2n-quic</code> publishes <a href="https://dnglbrstg7yg.cloudfront.net/latest/interop/index.html">a report</a> with the results.</p>
+<h2 id="compliance"><a class="header" href="#compliance">Compliance</a></h2>
+<p><code>s2n-quic</code> annotates source code with inline references to requirements in <a href="https://www.ietf.org/process/rfcs/">IETF RFC</a> specifications. <a href="https://github.com/awslabs/duvet">Duvet</a> is used to generate <a href="https://dnglbrstg7yg.cloudfront.net/latest/interop/index.html">a report</a>, which makes it easy to track compliance with each requirement.</p>
+<h2 id="simulations"><a class="header" href="#simulations">Simulations</a></h2>
+<p>A Monte Carlo simulation tool is used to execute thousands of randomized simulations of <code>s2n-quic</code> that vary one or more network variables, such as bandwidth, jitter, and round trip time. The <a href="https://dnglbrstg7yg.cloudfront.net/latest/sim/index.html">report output</a> provides a visual representation of the relationship between the input variables and overall performance.</p>
+<p>A loss recovery simulation tool plots the growth of the congestion window over time under various simulated loss scenarios and publishes the results in <a href="https://dnglbrstg7yg.cloudfront.net/latest/recovery-simulations/index.html">a report</a> to visualize changes to the congestion control algorithm.</p>
+<h2 id="performance--efficiency-profiling"><a class="header" href="#performance--efficiency-profiling">Performance &amp; Efficiency Profiling</a></h2>
+<p><a href="https://www.brendangregg.com/flamegraphs.html">Flame graphs</a> are generated and published in a <a href="https://dnglbrstg7yg.cloudfront.net/latest/perf/index.html">report</a> to visualize stack traces produced under a variety of data transfer scenarios.</p>
+<p><a href="https://crates.io/crates/dhat">dhat</a> performs heap profiling and publishes the results in <a href="https://dnglbrstg7yg.cloudfront.net/dhat/dh_view.html?url=/latest/dhat/dhat-heap.json">a report</a>.</p>
 <h2 id="clippy"><a class="header" href="#clippy">Clippy</a></h2>
 <p><a href="https://github.com/rust-lang/rust-clippy">clippy</a> is a rust linter which catches common mistakes.</p>
 <h2 id="rustfmt"><a class="header" href="#rustfmt">Rustfmt</a></h2>
 <p><a href="https://github.com/rust-lang/rustfmt">rustfmt</a> ensures code is consistently formatted.</p>
-<h2 id="interop"><a class="header" href="#interop">Interop</a></h2>
-<p>The <a href="https://github.com/marten-seemann/quic-interop-runner">quic-interop-runner</a> defines many test cases that ensure many of the 3rd party QUIC implementations are compatible. <code>s2n-quic</code> publishes <a href="https://dnglbrstg7yg.cloudfront.net/08c33571ee8679775e810303f65c96c1d48e270d/interop/index.html">a report</a> with the results.</p>
-<h2 id="compliance"><a class="header" href="#compliance">Compliance</a></h2>
-<p><code>s2n-quic</code> annotates source code with inline references to requirements in design documents and RFCs. <a href="https://dnglbrstg7yg.cloudfront.net/08c33571ee8679775e810303f65c96c1d48e270d/compliance.html#/">A report</a> is then generated, which makes it easy to track compliance with each requirement.</p>
+<h2 id="miri"><a class="header" href="#miri">Miri</a></h2>
+<p><a href="https://github.com/rust-lang/miri">Miri</a> detects <a href="https://doc.rust-lang.org/reference/behavior-considered-undefined.html">undefined behavior</a> and memory leaks.</p>
+<h2 id="code-coverage"><a class="header" href="#code-coverage">Code Coverage</a></h2>
+<p><a href="https://llvm.org/docs/CommandGuide/llvm-cov.html">LLVM source-based code coverage</a> measures how much of <code>s2n-quic</code> code is executed by tests. <code>s2n-quic</code> publishes <a href="https://dnglbrstg7yg.cloudfront.net/latest/coverage/index.html">a report</a> with the results.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="kani"><a class="header" href="#kani">Kani</a></h1>
 <p><code>s2n-quic</code> uses the <a href="https://github.com/model-checking/kani">Kani Rust Verifier</a> tool for verifying properties throughout various places in the codebase. The Kani test harnesses are written using <a href="https://github.com/camshaft/bolero/">bolero</a>, which is also capable of running them as concrete tests.</p>
 <h2 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h2>
