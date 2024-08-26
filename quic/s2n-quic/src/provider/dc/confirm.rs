@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Connection;
-use core::task::{Context, Poll, Waker};
 use s2n_quic_core::{
     connection,
     connection::Error,
@@ -13,6 +12,7 @@ use s2n_quic_core::{
     },
 };
 use std::io;
+use tokio::sync::watch;
 
 /// `event::Subscriber` used for ensuring an s2n-quic client or server negotiating dc
 /// waits for the dc handshake to complete
@@ -21,58 +21,54 @@ impl ConfirmComplete {
     /// Blocks the task until the provided connection has either completed the dc handshake or closed
     /// with an error
     pub async fn wait_ready(conn: &mut Connection) -> io::Result<()> {
-        core::future::poll_fn(|cx| {
-            conn.query_event_context_mut(|context: &mut ConfirmContext| context.poll_ready(cx))
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?
-        })
-        .await
+        let mut receiver = conn
+            .query_event_context_mut(|context: &mut ConfirmContext| context.sender.subscribe())
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+
+        loop {
+            match &*receiver.borrow_and_update() {
+                // if we're ready or have errored then let the application know
+                State::Ready => return Ok(()),
+                State::Failed(error) => return Err((*error).into()),
+                State::Waiting(_) => {}
+            }
+
+            if receiver.changed().await.is_err() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "never reached terminal state",
+                ));
+            }
+        }
     }
 }
 
-#[derive(Default)]
 pub struct ConfirmContext {
-    waker: Option<Waker>,
-    state: State,
+    sender: watch::Sender<State>,
+}
+
+impl Default for ConfirmContext {
+    fn default() -> Self {
+        let (sender, _receiver) = watch::channel(State::default());
+        Self { sender }
+    }
 }
 
 impl ConfirmContext {
     /// Updates the state on the context
     fn update(&mut self, state: State) {
-        self.state = state;
-
-        // notify the application that the state was updated
-        self.wake();
-    }
-
-    /// Polls the context for handshake completion
-    fn poll_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        match self.state {
-            // if we're ready or have errored then let the application know
-            State::Ready => Poll::Ready(Ok(())),
-            State::Failed(error) => Poll::Ready(Err(error.into())),
-            State::Waiting(_) => {
-                // store the waker so we can notify the application of state updates
-                self.waker = Some(cx.waker().clone());
-                Poll::Pending
-            }
-        }
-    }
-
-    /// notify the application of a state update
-    fn wake(&mut self) {
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
+        self.sender.send_replace(state);
     }
 }
 
 impl Drop for ConfirmContext {
     // make sure the application is notified that we're closing the connection
     fn drop(&mut self) {
-        if matches!(self.state, State::Waiting(_)) {
-            self.state = State::Failed(connection::Error::unspecified());
-        }
-        self.wake();
+        self.sender.send_modify(|state| {
+            if matches!(state, State::Waiting(_)) {
+                *state = State::Failed(connection::Error::unspecified());
+            }
+        });
     }
 }
 
@@ -107,14 +103,14 @@ impl Subscriber for ConfirmComplete {
         meta: &ConnectionMeta,
         event: &events::ConnectionClosed,
     ) {
-        ensure!(matches!(context.state, State::Waiting(_)));
+        ensure!(matches!(*context.sender.borrow(), State::Waiting(_)));
+        let is_ready = matches!(
+            *context.sender.borrow(),
+            State::Waiting(Some(DcState::PathSecretsReady { .. }))
+        );
 
-        match (&meta.endpoint_type, event.error, &context.state) {
-            (
-                EndpointType::Server { .. },
-                Error::Closed { .. },
-                State::Waiting(Some(DcState::PathSecretsReady { .. })),
-            ) => {
+        match (&meta.endpoint_type, event.error, is_ready) {
+            (EndpointType::Server { .. }, Error::Closed { .. }, true) => {
                 // The client may close the connection immediately after the dc handshake completes,
                 // before it sends acknowledgement of the server's DC_STATELESS_RESET_TOKENS.
                 // Since the server has already moved into the PathSecretsReady state, this can be considered
@@ -132,7 +128,7 @@ impl Subscriber for ConfirmComplete {
         _meta: &ConnectionMeta,
         event: &events::DcStateChanged,
     ) {
-        ensure!(matches!(context.state, State::Waiting(_)));
+        ensure!(matches!(*context.sender.borrow(), State::Waiting(_)));
 
         match event.state {
             DcState::NoVersionNegotiated { .. } => context.update(State::Failed(

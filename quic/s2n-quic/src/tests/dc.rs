@@ -69,7 +69,7 @@ fn dc_handshake_self_test() -> Result<()> {
         .with_tls(certificates::CERT_PEM)?
         .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
 
-    self_test(server, client, None, None)?;
+    self_test(server, client, true, None, None)?;
 
     Ok(())
 }
@@ -114,7 +114,7 @@ fn dc_mtls_handshake_self_test() -> Result<()> {
         .with_tls(client_tls)?
         .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
 
-    self_test(server, client, None, None)?;
+    self_test(server, client, true, None, None)?;
 
     Ok(())
 }
@@ -143,7 +143,7 @@ fn dc_mtls_handshake_auth_failure_self_test() -> Result<()> {
     }
     .into();
 
-    self_test(server, client, Some(expected_client_error), None)?;
+    self_test(server, client, true, Some(expected_client_error), None)?;
 
     Ok(())
 }
@@ -181,6 +181,7 @@ fn dc_mtls_handshake_server_not_supported_self_test() -> Result<()> {
     self_test(
         server,
         client,
+        true,
         Some(connection::Error::invalid_configuration(
             "peer does not support specified dc versions",
         )),
@@ -228,6 +229,7 @@ fn dc_mtls_handshake_client_not_supported_self_test() -> Result<()> {
     self_test(
         server,
         client,
+        false,
         Some(expected_client_error),
         Some(connection::Error::invalid_configuration(
             "peer does not support specified dc versions",
@@ -266,7 +268,7 @@ fn dc_possible_secret_control_packet(
         .with_dc(dc_endpoint)?
         .with_packet_interceptor(RandomShort::default())?;
 
-    let (client_events, _server_events) = self_test(server, client, None, None)?;
+    let (client_events, _server_events) = self_test(server, client, true, None, None)?;
 
     assert_eq!(
         1,
@@ -297,6 +299,7 @@ fn dc_possible_secret_control_packet(
 fn self_test<S: ServerProviders, C: ClientProviders>(
     server: server::Builder<S>,
     client: client::Builder<C>,
+    client_has_dc: bool,
     expected_client_error: Option<connection::Error>,
     expected_server_error: Option<connection::Error>,
 ) -> Result<(DcRecorder, DcRecorder)> {
@@ -318,18 +321,21 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
 
         let addr = server.local_addr()?;
 
+        let expected_count = 1 + client_has_dc as usize;
         spawn(async move {
-            if let Some(mut conn) = server.accept().await {
-                let result = dc::ConfirmComplete::wait_ready(&mut conn).await;
+            for _ in 0..expected_count {
+                if let Some(mut conn) = server.accept().await {
+                    let result = dc::ConfirmComplete::wait_ready(&mut conn).await;
 
-                if let Some(error) = expected_server_error {
-                    assert_eq!(error, convert_io_result(result).unwrap());
+                    if let Some(error) = expected_server_error {
+                        assert_eq!(error, convert_io_result(result).unwrap());
 
-                    if expected_client_error.is_some() {
-                        conn.close(SERVER_CLOSE_ERROR_CODE.into());
+                        if expected_client_error.is_some() {
+                            conn.close(SERVER_CLOSE_ERROR_CODE.into());
+                        }
+                    } else {
+                        assert!(result.is_ok());
                     }
-                } else {
-                    assert!(result.is_ok());
                 }
             }
         });
@@ -340,35 +346,41 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
             .with_random(Random::with_seed(456))?
             .start()?;
 
-        let client_events = client_events.clone();
+        for _ in 0..expected_count {
+            primary::spawn({
+                let client = client.clone();
+                let client_events = client_events.clone();
+                async move {
+                    let connect = Connect::new(addr)
+                        .with_server_name("localhost")
+                        .with_deduplicate(client_has_dc);
+                    let mut conn = client.connect(connect).await.unwrap();
+                    let result = dc::ConfirmComplete::wait_ready(&mut conn).await;
 
-        primary::spawn(async move {
-            let connect = Connect::new(addr).with_server_name("localhost");
-            let mut conn = client.connect(connect).await.unwrap();
-            let result = dc::ConfirmComplete::wait_ready(&mut conn).await;
+                    if let Some(error) = expected_client_error {
+                        assert_eq!(error, convert_io_result(result).unwrap());
 
-            if let Some(error) = expected_client_error {
-                assert_eq!(error, convert_io_result(result).unwrap());
-
-                if expected_server_error.is_some() {
-                    conn.close(CLIENT_CLOSE_ERROR_CODE.into());
-                    // wait for the server to assert the expected error before dropping
-                    delay(Duration::from_millis(100)).await;
+                        if expected_server_error.is_some() {
+                            conn.close(CLIENT_CLOSE_ERROR_CODE.into());
+                            // wait for the server to assert the expected error before dropping
+                            delay(Duration::from_millis(100)).await;
+                        }
+                    } else {
+                        assert!(result.is_ok());
+                        let client_events = client_events
+                            .dc_state_changed_events()
+                            .lock()
+                            .unwrap()
+                            .clone();
+                        assert_dc_complete(&client_events);
+                        // wait briefly so the ack for the `DC_STATELESS_RESET_TOKENS` frame from the server is sent
+                        // before the client closes the connection. This is only necessary to confirm the `dc::State`
+                        // on the server moves to `DcState::Complete`
+                        delay(Duration::from_millis(100)).await;
+                    }
                 }
-            } else {
-                assert!(result.is_ok());
-                let client_events = client_events
-                    .dc_state_changed_events()
-                    .lock()
-                    .unwrap()
-                    .clone();
-                assert_dc_complete(&client_events);
-                // wait briefly so the ack for the `DC_STATELESS_RESET_TOKENS` frame from the server is sent
-                // before the client closes the connection. This is only necessary to confirm the `dc::State`
-                // on the server moves to `DcState::Complete`
-                delay(Duration::from_millis(100)).await;
-            }
-        });
+            });
+        }
 
         Ok(addr)
     })
