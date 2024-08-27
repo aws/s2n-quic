@@ -1103,7 +1103,7 @@ fn control_update_required() {
 }
 
 #[test]
-fn on_mtu_update() {
+fn on_mtu_update_increase() {
     let mut mtu = 5000;
     let mut bbr = BbrCongestionController::new(mtu, Default::default());
     let mut publisher = event::testing::Publisher::snapshot();
@@ -1116,6 +1116,42 @@ fn on_mtu_update() {
 
     assert_eq!(bbr.max_datagram_size, mtu);
     assert_eq!(bbr.cwnd, 200_000);
+}
+
+#[test]
+fn on_mtu_update_decrease_smaller_than_initial_window() {
+    let mut mtu = 9000;
+    let mut bbr = BbrCongestionController::new(mtu, Default::default());
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+
+    bbr.cwnd = 18_000;
+
+    mtu = 1350;
+    bbr.on_mtu_update(mtu, &mut publisher);
+
+    assert_eq!(bbr.max_datagram_size, mtu);
+
+    // updated initial window is 10 x MTU = 10 x 1350
+    assert_eq!(bbr.cwnd, 13_500);
+}
+
+#[test]
+fn on_mtu_update_decrease_larger_than_initial_window() {
+    let mut mtu = 9000;
+    let mut bbr = BbrCongestionController::new(mtu, Default::default());
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+
+    bbr.cwnd = 180_000;
+
+    mtu = 1350;
+    bbr.on_mtu_update(mtu, &mut publisher);
+
+    assert_eq!(bbr.max_datagram_size, mtu);
+
+    // Congestion window is still 20 packets based on the updated MTU
+    assert_eq!(bbr.cwnd, 27_000);
 }
 
 /// Helper method to move the given BBR congestion controller into the

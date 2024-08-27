@@ -790,12 +790,11 @@ fn on_packet_lost_persistent_congestion() {
 #[test]
 fn on_mtu_update_increase() {
     let mut mtu = 5000;
-    let cwnd_in_packets = 100_000f32;
-    let cwnd_in_bytes = cwnd_in_packets / mtu as f32;
+    let cwnd_in_bytes = 100_000f32;
     let mut cc = CubicCongestionController::new(mtu, Default::default());
     let mut publisher = event::testing::Publisher::snapshot();
     let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
-    cc.congestion_window = cwnd_in_packets;
+    cc.congestion_window = cwnd_in_bytes;
 
     mtu = 10000;
     cc.on_mtu_update(mtu, &mut publisher);
@@ -803,12 +802,52 @@ fn on_mtu_update_increase() {
     assert_eq!(cc.cubic.max_datagram_size, mtu);
 
     assert_delta!(cc.congestion_window, 200_000.0, 0.001);
+}
 
-    //= https://www.rfc-editor.org/rfc/rfc8899#section-3
-    //= type=test
-    //# An update to the PLPMTU (or MPS) MUST NOT increase the congestion
-    //# window measured in bytes [RFC4821].
-    assert_delta!(cc.congestion_window / mtu as f32, cwnd_in_bytes, 0.001);
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
+//= type=test
+//# If the maximum datagram size changes during the connection, the
+//# initial congestion window SHOULD be recalculated with the new size.
+
+//= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
+//= type=test
+//# If the maximum datagram size is decreased in order to complete the
+//# handshake, the congestion window SHOULD be set to the new initial
+//# congestion window.
+#[test]
+fn on_mtu_update_decrease_smaller_than_initial_window() {
+    let mut mtu = 9000;
+    let cwnd_in_bytes = 18_000f32;
+    let mut cc = CubicCongestionController::new(mtu, Default::default());
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+    cc.congestion_window = cwnd_in_bytes;
+
+    mtu = 1350;
+    cc.on_mtu_update(mtu, &mut publisher);
+    assert_eq!(cc.max_datagram_size, mtu);
+    assert_eq!(cc.cubic.max_datagram_size, mtu);
+
+    // updated initial window is 10 x MTU = 10 x 1350
+    assert_delta!(cc.congestion_window, 13_500.0, 0.001);
+}
+
+#[test]
+fn on_mtu_update_decrease_larger_than_initial_window() {
+    let mut mtu = 9000;
+    let cwnd_in_bytes = 180_000f32;
+    let mut cc = CubicCongestionController::new(mtu, Default::default());
+    let mut publisher = event::testing::Publisher::snapshot();
+    let mut publisher = PathPublisher::new(&mut publisher, path::Id::test_id());
+    cc.congestion_window = cwnd_in_bytes;
+
+    mtu = 1350;
+    cc.on_mtu_update(mtu, &mut publisher);
+    assert_eq!(cc.max_datagram_size, mtu);
+    assert_eq!(cc.cubic.max_datagram_size, mtu);
+
+    // Congestion window is still 20 packets based on the updated MTU
+    assert_delta!(cc.congestion_window, 27_000.0, 0.001);
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-6.4

@@ -451,8 +451,6 @@ impl CongestionController for CubicCongestionController {
     //# limit to compensate for the size of the actual packets.
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
-    //= type=exception
-    //= reason=The maximum datagram size remains at the minimum (1200 bytes) during the handshake
     //# If the maximum datagram size is decreased in order to complete the
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
@@ -462,8 +460,12 @@ impl CongestionController for CubicCongestionController {
         self.max_datagram_size = max_datagram_size;
         self.cubic.max_datagram_size = max_datagram_size;
 
-        self.congestion_window =
+        let congestion_window =
             (self.congestion_window / old_max_datagram_size as f32) * max_datagram_size as f32;
+        let initial_window =
+            Self::initial_window(&self.cubic, max_datagram_size, &Default::default());
+
+        self.congestion_window = max(congestion_window as u32, initial_window) as f32;
     }
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.4
