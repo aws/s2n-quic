@@ -4,9 +4,7 @@
 use crate::encoder::Encoder;
 
 /// Estimates the `encoding_size` of an `EncoderValue`
-#[cfg_attr(test, derive(Debug))]
-#[cfg_attr(test, derive(Clone))]
-#[cfg_attr(test, derive(bolero::TypeGenerator))]
+#[cfg_attr(test, derive(Clone, Debug, bolero::TypeGenerator))]
 pub struct EncoderLenEstimator {
     capacity: usize,
     len: usize,
