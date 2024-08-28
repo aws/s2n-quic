@@ -43,7 +43,7 @@ The [quic-interop-runner](https://github.com/marten-seemann/quic-interop-runner)
 
 ## Compliance
 
-`s2n-quic` annotates source code with inline references to requirements in [IETF RFC](https://www.ietf.org/process/rfcs/) specifications. [Duvet](https://github.com/awslabs/duvet) is used to generate [a report](https://dnglbrstg7yg.cloudfront.net/latest/interop/index.html), which makes it easy to track compliance with each requirement.
+`s2n-quic` annotates source code with inline references to requirements in [IETF RFC](https://www.ietf.org/process/rfcs/) specifications. [Duvet](https://github.com/awslabs/duvet) is used to generate [a report](https://dnglbrstg7yg.cloudfront.net/latest/compliance.html), which makes it easy to track compliance with each requirement.
 
 ## Simulations
 
