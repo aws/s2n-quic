@@ -86,15 +86,14 @@ mod bolero_harnesses {
     fn bolero_test_25_len() {
         bolero::check!()
             .with_type()
-            .cloned()
-            .for_each(|callee: CheckedRange| Some(callee.len()));
+            .for_each(|callee: &CheckedRange| Some(callee.len()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_26_is_empty() {
         bolero::check!()
             .with_type()
-            .cloned()
-            .for_each(|callee: CheckedRange| Some(callee.is_empty()));
+            .for_each(|callee: &CheckedRange| Some(callee.is_empty()));
     }
 }

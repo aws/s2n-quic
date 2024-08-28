@@ -78,8 +78,7 @@ mod bolero_harnesses {
     fn bolero_test_28_overflowed() {
         bolero::check!()
             .with_type()
-            .cloned()
-            .for_each(|callee: EncoderLenEstimator| Some(callee.overflowed()));
+            .for_each(|callee: &EncoderLenEstimator| Some(callee.overflowed()));
     }
     #[test]
     #[cfg_attr(kani, kani::proof)]
@@ -95,15 +94,13 @@ mod bolero_harnesses {
     fn bolero_test_30_capacity() {
         bolero::check!()
             .with_type()
-            .cloned()
-            .for_each(|callee: EncoderLenEstimator| Some(callee.capacity()));
+            .for_each(|callee: &EncoderLenEstimator| Some(callee.capacity()));
     }
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_31_len() {
         bolero::check!()
             .with_type()
-            .cloned()
-            .for_each(|callee: EncoderLenEstimator| Some(callee.len()));
+            .for_each(|callee: &EncoderLenEstimator| Some(callee.len()));
     }
 }

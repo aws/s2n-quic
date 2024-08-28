@@ -216,16 +216,14 @@ mod bolero_harnesses {
     fn bolero_test_84_be_bytes_to_storage() {
         bolero::check!()
             .with_type()
-            .cloned()
-            .for_each(|callee: [u8; 3]| Some(callee.be_bytes_to_storage()));
+            .for_each(|callee: &[u8; 3]| Some(callee.be_bytes_to_storage()));
     }
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_86_be_bytes_to_storage() {
         bolero::check!()
             .with_type()
-            .cloned()
-            .for_each(|callee: [u8; 6]| Some(callee.be_bytes_to_storage()));
+            .for_each(|callee: &[u8; 6]| Some(callee.be_bytes_to_storage()));
     }
     #[test]
     #[cfg_attr(kani, kani::proof)]
@@ -240,8 +238,7 @@ mod bolero_harnesses {
     fn bolero_test_89_to_be_bytes() {
         bolero::check!()
             .with_type()
-            .cloned()
-            .for_each(|callee: u24| Some(callee.to_be_bytes()));
+            .for_each(|callee: &u24| Some(callee.to_be_bytes()));
     }
     #[test]
     #[cfg_attr(kani, kani::proof)]
