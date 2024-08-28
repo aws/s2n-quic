@@ -4,13 +4,24 @@
 use core::fmt;
 
 #[derive(Copy, Clone)]
-#[cfg_attr(test, derive(bolero::TypeGenerator))]
 pub struct CheckedRange {
     start: usize,
     end: usize,
 
     #[cfg(all(debug_assertions, feature = "checked_range_unsafe"))]
     original_ptr: *const u8,
+}
+
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
+
+#[cfg(test)]
+impl bolero::TypeGenerator for CheckedRange {
+    fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
+        let start = gen::<usize>().generate(driver)?;
+        let end = (start..).generate(driver)?;
+        Some(CheckedRange { start, end })
+    }
 }
 
 impl CheckedRange {
