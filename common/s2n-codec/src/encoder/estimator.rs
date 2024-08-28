@@ -84,8 +84,8 @@ mod bolero_harnesses {
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_29_write_repeated() {
         bolero::check!().with_type().cloned().for_each(
-            |(mut callee, count, _value): (EncoderLenEstimator, usize, u8)| {
-                Some(callee.write_repeated(count, _value))
+            |(mut callee, count, value): (EncoderLenEstimator, usize, u8)| {
+                Some(callee.write_repeated(count, value))
             },
         );
     }
