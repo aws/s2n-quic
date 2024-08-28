@@ -532,8 +532,6 @@ impl CongestionController for BbrCongestionController {
     //# window measured in bytes [RFC4821].
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.2
-    //= type=exception
-    //= reason=The maximum datagram size remains at the minimum (1200 bytes) during the handshake
     //# If the maximum datagram size is decreased in order to complete the
     //# handshake, the congestion window SHOULD be set to the new initial
     //# congestion window.
@@ -542,8 +540,11 @@ impl CongestionController for BbrCongestionController {
         let old_max_datagram_size = self.max_datagram_size;
         self.max_datagram_size = max_datagram_size;
 
-        self.cwnd =
+        let cwnd =
             ((self.cwnd as f32 / old_max_datagram_size as f32) * max_datagram_size as f32) as u32;
+        let initial_window = Self::initial_window(max_datagram_size, &Default::default());
+
+        self.cwnd = max(cwnd, initial_window);
     }
 
     #[inline]
