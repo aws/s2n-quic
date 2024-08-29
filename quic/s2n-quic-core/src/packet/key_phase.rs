@@ -14,6 +14,10 @@ const KEY_PHASE_MASK: u8 = 0x04;
 pub struct ProtectedKeyPhase;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(
+    any(test, feature = "bolero-generator"),
+    derive(bolero_generator::TypeGenerator)
+)]
 pub enum KeyPhase {
     Zero,
     One,

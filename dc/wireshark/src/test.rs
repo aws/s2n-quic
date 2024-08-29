@@ -5,11 +5,12 @@ use crate::{buffer::Buffer, dissect, value::Parsed};
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     buffer::{reader::Storage, Reader},
+    packet::KeyPhase,
     stream::testing::Data,
     varint::VarInt,
 };
 use s2n_quic_dc::{
-    credentials::{self, Credentials},
+    credentials,
     packet::{self, stream, WireVersion},
 };
 use std::{collections::HashMap, num::NonZeroU16, ptr, time::Duration};
@@ -25,6 +26,7 @@ struct StreamPacket {
     next_expected_control_packet: VarInt,
     application_header: Data,
     payload: Data,
+    key_phase: KeyPhase,
 }
 
 #[test]
@@ -36,7 +38,7 @@ fn check_stream_parse() {
         .with_type()
         .for_each(|packet: &StreamPacket| {
             let mut packet = packet.clone();
-            let key = s2n_quic_dc::crypto::testing::Key::new(packet.credentials);
+            let key = TestKey(packet.key_phase);
             let sent_payload = packet.payload;
             let sent_app_header_len = packet.application_header.buffered_len();
             let mut buffer = vec![
@@ -51,7 +53,6 @@ fn check_stream_parse() {
                 NonZeroU16::get(packet.source_control_port),
                 packet.source_stream_port.map(NonZeroU16::get),
                 packet.stream_id,
-                packet.packet_space,
                 packet.packet_number,
                 packet.next_expected_control_packet,
                 VarInt::new(packet.application_header.buffered_len() as u64).unwrap(),
@@ -61,6 +62,7 @@ fn check_stream_parse() {
                 &(),
                 &mut packet.payload,
                 &key,
+                &packet.credentials,
             );
 
             let fields = crate::field::get();
@@ -194,6 +196,7 @@ struct DatagramPacket {
     next_expected_control_packet: Option<VarInt>,
     application_header: Data,
     payload: Data,
+    key_phase: KeyPhase,
 }
 
 #[test]
@@ -208,7 +211,7 @@ fn check_datagram_parse() {
             if packet.next_expected_control_packet.is_some() && packet.packet_number.is_none() {
                 packet.packet_number = Some(Default::default());
             }
-            let key = s2n_quic_dc::crypto::testing::Key::new(packet.credentials);
+            let key = TestKey(packet.key_phase);
             let sent_payload = packet.payload;
             let sent_app_header_len = packet.application_header.buffered_len();
             let mut buffer = vec![
@@ -230,6 +233,7 @@ fn check_datagram_parse() {
                 VarInt::new(packet.payload.buffered_len() as u64).unwrap(),
                 &mut packet.payload,
                 &key,
+                &packet.credentials,
             );
 
             let fields = crate::field::get();
@@ -324,6 +328,7 @@ struct ControlPacket {
     next_expected_control_packet: Option<VarInt>,
     application_header: Data,
     control_data: Data,
+    key_phase: KeyPhase,
 }
 
 #[test]
@@ -335,7 +340,7 @@ fn check_control_parse() {
         .with_type()
         .for_each(|packet: &ControlPacket| {
             let mut packet = packet.clone();
-            let key = s2n_quic_dc::crypto::testing::Key::new(packet.credentials);
+            let key = TestKey(packet.key_phase);
             let sent_app_header_len = packet.application_header.buffered_len();
             let mut buffer = vec![
                 0;
@@ -355,6 +360,7 @@ fn check_control_parse() {
                 // FIXME: Encode *real* control data, not random garbage.
                 &&packet.control_data.read_chunk(usize::MAX).unwrap()[..],
                 &key,
+                &packet.credentials,
             );
 
             let fields = crate::field::get();
@@ -435,10 +441,7 @@ fn check_secret_control_parse() {
         .with_type()
         .for_each(|packet: &SecretControlPacket| {
             // Use a fixed key, we don't change key IDs per control packet anyway.
-            let key = s2n_quic_dc::crypto::testing::Key::new(Credentials {
-                id: [0; 16].into(),
-                key_id: VarInt::ZERO,
-            });
+            let key = TestKey(KeyPhase::Zero);
             let mut buffer = vec![0; s2n_quic_dc::packet::secret_control::MAX_PACKET_SIZE];
             let length = match packet {
                 SecretControlPacket::UnknownPathSecret { id, auth_tag } => {
@@ -707,3 +710,55 @@ impl crate::wireshark::Item for () {
         // no-op
     }
 }
+
+struct TestKey(KeyPhase);
+
+impl s2n_quic_dc::crypto::seal::Application for TestKey {
+    fn key_phase(&self) -> KeyPhase {
+        self.0
+    }
+
+    fn tag_len(&self) -> usize {
+        16
+    }
+
+    fn encrypt(
+        &self,
+        _packet_number: u64,
+        _header: &[u8],
+        extra_payload: Option<&[u8]>,
+        payload_and_tag: &mut [u8],
+    ) {
+        if let Some(extra_payload) = extra_payload {
+            let offset = payload_and_tag.len() - self.tag_len() - extra_payload.len();
+            let dest = &mut payload_and_tag[offset..];
+            assert!(dest.len() == extra_payload.len() + self.tag_len());
+            let (dest, tag) = dest.split_at_mut(extra_payload.len());
+            dest.copy_from_slice(extra_payload);
+            tag.fill(0);
+        }
+    }
+}
+
+impl s2n_quic_dc::crypto::seal::Control for TestKey {
+    fn tag_len(&self) -> usize {
+        16
+    }
+
+    fn sign(&self, _header: &[u8], tag: &mut [u8]) {
+        tag.fill(0)
+    }
+}
+
+impl s2n_quic_dc::crypto::seal::control::Stream for TestKey {
+    fn retransmission_tag(
+        &self,
+        _original_packet_number: u64,
+        _retransmission_packet_number: u64,
+        tag_out: &mut [u8],
+    ) {
+        tag_out.fill(0)
+    }
+}
+
+impl s2n_quic_dc::crypto::seal::control::Secret for TestKey {}
