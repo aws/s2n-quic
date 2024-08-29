@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_84_be_bytes_to_storage() {
+    fn u8_len_3_be_bytes_to_storage() {
         bolero::check!()
             .with_type()
             .for_each(|callee: &[u8; 3]| Some(callee.be_bytes_to_storage()));
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_86_be_bytes_to_storage() {
+    fn u8_len_6_be_bytes_to_storage() {
         bolero::check!()
             .with_type()
             .for_each(|callee: &[u8; 6]| Some(callee.be_bytes_to_storage()));
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_87_new_truncated() {
+    fn u24_new_truncated() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_89_to_be_bytes() {
+    fn u24_ref_to_be_bytes() {
         bolero::check!()
             .with_type()
             .for_each(|callee: &u24| Some(callee.to_be_bytes()));
@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_91_try_from() {
+    fn u32_try_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_92_from() {
+    fn u8_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_93_from() {
+    fn u16_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_94_deref() {
+    fn u24_deref() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_95_new_truncated() {
+    fn i32_new_truncated() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_97_to_be_bytes() {
+    fn i24_to_be_bytes() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_99_try_from() {
+    fn i32_try_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_100_from() {
+    fn i24_from_u8() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_101_from() {
+    fn i8_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_102_from() {
+    fn i24_from_u16() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_103_from() {
+    fn i16_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_104_deref() {
+    fn i24_deref() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_105_try_from() {
+    fn u64_try_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_106_new_truncated() {
+    fn u64_new_truncated() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -374,7 +374,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_108_to_be_bytes() {
+    fn u48_to_be_bytes() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_110_try_from() {
+    fn u48_try_from_u64() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -392,7 +392,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_111_from() {
+    fn u8_from_u8() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_112_from() {
+    fn u48_from_u16() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_113_from() {
+    fn u32_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_114_deref() {
+    fn u48_deref() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_115_new_truncated() {
+    fn i64_new_truncated() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_117_to_be_bytes() {
+    fn i48_to_be_bytes() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_119_try_from() {
+    fn i64_try_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_120_from() {
+    fn i48_from_u8() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_121_from() {
+    fn i48_from_i8() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_122_from() {
+    fn i48_from_i48() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_123_from() {
+    fn i48_from_i16() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -491,7 +491,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_124_from() {
+    fn i48_from_u32() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_125_from() {
+    fn i32_from() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_126_deref() {
+    fn i48_deref() {
         bolero::check!()
             .with_type()
             .cloned()

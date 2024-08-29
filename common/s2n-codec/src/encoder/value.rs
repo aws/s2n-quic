@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_33_encoding_size() {
+    fn u8_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_36_encoding_size() {
+    fn i8_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_39_encoding_size() {
+    fn u16_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_42_encoding_size() {
+    fn i16_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_45_encoding_size() {
+    fn u24_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_48_encoding_size() {
+    fn i24_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_51_encoding_size() {
+    fn u32_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_54_encoding_size() {
+    fn i32_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_57_encoding_size() {
+    fn u48_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_60_encoding_size() {
+    fn i48_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_63_encoding_size() {
+    fn u64_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_66_encoding_size() {
+    fn i64_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_69_encoding_size() {
+    fn u128_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -382,7 +382,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_72_encoding_size() {
+    fn i128_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_75_encoding_size() {
+    fn f32_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_78_encoding_size() {
+    fn f64_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_81_encoding_size() {
+    fn empty_encoding_size() {
         bolero::check!()
             .with_type()
             .cloned()

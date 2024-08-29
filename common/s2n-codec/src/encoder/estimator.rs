@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_27_new() {
+    fn encoder_len_estimator_new() {
         bolero::check!()
             .with_type()
             .cloned()
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_28_overflowed() {
+    fn encoder_len_estimator_overflowed() {
         bolero::check!()
             .with_type()
             .for_each(|callee: &EncoderLenEstimator| Some(callee.overflowed()));
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_29_write_repeated() {
+    fn encoder_len_estimator_write_repeated() {
         bolero::check!().with_type().cloned().for_each(
             |(mut callee, count, value): (EncoderLenEstimator, usize, u8)| {
                 Some(callee.write_repeated(count, value))
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_30_capacity() {
+    fn encoder_len_estimator_capacity() {
         bolero::check!()
             .with_type()
             .for_each(|callee: &EncoderLenEstimator| Some(callee.capacity()));
@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_31_len() {
+    fn encoder_len_estimator_len() {
         bolero::check!()
             .with_type()
             .for_each(|callee: &EncoderLenEstimator| Some(callee.len()));

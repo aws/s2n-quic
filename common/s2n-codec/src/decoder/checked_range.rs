@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_25_len() {
+    fn checked_range_len() {
         bolero::check!()
             .with_type()
             .for_each(|callee: &CheckedRange| Some(callee.len()));
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(kani, kani::proof)]
-    fn bolero_test_26_is_empty() {
+    fn checked_range_is_empty() {
         bolero::check!()
             .with_type()
             .for_each(|callee: &CheckedRange| Some(callee.is_empty()));
