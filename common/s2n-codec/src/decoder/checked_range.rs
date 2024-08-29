@@ -27,7 +27,7 @@ impl bolero::TypeGenerator for CheckedRange {
 impl CheckedRange {
     #[inline]
     pub(crate) fn new(start: usize, end: usize, original_ptr: *const u8) -> Self {
-        debug_assertion!(end >= start, "end: {end} must be greater than or equal to start: {start}");
+        debug_assert!(end >= start, "{}", format!("end: {end} must be greater than or equal to start: {start}"));
         #[cfg(not(all(debug_assertions, feature = "checked_range_unsafe")))]
         let _ = original_ptr;
 
