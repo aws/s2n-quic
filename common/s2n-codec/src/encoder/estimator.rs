@@ -81,7 +81,7 @@ mod tests {
             .with_type()
             .for_each(|callee: &EncoderLenEstimator| Some(callee.overflowed()));
     }
-    
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_29_write_repeated() {

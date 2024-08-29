@@ -352,7 +352,7 @@ mod tests {
             .cloned()
             .for_each(|callee: i48| Some(callee.encoding_size()));
     }
-    
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_63_encoding_size() {

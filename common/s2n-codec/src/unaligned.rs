@@ -210,7 +210,7 @@ impl core::fmt::Display for TryFromIntError {
 
 #[cfg(test)]
 mod tests {
-    
+
     use super::*;
 
     #[test]
