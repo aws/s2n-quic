@@ -22,7 +22,7 @@ fn fake_entry(peer: u16) -> Arc<Entry> {
             s2n_quic_core::endpoint::Type::Client,
             &secret,
         ),
-        sender::State::new([0; 16]),
+        sender::State::new([0; control::TAG_LEN]),
         receiver::State::without_shared(),
         dc::testing::TEST_APPLICATION_PARAMS,
         dc::testing::TEST_REHANDSHAKE_PERIOD,
@@ -33,6 +33,10 @@ fn fake_entry(peer: u16) -> Arc<Entry> {
 fn cleans_after_delay() {
     let signer = stateless_reset::Signer::new(b"secret");
     let map = Map::new(signer);
+
+    // Stop background processing. We expect to manually invoke clean, and a background worker
+    // might interfere with our state.
+    map.state.cleaner.stop();
 
     let first = fake_entry(1);
     let second = fake_entry(1);

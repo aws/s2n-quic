@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::encrypt::Key as _,
     msg, packet,
-    path::secret::Map,
+    path::secret::{self, Map},
     random::Random,
     stream::{
         application,
@@ -44,7 +43,8 @@ where
     P: Peer<Env>,
 {
     // derive secrets for the new stream
-    let Some((sealer, opener, mut parameters)) = map.pair_for_peer(handshake_addr.into()) else {
+    let Some((crypto, mut parameters)) = map.pair_for_peer(handshake_addr.into(), &peer.features())
+    else {
         // the application didn't perform a handshake with the server before opening the stream
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -56,15 +56,12 @@ where
         parameters = o(parameters);
     }
 
-    // TODO get a flow ID. for now we'll use the sealer credentials
-    let key_id = sealer.credentials().key_id;
+    let key_id = crypto.credentials.key_id;
     let stream_id = packet::stream::Id {
         key_id,
         is_reliable: true,
         is_bidirectional: true,
     };
-
-    let crypto = shared::Crypto::new(sealer, opener, map);
 
     build_stream(
         env,
@@ -72,6 +69,7 @@ where
         stream_id,
         None,
         crypto,
+        map,
         parameters,
         None,
         None,
@@ -95,8 +93,8 @@ where
 {
     let credentials = &packet.credentials;
     let mut secret_control = vec![];
-    let Some((sealer, opener, mut parameters)) =
-        map.pair_for_credentials(credentials, &mut secret_control)
+    let Some((crypto, mut parameters)) =
+        map.pair_for_credentials(credentials, &peer.features(), &mut secret_control)
     else {
         let error = io::Error::new(
             io::ErrorKind::NotFound,
@@ -117,14 +115,13 @@ where
     // inform the value of what the source_control_port is
     peer.with_source_control_port(packet.source_control_port);
 
-    let crypto = shared::Crypto::new(sealer, opener, map);
-
     let res = build_stream(
         env,
         peer,
         packet.stream_id,
         packet.source_stream_port,
         crypto,
+        map,
         parameters,
         handshake,
         buffer,
@@ -150,7 +147,8 @@ fn build_stream<Env, P>(
     peer: P,
     stream_id: packet::stream::Id,
     remote_stream_port: Option<u16>,
-    crypto: shared::Crypto,
+    crypto: secret::map::Bidirectional,
+    map: &Map,
     parameters: dc::ApplicationParams,
     handshake: Option<server::handshake::Receiver>,
     recv_buffer: Option<&mut msg::recv::Message>,
@@ -219,6 +217,7 @@ where
             remote_ip: UnsafeCell::new(sockets.remote_addr.ip()),
             source_control_port: UnsafeCell::new(sockets.source_control_port),
             application: UnsafeCell::new(application),
+            credentials: UnsafeCell::new(crypto.credentials),
         };
 
         let remote_port = sockets.remote_addr.port();
@@ -233,6 +232,18 @@ where
             fixed,
             closed_halves: 0u8.into(),
         }
+    };
+
+    let crypto = {
+        let secret::map::Bidirectional {
+            application,
+            control,
+            credentials: _,
+        } = crypto;
+
+        let control = control.map(|c| (c.sealer, c.opener));
+
+        shared::Crypto::new(application.sealer, application.opener, control, map)
     };
 
     let shared = Arc::new(shared::Shared {

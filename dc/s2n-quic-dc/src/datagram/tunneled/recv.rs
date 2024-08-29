@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::{decrypt, UninitSlice},
+    crypto::{open, UninitSlice},
     packet::datagram::{decoder, Tag},
 };
 use s2n_codec::{decoder_invariant, DecoderBufferMut, DecoderError};
 use s2n_quic_core::packet::number::{PacketNumberSpace, SlidingWindow, SlidingWindowError};
 
-pub use crate::crypto::decrypt::Error;
+pub use crate::crypto::open::Error;
 pub use decoder::Packet;
 
 #[derive(Default)]
@@ -37,11 +37,11 @@ impl decoder::Validator for TagValidator {
     }
 }
 
-pub struct Receiver<K: decrypt::Key> {
+pub struct Receiver<K: open::Application> {
     key: K,
 }
 
-impl<K: decrypt::Key> Receiver<K> {
+impl<K: open::Application> Receiver<K> {
     pub fn new(key: K) -> Self {
         Self { key }
     }

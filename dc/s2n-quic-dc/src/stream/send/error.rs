@@ -2,10 +2,70 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::stream::packet_number;
+use core::{fmt, panic::Location};
 use s2n_quic_core::{buffer, varint::VarInt};
 
+#[derive(Clone, Copy)]
+pub struct Error {
+    kind: Kind,
+    location: &'static Location<'static>,
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Error")
+            .field("kind", &self.kind)
+            .field("crate", &"s2n-quic-dc")
+            .field("file", &self.file())
+            .field("line", &self.location.line())
+            .finish()
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let Self { kind, location } = self;
+        let file = self.file();
+        let line = location.line();
+        write!(f, "[s2n-quic-dc::{file}:{line}]: {kind}")
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl Error {
+    #[track_caller]
+    #[inline]
+    pub fn new(kind: Kind) -> Self {
+        Self {
+            kind,
+            location: Location::caller(),
+        }
+    }
+
+    #[inline]
+    pub fn kind(&self) -> &Kind {
+        &self.kind
+    }
+
+    #[inline]
+    fn file(&self) -> &'static str {
+        self.location
+            .file()
+            .trim_start_matches(concat!(env!("CARGO_MANIFEST_DIR"), "/src/"))
+    }
+}
+
+impl From<Kind> for Error {
+    #[track_caller]
+    #[inline]
+    fn from(kind: Kind) -> Self {
+        Self::new(kind)
+    }
+}
+
 #[derive(Clone, Copy, Debug, thiserror::Error)]
-pub enum Error {
+pub enum Kind {
     #[error("payload provided is too large and exceeded the maximum offset")]
     PayloadTooLarge,
     #[error("the provided packet buffer is too small for the minimum packet size")]
@@ -32,46 +92,57 @@ pub enum Error {
     FatalError,
 }
 
-impl From<Error> for std::io::Error {
+impl Kind {
     #[inline]
-    fn from(error: Error) -> Self {
-        Self::new(error.into(), error)
+    #[track_caller]
+    pub(crate) fn err(self) -> Error {
+        Error::new(self)
     }
 }
 
-impl From<Error> for std::io::ErrorKind {
+impl From<Error> for std::io::Error {
     #[inline]
+    #[track_caller]
     fn from(error: Error) -> Self {
+        Self::new(error.kind.into(), error)
+    }
+}
+
+impl From<Kind> for std::io::ErrorKind {
+    #[inline]
+    fn from(kind: Kind) -> Self {
         use std::io::ErrorKind;
-        match error {
-            Error::PayloadTooLarge => ErrorKind::BrokenPipe,
-            Error::PacketBufferTooSmall => ErrorKind::InvalidInput,
-            Error::PacketNumberExhaustion => ErrorKind::BrokenPipe,
-            Error::RetransmissionFailure => ErrorKind::BrokenPipe,
-            Error::StreamFinished => ErrorKind::UnexpectedEof,
-            Error::FinalSizeChanged => ErrorKind::InvalidInput,
-            Error::IdleTimeout => ErrorKind::TimedOut,
-            Error::ApplicationError { .. } => ErrorKind::ConnectionReset,
-            Error::TransportError { .. } => ErrorKind::ConnectionAborted,
-            Error::FrameError { .. } => ErrorKind::InvalidData,
-            Error::FatalError => ErrorKind::BrokenPipe,
+        match kind {
+            Kind::PayloadTooLarge => ErrorKind::BrokenPipe,
+            Kind::PacketBufferTooSmall => ErrorKind::InvalidInput,
+            Kind::PacketNumberExhaustion => ErrorKind::BrokenPipe,
+            Kind::RetransmissionFailure => ErrorKind::BrokenPipe,
+            Kind::StreamFinished => ErrorKind::UnexpectedEof,
+            Kind::FinalSizeChanged => ErrorKind::InvalidInput,
+            Kind::IdleTimeout => ErrorKind::TimedOut,
+            Kind::ApplicationError { .. } => ErrorKind::ConnectionReset,
+            Kind::TransportError { .. } => ErrorKind::ConnectionAborted,
+            Kind::FrameError { .. } => ErrorKind::InvalidData,
+            Kind::FatalError => ErrorKind::BrokenPipe,
         }
     }
 }
 
 impl From<packet_number::ExhaustionError> for Error {
     #[inline]
+    #[track_caller]
     fn from(_error: packet_number::ExhaustionError) -> Self {
-        Self::PacketNumberExhaustion
+        Kind::PacketNumberExhaustion.err()
     }
 }
 
 impl From<buffer::Error<core::convert::Infallible>> for Error {
     #[inline]
+    #[track_caller]
     fn from(error: buffer::Error<core::convert::Infallible>) -> Self {
         match error {
-            buffer::Error::OutOfRange => Self::PayloadTooLarge,
-            buffer::Error::InvalidFin => Self::FinalSizeChanged,
+            buffer::Error::OutOfRange => Kind::PayloadTooLarge.err(),
+            buffer::Error::InvalidFin => Kind::FinalSizeChanged.err(),
             buffer::Error::ReaderError(_) => unreachable!(),
         }
     }

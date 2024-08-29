@@ -18,21 +18,14 @@ impl ReplayDetected {
     #[inline]
     pub fn encode<C>(&self, mut encoder: EncoderBuffer, crypto: &C) -> usize
     where
-        C: encrypt::Key,
+        C: seal::control::Secret,
     {
         encoder.encode(&Tag::default());
         encoder.encode(&self.credential_id);
         encoder.encode(&self.wire_version);
         encoder.encode(&self.rejected_key_id);
 
-        encoder::finish(encoder, self.nonce(), crypto)
-    }
-
-    #[inline]
-    pub fn nonce(&self) -> Nonce {
-        Nonce::ReplayDetected {
-            rejected_key_id: self.rejected_key_id.into(),
-        }
+        encoder::finish(encoder, crypto)
     }
 
     #[cfg(test)]

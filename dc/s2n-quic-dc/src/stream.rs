@@ -7,6 +7,8 @@ use core::time::Duration;
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// The maximum time a send stream will wait for ACKs from inflight packets
 pub const DEFAULT_INFLIGHT_TIMEOUT: Duration = Duration::from_secs(5);
+/// The maximum length of a single packet written to a stream
+pub const MAX_DATAGRAM_SIZE: usize = 1 << 15; // 32k
 
 pub mod application;
 pub mod crypto;

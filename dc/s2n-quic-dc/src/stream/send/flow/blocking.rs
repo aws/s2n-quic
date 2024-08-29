@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::Credits;
-use crate::stream::send::{error::Error, flow};
+use crate::stream::send::{
+    error::{self, Error},
+    flow,
+};
 use s2n_quic_core::{ensure, varint::VarInt};
 use std::sync::{Condvar, Mutex};
 
@@ -40,7 +43,10 @@ impl State {
     /// Callers MUST ensure the provided offset is monotonic.
     #[inline]
     pub fn release(&self, flow_offset: VarInt) -> Result<(), Error> {
-        let mut guard = self.state.lock().map_err(|_| Error::FatalError)?;
+        let mut guard = self
+            .state
+            .lock()
+            .map_err(|_| error::Kind::FatalError.err())?;
 
         // only notify subscribers if we actually increment the offset
         debug_assert!(
@@ -60,10 +66,13 @@ impl State {
     /// Called by the application to acquire flow credits
     #[inline]
     pub fn acquire(&self, mut request: flow::Request) -> Result<Credits, Error> {
-        let mut guard = self.state.lock().map_err(|_| Error::FatalError)?;
+        let mut guard = self
+            .state
+            .lock()
+            .map_err(|_| error::Kind::FatalError.err())?;
 
         loop {
-            ensure!(!guard.is_finished, Err(Error::FinalSizeChanged));
+            ensure!(!guard.is_finished, Err(error::Kind::FinalSizeChanged.err()));
 
             // TODO check for an error
 
@@ -88,7 +97,10 @@ impl State {
                     }
                 })
             else {
-                guard = self.notify.wait(guard).map_err(|_| Error::FatalError)?;
+                guard = self
+                    .notify
+                    .wait(guard)
+                    .map_err(|_| error::Kind::FatalError.err())?;
                 continue;
             };
 
@@ -98,7 +110,7 @@ impl State {
             // update the stream offset with the given request
             guard.stream_offset = current_offset
                 .checked_add_usize(request.len)
-                .ok_or(Error::PayloadTooLarge)?;
+                .ok_or_else(|| error::Kind::PayloadTooLarge.err())?;
 
             // update the finished status
             guard.is_finished |= request.is_fin;

@@ -16,10 +16,9 @@ macro_rules! impl_packet {
 
         impl<'a> Packet<'a> {
             #[inline]
-            pub fn decode(buffer: DecoderBufferMut<'a>, crypto_tag_len: usize) -> Rm<Packet> {
+            pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<Packet> {
                 let header_len = decoder::header_len::<$name>(buffer.peek())?;
-                let ((header, value, crypto_tag), buffer) =
-                    decoder::header(buffer, header_len, crypto_tag_len)?;
+                let ((header, value, crypto_tag), buffer) = decoder::header(buffer, header_len)?;
                 let packet = Self {
                     header,
                     value,
@@ -36,7 +35,7 @@ macro_rules! impl_packet {
             #[inline]
             pub fn authenticate<C>(&self, crypto: &C) -> Option<&$name>
             where
-                C: decrypt::Key,
+                C: crate::crypto::open::control::Secret,
             {
                 let Self {
                     header,
@@ -44,17 +43,7 @@ macro_rules! impl_packet {
                     crypto_tag,
                 } = self;
 
-                crypto
-                    .decrypt(
-                        // these don't rotate
-                        s2n_quic_core::packet::KeyPhase::Zero,
-                        value.nonce(),
-                        header,
-                        &[],
-                        crypto_tag,
-                        bytes::buf::UninitSlice::new(&mut []),
-                    )
-                    .ok()?;
+                crypto.verify(header, crypto_tag).ok()?;
 
                 Some(value)
             }
@@ -73,11 +62,7 @@ where
 }
 
 #[inline]
-pub fn header<'a, T>(
-    buffer: DecoderBufferMut<'a>,
-    header_len: usize,
-    crypto_tag_len: usize,
-) -> Rm<'a, (&[u8], T, &[u8])>
+pub fn header<'a, T>(buffer: DecoderBufferMut<'a>, header_len: usize) -> Rm<'a, (&[u8], T, &[u8])>
 where
     T: DecoderValue<'a>,
 {
@@ -86,7 +71,7 @@ where
     let (value, _) = header.decode::<T>()?;
     let header = header.into_less_safe_slice();
 
-    let (crypto_tag, buffer) = buffer.decode_slice(crypto_tag_len)?;
+    let (crypto_tag, buffer) = buffer.decode_slice(super::TAG_LEN)?;
     let crypto_tag = crypto_tag.into_less_safe_slice();
 
     Ok(((header, value, crypto_tag), buffer))

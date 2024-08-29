@@ -3,10 +3,7 @@
 
 use crate::{
     credentials::Credentials,
-    packet::{
-        control::{self, Tag},
-        stream, WireVersion,
-    },
+    packet::{control::Tag, stream, WireVersion},
 };
 use s2n_codec::{
     decoder_invariant, CheckedRange, DecoderBufferMut, DecoderBufferMutResult as R, DecoderError,
@@ -85,11 +82,6 @@ impl<'a> Packet<'a> {
     #[inline]
     pub fn stream_id(&self) -> Option<&stream::Id> {
         self.stream_id.as_ref()
-    }
-
-    #[inline]
-    pub fn crypto_nonce(&self) -> u64 {
-        self.packet_number.as_u64() | control::NONCE_MASK
     }
 
     #[inline]

@@ -3,7 +3,8 @@
 
 use crate::{
     credentials,
-    crypto::encrypt,
+    credentials::Credentials,
+    crypto::seal,
     packet::{datagram::Tag, WireVersion},
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
@@ -65,12 +66,13 @@ pub fn encode<H, CD, P, C>(
     payload_len: super::PayloadLen,
     payload: &mut P,
     crypto: &C,
+    credentials: &Credentials,
 ) -> usize
 where
     H: buffer::reader::Storage<Error = core::convert::Infallible>,
     P: buffer::reader::Storage<Error = core::convert::Infallible>,
     CD: EncoderValue,
-    C: encrypt::Key,
+    C: seal::Application,
 {
     let mut tag = super::Tag::default();
     tag.set_is_connected(packet_number.is_some());
@@ -84,7 +86,7 @@ where
     let nonce = *packet_number.unwrap_or(super::PacketNumber::ZERO);
 
     // encode the credentials being used
-    encoder.encode(crypto.credentials());
+    encoder.encode(credentials);
 
     // wire version - we only support `0` currently
     encoder.encode(&WireVersion::ZERO);

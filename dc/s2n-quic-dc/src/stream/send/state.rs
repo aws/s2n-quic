@@ -3,7 +3,8 @@
 
 use crate::{
     congestion,
-    crypto::{decrypt, encrypt, UninitSlice},
+    credentials::Credentials,
+    crypto,
     packet::{
         self,
         stream::{self, decoder, encoder},
@@ -12,7 +13,10 @@ use crate::{
     stream::{
         processing,
         send::{
-            application, buffer, error::Error, filter::Filter, probes,
+            application, buffer,
+            error::{self, Error},
+            filter::Filter,
+            probes,
             transmission::Type as TransmissionType,
         },
         DEFAULT_IDLE_TIMEOUT,
@@ -202,9 +206,10 @@ impl State {
 
     /// Called by the worker when it receives a control packet from the peer
     #[inline]
-    pub fn on_control_packet<D, Clk>(
+    pub fn on_control_packet<C, Clk>(
         &mut self,
-        decrypt_key: &D,
+        control_key: &C,
+        credentials: &Credentials,
         ecn: ExplicitCongestionNotification,
         packet: &mut packet::control::decoder::Packet,
         random: &mut dyn random::Generator,
@@ -213,11 +218,12 @@ impl State {
         segment_alloc: &buffer::Allocator,
     ) -> Result<(), processing::Error>
     where
-        D: decrypt::Key,
+        C: crypto::open::control::Stream,
         Clk: Clock,
     {
         match self.on_control_packet_impl(
-            decrypt_key,
+            control_key,
+            credentials,
             ecn,
             packet,
             random,
@@ -238,9 +244,10 @@ impl State {
     }
 
     #[inline(always)]
-    fn on_control_packet_impl<D, Clk>(
+    fn on_control_packet_impl<C, Clk>(
         &mut self,
-        decrypt_key: &D,
+        control_key: &C,
+        credentials: &Credentials,
         _ecn: ExplicitCongestionNotification,
         packet: &mut packet::control::decoder::Packet,
         random: &mut dyn random::Generator,
@@ -249,30 +256,21 @@ impl State {
         segment_alloc: &buffer::Allocator,
     ) -> Result<Option<processing::Error>, Error>
     where
-        D: decrypt::Key,
+        C: crypto::open::control::Stream,
         Clk: Clock,
     {
         probes::on_control_packet(
-            decrypt_key.credentials().id,
+            credentials.id,
             self.stream_id,
             packet.packet_number(),
             packet.control_data().len(),
         );
 
-        let key_phase = packet.tag().key_phase();
-
         // only process the packet after we know it's authentic
-        let res = decrypt_key.decrypt(
-            key_phase,
-            packet.crypto_nonce(),
-            packet.header(),
-            &[],
-            packet.auth_tag(),
-            UninitSlice::new(&mut []),
-        );
+        let res = control_key.verify(packet.header(), packet.auth_tag());
 
         probes::on_control_packet_decrypted(
-            decrypt_key.credentials().id,
+            credentials.id,
             self.stream_id,
             packet.packet_number(),
             packet.control_data().len(),
@@ -289,7 +287,7 @@ impl State {
             self.control_filter.on_packet(packet).is_ok(),
             return {
                 probes::on_control_packet_duplicate(
-                    decrypt_key.credentials().id,
+                    credentials.id,
                     self.stream_id,
                     packet.packet_number(),
                     packet.control_data().len(),
@@ -319,7 +317,7 @@ impl State {
             while !decoder.is_empty() {
                 let (frame, remaining) = decoder
                     .decode::<FrameMut>()
-                    .map_err(|decoder| Error::FrameError { decoder })?;
+                    .map_err(|decoder| error::Kind::FrameError { decoder }.err())?;
                 decoder = remaining;
 
                 trace!(?frame);
@@ -338,8 +336,8 @@ impl State {
                         }
 
                         if ack.ecn_counts.is_some() {
-                            self.on_frame_ack::<_, _, _, true>(
-                                decrypt_key,
+                            self.on_frame_ack::<_, _, true>(
+                                credentials,
                                 &ack,
                                 random,
                                 &recv_time,
@@ -349,8 +347,8 @@ impl State {
                                 segment_alloc,
                             )?;
                         } else {
-                            self.on_frame_ack::<_, _, _, false>(
-                                decrypt_key,
+                            self.on_frame_ack::<_, _, false>(
+                                credentials,
                                 &ack,
                                 random,
                                 &recv_time,
@@ -370,7 +368,7 @@ impl State {
                         debug!(connection_close = ?close, state = ?self.state);
 
                         probes::on_close(
-                            decrypt_key.credentials().id,
+                            credentials.id,
                             self.stream_id,
                             packet_number,
                             close.error_code,
@@ -394,15 +392,15 @@ impl State {
                         let _ = self.state.on_send_reset();
                         let _ = self.state.on_recv_reset_ack();
                         let error = if close.frame_type.is_some() {
-                            Error::TransportError {
+                            error::Kind::TransportError {
                                 code: close.error_code,
                             }
                         } else {
-                            Error::ApplicationError {
+                            error::Kind::ApplicationError {
                                 error: close.error_code.into(),
                             }
                         };
-                        return Err(error);
+                        return Err(error.err());
                     }
                     _ => continue,
                 }
@@ -414,7 +412,7 @@ impl State {
             (stream::PacketSpace::Recovery, max_acked_recovery),
         ] {
             if let Some(pn) = pn {
-                self.detect_lost_packets(decrypt_key, random, &recv_time, space, pn)?;
+                self.detect_lost_packets(credentials, random, &recv_time, space, pn)?;
             }
         }
 
@@ -436,9 +434,9 @@ impl State {
     }
 
     #[inline]
-    fn on_frame_ack<D, Ack, Clk, const IS_STREAM: bool>(
+    fn on_frame_ack<Ack, Clk, const IS_STREAM: bool>(
         &mut self,
-        decrypt_key: &D,
+        credentials: &Credentials,
         ack: &frame::Ack<Ack>,
         random: &mut dyn random::Generator,
         clock: &Clk,
@@ -448,7 +446,6 @@ impl State {
         segment_alloc: &buffer::Allocator,
     ) -> Result<(), Error>
     where
-        D: decrypt::Key,
         Ack: frame::ack::AckRanges,
         Clk: Clock,
     {
@@ -492,7 +489,7 @@ impl State {
                         }
 
                         probes::on_packet_ack(
-                            decrypt_key.credentials().id,
+                            credentials.id,
                             self.stream_id,
                             stream::PacketSpace::$space,
                             num.as_u64(),
@@ -562,16 +559,15 @@ impl State {
     }
 
     #[inline]
-    fn detect_lost_packets<D, Clk>(
+    fn detect_lost_packets<Clk>(
         &mut self,
-        decrypt_key: &D,
+        credentials: &Credentials,
         random: &mut dyn random::Generator,
         clock: &Clk,
         packet_space: stream::PacketSpace,
         max: VarInt,
     ) -> Result<(), Error>
     where
-        D: decrypt::Key,
         Clk: Clock,
     {
         let Some(loss_threshold) = max.checked_sub(VarInt::from_u8(2)) else {
@@ -597,7 +593,7 @@ impl State {
                     );
 
                     probes::on_packet_lost(
-                        decrypt_key.credentials().id,
+                        credentials.id,
                         self.stream_id,
                         packet_space,
                         num.as_u64(),
@@ -647,7 +643,10 @@ impl State {
             }
         }
 
-        ensure!(!is_unrecoverable, Err(Error::RetransmissionFailure));
+        ensure!(
+            !is_unrecoverable,
+            Err(error::Kind::RetransmissionFailure.err())
+        );
 
         self.invariants();
 
@@ -718,7 +717,7 @@ impl State {
         Ld: FnOnce() -> Timestamp,
     {
         if self.poll_idle_timer(clock, load_last_activity).is_ready() {
-            self.on_error(Error::IdleTimeout);
+            self.on_error(error::Kind::IdleTimeout);
             // we don't actually want to send any packets on idle timeout
             let _ = self.state.on_send_reset();
             let _ = self.state.on_recv_reset_ack();
@@ -730,7 +729,7 @@ impl State {
             .poll_expiration(clock.get_time())
             .is_ready()
         {
-            self.on_error(Error::IdleTimeout);
+            self.on_error(error::Kind::IdleTimeout);
             return;
         }
 
@@ -923,17 +922,20 @@ impl State {
     }
 
     #[inline]
-    pub fn fill_transmit_queue<E, Clk>(
+    pub fn fill_transmit_queue<C, Clk>(
         &mut self,
-        encrypt_key: &E,
+        control_key: &C,
+        credentials: &Credentials,
         source_control_port: u16,
         clock: &Clk,
     ) -> Result<(), Error>
     where
-        E: encrypt::Key,
+        C: crypto::seal::control::Stream,
         Clk: Clock,
     {
-        if let Err(error) = self.fill_transmit_queue_impl(encrypt_key, source_control_port, clock) {
+        if let Err(error) =
+            self.fill_transmit_queue_impl(control_key, credentials, source_control_port, clock)
+        {
             self.on_error(error);
             return Err(error);
         }
@@ -942,14 +944,15 @@ impl State {
     }
 
     #[inline]
-    fn fill_transmit_queue_impl<E, Clk>(
+    fn fill_transmit_queue_impl<C, Clk>(
         &mut self,
-        encrypt_key: &E,
+        control_key: &C,
+        credentials: &Credentials,
         source_control_port: u16,
         clock: &Clk,
     ) -> Result<(), Error>
     where
-        E: encrypt::Key,
+        C: crypto::seal::control::Stream,
         Clk: Clock,
     {
         // skip a packet number if we're probing
@@ -957,20 +960,21 @@ impl State {
             self.recovery_packet_number += 1;
         }
 
-        self.try_transmit_retransmissions(encrypt_key, clock)?;
-        self.try_transmit_probe(encrypt_key, source_control_port, clock)?;
+        self.try_transmit_retransmissions(control_key, credentials, clock)?;
+        self.try_transmit_probe(control_key, credentials, source_control_port, clock)?;
 
         Ok(())
     }
 
     #[inline]
-    fn try_transmit_retransmissions<E, Clk>(
+    fn try_transmit_retransmissions<C, Clk>(
         &mut self,
-        encrypt_key: &E,
+        control_key: &C,
+        credentials: &Credentials,
         clock: &Clk,
     ) -> Result<(), Error>
     where
-        E: encrypt::Key,
+        C: crypto::seal::control::Stream,
         Clk: Clock,
     {
         // We'll only have retransmissions if we're reliable
@@ -1001,13 +1005,13 @@ impl State {
                     buffer,
                     stream::PacketSpace::Recovery,
                     packet_number,
-                    encrypt_key,
+                    control_key,
                 ) {
                     Ok(info) => info,
                     Err(err) => {
                         // this shouldn't ever happen
                         debug_assert!(false, "{err:?}");
-                        return Err(Error::RetransmissionFailure);
+                        return Err(error::Kind::RetransmissionFailure.err());
                     }
                 }
             };
@@ -1044,7 +1048,7 @@ impl State {
                 };
 
                 probes::on_transmit_stream(
-                    encrypt_key.credentials().id,
+                    credentials.id,
                     self.stream_id,
                     stream::PacketSpace::Recovery,
                     PacketNumberSpace::Initial.new_packet_number(packet_number),
@@ -1067,14 +1071,15 @@ impl State {
     }
 
     #[inline]
-    pub fn try_transmit_probe<E, Clk>(
+    pub fn try_transmit_probe<C, Clk>(
         &mut self,
-        encrypt_key: &E,
+        control_key: &C,
+        credentials: &Credentials,
         source_control_port: u16,
         clock: &Clk,
     ) -> Result<(), Error>
     where
-        E: encrypt::Key,
+        C: crypto::seal::control::Stream,
         Clk: Clock,
     {
         while self.pto.transmissions() > 0 {
@@ -1113,12 +1118,11 @@ impl State {
             };
 
             let encoder = EncoderBuffer::new(&mut buffer);
-            let packet_len = encoder::encode(
+            let packet_len = encoder::probe(
                 encoder,
                 source_control_port,
                 None,
                 self.stream_id,
-                stream::PacketSpace::Recovery,
                 packet_number,
                 self.next_expected_control_packet,
                 VarInt::ZERO,
@@ -1126,7 +1130,8 @@ impl State {
                 VarInt::ZERO,
                 &(),
                 &mut payload,
-                encrypt_key,
+                control_key,
+                credentials,
             );
 
             let payload_len = 0;
@@ -1211,9 +1216,13 @@ impl State {
     }
 
     #[inline]
-    pub fn on_error(&mut self, error: Error) {
+    #[track_caller]
+    pub fn on_error<E>(&mut self, error: E)
+    where
+        Error: From<E>,
+    {
         ensure!(self.error.is_none());
-        self.error = Some(error);
+        self.error = Some(Error::from(error));
         let _ = self.state.on_queue_reset();
 
         self.clean_up();

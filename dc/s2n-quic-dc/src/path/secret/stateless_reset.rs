@@ -1,20 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::schedule;
-use crate::credentials::Id;
-use aws_lc_rs::hkdf::{Prk, Salt, HKDF_SHA384};
+use crate::{credentials::Id, packet::secret_control::TAG_LEN};
+use aws_lc_rs::hmac;
 
 #[derive(Debug)]
 pub struct Signer {
-    prk: Prk,
+    key: hmac::Key,
 }
 
 impl Signer {
     /// Creates a signer with the given secret
     pub fn new(secret: &[u8]) -> Self {
-        let prk = Salt::new(HKDF_SHA384, secret).extract(b"rst");
-        Self { prk }
+        let key = hmac::Key::new(hmac::HMAC_SHA384, secret);
+        Self { key }
     }
 
     /// Returns a random `Signer`
@@ -27,14 +26,11 @@ impl Signer {
         Self::new(&secret)
     }
 
-    pub fn sign(&self, id: &Id) -> [u8; 16] {
-        let mut stateless_reset = [0; 16];
+    pub fn sign(&self, id: &Id) -> [u8; TAG_LEN] {
+        let mut stateless_reset = [0; TAG_LEN];
 
-        self.prk
-            .expand(&[&[16], b"rst ", &**id], schedule::OutLen(16))
-            .unwrap()
-            .fill(&mut stateless_reset)
-            .unwrap();
+        let tag = hmac::sign(&self.key, &**id);
+        stateless_reset.copy_from_slice(&tag.as_ref()[..TAG_LEN]);
 
         stateless_reset
     }

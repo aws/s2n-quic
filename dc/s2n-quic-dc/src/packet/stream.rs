@@ -3,7 +3,7 @@
 
 use super::tag::Common;
 use core::fmt;
-use s2n_quic_core::{packet::KeyPhase, probe, varint::VarInt};
+use s2n_quic_core::{packet::KeyPhase, probe};
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 
 pub mod decoder;
@@ -22,17 +22,6 @@ pub use id::Id;
 pub enum PacketSpace {
     Stream,
     Recovery,
-}
-
-impl PacketSpace {
-    #[inline]
-    pub fn packet_number_into_nonce(&self, packet_number: VarInt) -> u64 {
-        let mut nonce = packet_number.as_u64();
-        if let Self::Recovery = self {
-            nonce |= 1 << 62;
-        }
-        nonce
-    }
 }
 
 impl probe::Arg for PacketSpace {

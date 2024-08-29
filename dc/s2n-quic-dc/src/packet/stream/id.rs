@@ -115,22 +115,6 @@ impl Id {
     }
 }
 
-// FIXME: Try to remove this impl. It's probably misleading to allow conversion from a generic u64
-// and might get accidentally used for going from a VarInt key id which is probably not what you
-// want.
-impl TryFrom<u64> for Id {
-    type Error = s2n_quic_core::varint::VarIntError;
-
-    #[inline]
-    fn try_from(value: u64) -> Result<Self, Self::Error> {
-        Ok(Self {
-            key_id: VarInt::new(value)?,
-            is_reliable: false,
-            is_bidirectional: false,
-        })
-    }
-}
-
 pub const IS_RELIABLE_MASK: u64 = 0b10;
 pub const IS_BIDIRECTIONAL_MASK: u64 = 0b01;
 

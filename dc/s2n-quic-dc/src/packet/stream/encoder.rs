@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::encrypt,
+    credentials::Credentials,
+    crypto::{self, KeyPhase},
     packet::{
         stream::{self, RelativeRetransmissionOffset, Tag},
         WireVersion,
@@ -25,7 +26,6 @@ pub fn encode<H, CD, P, C>(
     source_control_port: u16,
     source_stream_port: Option<u16>,
     stream_id: stream::Id,
-    packet_space: stream::PacketSpace,
     packet_number: VarInt,
     next_expected_control_packet: VarInt,
     header_len: VarInt,
@@ -34,12 +34,172 @@ pub fn encode<H, CD, P, C>(
     control_data: &CD,
     payload: &mut P,
     crypto: &C,
+    credentials: &Credentials,
 ) -> usize
 where
     H: buffer::reader::Storage<Error = core::convert::Infallible>,
     P: buffer::Reader<Error = core::convert::Infallible>,
     CD: EncoderValue,
-    C: encrypt::Key,
+    C: crypto::seal::Application,
+{
+    let packet_space = stream::PacketSpace::Stream;
+
+    let payload_len = encode_header(
+        &mut encoder,
+        packet_space,
+        crypto.key_phase(),
+        credentials,
+        source_control_port,
+        source_stream_port,
+        stream_id,
+        packet_number,
+        next_expected_control_packet,
+        header_len,
+        header,
+        control_data_len,
+        control_data,
+        payload,
+        crypto.tag_len(),
+    );
+
+    let nonce = packet_number.as_u64();
+
+    let payload_offset = encoder.len();
+
+    let mut last_chunk = Default::default();
+    encoder.write_sized(payload_len, |mut dest| {
+        // the payload result is infallible
+        last_chunk = payload.infallible_partial_copy_into(&mut dest);
+    });
+
+    let last_chunk = if last_chunk.is_empty() {
+        None
+    } else {
+        Some(&*last_chunk)
+    };
+
+    encoder.advance_position(crypto.tag_len());
+
+    let packet_len = encoder.len();
+
+    let slice = encoder.as_mut_slice();
+
+    {
+        let (header, payload_and_tag) = unsafe {
+            assume!(slice.len() >= payload_offset);
+            slice.split_at_mut(payload_offset)
+        };
+
+        crypto.encrypt(nonce, header, last_chunk, payload_and_tag);
+    }
+
+    if cfg!(debug_assertions) {
+        let decoder = s2n_codec::DecoderBufferMut::new(slice);
+        let (packet, remaining) =
+            super::decoder::Packet::decode(decoder, (), crypto.tag_len()).unwrap();
+        assert!(remaining.is_empty());
+        assert_eq!(packet.payload().len(), payload_len);
+        assert_eq!(packet.packet_number(), packet_number);
+    }
+
+    packet_len
+}
+
+#[inline(always)]
+pub fn probe<H, CD, P, C>(
+    mut encoder: EncoderBuffer,
+    source_control_port: u16,
+    source_stream_port: Option<u16>,
+    stream_id: stream::Id,
+    packet_number: VarInt,
+    next_expected_control_packet: VarInt,
+    header_len: VarInt,
+    header: &mut H,
+    control_data_len: VarInt,
+    control_data: &CD,
+    payload: &mut P,
+    crypto: &C,
+    credentials: &Credentials,
+) -> usize
+where
+    H: buffer::reader::Storage<Error = core::convert::Infallible>,
+    P: buffer::Reader<Error = core::convert::Infallible>,
+    CD: EncoderValue,
+    C: crypto::seal::control::Stream,
+{
+    let packet_space = stream::PacketSpace::Recovery;
+
+    let payload_len = encode_header(
+        &mut encoder,
+        packet_space,
+        KeyPhase::Zero,
+        credentials,
+        source_control_port,
+        source_stream_port,
+        stream_id,
+        packet_number,
+        next_expected_control_packet,
+        header_len,
+        header,
+        control_data_len,
+        control_data,
+        payload,
+        crypto.tag_len(),
+    );
+
+    debug_assert_eq!(payload_len, 0, "probes should not contain data");
+
+    let tag_offset = encoder.len();
+
+    encoder.advance_position(crypto.tag_len());
+
+    let packet_len = encoder.len();
+
+    let slice = encoder.as_mut_slice();
+
+    {
+        let (header, tag) = unsafe {
+            assume!(slice.len() >= tag_offset);
+            slice.split_at_mut(tag_offset)
+        };
+
+        crypto.sign(header, tag);
+    }
+
+    if cfg!(debug_assertions) {
+        let decoder = s2n_codec::DecoderBufferMut::new(slice);
+        let (packet, remaining) =
+            super::decoder::Packet::decode(decoder, (), crypto.tag_len()).unwrap();
+        assert!(remaining.is_empty());
+        assert_eq!(packet.payload().len(), payload_len);
+        assert_eq!(packet.packet_number(), packet_number);
+    }
+
+    packet_len
+}
+
+#[inline(always)]
+fn encode_header<H, CD, P>(
+    encoder: &mut EncoderBuffer,
+    packet_space: stream::PacketSpace,
+    key_phase: KeyPhase,
+    credentials: &Credentials,
+    source_control_port: u16,
+    source_stream_port: Option<u16>,
+    stream_id: stream::Id,
+    packet_number: VarInt,
+    next_expected_control_packet: VarInt,
+    header_len: VarInt,
+    header: &mut H,
+    control_data_len: VarInt,
+    control_data: &CD,
+    payload: &mut P,
+    tag_len: usize,
+) -> usize
+where
+    H: buffer::reader::Storage<Error = core::convert::Infallible>,
+    P: buffer::Reader<Error = core::convert::Infallible>,
+    CD: EncoderValue,
 {
     let stream_offset = payload.current_offset();
     let final_offset = payload.final_offset();
@@ -48,7 +208,7 @@ where
     debug_assert_ne!(source_stream_port, Some(0));
 
     let mut tag = Tag::default();
-    tag.set_key_phase(crypto.key_phase());
+    tag.set_key_phase(key_phase);
     tag.set_has_control_data(*control_data_len > 0);
     tag.set_has_final_offset(final_offset.is_some());
     tag.set_has_application_header(*header_len > 0);
@@ -56,10 +216,8 @@ where
     tag.set_packet_space(packet_space);
     encoder.encode(&tag);
 
-    let nonce = packet_space.packet_number_into_nonce(packet_number);
-
     // encode the credentials being used
-    encoder.encode(crypto.credentials());
+    encoder.encode(credentials);
 
     // wire version - we only support `0` currently
     encoder.encode(&WireVersion::ZERO);
@@ -99,7 +257,7 @@ where
             .saturating_sub(header_len.encoding_size())
             .saturating_sub(*header_len as usize)
             .saturating_sub(*control_data_len as usize)
-            .saturating_sub(crypto.tag_len());
+            .saturating_sub(tag_len);
 
         // TODO figure out encoding size for the capacity
         let remaining_payload_capacity = remaining_payload_capacity.saturating_sub(1);
@@ -131,43 +289,5 @@ where
         encoder.encode(control_data);
     }
 
-    let payload_offset = encoder.len();
-
-    let mut last_chunk = Default::default();
-    encoder.write_sized(*payload_len as usize, |mut dest| {
-        // the payload result is infallible
-        last_chunk = payload.infallible_partial_copy_into(&mut dest);
-    });
-
-    let last_chunk = if last_chunk.is_empty() {
-        None
-    } else {
-        Some(&*last_chunk)
-    };
-
-    encoder.advance_position(crypto.tag_len());
-
-    let packet_len = encoder.len();
-
-    let slice = encoder.as_mut_slice();
-
-    {
-        let (header, payload_and_tag) = unsafe {
-            assume!(slice.len() >= payload_offset);
-            slice.split_at_mut(payload_offset)
-        };
-
-        crypto.encrypt(nonce, header, last_chunk, payload_and_tag);
-    }
-
-    if cfg!(debug_assertions) {
-        let decoder = s2n_codec::DecoderBufferMut::new(slice);
-        let (packet, remaining) =
-            super::decoder::Packet::decode(decoder, (), crypto.tag_len()).unwrap();
-        assert!(remaining.is_empty());
-        assert_eq!(packet.payload().len() as u64, payload_len.as_u64());
-        assert_eq!(packet.packet_number(), packet_number);
-    }
-
-    packet_len
+    *payload_len as usize
 }

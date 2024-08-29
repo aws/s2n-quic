@@ -13,7 +13,7 @@ use core::{fmt, mem::size_of};
 use s2n_codec::{
     decoder_invariant, CheckedRange, DecoderBufferMut, DecoderBufferMutResult as R, DecoderError,
 };
-use s2n_quic_core::{assume, varint::VarInt};
+use s2n_quic_core::{assume, ensure, varint::VarInt};
 
 type PacketNumber = VarInt;
 
@@ -232,72 +232,88 @@ impl<'a> Packet<'a> {
     }
 
     #[inline]
-    pub fn decrypt<D>(
+    pub fn decrypt<D, C>(
         &mut self,
         d: &D,
+        c: &C,
         payload_out: &mut crypto::UninitSlice,
-    ) -> Result<(), crypto::decrypt::Error>
+    ) -> Result<(), crypto::open::Error>
     where
-        D: crypto::decrypt::Key,
+        D: crypto::open::Application,
+        C: crypto::open::control::Stream,
     {
         let key_phase = self.tag.key_phase();
-        let space = self.remove_retransmit(d);
+        let space = self.remove_retransmit(c)?;
 
-        let nonce = space.packet_number_into_nonce(self.original_packet_number);
-
+        let nonce = self.original_packet_number.as_u64();
         let header = &self.header;
         let payload = &self.payload;
         let auth_tag = &self.auth_tag;
 
-        d.decrypt(key_phase, nonce, header, payload, auth_tag, payload_out)?;
+        match space {
+            stream::PacketSpace::Stream => {
+                d.decrypt(key_phase, nonce, header, payload, auth_tag, payload_out)?;
+            }
+            stream::PacketSpace::Recovery => {
+                // recovery/probe packets cannot have payloads
+                ensure!(payload.is_empty(), Err(crypto::open::Error::MacOnly));
+                c.verify(header, auth_tag)?;
+            }
+        }
 
         Ok(())
     }
 
     #[inline]
-    pub fn decrypt_in_place<D>(&mut self, d: &D) -> Result<(), crypto::decrypt::Error>
+    pub fn decrypt_in_place<D, C>(&mut self, d: &D, c: &C) -> Result<(), crypto::open::Error>
     where
-        D: crypto::decrypt::Key,
+        D: crypto::open::Application,
+        C: crypto::open::control::Stream,
     {
         let key_phase = self.tag.key_phase();
-        let space = self.remove_retransmit(d);
+        let space = self.remove_retransmit(c)?;
 
-        let nonce = space.packet_number_into_nonce(self.original_packet_number);
+        let nonce = self.original_packet_number.as_u64();
         let header = &self.header;
 
-        let payload_len = self.payload.len();
-        let payload_ptr = self.payload.as_mut_ptr();
-        let tag_len = self.auth_tag.len();
-        let tag_ptr = self.auth_tag.as_mut_ptr();
-        let payload_and_tag = unsafe {
-            debug_assert_eq!(payload_ptr.add(payload_len), tag_ptr);
+        match space {
+            stream::PacketSpace::Stream => {
+                let payload_len = self.payload.len();
+                let payload_ptr = self.payload.as_mut_ptr();
+                let tag_len = self.auth_tag.len();
+                let tag_ptr = self.auth_tag.as_mut_ptr();
+                let payload_and_tag = unsafe {
+                    debug_assert_eq!(payload_ptr.add(payload_len), tag_ptr);
 
-            core::slice::from_raw_parts_mut(payload_ptr, payload_len + tag_len)
-        };
-
-        d.decrypt_in_place(key_phase, nonce, header, payload_and_tag)?;
+                    core::slice::from_raw_parts_mut(payload_ptr, payload_len + tag_len)
+                };
+                d.decrypt_in_place(key_phase, nonce, header, payload_and_tag)?;
+            }
+            stream::PacketSpace::Recovery => {
+                // recovery/probe packets cannot have payloads
+                ensure!(self.payload.is_empty(), Err(crypto::open::Error::MacOnly));
+                c.verify(header, self.auth_tag)?;
+            }
+        }
 
         Ok(())
     }
 
     #[inline]
-    fn remove_retransmit<D>(&mut self, d: &D) -> stream::PacketSpace
+    fn remove_retransmit<C>(&mut self, c: &C) -> Result<stream::PacketSpace, crypto::open::Error>
     where
-        D: crypto::decrypt::Key,
+        C: crypto::open::control::Stream,
     {
-        let key_phase = self.tag.key_phase();
         let space = self.tag.packet_space();
         let original_packet_number = self.original_packet_number;
         let retransmission_packet_number = self.packet_number;
 
         if original_packet_number != retransmission_packet_number {
-            d.retransmission_tag(
-                key_phase,
+            c.retransmission_tag(
                 original_packet_number.as_u64(),
-                stream::PacketSpace::Recovery
-                    .packet_number_into_nonce(retransmission_packet_number),
+                retransmission_packet_number.as_u64(),
                 self.auth_tag,
-            );
+            )?;
             // clear the recovery packet bit, since this is a retransmission
             self.header[0] &= !super::Tag::IS_RECOVERY_PACKET;
 
@@ -306,9 +322,9 @@ impl<'a> Packet<'a> {
             let range = offset..offset + size_of::<RelativeRetransmissionOffset>();
             self.header[range].copy_from_slice(&[0; size_of::<RelativeRetransmissionOffset>()]);
 
-            stream::PacketSpace::Stream
+            Ok(stream::PacketSpace::Stream)
         } else {
-            space
+            Ok(space)
         }
     }
 
@@ -321,7 +337,7 @@ impl<'a> Packet<'a> {
         key: &K,
     ) -> Result<(), DecoderError>
     where
-        K: crypto::encrypt::Key,
+        K: crypto::seal::control::Stream,
     {
         let buffer = buffer.into_less_safe_slice();
 
@@ -358,7 +374,7 @@ impl<'a> Packet<'a> {
         key: &K,
     ) -> Result<(), DecoderError>
     where
-        K: crypto::encrypt::Key,
+        K: crypto::seal::control::Stream,
     {
         Self::retransmit_impl(buffer, space, retransmission_packet_number, key)
     }
@@ -379,7 +395,7 @@ impl<'a> Packet<'a> {
         key: &K,
     ) -> Result<(), DecoderError>
     where
-        K: crypto::encrypt::Key,
+        K: crypto::seal::control::Stream,
     {
         unsafe {
             assume!(key.tag_len() >= 16, "tag len needs to be at least 16 bytes");
@@ -404,10 +420,8 @@ impl<'a> Packet<'a> {
             tag
         };
 
-        let (credentials, buffer) = buffer.decode::<Credentials>()?;
+        let (_credentials, buffer) = buffer.decode::<Credentials>()?;
         let (_wire_version, buffer) = buffer.decode::<WireVersion>()?;
-
-        debug_assert_eq!(&credentials, key.credentials());
 
         let (_source_control_port, buffer) = buffer.decode::<u16>()?;
 
@@ -463,8 +477,7 @@ impl<'a> Packet<'a> {
                 original_packet_number + VarInt::from_u32(prev_value);
             key.retransmission_tag(
                 original_packet_number.as_u64(),
-                stream::PacketSpace::Recovery
-                    .packet_number_into_nonce(retransmission_packet_number),
+                retransmission_packet_number.as_u64(),
                 auth_tag,
             );
         }
@@ -473,7 +486,7 @@ impl<'a> Packet<'a> {
 
         key.retransmission_tag(
             original_packet_number.as_u64(),
-            stream::PacketSpace::Recovery.packet_number_into_nonce(retransmission_packet_number),
+            retransmission_packet_number.as_u64(),
             auth_tag,
         );
 

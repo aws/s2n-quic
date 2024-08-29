@@ -97,8 +97,7 @@ fn send_msghdr(
     let mut cmsg_storage = cmsg::Storage::<{ cmsg::ENCODER_LEN }>::default();
     let mut cmsg = cmsg_storage.encoder();
     if ecn != ExplicitCongestionNotification::NotEct {
-        // TODO enable this once we consolidate s2n-quic-core crates
-        // let _ = cmsg.encode_ecn(ecn, &addr);
+        let _ = cmsg.encode_ecn(ecn, &addr.get());
     }
 
     if segments.len() > 1 {

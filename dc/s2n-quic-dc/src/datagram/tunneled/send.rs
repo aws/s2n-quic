@@ -3,7 +3,8 @@
 
 use crate::{
     control,
-    crypto::encrypt,
+    credentials::Credentials,
+    crypto::seal,
     packet::{self, datagram::encoder},
 };
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -19,17 +20,19 @@ pub enum Error {
 
 pub struct Sender<E> {
     encrypt_key: E,
+    credentials: Credentials,
     packet_number: AtomicU64,
 }
 
 impl<E> Sender<E>
 where
-    E: encrypt::Key,
+    E: seal::Application,
 {
     #[inline]
-    pub fn new(encrypt_key: E) -> Self {
+    pub fn new(encrypt_key: E, credentials: Credentials) -> Self {
         Self {
             encrypt_key,
+            credentials,
             packet_number: AtomicU64::new(0),
         }
     }
@@ -89,6 +92,7 @@ where
                 payload_len,
                 &mut cleartext_payload,
                 &self.encrypt_key,
+                &self.credentials,
             )
         };
 

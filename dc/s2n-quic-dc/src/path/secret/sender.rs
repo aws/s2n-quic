@@ -2,20 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::schedule;
-use crate::crypto::awslc::DecryptKey;
+use crate::{crypto::awslc::open, packet::secret_control};
 use once_cell::sync::OnceCell;
 use s2n_quic_core::varint::VarInt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+type StatelessReset = [u8; secret_control::TAG_LEN];
+
 #[derive(Debug)]
 pub struct State {
     current_id: AtomicU64,
-    pub(super) stateless_reset: [u8; 16],
-    control_secret: OnceCell<DecryptKey>,
+    pub(super) stateless_reset: StatelessReset,
+    control_secret: OnceCell<open::control::Secret>,
 }
 
 impl State {
-    pub fn new(stateless_reset: [u8; 16]) -> Self {
+    pub fn new(stateless_reset: StatelessReset) -> Self {
         Self {
             current_id: AtomicU64::new(0),
             stateless_reset,
@@ -45,7 +47,7 @@ impl State {
     }
 
     #[inline]
-    pub fn control_secret(&self, secret: &schedule::Secret) -> &DecryptKey {
+    pub fn control_secret(&self, secret: &schedule::Secret) -> &open::control::Secret {
         self.control_secret.get_or_init(|| secret.control_opener())
     }
 
@@ -65,7 +67,7 @@ impl State {
 #[test]
 #[should_panic = "2^62 integer incremented"]
 fn sender_does_not_wrap() {
-    let state = State::new([0; 16]);
+    let state = State::new([0; secret_control::TAG_LEN]);
     assert_eq!(*state.next_key_id(), 0);
 
     state.current_id.store((1 << 62) - 3, Ordering::Relaxed);
@@ -79,7 +81,7 @@ fn sender_does_not_wrap() {
 
 #[test]
 fn update_restarts_sequence() {
-    let state = State::new([0; 16]);
+    let state = State::new([0; secret_control::TAG_LEN]);
     assert_eq!(*state.next_key_id(), 0);
 
     state.update_for_stale_key(VarInt::new(3).unwrap());

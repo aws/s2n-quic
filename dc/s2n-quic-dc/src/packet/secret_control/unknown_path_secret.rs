@@ -6,8 +6,6 @@ use core::mem::size_of;
 
 impl_tag!(UNKNOWN_PATH_SECRET);
 
-const STATELESS_RESET_LEN: usize = 16;
-
 #[derive(Clone, Copy, Debug)]
 pub struct Packet<'a> {
     #[allow(dead_code)]
@@ -17,10 +15,7 @@ pub struct Packet<'a> {
 }
 
 impl<'a> Packet<'a> {
-    pub fn new_for_test(
-        id: crate::credentials::Id,
-        stateless_reset: &[u8; STATELESS_RESET_LEN],
-    ) -> Packet<'_> {
+    pub fn new_for_test(id: crate::credentials::Id, stateless_reset: &[u8; TAG_LEN]) -> Packet<'_> {
         Packet {
             header: &[],
             value: UnknownPathSecret {
@@ -34,8 +29,7 @@ impl<'a> Packet<'a> {
     #[inline]
     pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<Packet> {
         let header_len = decoder::header_len::<UnknownPathSecret>(buffer.peek())?;
-        let ((header, value, crypto_tag), buffer) =
-            decoder::header(buffer, header_len, STATELESS_RESET_LEN)?;
+        let ((header, value, crypto_tag), buffer) = decoder::header(buffer, header_len)?;
         let packet = Self {
             header,
             value,
@@ -50,10 +44,7 @@ impl<'a> Packet<'a> {
     }
 
     #[inline]
-    pub fn authenticate(
-        &self,
-        stateless_reset: &[u8; STATELESS_RESET_LEN],
-    ) -> Option<&UnknownPathSecret> {
+    pub fn authenticate(&self, stateless_reset: &[u8; TAG_LEN]) -> Option<&UnknownPathSecret> {
         aws_lc_rs::constant_time::verify_slices_are_equal(self.crypto_tag, stateless_reset).ok()?;
         Some(&self.value)
     }
@@ -68,14 +59,10 @@ pub struct UnknownPathSecret {
 
 impl UnknownPathSecret {
     pub const PACKET_SIZE: usize =
-        size_of::<Tag>() + size_of::<u8>() + size_of::<credentials::Id>() + STATELESS_RESET_LEN;
+        size_of::<Tag>() + size_of::<u8>() + size_of::<credentials::Id>() + TAG_LEN;
 
     #[inline]
-    pub fn encode(
-        &self,
-        mut encoder: EncoderBuffer,
-        stateless_reset_tag: &[u8; STATELESS_RESET_LEN],
-    ) -> usize {
+    pub fn encode(&self, mut encoder: EncoderBuffer, stateless_reset_tag: &[u8; TAG_LEN]) -> usize {
         let before = encoder.len();
         encoder.encode(&Tag::default());
         encoder.encode(&&self.credential_id[..]);
@@ -83,11 +70,6 @@ impl UnknownPathSecret {
         encoder.encode(&&stateless_reset_tag[..]);
         let after = encoder.len();
         after - before
-    }
-
-    #[inline]
-    pub fn nonce(&self) -> Nonce {
-        Nonce::UnknownPathSecret
     }
 }
 
@@ -111,9 +93,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn stateless_reset_len() {
+        assert_eq!(s2n_quic_core::stateless_reset::token::LEN, TAG_LEN);
+    }
+
+    #[test]
     fn round_trip_test() {
         bolero::check!()
-            .with_type::<(UnknownPathSecret, [u8; 16])>()
+            .with_type::<(UnknownPathSecret, [u8; TAG_LEN])>()
             .for_each(|(value, stateless_reset)| {
                 let mut buffer = [0u8; UnknownPathSecret::PACKET_SIZE];
                 let len = {

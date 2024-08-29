@@ -572,5 +572,5 @@ mod masks {
     }
 
     pub const HAS_APPLICATION_HEADER: u64 = common_tag!(HAS_APPLICATION_HEADER_MASK);
-    pub const KEY_PHASE: u64 = common_tag!(KEY_PHASE_MASK);
+    pub const KEY_PHASE: u64 = stream::Tag::KEY_PHASE_MASK as _;
 }

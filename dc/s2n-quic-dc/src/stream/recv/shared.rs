@@ -273,10 +273,16 @@ impl Inner {
     ) {
         let source_control_port = shared.source_control_port();
 
-        shared.crypto.seal_with(|sealer| {
-            self.receiver
-                .on_transmit(sealer, source_control_port, send_buffer, &shared.clock)
-        });
+        self.receiver.on_transmit(
+            shared
+                .crypto
+                .control_sealer()
+                .expect("control sealer should be available with recv transmissions"),
+            shared.credentials(),
+            source_control_port,
+            send_buffer,
+            &shared.clock,
+        );
 
         ensure!(!send_buffer.is_empty());
 
@@ -373,6 +379,10 @@ impl Inner {
 
         let mut out_buf = buffer::duplex::Interposer::new(out_buf, &mut self.reassembler);
 
+        // this opener should never actually be used anywhere. any packets that try to use control
+        // authentication will result in stream closure.
+        let control_opener = &crate::crypto::open::control::stream::Reliable::default();
+
         loop {
             // consume the previous packet
             if let Some(packet_len) = prev_packet_len.take() {
@@ -401,17 +411,14 @@ impl Inner {
                         // otherwise, we'll need to receive more bytes from the stream to correctly
                         // parse a packet
 
-                        // if we have pending data greater than the max record size then it's never going to parse
-                        let max_datagram_size =
-                            shared.sender.path.load().max_datagram_size as usize;
-
-                        if msg.payload_len() > max_datagram_size {
+                        // if we have pending data greater than the max datagram size then it's never going to parse
+                        if msg.payload_len() > crate::stream::MAX_DATAGRAM_SIZE {
                             tracing::error!(
                                 unconsumed = msg.payload_len(),
                                 remaining_capacity = msg.remaining_capacity()
                             );
                             msg.clear();
-                            self.receiver.on_error(recv::Error::Decode);
+                            self.receiver.on_error(recv::error::Kind::Decode);
                             return;
                         }
 
@@ -433,7 +440,7 @@ impl Inner {
                     // any other decoder errors mean the stream has been corrupted so
                     // it's time to shut down the connection
                     msg.clear();
-                    self.receiver.on_error(recv::Error::Decode);
+                    self.receiver.on_error(recv::error::Kind::Decode);
                     return;
                 }
             };
@@ -445,7 +452,11 @@ impl Inner {
                     debug_assert_eq!(Some(packet.total_len()), prev_packet_len);
 
                     // make sure the packet looks OK before deriving openers from it
-                    if self.receiver.precheck_stream_packet(packet).is_err() {
+                    if self
+                        .receiver
+                        .precheck_stream_packet(shared.credentials(), packet)
+                        .is_err()
+                    {
                         // check if the receiver returned an error
                         if self.receiver.check_error().is_err() {
                             msg.clear();
@@ -457,8 +468,15 @@ impl Inner {
                     }
 
                     let _ = shared.crypto.open_with(|opener| {
-                        self.receiver
-                            .on_stream_packet(opener, packet, ecn, clock, &mut out_buf)?;
+                        self.receiver.on_stream_packet(
+                            opener,
+                            control_opener,
+                            shared.credentials(),
+                            packet,
+                            ecn,
+                            clock,
+                            &mut out_buf,
+                        )?;
 
                         any_valid_packets = true;
                         did_complete_handshake |=
@@ -479,7 +497,7 @@ impl Inner {
                     // if we get a packet we don't expect then it's fatal for streams
                     msg.clear();
                     self.receiver
-                        .on_error(recv::Error::UnexpectedPacket { packet: kind });
+                        .on_error(recv::error::Kind::UnexpectedPacket { packet: kind });
                     return;
                 }
             }
@@ -511,6 +529,10 @@ impl Inner {
         let mut did_complete_handshake = false;
 
         let mut out_buf = buffer::duplex::Interposer::new(out_buf, &mut self.reassembler);
+        let control_opener = shared
+            .crypto
+            .control_opener()
+            .expect("control opener should be available on unreliable transports");
 
         for segment in msg.segments() {
             let segment_len = segment.len();
@@ -539,13 +561,17 @@ impl Inner {
                     Packet::Stream(mut packet) => {
                         // make sure the packet looks OK before deriving openers from it
                         ensure!(
-                            self.receiver.precheck_stream_packet(&packet).is_ok(),
+                            self.receiver
+                                .precheck_stream_packet(shared.credentials(), &packet)
+                                .is_ok(),
                             continue
                         );
 
                         let _ = shared.crypto.open_with(|opener| {
                             self.receiver.on_stream_packet(
                                 opener,
+                                control_opener,
+                                shared.credentials(),
                                 &mut packet,
                                 ecn,
                                 clock,
