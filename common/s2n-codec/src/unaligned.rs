@@ -209,7 +209,7 @@ impl core::fmt::Display for TryFromIntError {
 }
 
 #[cfg(test)]
-mod bolero_harnesses {
+mod tests {
     
     use super::*;
 
@@ -506,7 +506,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i32| Some(i48::from(value)));
     }
-    
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_126_deref() {

@@ -91,8 +91,8 @@ impl fmt::Debug for CheckedRange {
 }
 
 #[cfg(test)]
-mod bolero_harnesses {
-    
+mod tests {
+
     use super::*;
 
     #[test]

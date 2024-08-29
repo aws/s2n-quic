@@ -259,7 +259,7 @@ impl EncoderValue for &bytes::Bytes {
 }
 
 #[cfg(test)]
-mod bolero_harnesses {
+mod tests {
 
     use super::*;
 
@@ -406,7 +406,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: f64| Some(callee.encoding_size()));
     }
-    
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_81_encoding_size() {

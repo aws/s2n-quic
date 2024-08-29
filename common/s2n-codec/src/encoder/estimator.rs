@@ -61,7 +61,7 @@ impl Encoder for EncoderLenEstimator {
 }
 
 #[cfg(test)]
-mod bolero_harnesses {
+mod tests {
 
     use super::*;
 
@@ -99,7 +99,7 @@ mod bolero_harnesses {
             .with_type()
             .for_each(|callee: &EncoderLenEstimator| Some(callee.capacity()));
     }
-    
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_31_len() {
