@@ -210,7 +210,9 @@ impl core::fmt::Display for TryFromIntError {
 
 #[cfg(test)]
 mod bolero_harnesses {
+    
     use super::*;
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_84_be_bytes_to_storage() {
@@ -218,6 +220,7 @@ mod bolero_harnesses {
             .with_type()
             .for_each(|callee: &[u8; 3]| Some(callee.be_bytes_to_storage()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_86_be_bytes_to_storage() {
@@ -225,6 +228,7 @@ mod bolero_harnesses {
             .with_type()
             .for_each(|callee: &[u8; 6]| Some(callee.be_bytes_to_storage()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_87_new_truncated() {
@@ -233,6 +237,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u32| Some(u24::new_truncated(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_89_to_be_bytes() {
@@ -240,6 +245,7 @@ mod bolero_harnesses {
             .with_type()
             .for_each(|callee: &u24| Some(callee.to_be_bytes()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_91_try_from() {
@@ -248,6 +254,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u32| Some(u24::try_from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_92_from() {
@@ -256,6 +263,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u8| Some(u24::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_93_from() {
@@ -264,6 +272,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u16| Some(u24::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_94_deref() {
@@ -272,6 +281,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u24| Some(callee.deref().clone()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_95_new_truncated() {
@@ -280,6 +290,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i32| Some(i24::new_truncated(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_97_to_be_bytes() {
@@ -288,6 +299,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i24| Some(callee.to_be_bytes()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_99_try_from() {
@@ -296,6 +308,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i32| Some(i24::try_from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_100_from() {
@@ -304,6 +317,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u8| Some(i24::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_101_from() {
@@ -312,6 +326,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i8| Some(i24::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_102_from() {
@@ -320,6 +335,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u16| Some(i24::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_103_from() {
@@ -328,6 +344,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i16| Some(i24::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_104_deref() {
@@ -336,6 +353,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i24| Some(callee.deref().clone()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_105_try_from() {
@@ -344,6 +362,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u64| Some(u24::try_from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_106_new_truncated() {
@@ -352,6 +371,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u64| Some(u48::new_truncated(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_108_to_be_bytes() {
@@ -360,6 +380,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u48| Some(callee.to_be_bytes()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_110_try_from() {
@@ -368,6 +389,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u64| Some(u48::try_from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_111_from() {
@@ -376,6 +398,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u8| Some(u48::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_112_from() {
@@ -384,6 +407,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u16| Some(u48::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_113_from() {
@@ -392,6 +416,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u32| Some(u48::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_114_deref() {
@@ -400,6 +425,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u48| Some(callee.deref().clone()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_115_new_truncated() {
@@ -408,6 +434,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i64| Some(i48::new_truncated(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_117_to_be_bytes() {
@@ -416,6 +443,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i48| Some(callee.to_be_bytes()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_119_try_from() {
@@ -424,6 +452,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i64| Some(i48::try_from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_120_from() {
@@ -432,6 +461,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u8| Some(i48::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_121_from() {
@@ -440,6 +470,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i8| Some(i48::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_122_from() {
@@ -448,6 +479,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u16| Some(i48::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_123_from() {
@@ -456,6 +488,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i16| Some(i48::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_124_from() {
@@ -464,6 +497,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: u32| Some(i48::from(value)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_125_from() {
@@ -472,6 +506,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|value: i32| Some(i48::from(value)));
     }
+    
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_126_deref() {

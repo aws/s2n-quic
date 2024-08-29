@@ -260,7 +260,9 @@ impl EncoderValue for &bytes::Bytes {
 
 #[cfg(test)]
 mod bolero_harnesses {
+
     use super::*;
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_33_encoding_size() {
@@ -269,6 +271,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u8| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_36_encoding_size() {
@@ -277,6 +280,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i8| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_39_encoding_size() {
@@ -285,6 +289,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u16| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_42_encoding_size() {
@@ -293,6 +298,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i16| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_45_encoding_size() {
@@ -301,6 +307,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u24| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_48_encoding_size() {
@@ -309,6 +316,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i24| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_51_encoding_size() {
@@ -317,6 +325,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u32| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_54_encoding_size() {
@@ -325,6 +334,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i32| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_57_encoding_size() {
@@ -333,6 +343,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u48| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_60_encoding_size() {
@@ -341,6 +352,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i48| Some(callee.encoding_size()));
     }
+    
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_63_encoding_size() {
@@ -349,6 +361,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u64| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_66_encoding_size() {
@@ -357,6 +370,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i64| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_69_encoding_size() {
@@ -365,6 +379,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: u128| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_72_encoding_size() {
@@ -373,6 +388,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: i128| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_75_encoding_size() {
@@ -381,6 +397,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: f32| Some(callee.encoding_size()));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_78_encoding_size() {
@@ -389,6 +406,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|callee: f64| Some(callee.encoding_size()));
     }
+    
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_81_encoding_size() {

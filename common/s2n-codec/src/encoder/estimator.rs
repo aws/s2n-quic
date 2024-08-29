@@ -62,7 +62,9 @@ impl Encoder for EncoderLenEstimator {
 
 #[cfg(test)]
 mod bolero_harnesses {
+
     use super::*;
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_27_new() {
@@ -71,6 +73,7 @@ mod bolero_harnesses {
             .cloned()
             .for_each(|capacity: usize| Some(EncoderLenEstimator::new(capacity)));
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_28_overflowed() {
@@ -78,6 +81,7 @@ mod bolero_harnesses {
             .with_type()
             .for_each(|callee: &EncoderLenEstimator| Some(callee.overflowed()));
     }
+    
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_29_write_repeated() {
@@ -87,6 +91,7 @@ mod bolero_harnesses {
             },
         );
     }
+
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_30_capacity() {
@@ -94,6 +99,7 @@ mod bolero_harnesses {
             .with_type()
             .for_each(|callee: &EncoderLenEstimator| Some(callee.capacity()));
     }
+    
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn bolero_test_31_len() {
