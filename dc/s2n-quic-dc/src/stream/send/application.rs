@@ -154,7 +154,9 @@ impl Inner {
 
         trace!(?credits);
 
-        let mut batch = if self.sockets.write_application().features().is_reliable() {
+        let features = self.sockets.write_application().features();
+
+        let mut batch = if features.is_reliable() {
             // the protocol does recovery for us so no need to track the transmissions
             None
         } else {
@@ -175,18 +177,29 @@ impl Inner {
             max_segments,
             &self.shared.sender.segment_alloc,
             |message, buf| {
-                self.shared.crypto.seal_with(|sealer| {
-                    // push packets for transmission into our queue
-                    app.transmit(
-                        credits,
-                        &path,
-                        buf,
-                        &self.shared.sender.packet_number,
-                        sealer,
-                        &clock::Cached::new(&self.shared.clock),
-                        message,
-                    )
-                })
+                self.shared.crypto.seal_with(
+                    |sealer| {
+                        // push packets for transmission into our queue
+                        app.transmit(
+                            credits,
+                            &path,
+                            buf,
+                            &self.shared.sender.packet_number,
+                            sealer,
+                            self.shared.credentials(),
+                            &clock::Cached::new(&self.shared.clock),
+                            message,
+                        )
+                    },
+                    |sealer| {
+                        if features.is_reliable() {
+                            sealer.update();
+                        } else {
+                            // TODO enqueue a full flush of any pending transmissions before
+                            // updating the key.
+                        }
+                    },
+                )
             },
         )?;
 

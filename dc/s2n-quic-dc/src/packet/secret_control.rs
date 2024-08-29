@@ -1,11 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    credentials,
-    crypto::{decrypt, encrypt},
-    packet::WireVersion,
-};
+use crate::{credentials, crypto::seal, packet::WireVersion};
 use s2n_codec::{
     decoder_invariant, decoder_value, DecoderBuffer, DecoderBufferMut,
     DecoderBufferMutResult as Rm, DecoderBufferResult as R, DecoderError, DecoderValue, Encoder,
@@ -17,13 +13,13 @@ use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 #[macro_use]
 mod decoder;
 mod encoder;
-mod nonce;
 
 const UNKNOWN_PATH_SECRET: u8 = 0b0110_0000;
 const STALE_KEY: u8 = 0b0110_0001;
 const REPLAY_DETECTED: u8 = 0b0110_0010;
 
-pub const MAX_PACKET_SIZE: usize = 50;
+pub const MAX_PACKET_SIZE: usize = 64;
+pub const TAG_LEN: usize = 16;
 
 macro_rules! impl_tag {
     ($tag:expr) => {
@@ -79,16 +75,12 @@ macro_rules! impl_tests {
     ($ty:ident) => {
         #[test]
         fn round_trip_test() {
-            use crate::crypto::awslc::{DecryptKey, EncryptKey, AES_128_GCM};
+            use crate::crypto::awslc::{open, seal};
+            use aws_lc_rs::hmac::HMAC_SHA256;
 
-            let creds = crate::credentials::Credentials {
-                id: Default::default(),
-                key_id: Default::default(),
-            };
             let key = &[0u8; 16];
-            let iv = [0u8; 12];
-            let encrypt = EncryptKey::new(creds, key, iv, &AES_128_GCM);
-            let decrypt = DecryptKey::new(creds, key, iv, &AES_128_GCM);
+            let sealer = seal::control::Secret::new(key, &HMAC_SHA256);
+            let opener = open::control::Secret::new(key, &HMAC_SHA256);
 
             bolero::check!()
                 .with_type::<$ty>()
@@ -98,27 +90,22 @@ macro_rules! impl_tests {
                     let mut buffer = [0u8; MAX_PACKET_SIZE];
                     let len = {
                         let encoder = s2n_codec::EncoderBuffer::new(&mut buffer);
-                        value.encode(encoder, &encrypt)
+                        value.encode(encoder, &sealer)
                     };
 
                     {
-                        use decrypt::Key as _;
                         let buffer = s2n_codec::DecoderBufferMut::new(&mut buffer[..len]);
-                        let (decoded, _) = Packet::decode(buffer, decrypt.tag_len()).unwrap();
-                        let decoded = decoded.authenticate(&decrypt).unwrap();
+                        let (decoded, _) = Packet::decode(buffer).unwrap();
+                        let decoded = decoded.authenticate(&opener).unwrap();
                         assert_eq!(value, decoded);
                     }
 
                     {
-                        use decrypt::Key as _;
                         let buffer = s2n_codec::DecoderBufferMut::new(&mut buffer[..len]);
-                        let (decoded, _) = crate::packet::secret_control::Packet::decode(
-                            buffer,
-                            decrypt.tag_len(),
-                        )
-                        .unwrap();
+                        let (decoded, _) =
+                            crate::packet::secret_control::Packet::decode(buffer).unwrap();
                         if let crate::packet::secret_control::Packet::$ty(decoded) = decoded {
-                            let decoded = decoded.authenticate(&decrypt).unwrap();
+                            let decoded = decoded.authenticate(&opener).unwrap();
                             assert_eq!(value, decoded);
                         } else {
                             panic!("decoded as the wrong packet type");
@@ -133,7 +120,6 @@ pub mod replay_detected;
 pub mod stale_key;
 pub mod unknown_path_secret;
 
-pub use nonce::Nonce;
 pub use replay_detected::ReplayDetected;
 pub use stale_key::StaleKey;
 pub use unknown_path_secret::UnknownPathSecret;
@@ -147,7 +133,7 @@ pub enum Packet<'a> {
 
 impl<'a> Packet<'a> {
     #[inline]
-    pub fn decode(buffer: DecoderBufferMut<'a>, crypto_tag_len: usize) -> Rm<Self> {
+    pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<Self> {
         let tag = buffer.peek_byte(0)?;
 
         Ok(match tag {
@@ -156,11 +142,11 @@ impl<'a> Packet<'a> {
                 (Self::UnknownPathSecret(packet), buffer)
             }
             STALE_KEY => {
-                let (packet, buffer) = stale_key::Packet::decode(buffer, crypto_tag_len)?;
+                let (packet, buffer) = stale_key::Packet::decode(buffer)?;
                 (Self::StaleKey(packet), buffer)
             }
             REPLAY_DETECTED => {
-                let (packet, buffer) = replay_detected::Packet::decode(buffer, crypto_tag_len)?;
+                let (packet, buffer) = replay_detected::Packet::decode(buffer)?;
                 (Self::ReplayDetected(packet), buffer)
             }
             _ => return Err(DecoderError::InvariantViolation("invalid tag")),

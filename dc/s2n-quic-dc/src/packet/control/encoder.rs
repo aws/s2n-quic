@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::encrypt,
-    packet::{
-        control::{Tag, NONCE_MASK},
-        stream, WireVersion,
-    },
+    credentials::Credentials,
+    crypto,
+    packet::{control::Tag, stream, WireVersion},
 };
 use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{assume, buffer, varint::VarInt};
@@ -22,24 +20,22 @@ pub fn encode<H, CD, C>(
     control_data_len: VarInt,
     control_data: &CD,
     crypto: &C,
+    credentials: &Credentials,
 ) -> usize
 where
     H: buffer::reader::Storage<Error = core::convert::Infallible>,
     CD: EncoderValue,
-    C: encrypt::Key,
+    C: crypto::seal::control::Stream,
 {
     debug_assert_ne!(source_control_port, 0);
 
     let mut tag = Tag::default();
-    tag.set_key_phase(crypto.key_phase());
     tag.set_is_stream(stream_id.is_some());
     tag.set_has_application_header(*header_len > 0);
     encoder.encode(&tag);
 
-    let nonce = *packet_number | NONCE_MASK;
-
     // encode the credentials being used
-    encoder.encode(crypto.credentials());
+    encoder.encode(credentials);
 
     // wire version - we only support `0` currently
     encoder.encode(&WireVersion::ZERO);
@@ -76,12 +72,12 @@ where
     let slice = encoder.as_mut_slice();
 
     {
-        let (header, payload_and_tag) = unsafe {
+        let (header, tag) = unsafe {
             assume!(slice.len() >= payload_offset);
             slice.split_at_mut(payload_offset)
         };
 
-        crypto.encrypt(nonce, header, None, payload_and_tag);
+        crypto.sign(header, tag);
     }
 
     if cfg!(debug_assertions) {

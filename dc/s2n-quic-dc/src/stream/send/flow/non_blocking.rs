@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::Credits;
-use crate::stream::send::{error::Error, flow};
+use crate::stream::send::{
+    error::{self, Error},
+    flow,
+};
 use atomic_waker::AtomicWaker;
 use core::{
     fmt,
@@ -141,7 +144,7 @@ impl State {
             let mut new_offset = (current_offset & OFFSET_MASK)
                 .checked_add(request.len as u64)
                 .filter(|v| *v <= VarInt::MAX.as_u64())
-                .ok_or(Error::PayloadTooLarge)?;
+                .ok_or_else(|| error::Kind::PayloadTooLarge.err())?;
 
             // record that we've sent the final offset
             if request.is_fin || current_offset & FINISHED_MASK == FINISHED_MASK {
@@ -187,12 +190,12 @@ impl State {
                 .stream_error
                 .get()
                 .copied()
-                .unwrap_or(Error::FatalError);
+                .unwrap_or_else(|| error::Kind::FatalError.err());
             return Err(error);
         }
 
         if offset & FINISHED_MASK == FINISHED_MASK {
-            ensure!(request.len == 0, Err(Error::FinalSizeChanged));
+            ensure!(request.len == 0, Err(error::Kind::FinalSizeChanged.err()));
         }
 
         Ok(offset)

@@ -10,5 +10,5 @@ pub mod schedule;
 mod sender;
 pub mod stateless_reset;
 
-pub use key::{Opener, Sealer};
+pub use key::{open, seal};
 pub use map::Map;

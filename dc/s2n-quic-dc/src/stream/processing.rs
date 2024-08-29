@@ -1,12 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::crypto::decrypt;
+use crate::crypto::open;
 
 #[derive(Clone, Copy, Debug, thiserror::Error)]
 pub enum Error {
-    #[error("packet could not be decrypted")]
-    Decrypt,
+    #[error("packet could not be decrypted: {0}")]
+    Crypto(open::Error),
     #[error("packet has already been processed")]
     Duplicate,
     #[error("the crypto key has been replayed and is invalid")]
@@ -15,14 +15,14 @@ pub enum Error {
     KeyReplayPotentiallyPrevented { gap: Option<u64> },
 }
 
-impl From<decrypt::Error> for Error {
-    fn from(value: decrypt::Error) -> Self {
+impl From<open::Error> for Error {
+    fn from(value: open::Error) -> Self {
         match value {
-            decrypt::Error::ReplayDefinitelyDetected => Self::KeyReplayPrevented,
-            decrypt::Error::ReplayPotentiallyDetected { gap } => {
+            open::Error::ReplayDefinitelyDetected => Self::KeyReplayPrevented,
+            open::Error::ReplayPotentiallyDetected { gap } => {
                 Self::KeyReplayPotentiallyPrevented { gap }
             }
-            decrypt::Error::InvalidTag => Self::Decrypt,
+            error => Self::Crypto(error),
         }
     }
 }

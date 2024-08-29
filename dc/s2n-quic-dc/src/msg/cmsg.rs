@@ -43,12 +43,6 @@ impl Receiver {
             match (cmsg.cmsg_level, cmsg.cmsg_type) {
                 (level, ty) if features::tos::is_match(level, ty) => {
                     if let Some(ecn) = features::tos::decode(value) {
-                        // TODO remove this conversion once we consolidate the s2n-quic-core crates
-                        // convert between the vendored s2n-quic-core types
-                        let ecn = {
-                            let ecn = ecn as u8;
-                            ExplicitCongestionNotification::new(ecn)
-                        };
                         self.ecn = ecn;
                     } else {
                         continue;

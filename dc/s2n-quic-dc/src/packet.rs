@@ -76,13 +76,11 @@ impl<'a> s2n_codec::DecoderParameterizedValueMut<'a> for Packet<'a> {
                 Ok((Self::Datagram(packet), decoder))
             }
             Tag::StaleKey(_) => {
-                let (packet, decoder) =
-                    secret_control::stale_key::Packet::decode(decoder, tag_len)?;
+                let (packet, decoder) = secret_control::stale_key::Packet::decode(decoder)?;
                 Ok((Self::StaleKey(packet), decoder))
             }
             Tag::ReplayDetected(_) => {
-                let (packet, decoder) =
-                    secret_control::replay_detected::Packet::decode(decoder, tag_len)?;
+                let (packet, decoder) = secret_control::replay_detected::Packet::decode(decoder)?;
                 Ok((Self::ReplayDetected(packet), decoder))
             }
             Tag::UnknownPathSecret(_) => {

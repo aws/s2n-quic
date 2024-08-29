@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::decrypt,
+    credentials::Credentials,
+    crypto,
     packet::stream,
     stream::recv::{state::State as Receiver, Error},
 };
@@ -13,17 +14,29 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-pub struct Packet<'a, 'p, D: decrypt::Key, C: Clock + ?Sized> {
+pub struct Packet<'a, 'p, D, K, C>
+where
+    D: crypto::open::Application,
+    K: crypto::open::control::Stream,
+    C: Clock + ?Sized,
+{
     pub packet: &'a mut stream::decoder::Packet<'p>,
     pub payload_cursor: usize,
     pub is_decrypted_in_place: bool,
     pub ecn: ExplicitCongestionNotification,
     pub clock: &'a C,
     pub opener: &'a D,
+    pub control: &'a K,
+    pub credentials: &'a Credentials,
     pub receiver: &'a mut Receiver,
 }
 
-impl<'a, 'p, D: decrypt::Key, C: Clock + ?Sized> reader::Storage for Packet<'a, 'p, D, C> {
+impl<'a, 'p, D, K, C: Clock> reader::Storage for Packet<'a, 'p, D, K, C>
+where
+    D: crypto::open::Application,
+    K: crypto::open::control::Stream,
+    C: Clock + ?Sized,
+{
     type Error = Error;
 
     #[inline]
@@ -36,6 +49,8 @@ impl<'a, 'p, D: decrypt::Key, C: Clock + ?Sized> reader::Storage for Packet<'a, 
         if !self.is_decrypted_in_place {
             self.receiver.on_stream_packet_in_place(
                 self.opener,
+                self.control,
+                self.credentials,
                 self.packet,
                 self.ecn,
                 self.clock,
@@ -79,6 +94,8 @@ impl<'a, 'p, D: decrypt::Key, C: Clock + ?Sized> reader::Storage for Packet<'a, 
         let did_write = dest.put_uninit_slice(self.packet.payload().len(), |dest| {
             self.receiver.on_stream_packet_copy(
                 self.opener,
+                self.control,
+                self.credentials,
                 self.packet,
                 self.ecn,
                 dest,
@@ -97,7 +114,12 @@ impl<'a, 'p, D: decrypt::Key, C: Clock + ?Sized> reader::Storage for Packet<'a, 
     }
 }
 
-impl<'a, 'p, D: decrypt::Key, C: Clock + ?Sized> Reader for Packet<'a, 'p, D, C> {
+impl<'a, 'p, D, K, C: Clock> Reader for Packet<'a, 'p, D, K, C>
+where
+    D: crypto::open::Application,
+    K: crypto::open::control::Stream,
+    C: Clock + ?Sized,
+{
     #[inline]
     fn current_offset(&self) -> VarInt {
         self.packet.stream_offset() + self.payload_cursor

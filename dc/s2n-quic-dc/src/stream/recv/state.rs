@@ -4,10 +4,15 @@
 use crate::{
     allocator::Allocator,
     clock,
-    crypto::{decrypt, encrypt, UninitSlice},
+    credentials::Credentials,
+    crypto::{self, UninitSlice},
     packet::{control, stream},
     stream::{
-        recv::{ack, packet, probes, Error},
+        recv::{
+            ack,
+            error::{self, Error},
+            packet, probes,
+        },
         TransportFeatures, DEFAULT_IDLE_TIMEOUT,
     },
 };
@@ -107,7 +112,7 @@ impl State {
     pub fn stop_sending(&mut self, error: s2n_quic_core::application::Error) {
         // if we've already received everything then no need to notify the peer to stop
         ensure!(matches!(self.state, Receiver::Recv | Receiver::SizeKnown));
-        self.on_error(Error::ApplicationError { error });
+        self.on_error(error::Kind::ApplicationError { error });
     }
 
     #[inline]
@@ -151,16 +156,17 @@ impl State {
     #[inline]
     pub fn precheck_stream_packet(
         &mut self,
+        credentials: &Credentials,
         packet: &stream::decoder::Packet,
     ) -> Result<(), Error> {
-        match self.precheck_stream_packet_impl(packet) {
+        match self.precheck_stream_packet_impl(credentials, packet) {
             Ok(()) => Ok(()),
             Err(err) => {
                 if err.is_fatal(&self.features) {
                     tracing::error!(fatal_error = %err, ?packet);
                     self.on_error(err);
                 } else {
-                    tracing::debug!(non_fatal_error = %err);
+                    tracing::debug!(non_fatal_error = %err, ?packet);
                 }
                 Err(err)
             }
@@ -170,15 +176,26 @@ impl State {
     #[inline]
     fn precheck_stream_packet_impl(
         &mut self,
+        credentials: &Credentials,
         packet: &stream::decoder::Packet,
     ) -> Result<(), Error> {
+        ensure!(
+            packet.credentials().id == credentials.id,
+            Err(error::Kind::CredentialMismatch {
+                expected: credentials.id,
+                actual: packet.credentials().id,
+            }
+            .err())
+        );
+
         // make sure we're getting packets for the correct stream
         ensure!(
             *packet.stream_id() == self.stream_id,
-            Err(Error::StreamMismatch {
+            Err(error::Kind::StreamMismatch {
                 expected: self.stream_id,
                 actual: *packet.stream_id(),
-            })
+            }
+            .err())
         );
 
         if self.features.is_stream() {
@@ -191,10 +208,11 @@ impl State {
             let actual_pn = packet.packet_number().as_u64();
             ensure!(
                 expected_pn == actual_pn,
-                Err(Error::OutOfOrder {
+                Err(error::Kind::OutOfOrder {
                     expected: expected_pn,
                     actual: actual_pn,
-                })
+                }
+                .err())
             );
         }
 
@@ -202,7 +220,7 @@ impl State {
             // if the transport is reliable then we don't expect retransmissions
             ensure!(
                 !packet.is_retransmission(),
-                Err(Error::UnexpectedRetransmission)
+                Err(error::Kind::UnexpectedRetransmission.err())
             );
         }
 
@@ -210,21 +228,24 @@ impl State {
     }
 
     #[inline]
-    pub fn on_stream_packet<D, B, Clk>(
+    pub fn on_stream_packet<D, C, B, Clk>(
         &mut self,
         opener: &D,
+        control: &C,
+        credentials: &Credentials,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
         clock: &Clk,
         out_buf: &mut B,
     ) -> Result<(), Error>
     where
-        D: decrypt::Key,
+        D: crypto::open::Application,
+        C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
         B: buffer::Duplex<Error = core::convert::Infallible>,
     {
         probes::on_stream_packet(
-            opener.credentials().id,
+            credentials.id,
             self.stream_id,
             packet.tag().packet_space(),
             packet.packet_number(),
@@ -234,14 +255,15 @@ impl State {
             packet.is_retransmission(),
         );
 
-        match self.on_stream_packet_impl(opener, packet, ecn, clock, out_buf) {
+        match self.on_stream_packet_impl(opener, control, credentials, packet, ecn, clock, out_buf)
+        {
             Ok(()) => Ok(()),
             Err(err) => {
                 if err.is_fatal(&self.features) {
                     tracing::error!(fatal_error = %err, ?packet);
                     self.on_error(err);
                 } else {
-                    tracing::debug!(non_fatal_error = %err);
+                    tracing::debug!(non_fatal_error = %err, ?packet);
                 }
                 Err(err)
             }
@@ -249,22 +271,25 @@ impl State {
     }
 
     #[inline]
-    fn on_stream_packet_impl<D, B, Clk>(
+    fn on_stream_packet_impl<D, C, B, Clk>(
         &mut self,
         opener: &D,
+        control: &C,
+        credentials: &Credentials,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
         clock: &Clk,
         out_buf: &mut B,
     ) -> Result<(), Error>
     where
-        D: decrypt::Key,
+        D: crypto::open::Application,
+        C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
         B: buffer::Duplex<Error = core::convert::Infallible>,
     {
         use buffer::reader::Storage as _;
 
-        self.precheck_stream_packet_impl(packet)?;
+        self.precheck_stream_packet_impl(credentials, packet)?;
 
         let is_max_data_ok = self.ensure_max_data(packet);
 
@@ -276,6 +301,8 @@ impl State {
             ecn,
             clock,
             opener,
+            control,
+            credentials,
             receiver: self,
         };
 
@@ -293,7 +320,7 @@ impl State {
                     .saturating_add(packet.packet.payload().len() as u64),
             );
 
-            let error = Error::MaxDataExceeded;
+            let error = error::Kind::MaxDataExceeded.err();
             self.on_error(error);
             return Err(error);
         }
@@ -308,22 +335,25 @@ impl State {
     }
 
     #[inline]
-    pub(super) fn on_stream_packet_in_place<D, Clk>(
+    pub(super) fn on_stream_packet_in_place<D, C, Clk>(
         &mut self,
         crypto: &D,
+        control: &C,
+        credentials: &Credentials,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
         clock: &Clk,
     ) -> Result<(), Error>
     where
-        D: decrypt::Key,
+        D: crypto::open::Application,
+        C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
     {
         // ensure the packet is authentic before processing it
-        let res = packet.decrypt_in_place(crypto);
+        let res = packet.decrypt_in_place(crypto, control);
 
         probes::on_stream_packet_decrypted(
-            crypto.credentials().id,
+            credentials.id,
             self.stream_id,
             packet.tag().packet_space(),
             packet.packet_number(),
@@ -340,23 +370,26 @@ impl State {
     }
 
     #[inline]
-    pub(super) fn on_stream_packet_copy<D, Clk>(
+    pub(super) fn on_stream_packet_copy<D, C, Clk>(
         &mut self,
         crypto: &D,
+        control: &C,
+        credentials: &Credentials,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
         payload_out: &mut UninitSlice,
         clock: &Clk,
     ) -> Result<(), Error>
     where
-        D: decrypt::Key,
+        D: crypto::open::Application,
+        C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
     {
         // ensure the packet is authentic before processing it
-        let res = packet.decrypt(crypto, payload_out);
+        let res = packet.decrypt(crypto, control, payload_out);
 
         probes::on_stream_packet_decrypted(
-            crypto.credentials().id,
+            credentials.id,
             self.stream_id,
             packet.tag().packet_space(),
             packet.packet_number(),
@@ -407,7 +440,7 @@ impl State {
         };
         ensure!(
             space.filter.on_packet(packet).is_ok(),
-            Err(Error::Duplicate)
+            Err(error::Kind::Duplicate.err())
         );
 
         let packet_number = PacketNumberSpace::Initial.new_packet_number(packet.packet_number());
@@ -454,7 +487,7 @@ impl State {
         // only error out if we're still expecting more data
         ensure!(matches!(self.state, Receiver::Recv | Receiver::SizeKnown));
 
-        self.on_error(Error::TruncatedTransport);
+        self.on_error(error::Kind::TruncatedTransport);
     }
 
     #[inline]
@@ -519,7 +552,12 @@ impl State {
     }
 
     #[inline]
-    pub fn on_error(&mut self, error: Error) {
+    #[track_caller]
+    pub fn on_error<E>(&mut self, error: E)
+    where
+        Error: From<E>,
+    {
+        let error = Error::from(error);
         debug_assert!(error.is_fatal(&self.features));
         let _ = self.state.on_reset();
         self.stream_ack.clear();
@@ -564,7 +602,7 @@ impl State {
             did_transition |= self.state.on_reset().is_ok();
             did_transition |= self.state.on_app_read_reset().is_ok();
             if did_transition {
-                self.on_error(Error::IdleTimeout);
+                self.on_error(error::Kind::IdleTimeout);
                 // override the transmission since we're just timing out
                 self._should_transmit = false;
             }
@@ -610,14 +648,15 @@ impl State {
     }
 
     #[inline]
-    pub fn on_transmit<E, A, Clk>(
+    pub fn on_transmit<K, A, Clk>(
         &mut self,
-        encrypt_key: &E,
+        key: &K,
+        credentials: &Credentials,
         source_control_port: u16,
         output: &mut A,
         clock: &Clk,
     ) where
-        E: encrypt::Key,
+        K: crypto::seal::control::Stream,
         A: Allocator,
         Clk: Clock + ?Sized,
     {
@@ -627,7 +666,8 @@ impl State {
             Self::on_transmit_error
         })(
             self,
-            encrypt_key,
+            key,
+            credentials,
             source_control_port,
             output,
             // avoid querying the clock for every transmitted packet
@@ -636,14 +676,15 @@ impl State {
     }
 
     #[inline]
-    fn on_transmit_ack<E, A, Clk>(
+    fn on_transmit_ack<K, A, Clk>(
         &mut self,
-        encrypt_key: &E,
+        key: &K,
+        credentials: &Credentials,
         source_control_port: u16,
         output: &mut A,
         _clock: &Clk,
     ) where
-        E: encrypt::Key,
+        K: crypto::seal::control::Stream,
         A: Allocator,
         Clk: Clock + ?Sized,
     {
@@ -695,7 +736,8 @@ impl State {
             &mut &[][..],
             encoding_size,
             &frame,
-            encrypt_key,
+            key,
+            credentials,
         );
 
         match result {
@@ -721,7 +763,7 @@ impl State {
             );
             if let (Some(min), Some(max), Some(gaps)) = metrics {
                 probes::on_transmit_control(
-                    encrypt_key.credentials().id,
+                    credentials.id,
                     self.stream_id,
                     space,
                     packet_number,
@@ -743,14 +785,15 @@ impl State {
     }
 
     #[inline]
-    fn on_transmit_error<E, A, Clk>(
+    fn on_transmit_error<K, A, Clk>(
         &mut self,
-        encrypt_key: &E,
+        control_key: &K,
+        credentials: &Credentials,
         source_control_port: u16,
         output: &mut A,
         _clock: &Clk,
     ) where
-        E: encrypt::Key,
+        K: crypto::seal::control::Stream,
         A: Allocator,
         Clk: Clock + ?Sized,
     {
@@ -786,7 +829,8 @@ impl State {
             &mut &[][..],
             encoding_size,
             &frame,
-            encrypt_key,
+            control_key,
+            credentials,
         );
 
         match result {
@@ -807,7 +851,7 @@ impl State {
         self.recovery_ack.clear();
 
         probes::on_transmit_close(
-            encrypt_key.credentials().id,
+            credentials.id,
             self.stream_id,
             packet_number,
             frame.error_code,

@@ -1,34 +1,50 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::path::secret::{Map, Opener, Sealer};
-use core::{fmt, sync::atomic::Ordering};
-use crossbeam_epoch::{pin, Atomic};
+use crate::{
+    crypto::awslc::{open, seal},
+    path::secret::{open::Application as Opener, seal::Application as Sealer, Map},
+};
+use core::fmt;
+use std::sync::Mutex;
 
-// TODO support key updates
 pub struct Crypto {
-    sealer: Atomic<Sealer>,
-    opener: Atomic<Opener>,
+    app_sealer: Mutex<Sealer>,
+    app_opener: Mutex<Opener>,
+    control_sealer: Option<seal::control::Stream>,
+    control_opener: Option<open::control::Stream>,
     map: Map,
 }
 
 impl fmt::Debug for Crypto {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Crypto")
-            .field("sealer", &self.sealer)
-            .field("opener", &self.opener)
+            .field("sealer", &self.app_sealer)
+            .field("opener", &self.app_opener)
             .finish()
     }
 }
 
 impl Crypto {
     #[inline]
-    pub fn new(sealer: Sealer, opener: Opener, map: &Map) -> Self {
-        let sealer = Atomic::new(sealer);
-        let opener = Atomic::new(opener);
+    pub fn new(
+        app_sealer: Sealer,
+        app_opener: Opener,
+        control: Option<(seal::control::Stream, open::control::Stream)>,
+        map: &Map,
+    ) -> Self {
+        let app_sealer = Mutex::new(app_sealer);
+        let app_opener = Mutex::new(app_opener);
+        let (control_sealer, control_opener) = if let Some((s, o)) = control {
+            (Some(s), Some(o))
+        } else {
+            (None, None)
+        };
         Self {
-            sealer,
-            opener,
+            app_sealer,
+            app_opener,
+            control_sealer,
+            control_opener,
             map: map.clone(),
         }
     }
@@ -44,50 +60,44 @@ impl Crypto {
     }
 
     #[inline]
-    pub fn seal_with<R>(&self, seal: impl FnOnce(&Sealer) -> R) -> R {
-        let pin = pin();
-        let sealer = self.seal_pin(&pin);
-        seal(sealer)
-    }
+    pub fn seal_with<R>(
+        &self,
+        seal: impl FnOnce(&Sealer) -> R,
+        update: impl FnOnce(&mut Sealer),
+    ) -> R {
+        let lock = &self.app_sealer;
+        let mut guard = lock.lock().unwrap();
+        let result = seal(&guard);
 
-    #[inline]
-    fn seal_pin<'a>(&self, pin: &'a crossbeam_epoch::Guard) -> &'a Sealer {
-        let sealer = self.sealer.load(Ordering::Acquire, pin);
-        unsafe { sealer.deref() }
+        // update the keys if needed
+        if guard.needs_update() {
+            update(&mut guard);
+        }
+
+        result
     }
 
     #[inline]
     pub fn open_with<R>(&self, open: impl FnOnce(&Opener) -> R) -> R {
-        let pin = pin();
-        let opener = self.open_pin(&pin);
-        open(opener)
+        let lock = &self.app_opener;
+        let mut guard = lock.lock().unwrap();
+        let result = open(&guard);
+
+        // update the keys if needed
+        if guard.needs_update() {
+            guard.update();
+        }
+
+        result
     }
 
     #[inline]
-    fn open_pin<'a>(&self, pin: &'a crossbeam_epoch::Guard) -> &'a Opener {
-        let opener = self.opener.load(Ordering::Acquire, pin);
-        unsafe { opener.deref() }
+    pub fn control_sealer(&self) -> Option<&seal::control::Stream> {
+        self.control_sealer.as_ref()
     }
-}
 
-impl Drop for Crypto {
     #[inline]
-    fn drop(&mut self) {
-        use crossbeam_epoch::Shared;
-        let pin = pin();
-        let sealer = self.sealer.swap(Shared::null(), Ordering::AcqRel, &pin);
-        let opener = self.opener.swap(Shared::null(), Ordering::AcqRel, &pin);
-
-        // no need to drop either one
-        if sealer.is_null() && opener.is_null() {
-            return;
-        }
-
-        unsafe {
-            pin.defer_unchecked(move || {
-                drop(sealer.try_into_owned());
-                drop(opener.try_into_owned());
-            })
-        }
+    pub fn control_opener(&self) -> Option<&open::control::Stream> {
+        self.control_opener.as_ref()
     }
 }

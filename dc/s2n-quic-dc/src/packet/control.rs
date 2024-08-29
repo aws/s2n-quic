@@ -3,10 +3,7 @@
 
 use super::tag::Common;
 use core::fmt;
-use s2n_quic_core::packet::KeyPhase;
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
-
-const NONCE_MASK: u64 = 1 << 63;
 
 pub mod decoder;
 pub mod encoder;
@@ -29,7 +26,6 @@ impl fmt::Debug for Tag {
         f.debug_struct("control::Tag")
             .field("is_stream", &self.is_stream())
             .field("has_application_header", &self.has_application_header())
-            .field("key_phase", &self.key_phase())
             .finish()
     }
 }
@@ -37,7 +33,6 @@ impl fmt::Debug for Tag {
 impl Tag {
     pub const IS_STREAM_MASK: u8 = 0b0100;
     pub const HAS_APPLICATION_HEADER_MASK: u8 = 0b0010;
-    pub const KEY_PHASE_MASK: u8 = 0b0001;
 
     pub const MIN: u8 = 0b0101_0000;
     pub const MAX: u8 = 0b0101_1111;
@@ -60,24 +55,6 @@ impl Tag {
     #[inline]
     pub fn has_application_header(&self) -> bool {
         self.0.get(Self::HAS_APPLICATION_HEADER_MASK)
-    }
-
-    #[inline]
-    pub fn set_key_phase(&mut self, key_phase: KeyPhase) {
-        let v = match key_phase {
-            KeyPhase::Zero => false,
-            KeyPhase::One => true,
-        };
-        self.0.set(Self::KEY_PHASE_MASK, v)
-    }
-
-    #[inline]
-    pub fn key_phase(&self) -> KeyPhase {
-        if self.0.get(Self::KEY_PHASE_MASK) {
-            KeyPhase::One
-        } else {
-            KeyPhase::Zero
-        }
     }
 
     #[inline]

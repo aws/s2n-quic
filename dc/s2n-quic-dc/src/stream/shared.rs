@@ -3,6 +3,7 @@
 
 use crate::{
     clock::Clock,
+    credentials::Credentials,
     stream::{
         recv::shared as recv,
         send::{application, shared as send},
@@ -121,6 +122,14 @@ impl<C: ?Sized> Shared<C> {
             *self.common.fixed.source_control_port.get()
         }
     }
+
+    #[inline]
+    pub fn credentials(&self) -> &Credentials {
+        unsafe {
+            // SAFETY: the fixed information doesn't change for the lifetime of the stream
+            &*self.common.fixed.credentials.get()
+        }
+    }
 }
 
 impl<C: ?Sized> ops::Deref for Shared<C> {
@@ -167,6 +176,7 @@ pub struct FixedValues {
     pub remote_ip: UnsafeCell<IpAddress>,
     pub source_control_port: UnsafeCell<u16>,
     pub application: UnsafeCell<application::state::State>,
+    pub credentials: UnsafeCell<Credentials>,
 }
 
 unsafe impl Send for FixedValues {}

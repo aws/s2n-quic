@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::encrypt,
+    credentials::Credentials,
+    crypto::seal,
     packet::stream::{self, encoder},
     stream::{
         packet_number,
@@ -43,11 +44,12 @@ impl State {
         storage: &mut I,
         packet_number: &packet_number::Counter,
         encrypt_key: &E,
+        credentials: &Credentials,
         clock: &Clk,
         message: &mut M,
     ) -> Result<(), Error>
     where
-        E: encrypt::Key,
+        E: seal::Application,
         I: buffer::reader::Storage<Error = core::convert::Infallible>,
         Clk: Clock,
         M: Message,
@@ -94,7 +96,6 @@ impl State {
                     self.source_control_port,
                     self.source_stream_port,
                     stream_id,
-                    stream::PacketSpace::Stream,
                     packet_number,
                     path.next_expected_control_packet,
                     VarInt::ZERO,
@@ -103,6 +104,7 @@ impl State {
                     &(),
                     &mut reader,
                     encrypt_key,
+                    credentials,
                 );
 
                 // buffer is clamped to u16::MAX so this is safe to cast without loss
@@ -119,7 +121,7 @@ impl State {
 
                 let time_sent = clock.get_time();
                 probes::on_transmit_stream(
-                    encrypt_key.credentials().id,
+                    credentials.id,
                     stream_id,
                     stream::PacketSpace::Stream,
                     s2n_quic_core::packet::number::PacketNumberSpace::Initial

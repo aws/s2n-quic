@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    receiver,
+    open, receiver,
     schedule::{self, Initiator},
-    sender, stateless_reset, Opener, Sealer,
+    seal, sender, stateless_reset,
 };
 use crate::{
     credentials::{Credentials, Id},
     crypto,
     packet::{secret_control as control, Packet, WireVersion},
+    stream::TransportFeatures,
 };
 use rand::Rng as _;
 use s2n_codec::EncoderBuffer;
@@ -17,6 +18,7 @@ use s2n_quic_core::{
     dc::{self, ApplicationParams, DatagramInfo},
     ensure,
     event::api::EndpointType,
+    varint::VarInt,
 };
 use std::{
     fmt,
@@ -268,6 +270,22 @@ impl Map {
         Self { state }
     }
 
+    /// The number of trusted secrets.
+    pub fn secrets_len(&self) -> usize {
+        self.state.ids.len()
+    }
+
+    /// The number of trusted peers.
+    ///
+    /// This should be smaller than `secrets_len` (modulo momentary churn).
+    pub fn peers_len(&self) -> usize {
+        self.state.peers.len()
+    }
+
+    pub fn secrets_capacity(&self) -> usize {
+        self.state.max_capacity
+    }
+
     pub fn drop_state(&self) {
         self.state.peers.pin().clear();
         self.state.ids.pin().clear();
@@ -278,42 +296,54 @@ impl Map {
             && !self.state.requested_handshakes.pin().contains(&peer)
     }
 
-    pub fn sealer(&self, peer: SocketAddr) -> Option<(Sealer, ApplicationParams)> {
+    pub fn seal_once(
+        &self,
+        peer: SocketAddr,
+    ) -> Option<(seal::Once, Credentials, ApplicationParams)> {
         let peers_guard = self.state.peers.guard();
         let state = self.state.peers.get(&peer, &peers_guard)?;
         state.mark_live(self.state.cleaner.epoch());
 
-        let sealer = state.uni_sealer();
-        Some((sealer, state.parameters))
+        let (sealer, credentials) = state.uni_sealer();
+        Some((sealer, credentials, state.parameters))
     }
 
-    pub fn opener(&self, credentials: &Credentials, control_out: &mut Vec<u8>) -> Option<Opener> {
+    pub fn open_once(
+        &self,
+        credentials: &Credentials,
+        control_out: &mut Vec<u8>,
+    ) -> Option<open::Once> {
         let state = self.pre_authentication(credentials, control_out)?;
         let opener = state.uni_opener(self.clone(), credentials);
         Some(opener)
     }
 
-    pub fn pair_for_peer(&self, peer: SocketAddr) -> Option<(Sealer, Opener, ApplicationParams)> {
+    pub fn pair_for_peer(
+        &self,
+        peer: SocketAddr,
+        features: &TransportFeatures,
+    ) -> Option<(Bidirectional, ApplicationParams)> {
         let peers_guard = self.state.peers.guard();
         let state = self.state.peers.get(&peer, &peers_guard)?;
         state.mark_live(self.state.cleaner.epoch());
 
-        let (sealer, opener) = state.bidi_local();
+        let keys = state.bidi_local(features);
 
-        Some((sealer, opener, state.parameters))
+        Some((keys, state.parameters))
     }
 
     pub fn pair_for_credentials(
         &self,
         credentials: &Credentials,
+        features: &TransportFeatures,
         control_out: &mut Vec<u8>,
-    ) -> Option<(Sealer, Opener, ApplicationParams)> {
+    ) -> Option<(Bidirectional, ApplicationParams)> {
         let state = self.pre_authentication(credentials, control_out)?;
 
         let params = state.parameters;
-        let (sealer, opener) = state.bidi_remote(self.clone(), credentials);
+        let keys = state.bidi_remote(self.clone(), credentials, features);
 
-        Some((sealer, opener, params))
+        Some((keys, params))
     }
 
     /// This can be called from anywhere to ask the map to handle a packet.
@@ -481,7 +511,7 @@ impl Map {
         let provider = Self::new(stateless_reset::Signer::random());
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();
-        let mut stateless_reset = [0; 16];
+        let mut stateless_reset = [0; control::TAG_LEN];
         aws_lc_rs::rand::fill(&mut stateless_reset).unwrap();
 
         let receiver_shared = receiver::Shared::new();
@@ -524,7 +554,7 @@ impl Map {
             s2n_quic_core::endpoint::Type::Client,
             &secret,
         );
-        let sender = sender::State::new([0; 16]);
+        let sender = sender::State::new([0; control::TAG_LEN]);
         let receiver = self.state.receiver_shared.clone().new_receiver();
         let entry = Entry::new(
             peer,
@@ -633,9 +663,14 @@ impl Entry {
         secret: schedule::Secret,
         sender: sender::State,
         receiver: receiver::State,
-        parameters: ApplicationParams,
+        mut parameters: ApplicationParams,
         rehandshake_time: Duration,
     ) -> Self {
+        // clamp max datagram size to a well-known value
+        parameters.max_datagram_size = parameters
+            .max_datagram_size
+            .min(crate::stream::MAX_DATAGRAM_SIZE as _);
+
         assert!(rehandshake_time.as_secs() <= u32::MAX as u64);
         Self {
             creation_time: Instant::now(),
@@ -661,45 +696,81 @@ impl Entry {
         self.used_at.store(at_epoch, Ordering::Relaxed);
     }
 
-    fn uni_sealer(&self) -> Sealer {
+    fn uni_sealer(&self) -> (seal::Once, Credentials) {
         let key_id = self.sender.next_key_id();
+        let credentials = Credentials {
+            id: *self.secret.id(),
+            key_id,
+        };
         let sealer = self.secret.application_sealer(key_id);
+        let sealer = seal::Once::new(sealer);
 
-        Sealer { sealer }
+        (sealer, credentials)
     }
 
-    fn uni_opener(self: Arc<Self>, map: Map, credentials: &Credentials) -> Opener {
-        let opener = self.secret.application_opener(credentials.key_id);
-
-        let dedup = Dedup::new(self, map);
-
-        Opener { opener, dedup }
+    fn uni_opener(self: Arc<Self>, map: Map, credentials: &Credentials) -> open::Once {
+        let key_id = credentials.key_id;
+        let opener = self.secret.application_opener(key_id);
+        let dedup = Dedup::new(self, key_id, map);
+        open::Once::new(opener, dedup)
     }
 
-    fn bidi_local(&self) -> (Sealer, Opener) {
+    fn bidi_local(&self, features: &TransportFeatures) -> Bidirectional {
         let key_id = self.sender.next_key_id();
-        let (sealer, opener) = self.secret.application_pair(key_id, Initiator::Local);
-        let sealer = Sealer { sealer };
+        let initiator = Initiator::Local;
 
-        // we don't need to dedup locally-initiated openers
-        let dedup = Dedup::disabled();
+        let application = ApplicationPair::new(
+            &self.secret,
+            key_id,
+            initiator,
+            // we don't need to dedup locally-initiated openers
+            Dedup::disabled(),
+        );
 
-        let opener = Opener { opener, dedup };
+        let control = if features.is_reliable() {
+            None
+        } else {
+            Some(ControlPair::new(&self.secret, key_id, initiator))
+        };
 
-        (sealer, opener)
+        Bidirectional {
+            credentials: Credentials {
+                id: *self.secret.id(),
+                key_id,
+            },
+            application,
+            control,
+        }
     }
 
-    fn bidi_remote(self: Arc<Self>, map: Map, credentials: &Credentials) -> (Sealer, Opener) {
-        let (sealer, opener) = self
-            .secret
-            .application_pair(credentials.key_id, Initiator::Remote);
-        let sealer = Sealer { sealer };
+    fn bidi_remote(
+        self: &Arc<Self>,
+        map: Map,
+        credentials: &Credentials,
+        features: &TransportFeatures,
+    ) -> Bidirectional {
+        let key_id = credentials.key_id;
+        let initiator = Initiator::Remote;
 
-        let dedup = Dedup::new(self, map);
+        let application = ApplicationPair::new(
+            &self.secret,
+            key_id,
+            initiator,
+            // Remote application keys need to be de-duplicated
+            Dedup::new(self.clone(), key_id, map),
+        );
 
-        let opener = Opener { opener, dedup };
+        let control = if features.is_reliable() {
+            None
+        } else {
+            Some(ControlPair::new(&self.secret, key_id, initiator))
+        };
 
-        (sealer, opener)
+        Bidirectional {
+            credentials: *credentials,
+            application,
+            control,
+        }
     }
 
     fn rehandshake_time(&self) -> Instant {
@@ -707,9 +778,45 @@ impl Entry {
     }
 }
 
+pub struct Bidirectional {
+    pub credentials: Credentials,
+    pub application: ApplicationPair,
+    pub control: Option<ControlPair>,
+}
+
+pub struct ApplicationPair {
+    pub sealer: seal::Application,
+    pub opener: open::Application,
+}
+
+impl ApplicationPair {
+    fn new(secret: &schedule::Secret, key_id: VarInt, initiator: Initiator, dedup: Dedup) -> Self {
+        let (sealer, sealer_ku, opener, opener_ku) = secret.application_pair(key_id, initiator);
+
+        let sealer = seal::Application::new(sealer, sealer_ku);
+
+        let opener = open::Application::new(opener, opener_ku, dedup);
+
+        Self { sealer, opener }
+    }
+}
+
+pub struct ControlPair {
+    pub sealer: seal::control::Stream,
+    pub opener: open::control::Stream,
+}
+
+impl ControlPair {
+    fn new(secret: &schedule::Secret, key_id: VarInt, initiator: Initiator) -> Self {
+        let (sealer, opener) = secret.control_pair(key_id, initiator);
+
+        Self { sealer, opener }
+    }
+}
+
 pub struct Dedup {
-    cell: once_cell::sync::OnceCell<crypto::decrypt::Result>,
-    init: core::cell::Cell<Option<(Arc<Entry>, Map)>>,
+    cell: once_cell::sync::OnceCell<crypto::open::Result>,
+    init: core::cell::Cell<Option<(Arc<Entry>, VarInt, Map)>>,
 }
 
 /// SAFETY: `init` cell is synchronized by `OnceCell`
@@ -717,17 +824,17 @@ unsafe impl Sync for Dedup {}
 
 impl Dedup {
     #[inline]
-    fn new(entry: Arc<Entry>, map: Map) -> Self {
+    fn new(entry: Arc<Entry>, key_id: VarInt, map: Map) -> Self {
         // TODO potentially record a timestamp of when this was created to try and detect long
         // delays of processing the first packet.
         Self {
             cell: Default::default(),
-            init: core::cell::Cell::new(Some((entry, map))),
+            init: core::cell::Cell::new(Some((entry, key_id, map))),
         }
     }
 
     #[inline]
-    fn disabled() -> Self {
+    pub(crate) fn disabled() -> Self {
         Self {
             cell: once_cell::sync::OnceCell::with_value(Ok(())),
             init: core::cell::Cell::new(None),
@@ -740,20 +847,23 @@ impl Dedup {
     }
 
     #[inline]
-    pub fn check(&self, c: &impl crypto::decrypt::Key) -> crypto::decrypt::Result {
+    pub fn check(&self) -> crypto::open::Result {
         *self.cell.get_or_init(|| {
             match self.init.take() {
-                Some((entry, map)) => {
-                    let creds = c.credentials();
+                Some((entry, key_id, map)) => {
+                    let creds = &Credentials {
+                        id: *entry.secret.id(),
+                        key_id,
+                    };
                     match entry.receiver.post_authentication(creds) {
                         Ok(()) => Ok(()),
                         Err(receiver::Error::AlreadyExists) => {
                             map.send_control(&entry, creds, receiver::Error::AlreadyExists);
-                            Err(crypto::decrypt::Error::ReplayDefinitelyDetected)
+                            Err(crypto::open::Error::ReplayDefinitelyDetected)
                         }
                         Err(receiver::Error::Unknown) => {
                             map.send_control(&entry, creds, receiver::Error::Unknown);
-                            Err(crypto::decrypt::Error::ReplayPotentiallyDetected {
+                            Err(crypto::open::Error::ReplayPotentiallyDetected {
                                 gap: Some(
                                     (*entry.receiver.minimum_unseen_key_id())
                                         // This should never be negative, but saturate anyway to avoid
@@ -766,7 +876,7 @@ impl Dedup {
                 }
                 None => {
                     // Dedup has been poisoned! TODO log this
-                    Err(crypto::decrypt::Error::ReplayPotentiallyDetected { gap: None })
+                    Err(crypto::open::Error::ReplayPotentiallyDetected { gap: None })
                 }
             }
         })
@@ -821,8 +931,7 @@ impl dc::Endpoint for Map {
         payload: &mut [u8],
     ) -> bool {
         let payload = s2n_codec::DecoderBufferMut::new(payload);
-        // TODO: Is 16 always right?
-        return match control::Packet::decode(payload, 16) {
+        match control::Packet::decode(payload) {
             Ok((packet, tail)) => {
                 // Probably a bug somewhere? There shouldn't be anything trailing in the buffer
                 // after we decode a secret control packet.
@@ -834,7 +943,7 @@ impl dc::Endpoint for Map {
                 true
             }
             Err(_) => false,
-        };
+        }
     }
 }
 

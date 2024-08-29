@@ -7,8 +7,13 @@ use crate::{
     msg::addr,
     packet::Packet,
     stream::{
-        pacer, processing,
-        send::{error::Error, queue::Queue, shared::Event, state::State},
+        pacer,
+        send::{
+            error::{self, Error},
+            queue::Queue,
+            shared::Event,
+            state::State,
+        },
         shared::{self, Half},
         socket::Socket,
     },
@@ -241,7 +246,7 @@ where
                 } => {
                     // if the application is panicking then we notify the peer
                     if is_panicking {
-                        let error = Error::ApplicationError { error: 1u8.into() };
+                        let error = error::Kind::ApplicationError { error: 1u8.into() };
                         self.sender.on_error(error);
                         continue;
                     }
@@ -282,6 +287,11 @@ where
         let random = &mut self.random;
         let mut any_valid_packets = false;
         let clock = &clock::Cached::new(&self.shared.clock);
+        let opener = self
+            .shared
+            .crypto
+            .control_opener()
+            .expect("control crypto should be available");
 
         for segment in self.recv_buffer.segments() {
             let segment_len = segment.len();
@@ -310,21 +320,20 @@ where
                             continue
                         );
 
-                        let _ = self.shared.crypto.open_with(|opener| {
-                            self.sender.on_control_packet(
-                                opener,
-                                ecn,
-                                &mut packet,
-                                random,
-                                clock,
-                                &self.shared.sender.application_transmission_queue,
-                                &self.shared.sender.segment_alloc,
-                            )?;
+                        let res = self.sender.on_control_packet(
+                            opener,
+                            self.shared.credentials(),
+                            ecn,
+                            &mut packet,
+                            random,
+                            clock,
+                            &self.shared.sender.application_transmission_queue,
+                            &self.shared.sender.segment_alloc,
+                        );
 
+                        if res.is_ok() {
                             any_valid_packets = true;
-
-                            <Result<_, processing::Error>>::Ok(())
-                        });
+                        }
                     }
                     other => self.shared.crypto.map().handle_unexpected_packet(&other),
                 }
@@ -354,15 +363,20 @@ where
         loop {
             ready!(self.poll_transmit_flush(cx));
 
+            let control_sealer = self
+                .shared
+                .crypto
+                .control_sealer()
+                .expect("control crypto should be available");
+
             match self.state {
                 waiting::State::Acking => {
-                    let _ = self.shared.crypto.seal_with(|sealer| {
-                        self.sender.fill_transmit_queue(
-                            sealer,
-                            self.socket.local_addr().unwrap().port(),
-                            &self.shared.clock,
-                        )
-                    });
+                    let _ = self.sender.fill_transmit_queue(
+                        control_sealer,
+                        self.shared.credentials(),
+                        self.socket.local_addr().unwrap().port(),
+                        &self.shared.clock,
+                    );
                 }
                 waiting::State::Detached => {
                     // flush the remaining application queue
@@ -392,13 +406,12 @@ where
                     continue;
                 }
                 waiting::State::ShuttingDown => {
-                    let _ = self.shared.crypto.seal_with(|sealer| {
-                        self.sender.fill_transmit_queue(
-                            sealer,
-                            self.socket.local_addr().unwrap().port(),
-                            &self.shared.clock,
-                        )
-                    });
+                    let _ = self.sender.fill_transmit_queue(
+                        control_sealer,
+                        self.shared.credentials(),
+                        self.socket.local_addr().unwrap().port(),
+                        &self.shared.clock,
+                    );
 
                     if self.sender.state.is_terminal() {
                         let _ = self.state.on_finished();
