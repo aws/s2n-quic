@@ -85,11 +85,17 @@ mod tests {
     #[test]
     #[cfg_attr(kani, kani::proof)]
     fn encoder_len_estimator_write_repeated() {
-        bolero::check!().with_type().cloned().for_each(
-            |(mut callee, count, value): (EncoderLenEstimator, usize, u8)| {
-                Some(callee.write_repeated(count, value))
-            },
-        );
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .filter(|(callee, count, _): &(EncoderLenEstimator, usize, u8)| {
+                count <= &(usize::MAX - callee.len)
+            })
+            .for_each(
+                |(mut callee, count, value): (EncoderLenEstimator, usize, u8)| {
+                    Some(callee.write_repeated(count, value))
+                },
+            );
     }
 
     #[test]
