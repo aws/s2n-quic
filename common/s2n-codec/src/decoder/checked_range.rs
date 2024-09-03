@@ -20,7 +20,7 @@ impl bolero::TypeGenerator for CheckedRange {
     fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
         let start = gen::<usize>().generate(driver)?;
         let end = (start..).generate(driver)?;
-        Some(CheckedRange { start, end })
+        Some(CheckedRange::new(start, end, core::ptr::null()))
     }
 }
 
