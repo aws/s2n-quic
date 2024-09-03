@@ -351,7 +351,7 @@ mod tests {
         bolero::check!()
             .with_type()
             .cloned()
-            .for_each(|callee: i24| Some(callee.deref().clone()));
+            .for_each(|callee: i24| Some(*callee.deref()));
     }
 
     #[test]
@@ -423,7 +423,7 @@ mod tests {
         bolero::check!()
             .with_type()
             .cloned()
-            .for_each(|callee: u48| Some(callee.deref().clone()));
+            .for_each(|callee: u48| Some(*callee.deref()));
     }
 
     #[test]
@@ -513,6 +513,6 @@ mod tests {
         bolero::check!()
             .with_type()
             .cloned()
-            .for_each(|callee: i48| Some(callee.deref().clone()));
+            .for_each(|callee: i48| Some(*callee.deref()));
     }
 }

@@ -93,7 +93,8 @@ mod tests {
             })
             .for_each(
                 |(mut callee, count, value): (EncoderLenEstimator, usize, u8)| {
-                    Some(callee.write_repeated(count, value))
+                    callee.write_repeated(count, value);
+                    Some(())
                 },
             );
     }
