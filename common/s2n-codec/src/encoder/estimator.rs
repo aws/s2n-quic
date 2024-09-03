@@ -4,6 +4,7 @@
 use crate::encoder::Encoder;
 
 /// Estimates the `encoding_size` of an `EncoderValue`
+#[cfg_attr(test, derive(Clone, Debug, bolero::TypeGenerator))]
 pub struct EncoderLenEstimator {
     capacity: usize,
     len: usize,
@@ -56,5 +57,61 @@ impl Encoder for EncoderLenEstimator {
     #[inline]
     fn len(&self) -> usize {
         self.len
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn encoder_len_estimator_new() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|capacity: usize| Some(EncoderLenEstimator::new(capacity)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn encoder_len_estimator_overflowed() {
+        bolero::check!()
+            .with_type()
+            .for_each(|callee: &EncoderLenEstimator| Some(callee.overflowed()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn encoder_len_estimator_write_repeated() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .filter(|(callee, count, _): &(EncoderLenEstimator, usize, u8)| {
+                count <= &(usize::MAX - callee.len)
+            })
+            .for_each(
+                |(mut callee, count, value): (EncoderLenEstimator, usize, u8)| {
+                    callee.write_repeated(count, value);
+                    Some(())
+                },
+            );
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn encoder_len_estimator_capacity() {
+        bolero::check!()
+            .with_type()
+            .for_each(|callee: &EncoderLenEstimator| Some(callee.capacity()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn encoder_len_estimator_len() {
+        bolero::check!()
+            .with_type()
+            .for_each(|callee: &EncoderLenEstimator| Some(callee.len()));
     }
 }

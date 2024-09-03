@@ -192,6 +192,7 @@ unaligned_integer_type!(
 );
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(test, derive(bolero::TypeGenerator))]
 pub struct TryFromIntError(());
 
 impl From<core::num::TryFromIntError> for TryFromIntError {
@@ -204,5 +205,314 @@ impl From<core::num::TryFromIntError> for TryFromIntError {
 impl core::fmt::Display for TryFromIntError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "TryFromIntError")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u8_len_3_be_bytes_to_storage() {
+        bolero::check!()
+            .with_type()
+            .for_each(|callee: &[u8; 3]| Some(callee.be_bytes_to_storage()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u8_len_6_be_bytes_to_storage() {
+        bolero::check!()
+            .with_type()
+            .for_each(|callee: &[u8; 6]| Some(callee.be_bytes_to_storage()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u24_new_truncated() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u32| Some(u24::new_truncated(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u24_ref_to_be_bytes() {
+        bolero::check!()
+            .with_type()
+            .for_each(|callee: &u24| Some(callee.to_be_bytes()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u32_try_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u32| Some(u24::try_from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u8_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u8| Some(u24::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u16_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u16| Some(u24::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u24_deref() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u24| Some(*callee.deref()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i32_new_truncated() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: i32| Some(i24::new_truncated(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i24_to_be_bytes() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i24| Some(callee.to_be_bytes()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i32_try_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: i32| Some(i24::try_from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i24_from_u8() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u8| Some(i24::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i8_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: i8| Some(i24::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i24_from_u16() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u16| Some(i24::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i16_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: i16| Some(i24::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i24_deref() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i24| Some(*callee.deref()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u64_try_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u64| Some(u24::try_from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u64_new_truncated() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u64| Some(u48::new_truncated(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u48_to_be_bytes() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u48| Some(callee.to_be_bytes()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u48_try_from_u64() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u64| Some(u48::try_from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u8_from_u8() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u8| Some(u48::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u48_from_u16() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u16| Some(u48::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u32_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u32| Some(u48::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u48_deref() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u48| Some(*callee.deref()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i64_new_truncated() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: i64| Some(i48::new_truncated(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i48_to_be_bytes() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i48| Some(callee.to_be_bytes()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i64_try_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: i64| Some(i48::try_from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i48_from_u8() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u8| Some(i48::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i48_from_i8() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: i8| Some(i48::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i48_from_i48() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u16| Some(i48::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i48_from_i16() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: i16| Some(i48::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i48_from_u32() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: u32| Some(i48::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i32_from() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|value: i32| Some(i48::from(value)));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i48_deref() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i48| Some(*callee.deref()));
     }
 }

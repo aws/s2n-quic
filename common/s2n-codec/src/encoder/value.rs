@@ -257,3 +257,162 @@ impl EncoderValue for &bytes::Bytes {
         self.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u8_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u8| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i8_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i8| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u16_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u16| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i16_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i16| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u24_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u24| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i24_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i24| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u32_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u32| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i32_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i32| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u48_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u48| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i48_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i48| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u64_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u64| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i64_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i64| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn u128_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: u128| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn i128_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: i128| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn f32_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: f32| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn f64_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: f64| Some(callee.encoding_size()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn empty_encoding_size() {
+        bolero::check!()
+            .with_type()
+            .cloned()
+            .for_each(|callee: ()| Some(callee.encoding_size()));
+    }
+}

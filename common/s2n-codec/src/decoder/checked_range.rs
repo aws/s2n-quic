@@ -12,9 +12,25 @@ pub struct CheckedRange {
     original_ptr: *const u8,
 }
 
+#[cfg(any(test, feature = "generator"))]
+use bolero_generator::*;
+
+#[cfg(test)]
+impl bolero::TypeGenerator for CheckedRange {
+    fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
+        let start = gen::<usize>().generate(driver)?;
+        let end = (start..).generate(driver)?;
+        Some(CheckedRange::new(start, end, core::ptr::null()))
+    }
+}
+
 impl CheckedRange {
     #[inline]
     pub(crate) fn new(start: usize, end: usize, original_ptr: *const u8) -> Self {
+        debug_assert!(
+            end >= start,
+            "end: {end} must be greater than or equal to start: {start}",
+        );
         #[cfg(not(all(debug_assertions, feature = "checked_range_unsafe")))]
         let _ = original_ptr;
 
@@ -74,5 +90,27 @@ impl CheckedRange {
 impl fmt::Debug for CheckedRange {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}..{}", self.start, self.end)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn checked_range_len() {
+        bolero::check!()
+            .with_type()
+            .for_each(|callee: &CheckedRange| Some(callee.len()));
+    }
+
+    #[test]
+    #[cfg_attr(kani, kani::proof)]
+    fn checked_range_is_empty() {
+        bolero::check!()
+            .with_type()
+            .for_each(|callee: &CheckedRange| Some(callee.is_empty()));
     }
 }
