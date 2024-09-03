@@ -279,7 +279,7 @@ mod tests {
         bolero::check!()
             .with_type()
             .cloned()
-            .for_each(|callee: u24| Some(callee.deref().clone()));
+            .for_each(|callee: u24| Some(*callee.deref()));
     }
 
     #[test]
