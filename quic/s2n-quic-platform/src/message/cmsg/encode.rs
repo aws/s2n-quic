@@ -12,7 +12,7 @@ pub trait Encoder {
     ///
     /// The msghdr.msg_control should be zero-initialized and aligned and contain enough
     /// room for the value to be written.
-    fn encode_cmsg<T: Copy + ?Sized>(
+    fn encode_cmsg<T: Copy>(
         &mut self,
         level: libc::c_int,
         ty: libc::c_int,

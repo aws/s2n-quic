@@ -86,7 +86,7 @@ pub struct MsghdrEncoder<'a> {
 
 impl<'a> Encoder for MsghdrEncoder<'a> {
     #[inline]
-    fn encode_cmsg<T: Copy + ?Sized>(
+    fn encode_cmsg<T: Copy>(
         &mut self,
         level: libc::c_int,
         ty: libc::c_int,
