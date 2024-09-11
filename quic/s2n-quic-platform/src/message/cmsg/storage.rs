@@ -104,7 +104,7 @@ impl<'a, const L: usize> DerefMut for Encoder<'a, L> {
 
 impl<'a, const L: usize> super::Encoder for Encoder<'a, L> {
     #[inline]
-    fn encode_cmsg<T: Copy + ?Sized>(
+    fn encode_cmsg<T: Copy>(
         &mut self,
         level: libc::c_int,
         ty: libc::c_int,
