@@ -208,23 +208,33 @@ impl Cleaner {
             }
         }
 
-        if state.ids.len() <= (state.max_capacity * 95 / 100) {
-            return;
+        if state.ids.len() > (state.max_capacity * 95 / 100) {
+            let mut to_remove = std::cmp::max(state.ids.len() / 100, 1);
+            let guard = state.ids.guard();
+            for (id, entry) in state.ids.iter(&guard) {
+                if to_remove > 0 {
+                    // Only remove with the minimum epoch. This hopefully means that we will remove
+                    // fairly stale entries.
+                    if entry.used_at.load(Ordering::Relaxed) == minimum {
+                        state.ids.remove(id, &guard);
+                        to_remove -= 1;
+                    }
+                } else {
+                    break;
+                }
+            }
         }
 
-        let mut to_remove = std::cmp::max(state.ids.len() / 100, 1);
-        let guard = state.ids.guard();
-        for (id, entry) in state.ids.iter(&guard) {
-            if to_remove > 0 {
-                // Only remove with the minimum epoch. This hopefully means that we will remove
-                // fairly stale entries.
-                if entry.used_at.load(Ordering::Relaxed) == minimum {
-                    state.ids.remove(id, &guard);
-                    to_remove -= 1;
-                }
-            } else {
-                break;
-            }
+        // Prune the peer list of any entries that no longer have a corresponding `id` entry.
+        //
+        // This ensures that the peer list is naturally bounded in size by the size of the `id`
+        // set, and relies on precisely the same mechanisms for eviction.
+        {
+            let ids = state.ids.pin();
+            state
+                .peers
+                .pin()
+                .retain(|_, entry| ids.contains_key(entry.secret.id()));
         }
     }
 
