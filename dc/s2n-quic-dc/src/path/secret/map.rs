@@ -195,7 +195,7 @@ impl Cleaner {
                     // handshake to happen. This handshake will happen on the next request for this
                     // particular peer.
                     if entry.rehandshake_time() <= now {
-                        state.requested_handshakes.pin().insert(entry.peer);
+                        state.request_handshake(entry.peer);
                     }
 
                     // Not retired.
@@ -236,6 +236,19 @@ impl Cleaner {
                 .pin()
                 .retain(|_, entry| ids.contains_key(entry.secret.id()));
         }
+
+        // Iteration order should be effectively random, so this effectively just prunes the list
+        // periodically. 5000 is chosen arbitrarily to make sure this isn't a memory leak. Note
+        // that peers the application is actively interested in will typically bypass this list, so
+        // this is mostly a risk of delaying regular re-handshaking with very large cardinalities.
+        //
+        // FIXME: Long or mid-term it likely makes sense to replace this data structure with a
+        // fuzzy set of some kind and/or just moving to immediate background handshake attempts.
+        let mut count = 0;
+        state.requested_handshakes.pin().retain(|_| {
+            count += 1;
+            count < 5000
+        });
     }
 
     fn epoch(&self) -> u64 {
@@ -244,6 +257,16 @@ impl Cleaner {
 }
 
 const EVICTION_CYCLES: u64 = if cfg!(test) { 0 } else { 10 };
+
+impl State {
+    fn request_handshake(&self, peer: SocketAddr) {
+        // The length is reset as part of cleanup to 5000.
+        let handshakes = self.requested_handshakes.pin();
+        if handshakes.len() <= 6000 {
+            handshakes.insert(peer);
+        }
+    }
+}
 
 impl Map {
     pub fn new(signer: stateless_reset::Signer) -> Self {
@@ -395,7 +418,7 @@ impl Map {
 
         // FIXME: More actively schedule a new handshake.
         // See comment on requested_handshakes for details.
-        self.state.requested_handshakes.pin().insert(state.peer);
+        self.state.request_handshake(state.peer);
     }
 
     pub fn handle_control_packet(&self, packet: &control::Packet) {
@@ -443,7 +466,7 @@ impl Map {
                 //
                 // Handshaking will be rate limited per destination peer (and at least
                 // de-duplicated).
-                self.state.requested_handshakes.pin().insert(state.peer);
+                self.state.request_handshake(state.peer);
             }
             control::Packet::UnknownPathSecret(_) => unreachable!(),
         }
