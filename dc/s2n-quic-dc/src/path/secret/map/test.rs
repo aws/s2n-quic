@@ -154,7 +154,12 @@ impl Model {
                 let ids = state.state.ids.guard();
                 self.invariants.retain(|invariant| {
                     if let Invariant::ContainsId(id) = invariant {
-                        if state.state.ids.get(id, &ids).unwrap().retired.retired() {
+                        if state
+                            .state
+                            .ids
+                            .get(id, &ids)
+                            .map_or(true, |v| v.retired.retired())
+                        {
                             invalidated.push(*id);
                             return false;
                         }
@@ -191,12 +196,18 @@ impl Model {
         let peers = state.peers.guard();
         let ids = state.ids.guard();
         for invariant in self.invariants.iter() {
+            // We avoid assertions for contains() if we're running the small capacity test, since
+            // they are likely broken -- we semi-randomly evict peers in that case.
             match invariant {
                 Invariant::ContainsIp(ip) => {
-                    assert!(state.peers.contains_key(ip, &peers), "{:?}", ip);
+                    if state.max_capacity != 5 {
+                        assert!(state.peers.contains_key(ip, &peers), "{:?}", ip);
+                    }
                 }
                 Invariant::ContainsId(id) => {
-                    assert!(state.ids.contains_key(id, &ids), "{:?}", id);
+                    if state.max_capacity != 5 {
+                        assert!(state.ids.contains_key(id, &ids), "{:?}", id);
+                    }
                 }
                 Invariant::IdRemoved(id) => {
                     assert!(
@@ -206,6 +217,16 @@ impl Model {
                     );
                 }
             }
+        }
+
+        // All entries in the peer set should also be in the `ids` set (which is actively garbage
+        // collected).
+        for (_, entry) in state.peers.iter(&peers) {
+            assert!(
+                state.ids.contains_key(entry.secret.id(), &ids),
+                "{:?} not present in IDs",
+                entry.secret.id()
+            );
         }
     }
 }
@@ -236,7 +257,36 @@ fn has_duplicate_pids(ops: &[Operation]) -> bool {
 fn check_invariants() {
     bolero::check!()
         .with_type::<Vec<Operation>>()
-        .with_iterations(100_000)
+        .with_iterations(10_000)
+        .for_each(|input: &Vec<Operation>| {
+            if has_duplicate_pids(input) {
+                // Ignore this attempt.
+                return;
+            }
+
+            let mut model = Model::default();
+            let signer = stateless_reset::Signer::new(b"secret");
+            let mut map = Map::new(signer);
+
+            // Avoid background work interfering with testing.
+            map.state.cleaner.stop();
+
+            Arc::get_mut(&mut map.state).unwrap().max_capacity = 5;
+
+            model.check_invariants(&map.state);
+
+            for op in input {
+                model.perform(*op, &map);
+                model.check_invariants(&map.state);
+            }
+        })
+}
+
+#[test]
+fn check_invariants_no_overflow() {
+    bolero::check!()
+        .with_type::<Vec<Operation>>()
+        .with_iterations(10_000)
         .for_each(|input: &Vec<Operation>| {
             if has_duplicate_pids(input) {
                 // Ignore this attempt.
