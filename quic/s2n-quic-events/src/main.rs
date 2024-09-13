@@ -10,6 +10,69 @@ type Result<T, E = Error> = core::result::Result<T, E>;
 mod parser;
 
 #[derive(Debug, Default)]
+enum OutputMode {
+    Ref,
+    #[default]
+    Mut,
+}
+
+impl OutputMode {
+    fn receiver(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(mut),
+        }
+    }
+    fn counter_type(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(Arc<AtomicU32>),
+            OutputMode::Mut => quote!(u32),
+        }
+    }
+
+    fn counter_init(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(Arc::new(AtomicU32::new(0))),
+            OutputMode::Mut => quote!(0),
+        }
+    }
+
+    fn counter_increment(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(.fetch_add(1, Ordering::SeqCst)),
+            OutputMode::Mut => quote!(+= 1),
+        }
+    }
+
+    fn lock(&self) ->TokenStream {
+        match self {
+            OutputMode::Ref => quote!(.lock().unwrap()),
+            OutputMode::Mut => quote!(),
+        }
+    }
+
+    fn imports(&self) ->TokenStream {
+        match self {
+            OutputMode::Ref => quote!(use std::sync::{Arc, Mutex};),
+            OutputMode::Mut => quote!(),
+        }
+    }
+
+    fn testing_output_type(&self) ->TokenStream {
+        match self {
+            OutputMode::Ref => quote!(Arc<Mutex<Vec<String>>>),
+            OutputMode::Mut => quote!(Vec<String>),
+        } 
+    }
+}
+
+impl ToTokens for OutputMode {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.extend(self.receiver());
+    }
+}
+
+#[derive(Debug, Default)]
 struct Output {
     pub subscriber: TokenStream,
     pub endpoint_publisher: TokenStream,
@@ -26,6 +89,7 @@ struct Output {
     pub endpoint_publisher_testing: TokenStream,
     pub connection_publisher_testing: TokenStream,
     pub extra: TokenStream,
+    pub mode: OutputMode,
 }
 
 impl ToTokens for Output {
@@ -46,7 +110,12 @@ impl ToTokens for Output {
             endpoint_publisher_testing,
             connection_publisher_testing,
             extra,
+            mode,
         } = self;
+        
+        let imports = self.mode.imports();
+        let testing_output_type = self.mode.testing_output_type();
+        let lock = self.mode.lock();
 
         tokens.extend(quote!(
             use super::*;
@@ -90,7 +159,7 @@ impl ToTokens for Output {
                 impl super::Subscriber for Subscriber {
                     type ConnectionContext = tracing::Span;
 
-                    fn create_connection_context(&mut self, meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {
+                    fn create_connection_context(&#mode self, meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {
                         let parent = match meta.endpoint_type {
                             api::EndpointType::Client {} => {
                                 self.client.id()
@@ -272,7 +341,7 @@ impl ToTokens for Output {
                     type ConnectionContext: 'static + Send;
 
                     /// Creates a context to be passed to each connection-related event
-                    fn create_connection_context(&mut self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext;
+                    fn create_connection_context(&#mode self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext;
 
                     /// The period at which `on_supervisor_timeout` is called
                     ///
@@ -286,7 +355,7 @@ impl ToTokens for Output {
                     /// It is recommended to avoid setting this value less than ~100ms, as short durations
                     /// may lead to higher CPU utilization.
                     #[allow(unused_variables)]
-                    fn supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
+                    fn supervisor_timeout(&#mode self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
                         None
                     }
 
@@ -296,7 +365,7 @@ impl ToTokens for Output {
                     /// across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called
                     /// earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation.
                     #[allow(unused_variables)]
-                    fn on_supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
+                    fn on_supervisor_timeout(&#mode self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
                         supervisor::Outcome::default()
                     }
 
@@ -304,14 +373,14 @@ impl ToTokens for Output {
 
                     /// Called for each event that relates to the endpoint and all connections
                     #[inline]
-                    fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
+                    fn on_event<M: Meta, E: Event>(&#mode self, meta: &M, event: &E) {
                         let _ = meta;
                         let _ = event;
                     }
 
                     /// Called for each event that relates to a connection
                     #[inline]
-                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
+                    fn on_connection_event<E: Event>(&#mode self, context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
                         let _ = context;
                         let _ = meta;
                         let _ = event;
@@ -340,12 +409,12 @@ impl ToTokens for Output {
                     type ConnectionContext = (A::ConnectionContext, B::ConnectionContext);
 
                     #[inline]
-                    fn create_connection_context(&mut self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext {
+                    fn create_connection_context(&#mode self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext {
                         (self.0.create_connection_context(meta, info), self.1.create_connection_context(meta, info))
                     }
 
                     #[inline]
-                    fn supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
+                    fn supervisor_timeout(&#mode self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
                         let timeout_a = self.0.supervisor_timeout(&mut conn_context.0, meta, context);
                         let timeout_b = self.1.supervisor_timeout(&mut conn_context.1, meta, context);
                         match (timeout_a, timeout_b) {
@@ -356,7 +425,7 @@ impl ToTokens for Output {
                     }
 
                     #[inline]
-                    fn on_supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
+                    fn on_supervisor_timeout(&#mode self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
                         let outcome_a = self.0.on_supervisor_timeout(&mut conn_context.0, meta, context);
                         let outcome_b = self.1.on_supervisor_timeout(&mut conn_context.1, meta, context);
                         match (outcome_a, outcome_b) {
@@ -369,15 +438,15 @@ impl ToTokens for Output {
                     #tuple_subscriber
 
                     #[inline]
-                    fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
+                    fn on_event<M: Meta, E: Event>(&#mode self, meta: &M, event: &E) {
                         self.0.on_event(meta, event);
                         self.1.on_event(meta, event);
                     }
 
                     #[inline]
-                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
-                        self.0.on_connection_event(&mut context.0, meta, event);
-                        self.1.on_connection_event(&mut context.1, meta, event);
+                    fn on_connection_event<E: Event>(&#mode self, context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
+                        self.0.on_connection_event(&#mode context.0, meta, event);
+                        self.1.on_connection_event(&#mode context.1, meta, event);
                     }
 
                     #[inline]
@@ -454,8 +523,8 @@ impl ToTokens for Output {
                 pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
                     meta: ConnectionMeta,
                     quic_version: u32,
-                    subscriber: &'a mut Sub,
-                    context: &'a mut Sub::ConnectionContext,
+                    subscriber: &'a #mode Sub,
+                    context: &'a #mode Sub::ConnectionContext,
                 }
 
                 impl<'a, Sub: Subscriber> fmt::Debug for ConnectionPublisherSubscriber<'a, Sub> {
@@ -472,8 +541,8 @@ impl ToTokens for Output {
                     pub fn new(
                         meta: builder::ConnectionMeta,
                         quic_version: u32,
-                        subscriber: &'a mut Sub,
-                        context: &'a mut Sub::ConnectionContext
+                        subscriber: &'a #mode Sub,
+                        context: &'a #mode Sub::ConnectionContext
                     ) -> Self {
                         Self {
                             meta: meta.into_event(),
@@ -502,11 +571,11 @@ impl ToTokens for Output {
             #[cfg(any(test, feature = "testing"))]
             pub mod testing {
                 use super::*;
-
+                #imports
                 #[derive(Clone, Debug)]
                 pub struct Subscriber {
                     location: Option<Location>,
-                    output: Vec<String>,
+                    output: #testing_output_type,
                     #testing_fields
                 }
 
@@ -518,7 +587,7 @@ impl ToTokens for Output {
                         }
 
                         if let Some(location) = self.location.as_ref() {
-                            location.snapshot(&self.output);
+                            location.snapshot(&self.output #lock);
                         }
                     }
                 }
@@ -545,7 +614,7 @@ impl ToTokens for Output {
                 impl super::Subscriber for Subscriber {
                     type ConnectionContext = ();
 
-                    fn create_connection_context(&mut self, _meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {}
+                    fn create_connection_context(&#mode self, _meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {}
 
                     #subscriber_testing
                 }
@@ -553,7 +622,7 @@ impl ToTokens for Output {
                 #[derive(Clone, Debug)]
                 pub struct Publisher {
                     location: Option<Location>,
-                    output: Vec<String>,
+                    output: #testing_output_type,
                     #testing_fields
                 }
 
@@ -604,7 +673,7 @@ impl ToTokens for Output {
                         }
 
                         if let Some(location) = self.location.as_ref() {
-                            location.snapshot(&self.output);
+                            location.snapshot(&self.output #lock);
                         }
                     }
                 }
@@ -669,50 +738,69 @@ impl ToTokens for Output {
     }
 }
 
+struct EventInfo<'a> {
+    input_path: &'a str,
+    output_path: &'a str,
+    output_mode: OutputMode,
+}
+
 fn main() -> Result<()> {
-    let mut files = vec![];
+    let event_paths = [
+        EventInfo {
+            input_path: concat!(env!("CARGO_MANIFEST_DIR"), "/../../dc/s2n-quic-dc/src/event/**/*.rs"),
+            output_path: concat!(env!("CARGO_MANIFEST_DIR"), "/../../dc/s2n-quic-dc/src/event/generated.rs"),
+            output_mode: OutputMode::Ref,
+        },
+        EventInfo {
+            input_path: concat!(env!("CARGO_MANIFEST_DIR"),"/events/**/*.rs"),
+            output_path: concat!(env!("CARGO_MANIFEST_DIR"),"/../s2n-quic-core/src/event/generated.rs"),
+            output_mode: OutputMode::Mut,
+        },
+    ];
 
-    for path in glob::glob(concat!(env!("CARGO_MANIFEST_DIR"), "/events/**/*.rs"))? {
-        let path = path?;
-        let file = std::fs::read_to_string(path)?;
-        files.push(parser::parse(&file).unwrap());
+    for event_info in event_paths {
+        let mut files = vec![];
+
+        for path in glob::glob(event_info.input_path)? {
+            let path = path?;
+            let file = std::fs::read_to_string(path)?;
+            files.push(parser::parse(&file).unwrap());
+        }
+
+        let mut output = Output::default();
+        output.mode = event_info.output_mode;
+
+        for file in &files {
+            file.to_tokens(&mut output);
+        }
+
+        let generated = event_info.output_path;
+
+        let mut o = std::fs::File::create(generated)?;
+
+        macro_rules! put {
+            ($($arg:tt)*) => {{
+                use std::io::Write;
+                writeln!(o, $($arg)*)?;
+            }}
+        }
+
+        put!("// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.");
+        put!("// SPDX-License-Identifier: Apache-2.0");
+        put!();
+        put!("// DO NOT MODIFY THIS FILE");
+        put!("// This file was generated with the `s2n-quic-events` crate and any required");
+        put!("// changes should be made there.");
+        put!();
+        put!("{}", output.to_token_stream());
+
+        let status = std::process::Command::new("rustfmt")
+            .arg(generated)
+            .spawn()?
+            .wait()?;
+
+        assert!(status.success());
     }
-
-    let mut output = Output::default();
-
-    for file in &files {
-        file.to_tokens(&mut output);
-    }
-
-    let generated = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../s2n-quic-core/src/event/generated.rs"
-    );
-
-    let mut o = std::fs::File::create(generated)?;
-
-    macro_rules! put {
-        ($($arg:tt)*) => {{
-            use std::io::Write;
-            writeln!(o, $($arg)*)?;
-        }}
-    }
-
-    put!("// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.");
-    put!("// SPDX-License-Identifier: Apache-2.0");
-    put!();
-    put!("// DO NOT MODIFY THIS FILE");
-    put!("// This file was generated with the `s2n-quic-events` crate and any required");
-    put!("// changes should be made there.");
-    put!();
-    put!("{}", output.to_token_stream());
-
-    let status = std::process::Command::new("rustfmt")
-        .arg(generated)
-        .spawn()?
-        .wait()?;
-
-    assert!(status.success());
 
     Ok(())
 }
