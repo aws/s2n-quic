@@ -53,7 +53,8 @@ impl OutputMode {
 
     fn imports(&self) ->TokenStream {
         match self {
-            OutputMode::Ref => quote!(use std::sync::{Arc, Mutex};),
+            OutputMode::Ref => quote!(use core::sync::atomic::{AtomicU32, Ordering};
+                use std::sync::{Arc, Mutex}; ),
             OutputMode::Mut => quote!(),
         }
     }
