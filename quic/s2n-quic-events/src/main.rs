@@ -44,26 +44,28 @@ impl OutputMode {
         }
     }
 
-    fn lock(&self) ->TokenStream {
+    fn lock(&self) -> TokenStream {
         match self {
             OutputMode::Ref => quote!(.lock().unwrap()),
             OutputMode::Mut => quote!(),
         }
     }
 
-    fn imports(&self) ->TokenStream {
+    fn imports(&self) -> TokenStream {
         match self {
-            OutputMode::Ref => quote!(use core::sync::atomic::{AtomicU32, Ordering};
-                use std::sync::{Arc, Mutex}; ),
+            OutputMode::Ref => quote!(
+                use core::sync::atomic::{AtomicU32, Ordering};
+                use std::sync::{Arc, Mutex};
+            ),
             OutputMode::Mut => quote!(),
         }
     }
 
-    fn testing_output_type(&self) ->TokenStream {
+    fn testing_output_type(&self) -> TokenStream {
         match self {
             OutputMode::Ref => quote!(Arc<Mutex<Vec<String>>>),
             OutputMode::Mut => quote!(Vec<String>),
-        } 
+        }
     }
 }
 
@@ -113,7 +115,7 @@ impl ToTokens for Output {
             extra,
             mode,
         } = self;
-        
+
         let imports = self.mode.imports();
         let testing_output_type = self.mode.testing_output_type();
         let lock = self.mode.lock();
@@ -748,13 +750,22 @@ struct EventInfo<'a> {
 fn main() -> Result<()> {
     let event_paths = [
         EventInfo {
-            input_path: concat!(env!("CARGO_MANIFEST_DIR"), "/../../dc/s2n-quic-dc/src/event/**/*.rs"),
-            output_path: concat!(env!("CARGO_MANIFEST_DIR"), "/../../dc/s2n-quic-dc/src/event/generated.rs"),
+            input_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../dc/s2n-quic-dc/src/event/**/*.rs"
+            ),
+            output_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../dc/s2n-quic-dc/src/event/generated.rs"
+            ),
             output_mode: OutputMode::Ref,
         },
         EventInfo {
-            input_path: concat!(env!("CARGO_MANIFEST_DIR"),"/events/**/*.rs"),
-            output_path: concat!(env!("CARGO_MANIFEST_DIR"),"/../s2n-quic-core/src/event/generated.rs"),
+            input_path: concat!(env!("CARGO_MANIFEST_DIR"), "/events/**/*.rs"),
+            output_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../s2n-quic-core/src/event/generated.rs"
+            ),
             output_mode: OutputMode::Mut,
         },
     ];
@@ -768,8 +779,7 @@ fn main() -> Result<()> {
             files.push(parser::parse(&file).unwrap());
         }
 
-        let mut output = Output::default();
-        output.mode = event_info.output_mode;
+        let mut output = Output { mode: event_info.output_mode, ..Default::default() };
 
         for file in &files {
             file.to_tokens(&mut output);
