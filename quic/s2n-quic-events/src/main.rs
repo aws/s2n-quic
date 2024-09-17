@@ -752,7 +752,7 @@ fn main() -> Result<()> {
         EventInfo {
             input_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../dc/s2n-quic-dc/src/event/**/*.rs"
+                "/../../dc/s2n-quic-dc/src/event/events.rs"
             ),
             output_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
