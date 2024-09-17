@@ -779,7 +779,10 @@ fn main() -> Result<()> {
             files.push(parser::parse(&file).unwrap());
         }
 
-        let mut output = Output { mode: event_info.output_mode, ..Default::default() };
+        let mut output = Output {
+            mode: event_info.output_mode,
+            ..Default::default()
+        };
 
         for file in &files {
             file.to_tokens(&mut output);
