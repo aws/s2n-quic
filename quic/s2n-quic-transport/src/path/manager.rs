@@ -482,6 +482,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             path_id: new_path_id.into_event(),
             mtu: path.mtu_controller.max_datagram_size() as u16,
             cause: MtuUpdatedCause::NewPath,
+            search_complete: path.mtu_controller.is_search_completed(),
         });
 
         // create a new path

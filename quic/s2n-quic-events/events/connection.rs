@@ -297,12 +297,14 @@ pub struct KeepAliveTimerExpired {
 }
 
 #[event("connectivity:mtu_updated")]
-/// The maximum transmission unit (MTU) for the path has changed
+/// The maximum transmission unit (MTU) and/or MTU probing status for the path has changed
 struct MtuUpdated {
     path_id: u64,
     /// The maximum QUIC datagram size, not including UDP and IP headers
     mtu: u16,
     cause: MtuUpdatedCause,
+    /// The search for the maximum MTU has completed for now
+    search_complete: bool,
 }
 
 #[event("recovery:slow_start_exited")]

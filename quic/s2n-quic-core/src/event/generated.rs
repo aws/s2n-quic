@@ -581,6 +581,12 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " An early packet using the configured InitialMtu was lost"]
         InitialMtuPacketLost {},
+        #[non_exhaustive]
+        #[doc = " An early packet using the configured InitialMtu was acknowledged by the peer"]
+        InitialMtuPacketAcknowledged {},
+        #[non_exhaustive]
+        #[doc = " MTU probes larger than the current MTU were not acknowledged"]
+        LargerProbesLost {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -998,12 +1004,14 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " The maximum transmission unit (MTU) for the path has changed"]
+    #[doc = " The maximum transmission unit (MTU) and/or MTU probing status for the path has changed"]
     pub struct MtuUpdated {
         pub path_id: u64,
         #[doc = " The maximum QUIC datagram size, not including UDP and IP headers"]
         pub mtu: u16,
         pub cause: MtuUpdatedCause,
+        #[doc = " The search for the maximum MTU has completed for now"]
+        pub search_complete: bool,
     }
     impl Event for MtuUpdated {
         const NAME: &'static str = "connectivity:mtu_updated";
@@ -2217,8 +2225,9 @@ pub mod tracing {
                 path_id,
                 mtu,
                 cause,
+                search_complete,
             } = event;
-            tracing :: event ! (target : "mtu_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , mtu = tracing :: field :: debug (mtu) , cause = tracing :: field :: debug (cause));
+            tracing :: event ! (target : "mtu_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , mtu = tracing :: field :: debug (mtu) , cause = tracing :: field :: debug (cause) , search_complete = tracing :: field :: debug (search_complete));
         }
         #[inline]
         fn on_slow_start_exited(
@@ -3521,6 +3530,10 @@ pub mod builder {
         Blackhole,
         #[doc = " An early packet using the configured InitialMtu was lost"]
         InitialMtuPacketLost,
+        #[doc = " An early packet using the configured InitialMtu was acknowledged by the peer"]
+        InitialMtuPacketAcknowledged,
+        #[doc = " MTU probes larger than the current MTU were not acknowledged"]
+        LargerProbesLost,
     }
     impl IntoEvent<api::MtuUpdatedCause> for MtuUpdatedCause {
         #[inline]
@@ -3531,6 +3544,8 @@ pub mod builder {
                 Self::ProbeAcknowledged => ProbeAcknowledged {},
                 Self::Blackhole => Blackhole {},
                 Self::InitialMtuPacketLost => InitialMtuPacketLost {},
+                Self::InitialMtuPacketAcknowledged => InitialMtuPacketAcknowledged {},
+                Self::LargerProbesLost => LargerProbesLost {},
             }
         }
     }
@@ -4253,12 +4268,14 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " The maximum transmission unit (MTU) for the path has changed"]
+    #[doc = " The maximum transmission unit (MTU) and/or MTU probing status for the path has changed"]
     pub struct MtuUpdated {
         pub path_id: u64,
         #[doc = " The maximum QUIC datagram size, not including UDP and IP headers"]
         pub mtu: u16,
         pub cause: MtuUpdatedCause,
+        #[doc = " The search for the maximum MTU has completed for now"]
+        pub search_complete: bool,
     }
     impl IntoEvent<api::MtuUpdated> for MtuUpdated {
         #[inline]
@@ -4267,11 +4284,13 @@ pub mod builder {
                 path_id,
                 mtu,
                 cause,
+                search_complete,
             } = self;
             api::MtuUpdated {
                 path_id: path_id.into_event(),
                 mtu: mtu.into_event(),
                 cause: cause.into_event(),
+                search_complete: search_complete.into_event(),
             }
         }
     }
