@@ -699,7 +699,7 @@ impl Controller {
         );
 
         match &self.state {
-            State::Disabled => {},
+            State::Disabled => {}
             State::EarlySearchRequested => {
                 // MTU probing hasn't been enabled yet, but since the initial MTU was configured
                 // higher than the base PLPMTU and this setting resulted in a lost packet
