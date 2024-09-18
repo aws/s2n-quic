@@ -178,6 +178,102 @@ impl OutputMode {
             ),
         }
     }
+
+    fn supervisor_timeout(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                /// The period at which `on_supervisor_timeout` is called
+                ///
+                /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
+                /// across all `event::Subscriber`s will be used.
+                ///
+                /// If the `supervisor_timeout()` is `None` across all `event::Subscriber`s, connection supervision
+                /// will cease for the remaining lifetime of the connection and `on_supervisor_timeout` will no longer
+                /// be called.
+                ///
+                /// It is recommended to avoid setting this value less than ~100ms, as short durations
+                /// may lead to higher CPU utilization.
+                #[allow(unused_variables)]
+                fn supervisor_timeout(
+                    &mut self,
+                    conn_context: &mut Self::ConnectionContext,
+                    meta: &ConnectionMeta,
+                    context: &supervisor::Context,
+                ) -> Option<Duration> {
+                    None
+                }
+
+                /// Called for each `supervisor_timeout` to determine any action to take on the connection based on the `supervisor::Outcome`
+                ///
+                /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
+                /// across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called
+                /// earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation.
+                #[allow(unused_variables)]
+                fn on_supervisor_timeout(
+                    &mut self,
+                    conn_context: &mut Self::ConnectionContext,
+                    meta: &ConnectionMeta,
+                    context: &supervisor::Context,
+                ) -> supervisor::Outcome {
+                    supervisor::Outcome::default()
+                }
+            ),
+        }
+    }
+
+    fn supervisor_timeout_tuple(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                #[inline]
+                fn supervisor_timeout(
+                    &mut self,
+                    conn_context: &mut Self::ConnectionContext,
+                    meta: &ConnectionMeta,
+                    context: &supervisor::Context,
+                ) -> Option<Duration> {
+                    let timeout_a = self
+                        .0
+                        .supervisor_timeout(&mut conn_context.0, meta, context);
+                    let timeout_b = self
+                        .1
+                        .supervisor_timeout(&mut conn_context.1, meta, context);
+                    match (timeout_a, timeout_b) {
+                        (None, None) => None,
+                        (None, Some(timeout)) | (Some(timeout), None) => Some(timeout),
+                        (Some(a), Some(b)) => Some(a.min(b)),
+                    }
+                }
+
+                #[inline]
+                fn on_supervisor_timeout(
+                    &mut self,
+                    conn_context: &mut Self::ConnectionContext,
+                    meta: &ConnectionMeta,
+                    context: &supervisor::Context,
+                ) -> supervisor::Outcome {
+                    let outcome_a =
+                        self.0
+                            .on_supervisor_timeout(&mut conn_context.0, meta, context);
+                    let outcome_b =
+                        self.1
+                            .on_supervisor_timeout(&mut conn_context.1, meta, context);
+                    match (outcome_a, outcome_b) {
+                        (supervisor::Outcome::ImmediateClose { reason }, _)
+                        | (_, supervisor::Outcome::ImmediateClose { reason }) => {
+                            supervisor::Outcome::ImmediateClose { reason }
+                        }
+                        (supervisor::Outcome::Close { error_code }, _)
+                        | (_, supervisor::Outcome::Close { error_code }) => {
+                            supervisor::Outcome::Close { error_code }
+                        }
+                        _ => supervisor::Outcome::Continue,
+                    }
+                }
+            ),
+        }
+    }
 }
 
 impl ToTokens for OutputMode {
@@ -232,6 +328,8 @@ impl ToTokens for Output {
         let lock = self.mode.lock();
         let target_crate = self.mode.target_crate();
         let supervisor = self.mode.supervisor();
+        let supervisor_timeout = self.mode.supervisor_timeout();
+        let supervisor_timeout_tuple = self.mode.supervisor_timeout_tuple();
         let query_mut = self.mode.query_mut();
         let query_mut_tuple = self.mode.query_mut_tuple();
 
@@ -400,31 +498,7 @@ impl ToTokens for Output {
                     /// Creates a context to be passed to each connection-related event
                     fn create_connection_context(&#mode self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext;
 
-                    /// The period at which `on_supervisor_timeout` is called
-                    ///
-                    /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
-                    /// across all `event::Subscriber`s will be used.
-                    ///
-                    /// If the `supervisor_timeout()` is `None` across all `event::Subscriber`s, connection supervision
-                    /// will cease for the remaining lifetime of the connection and `on_supervisor_timeout` will no longer
-                    /// be called.
-                    ///
-                    /// It is recommended to avoid setting this value less than ~100ms, as short durations
-                    /// may lead to higher CPU utilization.
-                    #[allow(unused_variables)]
-                    fn supervisor_timeout(&#mode self, conn_context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
-                        None
-                    }
-
-                    /// Called for each `supervisor_timeout` to determine any action to take on the connection based on the `supervisor::Outcome`
-                    ///
-                    /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
-                    /// across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called
-                    /// earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation.
-                    #[allow(unused_variables)]
-                    fn on_supervisor_timeout(&#mode self, conn_context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
-                        supervisor::Outcome::default()
-                    }
+                    #supervisor_timeout
 
                     #subscriber
 
@@ -466,27 +540,7 @@ impl ToTokens for Output {
                         (self.0.create_connection_context(meta, info), self.1.create_connection_context(meta, info))
                     }
 
-                    #[inline]
-                    fn supervisor_timeout(&#mode self, conn_context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
-                        let timeout_a = self.0.supervisor_timeout(&#mode conn_context.0, meta, context);
-                        let timeout_b = self.1.supervisor_timeout(&#mode conn_context.1, meta, context);
-                        match (timeout_a, timeout_b) {
-                            (None, None) => None,
-                            (None, Some(timeout)) | (Some(timeout), None) => Some(timeout),
-                            (Some(a), Some(b)) => Some(a.min(b)),
-                        }
-                    }
-
-                    #[inline]
-                    fn on_supervisor_timeout(&#mode self, conn_context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
-                        let outcome_a = self.0.on_supervisor_timeout(&#mode conn_context.0, meta, context);
-                        let outcome_b = self.1.on_supervisor_timeout(&#mode conn_context.1, meta, context);
-                        match (outcome_a, outcome_b) {
-                            (supervisor::Outcome::ImmediateClose { reason }, _) | (_, supervisor::Outcome::ImmediateClose { reason }) => supervisor::Outcome::ImmediateClose { reason },
-                            (supervisor::Outcome::Close { error_code }, _) | (_, supervisor::Outcome::Close { error_code }) => supervisor::Outcome::Close { error_code },
-                            _ => supervisor::Outcome::Continue,
-                        }
-                    }
+                    #supervisor_timeout_tuple
 
                     #tuple_subscriber
 

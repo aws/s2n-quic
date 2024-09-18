@@ -187,40 +187,6 @@ mod traits {
             meta: &ConnectionMeta,
             info: &ConnectionInfo,
         ) -> Self::ConnectionContext;
-        #[doc = r" The period at which `on_supervisor_timeout` is called"]
-        #[doc = r""]
-        #[doc = r" If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`"]
-        #[doc = r" across all `event::Subscriber`s will be used."]
-        #[doc = r""]
-        #[doc = r" If the `supervisor_timeout()` is `None` across all `event::Subscriber`s, connection supervision"]
-        #[doc = r" will cease for the remaining lifetime of the connection and `on_supervisor_timeout` will no longer"]
-        #[doc = r" be called."]
-        #[doc = r""]
-        #[doc = r" It is recommended to avoid setting this value less than ~100ms, as short durations"]
-        #[doc = r" may lead to higher CPU utilization."]
-        #[allow(unused_variables)]
-        fn supervisor_timeout(
-            &self,
-            conn_context: &Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            context: &supervisor::Context,
-        ) -> Option<Duration> {
-            None
-        }
-        #[doc = r" Called for each `supervisor_timeout` to determine any action to take on the connection based on the `supervisor::Outcome`"]
-        #[doc = r""]
-        #[doc = r" If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`"]
-        #[doc = r" across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called"]
-        #[doc = r" earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation."]
-        #[allow(unused_variables)]
-        fn on_supervisor_timeout(
-            &self,
-            conn_context: &Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            context: &supervisor::Context,
-        ) -> supervisor::Outcome {
-            supervisor::Outcome::default()
-        }
         #[doc = "Called when the `FrameSent` event is triggered"]
         #[inline]
         fn on_frame_sent(
@@ -278,42 +244,6 @@ mod traits {
                 self.0.create_connection_context(meta, info),
                 self.1.create_connection_context(meta, info),
             )
-        }
-        #[inline]
-        fn supervisor_timeout(
-            &self,
-            conn_context: &Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            context: &supervisor::Context,
-        ) -> Option<Duration> {
-            let timeout_a = self.0.supervisor_timeout(&conn_context.0, meta, context);
-            let timeout_b = self.1.supervisor_timeout(&conn_context.1, meta, context);
-            match (timeout_a, timeout_b) {
-                (None, None) => None,
-                (None, Some(timeout)) | (Some(timeout), None) => Some(timeout),
-                (Some(a), Some(b)) => Some(a.min(b)),
-            }
-        }
-        #[inline]
-        fn on_supervisor_timeout(
-            &self,
-            conn_context: &Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            context: &supervisor::Context,
-        ) -> supervisor::Outcome {
-            let outcome_a = self.0.on_supervisor_timeout(&conn_context.0, meta, context);
-            let outcome_b = self.1.on_supervisor_timeout(&conn_context.1, meta, context);
-            match (outcome_a, outcome_b) {
-                (supervisor::Outcome::ImmediateClose { reason }, _)
-                | (_, supervisor::Outcome::ImmediateClose { reason }) => {
-                    supervisor::Outcome::ImmediateClose { reason }
-                }
-                (supervisor::Outcome::Close { error_code }, _)
-                | (_, supervisor::Outcome::Close { error_code }) => {
-                    supervisor::Outcome::Close { error_code }
-                }
-                _ => supervisor::Outcome::Continue,
-            }
         }
         #[inline]
         fn on_frame_sent(
