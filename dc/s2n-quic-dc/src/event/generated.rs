@@ -34,8 +34,7 @@ pub mod tracing {
     }
     impl Default for Subscriber {
         fn default() -> Self {
-            let root =
-                tracing :: span ! (target : "s2n_quic" , tracing :: Level :: DEBUG , "s2n_quic");
+            let root = tracing :: span ! (target : "s2n_quic_dc" , tracing :: Level :: DEBUG , "s2n_quic_dc");
             let client =
                 tracing :: span ! (parent : root . id () , tracing :: Level :: DEBUG , "client");
             let server =
@@ -54,7 +53,7 @@ pub mod tracing {
                 api::EndpointType::Client {} => self.client.id(),
                 api::EndpointType::Server {} => self.server.id(),
             };
-            tracing :: span ! (target : "s2n_quic" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
+            tracing :: span ! (target : "s2n_quic_dc" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
         }
         #[inline]
         fn on_frame_sent(
@@ -94,58 +93,6 @@ pub mod builder {
                 packet_header: packet_header.into_event(),
                 path_id: path_id.into_event(),
                 frame: frame.into_event(),
-            }
-        }
-    }
-}
-pub mod supervisor {
-    #![doc = r" This module contains the `supervisor::Outcome` and `supervisor::Context` for use"]
-    #![doc = r" when implementing [`Subscriber::supervisor_timeout`](crate::event::Subscriber::supervisor_timeout) and"]
-    #![doc = r" [`Subscriber::on_supervisor_timeout`](crate::event::Subscriber::on_supervisor_timeout)"]
-    #![doc = r" on a Subscriber."]
-    use crate::{
-        application,
-        event::{builder::SocketAddress, IntoEvent},
-    };
-    #[non_exhaustive]
-    #[derive(Clone, Debug, Eq, PartialEq)]
-    pub enum Outcome {
-        #[doc = r" Allow the connection to remain open"]
-        Continue,
-        #[doc = r" Close the connection and notify the peer"]
-        Close { error_code: application::Error },
-        #[doc = r" Close the connection without notifying the peer"]
-        ImmediateClose { reason: &'static str },
-    }
-    impl Default for Outcome {
-        fn default() -> Self {
-            Self::Continue
-        }
-    }
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct Context<'a> {
-        #[doc = r" Number of handshakes that have begun but not completed"]
-        pub inflight_handshakes: usize,
-        #[doc = r" Number of open connections"]
-        pub connection_count: usize,
-        #[doc = r" The address of the peer"]
-        pub remote_address: SocketAddress<'a>,
-        #[doc = r" True if the connection is in the handshake state, false otherwise"]
-        pub is_handshaking: bool,
-    }
-    impl<'a> Context<'a> {
-        pub fn new(
-            inflight_handshakes: usize,
-            connection_count: usize,
-            remote_address: &'a crate::inet::SocketAddress,
-            is_handshaking: bool,
-        ) -> Self {
-            Self {
-                inflight_handshakes,
-                connection_count,
-                remote_address: remote_address.into_event(),
-                is_handshaking,
             }
         }
     }
@@ -254,7 +201,7 @@ mod traits {
         #[allow(unused_variables)]
         fn supervisor_timeout(
             &self,
-            conn_context: &mut Self::ConnectionContext,
+            conn_context: &Self::ConnectionContext,
             meta: &ConnectionMeta,
             context: &supervisor::Context,
         ) -> Option<Duration> {
@@ -268,7 +215,7 @@ mod traits {
         #[allow(unused_variables)]
         fn on_supervisor_timeout(
             &self,
-            conn_context: &mut Self::ConnectionContext,
+            conn_context: &Self::ConnectionContext,
             meta: &ConnectionMeta,
             context: &supervisor::Context,
         ) -> supervisor::Outcome {
@@ -312,14 +259,6 @@ mod traits {
         ) -> query::ControlFlow {
             query.execute(context)
         }
-        #[doc = r" Used for querying and mutating the `Subscriber::ConnectionContext` on a Subscriber"]
-        #[inline]
-        fn query_mut(
-            context: &mut Self::ConnectionContext,
-            query: &mut dyn query::QueryMut,
-        ) -> query::ControlFlow {
-            query.execute_mut(context)
-        }
     }
     #[doc = r" Subscriber is implemented for a 2-element tuple to make it easy to compose multiple"]
     #[doc = r" subscribers."]
@@ -343,16 +282,12 @@ mod traits {
         #[inline]
         fn supervisor_timeout(
             &self,
-            conn_context: &mut Self::ConnectionContext,
+            conn_context: &Self::ConnectionContext,
             meta: &ConnectionMeta,
             context: &supervisor::Context,
         ) -> Option<Duration> {
-            let timeout_a = self
-                .0
-                .supervisor_timeout(&mut conn_context.0, meta, context);
-            let timeout_b = self
-                .1
-                .supervisor_timeout(&mut conn_context.1, meta, context);
+            let timeout_a = self.0.supervisor_timeout(&conn_context.0, meta, context);
+            let timeout_b = self.1.supervisor_timeout(&conn_context.1, meta, context);
             match (timeout_a, timeout_b) {
                 (None, None) => None,
                 (None, Some(timeout)) | (Some(timeout), None) => Some(timeout),
@@ -362,16 +297,12 @@ mod traits {
         #[inline]
         fn on_supervisor_timeout(
             &self,
-            conn_context: &mut Self::ConnectionContext,
+            conn_context: &Self::ConnectionContext,
             meta: &ConnectionMeta,
             context: &supervisor::Context,
         ) -> supervisor::Outcome {
-            let outcome_a = self
-                .0
-                .on_supervisor_timeout(&mut conn_context.0, meta, context);
-            let outcome_b = self
-                .1
-                .on_supervisor_timeout(&mut conn_context.1, meta, context);
+            let outcome_a = self.0.on_supervisor_timeout(&conn_context.0, meta, context);
+            let outcome_b = self.1.on_supervisor_timeout(&conn_context.1, meta, context);
             match (outcome_a, outcome_b) {
                 (supervisor::Outcome::ImmediateClose { reason }, _)
                 | (_, supervisor::Outcome::ImmediateClose { reason }) => {
@@ -419,16 +350,6 @@ mod traits {
                 .and_then(|| A::query(&context.0, query))
                 .and_then(|| B::query(&context.1, query))
         }
-        #[inline]
-        fn query_mut(
-            context: &mut Self::ConnectionContext,
-            query: &mut dyn query::QueryMut,
-        ) -> query::ControlFlow {
-            query
-                .execute_mut(context)
-                .and_then(|| A::query_mut(&mut context.0, query))
-                .and_then(|| B::query_mut(&mut context.1, query))
-        }
     }
     pub trait EndpointPublisher {
         #[doc = r" Returns the QUIC version, if any"]
@@ -437,7 +358,7 @@ mod traits {
     pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
         meta: EndpointMeta,
         quic_version: Option<u32>,
-        subscriber: &'a mut Sub,
+        subscriber: &'a Sub,
     }
     impl<'a, Sub: Subscriber> fmt::Debug for EndpointPublisherSubscriber<'a, Sub> {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -452,7 +373,7 @@ mod traits {
         pub fn new(
             meta: builder::EndpointMeta,
             quic_version: Option<u32>,
-            subscriber: &'a mut Sub,
+            subscriber: &'a Sub,
         ) -> Self {
             Self {
                 meta: meta.into_event(),

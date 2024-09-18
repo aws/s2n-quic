@@ -67,6 +67,117 @@ impl OutputMode {
             OutputMode::Mut => quote!(Vec<String>),
         }
     }
+
+    fn target_crate(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!("s2n_quic_dc"),
+            OutputMode::Mut => quote!("s2n_quic"),
+        }
+    }
+
+    fn query_mut(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                /// Used for querying and mutating the `Subscriber::ConnectionContext` on a Subscriber
+                #[inline]
+                fn query_mut(
+                    context: &mut Self::ConnectionContext,
+                    query: &mut dyn query::QueryMut,
+                ) -> query::ControlFlow {
+                    query.execute_mut(context)
+                }
+            ),
+        }
+    }
+
+    fn query_mut_tuple(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                #[inline]
+                fn query_mut(
+                    context: &mut Self::ConnectionContext,
+                    query: &mut dyn query::QueryMut,
+                ) -> query::ControlFlow {
+                    query
+                        .execute_mut(context)
+                        .and_then(|| A::query_mut(&mut context.0, query))
+                        .and_then(|| B::query_mut(&mut context.1, query))
+                }
+            ),
+        }
+    }
+
+    fn supervisor(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                pub mod supervisor {
+                    //! This module contains the `supervisor::Outcome` and `supervisor::Context` for use
+                    //! when implementing [`Subscriber::supervisor_timeout`](crate::event::Subscriber::supervisor_timeout) and
+                    //! [`Subscriber::on_supervisor_timeout`](crate::event::Subscriber::on_supervisor_timeout)
+                    //! on a Subscriber.
+
+                    use crate::{
+                        application,
+                        event::{builder::SocketAddress, IntoEvent},
+                    };
+
+                    #[non_exhaustive]
+                    #[derive(Clone, Debug, Eq, PartialEq)]
+                    pub enum Outcome {
+                        /// Allow the connection to remain open
+                        Continue,
+
+                        /// Close the connection and notify the peer
+                        Close { error_code: application::Error },
+
+                        /// Close the connection without notifying the peer
+                        ImmediateClose { reason: &'static str },
+                    }
+
+                    impl Default for Outcome {
+                        fn default() -> Self {
+                            Self::Continue
+                        }
+                    }
+
+                    #[non_exhaustive]
+                    #[derive(Debug)]
+                    pub struct Context<'a> {
+                        /// Number of handshakes that have begun but not completed
+                        pub inflight_handshakes: usize,
+
+                        /// Number of open connections
+                        pub connection_count: usize,
+
+                        /// The address of the peer
+                        pub remote_address: SocketAddress<'a>,
+
+                        /// True if the connection is in the handshake state, false otherwise
+                        pub is_handshaking: bool,
+                    }
+
+                    impl<'a> Context<'a> {
+                        pub fn new(
+                            inflight_handshakes: usize,
+                            connection_count: usize,
+                            remote_address: &'a crate::inet::SocketAddress,
+                            is_handshaking: bool,
+                        ) -> Self {
+                            Self {
+                                inflight_handshakes,
+                                connection_count,
+                                remote_address: remote_address.into_event(),
+                                is_handshaking,
+                            }
+                        }
+                    }
+                }
+            ),
+        }
+    }
 }
 
 impl ToTokens for OutputMode {
@@ -119,6 +230,10 @@ impl ToTokens for Output {
         let imports = self.mode.imports();
         let testing_output_type = self.mode.testing_output_type();
         let lock = self.mode.lock();
+        let target_crate = self.mode.target_crate();
+        let supervisor = self.mode.supervisor();
+        let query_mut = self.mode.query_mut();
+        let query_mut_tuple = self.mode.query_mut_tuple();
 
         tokens.extend(quote!(
             use super::*;
@@ -148,7 +263,7 @@ impl ToTokens for Output {
 
                 impl Default for Subscriber {
                     fn default() -> Self {
-                        let root = tracing::span!(target: "s2n_quic", tracing::Level::DEBUG, "s2n_quic");
+                        let root = tracing::span!(target: #target_crate, tracing::Level::DEBUG, #target_crate);
                         let client = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "client");
                         let server = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "server");
 
@@ -171,7 +286,7 @@ impl ToTokens for Output {
                                 self.server.id()
                             }
                         };
-                        tracing::span!(target: "s2n_quic", parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
+                        tracing::span!(target: #target_crate, parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
                     }
 
                     #tracing_subscriber
@@ -184,68 +299,7 @@ impl ToTokens for Output {
                 #builders
             }
 
-            pub mod supervisor {
-                //! This module contains the `supervisor::Outcome` and `supervisor::Context` for use
-                //! when implementing [`Subscriber::supervisor_timeout`](crate::event::Subscriber::supervisor_timeout) and
-                //! [`Subscriber::on_supervisor_timeout`](crate::event::Subscriber::on_supervisor_timeout)
-                //! on a Subscriber.
-
-                use crate::{
-                    application,
-                    event::{builder::SocketAddress, IntoEvent},
-                };
-
-                #[non_exhaustive]
-                #[derive(Clone, Debug, Eq, PartialEq)]
-                pub enum Outcome {
-                    /// Allow the connection to remain open
-                    Continue,
-
-                    /// Close the connection and notify the peer
-                    Close {error_code: application::Error},
-
-                    /// Close the connection without notifying the peer
-                    ImmediateClose {reason: &'static str},
-                }
-
-                impl Default for Outcome {
-                    fn default() -> Self {
-                        Self::Continue
-                    }
-                }
-
-                #[non_exhaustive]
-                #[derive(Debug)]
-                pub struct Context<'a> {
-                    /// Number of handshakes that have begun but not completed
-                    pub inflight_handshakes: usize,
-
-                    /// Number of open connections
-                    pub connection_count: usize,
-
-                    /// The address of the peer
-                    pub remote_address: SocketAddress<'a>,
-
-                    /// True if the connection is in the handshake state, false otherwise
-                    pub is_handshaking: bool,
-                }
-
-                impl<'a> Context<'a> {
-                    pub fn new(
-                        inflight_handshakes: usize,
-                        connection_count: usize,
-                        remote_address: &'a crate::inet::SocketAddress,
-                        is_handshaking: bool,
-                    ) -> Self {
-                        Self {
-                            inflight_handshakes,
-                            connection_count,
-                            remote_address: remote_address.into_event(),
-                            is_handshaking,
-                        }
-                    }
-                }
-            }
+            #supervisor
 
             pub use traits::*;
             mod traits {
@@ -358,7 +412,7 @@ impl ToTokens for Output {
                     /// It is recommended to avoid setting this value less than ~100ms, as short durations
                     /// may lead to higher CPU utilization.
                     #[allow(unused_variables)]
-                    fn supervisor_timeout(&#mode self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
+                    fn supervisor_timeout(&#mode self, conn_context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
                         None
                     }
 
@@ -368,7 +422,7 @@ impl ToTokens for Output {
                     /// across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called
                     /// earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation.
                     #[allow(unused_variables)]
-                    fn on_supervisor_timeout(&#mode self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
+                    fn on_supervisor_timeout(&#mode self, conn_context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
                         supervisor::Outcome::default()
                     }
 
@@ -395,11 +449,7 @@ impl ToTokens for Output {
                         query.execute(context)
                     }
 
-                    /// Used for querying and mutating the `Subscriber::ConnectionContext` on a Subscriber
-                    #[inline]
-                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn query::QueryMut) -> query::ControlFlow {
-                        query.execute_mut(context)
-                    }
+                    #query_mut
                 }
 
                 /// Subscriber is implemented for a 2-element tuple to make it easy to compose multiple
@@ -417,9 +467,9 @@ impl ToTokens for Output {
                     }
 
                     #[inline]
-                    fn supervisor_timeout(&#mode self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
-                        let timeout_a = self.0.supervisor_timeout(&mut conn_context.0, meta, context);
-                        let timeout_b = self.1.supervisor_timeout(&mut conn_context.1, meta, context);
+                    fn supervisor_timeout(&#mode self, conn_context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
+                        let timeout_a = self.0.supervisor_timeout(&#mode conn_context.0, meta, context);
+                        let timeout_b = self.1.supervisor_timeout(&#mode conn_context.1, meta, context);
                         match (timeout_a, timeout_b) {
                             (None, None) => None,
                             (None, Some(timeout)) | (Some(timeout), None) => Some(timeout),
@@ -428,9 +478,9 @@ impl ToTokens for Output {
                     }
 
                     #[inline]
-                    fn on_supervisor_timeout(&#mode self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
-                        let outcome_a = self.0.on_supervisor_timeout(&mut conn_context.0, meta, context);
-                        let outcome_b = self.1.on_supervisor_timeout(&mut conn_context.1, meta, context);
+                    fn on_supervisor_timeout(&#mode self, conn_context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
+                        let outcome_a = self.0.on_supervisor_timeout(&#mode conn_context.0, meta, context);
+                        let outcome_b = self.1.on_supervisor_timeout(&#mode conn_context.1, meta, context);
                         match (outcome_a, outcome_b) {
                             (supervisor::Outcome::ImmediateClose { reason }, _) | (_, supervisor::Outcome::ImmediateClose { reason }) => supervisor::Outcome::ImmediateClose { reason },
                             (supervisor::Outcome::Close { error_code }, _) | (_, supervisor::Outcome::Close { error_code }) => supervisor::Outcome::Close { error_code },
@@ -459,12 +509,7 @@ impl ToTokens for Output {
                             .and_then(|| B::query(&context.1, query))
                     }
 
-                    #[inline]
-                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn query::QueryMut) -> query::ControlFlow {
-                        query.execute_mut(context)
-                            .and_then(|| A::query_mut(&mut context.0, query))
-                            .and_then(|| B::query_mut(&mut context.1, query))
-                    }
+                    #query_mut_tuple
                 }
 
                 pub trait EndpointPublisher {
@@ -477,7 +522,7 @@ impl ToTokens for Output {
                 pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
                     meta: EndpointMeta,
                     quic_version: Option<u32>,
-                    subscriber: &'a mut Sub,
+                    subscriber: &'a #mode Sub,
                 }
 
                 impl<'a, Sub: Subscriber> fmt::Debug for EndpointPublisherSubscriber<'a, Sub> {
@@ -494,7 +539,7 @@ impl ToTokens for Output {
                     pub fn new(
                         meta: builder::EndpointMeta,
                         quic_version: Option<u32>,
-                        subscriber: &'a mut Sub,
+                        subscriber: &'a #mode Sub,
                     ) -> Self {
                         Self {
                             meta: meta.into_event(),
