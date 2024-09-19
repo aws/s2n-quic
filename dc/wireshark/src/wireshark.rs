@@ -186,7 +186,7 @@ mod wireshark_sys_impl {
                     buffer.tvb,
                     parsed.offset as _,
                     parsed.len as _,
-                    parsed.value.into() as u32,
+                    parsed.value.into() as u64,
                 )
             }
         }

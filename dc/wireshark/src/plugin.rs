@@ -80,12 +80,12 @@ pub fn copy_to_rust(tvb: *mut wireshark_sys::tvbuff_t) -> Vec<u8> {
     buffer
 }
 
-unsafe extern "C" fn dissect_heur_udp(
+unsafe extern "C" fn dissect_heur_udp<R: std::convert::From<bool>>(
     tvb: *mut wireshark_sys::tvbuff_t,
     mut pinfo: *mut wireshark_sys::_packet_info,
     proto: *mut wireshark_sys::_proto_node,
     _: *mut std::ffi::c_void,
-) -> i32 {
+) -> R {
     let fields = field::get();
 
     let packet = copy_to_rust(tvb);
@@ -116,7 +116,7 @@ unsafe extern "C" fn dissect_heur_udp(
 
     // Didn't look like a dcQUIC packet.
     if accepted_offset == 0 {
-        return 0;
+        return false.into();
     }
 
     if !info.is_empty() {
@@ -128,15 +128,15 @@ unsafe extern "C" fn dissect_heur_udp(
 
     set_protocol(pinfo, c"dcQUIC");
 
-    accepted_offset as _
+    (accepted_offset != 0).into()
 }
 
-unsafe extern "C" fn dissect_heur_tcp(
+unsafe extern "C" fn dissect_heur_tcp<R: std::convert::From<bool>>(
     tvb: *mut wireshark_sys::tvbuff_t,
     mut pinfo: *mut wireshark_sys::_packet_info,
     proto: *mut wireshark_sys::_proto_node,
     _: *mut std::ffi::c_void,
-) -> i32 {
+) -> R {
     let fields = field::get();
 
     let packet = copy_to_rust(tvb);
@@ -179,7 +179,7 @@ unsafe extern "C" fn dissect_heur_tcp(
 
     // Didn't look like a dcQUIC segment.
     if accepted_offset == 0 {
-        return 0;
+        return false.into();
     }
 
     if !info.is_empty() {
@@ -191,7 +191,7 @@ unsafe extern "C" fn dissect_heur_tcp(
 
     set_protocol(pinfo, c"TCP/dcQUIC");
 
-    accepted_offset as _
+    (accepted_offset != 0).into()
 }
 
 unsafe fn register_root_node(
