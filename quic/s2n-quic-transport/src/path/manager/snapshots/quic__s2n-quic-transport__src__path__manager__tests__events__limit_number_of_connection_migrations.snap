@@ -3,14 +3,14 @@ source: quic/s2n-quic-transport/src/path/manager/tests.rs
 expression: ""
 ---
 PathCreated { active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.1:1, remote_cid: 0x01, id: 0, is_active: true }, new: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:1, remote_cid: 0x01, id: 1, is_active: false } }
-MtuUpdated { path_id: 1, mtu: 1200, cause: NewPath }
+MtuUpdated { path_id: 1, mtu: 1200, cause: NewPath, search_complete: false }
 ActivePathUpdated { previous: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.1:1, remote_cid: 0x01, id: 0, is_active: false }, active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:1, remote_cid: 0x01, id: 1, is_active: true } }
 PathCreated { active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:1, remote_cid: 0x01, id: 1, is_active: true }, new: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:2, remote_cid: 0x01, id: 2, is_active: false } }
-MtuUpdated { path_id: 2, mtu: 1200, cause: NewPath }
+MtuUpdated { path_id: 2, mtu: 1200, cause: NewPath, search_complete: false }
 ActivePathUpdated { previous: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:1, remote_cid: 0x01, id: 1, is_active: false }, active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:2, remote_cid: 0x01, id: 2, is_active: true } }
 PathCreated { active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:2, remote_cid: 0x01, id: 2, is_active: true }, new: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:3, remote_cid: 0x01, id: 3, is_active: false } }
-MtuUpdated { path_id: 3, mtu: 1200, cause: NewPath }
+MtuUpdated { path_id: 3, mtu: 1200, cause: NewPath, search_complete: false }
 ActivePathUpdated { previous: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:2, remote_cid: 0x01, id: 2, is_active: false }, active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:3, remote_cid: 0x01, id: 3, is_active: true } }
 PathCreated { active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:3, remote_cid: 0x01, id: 3, is_active: true }, new: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:4, remote_cid: 0x01, id: 4, is_active: false } }
-MtuUpdated { path_id: 4, mtu: 1200, cause: NewPath }
+MtuUpdated { path_id: 4, mtu: 1200, cause: NewPath, search_complete: false }
 ActivePathUpdated { previous: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:3, remote_cid: 0x01, id: 3, is_active: false }, active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 127.0.0.2:4, remote_cid: 0x01, id: 4, is_active: true } }

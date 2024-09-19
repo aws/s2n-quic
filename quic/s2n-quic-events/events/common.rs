@@ -963,6 +963,10 @@ enum MtuUpdatedCause {
     Blackhole,
     /// An early packet using the configured InitialMtu was lost
     InitialMtuPacketLost,
+    /// An early packet using the configured InitialMtu was acknowledged by the peer
+    InitialMtuPacketAcknowledged,
+    /// MTU probes larger than the current MTU were not acknowledged
+    LargerProbesLost,
 }
 
 /// A bandwidth delivery rate estimate with associated metadata

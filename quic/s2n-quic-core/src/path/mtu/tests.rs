@@ -190,6 +190,7 @@ fn min_max_mtu() {
     );
     assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.plpmtu);
     assert_eq!(MINIMUM_MAX_DATAGRAM_SIZE, controller.base_plpmtu);
+    assert!(controller.is_search_completed());
 }
 
 #[test]
@@ -306,7 +307,7 @@ fn new_initial_and_base_mtu() {
         controller.max_datagram_size()
     );
     assert_eq!(0, controller.probe_count);
-    assert_eq!(State::Disabled, controller.state);
+    assert_eq!(State::EarlySearchRequested, controller.state);
     assert!(!controller.pmtu_raise_timer.is_armed());
     // probe a value halfway to the max mtu
     assert_eq!(
@@ -412,6 +413,7 @@ fn on_packet_ack_within_threshold() {
         Some(now + PMTU_RAISE_TIMER_DURATION),
         controller.next_expiration()
     );
+    assert!(controller.is_search_completed());
 
     // Enough time passes that its time to try raising the PMTU again
     let now = now + PMTU_RAISE_TIMER_DURATION;
@@ -422,6 +424,7 @@ fn on_packet_ack_within_threshold() {
         MINIMUM_MAX_DATAGRAM_SIZE + (max_udp_payload - MINIMUM_MAX_DATAGRAM_SIZE) / 2,
         controller.probed_size
     );
+    assert!(!controller.is_search_completed());
 }
 
 #[test]
@@ -446,6 +449,7 @@ fn on_packet_ack_within_threshold_of_max_plpmtu() {
     assert_eq!(1, cc.on_mtu_update);
     assert_eq!(State::SearchComplete, controller.state);
     assert!(!controller.pmtu_raise_timer.is_armed());
+    assert!(controller.is_search_completed());
 }
 
 //= https://www.rfc-editor.org/rfc/rfc8899#section-5.3.2
@@ -480,6 +484,7 @@ fn on_packet_ack_search_requested() {
     assert_eq!(1, cc.on_mtu_update);
     assert_eq!(State::SearchRequested, controller.state);
     assert!(!controller.pmtu_raise_timer.is_armed());
+    assert!(!controller.is_search_completed());
 }
 
 #[test]
@@ -712,6 +717,7 @@ fn on_packet_loss_black_hole() {
         Some(now + BLACK_HOLE_COOL_OFF_DURATION),
         controller.pmtu_raise_timer.next_expiration()
     );
+    assert!(controller.is_search_completed());
 }
 
 #[test]
@@ -784,9 +790,36 @@ fn on_packet_loss_initial_mtu_configured() {
     let addr = inet::SocketAddress::IpV4(SocketAddressV4::new(ip, 443));
     let mut publisher = Publisher::snapshot();
 
-    for max_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
-        for initial_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
-            for base_mtu in [MINIMUM_MTU, 1300, 1450, 1500, 1520, 4000, 9000] {
+    for max_mtu in [
+        MINIMUM_MTU,
+        MINIMUM_MTU + 10,
+        1300,
+        1450,
+        1500,
+        1520,
+        4000,
+        9000,
+    ] {
+        for initial_mtu in [
+            MINIMUM_MTU,
+            MINIMUM_MTU + 10,
+            1300,
+            1450,
+            1500,
+            1520,
+            4000,
+            9000,
+        ] {
+            for base_mtu in [
+                MINIMUM_MTU,
+                MINIMUM_MTU + 10,
+                1300,
+                1450,
+                1500,
+                1520,
+                4000,
+                9000,
+            ] {
                 let mtu_config = Config {
                     max_mtu: max_mtu.try_into().unwrap(),
                     initial_mtu: initial_mtu.min(max_mtu).try_into().unwrap(),
@@ -801,7 +834,7 @@ fn on_packet_loss_initial_mtu_configured() {
 
                 controller.on_packet_loss(
                     pn,
-                    mtu_config.initial_mtu.into(),
+                    original_plpmtu,
                     false,
                     now,
                     &mut cc,
@@ -811,7 +844,11 @@ fn on_packet_loss_initial_mtu_configured() {
 
                 if original_plpmtu > base_plpmtu {
                     // the MTU was updated
-                    assert_eq!(1, cc.on_mtu_update);
+                    assert_eq!(
+                        1, cc.on_mtu_update,
+                        "base {} init {} max {} original_plpmtu {}, base_plpmtu {}",
+                        base_plpmtu, initial_mtu, max_mtu, original_plpmtu, base_plpmtu
+                    );
                     assert_eq!(base_plpmtu, controller.plpmtu);
                 } else {
                     // everything remains the same since we are operating at the base plpmtu
@@ -819,8 +856,15 @@ fn on_packet_loss_initial_mtu_configured() {
                     assert_eq!(original_plpmtu, controller.plpmtu);
                 }
 
-                // MTU controller is still disabled
-                assert_eq!(State::Disabled, controller.state);
+                if controller.probed_sized() - controller.max_datagram_size()
+                    < PROBE_THRESHOLD as usize
+                {
+                    assert_eq!(State::SearchComplete, controller.state);
+                    assert!(controller.is_search_completed());
+                } else {
+                    // MTU controller is still disabled
+                    assert_eq!(State::Disabled, controller.state);
+                }
             }
         }
     }

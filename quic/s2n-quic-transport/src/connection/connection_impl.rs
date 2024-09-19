@@ -626,6 +626,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 .mtu_controller
                 .max_datagram_size() as u16,
             cause: MtuUpdatedCause::NewPath,
+            search_complete: path_manager
+                .active_path()
+                .mtu_controller
+                .is_search_completed(),
         });
 
         let wakeup_handle = Arc::from(parameters.wakeup_handle);

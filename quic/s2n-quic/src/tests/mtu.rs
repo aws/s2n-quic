@@ -99,7 +99,7 @@ fn mtu_updates<S: tls::Provider, C: tls::Provider>(
             .start()?;
         let addr = start_server(server)?;
         // we need a large payload to allow for multiple rounds of MTU probing
-        start_client(client, addr, Data::new(10_000_000))?;
+        start_client(client, addr, Data::new(20_000_000))?;
         Ok(addr)
     })
     .unwrap();
@@ -134,12 +134,22 @@ mtu_test!(
         // we should then successfully probe for 1500 (minus headers = 1472)
         let first_probe = events[1].clone();
         assert_eq!(first_probe.mtu, 1472);
+        assert!(!first_probe.search_complete);
+        assert!(matches!(
+            first_probe.cause,
+            events::MtuUpdatedCause::ProbeAcknowledged { .. }
+        ));
 
         // we binary search upwards 9001
         // this isn't the maximum mtu we'd find in practice, just the maximum mtu we
         // find with a payload of 10_000_000 bytes.
         let last_probe = events.last().unwrap();
         assert_eq!(last_probe.mtu, 8943);
+        assert!(last_probe.search_complete);
+        assert!(matches!(
+            last_probe.cause,
+            events::MtuUpdatedCause::ProbeAcknowledged { .. }
+        ));
     }
 );
 
@@ -159,6 +169,33 @@ mtu_test!(
         let last_mtu = events.last().unwrap();
         // ETHERNET_MTU - UDP_HEADER_LEN - IPV4_HEADER_LEN
         assert_eq!(last_mtu.mtu, 1472);
+        assert!(last_mtu.search_complete);
+        assert!(matches!(
+            last_mtu.cause,
+            events::MtuUpdatedCause::LargerProbesLost { .. }
+        ));
+    }
+);
+
+// The network can support the maximum sized UDP packet
+mtu_test!(
+    fn mtu_probe_max_jumbo_frame_test(server, client) {
+        let events = mtu_updates(
+            server,
+            client,
+            None,
+            InitialMtu::default().into(),
+            BaseMtu::default().into(),
+            u16::MAX,
+            u16::MAX,
+        );
+        let last_mtu = events.last().unwrap();
+        assert_eq!(last_mtu.mtu, 65475);
+        assert!(last_mtu.search_complete);
+        assert!(matches!(
+            last_mtu.cause,
+            events::MtuUpdatedCause::ProbeAcknowledged { .. }
+        ));
     }
 );
 
@@ -172,6 +209,7 @@ mtu_test!(
             .unwrap();
         // 1250 - UDP_HEADER_LEN - IPV4_HEADER_LEN
         assert_eq!(base_mtu.mtu, 1222);
+        assert!(!base_mtu.search_complete);
     }
 );
 
@@ -182,6 +220,7 @@ mtu_test!(
         let first_mtu = events.first().unwrap();
         // 2000 - UDP_HEADER_LEN - IPV4_HEADER_LEN
         assert_eq!(first_mtu.mtu, 1972);
+        assert!(!first_mtu.search_complete);
     }
 );
 
@@ -192,8 +231,10 @@ mtu_test!(
         let first_mtu = events.first().unwrap();
         // 1228 - UDP_HEADER_LEN - IPV4_HEADER_LEN
         assert_eq!(first_mtu.mtu, 1200);
+        assert!(!first_mtu.search_complete);
         let last_mtu = events.last().unwrap();
         assert_eq!(last_mtu.mtu, 8943);
+        assert!(last_mtu.search_complete);
     }
 );
 
@@ -211,6 +252,7 @@ mtu_test!(
         let first_mtu = events.first().unwrap();
         // 1528 - UDP_HEADER_LEN - IPV4_HEADER_LEN
         assert_eq!(first_mtu.mtu, 1300);
+        assert!(!first_mtu.search_complete);
     }
 );
 
@@ -235,6 +277,7 @@ mtu_test!(
         );
         let first_mtu = events.first().unwrap();
         assert_eq!(first_mtu.mtu, 1300);
+        assert!(!first_mtu.search_complete);
     }
 );
 
@@ -251,6 +294,7 @@ mtu_test!(
         let events = mtu_updates(server, client, Some(config), 1228, BaseMtu::default().into(), 9_001, 10_000);
         let last_mtu = events.last().unwrap();
         assert_eq!(last_mtu.mtu, 5_936);
+        assert!(last_mtu.search_complete);
     }
 );
 
@@ -264,10 +308,21 @@ mtu_test!(
         let last_mtu = events.last().unwrap();
         // First try the initial MTU
         assert_eq!(first_mtu.mtu, 1972);
+        assert!(!first_mtu.search_complete);
         // Next drop down to the base MTU
         assert_eq!(second_mtu.mtu, 1200);
+        assert!(!second_mtu.search_complete);
+        assert!(matches!(
+            second_mtu.cause,
+            events::MtuUpdatedCause::InitialMtuPacketLost { .. }
+        ));
         // Eventually reach the MTU the network supports
         assert_eq!(last_mtu.mtu, 1500);
+        assert!(last_mtu.search_complete);
+        assert!(matches!(
+            last_mtu.cause,
+            events::MtuUpdatedCause::ProbeAcknowledged { .. }
+        ));
     }
 );
 
@@ -279,8 +334,18 @@ mtu_test!(
         let last_mtu = events.last().unwrap();
         // First try the initial MTU
         assert_eq!(first_mtu.mtu, 8973);
+        assert!(matches!(
+            first_mtu.cause,
+            events::MtuUpdatedCause::NewPath { .. }
+        ));
+        assert!(!first_mtu.search_complete);
         // Stay on this MTU since the network supports it
         assert_eq!(last_mtu.mtu, 8973);
+        assert!(last_mtu.search_complete);
+        assert!(matches!(
+            last_mtu.cause,
+            events::MtuUpdatedCause::InitialMtuPacketAcknowledged { .. }
+        ));
     }
 );
 
@@ -294,10 +359,40 @@ mtu_test!(
         let last_mtu = events.last().unwrap();
         // First try the initial MTU
         assert_eq!(first_mtu.mtu, 8_973);
+        assert!(!first_mtu.search_complete);
+        assert!(matches!(
+            first_mtu.cause,
+            events::MtuUpdatedCause::NewPath { .. }
+        ));
         // Next drop down to the base MTU
         assert_eq!(second_mtu.mtu, 1472);
+        assert!(!second_mtu.search_complete);
+        assert!(matches!(
+            second_mtu.cause,
+            events::MtuUpdatedCause::InitialMtuPacketLost { .. }
+        ));
         // Eventually reach the MTU the network supports
         assert_eq!(last_mtu.mtu, 2_496);
+        assert!(last_mtu.search_complete);
+        assert!(matches!(
+            last_mtu.cause,
+            events::MtuUpdatedCause::ProbeAcknowledged { .. }
+        ));
+
+    }
+);
+
+// MTU probing has been disabled by setting BaseMTU = InitialMTU = MaxMTU
+mtu_test!(
+    fn mtu_probing_disabled(server, client) {
+        let events = mtu_updates(server, client, None, BaseMtu::default().into(), BaseMtu::default().into(), BaseMtu::default().into(), 10_000);
+        let first_mtu = events.first().unwrap();
+        assert_eq!(first_mtu.mtu, 1200);
+        assert!(first_mtu.search_complete);
+        assert!(matches!(
+            first_mtu.cause,
+            events::MtuUpdatedCause::NewPath { .. }
+        ));
     }
 );
 
@@ -348,8 +443,12 @@ fn mtu_loss_no_blackhole() {
     })
     .unwrap();
 
+    let events = events.lock().unwrap().clone();
+
     // MTU remained jumbo despite the packet loss
-    assert_eq!(8943, events.lock().unwrap().last().unwrap().mtu);
+    let last_mtu = events.last().unwrap();
+    assert_eq!(8943, last_mtu.mtu);
+    assert!(last_mtu.search_complete);
 }
 
 // if the MTU is decreased after an MTU probe previously raised the MTU for the path,
@@ -395,8 +494,16 @@ fn mtu_blackhole() {
     })
     .unwrap();
 
+    let events = events.lock().unwrap().clone();
+
     // MTU dropped to the minimum
-    assert_eq!(1200, events.lock().unwrap().last().unwrap().mtu);
+    let last_mtu = events.last().unwrap();
+    assert_eq!(1200, last_mtu.mtu);
+    assert!(last_mtu.search_complete);
+    assert!(matches!(
+        last_mtu.cause,
+        events::MtuUpdatedCause::Blackhole { .. }
+    ));
 }
 
 // ensure the server enforces the minimum MTU for all initial packets

@@ -52,6 +52,10 @@ pub mod testing {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
+    /// EARLY_SEARCH_REQUESTED indicates the initial MTU was configured higher
+    /// than the base MTU, to allow for quick confirmation or rejection of the
+    /// initial MTU
+    EarlySearchRequested,
     //= https://www.rfc-editor.org/rfc/rfc8899#section-5.2
     //# The DISABLED state is the initial state before probing has started.
     Disabled,
@@ -67,9 +71,19 @@ enum State {
 }
 
 impl State {
+    /// Returns true if the MTU controller is in the early search requested state
+    fn is_early_search_requested(&self) -> bool {
+        matches!(self, State::EarlySearchRequested)
+    }
+
     /// Returns true if the MTU controller is in the disabled state
     fn is_disabled(&self) -> bool {
         matches!(self, State::Disabled)
+    }
+
+    /// Returns true if the MTU controller is in the search complete state
+    fn is_search_complete(&self) -> bool {
+        matches!(self, State::SearchComplete)
     }
 }
 
@@ -536,8 +550,20 @@ impl Controller {
         }
         .min(max_udp_payload);
 
+        let state = if plpmtu > base_plpmtu {
+            // The initial MTU has been configured higher than the base MTU
+            State::EarlySearchRequested
+        } else if initial_probed_size - base_plpmtu < PROBE_THRESHOLD {
+            // The next probe size is within the probe threshold of the
+            // base MTU, so no probing will occur and the search is complete
+            State::SearchComplete
+        } else {
+            // Otherwise wait for regular MTU probing to be enabled
+            State::Disabled
+        };
+
         Self {
-            state: State::Disabled,
+            state,
             base_plpmtu,
             plpmtu,
             probed_size: initial_probed_size,
@@ -554,7 +580,7 @@ impl Controller {
     #[inline]
     pub fn enable(&mut self) {
         // ensure we haven't already enabled the controller
-        ensure!(self.state == State::Disabled);
+        ensure!(self.state.is_disabled() || self.state.is_early_search_requested());
 
         // TODO: Look up current MTU in a cache. If there is a cache hit
         //       move directly to SearchComplete and arm the PMTU raise timer.
@@ -583,6 +609,25 @@ impl Controller {
         path_id: path::Id,
         publisher: &mut Pub,
     ) {
+        if self.state.is_early_search_requested() && sent_bytes > self.base_plpmtu {
+            if self.is_next_probe_size_above_threshold() {
+                // Early probing has succeeded, but the max MTU is higher still so
+                // wait for regular MTU probing to be enabled to attempt higher MTUs
+                self.state = State::Disabled;
+            } else {
+                self.state = State::SearchComplete;
+            }
+
+            // Publish an `on_mtu_updated` event since the cause
+            // and possibly search_complete status have changed
+            publisher.on_mtu_updated(event::builder::MtuUpdated {
+                path_id: path_id.into_event(),
+                mtu: self.plpmtu,
+                cause: MtuUpdatedCause::InitialMtuPacketAcknowledged,
+                search_complete: self.state.is_search_complete(),
+            });
+        }
+
         // no need to process anything in the disabled state
         ensure!(self.state != State::Disabled);
 
@@ -609,12 +654,6 @@ impl Controller {
                     &mut congestion_controller::PathPublisher::new(publisher, path_id),
                 );
 
-                publisher.on_mtu_updated(event::builder::MtuUpdated {
-                    path_id: path_id.into_event(),
-                    mtu: self.plpmtu,
-                    cause: MtuUpdatedCause::ProbeAcknowledged,
-                });
-
                 self.update_probed_size();
 
                 //= https://www.rfc-editor.org/rfc/rfc8899#section-8
@@ -625,6 +664,13 @@ impl Controller {
                 // Subsequent probe packets are sent based on the round trip transmission and
                 // acknowledgement/loss of a packet, so the interval will be at least 1 RTT.
                 self.request_new_search(Some(transmit_time));
+
+                publisher.on_mtu_updated(event::builder::MtuUpdated {
+                    path_id: path_id.into_event(),
+                    mtu: self.plpmtu,
+                    cause: MtuUpdatedCause::ProbeAcknowledged,
+                    search_complete: self.state.is_search_complete(),
+                });
             }
         }
     }
@@ -647,28 +693,39 @@ impl Controller {
     ) {
         // MTU probes are only sent in the application data space, but since early packet
         // spaces will use the `InitialMtu` prior to MTU probing being enabled, we need
-        // to check for potentially MTU-related packet loss even when MTU probing is disabled
-        ensure!(self.state.is_disabled() || packet_number.space().is_application_data());
+        // to check for potentially MTU-related packet loss if an early search has been requested
+        ensure!(
+            self.state.is_early_search_requested() || packet_number.space().is_application_data()
+        );
 
         match &self.state {
-            State::Disabled => {
-                if lost_bytes > self.base_plpmtu && self.plpmtu > self.base_plpmtu {
-                    // MTU probing hasn't been enabled yet, but since the initial MTU was configured
-                    // higher than the base PLPMTU and this setting resulted in a lost packet
-                    // we drop back down to the base PLPMTU.
-                    self.plpmtu = self.base_plpmtu;
+            State::Disabled => {}
+            State::EarlySearchRequested => {
+                // MTU probing hasn't been enabled yet, but since the initial MTU was configured
+                // higher than the base PLPMTU and this setting resulted in a lost packet
+                // we drop back down to the base PLPMTU.
+                self.plpmtu = self.base_plpmtu;
 
-                    congestion_controller.on_mtu_update(
-                        self.plpmtu,
-                        &mut congestion_controller::PathPublisher::new(publisher, path_id),
-                    );
+                congestion_controller.on_mtu_update(
+                    self.plpmtu,
+                    &mut congestion_controller::PathPublisher::new(publisher, path_id),
+                );
 
-                    publisher.on_mtu_updated(event::builder::MtuUpdated {
-                        path_id: path_id.into_event(),
-                        mtu: self.plpmtu,
-                        cause: MtuUpdatedCause::InitialMtuPacketLost,
-                    })
+                if self.is_next_probe_size_above_threshold() {
+                    // Resume regular probing when the MTU controller is enabled
+                    self.state = State::Disabled;
+                } else {
+                    // The next probe is within the threshold, so move directly
+                    // to the SearchComplete state
+                    self.state = State::SearchComplete;
                 }
+
+                publisher.on_mtu_updated(event::builder::MtuUpdated {
+                    path_id: path_id.into_event(),
+                    mtu: self.plpmtu,
+                    cause: MtuUpdatedCause::InitialMtuPacketLost,
+                    search_complete: self.state.is_search_complete(),
+                })
             }
             State::Searching(probe_pn, _) if *probe_pn == packet_number => {
                 // The MTU probe was lost
@@ -678,6 +735,16 @@ impl Controller {
                     self.max_probe_size = self.probed_size;
                     self.update_probed_size();
                     self.request_new_search(None);
+
+                    if self.is_search_completed() {
+                        // Emit an on_mtu_updated event as the search has now completed
+                        publisher.on_mtu_updated(event::builder::MtuUpdated {
+                            path_id: path_id.into_event(),
+                            mtu: self.plpmtu,
+                            cause: MtuUpdatedCause::LargerProbesLost,
+                            search_complete: true,
+                        })
+                    }
                 } else {
                     // Try the same probe size again
                     self.state = State::SearchRequested
@@ -716,6 +783,11 @@ impl Controller {
         self.probed_size as usize
     }
 
+    /// Returns true if probing for the MTU has completed
+    pub fn is_search_completed(&self) -> bool {
+        self.state.is_search_complete()
+    }
+
     /// Sets `probed_size` to the next MTU size to probe for based on a binary search
     #[inline]
     fn update_probed_size(&mut self) {
@@ -731,6 +803,11 @@ impl Controller {
         current + ((max - current) / 2)
     }
 
+    #[inline]
+    fn is_next_probe_size_above_threshold(&self) -> bool {
+        self.probed_size - self.plpmtu >= PROBE_THRESHOLD
+    }
+
     /// Requests a new search to be initiated
     ///
     /// If `last_probe_time` is supplied, the PMTU Raise Timer will be armed as
@@ -738,7 +815,7 @@ impl Controller {
     /// of the current PLPMTU
     #[inline]
     fn request_new_search(&mut self, last_probe_time: Option<Timestamp>) {
-        if self.probed_size - self.plpmtu >= PROBE_THRESHOLD {
+        if self.is_next_probe_size_above_threshold() {
             self.probe_count = 0;
             self.state = State::SearchRequested;
         } else {
@@ -778,6 +855,7 @@ impl Controller {
             path_id: path_id.into_event(),
             mtu: self.plpmtu,
             cause: MtuUpdatedCause::Blackhole,
+            search_complete: self.state.is_search_complete(),
         })
     }
 
@@ -789,7 +867,7 @@ impl Controller {
         self.max_probe_size = self.max_udp_payload;
         self.update_probed_size();
 
-        if self.probed_size - self.plpmtu >= PROBE_THRESHOLD {
+        if self.is_next_probe_size_above_threshold() {
             // There is still some room to try a larger MTU again,
             // so arm the pmtu raise timer
             self.pmtu_raise_timer.set(timestamp);
