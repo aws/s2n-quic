@@ -4,8 +4,10 @@
 use bytes::{Buf, Bytes};
 use core::task::ready;
 use h3::quic::{self, Error, StreamId, WriteBuf};
-use s2n_quic::stream::{BidirectionalStream, ReceiveStream};
-use s2n_quic_core::varint::VarInt;
+use s2n_quic::{
+    application,
+    stream::{BidirectionalStream, ReceiveStream},
+};
 use std::{
     convert::TryInto,
     fmt::{self, Display},
@@ -178,7 +180,7 @@ where
         self.conn.close(
             code.value()
                 .try_into()
-                .unwrap_or_else(|_| VarInt::MAX.into()),
+                .unwrap_or(application::Error::UNKNOWN),
         );
     }
 }
@@ -461,7 +463,7 @@ where
     fn reset(&mut self, reset_code: u64) {
         let _ = self
             .stream
-            .reset(reset_code.try_into().unwrap_or_else(|_| VarInt::MAX.into()));
+            .reset(reset_code.try_into().unwrap_or(application::Error::UNKNOWN));
     }
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
