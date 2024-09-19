@@ -10,4 +10,4 @@ pub mod shared;
 pub mod state;
 pub mod worker;
 
-pub use error::Error;
+pub use error::{Error, Kind};
