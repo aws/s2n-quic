@@ -186,6 +186,11 @@ impl<Config: endpoint::Config> Manager<Config> {
         self.stateless_reset_token_sync.on_packet_loss(ack_set);
     }
 
+    /// Called when the MTU of the path has changed
+    pub fn on_mtu_updated(&mut self, max_datagram_size: u16) {
+        self.path.on_mtu_updated(max_datagram_size)
+    }
+
     #[cfg(any(test, feature = "testing"))]
     pub fn path(&self) -> &<<Config as endpoint::Config>::DcEndpoint as Endpoint>::Path {
         self.path.as_ref().expect("path should be specified")

@@ -10,7 +10,7 @@ use crate::{
 };
 use core::time::Duration;
 use std::sync::{
-    atomic::{AtomicU8, Ordering},
+    atomic::{AtomicU16, AtomicU8, Ordering},
     Arc,
 };
 
@@ -36,14 +36,19 @@ pub struct MockDcPath {
     pub on_peer_stateless_reset_tokens_count: u8,
     pub stateless_reset_tokens: Vec<stateless_reset::Token>,
     pub peer_stateless_reset_tokens: Vec<stateless_reset::Token>,
+    pub mtu: u16,
 }
 
 impl dc::Endpoint for MockDcEndpoint {
     type Path = MockDcPath;
 
-    fn new_path(&mut self, _connection_info: &ConnectionInfo) -> Option<Self::Path> {
+    fn new_path(&mut self, connection_info: &ConnectionInfo) -> Option<Self::Path> {
         Some(MockDcPath {
             stateless_reset_tokens: self.stateless_reset_tokens.clone(),
+            mtu: connection_info
+                .application_params
+                .max_datagram_size
+                .load(Ordering::Relaxed),
             ..Default::default()
         })
     }
@@ -76,10 +81,15 @@ impl dc::Path for MockDcPath {
         self.peer_stateless_reset_tokens
             .extend(stateless_reset_tokens);
     }
+
+    fn on_mtu_updated(&mut self, mtu: u16) {
+        self.mtu = mtu
+    }
 }
 
+#[allow(clippy::declare_interior_mutable_const)]
 pub const TEST_APPLICATION_PARAMS: ApplicationParams = ApplicationParams {
-    max_datagram_size: 1472,
+    max_datagram_size: AtomicU16::new(1472),
     remote_max_data: VarInt::from_u32(1u32 << 25),
     local_send_max_data: VarInt::from_u32(1u32 << 25),
     local_recv_max_data: VarInt::from_u32(1u32 << 25),

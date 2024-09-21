@@ -45,6 +45,9 @@ pub trait Path: 'static + Send {
         &mut self,
         stateless_reset_tokens: impl Iterator<Item = &'a stateless_reset::Token>,
     );
+
+    /// Called when the MTU has been updated for the path
+    fn on_mtu_updated(&mut self, mtu: u16);
 }
 
 impl<P: Path> Path for Option<P> {
@@ -67,6 +70,13 @@ impl<P: Path> Path for Option<P> {
     ) {
         if let Some(path) = self {
             path.on_peer_stateless_reset_tokens(stateless_reset_tokens)
+        }
+    }
+
+    #[inline]
+    fn on_mtu_updated(&mut self, max_datagram_size: u16) {
+        if let Some(path) = self {
+            path.on_mtu_updated(max_datagram_size)
         }
     }
 }

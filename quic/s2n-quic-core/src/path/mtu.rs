@@ -472,6 +472,12 @@ impl Builder {
     }
 }
 
+#[derive(Eq, PartialEq, Debug)]
+pub enum MtuResult {
+    NoChange,
+    MtuUpdated(u16),
+}
+
 #[derive(Clone, Debug)]
 pub struct Controller {
     state: State,
@@ -608,7 +614,7 @@ impl Controller {
         congestion_controller: &mut CC,
         path_id: path::Id,
         publisher: &mut Pub,
-    ) {
+    ) -> MtuResult {
         if self.state.is_early_search_requested() && sent_bytes > self.base_plpmtu {
             if self.is_next_probe_size_above_threshold() {
                 // Early probing has succeeded, but the max MTU is higher still so
@@ -629,10 +635,13 @@ impl Controller {
         }
 
         // no need to process anything in the disabled state
-        ensure!(self.state != State::Disabled);
+        ensure!(self.state != State::Disabled, MtuResult::NoChange);
 
         // MTU probes are only sent in application data space
-        ensure!(packet_number.space().is_application_data());
+        ensure!(
+            packet_number.space().is_application_data(),
+            MtuResult::NoChange
+        );
 
         if sent_bytes >= self.plpmtu
             && self
@@ -671,8 +680,12 @@ impl Controller {
                     cause: MtuUpdatedCause::ProbeAcknowledged,
                     search_complete: self.state.is_search_complete(),
                 });
+
+                return MtuResult::MtuUpdated(self.plpmtu);
             }
         }
+
+        MtuResult::NoChange
     }
 
     //= https://www.rfc-editor.org/rfc/rfc8899#section-3
@@ -690,12 +703,13 @@ impl Controller {
         congestion_controller: &mut CC,
         path_id: path::Id,
         publisher: &mut Pub,
-    ) {
+    ) -> MtuResult {
         // MTU probes are only sent in the application data space, but since early packet
         // spaces will use the `InitialMtu` prior to MTU probing being enabled, we need
         // to check for potentially MTU-related packet loss if an early search has been requested
         ensure!(
-            self.state.is_early_search_requested() || packet_number.space().is_application_data()
+            self.state.is_early_search_requested() || packet_number.space().is_application_data(),
+            MtuResult::NoChange
         );
 
         match &self.state {
@@ -725,7 +739,9 @@ impl Controller {
                     mtu: self.plpmtu,
                     cause: MtuUpdatedCause::InitialMtuPacketLost,
                     search_complete: self.state.is_search_complete(),
-                })
+                });
+
+                return MtuResult::MtuUpdated(self.plpmtu);
             }
             State::Searching(probe_pn, _) if *probe_pn == packet_number => {
                 // The MTU probe was lost
@@ -763,10 +779,17 @@ impl Controller {
                 }
 
                 if self.black_hole_counter > BLACK_HOLE_THRESHOLD {
-                    self.on_black_hole_detected(now, congestion_controller, path_id, publisher);
+                    return self.on_black_hole_detected(
+                        now,
+                        congestion_controller,
+                        path_id,
+                        publisher,
+                    );
                 }
             }
         }
+
+        MtuResult::NoChange
     }
 
     /// Gets the currently validated maximum QUIC datagram size
@@ -837,7 +860,7 @@ impl Controller {
         congestion_controller: &mut CC,
         path_id: path::Id,
         publisher: &mut Pub,
-    ) {
+    ) -> MtuResult {
         self.black_hole_counter = Default::default();
         self.largest_acked_mtu_sized_packet = None;
         // Reset the plpmtu back to the base_plpmtu and notify the congestion controller
@@ -856,7 +879,9 @@ impl Controller {
             mtu: self.plpmtu,
             cause: MtuUpdatedCause::Blackhole,
             search_complete: self.state.is_search_complete(),
-        })
+        });
+
+        MtuResult::MtuUpdated(self.plpmtu)
     }
 
     /// Arm the PMTU Raise Timer if there is still room to increase the

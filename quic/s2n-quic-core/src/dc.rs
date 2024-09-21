@@ -12,6 +12,7 @@ use crate::{
     varint::VarInt,
 };
 use core::time::Duration;
+use std::sync::atomic::{AtomicU16, Ordering};
 
 mod disabled;
 mod traits;
@@ -91,15 +92,28 @@ impl<'a> DatagramInfo<'a> {
 }
 
 /// Various settings relevant to the dc path
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub struct ApplicationParams {
-    pub max_datagram_size: u16,
+    pub max_datagram_size: AtomicU16,
     pub remote_max_data: VarInt,
     pub local_send_max_data: VarInt,
     pub local_recv_max_data: VarInt,
     pub max_idle_timeout: Option<Duration>,
     pub max_ack_delay: Duration,
+}
+
+impl Clone for ApplicationParams {
+    fn clone(&self) -> Self {
+        Self {
+            max_datagram_size: AtomicU16::new(self.max_datagram_size.load(Ordering::Relaxed)),
+            remote_max_data: Default::default(),
+            local_send_max_data: Default::default(),
+            local_recv_max_data: Default::default(),
+            max_idle_timeout: None,
+            max_ack_delay: Default::default(),
+        }
+    }
 }
 
 impl ApplicationParams {
@@ -109,7 +123,7 @@ impl ApplicationParams {
         limits: &Limits,
     ) -> Self {
         Self {
-            max_datagram_size,
+            max_datagram_size: AtomicU16::new(max_datagram_size),
             remote_max_data: peer_flow_control_limits.max_data,
             local_send_max_data: limits.initial_stream_limits().max_data_bidi_local,
             local_recv_max_data: limits.initial_stream_limits().max_data_bidi_remote,

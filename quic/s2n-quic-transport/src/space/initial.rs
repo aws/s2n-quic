@@ -624,6 +624,8 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     }
 
     fn on_rtt_update(&mut self, _now: Timestamp) {}
+
+    fn on_mtu_update(&mut self, _mtu: u16) {}
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2

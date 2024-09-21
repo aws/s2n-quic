@@ -98,7 +98,7 @@ macro_rules! recovery_event {
 }
 
 pub(crate) use recovery_event;
-use s2n_quic_core::recovery::loss;
+use s2n_quic_core::{path::mtu::MtuResult, recovery::loss};
 
 // Since `SentPacketInfo` is generic over a type supplied by the Congestion Controller implementation,
 // the type definition is particularly lengthy, especially since rust requires the fully-qualified
@@ -537,15 +537,20 @@ impl<Config: endpoint::Config> Manager<Config> {
                 includes_ack_eliciting |= acked_packet_info.ack_elicitation.is_ack_eliciting();
 
                 let path = context.path_mut_by_id(acked_packet_info.path_id);
-                path.mtu_controller.on_packet_ack(
+                path.ecn_controller
+                    .on_packet_ack(acked_packet_info.time_sent, acked_packet_info.ecn);
+                match path.mtu_controller.on_packet_ack(
                     packet_number,
                     acked_packet_info.sent_bytes,
                     &mut path.congestion_controller,
                     acked_packet_info.path_id,
                     publisher,
-                );
-                path.ecn_controller
-                    .on_packet_ack(acked_packet_info.time_sent, acked_packet_info.ecn);
+                ) {
+                    MtuResult::NoChange => {}
+                    MtuResult::MtuUpdated(max_datagram_size) => {
+                        context.on_mtu_update(max_datagram_size)
+                    }
+                }
             }
 
             if let Some((start, end)) = newly_acked_range {
@@ -998,18 +1003,6 @@ impl<Config: endpoint::Config> Manager<Config> {
                 is_mtu_probe: sent_info.transmission_mode.is_mtu_probing(),
             });
 
-            // Notify the MTU controller of packet loss even if it wasn't a probe since it uses
-            // that information for blackhole detection.
-            path.mtu_controller.on_packet_loss(
-                packet_number,
-                sent_info.sent_bytes,
-                new_loss_burst,
-                now,
-                &mut path.congestion_controller,
-                sent_info.path_id,
-                publisher,
-            );
-
             let path_id = sent_info.path_id;
 
             // Notify the ECN controller of packet loss for blackhole detection.
@@ -1026,6 +1019,23 @@ impl<Config: endpoint::Config> Manager<Config> {
                 //# Endpoints SHOULD set the min_rtt to the newest RTT sample after
                 //# persistent congestion is established.
                 path.rtt_estimator.on_persistent_congestion();
+            }
+
+            // Notify the MTU controller of packet loss even if it wasn't a probe since it uses
+            // that information for blackhole detection.
+            match path.mtu_controller.on_packet_loss(
+                packet_number,
+                sent_info.sent_bytes,
+                new_loss_burst,
+                now,
+                &mut path.congestion_controller,
+                sent_info.path_id,
+                publisher,
+            ) {
+                MtuResult::NoChange => {}
+                MtuResult::MtuUpdated(max_datagram_size) => {
+                    context.on_mtu_update(max_datagram_size)
+                }
             }
 
             prev_lost_packet_number = Some(packet_number);
@@ -1136,6 +1146,8 @@ pub trait Context<Config: endpoint::Config> {
         publisher: &mut Pub,
     );
     fn on_rtt_update(&mut self, now: Timestamp);
+
+    fn on_mtu_update(&mut self, max_datagram_size: u16);
 }
 
 impl<Config: endpoint::Config> transmission::interest::Provider for Manager<Config> {

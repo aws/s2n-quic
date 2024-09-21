@@ -3471,6 +3471,7 @@ struct MockContext<'a, Config: endpoint::Config> {
     on_packet_ack_count: u8,
     on_packet_loss_count: u8,
     on_rtt_update_count: u8,
+    on_mtu_update_count: u8,
     path_id: path::Id,
     lost_packets: HashSet<PacketNumber>,
     path_manager: &'a mut path::Manager<Config>,
@@ -3485,6 +3486,7 @@ impl<'a, Config: endpoint::Config> MockContext<'a, Config> {
             on_packet_ack_count: 0,
             on_packet_loss_count: 0,
             on_rtt_update_count: 0,
+            on_mtu_update_count: 0,
             path_id: path_manager.active_path_id(),
             lost_packets: HashSet::default(),
             path_manager,
@@ -3570,5 +3572,9 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for MockContext<'a,
 
     fn on_rtt_update(&mut self, _now: Timestamp) {
         self.on_rtt_update_count += 1;
+    }
+
+    fn on_mtu_update(&mut self, _max_datagram_size: u16) {
+        self.on_mtu_update_count += 1;
     }
 }
