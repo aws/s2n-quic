@@ -11,8 +11,10 @@ use crate::{
     transport::parameters::{DcSupportedVersions, InitialFlowControlLimits},
     varint::VarInt,
 };
-use core::time::Duration;
-use std::sync::atomic::{AtomicU16, Ordering};
+use core::{
+    sync::atomic::{AtomicU16, Ordering},
+    time::Duration,
+};
 
 mod disabled;
 mod traits;
