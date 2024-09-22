@@ -257,6 +257,38 @@ pub struct State {
     shared: Option<Arc<Shared>>,
 }
 
+impl super::map::SizeOf for Mutex<SlidingWindow> {
+    fn size(&self) -> usize {
+        // If we don't need drop, it's very likely that this type is fully contained in size_of
+        // Self. This simplifies implementing this trait for e.g. std types.
+        //
+        // Mutex on macOS (at least) has a more expensive, pthread-based impl that allocates. But
+        // on Linux there's no extra allocation.
+        if cfg!(target_os = "linux") {
+            assert!(
+                !std::mem::needs_drop::<Self>(),
+                "{:?} requires custom SizeOf impl",
+                std::any::type_name::<Self>()
+            );
+        }
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl super::map::SizeOf for State {
+    fn size(&self) -> usize {
+        let State {
+            min_key_id,
+            max_seen_key_id,
+            seen,
+            shared,
+        } = self;
+        // shared is shared across all State's (effectively) so we don't currently account for that
+        // allocation.
+        min_key_id.size() + max_seen_key_id.size() + seen.size() + std::mem::size_of_val(shared)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// This indicates that we know about this element and it *definitely* already exists.

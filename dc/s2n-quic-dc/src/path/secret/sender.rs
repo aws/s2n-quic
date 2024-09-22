@@ -16,6 +16,28 @@ pub struct State {
     control_secret: OnceCell<open::control::Secret>,
 }
 
+impl super::map::SizeOf for OnceCell<open::control::Secret> {
+    fn size(&self) -> usize {
+        // FIXME: OnceCell stores the value inline, but it also has a AtomicPtr to a list of
+        // waiters. That should be ~empty after init finishes. We should probably just initialize
+        // this eagerly when creating the secret rather than adding extra mutable state.
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl super::map::SizeOf for StatelessReset {}
+
+impl super::map::SizeOf for State {
+    fn size(&self) -> usize {
+        let State {
+            current_id,
+            stateless_reset,
+            control_secret,
+        } = self;
+        current_id.size() + stateless_reset.size() + control_secret.size()
+    }
+}
+
 impl State {
     pub fn new(stateless_reset: StatelessReset) -> Self {
         Self {

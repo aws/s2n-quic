@@ -308,3 +308,11 @@ fn check_invariants_no_overflow() {
             }
         })
 }
+
+#[test]
+fn entry_size() {
+    // This gates to running only on specific GHA to reduce false positives.
+    if std::env::var("S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS").is_ok() {
+        assert_eq!(fake_entry(0).size(), 1000);
+    }
+}
