@@ -3,7 +3,6 @@
 
 use super::schedule;
 use crate::{crypto::awslc::open, packet::secret_control};
-use once_cell::sync::OnceCell;
 use s2n_quic_core::varint::VarInt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -13,16 +12,6 @@ type StatelessReset = [u8; secret_control::TAG_LEN];
 pub struct State {
     current_id: AtomicU64,
     pub(super) stateless_reset: StatelessReset,
-    control_secret: OnceCell<open::control::Secret>,
-}
-
-impl super::map::SizeOf for OnceCell<open::control::Secret> {
-    fn size(&self) -> usize {
-        // FIXME: OnceCell stores the value inline, but it also has a AtomicPtr to a list of
-        // waiters. That should be ~empty after init finishes. We should probably just initialize
-        // this eagerly when creating the secret rather than adding extra mutable state.
-        std::mem::size_of::<Self>()
-    }
 }
 
 impl super::map::SizeOf for StatelessReset {}
@@ -32,9 +21,8 @@ impl super::map::SizeOf for State {
         let State {
             current_id,
             stateless_reset,
-            control_secret,
         } = self;
-        current_id.size() + stateless_reset.size() + control_secret.size()
+        current_id.size() + stateless_reset.size()
     }
 }
 
@@ -43,7 +31,6 @@ impl State {
         Self {
             current_id: AtomicU64::new(0),
             stateless_reset,
-            control_secret: Default::default(),
         }
     }
 
@@ -69,8 +56,10 @@ impl State {
     }
 
     #[inline]
-    pub fn control_secret(&self, secret: &schedule::Secret) -> &open::control::Secret {
-        self.control_secret.get_or_init(|| secret.control_opener())
+    pub fn control_secret(&self, secret: &schedule::Secret) -> open::control::Secret {
+        // We don't try to cache this, hmac init is cheap (~200-600ns depending on algorithm) and
+        // the space requirement is huge (700+ bytes)
+        secret.control_opener()
     }
 
     /// Update the sender for a received stale key packet.

@@ -437,7 +437,7 @@ impl Map {
 
         match packet {
             control::Packet::StaleKey(packet) => {
-                let Some(packet) = packet.authenticate(key) else {
+                let Some(packet) = packet.authenticate(&key) else {
                     return;
                 };
                 state.mark_live(self.state.cleaner.epoch());
@@ -447,7 +447,7 @@ impl Map {
                     .fetch_add(1, Ordering::Relaxed);
             }
             control::Packet::ReplayDetected(packet) => {
-                let Some(_packet) = packet.authenticate(key) else {
+                let Some(_packet) = packet.authenticate(&key) else {
                     return;
                 };
                 self.state
