@@ -3,7 +3,7 @@
 
 use crate::{
     aead::{Aead, Result},
-    ring_aead::{Aad, LessSafeKey, Nonce, MAX_TAG_LEN, NONCE_LEN},
+    aws_lc_aead::{Aad, LessSafeKey, Nonce, MAX_TAG_LEN, NONCE_LEN},
 };
 use s2n_quic_core::crypto::{packet_protection::Error, scatter};
 
