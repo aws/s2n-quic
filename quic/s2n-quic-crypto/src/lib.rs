@@ -13,12 +13,9 @@ mod aead;
 mod cipher_suite;
 mod iv;
 
-#[cfg(not(target_os = "windows"))]
-use aws_lc_rs as ring;
-
 #[doc(hidden)]
-pub use ring::{
-    aead as ring_aead, aead::MAX_TAG_LEN, constant_time, digest, hkdf, hkdf::Prk, hmac,
+pub use aws_lc_rs::{
+    aead as aws_lc_aead, aead::MAX_TAG_LEN, constant_time, digest, hkdf, hkdf::Prk, hmac,
 };
 
 #[derive(Clone)]

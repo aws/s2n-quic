@@ -5,7 +5,7 @@ use crate::hkdf;
 use s2n_codec::{Encoder, EncoderBuffer};
 use zeroize::Zeroize;
 
-pub use crate::ring_aead::NONCE_LEN;
+pub use crate::aws_lc_aead::NONCE_LEN;
 
 pub struct Iv([u8; NONCE_LEN]);
 

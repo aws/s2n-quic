@@ -17,17 +17,12 @@ fips = ["aws-lc-rs/fips"]
 testing = []
 
 [dependencies]
+aws-lc-rs = { version = "1.9", features = ["prebuilt-nasm"] }
 cfg-if = "1"
 lazy_static = "1"
 s2n-codec = { version = "=0.46.0", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.46.0", path = "../s2n-quic-core", default-features = false }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
-
-[target.'cfg(not(target_os = "windows"))'.dependencies]
-aws-lc-rs = { version = "1.6" }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-ring = { version = "0.17", default-features = false }
 
 [dev-dependencies]
 hex-literal = "0.4"

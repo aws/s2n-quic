@@ -3,7 +3,7 @@
 
 use crate::{
     aead::{Aead, Result},
-    ring_aead::{
+    aws_lc_aead::{
         self, Aad, Nonce, TlsProtocolId, TlsRecordOpeningKey, TlsRecordSealingKey, MAX_TAG_LEN,
         NONCE_LEN,
     },
@@ -21,7 +21,7 @@ pub struct FipsKey {
 
 impl FipsKey {
     #[inline]
-    pub fn new(algorithm: &'static ring_aead::Algorithm, key_bytes: &[u8]) -> Result<Self> {
+    pub fn new(algorithm: &'static aws_lc_aead::Algorithm, key_bytes: &[u8]) -> Result<Self> {
         let opener = TlsRecordOpeningKey::new(algorithm, TlsProtocolId::TLS13, key_bytes)
             .expect("key size verified");
         let sealer = TlsRecordSealingKey::new(algorithm, TlsProtocolId::TLS13, key_bytes)

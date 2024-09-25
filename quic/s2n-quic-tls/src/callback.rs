@@ -9,7 +9,7 @@ use s2n_quic_core::{
     endpoint, transport,
 };
 use s2n_quic_crypto::{
-    handshake::HandshakeKey, hkdf, one_rtt::OneRttKey, ring_aead as aead, Prk, SecretPair, Suite,
+    handshake::HandshakeKey, hkdf, one_rtt::OneRttKey, aws_lc_aead as aead, Prk, SecretPair, Suite,
 };
 use s2n_tls::{connection::Connection, error::Fallible, ffi::*};
 
