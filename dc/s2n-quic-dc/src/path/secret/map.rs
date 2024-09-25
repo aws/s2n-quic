@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     credentials::{Credentials, Id},
-    crypto,
+    crypto, fixed_map,
     packet::{secret_control as control, Packet, WireVersion},
     stream::TransportFeatures,
 };
@@ -85,7 +85,7 @@ pub(super) struct State {
     // In the future it's likely we'll want to build bidirectional support in which case splitting
     // this into two maps (per the discussion in "Managing memory consumption" above) will be
     // needed.
-    pub(super) peers: flurry::HashMap<SocketAddr, Arc<Entry>>,
+    pub(super) peers: fixed_map::Map<SocketAddr, Arc<Entry>>,
 
     // Stores the set of SocketAddr for which we received a UnknownPathSecret packet.
     // When handshake_with is called we will allow a new handshake if this contains a socket, this
@@ -93,7 +93,7 @@ pub(super) struct State {
     pub(super) requested_handshakes: flurry::HashSet<SocketAddr>,
 
     // All known entries.
-    pub(super) ids: flurry::HashMap<Id, Arc<Entry>>,
+    pub(super) ids: fixed_map::Map<Id, Arc<Entry>>,
 
     pub(super) signer: stateless_reset::Signer,
 
@@ -162,80 +162,35 @@ impl Cleaner {
         *self.thread.lock().unwrap() = Some(handle);
     }
 
-    /// Clean up dead items.
-    // In local benchmarking iterating a 500,000 element flurry::HashMap takes about
-    // 60-70ms. With contention, etc. it might be longer, but this is not an overly long
-    // time given that we expect to run this in a background thread once a minute.
-    //
-    // This is exposed as a method primarily for tests to directly invoke.
+    /// Periodic maintenance for various maps.
     fn clean(&self, state: &State, eviction_cycles: u64) {
         let current_epoch = self.epoch.fetch_add(1, Ordering::Relaxed);
-
         let now = Instant::now();
 
-        // FIXME: Rather than just tracking one minimum, we might want to try to do some counting
-        // as we iterate to have a higher likelihood of identifying 1% of peers falling into the
-        // epoch we pick. Exactly how to do that without collecting a ~full distribution by epoch
-        // is not clear though and we'd prefer to avoid allocating extra memory here.
-        //
-        // As-is we're just hoping that once-per-minute oldest-epoch identification and removal is
-        // enough that we keep the capacity below 100%. We could have a mode that starts just
-        // randomly evicting entries if we hit 100% but even this feels like an annoying modality
-        // to deal with.
-        let mut minimum = u64::MAX;
-        {
-            let guard = state.ids.guard();
-            for (id, entry) in state.ids.iter(&guard) {
-                let retired_at = entry.retired.0.load(Ordering::Relaxed);
-                if retired_at == 0 {
-                    // Find the minimum non-retired epoch currently in the set.
-                    minimum = std::cmp::min(entry.used_at.load(Ordering::Relaxed), minimum);
-
-                    // For non-retired entries, if it's time for them to handshake again, request a
-                    // handshake to happen. This handshake will happen on the next request for this
-                    // particular peer.
-                    if entry.rehandshake_time() <= now {
-                        state.request_handshake(entry.peer);
-                    }
-
-                    // Not retired.
-                    continue;
+        // For non-retired entries, if it's time for them to handshake again, request a
+        // handshake to happen. This handshake will currently happen on the next request for this
+        // particular peer.
+        state.ids.retain(|_, entry| {
+            let retired_at = entry.retired.0.load(Ordering::Relaxed);
+            if retired_at == 0 {
+                if entry.rehandshake_time() <= now {
+                    state.request_handshake(entry.peer);
                 }
-                // Avoid panics on overflow (which should never happen...)
-                if current_epoch.saturating_sub(retired_at) >= eviction_cycles {
-                    state.ids.remove(id, &guard);
-                }
+
+                // always retain
+                true
+            } else {
+                // retain if we aren't yet ready to evict.
+                current_epoch.saturating_sub(retired_at) < eviction_cycles
             }
-        }
+        });
 
-        if state.ids.len() > (state.max_capacity * 95 / 100) {
-            let mut to_remove = std::cmp::max(state.ids.len() / 100, 1);
-            let guard = state.ids.guard();
-            for (id, entry) in state.ids.iter(&guard) {
-                if to_remove > 0 {
-                    // Only remove with the minimum epoch. This hopefully means that we will remove
-                    // fairly stale entries.
-                    if entry.used_at.load(Ordering::Relaxed) == minimum {
-                        state.ids.remove(id, &guard);
-                        to_remove -= 1;
-                    }
-                } else {
-                    break;
-                }
-            }
-        }
-
-        // Prune the peer list of any entries that no longer have a corresponding `id` entry.
-        //
-        // This ensures that the peer list is naturally bounded in size by the size of the `id`
-        // set, and relies on precisely the same mechanisms for eviction.
-        {
-            let ids = state.ids.pin();
-            state
-                .peers
-                .pin()
-                .retain(|_, entry| ids.contains_key(entry.secret.id()));
-        }
+        // Drop IP entries if we no longer have the path secret ID entry.
+        // FIXME: Don't require a loop to do this. This is likely somewhat slow since it takes a
+        // write lock + read lock essentially per-entry, but should be near-constant-time.
+        state
+            .peers
+            .retain(|_, entry| state.ids.contains_key(entry.secret.id()));
 
         // Iteration order should be effectively random, so this effectively just prunes the list
         // periodically. 5000 is chosen arbitrarily to make sure this isn't a memory leak. Note
@@ -266,6 +221,14 @@ impl State {
             handshakes.insert(peer);
         }
     }
+
+    // for tests
+    #[allow(unused)]
+    fn set_max_capacity(&mut self, new: usize) {
+        self.max_capacity = new;
+        self.peers = fixed_map::Map::with_capacity(new, Default::default());
+        self.ids = fixed_map::Map::with_capacity(new, Default::default());
+    }
 }
 
 impl Map {
@@ -284,9 +247,9 @@ impl Map {
             max_capacity: 500_000,
             // FIXME: Allow configuring the rehandshake_period.
             rehandshake_period: Duration::from_secs(3600 * 24),
-            peers: Default::default(),
+            peers: fixed_map::Map::with_capacity(500_000, Default::default()),
+            ids: fixed_map::Map::with_capacity(500_000, Default::default()),
             requested_handshakes: Default::default(),
-            ids: Default::default(),
             cleaner: Cleaner::new(),
             signer,
 
@@ -320,12 +283,12 @@ impl Map {
     }
 
     pub fn drop_state(&self) {
-        self.state.peers.pin().clear();
-        self.state.ids.pin().clear();
+        self.state.peers.clear();
+        self.state.ids.clear();
     }
 
     pub fn contains(&self, peer: SocketAddr) -> bool {
-        self.state.peers.pin().contains_key(&peer)
+        self.state.peers.contains_key(&peer)
             && !self.state.requested_handshakes.pin().contains(&peer)
     }
 
@@ -333,8 +296,7 @@ impl Map {
         &self,
         peer: SocketAddr,
     ) -> Option<(seal::Once, Credentials, ApplicationParams)> {
-        let peers_guard = self.state.peers.guard();
-        let state = self.state.peers.get(&peer, &peers_guard)?;
+        let state = self.state.peers.get_by_key(&peer)?;
         state.mark_live(self.state.cleaner.epoch());
 
         let (sealer, credentials) = state.uni_sealer();
@@ -356,8 +318,7 @@ impl Map {
         peer: SocketAddr,
         features: &TransportFeatures,
     ) -> Option<(Bidirectional, ApplicationParams)> {
-        let peers_guard = self.state.peers.guard();
-        let state = self.state.peers.get(&peer, &peers_guard)?;
+        let state = self.state.peers.get_by_key(&peer)?;
         state.mark_live(self.state.cleaner.epoch());
 
         let keys = state.bidi_local(features);
@@ -401,8 +362,7 @@ impl Map {
     }
 
     pub fn handle_unknown_secret_packet(&self, packet: &control::unknown_path_secret::Packet) {
-        let ids_guard = self.state.ids.guard();
-        let Some(state) = self.state.ids.get(packet.credential_id(), &ids_guard) else {
+        let Some(state) = self.state.ids.get_by_key(packet.credential_id()) else {
             return;
         };
         // Do not mark as live, this is lightly authenticated.
@@ -426,8 +386,7 @@ impl Map {
             return self.handle_unknown_secret_packet(packet);
         }
 
-        let ids_guard = self.state.ids.guard();
-        let Some(state) = self.state.ids.get(packet.credential_id(), &ids_guard) else {
+        let Some(state) = self.state.ids.get_by_key(packet.credential_id()) else {
             // If we get a control packet we don't have a registered path secret for, ignore the
             // packet.
             return;
@@ -477,8 +436,7 @@ impl Map {
         identity: &Credentials,
         control_out: &mut Vec<u8>,
     ) -> Option<Arc<Entry>> {
-        let ids_guard = self.state.ids.guard();
-        let Some(state) = self.state.ids.get(&identity.id, &ids_guard) else {
+        let Some(state) = self.state.ids.get_by_key(&identity.id) else {
             let packet = control::UnknownPathSecret {
                 wire_version: WireVersion::ZERO,
                 credential_id: identity.id,
@@ -494,7 +452,7 @@ impl Map {
         match state.receiver.pre_authentication(identity) {
             Ok(()) => {}
             Err(e) => {
-                self.send_control(state, identity, e);
+                self.send_control(&state, identity, e);
                 control_out.resize(control::UnknownPathSecret::PACKET_SIZE, 0);
 
                 return None;
@@ -510,19 +468,12 @@ impl Map {
         entry.mark_live(self.state.cleaner.epoch());
         let id = *entry.secret.id();
         let peer = entry.peer;
-        let ids_guard = self.state.ids.guard();
-        if self
-            .state
-            .ids
-            .insert(id, entry.clone(), &ids_guard)
-            .is_some()
-        {
+        if self.state.ids.insert(id, entry.clone()).is_some() {
             // FIXME: Make insertion fallible and fail handshakes instead?
             panic!("inserting a path secret ID twice");
         }
 
-        let peers_guard = self.state.peers.guard();
-        if let Some(prev) = self.state.peers.insert(peer, entry, &peers_guard) {
+        if let Some(prev) = self.state.peers.insert(peer, entry) {
             // This shouldn't happen due to the panic above, but just in case something went wrong
             // with the secret map we double check here.
             // FIXME: Make insertion fallible and fail handshakes instead?

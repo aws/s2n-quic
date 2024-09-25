@@ -10,6 +10,7 @@ pub mod control;
 pub mod credentials;
 pub mod crypto;
 pub mod datagram;
+mod fixed_map;
 pub mod msg;
 pub mod packet;
 pub mod path;
