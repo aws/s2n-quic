@@ -4,6 +4,8 @@
 use crate::{connection, endpoint};
 use core::{ops::RangeInclusive, time::Duration};
 
+pub mod metrics;
+
 mod generated;
 pub use generated::*;
 
