@@ -25,22 +25,29 @@ impl OutputMode {
     }
     fn counter_type(&self) -> TokenStream {
         match self {
-            OutputMode::Ref => quote!(Arc<AtomicU32>),
+            OutputMode::Ref => quote!(AtomicU32),
             OutputMode::Mut => quote!(u32),
         }
     }
 
     fn counter_init(&self) -> TokenStream {
         match self {
-            OutputMode::Ref => quote!(Arc::new(AtomicU32::new(0))),
+            OutputMode::Ref => quote!(AtomicU32::new(0)),
             OutputMode::Mut => quote!(0),
         }
     }
 
     fn counter_increment(&self) -> TokenStream {
         match self {
-            OutputMode::Ref => quote!(.fetch_add(1, Ordering::SeqCst)),
+            OutputMode::Ref => quote!(.fetch_add(1, Ordering::Relaxed)),
             OutputMode::Mut => quote!(+= 1),
+        }
+    }
+
+    fn counter_load(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(.load(Ordering::Relaxed)),
+            OutputMode::Mut => quote!(),
         }
     }
 
@@ -55,7 +62,7 @@ impl OutputMode {
         match self {
             OutputMode::Ref => quote!(
                 use core::sync::atomic::{AtomicU32, Ordering};
-                use std::sync::{Arc, Mutex};
+                use std::sync::Mutex;
             ),
             OutputMode::Mut => quote!(),
         }
@@ -63,7 +70,7 @@ impl OutputMode {
 
     fn testing_output_type(&self) -> TokenStream {
         match self {
-            OutputMode::Ref => quote!(Arc<Mutex<Vec<String>>>),
+            OutputMode::Ref => quote!(Mutex<Vec<String>>),
             OutputMode::Mut => quote!(Vec<String>),
         }
     }
@@ -298,8 +305,13 @@ struct Output {
     pub subscriber_testing: TokenStream,
     pub endpoint_publisher_testing: TokenStream,
     pub connection_publisher_testing: TokenStream,
+    pub metrics_fields: TokenStream,
+    pub metrics_fields_init: TokenStream,
+    pub metrics_record: TokenStream,
+    pub subscriber_metrics: TokenStream,
     pub extra: TokenStream,
     pub mode: OutputMode,
+    pub s2n_quic_core_path: TokenStream,
 }
 
 impl ToTokens for Output {
@@ -319,8 +331,13 @@ impl ToTokens for Output {
             subscriber_testing,
             endpoint_publisher_testing,
             connection_publisher_testing,
+            metrics_fields,
+            metrics_fields_init,
+            metrics_record,
+            subscriber_metrics,
             extra,
             mode,
+            s2n_quic_core_path,
         } = self;
 
         let imports = self.mode.imports();
@@ -670,6 +687,52 @@ impl ToTokens for Output {
                 }
             }
 
+            pub mod metrics {
+                use super::*;
+                #imports
+                use #s2n_quic_core_path::event::metrics::Recorder;
+                #[derive(Clone, Debug)]
+                pub struct Subscriber<P: Provider> {
+                    provider: P,
+                }
+
+                impl<P: Provider> Subscriber<P> {
+                    pub fn new(provider: P) -> Self {
+                        Self { provider }
+                    }
+                }
+
+                pub struct Context<R: Recorder> {
+                    recorder: R,
+                    #metrics_fields
+                }
+
+                pub trait Provider: 'static + Send + Sync {
+                    type Recorder: Recorder;
+
+                    fn recorder(&#mode self, meta: &api::ConnectionMeta, info: &api::ConnectionInfo) -> Self::Recorder;
+                }
+
+                impl<P: Provider> super::Subscriber for Subscriber<P> {
+                    type ConnectionContext = Context<P::Recorder>;
+
+                    fn create_connection_context(&#mode self, meta: &api::ConnectionMeta, info: &api::ConnectionInfo) -> Self::ConnectionContext {
+                        Context { 
+                            recorder: self.provider.recorder(meta, info),
+                            #metrics_fields_init
+                        }
+                    }
+
+                    #subscriber_metrics
+                }
+
+                impl<R: Recorder> Drop for Context<R> {
+                    fn drop(&mut self) {
+                        #metrics_record
+                    }
+                }
+            }
+
             #[cfg(any(test, feature = "testing"))]
             pub mod testing {
                 use super::*;
@@ -844,6 +907,7 @@ struct EventInfo<'a> {
     input_path: &'a str,
     output_path: &'a str,
     output_mode: OutputMode,
+    s2n_quic_core_path: TokenStream,
 }
 
 fn main() -> Result<()> {
@@ -858,6 +922,7 @@ fn main() -> Result<()> {
                 "/../../dc/s2n-quic-dc/src/event/generated.rs"
             ),
             output_mode: OutputMode::Ref,
+            s2n_quic_core_path: quote!(s2n_quic_core),
         },
         EventInfo {
             input_path: concat!(env!("CARGO_MANIFEST_DIR"), "/events/**/*.rs"),
@@ -866,6 +931,7 @@ fn main() -> Result<()> {
                 "/../s2n-quic-core/src/event/generated.rs"
             ),
             output_mode: OutputMode::Mut,
+            s2n_quic_core_path: quote!(crate),
         },
     ];
 
@@ -880,6 +946,7 @@ fn main() -> Result<()> {
 
         let mut output = Output {
             mode: event_info.output_mode,
+            s2n_quic_core_path: event_info.s2n_quic_core_path,
             ..Default::default()
         };
 

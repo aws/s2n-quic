@@ -5,6 +5,7 @@ use crate::{connection, endpoint};
 use core::{ops::RangeInclusive, time::Duration};
 
 mod generated;
+pub mod metrics;
 pub use generated::*;
 
 /// All event types which can be emitted from this library.

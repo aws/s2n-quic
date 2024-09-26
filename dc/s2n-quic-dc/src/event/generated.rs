@@ -376,16 +376,70 @@ mod traits {
         }
     }
 }
+pub mod metrics {
+    use super::*;
+    use core::sync::atomic::{AtomicU32, Ordering};
+    use s2n_quic_core::event::metrics::Recorder;
+    use std::sync::Mutex;
+    #[derive(Clone, Debug)]
+    pub struct Subscriber<P: Provider> {
+        provider: P,
+    }
+    impl<P: Provider> Subscriber<P> {
+        pub fn new(provider: P) -> Self {
+            Self { provider }
+        }
+    }
+    pub struct Context<R: Recorder> {
+        recorder: R,
+        pub frame_sent: AtomicU32,
+    }
+    pub trait Provider: 'static + Send + Sync {
+        type Recorder: Recorder;
+        fn recorder(
+            &self,
+            meta: &api::ConnectionMeta,
+            info: &api::ConnectionInfo,
+        ) -> Self::Recorder;
+    }
+    impl<P: Provider> super::Subscriber for Subscriber<P> {
+        type ConnectionContext = Context<P::Recorder>;
+        fn create_connection_context(
+            &self,
+            meta: &api::ConnectionMeta,
+            info: &api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+            Context {
+                recorder: self.provider.recorder(meta, info),
+                frame_sent: AtomicU32::new(0),
+            }
+        }
+        fn on_frame_sent(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::FrameSent,
+        ) {
+            context.frame_sent.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    impl<R: Recorder> Drop for Context<R> {
+        fn drop(&mut self) {
+            self.recorder
+                .increment_counter("frame_sent", self.frame_sent.load(Ordering::Relaxed) as _);
+        }
+    }
+}
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
     use core::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
     #[derive(Clone, Debug)]
     pub struct Subscriber {
         location: Option<Location>,
-        output: Arc<Mutex<Vec<String>>>,
-        pub frame_sent: Arc<AtomicU32>,
+        output: Mutex<Vec<String>>,
+        pub frame_sent: AtomicU32,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -410,7 +464,7 @@ pub mod testing {
             Self {
                 location: None,
                 output: Default::default(),
-                frame_sent: Arc::new(AtomicU32::new(0)),
+                frame_sent: AtomicU32::new(0),
             }
         }
     }
@@ -428,7 +482,7 @@ pub mod testing {
             meta: &api::ConnectionMeta,
             event: &api::FrameSent,
         ) {
-            self.frame_sent.fetch_add(1, Ordering::SeqCst);
+            self.frame_sent.fetch_add(1, Ordering::Relaxed);
             if self.location.is_some() {
                 self.output
                     .lock()
@@ -440,8 +494,8 @@ pub mod testing {
     #[derive(Clone, Debug)]
     pub struct Publisher {
         location: Option<Location>,
-        output: Arc<Mutex<Vec<String>>>,
-        pub frame_sent: Arc<AtomicU32>,
+        output: Mutex<Vec<String>>,
+        pub frame_sent: AtomicU32,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -456,7 +510,7 @@ pub mod testing {
             Self {
                 location: None,
                 output: Default::default(),
-                frame_sent: Arc::new(AtomicU32::new(0)),
+                frame_sent: AtomicU32::new(0),
             }
         }
     }
@@ -467,7 +521,7 @@ pub mod testing {
     }
     impl super::ConnectionPublisher for Publisher {
         fn on_frame_sent(&self, event: builder::FrameSent) {
-            self.frame_sent.fetch_add(1, Ordering::SeqCst);
+            self.frame_sent.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.lock().unwrap().push(format!("{event:?}"));

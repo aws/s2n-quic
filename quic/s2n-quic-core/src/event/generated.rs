@@ -6834,6 +6834,573 @@ mod traits {
         }
     }
 }
+pub mod metrics {
+    use super::*;
+    use crate::event::metrics::Recorder;
+    #[derive(Clone, Debug)]
+    pub struct Subscriber<P: Provider> {
+        provider: P,
+    }
+    impl<P: Provider> Subscriber<P> {
+        pub fn new(provider: P) -> Self {
+            Self { provider }
+        }
+    }
+    pub struct Context<R: Recorder> {
+        recorder: R,
+        pub application_protocol_information: u32,
+        pub server_name_information: u32,
+        pub packet_skipped: u32,
+        pub packet_sent: u32,
+        pub packet_received: u32,
+        pub active_path_updated: u32,
+        pub path_created: u32,
+        pub frame_sent: u32,
+        pub frame_received: u32,
+        pub packet_lost: u32,
+        pub recovery_metrics: u32,
+        pub congestion: u32,
+        pub ack_processed: u32,
+        pub rx_ack_range_dropped: u32,
+        pub ack_range_received: u32,
+        pub ack_range_sent: u32,
+        pub packet_dropped: u32,
+        pub key_update: u32,
+        pub key_space_discarded: u32,
+        pub connection_started: u32,
+        pub connection_closed: u32,
+        pub duplicate_packet: u32,
+        pub transport_parameters_received: u32,
+        pub datagram_sent: u32,
+        pub datagram_received: u32,
+        pub datagram_dropped: u32,
+        pub connection_id_updated: u32,
+        pub ecn_state_changed: u32,
+        pub connection_migration_denied: u32,
+        pub handshake_status_updated: u32,
+        pub tls_exporter_ready: u32,
+        pub path_challenge_updated: u32,
+        pub tls_client_hello: u32,
+        pub tls_server_hello: u32,
+        pub rx_stream_progress: u32,
+        pub tx_stream_progress: u32,
+        pub keep_alive_timer_expired: u32,
+        pub mtu_updated: u32,
+        pub slow_start_exited: u32,
+        pub delivery_rate_sampled: u32,
+        pub pacing_rate_updated: u32,
+        pub bbr_state_changed: u32,
+        pub dc_state_changed: u32,
+    }
+    pub trait Provider: 'static + Send + Sync {
+        type Recorder: Recorder;
+        fn recorder(
+            &mut self,
+            meta: &api::ConnectionMeta,
+            info: &api::ConnectionInfo,
+        ) -> Self::Recorder;
+    }
+    impl<P: Provider> super::Subscriber for Subscriber<P> {
+        type ConnectionContext = Context<P::Recorder>;
+        fn create_connection_context(
+            &mut self,
+            meta: &api::ConnectionMeta,
+            info: &api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+            Context {
+                recorder: self.provider.recorder(meta, info),
+                application_protocol_information: 0,
+                server_name_information: 0,
+                packet_skipped: 0,
+                packet_sent: 0,
+                packet_received: 0,
+                active_path_updated: 0,
+                path_created: 0,
+                frame_sent: 0,
+                frame_received: 0,
+                packet_lost: 0,
+                recovery_metrics: 0,
+                congestion: 0,
+                ack_processed: 0,
+                rx_ack_range_dropped: 0,
+                ack_range_received: 0,
+                ack_range_sent: 0,
+                packet_dropped: 0,
+                key_update: 0,
+                key_space_discarded: 0,
+                connection_started: 0,
+                connection_closed: 0,
+                duplicate_packet: 0,
+                transport_parameters_received: 0,
+                datagram_sent: 0,
+                datagram_received: 0,
+                datagram_dropped: 0,
+                connection_id_updated: 0,
+                ecn_state_changed: 0,
+                connection_migration_denied: 0,
+                handshake_status_updated: 0,
+                tls_exporter_ready: 0,
+                path_challenge_updated: 0,
+                tls_client_hello: 0,
+                tls_server_hello: 0,
+                rx_stream_progress: 0,
+                tx_stream_progress: 0,
+                keep_alive_timer_expired: 0,
+                mtu_updated: 0,
+                slow_start_exited: 0,
+                delivery_rate_sampled: 0,
+                pacing_rate_updated: 0,
+                bbr_state_changed: 0,
+                dc_state_changed: 0,
+            }
+        }
+        fn on_application_protocol_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::ApplicationProtocolInformation,
+        ) {
+            context.application_protocol_information += 1;
+        }
+        fn on_server_name_information(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::ServerNameInformation,
+        ) {
+            context.server_name_information += 1;
+        }
+        fn on_packet_skipped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PacketSkipped,
+        ) {
+            context.packet_skipped += 1;
+        }
+        fn on_packet_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PacketSent,
+        ) {
+            context.packet_sent += 1;
+        }
+        fn on_packet_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PacketReceived,
+        ) {
+            context.packet_received += 1;
+        }
+        fn on_active_path_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::ActivePathUpdated,
+        ) {
+            context.active_path_updated += 1;
+        }
+        fn on_path_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PathCreated,
+        ) {
+            context.path_created += 1;
+        }
+        fn on_frame_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::FrameSent,
+        ) {
+            context.frame_sent += 1;
+        }
+        fn on_frame_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::FrameReceived,
+        ) {
+            context.frame_received += 1;
+        }
+        fn on_packet_lost(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PacketLost,
+        ) {
+            context.packet_lost += 1;
+        }
+        fn on_recovery_metrics(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::RecoveryMetrics,
+        ) {
+            context.recovery_metrics += 1;
+        }
+        fn on_congestion(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::Congestion,
+        ) {
+            context.congestion += 1;
+        }
+        #[allow(deprecated)]
+        fn on_ack_processed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::AckProcessed,
+        ) {
+            context.ack_processed += 1;
+        }
+        fn on_rx_ack_range_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::RxAckRangeDropped,
+        ) {
+            context.rx_ack_range_dropped += 1;
+        }
+        fn on_ack_range_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::AckRangeReceived,
+        ) {
+            context.ack_range_received += 1;
+        }
+        fn on_ack_range_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::AckRangeSent,
+        ) {
+            context.ack_range_sent += 1;
+        }
+        fn on_packet_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PacketDropped,
+        ) {
+            context.packet_dropped += 1;
+        }
+        fn on_key_update(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::KeyUpdate,
+        ) {
+            context.key_update += 1;
+        }
+        fn on_key_space_discarded(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::KeySpaceDiscarded,
+        ) {
+            context.key_space_discarded += 1;
+        }
+        fn on_connection_started(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::ConnectionStarted,
+        ) {
+            context.connection_started += 1;
+        }
+        fn on_connection_closed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::ConnectionClosed,
+        ) {
+            context.connection_closed += 1;
+        }
+        fn on_duplicate_packet(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::DuplicatePacket,
+        ) {
+            context.duplicate_packet += 1;
+        }
+        fn on_transport_parameters_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::TransportParametersReceived,
+        ) {
+            context.transport_parameters_received += 1;
+        }
+        fn on_datagram_sent(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::DatagramSent,
+        ) {
+            context.datagram_sent += 1;
+        }
+        fn on_datagram_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::DatagramReceived,
+        ) {
+            context.datagram_received += 1;
+        }
+        fn on_datagram_dropped(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::DatagramDropped,
+        ) {
+            context.datagram_dropped += 1;
+        }
+        fn on_connection_id_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::ConnectionIdUpdated,
+        ) {
+            context.connection_id_updated += 1;
+        }
+        fn on_ecn_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::EcnStateChanged,
+        ) {
+            context.ecn_state_changed += 1;
+        }
+        fn on_connection_migration_denied(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::ConnectionMigrationDenied,
+        ) {
+            context.connection_migration_denied += 1;
+        }
+        fn on_handshake_status_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::HandshakeStatusUpdated,
+        ) {
+            context.handshake_status_updated += 1;
+        }
+        fn on_tls_exporter_ready(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::TlsExporterReady,
+        ) {
+            context.tls_exporter_ready += 1;
+        }
+        fn on_path_challenge_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PathChallengeUpdated,
+        ) {
+            context.path_challenge_updated += 1;
+        }
+        fn on_tls_client_hello(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::TlsClientHello,
+        ) {
+            context.tls_client_hello += 1;
+        }
+        fn on_tls_server_hello(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::TlsServerHello,
+        ) {
+            context.tls_server_hello += 1;
+        }
+        fn on_rx_stream_progress(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::RxStreamProgress,
+        ) {
+            context.rx_stream_progress += 1;
+        }
+        fn on_tx_stream_progress(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::TxStreamProgress,
+        ) {
+            context.tx_stream_progress += 1;
+        }
+        fn on_keep_alive_timer_expired(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::KeepAliveTimerExpired,
+        ) {
+            context.keep_alive_timer_expired += 1;
+        }
+        fn on_mtu_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::MtuUpdated,
+        ) {
+            context.mtu_updated += 1;
+        }
+        fn on_slow_start_exited(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::SlowStartExited,
+        ) {
+            context.slow_start_exited += 1;
+        }
+        fn on_delivery_rate_sampled(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::DeliveryRateSampled,
+        ) {
+            context.delivery_rate_sampled += 1;
+        }
+        fn on_pacing_rate_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::PacingRateUpdated,
+        ) {
+            context.pacing_rate_updated += 1;
+        }
+        fn on_bbr_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::BbrStateChanged,
+        ) {
+            context.bbr_state_changed += 1;
+        }
+        fn on_dc_state_changed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            _event: &api::DcStateChanged,
+        ) {
+            context.dc_state_changed += 1;
+        }
+    }
+    impl<R: Recorder> Drop for Context<R> {
+        fn drop(&mut self) {
+            self.recorder.increment_counter(
+                "application_protocol_information",
+                self.application_protocol_information as _,
+            );
+            self.recorder
+                .increment_counter("server_name_information", self.server_name_information as _);
+            self.recorder
+                .increment_counter("packet_skipped", self.packet_skipped as _);
+            self.recorder
+                .increment_counter("packet_sent", self.packet_sent as _);
+            self.recorder
+                .increment_counter("packet_received", self.packet_received as _);
+            self.recorder
+                .increment_counter("active_path_updated", self.active_path_updated as _);
+            self.recorder
+                .increment_counter("path_created", self.path_created as _);
+            self.recorder
+                .increment_counter("frame_sent", self.frame_sent as _);
+            self.recorder
+                .increment_counter("frame_received", self.frame_received as _);
+            self.recorder
+                .increment_counter("packet_lost", self.packet_lost as _);
+            self.recorder
+                .increment_counter("recovery_metrics", self.recovery_metrics as _);
+            self.recorder
+                .increment_counter("congestion", self.congestion as _);
+            self.recorder
+                .increment_counter("ack_processed", self.ack_processed as _);
+            self.recorder
+                .increment_counter("rx_ack_range_dropped", self.rx_ack_range_dropped as _);
+            self.recorder
+                .increment_counter("ack_range_received", self.ack_range_received as _);
+            self.recorder
+                .increment_counter("ack_range_sent", self.ack_range_sent as _);
+            self.recorder
+                .increment_counter("packet_dropped", self.packet_dropped as _);
+            self.recorder
+                .increment_counter("key_update", self.key_update as _);
+            self.recorder
+                .increment_counter("key_space_discarded", self.key_space_discarded as _);
+            self.recorder
+                .increment_counter("connection_started", self.connection_started as _);
+            self.recorder
+                .increment_counter("connection_closed", self.connection_closed as _);
+            self.recorder
+                .increment_counter("duplicate_packet", self.duplicate_packet as _);
+            self.recorder.increment_counter(
+                "transport_parameters_received",
+                self.transport_parameters_received as _,
+            );
+            self.recorder
+                .increment_counter("datagram_sent", self.datagram_sent as _);
+            self.recorder
+                .increment_counter("datagram_received", self.datagram_received as _);
+            self.recorder
+                .increment_counter("datagram_dropped", self.datagram_dropped as _);
+            self.recorder
+                .increment_counter("connection_id_updated", self.connection_id_updated as _);
+            self.recorder
+                .increment_counter("ecn_state_changed", self.ecn_state_changed as _);
+            self.recorder.increment_counter(
+                "connection_migration_denied",
+                self.connection_migration_denied as _,
+            );
+            self.recorder.increment_counter(
+                "handshake_status_updated",
+                self.handshake_status_updated as _,
+            );
+            self.recorder
+                .increment_counter("tls_exporter_ready", self.tls_exporter_ready as _);
+            self.recorder
+                .increment_counter("path_challenge_updated", self.path_challenge_updated as _);
+            self.recorder
+                .increment_counter("tls_client_hello", self.tls_client_hello as _);
+            self.recorder
+                .increment_counter("tls_server_hello", self.tls_server_hello as _);
+            self.recorder
+                .increment_counter("rx_stream_progress", self.rx_stream_progress as _);
+            self.recorder
+                .increment_counter("tx_stream_progress", self.tx_stream_progress as _);
+            self.recorder.increment_counter(
+                "keep_alive_timer_expired",
+                self.keep_alive_timer_expired as _,
+            );
+            self.recorder
+                .increment_counter("mtu_updated", self.mtu_updated as _);
+            self.recorder
+                .increment_counter("slow_start_exited", self.slow_start_exited as _);
+            self.recorder
+                .increment_counter("delivery_rate_sampled", self.delivery_rate_sampled as _);
+            self.recorder
+                .increment_counter("pacing_rate_updated", self.pacing_rate_updated as _);
+            self.recorder
+                .increment_counter("bbr_state_changed", self.bbr_state_changed as _);
+            self.recorder
+                .increment_counter("dc_state_changed", self.dc_state_changed as _);
+        }
+    }
+}
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
