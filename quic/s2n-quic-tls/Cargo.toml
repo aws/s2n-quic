@@ -39,3 +39,9 @@ s2n-quic-rustls = { path = "../s2n-quic-rustls" }
 # we don't use openssl-sys directly; it's just here to pin and vendor in dev
 [package.metadata.cargo-udeps.ignore]
 development = [ "openssl-sys" ]
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(s2n_quic_enable_pq_tls)',
+]

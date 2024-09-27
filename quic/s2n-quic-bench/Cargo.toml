@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 bytes = "1"
-criterion = { version = "0.4", features = ["html_reports"] }
+criterion = { version = "0.5", features = ["html_reports"] }
 crossbeam-channel = { version = "0.5" }
 internet-checksum = "0.2"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }

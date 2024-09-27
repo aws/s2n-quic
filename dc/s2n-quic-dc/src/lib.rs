@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(unexpected_cfgs)]
-
 pub mod allocator;
 pub mod clock;
 pub mod congestion;

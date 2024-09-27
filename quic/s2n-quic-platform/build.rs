@@ -1,7 +1,58 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::Feature::*;
 use std::{fs::read_dir, io::Error, path::Path, process::Command};
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum Feature {
+    ControlMessage,
+    SocketMessage,
+    SocketMultiMessage,
+    MtuDiscovery,
+    GenericSegmentationOffload,
+    GenericReceiveOffload,
+    PacketInfo,
+    TypeOfService,
+}
+
+impl Feature {
+    fn name(&self) -> &str {
+        match self {
+            ControlMessage => "cmsg",
+            SocketMessage => "socket_msg",
+            SocketMultiMessage => "socket_mmsg",
+            MtuDiscovery => "mtu_disc",
+            GenericSegmentationOffload => "gso",
+            GenericReceiveOffload => "gro",
+            PacketInfo => "pktinfo",
+            TypeOfService => "tos",
+        }
+    }
+}
+
+impl From<&str> for Feature {
+    fn from(value: &str) -> Self {
+        for feature in ALL_FEATURES {
+            if feature.name() == value {
+                return feature;
+            }
+        }
+
+        panic!("unsupported feature: {value}");
+    }
+}
+
+const ALL_FEATURES: [Feature; 8] = [
+    ControlMessage,
+    SocketMessage,
+    SocketMultiMessage,
+    MtuDiscovery,
+    GenericSegmentationOffload,
+    GenericReceiveOffload,
+    PacketInfo,
+    TypeOfService,
+];
 
 fn main() -> Result<(), Error> {
     let mut features = Features::default();
@@ -11,7 +62,7 @@ fn main() -> Result<(), Error> {
         // iterate twice in case there is dependence on another feature that comes later
         for _ in 0..2 {
             for feature in list.split(',') {
-                features.insert(feature.trim());
+                features.insert(feature.trim().into());
             }
         }
         return Ok(());
@@ -24,7 +75,7 @@ fn main() -> Result<(), Error> {
         if let Some(name) = path.file_stem() {
             println!("cargo:rerun-if-changed={}", path.display());
             if env.check(&path)? {
-                features.insert(name.to_str().expect("valid feature name"));
+                features.insert(name.to_str().expect("valid feature name").into());
             }
         }
     }
@@ -35,63 +86,78 @@ fn main() -> Result<(), Error> {
         "linux" => {
             // miri doesn't support the way we detect syscall support so override it
             if is_miri {
-                features.insert("socket_msg");
-                features.insert("socket_mmsg");
+                features.insert(SocketMessage);
+                features.insert(SocketMultiMessage);
             }
 
-            features.insert("mtu_disc");
-            features.insert("gso");
-            features.insert("gro");
-            features.insert("pktinfo");
-            features.insert("tos");
+            features.insert(MtuDiscovery);
+            features.insert(GenericSegmentationOffload);
+            features.insert(GenericReceiveOffload);
+            features.insert(PacketInfo);
+            features.insert(TypeOfService);
         }
         "macos" => {
             // miri doesn't support the way we detect syscall support so override it
             if is_miri {
-                features.insert("socket_msg");
+                features.insert(SocketMessage);
             }
 
-            features.insert("pktinfo");
-            features.insert("tos");
+            features.insert(PacketInfo);
+            features.insert(TypeOfService);
         }
         "android" => {
-            features.insert("mtu_disc");
-            features.insert("pktinfo");
-            features.insert("tos");
+            features.insert(MtuDiscovery);
+            features.insert(PacketInfo);
+            features.insert(TypeOfService);
         }
         _ => {
             // TODO others
         }
     }
 
+    // Uncomment once MSRV is 1.80.0, see https://github.com/aws/s2n-quic/issues/2334
+    // for name in ALL_FEATURES.iter().map(|f| f.name()) {
+    //     println!("cargo::rustc-check-cfg=cfg(s2n_quic_platform_{name})");
+    // }
+    //
+    // println!("cargo::rustc-check-cfg=cfg(fuzz, kani, kani_slow)");
+
     Ok(())
 }
 
 #[derive(Debug, Default)]
 struct Features {
-    features: std::collections::HashSet<String>,
+    features: std::collections::HashSet<Feature>,
 }
 
 impl Features {
-    fn insert(&mut self, name: &str) {
+    fn insert(&mut self, feature: Feature) {
         // supporting any kind message implies cmsg support
-        if name == "socket_msg" || name == "socket_mmsg" {
-            self.insert("cmsg");
+        if matches!(feature, SocketMessage | SocketMultiMessage) {
+            self.insert(ControlMessage);
         }
 
         // the following features only make sense if cmsg is supported
-        if ["gso", "gro", "pktinfo", "tos"].contains(&name) && !self.supports("cmsg") {
+        if [
+            GenericSegmentationOffload,
+            GenericReceiveOffload,
+            PacketInfo,
+            TypeOfService,
+        ]
+        .contains(&feature)
+            && !self.supports(ControlMessage)
+        {
             return;
         }
 
-        let newly_inserted = self.features.insert(name.to_string());
+        let newly_inserted = self.features.insert(feature);
         if newly_inserted {
-            println!("cargo:rustc-cfg=s2n_quic_platform_{name}");
+            println!("cargo:rustc-cfg=s2n_quic_platform_{}", feature.name());
         }
     }
 
-    fn supports(&self, name: &str) -> bool {
-        self.features.contains(name)
+    fn supports(&self, feature: Feature) -> bool {
+        self.features.contains(&feature)
     }
 }
 
