@@ -717,7 +717,7 @@ impl ToTokens for Output {
                     type ConnectionContext = Context<P::Recorder>;
 
                     fn create_connection_context(&#mode self, meta: &api::ConnectionMeta, info: &api::ConnectionInfo) -> Self::ConnectionContext {
-                        Context { 
+                        Context {
                             recorder: self.provider.recorder(meta, info),
                             #metrics_fields_init
                         }
