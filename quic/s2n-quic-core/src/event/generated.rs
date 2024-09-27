@@ -1290,7 +1290,7 @@ pub mod api {
         }
     }
     macro_rules! impl_conn_id {
-        ($ name : ident) => {
+        ($name:ident) => {
             impl<'a> IntoEvent<builder::ConnectionId<'a>> for &'a crate::connection::id::$name {
                 #[inline]
                 fn into_event(self) -> builder::ConnectionId<'a> {
