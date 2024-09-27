@@ -61,7 +61,7 @@ fn main() -> Result<(), Error> {
     if let Some(list) = option_env("S2N_QUIC_PLATFORM_FEATURES_OVERRIDE") {
         // iterate twice in case there is dependence on another feature that comes later
         for _ in 0..2 {
-            for feature in list.split(',') {
+            for feature in list.split(',').filter(|&s| !s.is_empty()) {
                 features.insert(feature.trim().into());
             }
         }
