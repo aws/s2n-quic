@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+pub use super::generated::*;
+
 /// A Recorder should arrange to emit the properties and counters on Drop into some output.
 pub trait Recorder: 'static + Send + Sync {
     /// Registers a counter with the recorder instance
