@@ -220,7 +220,7 @@ jobs:
           - rust: stable
             os: ubuntu-latest
             target: native
-            env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE="mtu_disc,pktinfo,tos,socket_msg"
+            env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE="mtu_disc,pktinfo,tos,socket_msg" >> $GITHUB_ENV; echo S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS=1
     steps:
       - uses: ilammy/setup-nasm@v1
       - uses: actions/checkout@v4

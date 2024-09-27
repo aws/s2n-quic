@@ -437,7 +437,7 @@ impl Map {
 
         match packet {
             control::Packet::StaleKey(packet) => {
-                let Some(packet) = packet.authenticate(key) else {
+                let Some(packet) = packet.authenticate(&key) else {
                     return;
                 };
                 state.mark_live(self.state.cleaner.epoch());
@@ -447,7 +447,7 @@ impl Map {
                     .fetch_add(1, Ordering::Relaxed);
             }
             control::Packet::ReplayDetected(packet) => {
-                let Some(_packet) = packet.authenticate(key) else {
+                let Some(_packet) = packet.authenticate(&key) else {
                     return;
                 };
                 self.state
@@ -671,6 +671,58 @@ pub(super) struct Entry {
     sender: sender::State,
     receiver: receiver::State,
     parameters: ApplicationParams,
+}
+
+impl SizeOf for Instant {}
+impl SizeOf for u32 {}
+impl SizeOf for SocketAddr {}
+impl SizeOf for AtomicU64 {}
+
+impl SizeOf for IsRetired {}
+impl SizeOf for ApplicationParams {}
+
+impl SizeOf for Entry {
+    fn size(&self) -> usize {
+        let Entry {
+            creation_time,
+            rehandshake_delta_secs,
+            peer,
+            secret,
+            retired,
+            used_at,
+            sender,
+            receiver,
+            parameters,
+        } = self;
+        creation_time.size()
+            + rehandshake_delta_secs.size()
+            + peer.size()
+            + secret.size()
+            + retired.size()
+            + used_at.size()
+            + sender.size()
+            + receiver.size()
+            + parameters.size()
+    }
+}
+
+/// Provide an approximation of the size of Self, including any heap indirection (e.g., a vec
+/// backed by a megabyte is a megabyte in `size`, not 24 bytes).
+///
+/// Approximation because we don't currently attempt to account for (as an example) padding. It's
+/// too annoying to do that.
+#[cfg_attr(not(test), allow(unused))]
+pub(crate) trait SizeOf: Sized {
+    fn size(&self) -> usize {
+        // If we don't need drop, it's very likely that this type is fully contained in size_of
+        // Self. This simplifies implementing this trait for e.g. std types.
+        assert!(
+            !std::mem::needs_drop::<Self>(),
+            "{:?} requires custom SizeOf impl",
+            std::any::type_name::<Self>()
+        );
+        std::mem::size_of::<Self>()
+    }
 }
 
 // Retired is 0 if not yet retired. Otherwise it stores the background cleaner epoch at which it
