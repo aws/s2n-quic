@@ -1290,7 +1290,7 @@ pub mod api {
         }
     }
     macro_rules! impl_conn_id {
-        ($name:ident) => {
+        ($ name : ident) => {
             impl<'a> IntoEvent<builder::ConnectionId<'a>> for &'a crate::connection::id::$name {
                 #[inline]
                 fn into_event(self) -> builder::ConnectionId<'a> {
@@ -6838,77 +6838,78 @@ pub mod metrics {
     use super::*;
     use crate::event::metrics::Recorder;
     #[derive(Clone, Debug)]
-    pub struct Subscriber<P: Provider> {
-        provider: P,
+    pub struct Subscriber<S: super::Subscriber>
+    where
+        S::ConnectionContext: Recorder,
+    {
+        subscriber: S,
     }
-    impl<P: Provider> Subscriber<P> {
-        pub fn new(provider: P) -> Self {
-            Self { provider }
+    impl<S: super::Subscriber> Subscriber<S>
+    where
+        S::ConnectionContext: Recorder,
+    {
+        pub fn new(subscriber: S) -> Self {
+            Self { subscriber }
         }
     }
     pub struct Context<R: Recorder> {
         recorder: R,
-        pub application_protocol_information: u32,
-        pub server_name_information: u32,
-        pub packet_skipped: u32,
-        pub packet_sent: u32,
-        pub packet_received: u32,
-        pub active_path_updated: u32,
-        pub path_created: u32,
-        pub frame_sent: u32,
-        pub frame_received: u32,
-        pub packet_lost: u32,
-        pub recovery_metrics: u32,
-        pub congestion: u32,
-        pub ack_processed: u32,
-        pub rx_ack_range_dropped: u32,
-        pub ack_range_received: u32,
-        pub ack_range_sent: u32,
-        pub packet_dropped: u32,
-        pub key_update: u32,
-        pub key_space_discarded: u32,
-        pub connection_started: u32,
-        pub connection_closed: u32,
-        pub duplicate_packet: u32,
-        pub transport_parameters_received: u32,
-        pub datagram_sent: u32,
-        pub datagram_received: u32,
-        pub datagram_dropped: u32,
-        pub connection_id_updated: u32,
-        pub ecn_state_changed: u32,
-        pub connection_migration_denied: u32,
-        pub handshake_status_updated: u32,
-        pub tls_exporter_ready: u32,
-        pub path_challenge_updated: u32,
-        pub tls_client_hello: u32,
-        pub tls_server_hello: u32,
-        pub rx_stream_progress: u32,
-        pub tx_stream_progress: u32,
-        pub keep_alive_timer_expired: u32,
-        pub mtu_updated: u32,
-        pub slow_start_exited: u32,
-        pub delivery_rate_sampled: u32,
-        pub pacing_rate_updated: u32,
-        pub bbr_state_changed: u32,
-        pub dc_state_changed: u32,
+        application_protocol_information: u32,
+        server_name_information: u32,
+        packet_skipped: u32,
+        packet_sent: u32,
+        packet_received: u32,
+        active_path_updated: u32,
+        path_created: u32,
+        frame_sent: u32,
+        frame_received: u32,
+        packet_lost: u32,
+        recovery_metrics: u32,
+        congestion: u32,
+        ack_processed: u32,
+        rx_ack_range_dropped: u32,
+        ack_range_received: u32,
+        ack_range_sent: u32,
+        packet_dropped: u32,
+        key_update: u32,
+        key_space_discarded: u32,
+        connection_started: u32,
+        connection_closed: u32,
+        duplicate_packet: u32,
+        transport_parameters_received: u32,
+        datagram_sent: u32,
+        datagram_received: u32,
+        datagram_dropped: u32,
+        connection_id_updated: u32,
+        ecn_state_changed: u32,
+        connection_migration_denied: u32,
+        handshake_status_updated: u32,
+        tls_exporter_ready: u32,
+        path_challenge_updated: u32,
+        tls_client_hello: u32,
+        tls_server_hello: u32,
+        rx_stream_progress: u32,
+        tx_stream_progress: u32,
+        keep_alive_timer_expired: u32,
+        mtu_updated: u32,
+        slow_start_exited: u32,
+        delivery_rate_sampled: u32,
+        pacing_rate_updated: u32,
+        bbr_state_changed: u32,
+        dc_state_changed: u32,
     }
-    pub trait Provider: 'static + Send + Sync {
-        type Recorder: Recorder;
-        fn recorder(
-            &mut self,
-            meta: &api::ConnectionMeta,
-            info: &api::ConnectionInfo,
-        ) -> Self::Recorder;
-    }
-    impl<P: Provider> super::Subscriber for Subscriber<P> {
-        type ConnectionContext = Context<P::Recorder>;
+    impl<S: super::Subscriber> super::Subscriber for Subscriber<S>
+    where
+        S::ConnectionContext: Recorder,
+    {
+        type ConnectionContext = Context<S::ConnectionContext>;
         fn create_connection_context(
             &mut self,
             meta: &api::ConnectionMeta,
             info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
             Context {
-                recorder: self.provider.recorder(meta, info),
+                recorder: self.subscriber.create_connection_context(meta, info),
                 application_protocol_information: 0,
                 server_name_information: 0,
                 packet_skipped: 0,
@@ -6954,350 +6955,479 @@ pub mod metrics {
                 dc_state_changed: 0,
             }
         }
+        #[inline]
         fn on_application_protocol_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ApplicationProtocolInformation,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationProtocolInformation,
         ) {
             context.application_protocol_information += 1;
+            self.subscriber
+                .on_application_protocol_information(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_server_name_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ServerNameInformation,
+            meta: &api::ConnectionMeta,
+            event: &api::ServerNameInformation,
         ) {
             context.server_name_information += 1;
+            self.subscriber
+                .on_server_name_information(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_packet_skipped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacketSkipped,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketSkipped,
         ) {
             context.packet_skipped += 1;
+            self.subscriber
+                .on_packet_skipped(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_packet_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacketSent,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketSent,
         ) {
             context.packet_sent += 1;
+            self.subscriber
+                .on_packet_sent(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_packet_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacketReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketReceived,
         ) {
             context.packet_received += 1;
+            self.subscriber
+                .on_packet_received(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_active_path_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ActivePathUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::ActivePathUpdated,
         ) {
             context.active_path_updated += 1;
+            self.subscriber
+                .on_active_path_updated(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_path_created(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PathCreated,
+            meta: &api::ConnectionMeta,
+            event: &api::PathCreated,
         ) {
             context.path_created += 1;
+            self.subscriber
+                .on_path_created(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_frame_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::FrameSent,
+            meta: &api::ConnectionMeta,
+            event: &api::FrameSent,
         ) {
             context.frame_sent += 1;
+            self.subscriber
+                .on_frame_sent(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_frame_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::FrameReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::FrameReceived,
         ) {
             context.frame_received += 1;
+            self.subscriber
+                .on_frame_received(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_packet_lost(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacketLost,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketLost,
         ) {
             context.packet_lost += 1;
+            self.subscriber
+                .on_packet_lost(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_recovery_metrics(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::RecoveryMetrics,
+            meta: &api::ConnectionMeta,
+            event: &api::RecoveryMetrics,
         ) {
             context.recovery_metrics += 1;
+            self.subscriber
+                .on_recovery_metrics(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_congestion(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::Congestion,
+            meta: &api::ConnectionMeta,
+            event: &api::Congestion,
         ) {
             context.congestion += 1;
+            self.subscriber
+                .on_congestion(&mut context.recorder, meta, event);
         }
+        #[inline]
         #[allow(deprecated)]
         fn on_ack_processed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::AckProcessed,
+            meta: &api::ConnectionMeta,
+            event: &api::AckProcessed,
         ) {
             context.ack_processed += 1;
+            self.subscriber
+                .on_ack_processed(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_rx_ack_range_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::RxAckRangeDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::RxAckRangeDropped,
         ) {
             context.rx_ack_range_dropped += 1;
+            self.subscriber
+                .on_rx_ack_range_dropped(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_ack_range_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::AckRangeReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::AckRangeReceived,
         ) {
             context.ack_range_received += 1;
+            self.subscriber
+                .on_ack_range_received(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_ack_range_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::AckRangeSent,
+            meta: &api::ConnectionMeta,
+            event: &api::AckRangeSent,
         ) {
             context.ack_range_sent += 1;
+            self.subscriber
+                .on_ack_range_sent(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_packet_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacketDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketDropped,
         ) {
             context.packet_dropped += 1;
+            self.subscriber
+                .on_packet_dropped(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_key_update(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::KeyUpdate,
+            meta: &api::ConnectionMeta,
+            event: &api::KeyUpdate,
         ) {
             context.key_update += 1;
+            self.subscriber
+                .on_key_update(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_key_space_discarded(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::KeySpaceDiscarded,
+            meta: &api::ConnectionMeta,
+            event: &api::KeySpaceDiscarded,
         ) {
             context.key_space_discarded += 1;
+            self.subscriber
+                .on_key_space_discarded(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_connection_started(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ConnectionStarted,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionStarted,
         ) {
             context.connection_started += 1;
+            self.subscriber
+                .on_connection_started(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_connection_closed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ConnectionClosed,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
         ) {
             context.connection_closed += 1;
+            self.subscriber
+                .on_connection_closed(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_duplicate_packet(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DuplicatePacket,
+            meta: &api::ConnectionMeta,
+            event: &api::DuplicatePacket,
         ) {
             context.duplicate_packet += 1;
+            self.subscriber
+                .on_duplicate_packet(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_transport_parameters_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::TransportParametersReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::TransportParametersReceived,
         ) {
             context.transport_parameters_received += 1;
+            self.subscriber
+                .on_transport_parameters_received(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_datagram_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DatagramSent,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramSent,
         ) {
             context.datagram_sent += 1;
+            self.subscriber
+                .on_datagram_sent(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_datagram_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DatagramReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramReceived,
         ) {
             context.datagram_received += 1;
+            self.subscriber
+                .on_datagram_received(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_datagram_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DatagramDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramDropped,
         ) {
             context.datagram_dropped += 1;
+            self.subscriber
+                .on_datagram_dropped(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_connection_id_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ConnectionIdUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionIdUpdated,
         ) {
             context.connection_id_updated += 1;
+            self.subscriber
+                .on_connection_id_updated(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_ecn_state_changed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::EcnStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::EcnStateChanged,
         ) {
             context.ecn_state_changed += 1;
+            self.subscriber
+                .on_ecn_state_changed(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_connection_migration_denied(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::ConnectionMigrationDenied,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionMigrationDenied,
         ) {
             context.connection_migration_denied += 1;
+            self.subscriber
+                .on_connection_migration_denied(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_handshake_status_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::HandshakeStatusUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::HandshakeStatusUpdated,
         ) {
             context.handshake_status_updated += 1;
+            self.subscriber
+                .on_handshake_status_updated(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_tls_exporter_ready(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::TlsExporterReady,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsExporterReady,
         ) {
             context.tls_exporter_ready += 1;
+            self.subscriber
+                .on_tls_exporter_ready(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_path_challenge_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PathChallengeUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::PathChallengeUpdated,
         ) {
             context.path_challenge_updated += 1;
+            self.subscriber
+                .on_path_challenge_updated(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_tls_client_hello(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::TlsClientHello,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsClientHello,
         ) {
             context.tls_client_hello += 1;
+            self.subscriber
+                .on_tls_client_hello(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_tls_server_hello(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::TlsServerHello,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsServerHello,
         ) {
             context.tls_server_hello += 1;
+            self.subscriber
+                .on_tls_server_hello(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_rx_stream_progress(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::RxStreamProgress,
+            meta: &api::ConnectionMeta,
+            event: &api::RxStreamProgress,
         ) {
             context.rx_stream_progress += 1;
+            self.subscriber
+                .on_rx_stream_progress(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_tx_stream_progress(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::TxStreamProgress,
+            meta: &api::ConnectionMeta,
+            event: &api::TxStreamProgress,
         ) {
             context.tx_stream_progress += 1;
+            self.subscriber
+                .on_tx_stream_progress(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_keep_alive_timer_expired(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::KeepAliveTimerExpired,
+            meta: &api::ConnectionMeta,
+            event: &api::KeepAliveTimerExpired,
         ) {
             context.keep_alive_timer_expired += 1;
+            self.subscriber
+                .on_keep_alive_timer_expired(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_mtu_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::MtuUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::MtuUpdated,
         ) {
             context.mtu_updated += 1;
+            self.subscriber
+                .on_mtu_updated(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_slow_start_exited(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::SlowStartExited,
+            meta: &api::ConnectionMeta,
+            event: &api::SlowStartExited,
         ) {
             context.slow_start_exited += 1;
+            self.subscriber
+                .on_slow_start_exited(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_delivery_rate_sampled(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DeliveryRateSampled,
+            meta: &api::ConnectionMeta,
+            event: &api::DeliveryRateSampled,
         ) {
             context.delivery_rate_sampled += 1;
+            self.subscriber
+                .on_delivery_rate_sampled(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_pacing_rate_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::PacingRateUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::PacingRateUpdated,
         ) {
             context.pacing_rate_updated += 1;
+            self.subscriber
+                .on_pacing_rate_updated(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_bbr_state_changed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::BbrStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::BbrStateChanged,
         ) {
             context.bbr_state_changed += 1;
+            self.subscriber
+                .on_bbr_state_changed(&mut context.recorder, meta, event);
         }
+        #[inline]
         fn on_dc_state_changed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::DcStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::DcStateChanged,
         ) {
             context.dc_state_changed += 1;
+            self.subscriber
+                .on_dc_state_changed(&mut context.recorder, meta, event);
         }
     }
     impl<R: Recorder> Drop for Context<R> {

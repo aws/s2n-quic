@@ -380,47 +380,50 @@ pub mod metrics {
     use super::*;
     use core::sync::atomic::{AtomicU32, Ordering};
     use s2n_quic_core::event::metrics::Recorder;
-    use std::sync::Mutex;
     #[derive(Clone, Debug)]
-    pub struct Subscriber<P: Provider> {
-        provider: P,
+    pub struct Subscriber<S: super::Subscriber>
+    where
+        S::ConnectionContext: Recorder,
+    {
+        subscriber: S,
     }
-    impl<P: Provider> Subscriber<P> {
-        pub fn new(provider: P) -> Self {
-            Self { provider }
+    impl<S: super::Subscriber> Subscriber<S>
+    where
+        S::ConnectionContext: Recorder,
+    {
+        pub fn new(subscriber: S) -> Self {
+            Self { subscriber }
         }
     }
     pub struct Context<R: Recorder> {
         recorder: R,
-        pub frame_sent: AtomicU32,
+        frame_sent: AtomicU32,
     }
-    pub trait Provider: 'static + Send + Sync {
-        type Recorder: Recorder;
-        fn recorder(
-            &self,
-            meta: &api::ConnectionMeta,
-            info: &api::ConnectionInfo,
-        ) -> Self::Recorder;
-    }
-    impl<P: Provider> super::Subscriber for Subscriber<P> {
-        type ConnectionContext = Context<P::Recorder>;
+    impl<S: super::Subscriber> super::Subscriber for Subscriber<S>
+    where
+        S::ConnectionContext: Recorder,
+    {
+        type ConnectionContext = Context<S::ConnectionContext>;
         fn create_connection_context(
             &self,
             meta: &api::ConnectionMeta,
             info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
             Context {
-                recorder: self.provider.recorder(meta, info),
+                recorder: self.subscriber.create_connection_context(meta, info),
                 frame_sent: AtomicU32::new(0),
             }
         }
+        #[inline]
         fn on_frame_sent(
             &self,
             context: &Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            _event: &api::FrameSent,
+            meta: &api::ConnectionMeta,
+            event: &api::FrameSent,
         ) {
             context.frame_sent.fetch_add(1, Ordering::Relaxed);
+            self.subscriber
+                .on_frame_sent(&mut context.recorder, meta, event);
         }
     }
     impl<R: Recorder> Drop for Context<R> {

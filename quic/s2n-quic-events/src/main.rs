@@ -62,8 +62,14 @@ impl OutputMode {
         match self {
             OutputMode::Ref => quote!(
                 use core::sync::atomic::{AtomicU32, Ordering};
-                use std::sync::Mutex;
             ),
+            OutputMode::Mut => quote!(),
+        }
+    }
+
+    fn mutex(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(use std::sync::Mutex;),
             OutputMode::Mut => quote!(),
         }
     }
@@ -341,6 +347,7 @@ impl ToTokens for Output {
         } = self;
 
         let imports = self.mode.imports();
+        let mutex = self.mode.mutex();
         let testing_output_type = self.mode.testing_output_type();
         let lock = self.mode.lock();
         let target_crate = self.mode.target_crate();
@@ -691,14 +698,17 @@ impl ToTokens for Output {
                 use super::*;
                 #imports
                 use #s2n_quic_core_path::event::metrics::Recorder;
+
                 #[derive(Clone, Debug)]
-                pub struct Subscriber<P: Provider> {
-                    provider: P,
+                pub struct Subscriber<S: super::Subscriber> 
+                    where S::ConnectionContext: Recorder {
+                    subscriber: S,
                 }
 
-                impl<P: Provider> Subscriber<P> {
-                    pub fn new(provider: P) -> Self {
-                        Self { provider }
+                impl<S: super::Subscriber> Subscriber<S>
+                    where S::ConnectionContext: Recorder {
+                    pub fn new(subscriber: S) -> Self {
+                        Self { subscriber }
                     }
                 }
 
@@ -707,18 +717,13 @@ impl ToTokens for Output {
                     #metrics_fields
                 }
 
-                pub trait Provider: 'static + Send + Sync {
-                    type Recorder: Recorder;
-
-                    fn recorder(&#mode self, meta: &api::ConnectionMeta, info: &api::ConnectionInfo) -> Self::Recorder;
-                }
-
-                impl<P: Provider> super::Subscriber for Subscriber<P> {
-                    type ConnectionContext = Context<P::Recorder>;
+                impl<S: super::Subscriber> super::Subscriber for Subscriber<S>
+                    where S::ConnectionContext: Recorder {
+                    type ConnectionContext = Context<S::ConnectionContext>;
 
                     fn create_connection_context(&#mode self, meta: &api::ConnectionMeta, info: &api::ConnectionInfo) -> Self::ConnectionContext {
                         Context {
-                            recorder: self.provider.recorder(meta, info),
+                            recorder: self.subscriber.create_connection_context(meta, info),
                             #metrics_fields_init
                         }
                     }
@@ -737,6 +742,8 @@ impl ToTokens for Output {
             pub mod testing {
                 use super::*;
                 #imports
+                #mutex
+
                 #[derive(Clone, Debug)]
                 pub struct Subscriber {
                     location: Option<Location>,

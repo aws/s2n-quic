@@ -285,7 +285,7 @@ impl Struct {
 
                     // Metrics is only connection-level events
                     output.metrics_fields.extend(quote!(
-                        pub #counter: #counter_type,
+                        #counter: #counter_type,
                     ));
                     output.metrics_fields_init.extend(quote!(
                         #counter: #counter_init,
@@ -296,9 +296,11 @@ impl Struct {
                     ));
 
                     output.subscriber_metrics.extend(quote!(
+                        #[inline]
                         #allow_deprecated
-                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, _meta: &api::ConnectionMeta, _event: &api::#ident) {
+                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
                             context.#counter #counter_increment;
+                            self.subscriber.#function(&mut context.recorder, meta, event);
                         }
                     ));
 
