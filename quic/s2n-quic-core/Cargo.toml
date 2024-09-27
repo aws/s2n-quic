@@ -72,5 +72,6 @@ check-cfg = [
     'cfg(fuzzing)',
     'cfg(loom)',
     'cfg(kani)',
+    'cfg(kani_slow)',
     'cfg(target_pointer_width, values("8", "128"))',
 ]
