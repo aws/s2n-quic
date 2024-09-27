@@ -69,7 +69,9 @@ impl OutputMode {
 
     fn mutex(&self) -> TokenStream {
         match self {
-            OutputMode::Ref => quote!(use std::sync::Mutex;),
+            OutputMode::Ref => quote!(
+                use std::sync::Mutex;
+            ),
             OutputMode::Mut => quote!(),
         }
     }
@@ -700,7 +702,7 @@ impl ToTokens for Output {
                 use #s2n_quic_core_path::event::metrics::Recorder;
 
                 #[derive(Clone, Debug)]
-                pub struct Subscriber<S: super::Subscriber> 
+                pub struct Subscriber<S: super::Subscriber>
                     where S::ConnectionContext: Recorder {
                     subscriber: S,
                 }
