@@ -64,3 +64,14 @@ loom = { version = "0.7", features = ["checkpoint", "futures"] }
 [package.metadata.kani]
 flags = { tests = true }
 unstable = { stubbing = true }
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(feature, values("thiserror"))',
+    'cfg(fuzzing)',
+    'cfg(loom)',
+    'cfg(kani)',
+    'cfg(kani_slow)',
+    'cfg(target_pointer_width, values("8", "128"))',
+]

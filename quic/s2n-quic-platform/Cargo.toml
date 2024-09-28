@@ -48,3 +48,20 @@ tracing = { version = "0.1" }
 [package.metadata.kani]
 flags = { tests = true }
 unstable = { stubbing = true }
+
+# Remove once MSRV is 1.80.0, see https://github.com/aws/s2n-quic/issues/2334
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(fuzz)',
+    'cfg(kani)',
+    'cfg(kani_slow)',
+    'cfg(s2n_quic_platform_cmsg)',
+    'cfg(s2n_quic_platform_socket_msg)',
+    'cfg(s2n_quic_platform_socket_mmsg)',
+    'cfg(s2n_quic_platform_mtu_disc)',
+    'cfg(s2n_quic_platform_gso)',
+    'cfg(s2n_quic_platform_gro)',
+    'cfg(s2n_quic_platform_pktinfo)',
+    'cfg(s2n_quic_platform_tos)',
+]
