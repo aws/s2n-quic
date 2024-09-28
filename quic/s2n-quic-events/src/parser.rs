@@ -150,6 +150,7 @@ impl Struct {
 
             let counter_type = output.mode.counter_type();
             let counter_init = output.mode.counter_init();
+            let counter_load = output.mode.counter_load();
 
             // add a counter for testing structs
             output.testing_fields.extend(quote!(
@@ -279,6 +280,27 @@ impl Struct {
                             self.subscriber.#function(self.context, &self.meta, &event);
                             self.subscriber.on_connection_event(self.context, &self.meta, &event);
                             self.subscriber.on_event(&self.meta, &event);
+                        }
+                    ));
+
+                    // Metrics is only connection-level events
+                    output.metrics_fields.extend(quote!(
+                        #counter: #counter_type,
+                    ));
+                    output.metrics_fields_init.extend(quote!(
+                        #counter: #counter_init,
+                    ));
+
+                    output.metrics_record.extend(quote!(
+                        self.recorder.increment_counter(#snake, self.#counter #counter_load as _);
+                    ));
+
+                    output.subscriber_metrics.extend(quote!(
+                        #[inline]
+                        #allow_deprecated
+                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
+                            context.#counter #counter_increment;
+                            self.subscriber.#function(&mut context.recorder, meta, event);
                         }
                     ));
 
