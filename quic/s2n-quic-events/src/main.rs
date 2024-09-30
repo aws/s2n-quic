@@ -10,6 +10,294 @@ type Result<T, E = Error> = core::result::Result<T, E>;
 mod parser;
 
 #[derive(Debug, Default)]
+enum OutputMode {
+    Ref,
+    #[default]
+    Mut,
+}
+
+impl OutputMode {
+    fn receiver(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(mut),
+        }
+    }
+    fn counter_type(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(AtomicU32),
+            OutputMode::Mut => quote!(u32),
+        }
+    }
+
+    fn counter_init(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(AtomicU32::new(0)),
+            OutputMode::Mut => quote!(0),
+        }
+    }
+
+    fn counter_increment(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(.fetch_add(1, Ordering::Relaxed)),
+            OutputMode::Mut => quote!(+= 1),
+        }
+    }
+
+    fn counter_load(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(.load(Ordering::Relaxed)),
+            OutputMode::Mut => quote!(),
+        }
+    }
+
+    fn lock(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(.lock().unwrap()),
+            OutputMode::Mut => quote!(),
+        }
+    }
+
+    fn imports(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(
+                use core::sync::atomic::{AtomicU32, Ordering};
+            ),
+            OutputMode::Mut => quote!(),
+        }
+    }
+
+    fn mutex(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(
+                use std::sync::Mutex;
+            ),
+            OutputMode::Mut => quote!(),
+        }
+    }
+
+    fn testing_output_type(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(Mutex<Vec<String>>),
+            OutputMode::Mut => quote!(Vec<String>),
+        }
+    }
+
+    fn target_crate(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!("s2n_quic_dc"),
+            OutputMode::Mut => quote!("s2n_quic"),
+        }
+    }
+
+    fn query_mut(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                /// Used for querying and mutating the `Subscriber::ConnectionContext` on a Subscriber
+                #[inline]
+                fn query_mut(
+                    context: &mut Self::ConnectionContext,
+                    query: &mut dyn query::QueryMut,
+                ) -> query::ControlFlow {
+                    query.execute_mut(context)
+                }
+            ),
+        }
+    }
+
+    fn query_mut_tuple(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                #[inline]
+                fn query_mut(
+                    context: &mut Self::ConnectionContext,
+                    query: &mut dyn query::QueryMut,
+                ) -> query::ControlFlow {
+                    query
+                        .execute_mut(context)
+                        .and_then(|| A::query_mut(&mut context.0, query))
+                        .and_then(|| B::query_mut(&mut context.1, query))
+                }
+            ),
+        }
+    }
+
+    fn supervisor(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                pub mod supervisor {
+                    //! This module contains the `supervisor::Outcome` and `supervisor::Context` for use
+                    //! when implementing [`Subscriber::supervisor_timeout`](crate::event::Subscriber::supervisor_timeout) and
+                    //! [`Subscriber::on_supervisor_timeout`](crate::event::Subscriber::on_supervisor_timeout)
+                    //! on a Subscriber.
+
+                    use crate::{
+                        application,
+                        event::{builder::SocketAddress, IntoEvent},
+                    };
+
+                    #[non_exhaustive]
+                    #[derive(Clone, Debug, Eq, PartialEq)]
+                    pub enum Outcome {
+                        /// Allow the connection to remain open
+                        Continue,
+
+                        /// Close the connection and notify the peer
+                        Close { error_code: application::Error },
+
+                        /// Close the connection without notifying the peer
+                        ImmediateClose { reason: &'static str },
+                    }
+
+                    impl Default for Outcome {
+                        fn default() -> Self {
+                            Self::Continue
+                        }
+                    }
+
+                    #[non_exhaustive]
+                    #[derive(Debug)]
+                    pub struct Context<'a> {
+                        /// Number of handshakes that have begun but not completed
+                        pub inflight_handshakes: usize,
+
+                        /// Number of open connections
+                        pub connection_count: usize,
+
+                        /// The address of the peer
+                        pub remote_address: SocketAddress<'a>,
+
+                        /// True if the connection is in the handshake state, false otherwise
+                        pub is_handshaking: bool,
+                    }
+
+                    impl<'a> Context<'a> {
+                        pub fn new(
+                            inflight_handshakes: usize,
+                            connection_count: usize,
+                            remote_address: &'a crate::inet::SocketAddress,
+                            is_handshaking: bool,
+                        ) -> Self {
+                            Self {
+                                inflight_handshakes,
+                                connection_count,
+                                remote_address: remote_address.into_event(),
+                                is_handshaking,
+                            }
+                        }
+                    }
+                }
+            ),
+        }
+    }
+
+    fn supervisor_timeout(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                /// The period at which `on_supervisor_timeout` is called
+                ///
+                /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
+                /// across all `event::Subscriber`s will be used.
+                ///
+                /// If the `supervisor_timeout()` is `None` across all `event::Subscriber`s, connection supervision
+                /// will cease for the remaining lifetime of the connection and `on_supervisor_timeout` will no longer
+                /// be called.
+                ///
+                /// It is recommended to avoid setting this value less than ~100ms, as short durations
+                /// may lead to higher CPU utilization.
+                #[allow(unused_variables)]
+                fn supervisor_timeout(
+                    &mut self,
+                    conn_context: &mut Self::ConnectionContext,
+                    meta: &ConnectionMeta,
+                    context: &supervisor::Context,
+                ) -> Option<Duration> {
+                    None
+                }
+
+                /// Called for each `supervisor_timeout` to determine any action to take on the connection based on the `supervisor::Outcome`
+                ///
+                /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
+                /// across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called
+                /// earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation.
+                #[allow(unused_variables)]
+                fn on_supervisor_timeout(
+                    &mut self,
+                    conn_context: &mut Self::ConnectionContext,
+                    meta: &ConnectionMeta,
+                    context: &supervisor::Context,
+                ) -> supervisor::Outcome {
+                    supervisor::Outcome::default()
+                }
+            ),
+        }
+    }
+
+    fn supervisor_timeout_tuple(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(),
+            OutputMode::Mut => quote!(
+                #[inline]
+                fn supervisor_timeout(
+                    &mut self,
+                    conn_context: &mut Self::ConnectionContext,
+                    meta: &ConnectionMeta,
+                    context: &supervisor::Context,
+                ) -> Option<Duration> {
+                    let timeout_a = self
+                        .0
+                        .supervisor_timeout(&mut conn_context.0, meta, context);
+                    let timeout_b = self
+                        .1
+                        .supervisor_timeout(&mut conn_context.1, meta, context);
+                    match (timeout_a, timeout_b) {
+                        (None, None) => None,
+                        (None, Some(timeout)) | (Some(timeout), None) => Some(timeout),
+                        (Some(a), Some(b)) => Some(a.min(b)),
+                    }
+                }
+
+                #[inline]
+                fn on_supervisor_timeout(
+                    &mut self,
+                    conn_context: &mut Self::ConnectionContext,
+                    meta: &ConnectionMeta,
+                    context: &supervisor::Context,
+                ) -> supervisor::Outcome {
+                    let outcome_a =
+                        self.0
+                            .on_supervisor_timeout(&mut conn_context.0, meta, context);
+                    let outcome_b =
+                        self.1
+                            .on_supervisor_timeout(&mut conn_context.1, meta, context);
+                    match (outcome_a, outcome_b) {
+                        (supervisor::Outcome::ImmediateClose { reason }, _)
+                        | (_, supervisor::Outcome::ImmediateClose { reason }) => {
+                            supervisor::Outcome::ImmediateClose { reason }
+                        }
+                        (supervisor::Outcome::Close { error_code }, _)
+                        | (_, supervisor::Outcome::Close { error_code }) => {
+                            supervisor::Outcome::Close { error_code }
+                        }
+                        _ => supervisor::Outcome::Continue,
+                    }
+                }
+            ),
+        }
+    }
+}
+
+impl ToTokens for OutputMode {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.extend(self.receiver());
+    }
+}
+
+#[derive(Debug, Default)]
 struct Output {
     pub subscriber: TokenStream,
     pub endpoint_publisher: TokenStream,
@@ -25,7 +313,13 @@ struct Output {
     pub subscriber_testing: TokenStream,
     pub endpoint_publisher_testing: TokenStream,
     pub connection_publisher_testing: TokenStream,
+    pub metrics_fields: TokenStream,
+    pub metrics_fields_init: TokenStream,
+    pub metrics_record: TokenStream,
+    pub subscriber_metrics: TokenStream,
     pub extra: TokenStream,
+    pub mode: OutputMode,
+    pub s2n_quic_core_path: TokenStream,
 }
 
 impl ToTokens for Output {
@@ -45,8 +339,25 @@ impl ToTokens for Output {
             subscriber_testing,
             endpoint_publisher_testing,
             connection_publisher_testing,
+            metrics_fields,
+            metrics_fields_init,
+            metrics_record,
+            subscriber_metrics,
             extra,
+            mode,
+            s2n_quic_core_path,
         } = self;
+
+        let imports = self.mode.imports();
+        let mutex = self.mode.mutex();
+        let testing_output_type = self.mode.testing_output_type();
+        let lock = self.mode.lock();
+        let target_crate = self.mode.target_crate();
+        let supervisor = self.mode.supervisor();
+        let supervisor_timeout = self.mode.supervisor_timeout();
+        let supervisor_timeout_tuple = self.mode.supervisor_timeout_tuple();
+        let query_mut = self.mode.query_mut();
+        let query_mut_tuple = self.mode.query_mut_tuple();
 
         tokens.extend(quote!(
             use super::*;
@@ -76,7 +387,7 @@ impl ToTokens for Output {
 
                 impl Default for Subscriber {
                     fn default() -> Self {
-                        let root = tracing::span!(target: "s2n_quic", tracing::Level::DEBUG, "s2n_quic");
+                        let root = tracing::span!(target: #target_crate, tracing::Level::DEBUG, #target_crate);
                         let client = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "client");
                         let server = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "server");
 
@@ -90,7 +401,7 @@ impl ToTokens for Output {
                 impl super::Subscriber for Subscriber {
                     type ConnectionContext = tracing::Span;
 
-                    fn create_connection_context(&mut self, meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {
+                    fn create_connection_context(&#mode self, meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {
                         let parent = match meta.endpoint_type {
                             api::EndpointType::Client {} => {
                                 self.client.id()
@@ -99,7 +410,7 @@ impl ToTokens for Output {
                                 self.server.id()
                             }
                         };
-                        tracing::span!(target: "s2n_quic", parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
+                        tracing::span!(target: #target_crate, parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
                     }
 
                     #tracing_subscriber
@@ -112,68 +423,7 @@ impl ToTokens for Output {
                 #builders
             }
 
-            pub mod supervisor {
-                //! This module contains the `supervisor::Outcome` and `supervisor::Context` for use
-                //! when implementing [`Subscriber::supervisor_timeout`](crate::event::Subscriber::supervisor_timeout) and
-                //! [`Subscriber::on_supervisor_timeout`](crate::event::Subscriber::on_supervisor_timeout)
-                //! on a Subscriber.
-
-                use crate::{
-                    application,
-                    event::{builder::SocketAddress, IntoEvent},
-                };
-
-                #[non_exhaustive]
-                #[derive(Clone, Debug, Eq, PartialEq)]
-                pub enum Outcome {
-                    /// Allow the connection to remain open
-                    Continue,
-
-                    /// Close the connection and notify the peer
-                    Close {error_code: application::Error},
-
-                    /// Close the connection without notifying the peer
-                    ImmediateClose {reason: &'static str},
-                }
-
-                impl Default for Outcome {
-                    fn default() -> Self {
-                        Self::Continue
-                    }
-                }
-
-                #[non_exhaustive]
-                #[derive(Debug)]
-                pub struct Context<'a> {
-                    /// Number of handshakes that have begun but not completed
-                    pub inflight_handshakes: usize,
-
-                    /// Number of open connections
-                    pub connection_count: usize,
-
-                    /// The address of the peer
-                    pub remote_address: SocketAddress<'a>,
-
-                    /// True if the connection is in the handshake state, false otherwise
-                    pub is_handshaking: bool,
-                }
-
-                impl<'a> Context<'a> {
-                    pub fn new(
-                        inflight_handshakes: usize,
-                        connection_count: usize,
-                        remote_address: &'a crate::inet::SocketAddress,
-                        is_handshaking: bool,
-                    ) -> Self {
-                        Self {
-                            inflight_handshakes,
-                            connection_count,
-                            remote_address: remote_address.into_event(),
-                            is_handshaking,
-                        }
-                    }
-                }
-            }
+            #supervisor
 
             pub use traits::*;
             mod traits {
@@ -272,46 +522,22 @@ impl ToTokens for Output {
                     type ConnectionContext: 'static + Send;
 
                     /// Creates a context to be passed to each connection-related event
-                    fn create_connection_context(&mut self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext;
+                    fn create_connection_context(&#mode self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext;
 
-                    /// The period at which `on_supervisor_timeout` is called
-                    ///
-                    /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
-                    /// across all `event::Subscriber`s will be used.
-                    ///
-                    /// If the `supervisor_timeout()` is `None` across all `event::Subscriber`s, connection supervision
-                    /// will cease for the remaining lifetime of the connection and `on_supervisor_timeout` will no longer
-                    /// be called.
-                    ///
-                    /// It is recommended to avoid setting this value less than ~100ms, as short durations
-                    /// may lead to higher CPU utilization.
-                    #[allow(unused_variables)]
-                    fn supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
-                        None
-                    }
-
-                    /// Called for each `supervisor_timeout` to determine any action to take on the connection based on the `supervisor::Outcome`
-                    ///
-                    /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
-                    /// across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called
-                    /// earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation.
-                    #[allow(unused_variables)]
-                    fn on_supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
-                        supervisor::Outcome::default()
-                    }
+                    #supervisor_timeout
 
                     #subscriber
 
                     /// Called for each event that relates to the endpoint and all connections
                     #[inline]
-                    fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
+                    fn on_event<M: Meta, E: Event>(&#mode self, meta: &M, event: &E) {
                         let _ = meta;
                         let _ = event;
                     }
 
                     /// Called for each event that relates to a connection
                     #[inline]
-                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
+                    fn on_connection_event<E: Event>(&#mode self, context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
                         let _ = context;
                         let _ = meta;
                         let _ = event;
@@ -323,11 +549,7 @@ impl ToTokens for Output {
                         query.execute(context)
                     }
 
-                    /// Used for querying and mutating the `Subscriber::ConnectionContext` on a Subscriber
-                    #[inline]
-                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn query::QueryMut) -> query::ControlFlow {
-                        query.execute_mut(context)
-                    }
+                    #query_mut
                 }
 
                 /// Subscriber is implemented for a 2-element tuple to make it easy to compose multiple
@@ -340,44 +562,24 @@ impl ToTokens for Output {
                     type ConnectionContext = (A::ConnectionContext, B::ConnectionContext);
 
                     #[inline]
-                    fn create_connection_context(&mut self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext {
+                    fn create_connection_context(&#mode self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext {
                         (self.0.create_connection_context(meta, info), self.1.create_connection_context(meta, info))
                     }
 
-                    #[inline]
-                    fn supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> Option<Duration> {
-                        let timeout_a = self.0.supervisor_timeout(&mut conn_context.0, meta, context);
-                        let timeout_b = self.1.supervisor_timeout(&mut conn_context.1, meta, context);
-                        match (timeout_a, timeout_b) {
-                            (None, None) => None,
-                            (None, Some(timeout)) | (Some(timeout), None) => Some(timeout),
-                            (Some(a), Some(b)) => Some(a.min(b)),
-                        }
-                    }
-
-                    #[inline]
-                    fn on_supervisor_timeout(&mut self, conn_context: &mut Self::ConnectionContext, meta: &ConnectionMeta, context: &supervisor::Context) -> supervisor::Outcome {
-                        let outcome_a = self.0.on_supervisor_timeout(&mut conn_context.0, meta, context);
-                        let outcome_b = self.1.on_supervisor_timeout(&mut conn_context.1, meta, context);
-                        match (outcome_a, outcome_b) {
-                            (supervisor::Outcome::ImmediateClose { reason }, _) | (_, supervisor::Outcome::ImmediateClose { reason }) => supervisor::Outcome::ImmediateClose { reason },
-                            (supervisor::Outcome::Close { error_code }, _) | (_, supervisor::Outcome::Close { error_code }) => supervisor::Outcome::Close { error_code },
-                            _ => supervisor::Outcome::Continue,
-                        }
-                    }
+                    #supervisor_timeout_tuple
 
                     #tuple_subscriber
 
                     #[inline]
-                    fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
+                    fn on_event<M: Meta, E: Event>(&#mode self, meta: &M, event: &E) {
                         self.0.on_event(meta, event);
                         self.1.on_event(meta, event);
                     }
 
                     #[inline]
-                    fn on_connection_event<E: Event>(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
-                        self.0.on_connection_event(&mut context.0, meta, event);
-                        self.1.on_connection_event(&mut context.1, meta, event);
+                    fn on_connection_event<E: Event>(&#mode self, context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
+                        self.0.on_connection_event(&#mode context.0, meta, event);
+                        self.1.on_connection_event(&#mode context.1, meta, event);
                     }
 
                     #[inline]
@@ -387,12 +589,7 @@ impl ToTokens for Output {
                             .and_then(|| B::query(&context.1, query))
                     }
 
-                    #[inline]
-                    fn query_mut(context: &mut Self::ConnectionContext, query: &mut dyn query::QueryMut) -> query::ControlFlow {
-                        query.execute_mut(context)
-                            .and_then(|| A::query_mut(&mut context.0, query))
-                            .and_then(|| B::query_mut(&mut context.1, query))
-                    }
+                    #query_mut_tuple
                 }
 
                 pub trait EndpointPublisher {
@@ -405,7 +602,7 @@ impl ToTokens for Output {
                 pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
                     meta: EndpointMeta,
                     quic_version: Option<u32>,
-                    subscriber: &'a mut Sub,
+                    subscriber: &'a #mode Sub,
                 }
 
                 impl<'a, Sub: Subscriber> fmt::Debug for EndpointPublisherSubscriber<'a, Sub> {
@@ -422,7 +619,7 @@ impl ToTokens for Output {
                     pub fn new(
                         meta: builder::EndpointMeta,
                         quic_version: Option<u32>,
-                        subscriber: &'a mut Sub,
+                        subscriber: &'a #mode Sub,
                     ) -> Self {
                         Self {
                             meta: meta.into_event(),
@@ -454,8 +651,8 @@ impl ToTokens for Output {
                 pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
                     meta: ConnectionMeta,
                     quic_version: u32,
-                    subscriber: &'a mut Sub,
-                    context: &'a mut Sub::ConnectionContext,
+                    subscriber: &'a #mode Sub,
+                    context: &'a #mode Sub::ConnectionContext,
                 }
 
                 impl<'a, Sub: Subscriber> fmt::Debug for ConnectionPublisherSubscriber<'a, Sub> {
@@ -472,8 +669,8 @@ impl ToTokens for Output {
                     pub fn new(
                         meta: builder::ConnectionMeta,
                         quic_version: u32,
-                        subscriber: &'a mut Sub,
-                        context: &'a mut Sub::ConnectionContext
+                        subscriber: &'a #mode Sub,
+                        context: &'a #mode Sub::ConnectionContext
                     ) -> Self {
                         Self {
                             meta: meta.into_event(),
@@ -499,14 +696,60 @@ impl ToTokens for Output {
                 }
             }
 
+            pub mod metrics {
+                use super::*;
+                #imports
+                use #s2n_quic_core_path::event::metrics::Recorder;
+
+                #[derive(Clone, Debug)]
+                pub struct Subscriber<S: super::Subscriber>
+                    where S::ConnectionContext: Recorder {
+                    subscriber: S,
+                }
+
+                impl<S: super::Subscriber> Subscriber<S>
+                    where S::ConnectionContext: Recorder {
+                    pub fn new(subscriber: S) -> Self {
+                        Self { subscriber }
+                    }
+                }
+
+                pub struct Context<R: Recorder> {
+                    recorder: R,
+                    #metrics_fields
+                }
+
+                impl<S: super::Subscriber> super::Subscriber for Subscriber<S>
+                    where S::ConnectionContext: Recorder {
+                    type ConnectionContext = Context<S::ConnectionContext>;
+
+                    fn create_connection_context(&#mode self, meta: &api::ConnectionMeta, info: &api::ConnectionInfo) -> Self::ConnectionContext {
+                        Context {
+                            recorder: self.subscriber.create_connection_context(meta, info),
+                            #metrics_fields_init
+                        }
+                    }
+
+                    #subscriber_metrics
+                }
+
+                impl<R: Recorder> Drop for Context<R> {
+                    fn drop(&mut self) {
+                        #metrics_record
+                    }
+                }
+            }
+
             #[cfg(any(test, feature = "testing"))]
             pub mod testing {
                 use super::*;
+                #imports
+                #mutex
 
                 #[derive(Clone, Debug)]
                 pub struct Subscriber {
                     location: Option<Location>,
-                    output: Vec<String>,
+                    output: #testing_output_type,
                     #testing_fields
                 }
 
@@ -518,7 +761,7 @@ impl ToTokens for Output {
                         }
 
                         if let Some(location) = self.location.as_ref() {
-                            location.snapshot(&self.output);
+                            location.snapshot(&self.output #lock);
                         }
                     }
                 }
@@ -545,7 +788,7 @@ impl ToTokens for Output {
                 impl super::Subscriber for Subscriber {
                     type ConnectionContext = ();
 
-                    fn create_connection_context(&mut self, _meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {}
+                    fn create_connection_context(&#mode self, _meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {}
 
                     #subscriber_testing
                 }
@@ -553,7 +796,7 @@ impl ToTokens for Output {
                 #[derive(Clone, Debug)]
                 pub struct Publisher {
                     location: Option<Location>,
-                    output: Vec<String>,
+                    output: #testing_output_type,
                     #testing_fields
                 }
 
@@ -604,7 +847,7 @@ impl ToTokens for Output {
                         }
 
                         if let Some(location) = self.location.as_ref() {
-                            location.snapshot(&self.output);
+                            location.snapshot(&self.output #lock);
                         }
                     }
                 }
@@ -669,50 +912,84 @@ impl ToTokens for Output {
     }
 }
 
+struct EventInfo<'a> {
+    input_path: &'a str,
+    output_path: &'a str,
+    output_mode: OutputMode,
+    s2n_quic_core_path: TokenStream,
+}
+
 fn main() -> Result<()> {
-    let mut files = vec![];
+    let event_paths = [
+        EventInfo {
+            input_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../dc/s2n-quic-dc/src/event/events.rs"
+            ),
+            output_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../dc/s2n-quic-dc/src/event/generated.rs"
+            ),
+            output_mode: OutputMode::Ref,
+            s2n_quic_core_path: quote!(s2n_quic_core),
+        },
+        EventInfo {
+            input_path: concat!(env!("CARGO_MANIFEST_DIR"), "/events/**/*.rs"),
+            output_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../s2n-quic-core/src/event/generated.rs"
+            ),
+            output_mode: OutputMode::Mut,
+            s2n_quic_core_path: quote!(crate),
+        },
+    ];
 
-    for path in glob::glob(concat!(env!("CARGO_MANIFEST_DIR"), "/events/**/*.rs"))? {
-        let path = path?;
-        let file = std::fs::read_to_string(path)?;
-        files.push(parser::parse(&file).unwrap());
+    for event_info in event_paths {
+        let mut files = vec![];
+
+        for path in glob::glob(event_info.input_path)? {
+            let path = path?;
+            let file = std::fs::read_to_string(path)?;
+            files.push(parser::parse(&file).unwrap());
+        }
+
+        let mut output = Output {
+            mode: event_info.output_mode,
+            s2n_quic_core_path: event_info.s2n_quic_core_path,
+            ..Default::default()
+        };
+
+        for file in &files {
+            file.to_tokens(&mut output);
+        }
+
+        let generated = event_info.output_path;
+
+        let mut o = std::fs::File::create(generated)?;
+
+        macro_rules! put {
+            ($($arg:tt)*) => {{
+                use std::io::Write;
+                writeln!(o, $($arg)*)?;
+            }}
+        }
+
+        put!("// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.");
+        put!("// SPDX-License-Identifier: Apache-2.0");
+        put!();
+        put!("// DO NOT MODIFY THIS FILE");
+        put!("// This file was generated with the `s2n-quic-events` crate and any required");
+        put!("// changes should be made there.");
+        put!();
+        put!("{}", output.to_token_stream());
+
+        let status = std::process::Command::new("rustfmt")
+            .arg(generated)
+            .spawn()?
+            .wait()?;
+
+        assert!(status.success());
     }
-
-    let mut output = Output::default();
-
-    for file in &files {
-        file.to_tokens(&mut output);
-    }
-
-    let generated = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../s2n-quic-core/src/event/generated.rs"
-    );
-
-    let mut o = std::fs::File::create(generated)?;
-
-    macro_rules! put {
-        ($($arg:tt)*) => {{
-            use std::io::Write;
-            writeln!(o, $($arg)*)?;
-        }}
-    }
-
-    put!("// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.");
-    put!("// SPDX-License-Identifier: Apache-2.0");
-    put!();
-    put!("// DO NOT MODIFY THIS FILE");
-    put!("// This file was generated with the `s2n-quic-events` crate and any required");
-    put!("// changes should be made there.");
-    put!();
-    put!("{}", output.to_token_stream());
-
-    let status = std::process::Command::new("rustfmt")
-        .arg(generated)
-        .spawn()?
-        .wait()?;
-
-    assert!(status.success());
 
     Ok(())
 }

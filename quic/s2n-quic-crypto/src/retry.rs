@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{constant_time, ring_aead as aead};
+use crate::{aws_lc_aead as aead, constant_time};
 use s2n_quic_core::crypto::{
     self, packet_protection,
     retry::{IntegrityTag, NONCE_BYTES, SECRET_KEY_BYTES},

@@ -4,7 +4,6 @@
 //! This module contains abstractions around the platform on which the
 //! stack is running
 
-#![allow(unexpected_cfgs)]
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 extern crate alloc;

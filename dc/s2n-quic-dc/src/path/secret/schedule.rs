@@ -109,6 +109,30 @@ pub struct Secret {
     ciphersuite: Ciphersuite,
 }
 
+impl super::map::SizeOf for Id {}
+impl super::map::SizeOf for Prk {
+    fn size(&self) -> usize {
+        // FIXME: maybe don't use this type since it has overhead and needs this weird assert to
+        // check the mode?
+        assert!(format!("{:?}", self).contains("mode: Expand"));
+        std::mem::size_of::<Self>()
+    }
+}
+impl super::map::SizeOf for endpoint::Type {}
+impl super::map::SizeOf for Ciphersuite {}
+
+impl super::map::SizeOf for Secret {
+    fn size(&self) -> usize {
+        let Secret {
+            id,
+            prk,
+            endpoint,
+            ciphersuite,
+        } = self;
+        id.size() + prk.size() + endpoint.size() + ciphersuite.size()
+    }
+}
+
 impl Secret {
     #[inline]
     pub fn new(

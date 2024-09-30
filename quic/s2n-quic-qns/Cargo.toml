@@ -48,3 +48,10 @@ mimalloc = { version = "0.1", default-features = false }
 s2n-quic = { path = "../s2n-quic", features = ["unstable_client_hello", "unstable_resumption"] }
 [target.'cfg(s2n_internal_dev)'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["unstable-provider-packet-interceptor"] }
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(s2n_internal_dev)',
+    'cfg(feature, values("unstable_client_hello"))',
+]

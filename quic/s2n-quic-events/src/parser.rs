@@ -148,13 +148,21 @@ impl Struct {
             let publisher_doc =
                 format!("Publishes a `{ident_str}` event to the publisher's subscriber");
 
+            let counter_type = output.mode.counter_type();
+            let counter_init = output.mode.counter_init();
+            let counter_load = output.mode.counter_load();
+
             // add a counter for testing structs
             output.testing_fields.extend(quote!(
-                pub #counter: u32,
+                pub #counter: #counter_type,
             ));
             output.testing_fields_init.extend(quote!(
-                #counter: 0,
+                #counter: #counter_init,
             ));
+
+            let receiver = output.mode.receiver();
+            let counter_increment = output.mode.counter_increment();
+            let lock = output.mode.lock();
 
             match attrs.subject {
                 Subject::Endpoint => {
@@ -163,7 +171,7 @@ impl Struct {
                         #[inline]
                         #deprecated
                         #allow_deprecated
-                        fn #function(&mut self, meta: &EndpointMeta, event: &#ident) {
+                        fn #function(&#receiver self, meta: &EndpointMeta, event: &#ident) {
                             let _ = meta;
                             let _ = event;
                         }
@@ -172,7 +180,7 @@ impl Struct {
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&mut self, meta: &EndpointMeta, event: &#ident) {
+                        fn #function(&#receiver self, meta: &EndpointMeta, event: &#ident) {
                             (self.0).#function(meta, event);
                             (self.1).#function(meta, event);
                         }
@@ -181,7 +189,7 @@ impl Struct {
                     output.tracing_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&mut self, meta: &api::EndpointMeta, event: &api::#ident) {
+                        fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
                             let parent = match meta.endpoint_type {
                                 api::EndpointType::Client {} => {
                                     self.client.id()
@@ -197,13 +205,13 @@ impl Struct {
 
                     output.endpoint_publisher.extend(quote!(
                         #[doc = #publisher_doc]
-                        fn #function(&mut self, event: builder::#ident);
+                        fn #function(&#receiver self, event: builder::#ident);
                     ));
 
                     output.endpoint_publisher_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&mut self, event: builder::#ident) {
+                        fn #function(&#receiver self, event: builder::#ident) {
                             let event = event.into_event();
                             self.subscriber.#function(&self.meta, &event);
                             self.subscriber.on_event(&self.meta, &event);
@@ -212,18 +220,18 @@ impl Struct {
 
                     output.subscriber_testing.extend(quote!(
                         #allow_deprecated
-                        fn #function(&mut self, meta: &api::EndpointMeta, event: &api::#ident) {
-                            self.#counter += 1;
-                            self.output.push(format!("{meta:?} {event:?}"));
+                        fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
+                            self.#counter #counter_increment;
+                            self.output #lock.push(format!("{meta:?} {event:?}"));
                         }
                     ));
 
                     output.endpoint_publisher_testing.extend(quote!(
                         #allow_deprecated
-                        fn #function(&mut self, event: builder::#ident) {
-                            self.#counter += 1;
+                        fn #function(&#receiver self, event: builder::#ident) {
+                            self.#counter #counter_increment;
                             let event = event.into_event();
-                            self.output.push(format!("{event:?}"));
+                            self.output #lock.push(format!("{event:?}"));
                         }
                     ));
                 }
@@ -233,7 +241,7 @@ impl Struct {
                         #[inline]
                         #deprecated
                         #allow_deprecated
-                        fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
+                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
                             let _ = context;
                             let _ = meta;
                             let _ = event;
@@ -243,16 +251,16 @@ impl Struct {
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&mut self, context: &mut Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
-                            (self.0).#function(&mut context.0, meta, event);
-                            (self.1).#function(&mut context.1, meta, event);
+                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
+                            (self.0).#function(&#receiver context.0, meta, event);
+                            (self.1).#function(&#receiver context.1, meta, event);
                         }
                     ));
 
                     output.tracing_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&mut self, context: &mut Self::ConnectionContext, _meta: &api::ConnectionMeta, event: &api::#ident) {
+                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, _meta: &api::ConnectionMeta, event: &api::#ident) {
                             let id = context.id();
                             let api::#ident { #(#destructure_fields),* } = event;
                             tracing::event!(target: #snake, parent: id, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
@@ -261,13 +269,13 @@ impl Struct {
 
                     output.connection_publisher.extend(quote!(
                         #[doc = #publisher_doc]
-                        fn #function(&mut self, event: builder::#ident);
+                        fn #function(&#receiver self, event: builder::#ident);
                     ));
 
                     output.connection_publisher_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&mut self, event: builder::#ident) {
+                        fn #function(&#receiver self, event: builder::#ident) {
                             let event = event.into_event();
                             self.subscriber.#function(self.context, &self.meta, &event);
                             self.subscriber.on_connection_event(self.context, &self.meta, &event);
@@ -275,23 +283,44 @@ impl Struct {
                         }
                     ));
 
+                    // Metrics is only connection-level events
+                    output.metrics_fields.extend(quote!(
+                        #counter: #counter_type,
+                    ));
+                    output.metrics_fields_init.extend(quote!(
+                        #counter: #counter_init,
+                    ));
+
+                    output.metrics_record.extend(quote!(
+                        self.recorder.increment_counter(#snake, self.#counter #counter_load as _);
+                    ));
+
+                    output.subscriber_metrics.extend(quote!(
+                        #[inline]
+                        #allow_deprecated
+                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
+                            context.#counter #counter_increment;
+                            self.subscriber.#function(&mut context.recorder, meta, event);
+                        }
+                    ));
+
                     output.subscriber_testing.extend(quote!(
                         #allow_deprecated
-                        fn #function(&mut self, _context: &mut Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
-                            self.#counter += 1;
+                        fn #function(&#receiver self, _context: &#receiver Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
+                            self.#counter #counter_increment;
                             if self.location.is_some() {
-                                self.output.push(format!("{meta:?} {event:?}"));
+                                self.output #lock.push(format!("{meta:?} {event:?}"));
                             }
                         }
                     ));
 
                     output.connection_publisher_testing.extend(quote!(
                         #allow_deprecated
-                        fn #function(&mut self, event: builder::#ident) {
-                            self.#counter += 1;
+                        fn #function(&#receiver self, event: builder::#ident) {
+                            self.#counter #counter_increment;
                             let event = event.into_event();
                             if self.location.is_some() {
-                                self.output.push(format!("{event:?}"));
+                                self.output #lock.push(format!("{event:?}"));
                             }
                         }
                     ));

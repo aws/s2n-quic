@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{aead::Aead, header_key::HeaderKey, hkdf, iv, ring_aead as aead};
+use crate::{aead::Aead, aws_lc_aead as aead, header_key::HeaderKey, hkdf, iv};
 use core::fmt;
 use s2n_quic_core::{
     assume,
@@ -36,7 +36,7 @@ macro_rules! impl_cipher_suite {
 
             pub const KEY_LEN: usize = $cipher_key_len;
             pub const TAG_LEN: usize = 16;
-            pub const NONCE_LEN: usize = crate::ring_aead::NONCE_LEN;
+            pub const NONCE_LEN: usize = crate::aws_lc_aead::NONCE_LEN;
 
             type Key = platform::$lower::Key;
 
