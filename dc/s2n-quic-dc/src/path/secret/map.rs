@@ -297,8 +297,6 @@ impl Map {
         peer: SocketAddr,
     ) -> Option<(seal::Once, Credentials, ApplicationParams)> {
         let state = self.state.peers.get_by_key(&peer)?;
-        state.mark_live(self.state.cleaner.epoch());
-
         let (sealer, credentials) = state.uni_sealer();
         Some((sealer, credentials, state.parameters))
     }
@@ -319,8 +317,6 @@ impl Map {
         features: &TransportFeatures,
     ) -> Option<(Bidirectional, ApplicationParams)> {
         let state = self.state.peers.get_by_key(&peer)?;
-        state.mark_live(self.state.cleaner.epoch());
-
         let keys = state.bidi_local(features);
 
         Some((keys, state.parameters))
@@ -399,7 +395,6 @@ impl Map {
                 let Some(packet) = packet.authenticate(&key) else {
                     return;
                 };
-                state.mark_live(self.state.cleaner.epoch());
                 state.sender.update_for_stale_key(packet.min_key_id);
                 self.state
                     .handled_control_packets
@@ -447,7 +442,6 @@ impl Map {
             packet.encode(encoder, &stateless_reset);
             return None;
         };
-        state.mark_live(self.state.cleaner.epoch());
 
         match state.receiver.pre_authentication(identity) {
             Ok(()) => {}
@@ -465,7 +459,6 @@ impl Map {
     pub(super) fn insert(&self, entry: Arc<Entry>) {
         // On insert clear our interest in a handshake.
         self.state.requested_handshakes.pin().remove(&entry.peer);
-        entry.mark_live(self.state.cleaner.epoch());
         let id = *entry.secret.id();
         let peer = entry.peer;
         if self.state.ids.insert(id, entry.clone()).is_some() {
@@ -613,12 +606,6 @@ pub(super) struct Entry {
     peer: SocketAddr,
     secret: schedule::Secret,
     retired: IsRetired,
-    // Last time the entry was pulled out of the State map.
-    // This is not necessarily the last time the entry was used but it's close enough for our
-    // purposes: if the entry is not being pulled out of the State map, it's hopefully not going to
-    // start getting pulled out shortly. This is used for the LRU mechanism, see the Cleaner impl
-    // for details.
-    used_at: AtomicU64,
     sender: sender::State,
     receiver: receiver::State,
     parameters: ApplicationParams,
@@ -640,7 +627,6 @@ impl SizeOf for Entry {
             peer,
             secret,
             retired,
-            used_at,
             sender,
             receiver,
             parameters,
@@ -650,7 +636,6 @@ impl SizeOf for Entry {
             + peer.size()
             + secret.size()
             + retired.size()
-            + used_at.size()
             + sender.size()
             + receiver.size()
             + parameters.size()
@@ -717,7 +702,6 @@ impl Entry {
             peer,
             secret,
             retired: Default::default(),
-            used_at: AtomicU64::new(0),
             sender,
             receiver,
             parameters,
@@ -726,10 +710,6 @@ impl Entry {
 
     fn retire(&self, at_epoch: u64) {
         self.retired.0.store(at_epoch, Ordering::Relaxed);
-    }
-
-    fn mark_live(&self, at_epoch: u64) {
-        self.used_at.store(at_epoch, Ordering::Relaxed);
     }
 
     fn uni_sealer(&self) -> (seal::Once, Credentials) {
