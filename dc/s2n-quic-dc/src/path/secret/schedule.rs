@@ -11,8 +11,10 @@ use aws_lc_rs::{
     hmac,
 };
 use s2n_quic_core::{dc, varint::VarInt};
+use zeroize::Zeroizing;
 
 pub use s2n_quic_core::endpoint;
+
 pub const MAX_KEY_LEN: usize = 32;
 const MAX_HMAC_KEY_LEN: usize = 1024 / 8;
 
@@ -104,32 +106,30 @@ pub type ExportSecret = [u8; 32];
 #[derive(Debug)]
 pub struct Secret {
     id: Id,
-    prk: Prk,
+    export_secret: Zeroizing<ExportSecret>,
     endpoint: endpoint::Type,
     ciphersuite: Ciphersuite,
 }
 
 impl super::map::SizeOf for Id {}
-impl super::map::SizeOf for Prk {
+impl super::map::SizeOf for endpoint::Type {}
+impl super::map::SizeOf for Ciphersuite {}
+impl super::map::SizeOf for Zeroizing<ExportSecret> {
     fn size(&self) -> usize {
-        // FIXME: maybe don't use this type since it has overhead and needs this weird assert to
-        // check the mode?
-        assert!(format!("{:?}", self).contains("mode: Expand"));
+        // Zeroizing uses Drop just for zeroing, but that doesn't add any space.
         std::mem::size_of::<Self>()
     }
 }
-impl super::map::SizeOf for endpoint::Type {}
-impl super::map::SizeOf for Ciphersuite {}
 
 impl super::map::SizeOf for Secret {
     fn size(&self) -> usize {
         let Secret {
             id,
-            prk,
+            export_secret,
             endpoint,
             ciphersuite,
         } = self;
-        id.size() + prk.size() + endpoint.size() + ciphersuite.size()
+        id.size() + export_secret.size() + endpoint.size() + ciphersuite.size()
     }
 }
 
@@ -141,20 +141,25 @@ impl Secret {
         endpoint: endpoint::Type,
         export_secret: &ExportSecret,
     ) -> Self {
-        let prk = Prk::new_less_safe(ciphersuite.hkdf(), export_secret);
-
         let mut v = Self {
             id: Default::default(),
-            prk,
+            export_secret: Zeroizing::new(*export_secret),
             endpoint,
             ciphersuite,
         };
 
         let mut id = Id::default();
-        v.prk.expand_into(&[&[16], b" pid"], &mut *id);
+        v.prk().expand_into(&[&[16], b" pid"], &mut *id);
         v.id = id;
 
         v
+    }
+
+    // Note that Prk doesn't allocate when constructed with new_less_safe (or even traverse to C),
+    // but we can store it in far less space (104 -> 32 bytes) if we store just the secret
+    // directly.
+    fn prk(&self) -> Prk {
+        Prk::new_less_safe(self.ciphersuite.hkdf(), &*self.export_secret)
     }
 
     #[inline]
@@ -176,7 +181,7 @@ impl Secret {
         debug_assert!(out_len <= u16::MAX as usize);
 
         let (out, _) = out.split_at_mut(out_len);
-        self.prk.expand_into(
+        self.prk().expand_into(
             &[
                 &(out_len as u16).to_be_bytes(),
                 b" bidi",
@@ -244,7 +249,7 @@ impl Secret {
         debug_assert!(out_len <= u16::MAX as usize);
 
         let (out, _) = out.split_at_mut(out_len);
-        self.prk.expand_into(
+        self.prk().expand_into(
             &[
                 &(out_len as u16).to_be_bytes(),
                 b" bidi",
@@ -293,7 +298,7 @@ impl Secret {
         debug_assert!(out_len <= u16::MAX as usize);
 
         let (out, _) = out.split_at_mut(out_len);
-        self.prk.expand_into(
+        self.prk().expand_into(
             &[
                 &(out_len as u16).to_be_bytes(),
                 b" uni",
@@ -340,7 +345,7 @@ impl Secret {
         debug_assert!(out_len <= u16::MAX as usize);
 
         let (out, _) = out.split_at_mut(out_len);
-        self.prk.expand_into(
+        self.prk().expand_into(
             &[
                 &(out_len as u16).to_be_bytes(),
                 b" ctl",
