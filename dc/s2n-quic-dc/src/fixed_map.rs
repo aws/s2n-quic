@@ -25,8 +25,9 @@ where
     S: BuildHasher,
 {
     pub fn with_capacity(entries: usize, hasher: S) -> Self {
+        let slots = std::cmp::max(1, (entries + SLOT_CAPACITY) / SLOT_CAPACITY).next_power_of_two();
         let map = Map {
-            slots: (0..std::cmp::min(1, (entries + SLOT_CAPACITY) / SLOT_CAPACITY))
+            slots: (0..slots)
                 .map(|_| Slot::new())
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
