@@ -546,10 +546,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                     acked_packet_info.path_id,
                     publisher,
                 ) {
-                    MtuResult::NoChange => {}
                     MtuResult::MtuUpdated(max_datagram_size) => {
                         context.on_mtu_update(max_datagram_size)
                     }
+                    MtuResult::NoChange => {}
                 }
             }
 
@@ -1032,10 +1032,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                 sent_info.path_id,
                 publisher,
             ) {
-                MtuResult::NoChange => {}
                 MtuResult::MtuUpdated(max_datagram_size) => {
                     context.on_mtu_update(max_datagram_size)
                 }
+                MtuResult::NoChange => {}
             }
 
             prev_lost_packet_number = Some(packet_number);

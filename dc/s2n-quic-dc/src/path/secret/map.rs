@@ -1048,8 +1048,7 @@ impl dc::Path for HandshakingPath {
     }
 
     fn on_mtu_updated(&mut self, mtu: u16) {
-        let peers_guard = self.map.state.peers.guard();
-        if let Some(entry) = self.map.state.peers.get(&self.peer, &peers_guard) {
+        if let Some(entry) = self.map.state.peers.get_by_key(&self.peer) {
             entry
                 .parameters
                 .max_datagram_size

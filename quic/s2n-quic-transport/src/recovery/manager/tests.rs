@@ -6,6 +6,7 @@ use crate::{
     connection::{
         limits::ANTI_AMPLIFICATION_MULTIPLIER, ConnectionIdMapper, InternalConnectionIdGenerator,
     },
+    contexts::testing::MockWriteContext,
     endpoint::{
         self,
         testing::{Client as ClientConfig, Server as ServerConfig},
@@ -31,7 +32,7 @@ use s2n_quic_core::{
         RttEstimator, DEFAULT_INITIAL_RTT, K_GRANULARITY,
     },
     time::{clock::testing as time, testing::now, Clock, NoopClock},
-    transmission::Outcome,
+    transmission::{writer::testing::OutgoingFrameBuffer, Outcome},
     varint::VarInt,
 };
 use std::{collections::HashSet, net::SocketAddr};
@@ -370,6 +371,7 @@ fn on_ack_frame() {
         Duration::from_millis(500)
     );
     assert_eq!(1, context.on_rtt_update_count);
+    assert_eq!(0, context.on_mtu_update_count);
 
     // Reset the pto backoff to 2 so we can tell if it was reset
     context.path_mut().pto_backoff = 2;
@@ -403,6 +405,7 @@ fn on_ack_frame() {
         Duration::from_millis(500)
     );
     assert_eq!(1, context.on_rtt_update_count);
+    assert_eq!(0, context.on_mtu_update_count);
 
     // Ack packets 7 to 9 (4 - 6 will be considered lost)
     let ack_receive_time = ack_receive_time + Duration::from_secs(1);
@@ -429,6 +432,7 @@ fn on_ack_frame() {
         Duration::from_millis(2500)
     );
     assert_eq!(2, context.on_rtt_update_count);
+    assert_eq!(0, context.on_mtu_update_count);
 
     // Ack packet 10, but with a path that is not peer validated
     let path_id = unsafe { path::Id::new(0) };
@@ -464,6 +468,7 @@ fn on_ack_frame() {
         Duration::from_millis(3000)
     );
     assert_eq!(3, context.on_rtt_update_count);
+    assert_eq!(0, context.on_mtu_update_count);
 
     // Send and ack a non ack eliciting packet
     manager.on_packet_sent(
@@ -502,6 +507,7 @@ fn on_ack_frame() {
         Duration::from_millis(3000)
     );
     assert_eq!(3, context.on_rtt_update_count);
+    assert_eq!(0, context.on_mtu_update_count);
 }
 
 // Test that receiving an invalid ack frame still allows for `on_timeout`
@@ -973,6 +979,68 @@ fn process_new_acked_packets_pto_timer() {
 
     // Expectation 2:
     assert!(manager.pto.is_armed());
+}
+
+// a newly acked packet that updates the MTU should result in the
+// on_mtu_update method on the recovery context being invoked
+#[test]
+fn process_new_acked_packets_call_on_mtu_update() {
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = ServerManager::new(space);
+    let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let mut context = MockContext::new(&mut path_manager);
+    let mut publisher = Publisher::snapshot();
+
+    let time_sent = time::now() + Duration::from_secs(10);
+
+    context.path_mut().mtu_controller.enable();
+    let probed_size = context.path().mtu_controller.probed_sized();
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    // Set max packet size so the PING+PADDING that the mtu controller writes creates one packet
+    frame_buffer.set_max_packet_size(Some(1500));
+    let mut write_context = MockWriteContext::new(
+        now(),
+        &mut frame_buffer,
+        s2n_quic_core::transmission::Constraint::None,
+        s2n_quic_core::transmission::Mode::MtuProbing,
+        endpoint::Type::Client,
+    );
+    let packet_number = write_context.packet_number();
+    context
+        .path_mut()
+        .mtu_controller
+        .on_transmit(&mut write_context);
+
+    // Send the MTU probe
+    manager.on_packet_sent(
+        packet_number,
+        transmission::Outcome {
+            ack_elicitation: AckElicitation::Eliciting,
+            is_congestion_controlled: true,
+            bytes_sent: probed_size,
+            bytes_progressed: 0,
+        },
+        time_sent,
+        ExplicitCongestionNotification::default(),
+        transmission::Mode::MtuProbing,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+
+    assert_eq!(0, context.on_mtu_update_count);
+
+    // Ack the packet
+    let ack_receive_time = time_sent + Duration::from_millis(10);
+    ack_packets(
+        packet_number.as_u64()..=packet_number.as_u64(),
+        ack_receive_time,
+        &mut context,
+        &mut manager,
+        None,
+        &mut publisher,
+    );
+    assert_eq!(1, context.on_mtu_update_count);
 }
 
 // Test that the PTO timer is armed after a non-congestion controlled
@@ -1984,6 +2052,7 @@ fn detect_and_remove_lost_packets_nothing_lost() {
     assert_eq!(context.lost_packets.len(), 0);
     assert_eq!(context.path().congestion_controller.lost_bytes, 0);
     assert_eq!(context.path().congestion_controller.on_packets_lost, 0);
+    assert_eq!(context.on_mtu_update_count, 0);
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-14.4
@@ -2042,6 +2111,80 @@ fn detect_and_remove_lost_packets_mtu_probe() {
     assert_eq!(context.path().congestion_controller.lost_bytes, 0);
     assert_eq!(context.path().congestion_controller.on_packets_lost, 0);
     assert_eq!(context.path().congestion_controller.bytes_in_flight, 0);
+    assert_eq!(context.on_mtu_update_count, 0);
+}
+
+// when the MTU is updated due to an early MTU probe being lost
+// the on_mtu_update method on the recovery context is invoked
+#[test]
+fn detect_and_remove_lost_packets_early_mtu_probe() {
+    let space = PacketNumberSpace::ApplicationData;
+    let mut manager = ServerManager::new(space);
+    let mut random_generator = random::testing::Generator(123);
+    let registry = ConnectionIdMapper::new(&mut random_generator, endpoint::Type::Server)
+        .create_server_peer_id_registry(
+            InternalConnectionIdGenerator::new().generate_id(),
+            connection::PeerId::TEST_ID,
+            true,
+        );
+    let mut rtt_estimator = RttEstimator::default();
+    rtt_estimator.on_max_ack_delay(Duration::from_millis(10).try_into().unwrap());
+
+    // Configure the mtu controller with an initial MTU
+    let path = Path::new(
+        Default::default(),
+        connection::PeerId::TEST_ID,
+        connection::LocalId::TEST_ID,
+        rtt_estimator,
+        MockCongestionController::new(Default::default()),
+        true,
+        mtu::Config::builder()
+            .with_initial_mtu(1500)
+            .unwrap()
+            .with_max_mtu(1500)
+            .unwrap()
+            .build()
+            .unwrap(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
+    );
+
+    let mut path_manager = path::Manager::new(path, registry);
+
+    let ecn = ExplicitCongestionNotification::default();
+    let mut context = MockContext::new(&mut path_manager);
+    manager.largest_acked_packet = Some(space.new_packet_number(VarInt::from_u8(10)));
+    let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
+    let probed_size = context.path().mtu_controller.max_datagram_size();
+
+    let time_sent = time::now();
+    let outcome = transmission::Outcome {
+        ack_elicitation: AckElicitation::Eliciting,
+        is_congestion_controlled: true,
+        bytes_sent: probed_size,
+        bytes_progressed: 0,
+    };
+
+    // Send the packet
+    let lost_packet = space.new_packet_number(VarInt::from_u8(2));
+    manager.on_packet_sent(
+        lost_packet,
+        outcome,
+        time_sent,
+        ecn,
+        transmission::Mode::MtuProbing,
+        None,
+        &mut context,
+        &mut publisher,
+    );
+
+    assert_eq!(context.on_mtu_update_count, 0);
+
+    manager.detect_and_remove_lost_packets(time_sent, random, &mut context, &mut publisher);
+
+    // Verify the MTU update count increased
+    assert_eq!(context.lost_packets.len(), 1);
+    assert_eq!(context.on_mtu_update_count, 1);
 }
 
 #[test]
