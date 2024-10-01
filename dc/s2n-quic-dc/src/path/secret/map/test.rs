@@ -327,6 +327,6 @@ fn no_memory_growth() {
 fn entry_size() {
     // This gates to running only on specific GHA to reduce false positives.
     if std::env::var("S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS").is_ok() {
-        assert_eq!(fake_entry(0).size(), 254);
+        assert_eq!(fake_entry(0).size(), 238);
     }
 }

@@ -84,7 +84,6 @@ pub const TEST_APPLICATION_PARAMS: ApplicationParams = ApplicationParams {
     local_send_max_data: VarInt::from_u32(1u32 << 25),
     local_recv_max_data: VarInt::from_u32(1u32 << 25),
     max_idle_timeout: NonZeroU32::new(Duration::from_secs(30).as_millis() as _),
-    max_ack_delay: Duration::from_millis(25),
 };
 
 pub const TEST_REHANDSHAKE_PERIOD: Duration = Duration::from_secs(3600 * 12);
