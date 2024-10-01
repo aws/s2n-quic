@@ -11,7 +11,7 @@ use crate::{
     transport::parameters::{DcSupportedVersions, InitialFlowControlLimits},
     varint::VarInt,
 };
-use core::time::Duration;
+use core::{num::NonZeroU32, time::Duration};
 
 mod disabled;
 mod traits;
@@ -98,7 +98,8 @@ pub struct ApplicationParams {
     pub remote_max_data: VarInt,
     pub local_send_max_data: VarInt,
     pub local_recv_max_data: VarInt,
-    pub max_idle_timeout: Option<Duration>,
+    // milliseconds (stored this way to reduce size)
+    pub max_idle_timeout: Option<NonZeroU32>,
     pub max_ack_delay: Duration,
 }
 
@@ -113,8 +114,16 @@ impl ApplicationParams {
             remote_max_data: peer_flow_control_limits.max_data,
             local_send_max_data: limits.initial_stream_limits().max_data_bidi_local,
             local_recv_max_data: limits.initial_stream_limits().max_data_bidi_remote,
-            max_idle_timeout: limits.max_idle_timeout(),
+            max_idle_timeout: limits
+                .max_idle_timeout()
+                // If > u32::MAX, treat as not having an idle timeout, that's ~50 days.
+                .and_then(|v| v.as_millis().try_into().ok())
+                .and_then(NonZeroU32::new),
             max_ack_delay: limits.max_ack_delay.into(),
         }
+    }
+
+    pub fn max_idle_timeout(&self) -> Option<Duration> {
+        Some(Duration::from_millis(self.max_idle_timeout?.get() as u64))
     }
 }
