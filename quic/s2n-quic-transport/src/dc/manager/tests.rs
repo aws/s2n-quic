@@ -269,6 +269,16 @@ fn on_packet_loss() {
 }
 
 #[test]
+fn on_mtu_updated() {
+    let mut publisher = Publisher::snapshot();
+    let path = MockDcPath::default();
+    let mut manager: Manager<Server> = Manager::new(Some(path), 1, &mut publisher);
+    manager.on_mtu_updated(1500);
+
+    assert_eq!(1500, manager.path().mtu);
+}
+
+#[test]
 #[cfg_attr(miri, ignore)]
 fn snapshots() {
     assert_debug_snapshot!(State::test_transitions());
