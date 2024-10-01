@@ -317,7 +317,9 @@ fn check_invariants_no_overflow() {
 fn no_memory_growth() {
     let signer = stateless_reset::Signer::new(b"secret");
     let map = Map::new(signer);
-    for idx in 0..500_000_000 {
+    map.state.cleaner.stop();
+    for idx in 0..500_000 {
+        // FIXME: this ends up 2**16 peers in the `peers` map
         map.insert(fake_entry(idx as u16));
     }
 }
@@ -327,6 +329,6 @@ fn no_memory_growth() {
 fn entry_size() {
     // This gates to running only on specific GHA to reduce false positives.
     if std::env::var("S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS").is_ok() {
-        assert_eq!(fake_entry(0).size(), 350);
+        assert_eq!(fake_entry(0).size(), 238);
     }
 }

@@ -154,7 +154,7 @@ impl State {
             pto_backoff: INITIAL_PTO_BACKOFF,
             inflight_timer: Default::default(),
             idle_timer: Default::default(),
-            idle_timeout: params.max_idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT),
+            idle_timeout: params.max_idle_timeout().unwrap_or(DEFAULT_IDLE_TIMEOUT),
             error: None,
             unacked_ranges,
             max_sent_offset,

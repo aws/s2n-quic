@@ -70,7 +70,7 @@ impl State {
             recovery_ack: Default::default(),
             state: Default::default(),
             idle_timer: Default::default(),
-            idle_timeout: params.max_idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT),
+            idle_timeout: params.max_idle_timeout().unwrap_or(DEFAULT_IDLE_TIMEOUT),
             tick_timer: Default::default(),
             _should_transmit: false,
             max_data: initial_max_data,
