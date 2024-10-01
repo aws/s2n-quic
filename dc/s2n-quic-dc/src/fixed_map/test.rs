@@ -31,3 +31,12 @@ fn slot_clear() {
 
     assert_eq!(slot.len(), 0);
 }
+
+#[test]
+fn capacity_size() {
+    let map: Map<u32, ()> = Map::with_capacity(500_000, Default::default());
+    for idx in 0..500_000 {
+        map.insert(idx, ());
+    }
+    assert!(map.len() >= 400_000, "{}", map.len());
+}
