@@ -15,7 +15,7 @@ use std::{io, os::unix::io::AsRawFd};
 struct Ring<T: Copy + fmt::Debug> {
     cursor: Cursor<T>,
     flags: NonNull<RingFlags>,
-    // make the area clonable in test mode
+    // make the area cloneable in test mode
     #[cfg(test)]
     area: std::sync::Arc<Mmap>,
     #[cfg(not(test))]
