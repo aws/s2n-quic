@@ -688,11 +688,9 @@ impl Entry {
         rehandshake_time: Duration,
     ) -> Self {
         // clamp max datagram size to a well-known value
-        let max_datagram_size = parameters.max_datagram_size.load(Ordering::Relaxed);
-        parameters.max_datagram_size.store(
-            max_datagram_size.min(crate::stream::MAX_DATAGRAM_SIZE as _),
-            Ordering::Relaxed,
-        );
+        parameters
+            .max_datagram_size
+            .fetch_min(crate::stream::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
 
         assert!(rehandshake_time.as_secs() <= u32::MAX as u64);
         Self {
