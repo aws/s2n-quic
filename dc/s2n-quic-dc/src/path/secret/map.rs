@@ -911,6 +911,7 @@ pub struct HandshakingPath {
     parameters: ApplicationParams,
     endpoint_type: s2n_quic_core::endpoint::Type,
     secret: Option<schedule::Secret>,
+    entry: Option<Arc<Entry>>,
     map: Map,
 }
 
@@ -927,6 +928,7 @@ impl HandshakingPath {
             parameters: connection_info.application_params.clone(),
             endpoint_type,
             secret: None,
+            entry: None,
             map,
         }
     }
@@ -1022,11 +1024,12 @@ impl dc::Path for HandshakingPath {
             self.map.state.rehandshake_period,
         );
         let entry = Arc::new(entry);
+        self.entry = Some(entry.clone());
         self.map.insert(entry);
     }
 
     fn on_mtu_updated(&mut self, mtu: u16) {
-        if let Some(entry) = self.map.state.peers.get_by_key(&self.peer) {
+        if let Some(entry) = self.entry.as_ref() {
             entry
                 .parameters
                 .max_datagram_size
