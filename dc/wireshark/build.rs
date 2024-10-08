@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 fn main() {
-    let plugin_name = option_env("PLUGIN_NAME").unwrap_or_else(|| "dcQUIC".to_string());
-    println!("cargo:rustc-env=PLUGIN_NAME={plugin_name}");
+    let plugin_name = fwd("PLUGIN_NAME", "dcQUIC");
+    let _ = fwd("PLUGIN_MAJOR_VERSION", "4");
+    let _ = fwd("PLUGIN_MINOR_VERSION", "2");
     println!(
         "cargo:rustc-env=PLUGIN_NAME_LOWER={}",
         plugin_name.to_lowercase()
@@ -16,6 +17,13 @@ fn main() {
         println!("cargo:rustc-link-arg=-U");
         println!("cargo:rustc-link-arg=-shared");
     }
+}
+
+fn fwd<N: AsRef<str>, D: AsRef<str>>(name: N, default: D) -> String {
+    let name = name.as_ref();
+    let value = option_env(name).unwrap_or_else(|| default.as_ref().to_string());
+    println!("cargo:rustc-env={name}={value}");
+    value
 }
 
 fn env<N: AsRef<str>>(name: N) -> String {
