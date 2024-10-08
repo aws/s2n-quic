@@ -28,7 +28,7 @@ struct BaseKey {
     //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
     //# To protect against such attacks, servers MUST ensure that
     //# replay of tokens is prevented or limited.
-    duplicate_filter: cuckoofilter::CuckooFilter<HashHasher>,
+    duplicate_filter: Option<cuckoofilter::CuckooFilter<HashHasher>>,
 }
 
 impl BaseKey {
@@ -36,9 +36,7 @@ impl BaseKey {
         Self {
             active_duration,
             key: None,
-            duplicate_filter: cuckoofilter::CuckooFilter::with_capacity(
-                cuckoofilter::DEFAULT_CAPACITY,
-            ),
+            duplicate_filter: None,
         }
     }
 
@@ -70,8 +68,7 @@ impl BaseKey {
 
         // TODO clear the filter instead of recreating. This is pending a merge to crates.io
         // (https://github.com/axiomhq/rust-cuckoofilter/pull/52)
-        self.duplicate_filter =
-            cuckoofilter::CuckooFilter::with_capacity(cuckoofilter::DEFAULT_CAPACITY);
+        self.duplicate_filter = None;
 
         self.key = Some((expires_at, key));
 
@@ -201,7 +198,8 @@ impl Format {
     ) -> Option<connection::InitialId> {
         if self.keys[token.header.key_id() as usize]
             .duplicate_filter
-            .contains(token)
+            .as_ref()
+            .map_or(false, |f| f.contains(token))
         {
             return None;
         }
@@ -216,6 +214,9 @@ impl Format {
             // continue the connection if the filter fails.
             let _ = self.keys[token.header.key_id() as usize]
                 .duplicate_filter
+                .get_or_insert_with(|| {
+                    cuckoofilter::CuckooFilter::with_capacity(cuckoofilter::DEFAULT_CAPACITY)
+                })
                 .add(token);
 
             return token.original_destination_connection_id();
