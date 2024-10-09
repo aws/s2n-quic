@@ -15,7 +15,7 @@ env:
   RUST_BACKTRACE: 1
   # Pin the nightly toolchain to prevent breakage.
   # This should be occasionally updated.
-  RUST_NIGHTLY_TOOLCHAIN: nightly-2024-04-16
+  RUST_NIGHTLY_TOOLCHAIN: nightly-2024-10-09
   CDN: https://dnglbrstg7yg.cloudfront.net
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
@@ -424,9 +424,8 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup toolchain install ${{ needs.env.outputs.msrv }} --profile minimal
-          rustup override set ${{ needs.env.outputs.msrv }}
-
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - name: Run cargo build
         run: cargo build --manifest-path ${{ matrix.crate }}

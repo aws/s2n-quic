@@ -71,7 +71,7 @@ pub struct PathPublisher<'a, Pub: event::ConnectionPublisher> {
 
 impl<'a, Pub: event::ConnectionPublisher> PathPublisher<'a, Pub> {
     /// Constructs a new `Publisher` around the given `event::ConnectionPublisher` and `path_id`
-    pub fn new(publisher: &'a mut Pub, path_id: path::Id) -> PathPublisher<Pub> {
+    pub fn new(publisher: &'a mut Pub, path_id: path::Id) -> PathPublisher<'a, Pub> {
         Self { publisher, path_id }
     }
 }

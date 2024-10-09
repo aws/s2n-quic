@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 # These crates are not published so use a git dependency for now. See https://github.com/aya-rs/aya/issues/464
-aya-bpf = { git = "https://github.com/aya-rs/aya", tag = "aya-v0.12.0" }
-aya-log-ebpf = { git = "https://github.com/aya-rs/aya", tag = "aya-v0.12.0" }
+aya-ebpf = { git = "https://github.com/aya-rs/aya", tag = "aya-v0.13.0" }
+aya-log-ebpf = { git = "https://github.com/aya-rs/aya", tag = "aya-v0.13.0" }
 s2n-quic-core = { path = "../../../quic/s2n-quic-core", default-features = false }
 
 [features]

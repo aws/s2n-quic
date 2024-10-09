@@ -282,7 +282,7 @@ impl<'a> core::fmt::Debug for AckRangesDecoder<'a> {
 
 decoder_parameterized_value!(
     impl<'a> AckRangesDecoder<'a> {
-        fn decode(largest_acknowledged: VarInt, buffer: Buffer) -> Result<AckRangesDecoder> {
+        fn decode(largest_acknowledged: VarInt, buffer: Buffer) -> Result<AckRangesDecoder<'a>> {
             let (mut ack_range_count, buffer) = buffer.decode::<VarInt>()?;
 
             // add one to the total, which includes the first ack range

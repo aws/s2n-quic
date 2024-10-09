@@ -12,8 +12,7 @@ use crate::{
 use core::{mem::size_of, time::Duration};
 use s2n_codec::{
     decoder_invariant, decoder_value, DecoderBuffer, DecoderBufferMut, DecoderBufferMutResult,
-    DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderBuffer,
-    EncoderValue,
+    DecoderBufferResult, DecoderError, DecoderValue, DecoderValueMut, Encoder, EncoderValue,
 };
 
 #[cfg(test)]
@@ -48,7 +47,7 @@ pub trait TransportParameter: Sized {
         let original_size = buffer.len();
         let new_parameter_size = TransportParameterCodec(self).encoding_size();
         buffer.resize(original_size + new_parameter_size, 0);
-        let mut buffer = EncoderBuffer::new(buffer);
+        let mut buffer = s2n_codec::EncoderBuffer::new(buffer);
         buffer.set_position(original_size);
         buffer.encode(&TransportParameterCodec(self));
     }
