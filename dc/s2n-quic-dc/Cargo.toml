@@ -39,7 +39,7 @@ slotmap = "1"
 thiserror = "1"
 tokio = { version = "1", default-features = false, features = ["sync"] }
 tracing = "0.1"
-zerocopy = { version = "0.7", features = ["derive"] }
+zerocopy = { version = "0.8", features = ["derive"] }
 zeroize = "1"
 parking_lot = "0.12"
 
