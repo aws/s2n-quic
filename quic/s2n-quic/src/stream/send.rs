@@ -214,6 +214,12 @@ macro_rules! impl_send_stream_api {
         ///   the peer.
         /// - `Err(e)` if the stream encountered a [`stream::Error`](crate::stream::Error).
         ///
+        /// # Note
+        ///
+        /// Using this function can potentially introduce additional latency, as it will only
+        /// return after all outstanding data is acknowledged by the peer. For this reason, the
+        /// `AsyncWrite` trait implementations do not use this functionality and are merely no-ops.
+        ///
         /// # Examples
         ///
         /// ```rust,no_run
@@ -413,10 +419,12 @@ macro_rules! impl_send_stream_trait {
 
             #[inline]
             fn poll_flush(
-                mut self: core::pin::Pin<&mut Self>,
-                cx: &mut core::task::Context<'_>,
+                self: core::pin::Pin<&mut Self>,
+                _cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<$crate::stream::Result<()>> {
-                Self::poll_flush(&mut self, cx)
+                // no-op - this contract relies on flushing intermediate buffers, not waiting for
+                // the peer to ACK data
+                core::task::Poll::Ready(Ok(()))
             }
 
             #[inline]
@@ -476,11 +484,12 @@ macro_rules! impl_send_stream_trait {
 
             #[inline]
             fn poll_flush(
-                mut self: core::pin::Pin<&mut Self>,
-                cx: &mut core::task::Context<'_>,
+                self: core::pin::Pin<&mut Self>,
+                _cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                core::task::ready!($name::poll_flush(&mut self, cx))?;
-                Ok(()).into()
+                // no-op - this contract relies on flushing intermediate buffers, not waiting for
+                // the peer to ACK data
+                core::task::Poll::Ready(Ok(()))
             }
 
             #[inline]
@@ -541,9 +550,11 @@ macro_rules! impl_send_stream_trait {
             #[inline]
             fn poll_flush(
                 self: core::pin::Pin<&mut Self>,
-                cx: &mut core::task::Context<'_>,
+                _cx: &mut core::task::Context<'_>,
             ) -> core::task::Poll<std::io::Result<()>> {
-                futures::io::AsyncWrite::poll_flush(self, cx)
+                // no-op - this contract relies on flushing intermediate buffers, not waiting for
+                // the peer to ACK data
+                core::task::Poll::Ready(Ok(()))
             }
 
             #[inline]
