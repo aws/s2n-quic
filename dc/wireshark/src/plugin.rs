@@ -8,15 +8,29 @@ use std::{ffi::CStr, sync::OnceLock};
 #[used]
 static plugin_version: [std::ffi::c_char; 4] = [b'0' as _, b'.' as _, b'1' as _, b'\0' as _];
 
-// When bumping, make sure that the bindgen bindings are updated to the new version.
-#[no_mangle]
-#[used]
-static plugin_want_major: std::ffi::c_int = 4;
+macro_rules! env_version {
+    ($name:literal) => {{
+        let v = env!($name);
+        if v.len() != 1 {
+            panic!("unexpected version");
+        }
+        let v = v.as_bytes()[0] as char;
+        match v.to_digit(10) {
+            Some(v) => v as _,
+            None => panic!("unexpected version"),
+        }
+    }};
+}
 
 // When bumping, make sure that the bindgen bindings are updated to the new version.
 #[no_mangle]
 #[used]
-static plugin_want_minor: std::ffi::c_int = 2;
+static plugin_want_major: std::ffi::c_int = env_version!("PLUGIN_MAJOR_VERSION");
+
+// When bumping, make sure that the bindgen bindings are updated to the new version.
+#[no_mangle]
+#[used]
+static plugin_want_minor: std::ffi::c_int = env_version!("PLUGIN_MINOR_VERSION");
 
 #[no_mangle]
 pub extern "C" fn plugin_register() {
@@ -80,12 +94,12 @@ pub fn copy_to_rust(tvb: *mut wireshark_sys::tvbuff_t) -> Vec<u8> {
     buffer
 }
 
-unsafe extern "C" fn dissect_heur_udp(
+unsafe extern "C" fn dissect_heur_udp<Ret: From<bool>>(
     tvb: *mut wireshark_sys::tvbuff_t,
     mut pinfo: *mut wireshark_sys::_packet_info,
     proto: *mut wireshark_sys::_proto_node,
     _: *mut std::ffi::c_void,
-) -> i32 {
+) -> Ret {
     let fields = field::get();
 
     let packet = copy_to_rust(tvb);
@@ -116,7 +130,7 @@ unsafe extern "C" fn dissect_heur_udp(
 
     // Didn't look like a dcQUIC packet.
     if accepted_offset == 0 {
-        return 0;
+        return false.into();
     }
 
     if !info.is_empty() {
@@ -128,15 +142,15 @@ unsafe extern "C" fn dissect_heur_udp(
 
     set_protocol(pinfo, c"dcQUIC");
 
-    accepted_offset as _
+    (accepted_offset != 0).into()
 }
 
-unsafe extern "C" fn dissect_heur_tcp(
+unsafe extern "C" fn dissect_heur_tcp<Ret: From<bool>>(
     tvb: *mut wireshark_sys::tvbuff_t,
     mut pinfo: *mut wireshark_sys::_packet_info,
     proto: *mut wireshark_sys::_proto_node,
     _: *mut std::ffi::c_void,
-) -> i32 {
+) -> Ret {
     let fields = field::get();
 
     let packet = copy_to_rust(tvb);
@@ -179,7 +193,7 @@ unsafe extern "C" fn dissect_heur_tcp(
 
     // Didn't look like a dcQUIC segment.
     if accepted_offset == 0 {
-        return 0;
+        return false.into();
     }
 
     if !info.is_empty() {
@@ -191,7 +205,7 @@ unsafe extern "C" fn dissect_heur_tcp(
 
     set_protocol(pinfo, c"TCP/dcQUIC");
 
-    accepted_offset as _
+    (accepted_offset != 0).into()
 }
 
 unsafe fn register_root_node(

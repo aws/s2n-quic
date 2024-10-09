@@ -45,10 +45,14 @@ struct Build {
     profile: Option<String>,
     #[arg(long)]
     target: Option<String>,
+    #[command(flatten)]
+    wireshark_version: WiresharkVersion,
 }
 
 impl Build {
-    fn run(self, sh: &Shell) -> Result {
+    fn run(mut self, sh: &Shell) -> Result {
+        self.wireshark_version.load(sh);
+
         let target = if let Some(target) = self.target.as_ref() {
             let _ = cmd!(sh, "rustup target add {target}").run();
             vec!["--target", target]
@@ -56,18 +60,31 @@ impl Build {
             vec![]
         };
         let profile = self.profile.as_deref().unwrap_or("release");
+
+        let _env = sh.push_env(
+            "PLUGIN_MAJOR_VERSION",
+            self.wireshark_version.major_version(),
+        );
+        let _env = sh.push_env(
+            "PLUGIN_MINOR_VERSION",
+            self.wireshark_version.minor_version(),
+        );
+
         cmd!(sh, "cargo build --profile {profile} {target...}").run()?;
         Ok(())
     }
 }
 
 #[derive(Debug, Parser)]
-struct Test {}
+struct Test {
+    #[command(flatten)]
+    wireshark_version: WiresharkVersion,
+}
 
 impl Test {
-    fn run(self, sh: &Shell) -> Result {
+    fn run(mut self, sh: &Shell) -> Result {
         cmd!(sh, "cargo test").run()?;
-        let plugin_dir = plugin_dir();
+        let plugin_dir = self.wireshark_version.plugin_dir(sh);
 
         sh.create_dir(format!("target/wireshark/{plugin_dir}"))?;
         sh.create_dir("target/pcaps")?;
@@ -76,6 +93,14 @@ impl Test {
         let plugin_name = "dcQUIC__DEV";
         let plugin_name_lower = &plugin_name.to_lowercase();
         let _env = sh.push_env("PLUGIN_NAME", plugin_name);
+        let _env = sh.push_env(
+            "PLUGIN_MAJOR_VERSION",
+            self.wireshark_version.major_version(),
+        );
+        let _env = sh.push_env(
+            "PLUGIN_MINOR_VERSION",
+            self.wireshark_version.minor_version(),
+        );
 
         let profile = "release-test";
 
@@ -176,26 +201,27 @@ fn so() -> &'static str {
     }
 }
 
-fn plugin_dir() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "plugins/4-2/epan"
-    } else {
-        "plugins/4.2/epan"
-    }
+#[derive(Debug, Parser)]
+struct Install {
+    #[command(flatten)]
+    wireshark_version: WiresharkVersion,
 }
 
-#[derive(Debug, Parser)]
-struct Install {}
-
 impl Install {
-    fn run(self, sh: &Shell) -> Result {
-        Build::default().run(sh)?;
+    fn run(mut self, sh: &Shell) -> Result {
+        let plugin_dir = self.wireshark_version.plugin_dir(sh);
+
+        Build {
+            wireshark_version: self.wireshark_version.clone(),
+            ..Default::default()
+        }
+        .run(sh)?;
 
         let dir = if cfg!(unix) {
             homedir::get_my_home()?
                 .expect("missing home dir")
                 .join(".local/lib/wireshark")
-                .join(plugin_dir())
+                .join(plugin_dir)
         } else {
             todo!("OS is currently unsupported")
         };
@@ -209,6 +235,62 @@ impl Install {
         )?;
 
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Default, Parser)]
+struct WiresharkVersion {
+    #[arg(long, default_value = "DYNAMIC")]
+    wireshark_version: String,
+}
+
+impl WiresharkVersion {
+    fn plugin_dir(&mut self, sh: &Shell) -> String {
+        self.load(sh);
+
+        let value = &self.wireshark_version;
+        if cfg!(target_os = "macos") {
+            format!("plugins/{}/epan", value.replace('.', "-"))
+        } else {
+            format!("plugins/{value}/epan")
+        }
+    }
+
+    fn load(&mut self, sh: &Shell) {
+        if !(self.wireshark_version.is_empty() || self.wireshark_version == "DYNAMIC") {
+            return;
+        }
+
+        let tshark = tshark(sh).unwrap();
+        let output = cmd!(sh, "{tshark} --version").read().unwrap();
+        let version = output.lines().next().unwrap();
+        let version = version.trim_start_matches(|v: char| !v.is_digit(10));
+        let (version, _) = version
+            .split_once(char::is_whitespace)
+            .unwrap_or((version, ""));
+
+        let version = version.trim_end_matches('.');
+
+        match version.split('.').count() {
+            2 => {
+                self.wireshark_version = version.to_string();
+            }
+            3 => {
+                let (version, _) = version.rsplit_once('.').unwrap();
+                self.wireshark_version = version.to_string();
+            }
+            _ => panic!("invalid tshark version: {version}"),
+        }
+    }
+
+    fn major_version(&self) -> &str {
+        let (version, _) = self.wireshark_version.split_once('.').unwrap();
+        version
+    }
+
+    fn minor_version(&self) -> &str {
+        let (_, version) = self.wireshark_version.split_once('.').unwrap();
+        version
     }
 }
 
