@@ -42,7 +42,10 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use slotmap::SlotMap;
-use std::collections::{BinaryHeap, VecDeque};
+use std::{
+    collections::{BinaryHeap, VecDeque},
+    sync::atomic::Ordering,
+};
 use tracing::{debug, trace};
 
 pub mod probe;
@@ -118,7 +121,7 @@ pub struct PeerActivity {
 impl State {
     #[inline]
     pub fn new(stream_id: stream::Id, params: &ApplicationParams) -> Self {
-        let max_datagram_size = params.max_datagram_size;
+        let max_datagram_size = params.max_datagram_size.load(Ordering::Relaxed);
         let initial_max_data = params.remote_max_data;
         let local_max_data = params.local_send_max_data;
 

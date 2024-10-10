@@ -44,4 +44,8 @@ impl Path for () {
     ) {
         unimplemented!()
     }
+
+    fn on_mtu_updated(&mut self, _mtu: u16) {
+        unimplemented!()
+    }
 }

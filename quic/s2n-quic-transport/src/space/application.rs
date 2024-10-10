@@ -811,6 +811,10 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
                 .on_rtt_update(&self.path_manager.active_path().rtt_estimator, now)
         }
     }
+
+    fn on_mtu_update(&mut self, max_datagram_size: u16) {
+        self.dc_manager.on_mtu_updated(max_datagram_size)
+    }
 }
 
 impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> {

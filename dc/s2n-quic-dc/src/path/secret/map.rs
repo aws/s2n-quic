@@ -298,7 +298,7 @@ impl Map {
     ) -> Option<(seal::Once, Credentials, ApplicationParams)> {
         let state = self.state.peers.get_by_key(&peer)?;
         let (sealer, credentials) = state.uni_sealer();
-        Some((sealer, credentials, state.parameters))
+        Some((sealer, credentials, state.parameters.clone()))
     }
 
     pub fn open_once(
@@ -319,7 +319,7 @@ impl Map {
         let state = self.state.peers.get_by_key(&peer)?;
         let keys = state.bidi_local(features);
 
-        Some((keys, state.parameters))
+        Some((keys, state.parameters.clone()))
     }
 
     pub fn pair_for_credentials(
@@ -330,7 +330,7 @@ impl Map {
     ) -> Option<(Bidirectional, ApplicationParams)> {
         let state = self.pre_authentication(credentials, control_out)?;
 
-        let params = state.parameters;
+        let params = state.parameters.clone();
         let keys = state.bidi_remote(self.clone(), credentials, features);
 
         Some((keys, params))
@@ -684,13 +684,13 @@ impl Entry {
         secret: schedule::Secret,
         sender: sender::State,
         receiver: receiver::State,
-        mut parameters: ApplicationParams,
+        parameters: ApplicationParams,
         rehandshake_time: Duration,
     ) -> Self {
         // clamp max datagram size to a well-known value
-        parameters.max_datagram_size = parameters
+        parameters
             .max_datagram_size
-            .min(crate::stream::MAX_DATAGRAM_SIZE as _);
+            .fetch_min(crate::stream::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
 
         assert!(rehandshake_time.as_secs() <= u32::MAX as u64);
         Self {
@@ -911,6 +911,7 @@ pub struct HandshakingPath {
     parameters: ApplicationParams,
     endpoint_type: s2n_quic_core::endpoint::Type,
     secret: Option<schedule::Secret>,
+    entry: Option<Arc<Entry>>,
     map: Map,
 }
 
@@ -924,9 +925,10 @@ impl HandshakingPath {
         Self {
             peer: connection_info.remote_address.clone().into(),
             dc_version: connection_info.dc_version,
-            parameters: connection_info.application_params,
+            parameters: connection_info.application_params.clone(),
             endpoint_type,
             secret: None,
+            entry: None,
             map,
         }
     }
@@ -1018,11 +1020,21 @@ impl dc::Path for HandshakingPath {
                 .expect("peer tokens are only received after secrets are ready"),
             sender,
             receiver,
-            self.parameters,
+            self.parameters.clone(),
             self.map.state.rehandshake_period,
         );
         let entry = Arc::new(entry);
+        self.entry = Some(entry.clone());
         self.map.insert(entry);
+    }
+
+    fn on_mtu_updated(&mut self, mtu: u16) {
+        if let Some(entry) = self.entry.as_ref() {
+            entry
+                .parameters
+                .max_datagram_size
+                .store(mtu, Ordering::Relaxed);
+        }
     }
 }
 
