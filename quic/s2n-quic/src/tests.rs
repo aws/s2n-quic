@@ -45,6 +45,8 @@ mod skip_packets;
 // build options than s2n-tls. We should build the rustls provider with
 // mTLS enabled and remove the `cfg(target_os("windows"))`.
 #[cfg(not(target_os = "windows"))]
+mod chain;
+#[cfg(not(target_os = "windows"))]
 mod client_handshake_confirm;
 #[cfg(not(target_os = "windows"))]
 mod dc;
