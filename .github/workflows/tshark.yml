@@ -26,6 +26,13 @@ on:
         default: '3.7.1'
         type: string
 
+# Updating status is relatively safe (doesnt modify source code) and caution
+# should we taken before adding more permissions.
+permissions:
+  statuses: write
+  id-token: write # This is required for requesting the JWT/OIDC
+
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -48,9 +55,9 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'schedule' || github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHADocSession
+          aws-region: us-west-2
 
       - name: Upload to S3
         if: github.event_name == 'schedule' || github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name

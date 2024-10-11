@@ -28,6 +28,7 @@ env:
 # should we taken before adding more permissions.
 permissions:
   statuses: write
+  id-token: write # This is required for requesting the JWT/OIDC
 
 jobs:
   env:
@@ -164,9 +165,9 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHADocSession
+          aws-region: us-west-2
 
       - name: Upload to S3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -350,10 +351,10 @@ jobs:
         with:
           report-script: ./scripts/compliance
           report-path: ./target/compliance/report.html
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHAComplianceSession
+          aws-s3-region: us-west-2
           aws-s3-bucket-name: s2n-quic-ci-artifacts
-          aws-s3-region: us-west-1
           cdn: $CDN
 
   coverage:
@@ -385,9 +386,9 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHACoverageSession
+          aws-region: us-west-2
 
       - name: Upload results
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -497,9 +498,9 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHARecoverySession
+          aws-region: us-west-2
 
       - name: Upload to S3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -542,9 +543,9 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHASimsSession
+          aws-region: us-west-2
 
       - name: Upload to S3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -649,9 +650,10 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHATimingSession
+          aws-region: us-west-2
+
 
       - name: Upload to S3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -744,9 +746,9 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHADhatSession
+          aws-region: us-west-2
 
       - name: Upload to S3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
