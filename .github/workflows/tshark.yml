@@ -27,7 +27,7 @@ on:
         type: string
 
 # Updating status is relatively safe (doesnt modify source code) and caution
-# should we taken before adding more permissions.
+# should be taken before adding more permissions.
 permissions:
   statuses: write
   id-token: write # This is required for requesting the JWT/OIDC
