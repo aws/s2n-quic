@@ -166,7 +166,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHADocSession
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
@@ -352,7 +352,7 @@ jobs:
           report-script: ./scripts/compliance
           report-path: ./target/compliance/report.html
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHAComplianceSession
+          role-session-name: S2nQuicGHAS3Session
           aws-s3-region: us-west-2
           aws-s3-bucket-name: s2n-quic-ci-artifacts
           cdn: $CDN
@@ -387,7 +387,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHACoverageSession
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload results
@@ -499,7 +499,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHARecoverySession
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
@@ -544,7 +544,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHASimsSession
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
@@ -651,7 +651,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHATimingSession
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
 
@@ -747,7 +747,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHADhatSession
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
