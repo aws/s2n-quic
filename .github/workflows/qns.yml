@@ -369,7 +369,7 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCEcrRole
           role-session-name: S2ntlsGHAECRSession
-          aws-region: us-west-2
+          aws-region: us-east-1
 
       # authenticate pull to avoid hitting pull quota
       - name: Login to Amazon ECR Public
