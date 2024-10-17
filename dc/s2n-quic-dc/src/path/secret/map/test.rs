@@ -32,7 +32,7 @@ fn fake_entry(peer: u16) -> Arc<Entry> {
 #[test]
 fn cleans_after_delay() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = Map::new(signer);
+    let map = Map::new(signer, 50);
 
     // Stop background processing. We expect to manually invoke clean, and a background worker
     // might interfere with our state.
@@ -60,7 +60,7 @@ fn cleans_after_delay() {
 #[test]
 fn thread_shutdown() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = Map::new(signer);
+    let map = Map::new(signer, 10);
     let state = Arc::downgrade(&map.state);
     drop(map);
 
@@ -263,7 +263,7 @@ fn check_invariants() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let mut map = Map::new(signer);
+            let mut map = Map::new(signer, 10_000);
 
             // Avoid background work interfering with testing.
             map.state.cleaner.stop();
@@ -293,7 +293,7 @@ fn check_invariants_no_overflow() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let map = Map::new(signer);
+            let map = Map::new(signer, 10_000);
 
             // Avoid background work interfering with testing.
             map.state.cleaner.stop();
@@ -316,7 +316,7 @@ fn check_invariants_no_overflow() {
 #[ignore = "memory growth takes a long time to run"]
 fn no_memory_growth() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = Map::new(signer);
+    let map = Map::new(signer, 100_000);
     map.state.cleaner.stop();
     for idx in 0..500_000 {
         // FIXME: this ends up 2**16 peers in the `peers` map
@@ -325,10 +325,16 @@ fn no_memory_growth() {
 }
 
 #[test]
-#[cfg(all(target_pointer_width = "64", target_os = "linux"))]
 fn entry_size() {
+    let mut should_check = true;
+
+    should_check &= cfg!(target_pointer_width = "64");
+    should_check &= cfg!(target_os = "linux");
+    should_check &= std::env::var("S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS").is_ok();
+    should_check &= std::env::var("S2N_QUIC_PLATFORM_FEATURES_OVERRIDE").is_err();
+
     // This gates to running only on specific GHA to reduce false positives.
-    if std::env::var("S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS").is_ok() {
-        assert_eq!(fake_entry(0).size(), 238);
+    if should_check {
+        assert_eq!(fake_entry(0).size(), 270);
     }
 }

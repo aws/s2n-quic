@@ -22,6 +22,7 @@ use s2n_quic_core::{
 };
 use std::{
     fmt,
+    hash::{BuildHasherDefault, Hasher},
     net::{Ipv4Addr, SocketAddr},
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
@@ -49,6 +50,24 @@ const TLS_EXPORTER_LENGTH: usize = schedule::EXPORT_SECRET_LEN;
 #[derive(Clone)]
 pub struct Map {
     pub(super) state: Arc<State>,
+}
+
+#[derive(Default)]
+pub(super) struct NoopIdHasher(Option<u64>);
+
+impl Hasher for NoopIdHasher {
+    fn finish(&self) -> u64 {
+        self.0.unwrap()
+    }
+
+    fn write(&mut self, _bytes: &[u8]) {
+        unimplemented!()
+    }
+
+    fn write_u64(&mut self, x: u64) {
+        debug_assert!(self.0.is_none());
+        self.0 = Some(x);
+    }
 }
 
 // # Managing memory consumption
@@ -93,7 +112,7 @@ pub(super) struct State {
     pub(super) requested_handshakes: flurry::HashSet<SocketAddr>,
 
     // All known entries.
-    pub(super) ids: fixed_map::Map<Id, Arc<Entry>>,
+    pub(super) ids: fixed_map::Map<Id, Arc<Entry>, BuildHasherDefault<NoopIdHasher>>,
 
     pub(super) signer: stateless_reset::Signer,
 
@@ -232,7 +251,7 @@ impl State {
 }
 
 impl Map {
-    pub fn new(signer: stateless_reset::Signer) -> Self {
+    pub fn new(signer: stateless_reset::Signer, capacity: usize) -> Self {
         // FIXME: Avoid unwrap and the whole socket.
         //
         // We only ever send on this socket - but we really should be sending on the same
@@ -244,11 +263,11 @@ impl Map {
         control_socket.set_nonblocking(true).unwrap();
         let state = State {
             // This is around 500MB with current entry size.
-            max_capacity: 500_000,
+            max_capacity: capacity,
             // FIXME: Allow configuring the rehandshake_period.
             rehandshake_period: Duration::from_secs(3600 * 24),
-            peers: fixed_map::Map::with_capacity(500_000, Default::default()),
-            ids: fixed_map::Map::with_capacity(500_000, Default::default()),
+            peers: fixed_map::Map::with_capacity(capacity, Default::default()),
+            ids: fixed_map::Map::with_capacity(capacity, Default::default()),
             requested_handshakes: Default::default(),
             cleaner: Cleaner::new(),
             signer,
@@ -297,6 +316,19 @@ impl Map {
         peer: SocketAddr,
     ) -> Option<(seal::Once, Credentials, ApplicationParams)> {
         let state = self.state.peers.get_by_key(&peer)?;
+        let (sealer, credentials) = state.uni_sealer();
+        Some((sealer, credentials, state.parameters.clone()))
+    }
+
+    /// Retrieve a sealer by path secret ID.
+    ///
+    /// Generally callers should prefer to use one of the `pair` APIs; this is primarily useful for
+    /// "response" datagrams which want to be bound to the exact same shared secret.
+    ///
+    /// Note that unlike by-IP lookup this should typically not be done significantly after the
+    /// original secret was used for decryption.
+    pub fn seal_once_id(&self, id: Id) -> Option<(seal::Once, Credentials, ApplicationParams)> {
+        let state = self.state.ids.get_by_key(&id)?;
         let (sealer, credentials) = state.uni_sealer();
         Some((sealer, credentials, state.parameters.clone()))
     }
@@ -485,7 +517,7 @@ impl Map {
     pub fn for_test_with_peers(
         peers: Vec<(schedule::Ciphersuite, dc::Version, SocketAddr)>,
     ) -> (Self, Vec<Id>) {
-        let provider = Self::new(stateless_reset::Signer::random());
+        let provider = Self::new(stateless_reset::Signer::random(), peers.len() * 3);
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();
         let mut stateless_reset = [0; control::TAG_LEN];

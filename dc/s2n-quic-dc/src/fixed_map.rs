@@ -8,6 +8,7 @@
 //! extent possible) reducing the likelihood.
 
 use core::{
+    fmt::Debug,
     hash::Hash,
     sync::atomic::{AtomicU8, Ordering},
 };
@@ -21,7 +22,7 @@ pub struct Map<K, V, S = RandomState> {
 
 impl<K, V, S> Map<K, V, S>
 where
-    K: Hash + Eq,
+    K: Hash + Eq + Debug,
     S: BuildHasher,
 {
     pub fn with_capacity(entries: usize, hasher: S) -> Self {
@@ -108,7 +109,7 @@ struct Slot<K, V> {
 
 impl<K, V> Slot<K, V>
 where
-    K: Hash + Eq,
+    K: Hash + Eq + Debug,
 {
     fn new() -> Self {
         Slot {
@@ -139,6 +140,10 @@ where
         // If `new_key` isn't already in this slot, replace one of the existing entries with the
         // new key. For now we rotate through based on `next_write`.
         let replacement = self.next_write.fetch_add(1, Ordering::Relaxed) as usize % SLOT_CAPACITY;
+        tracing::trace!(
+            "evicting {:?} - bucket overflow",
+            values[replacement].as_mut().unwrap().0
+        );
         values[replacement] = Some((new_key, new_value));
         None
     }

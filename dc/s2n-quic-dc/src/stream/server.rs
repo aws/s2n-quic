@@ -7,6 +7,7 @@ use crate::{credentials::Credentials, msg::recv, packet};
 use s2n_codec::{DecoderBufferMut, DecoderError};
 
 pub mod handshake;
+pub mod tokio;
 
 #[derive(Debug)]
 pub struct InitialPacket {
