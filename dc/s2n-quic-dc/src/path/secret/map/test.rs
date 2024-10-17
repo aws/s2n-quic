@@ -331,10 +331,9 @@ fn entry_size() {
     should_check &= cfg!(target_pointer_width = "64");
     should_check &= cfg!(target_os = "linux");
     should_check &= std::env::var("S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS").is_ok();
-    should_check &= std::env::var("S2N_QUIC_PLATFORM_FEATURES_OVERRIDE").is_err();
 
     // This gates to running only on specific GHA to reduce false positives.
     if should_check {
-        assert_eq!(fake_entry(0).size(), 270);
+        assert_eq!(fake_entry(0).size(), 238);
     }
 }
