@@ -30,6 +30,9 @@ env:
 # should we taken before adding more permissions.
 permissions:
   statuses: write
+  id-token: write # This is required for requesting the JWT
+  contents: read  # This is required for actions/checkout
+
 
 jobs:
   env:
@@ -213,8 +216,8 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2ntlsGHAS3Session
           aws-region: us-west-1
 
       - name: Upload to S3
@@ -305,9 +308,9 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
+          role-session-name: S2ntlsGHAS3Session
+          aws-region: us-west-2
 
       - name: Upload to S3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -361,14 +364,20 @@ jobs:
           sudo apt-get -o Acquire::Retries=3 update
           sudo apt-get -o Acquire::Retries=3 install -y gnuplot
 
-      # authenticate pull to avoid hitting pull quota
-      - name: Login to Amazon Elastic Container Registry Public
+      - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.repository == github.event.pull_request.head.repo.full_name
-        uses: docker/login-action@v3.3.0
         with:
-          registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCEcrRole
+          role-session-name: S2ntlsGHAECRSession
+          aws-region: us-west-2
+
+      # authenticate pull to avoid hitting pull quota
+      - name: Login to Amazon ECR Public
+        if: github.repository == github.event.pull_request.head.repo.full_name
+        id: login-ecr-public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
 
       - name: Pull s2n-quic-qns:main
         if: github.event.pull_request
