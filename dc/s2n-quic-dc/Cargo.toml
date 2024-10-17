@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-dc"
-version = "0.47.0"
+version = "0.48.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -33,9 +33,9 @@ once_cell = "1"
 pin-project-lite = "0.2"
 rand = { version = "0.8", features = ["small_rng"] }
 rand_chacha = "0.3"
-s2n-codec = { version = "=0.47.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.47.0", path = "../../quic/s2n-quic-core", default-features = false }
-s2n-quic-platform = { version = "=0.47.0", path = "../../quic/s2n-quic-platform" }
+s2n-codec = { version = "=0.48.0", path = "../../common/s2n-codec", default-features = false }
+s2n-quic-core = { version = "=0.48.0", path = "../../quic/s2n-quic-core", default-features = false }
+s2n-quic-platform = { version = "=0.48.0", path = "../../quic/s2n-quic-platform" }
 slotmap = "1"
 thiserror = "1"
 tokio = { version = "1", default-features = false, features = ["sync"] }
