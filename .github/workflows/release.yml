@@ -48,7 +48,7 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCEcrRole
-          role-session-name: S2ntlsGHAECRSession
+          role-session-name: S2nQuicGHAECRSession
           aws-region: us-east-1   # Required for ECR
 
       - name: Login to Amazon ECR Public

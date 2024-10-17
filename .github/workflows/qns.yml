@@ -217,7 +217,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2ntlsGHAS3Session
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
@@ -309,7 +309,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2ntlsGHAS3Session
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
@@ -368,7 +368,7 @@ jobs:
         if: github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCEcrRole
-          role-session-name: S2ntlsGHAECRSession
+          role-session-name: S2nQuicGHAECRSession
           aws-region: us-east-1   # Required for ECR
 
       # authenticate pull to avoid hitting pull quota
@@ -418,7 +418,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2ntlsGHAS3Session
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload results
@@ -566,7 +566,7 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2ntlsGHAS3Session
+          role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload results
