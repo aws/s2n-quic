@@ -17,6 +17,7 @@ pub mod random;
 pub mod recovery;
 pub mod socket;
 pub mod stream;
+pub mod sync;
 pub mod task;
 
 #[cfg(any(test, feature = "testing"))]

@@ -140,6 +140,10 @@ impl ApplicationParams {
     pub fn max_idle_timeout(&self) -> Option<Duration> {
         Some(Duration::from_millis(self.max_idle_timeout?.get() as u64))
     }
+
+    pub fn max_datagram_size(&self) -> u16 {
+        self.max_datagram_size.load(Ordering::Relaxed)
+    }
 }
 
 #[cfg(test)]

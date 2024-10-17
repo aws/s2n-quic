@@ -11,6 +11,7 @@ pub const DEFAULT_INFLIGHT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const MAX_DATAGRAM_SIZE: usize = 1 << 15; // 32k
 
 pub mod application;
+pub mod client;
 pub mod crypto;
 pub mod endpoint;
 pub mod environment;

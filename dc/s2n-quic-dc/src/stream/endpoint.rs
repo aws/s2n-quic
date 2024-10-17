@@ -19,10 +19,7 @@ use s2n_quic_core::{
     inet::{ExplicitCongestionNotification, SocketAddress},
     varint::VarInt,
 };
-use std::{
-    io,
-    sync::{atomic::Ordering, Arc},
-};
+use std::{io, sync::Arc};
 use tracing::{debug_span, Instrument as _};
 
 type Result<T = (), E = io::Error> = core::result::Result<T, E>;
@@ -196,7 +193,7 @@ where
         let flow = flow::non_blocking::State::new(flow_offset);
 
         let path = send::path::Info {
-            max_datagram_size: parameters.max_datagram_size.load(Ordering::Relaxed),
+            max_datagram_size: parameters.max_datagram_size(),
             send_quantum,
             ecn: ExplicitCongestionNotification::Ect0,
             next_expected_control_packet: VarInt::ZERO,

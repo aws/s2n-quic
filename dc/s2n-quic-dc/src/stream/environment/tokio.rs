@@ -25,9 +25,15 @@ pub struct Builder {
     reader_rt: Option<runtime::Shared>,
     writer_rt: Option<runtime::Shared>,
     thread_name_prefix: Option<String>,
+    threads: Option<usize>,
 }
 
 impl Builder {
+    pub fn with_threads(mut self, threads: usize) -> Self {
+        self.threads = Some(threads);
+        self
+    }
+
     #[inline]
     pub fn build(self) -> io::Result<Environment> {
         let clock = self.clock.unwrap_or_default();
@@ -36,20 +42,26 @@ impl Builder {
 
         let thread_name_prefix = self.thread_name_prefix.as_deref().unwrap_or("dc_quic");
 
-        let reader_rt = self.reader_rt.map(<io::Result<_>>::Ok).unwrap_or_else(|| {
-            Ok(tokio::runtime::Builder::new_multi_thread()
+        let make_rt = |suffix: &str, threads: Option<usize>| {
+            let mut builder = tokio::runtime::Builder::new_multi_thread();
+            if let Some(threads) = threads {
+                builder.worker_threads(threads);
+            }
+            Ok(builder
                 .enable_all()
-                .thread_name(format!("{thread_name_prefix}::reader"))
+                .thread_name(format!("{thread_name_prefix}::{suffix}"))
                 .build()?
                 .into())
-        })?;
-        let writer_rt = self.writer_rt.map(<io::Result<_>>::Ok).unwrap_or_else(|| {
-            Ok(tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .thread_name(format!("{thread_name_prefix}::writer"))
-                .build()?
-                .into())
-        })?;
+        };
+
+        let reader_rt = self
+            .reader_rt
+            .map(<io::Result<_>>::Ok)
+            .unwrap_or_else(|| make_rt("reader", self.threads))?;
+        let writer_rt = self
+            .writer_rt
+            .map(<io::Result<_>>::Ok)
+            .unwrap_or_else(|| make_rt("writer", self.threads))?;
 
         Ok(Environment {
             clock,
