@@ -7,11 +7,11 @@ inputs:
   report-path:
     description: 'Path to generated Duvet report output'
     required: false
-  aws-access-key-id:
-    description: 'AWS access key ID with S3 permissions'
+  role-to-assume:
+    description: 'Role to assume for OpenID Connect'
     required: true
-  aws-secret-access-key:
-    description: 'AWS secret key'
+  role-session-name:
+    description: 'Role session name for OpenID Connect'
     required: true
   aws-s3-bucket-name:
     description: 'Destination S3 bucket name for duvet reports'
@@ -46,11 +46,11 @@ runs:
       shell: bash
       run: ${{ inputs.report-script }} ${{ github.sha }}
 
-    - uses: aws-actions/configure-aws-credentials@v1.6.1
+    - uses: aws-actions/configure-aws-credentials@v4.0.2
       if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
       with:
-        aws-access-key-id: ${{ inputs.aws-access-key-id }}
-        aws-secret-access-key: ${{ inputs.aws-secret-access-key}}
+        role-to-assume: ${{ inputs.role-to-assume}}
+        role-session-name: ${{ inputs.role-session-name}}
         aws-region: ${{ inputs.aws-s3-region }}
 
     - name: Upload to S3
