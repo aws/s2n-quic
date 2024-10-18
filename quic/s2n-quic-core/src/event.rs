@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{connection, endpoint};
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 use core::{ops::RangeInclusive, time::Duration};
 
 mod generated;
@@ -147,6 +149,13 @@ impl<'a> TlsSession<'a> {
         output: &mut [u8],
     ) -> Result<(), crate::crypto::tls::TlsExportError> {
         self.session.tls_exporter(label, context, output)
+    }
+
+    // Currently intended only for unstable usage
+    #[doc(hidden)]
+    #[cfg(feature = "alloc")]
+    pub fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, crate::crypto::tls::ChainError> {
+        self.session.peer_cert_chain_der()
     }
 
     pub fn cipher_suite(&self) -> crate::event::api::CipherSuite {

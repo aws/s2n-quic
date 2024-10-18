@@ -123,6 +123,10 @@ impl TlsSession for Session {
     fn cipher_suite(&self) -> CipherSuite {
         CipherSuite::TLS_AES_128_GCM_SHA256
     }
+
+    fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, tls::ChainError> {
+        Err(tls::ChainError::failure())
+    }
 }
 
 #[derive(Debug)]

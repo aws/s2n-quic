@@ -58,6 +58,17 @@ impl tls::TlsSession for Session {
             CipherSuite::Unknown
         }
     }
+
+    fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, tls::ChainError> {
+        let err = tls::ChainError::failure();
+        Ok(self
+            .connection
+            .peer_certificates()
+            .ok_or(err)?
+            .iter()
+            .map(|v| v.to_vec())
+            .collect())
+    }
 }
 
 impl fmt::Debug for Session {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+#[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::fmt::Debug;
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
@@ -35,6 +37,19 @@ impl TlsExportError {
     }
 }
 
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ChainError {
+    #[non_exhaustive]
+    Failure,
+}
+
+impl ChainError {
+    pub fn failure() -> Self {
+        ChainError::Failure
+    }
+}
+
 pub trait TlsSession: Send {
     /// See <https://datatracker.ietf.org/doc/html/rfc5705> and <https://www.rfc-editor.org/rfc/rfc8446>.
     fn tls_exporter(
@@ -45,6 +60,9 @@ pub trait TlsSession: Send {
     ) -> Result<(), TlsExportError>;
 
     fn cipher_suite(&self) -> CipherSuite;
+
+    #[cfg(feature = "alloc")]
+    fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError>;
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
