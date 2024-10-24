@@ -162,8 +162,6 @@ event_recorder!(
     SocketAddr,
     |event: &events::ConnectionStarted, storage: &mut Vec<SocketAddr>| {
         let addr: SocketAddr = event.path.local_addr.to_string().parse().unwrap();
-        if storage.last().map_or(true, |prev| *prev != addr) {
-            storage.push(addr);
-        }
+        storage.push(addr);
     }
 );
