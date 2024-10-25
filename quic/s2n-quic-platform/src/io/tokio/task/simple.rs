@@ -5,7 +5,7 @@ use crate::{
     features::Gso,
     message::{simple::Message, Message as _},
     socket::{
-        ring, task,
+        ring, stats, task,
         task::{rx, tx},
     },
     syscall::SocketEvents,
@@ -18,12 +18,13 @@ pub async fn rx<S: Into<std::net::UdpSocket>>(
     socket: S,
     producer: ring::Producer<Message>,
     cooldown: Cooldown,
+    stats: stats::Sender,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = UdpSocket::from_std(socket).unwrap();
-    let result = task::Receiver::new(producer, socket, cooldown).await;
+    let result = task::Receiver::new(producer, socket, cooldown, stats).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -36,12 +37,13 @@ pub async fn tx<S: Into<std::net::UdpSocket>>(
     consumer: ring::Consumer<Message>,
     gso: Gso,
     cooldown: Cooldown,
+    stats: stats::Sender,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = UdpSocket::from_std(socket).unwrap();
-    let result = task::Sender::new(consumer, socket, gso, cooldown).await;
+    let result = task::Sender::new(consumer, socket, gso, cooldown, stats).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -58,11 +60,15 @@ impl tx::Socket<Message> for UdpSocket {
         cx: &mut Context,
         entries: &mut [Message],
         events: &mut tx::Events,
+        stats: &stats::Sender,
     ) -> io::Result<()> {
         for entry in entries {
             let target = (*entry.remote_address()).into();
             let payload = entry.payload_mut();
-            match self.poll_send_to(cx, payload, target) {
+
+            let res = self.poll_send_to(cx, payload, target);
+            stats.send().on_operation(&res, |_len| 1);
+            match res {
                 Poll::Ready(Ok(_)) => {
                     if events.on_complete(1).is_break() {
                         return Ok(());
@@ -93,11 +99,15 @@ impl rx::Socket<Message> for UdpSocket {
         cx: &mut Context,
         entries: &mut [Message],
         events: &mut rx::Events,
+        stats: &stats::Sender,
     ) -> io::Result<()> {
         for entry in entries {
             let payload = entry.payload_mut();
             let mut buf = io::ReadBuf::new(payload);
-            match self.poll_recv_from(cx, &mut buf) {
+
+            let res = self.poll_recv_from(cx, &mut buf);
+            stats.recv().on_operation(&res, |_len| 1);
+            match res {
                 Poll::Ready(Ok(addr)) => {
                     unsafe {
                         let len = buf.filled().len();

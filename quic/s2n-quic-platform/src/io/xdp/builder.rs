@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::socket::stats;
 use core::mem::size_of;
 use s2n_quic_core::{
     inet::{ethernet, ipv4, udp},
@@ -18,6 +19,7 @@ const MIN_FRAME_OVERHEAD: u16 =
 pub struct Builder<Rx = (), Tx = ()> {
     rx: Rx,
     tx: Tx,
+    stats: Option<stats::Receiver>,
     mtu_config_builder: mtu::Builder,
     handle: Option<Handle>,
 }
@@ -27,6 +29,7 @@ impl Default for Builder<(), ()> {
         Self {
             rx: (),
             tx: (),
+            stats: None,
             mtu_config_builder: mtu::Config::builder()
                 .with_max_mtu(DEFAULT_FRAME_SIZE as u16 - MIN_FRAME_OVERHEAD)
                 .unwrap(),
@@ -39,6 +42,11 @@ impl<Rx, Tx> Builder<Rx, Tx> {
     /// Sets the tokio runtime handle for the provider
     pub fn with_handle(mut self, handle: Handle) -> Self {
         self.handle = Some(handle);
+        self
+    }
+
+    pub fn with_stats(mut self, stats: stats::Receiver) -> Self {
+        self.stats = Some(stats);
         self
     }
 
@@ -58,6 +66,7 @@ impl<Rx, Tx> Builder<Rx, Tx> {
         let Self {
             tx,
             handle,
+            stats,
             mtu_config_builder,
             ..
         } = self;
@@ -65,6 +74,7 @@ impl<Rx, Tx> Builder<Rx, Tx> {
             rx,
             tx,
             handle,
+            stats,
             mtu_config_builder,
         }
     }
@@ -77,6 +87,7 @@ impl<Rx, Tx> Builder<Rx, Tx> {
         let Self {
             rx,
             handle,
+            stats,
             mtu_config_builder,
             ..
         } = self;
@@ -84,6 +95,7 @@ impl<Rx, Tx> Builder<Rx, Tx> {
             rx,
             tx,
             handle,
+            stats,
             mtu_config_builder,
         }
     }
@@ -98,13 +110,21 @@ where
         let Self {
             rx,
             tx,
+            stats,
             handle,
             mtu_config_builder,
         } = self;
+
+        let stats = stats.unwrap_or_else(|| {
+            let (_sender, receiver) = stats::channel();
+            receiver
+        });
+
         super::Provider {
             rx,
             tx,
             handle,
+            stats,
             mtu_config_builder,
         }
     }

@@ -169,6 +169,8 @@ impl Io {
             },
         });
 
+        let (stats_sender, stats_recv) = crate::socket::stats::channel();
+
         let rx = {
             // if GRO is enabled, then we need to provide the syscall with the maximum size buffer
             let payload_len = if gro_enabled {
@@ -202,11 +204,21 @@ impl Io {
 
                 // spawn a task that actually reads from the socket into the ring buffer
                 if idx + 1 == rx_socket_count {
-                    handle.spawn(task::rx(rx_socket, producer, rx_cooldown));
+                    handle.spawn(task::rx(
+                        rx_socket,
+                        producer,
+                        rx_cooldown,
+                        stats_sender.clone(),
+                    ));
                     break;
                 } else {
                     let rx_socket = rx_socket.try_clone()?;
-                    handle.spawn(task::rx(rx_socket, producer, rx_cooldown.clone()));
+                    handle.spawn(task::rx(
+                        rx_socket,
+                        producer,
+                        rx_cooldown.clone(),
+                        stats_sender.clone(),
+                    ));
                 }
             }
 
@@ -249,7 +261,13 @@ impl Io {
 
                 // spawn a task that actually flushes the ring buffer to the socket
                 if idx + 1 == tx_socket_count {
-                    handle.spawn(task::tx(tx_socket, consumer, gso.clone(), tx_cooldown));
+                    handle.spawn(task::tx(
+                        tx_socket,
+                        consumer,
+                        gso.clone(),
+                        tx_cooldown,
+                        stats_sender.clone(),
+                    ));
                     break;
                 } else {
                     let tx_socket = tx_socket.try_clone()?;
@@ -258,6 +276,7 @@ impl Io {
                         consumer,
                         gso.clone(),
                         tx_cooldown.clone(),
+                        stats_sender.clone(),
                     ));
                 }
             }
@@ -276,8 +295,9 @@ impl Io {
                 rx,
                 tx,
                 cooldown: cooldown("ENDPOINT"),
+                stats: stats_recv,
             }
-            .start(),
+            .start(rx_addr.into()),
         );
 
         drop(guard);

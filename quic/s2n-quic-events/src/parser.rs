@@ -218,12 +218,25 @@ impl Struct {
                         }
                     ));
 
-                    output.subscriber_testing.extend(quote!(
-                        #allow_deprecated
-                        fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
-                            self.#counter #counter_increment;
-                            self.output #lock.push(format!("{meta:?} {event:?}"));
-                        }
+                    for subscriber in [
+                        &mut output.endpoint_subscriber_testing,
+                        &mut output.subscriber_testing,
+                    ] {
+                        subscriber.extend(quote!(
+                            #allow_deprecated
+                            fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
+                                self.#counter #counter_increment;
+                                self.output #lock.push(format!("{meta:?} {event:?}"));
+                            }
+                        ));
+                    }
+
+                    // add a counter for testing structs
+                    output.endpoint_testing_fields.extend(quote!(
+                        pub #counter: #counter_type,
+                    ));
+                    output.endpoint_testing_fields_init.extend(quote!(
+                        #counter: #counter_init,
                     ));
 
                     output.endpoint_publisher_testing.extend(quote!(

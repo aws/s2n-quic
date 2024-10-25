@@ -439,6 +439,55 @@ pub mod testing {
     use crate::event::snapshot::Location;
     use core::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Mutex;
+    pub mod endpoint {
+        use super::*;
+        pub struct Subscriber {
+            location: Option<Location>,
+            output: Mutex<Vec<String>>,
+        }
+        impl Drop for Subscriber {
+            fn drop(&mut self) {
+                if std::thread::panicking() {
+                    return;
+                }
+                if let Some(location) = self.location.as_ref() {
+                    location.snapshot_log(&self.output.lock().unwrap());
+                }
+            }
+        }
+        impl Subscriber {
+            #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+            #[track_caller]
+            pub fn snapshot() -> Self {
+                let mut sub = Self::no_snapshot();
+                sub.location = Location::from_thread_name();
+                sub
+            }
+            #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+            #[track_caller]
+            pub fn named_snapshot<Name: core::fmt::Display>(name: Name) -> Self {
+                let mut sub = Self::no_snapshot();
+                sub.location = Some(Location::new(name));
+                sub
+            }
+            #[doc = r" Creates a subscriber with snapshot assertions disabled"]
+            pub fn no_snapshot() -> Self {
+                Self {
+                    location: None,
+                    output: Default::default(),
+                }
+            }
+        }
+        impl super::super::Subscriber for Subscriber {
+            type ConnectionContext = ();
+            fn create_connection_context(
+                &self,
+                _meta: &api::ConnectionMeta,
+                _info: &api::ConnectionInfo,
+            ) -> Self::ConnectionContext {
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     pub struct Subscriber {
         location: Option<Location>,

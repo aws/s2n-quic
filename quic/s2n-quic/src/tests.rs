@@ -35,6 +35,7 @@ mod handshake_cid_rotation;
 mod interceptor;
 mod mtu;
 mod no_tls;
+mod platform_events;
 mod pto;
 mod self_test;
 mod skip_packets;

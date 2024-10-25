@@ -342,9 +342,15 @@ impl Io {
 
         let handle = address.unwrap_or_else(|| buffers.generate_addr());
 
+        let (stats_sender, stats_recv) = crate::socket::stats::channel();
+
         let socket = buffers.register(handle, mtu_config.max_mtu());
-        let tx = socket.tx_task(mtu_config.max_mtu(), queue_send_buffer_size);
-        let rx = socket.rx_task(mtu_config.max_mtu(), queue_recv_buffer_size);
+        let tx = socket.tx_task(
+            mtu_config.max_mtu(),
+            queue_send_buffer_size,
+            stats_sender.clone(),
+        );
+        let rx = socket.rx_task(mtu_config.max_mtu(), queue_recv_buffer_size, stats_sender);
 
         if let Some(on_socket) = on_socket {
             on_socket(socket);
@@ -358,8 +364,9 @@ impl Io {
             tx,
             rx,
             cooldown: Default::default(),
+            stats: stats_recv,
         };
-        let join = executor.spawn(event_loop.start());
+        let join = executor.spawn(event_loop.start(handle));
         Ok((join, handle))
     }
 }

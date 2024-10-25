@@ -4,7 +4,7 @@
 use crate::{
     features::Gso,
     message::Message,
-    socket::{ring::Consumer, task::events},
+    socket::{ring::Consumer, stats, task::events},
 };
 use core::{
     future::Future,
@@ -23,6 +23,7 @@ pub trait Socket<T: Message> {
         cx: &mut Context,
         entries: &mut [T],
         events: &mut Events,
+        stats: &stats::Sender,
     ) -> Result<(), Self::Error>;
 }
 
@@ -33,6 +34,7 @@ pub struct Sender<T: Message, S: Socket<T>> {
     events: Events,
     ring_cooldown: Cooldown,
     io_cooldown: Cooldown,
+    stats: stats::Sender,
 }
 
 impl<T, S> Sender<T, S>
@@ -41,13 +43,20 @@ where
     S: Socket<T> + Unpin,
 {
     #[inline]
-    pub fn new(ring: Consumer<T>, tx: S, gso: Gso, cooldown: Cooldown) -> Self {
+    pub fn new(
+        ring: Consumer<T>,
+        tx: S,
+        gso: Gso,
+        cooldown: Cooldown,
+        stats: stats::Sender,
+    ) -> Self {
         Self {
             ring,
             tx,
             events: Events::new(gso),
             ring_cooldown: cooldown.clone(),
             io_cooldown: cooldown,
+            stats,
         }
     }
 
@@ -110,7 +119,7 @@ where
             let entries = this.ring.data();
 
             // perform the send syscall
-            match this.tx.send(cx, entries, &mut this.events) {
+            match this.tx.send(cx, entries, &mut this.events, &this.stats) {
                 Ok(_) => {
                     // increment the number of received messages
                     let count = this.events.take_count() as u32;

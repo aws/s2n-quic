@@ -7,6 +7,7 @@ use crate::{
     socket::{
         io::{rx, tx},
         ring::{self, Consumer, Producer},
+        stats,
     },
 };
 use core::future::Future;
@@ -110,9 +111,11 @@ impl Io {
             (tx, consumer)
         };
 
+        let (stats_sender, stats_recv) = stats::channel();
+
         // Spawn a task that does the actual socket calls and coordinates with the event loop
         // through the ring buffers
-        tokio::spawn(run_io(socket, rx_producer, tx_consumer));
+        tokio::spawn(run_io(socket, rx_producer, tx_consumer, stats_sender));
 
         let event_loop = EventLoop {
             clock,
@@ -120,8 +123,9 @@ impl Io {
             tx,
             endpoint,
             cooldown: Default::default(),
+            stats: stats_recv,
         }
-        .start();
+        .start(local_addr);
 
         Ok((event_loop, local_addr))
     }
@@ -159,6 +163,7 @@ async fn run_io(
     socket: UdpSocket,
     mut producer: Producer<Message>,
     mut consumer: Consumer<Message>,
+    stats: stats::Sender,
 ) -> io::Result<()> {
     let mut poll_producer = false;
 
@@ -195,7 +200,9 @@ async fn run_io(
             for entry in producer.data() {
                 // Since UDP sockets are stateless, the only errors we should back is a WouldBlock.
                 // If we get any errors, we'll try again later.
-                if let Ok((len, addr)) = socket.try_recv_from(entry.payload_mut()) {
+                let res = socket.try_recv_from(entry.payload_mut());
+                stats.recv().on_operation_result(&res, |_len| 1);
+                if let Ok((len, addr)) = res {
                     count += 1;
                     // update the packet information
                     entry.set_remote_address(&(addr.into()));
@@ -220,9 +227,11 @@ async fn run_io(
                 let addr = *entry.remote_address();
                 let addr: std::net::SocketAddr = addr.into();
                 let payload = entry.payload_mut();
+                let res = socket.try_send_to(payload, addr);
+                stats.recv().on_operation_result(&res, |_len| 1);
                 // Since UDP sockets are stateless, the only errors we should back is a WouldBlock.
                 // If we get any errors, we'll try again later.
-                if socket.try_send_to(payload, addr).is_ok() {
+                if res.is_ok() {
                     count += 1;
                 } else {
                     break;

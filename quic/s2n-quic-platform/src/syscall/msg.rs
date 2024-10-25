@@ -2,19 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{SocketEvents, SocketType, UnixMessage};
-use crate::message::Message as _;
+use crate::{message::Message as _, socket::stats};
 use libc::msghdr;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 impl UnixMessage for msghdr {
     #[inline]
-    fn send<E: SocketEvents>(fd: RawFd, entries: &mut [Self], events: &mut E) {
-        send(&fd, entries, events)
+    fn send<E: SocketEvents>(
+        fd: RawFd,
+        entries: &mut [Self],
+        events: &mut E,
+        stats: &stats::Sender,
+    ) {
+        send(&fd, entries, events, stats)
     }
 
     #[inline]
-    fn recv<E: SocketEvents>(fd: RawFd, ty: SocketType, entries: &mut [Self], events: &mut E) {
-        recv(&fd, ty, entries, events)
+    fn recv<E: SocketEvents>(
+        fd: RawFd,
+        ty: SocketType,
+        entries: &mut [Self],
+        events: &mut E,
+        stats: &stats::Sender,
+    ) {
+        recv(&fd, ty, entries, events, stats)
     }
 }
 
@@ -23,6 +34,7 @@ pub fn send<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
     socket: &Sock,
     packets: P,
     events: &mut E,
+    stats: &stats::Sender,
 ) {
     for packet in packets {
         #[cfg(debug_assertions)]
@@ -81,6 +93,8 @@ pub fn send<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
             );
         }
 
+        stats.send().on_operation_result(&result, |_len| 1);
+
         let cf = match result {
             Ok(_) => events.on_complete(1),
             Err(err) => events.on_error(err),
@@ -98,6 +112,7 @@ pub fn recv<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
     socket_type: SocketType,
     packets: P,
     events: &mut E,
+    stats: &stats::Sender,
 ) {
     let mut flags = match socket_type {
         SocketType::Blocking => Default::default(),
@@ -148,6 +163,8 @@ pub fn recv<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
                 "msg_control pointer was modified by the OS"
             );
         }
+
+        stats.recv().on_operation_result(&result, |_len| 1);
 
         let cf = match result {
             Ok(payload_len) => {

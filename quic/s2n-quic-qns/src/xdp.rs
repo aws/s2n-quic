@@ -347,13 +347,15 @@ impl Xdp {
 
         self.bpf_task(addr.port(), rx_fds)?;
 
+        let (stats_sender, stats_recv) = socket::stats::channel();
+
         let io_rx = xdp_io::rx::Rx::new(rx, umem.clone());
 
         let io_tx = {
             let tx = xdp_io::tx::Tx::new(tx, umem, self.tx_encoder());
 
             let udp_tx = {
-                let (udp_tx, udp_task) = tx::channel(udp_socket);
+                let (udp_tx, udp_task) = tx::channel(udp_socket, stats_sender);
 
                 tokio::spawn(udp_task);
 
@@ -372,6 +374,7 @@ impl Xdp {
             .with_rx(io_rx)
             .with_tx(io_tx)
             .with_frame_size(self.frame_size as _)?
+            .with_stats(stats_recv)
             .build();
 
         if let Ok(udp_socket) = recv_udp_socket {

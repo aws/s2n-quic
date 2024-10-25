@@ -1148,6 +1148,16 @@ pub mod api {
     pub struct PlatformTx {
         #[doc = " The number of packets sent"]
         pub count: usize,
+        #[doc = " The number of syscalls performed"]
+        pub syscalls: usize,
+        #[doc = " The number of syscalls that got blocked"]
+        pub blocked_syscalls: usize,
+        #[doc = " The total number of errors encountered since the last event"]
+        pub total_errors: usize,
+        #[doc = " The number of specific error codes dropped"]
+        #[doc = ""]
+        #[doc = " This can happen when a burst of errors exceeds the capacity of the recorder"]
+        pub dropped_errors: usize,
     }
     impl Event for PlatformTx {
         const NAME: &'static str = "platform:tx";
@@ -1168,6 +1178,16 @@ pub mod api {
     pub struct PlatformRx {
         #[doc = " The number of packets received"]
         pub count: usize,
+        #[doc = " The number of syscalls performed"]
+        pub syscalls: usize,
+        #[doc = " The number of syscalls that got blocked"]
+        pub blocked_syscalls: usize,
+        #[doc = " The total number of errors encountered since the last event"]
+        pub total_errors: usize,
+        #[doc = " The number of specific error codes dropped"]
+        #[doc = ""]
+        #[doc = " This can happen when a burst of errors exceeds the capacity of the recorder"]
+        pub dropped_errors: usize,
     }
     impl Event for PlatformRx {
         const NAME: &'static str = "platform:rx";
@@ -1212,6 +1232,15 @@ pub mod api {
     }
     impl Event for PlatformEventLoopSleep {
         const NAME: &'static str = "platform:event_loop_sleep";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct PlatformEventLoopStarted<'a> {
+        #[doc = " The local address of the socket"]
+        pub local_address: SocketAddress<'a>,
+    }
+    impl<'a> Event for PlatformEventLoopStarted<'a> {
+        const NAME: &'static str = "platform:started";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2397,8 +2426,14 @@ pub mod tracing {
                 api::EndpointType::Client {} => self.client.id(),
                 api::EndpointType::Server {} => self.server.id(),
             };
-            let api::PlatformTx { count } = event;
-            tracing :: event ! (target : "platform_tx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count));
+            let api::PlatformTx {
+                count,
+                syscalls,
+                blocked_syscalls,
+                total_errors,
+                dropped_errors,
+            } = event;
+            tracing :: event ! (target : "platform_tx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count) , syscalls = tracing :: field :: debug (syscalls) , blocked_syscalls = tracing :: field :: debug (blocked_syscalls) , total_errors = tracing :: field :: debug (total_errors) , dropped_errors = tracing :: field :: debug (dropped_errors));
         }
         #[inline]
         fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
@@ -2415,8 +2450,14 @@ pub mod tracing {
                 api::EndpointType::Client {} => self.client.id(),
                 api::EndpointType::Server {} => self.server.id(),
             };
-            let api::PlatformRx { count } = event;
-            tracing :: event ! (target : "platform_rx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count));
+            let api::PlatformRx {
+                count,
+                syscalls,
+                blocked_syscalls,
+                total_errors,
+                dropped_errors,
+            } = event;
+            tracing :: event ! (target : "platform_rx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count) , syscalls = tracing :: field :: debug (syscalls) , blocked_syscalls = tracing :: field :: debug (blocked_syscalls) , total_errors = tracing :: field :: debug (total_errors) , dropped_errors = tracing :: field :: debug (dropped_errors));
         }
         #[inline]
         fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
@@ -2473,6 +2514,19 @@ pub mod tracing {
                 processing_duration,
             } = event;
             tracing :: event ! (target : "platform_event_loop_sleep" , parent : parent , tracing :: Level :: DEBUG , timeout = tracing :: field :: debug (timeout) , processing_duration = tracing :: field :: debug (processing_duration));
+        }
+        #[inline]
+        fn on_platform_event_loop_started(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopStarted,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client {} => self.client.id(),
+                api::EndpointType::Server {} => self.server.id(),
+            };
+            let api::PlatformEventLoopStarted { local_address } = event;
+            tracing :: event ! (target : "platform_event_loop_started" , parent : parent , tracing :: Level :: DEBUG , local_address = tracing :: field :: debug (local_address));
         }
     }
 }
@@ -4512,13 +4566,33 @@ pub mod builder {
     pub struct PlatformTx {
         #[doc = " The number of packets sent"]
         pub count: usize,
+        #[doc = " The number of syscalls performed"]
+        pub syscalls: usize,
+        #[doc = " The number of syscalls that got blocked"]
+        pub blocked_syscalls: usize,
+        #[doc = " The total number of errors encountered since the last event"]
+        pub total_errors: usize,
+        #[doc = " The number of specific error codes dropped"]
+        #[doc = ""]
+        #[doc = " This can happen when a burst of errors exceeds the capacity of the recorder"]
+        pub dropped_errors: usize,
     }
     impl IntoEvent<api::PlatformTx> for PlatformTx {
         #[inline]
         fn into_event(self) -> api::PlatformTx {
-            let PlatformTx { count } = self;
+            let PlatformTx {
+                count,
+                syscalls,
+                blocked_syscalls,
+                total_errors,
+                dropped_errors,
+            } = self;
             api::PlatformTx {
                 count: count.into_event(),
+                syscalls: syscalls.into_event(),
+                blocked_syscalls: blocked_syscalls.into_event(),
+                total_errors: total_errors.into_event(),
+                dropped_errors: dropped_errors.into_event(),
             }
         }
     }
@@ -4542,13 +4616,33 @@ pub mod builder {
     pub struct PlatformRx {
         #[doc = " The number of packets received"]
         pub count: usize,
+        #[doc = " The number of syscalls performed"]
+        pub syscalls: usize,
+        #[doc = " The number of syscalls that got blocked"]
+        pub blocked_syscalls: usize,
+        #[doc = " The total number of errors encountered since the last event"]
+        pub total_errors: usize,
+        #[doc = " The number of specific error codes dropped"]
+        #[doc = ""]
+        #[doc = " This can happen when a burst of errors exceeds the capacity of the recorder"]
+        pub dropped_errors: usize,
     }
     impl IntoEvent<api::PlatformRx> for PlatformRx {
         #[inline]
         fn into_event(self) -> api::PlatformRx {
-            let PlatformRx { count } = self;
+            let PlatformRx {
+                count,
+                syscalls,
+                blocked_syscalls,
+                total_errors,
+                dropped_errors,
+            } = self;
             api::PlatformRx {
                 count: count.into_event(),
+                syscalls: syscalls.into_event(),
+                blocked_syscalls: blocked_syscalls.into_event(),
+                total_errors: total_errors.into_event(),
+                dropped_errors: dropped_errors.into_event(),
             }
         }
     }
@@ -4622,6 +4716,20 @@ pub mod builder {
             api::PlatformEventLoopSleep {
                 timeout: timeout.into_event(),
                 processing_duration: processing_duration.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct PlatformEventLoopStarted<'a> {
+        #[doc = " The local address of the socket"]
+        pub local_address: SocketAddress<'a>,
+    }
+    impl<'a> IntoEvent<api::PlatformEventLoopStarted<'a>> for PlatformEventLoopStarted<'a> {
+        #[inline]
+        fn into_event(self) -> api::PlatformEventLoopStarted<'a> {
+            let PlatformEventLoopStarted { local_address } = self;
+            api::PlatformEventLoopStarted {
+                local_address: local_address.into_event(),
             }
         }
     }
@@ -5478,6 +5586,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `PlatformEventLoopStarted` event is triggered"]
+        #[inline]
+        fn on_platform_event_loop_started(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &PlatformEventLoopStarted,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = r" Called for each event that relates to the endpoint and all connections"]
         #[inline]
         fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
@@ -6106,6 +6224,15 @@ mod traits {
             (self.1).on_platform_event_loop_sleep(meta, event);
         }
         #[inline]
+        fn on_platform_event_loop_started(
+            &mut self,
+            meta: &EndpointMeta,
+            event: &PlatformEventLoopStarted,
+        ) {
+            (self.0).on_platform_event_loop_started(meta, event);
+            (self.1).on_platform_event_loop_started(meta, event);
+        }
+        #[inline]
         fn on_event<M: Meta, E: Event>(&mut self, meta: &M, event: &E) {
             self.0.on_event(meta, event);
             self.1.on_event(meta, event);
@@ -6173,6 +6300,8 @@ mod traits {
         fn on_platform_event_loop_wakeup(&mut self, event: builder::PlatformEventLoopWakeup);
         #[doc = "Publishes a `PlatformEventLoopSleep` event to the publisher's subscriber"]
         fn on_platform_event_loop_sleep(&mut self, event: builder::PlatformEventLoopSleep);
+        #[doc = "Publishes a `PlatformEventLoopStarted` event to the publisher's subscriber"]
+        fn on_platform_event_loop_started(&mut self, event: builder::PlatformEventLoopStarted);
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
@@ -6297,6 +6426,13 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_platform_event_loop_sleep(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_platform_event_loop_started(&mut self, event: builder::PlatformEventLoopStarted) {
+            let event = event.into_event();
+            self.subscriber
+                .on_platform_event_loop_started(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -7535,6 +7671,197 @@ pub mod metrics {
 pub mod testing {
     use super::*;
     use crate::event::snapshot::Location;
+    pub mod endpoint {
+        use super::*;
+        pub struct Subscriber {
+            location: Option<Location>,
+            output: Vec<String>,
+            pub version_information: u32,
+            pub endpoint_packet_sent: u32,
+            pub endpoint_packet_received: u32,
+            pub endpoint_datagram_sent: u32,
+            pub endpoint_datagram_received: u32,
+            pub endpoint_datagram_dropped: u32,
+            pub endpoint_connection_attempt_failed: u32,
+            pub platform_tx: u32,
+            pub platform_tx_error: u32,
+            pub platform_rx: u32,
+            pub platform_rx_error: u32,
+            pub platform_feature_configured: u32,
+            pub platform_event_loop_wakeup: u32,
+            pub platform_event_loop_sleep: u32,
+            pub platform_event_loop_started: u32,
+        }
+        impl Drop for Subscriber {
+            fn drop(&mut self) {
+                if std::thread::panicking() {
+                    return;
+                }
+                if let Some(location) = self.location.as_ref() {
+                    location.snapshot_log(&self.output);
+                }
+            }
+        }
+        impl Subscriber {
+            #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+            #[track_caller]
+            pub fn snapshot() -> Self {
+                let mut sub = Self::no_snapshot();
+                sub.location = Location::from_thread_name();
+                sub
+            }
+            #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+            #[track_caller]
+            pub fn named_snapshot<Name: core::fmt::Display>(name: Name) -> Self {
+                let mut sub = Self::no_snapshot();
+                sub.location = Some(Location::new(name));
+                sub
+            }
+            #[doc = r" Creates a subscriber with snapshot assertions disabled"]
+            pub fn no_snapshot() -> Self {
+                Self {
+                    location: None,
+                    output: Default::default(),
+                    version_information: 0,
+                    endpoint_packet_sent: 0,
+                    endpoint_packet_received: 0,
+                    endpoint_datagram_sent: 0,
+                    endpoint_datagram_received: 0,
+                    endpoint_datagram_dropped: 0,
+                    endpoint_connection_attempt_failed: 0,
+                    platform_tx: 0,
+                    platform_tx_error: 0,
+                    platform_rx: 0,
+                    platform_rx_error: 0,
+                    platform_feature_configured: 0,
+                    platform_event_loop_wakeup: 0,
+                    platform_event_loop_sleep: 0,
+                    platform_event_loop_started: 0,
+                }
+            }
+        }
+        impl super::super::Subscriber for Subscriber {
+            type ConnectionContext = ();
+            fn create_connection_context(
+                &mut self,
+                _meta: &api::ConnectionMeta,
+                _info: &api::ConnectionInfo,
+            ) -> Self::ConnectionContext {
+            }
+            fn on_version_information(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::VersionInformation,
+            ) {
+                self.version_information += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_endpoint_packet_sent(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointPacketSent,
+            ) {
+                self.endpoint_packet_sent += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_endpoint_packet_received(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointPacketReceived,
+            ) {
+                self.endpoint_packet_received += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_endpoint_datagram_sent(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointDatagramSent,
+            ) {
+                self.endpoint_datagram_sent += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_endpoint_datagram_received(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointDatagramReceived,
+            ) {
+                self.endpoint_datagram_received += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_endpoint_datagram_dropped(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointDatagramDropped,
+            ) {
+                self.endpoint_datagram_dropped += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_endpoint_connection_attempt_failed(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointConnectionAttemptFailed,
+            ) {
+                self.endpoint_connection_attempt_failed += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
+                self.platform_tx += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_platform_tx_error(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformTxError,
+            ) {
+                self.platform_tx_error += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
+                self.platform_rx += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_platform_rx_error(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformRxError,
+            ) {
+                self.platform_rx_error += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_platform_feature_configured(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformFeatureConfigured,
+            ) {
+                self.platform_feature_configured += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_platform_event_loop_wakeup(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformEventLoopWakeup,
+            ) {
+                self.platform_event_loop_wakeup += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_platform_event_loop_sleep(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformEventLoopSleep,
+            ) {
+                self.platform_event_loop_sleep += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+            fn on_platform_event_loop_started(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::PlatformEventLoopStarted,
+            ) {
+                self.platform_event_loop_started += 1;
+                self.output.push(format!("{meta:?} {event:?}"));
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     pub struct Subscriber {
         location: Option<Location>,
@@ -7596,6 +7923,7 @@ pub mod testing {
         pub platform_feature_configured: u32,
         pub platform_event_loop_wakeup: u32,
         pub platform_event_loop_sleep: u32,
+        pub platform_event_loop_started: u32,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -7684,6 +8012,7 @@ pub mod testing {
                 platform_feature_configured: 0,
                 platform_event_loop_wakeup: 0,
                 platform_event_loop_sleep: 0,
+                platform_event_loop_started: 0,
             }
         }
     }
@@ -8265,6 +8594,14 @@ pub mod testing {
             self.platform_event_loop_sleep += 1;
             self.output.push(format!("{meta:?} {event:?}"));
         }
+        fn on_platform_event_loop_started(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopStarted,
+        ) {
+            self.platform_event_loop_started += 1;
+            self.output.push(format!("{meta:?} {event:?}"));
+        }
     }
     #[derive(Clone, Debug)]
     pub struct Publisher {
@@ -8327,6 +8664,7 @@ pub mod testing {
         pub platform_feature_configured: u32,
         pub platform_event_loop_wakeup: u32,
         pub platform_event_loop_sleep: u32,
+        pub platform_event_loop_started: u32,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -8405,6 +8743,7 @@ pub mod testing {
                 platform_feature_configured: 0,
                 platform_event_loop_wakeup: 0,
                 platform_event_loop_sleep: 0,
+                platform_event_loop_started: 0,
             }
         }
     }
@@ -8479,6 +8818,11 @@ pub mod testing {
         }
         fn on_platform_event_loop_sleep(&mut self, event: builder::PlatformEventLoopSleep) {
             self.platform_event_loop_sleep += 1;
+            let event = event.into_event();
+            self.output.push(format!("{event:?}"));
+        }
+        fn on_platform_event_loop_started(&mut self, event: builder::PlatformEventLoopStarted) {
+            self.platform_event_loop_started += 1;
             let event = event.into_event();
             self.output.push(format!("{event:?}"));
         }
