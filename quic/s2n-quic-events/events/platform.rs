@@ -7,6 +7,20 @@
 struct PlatformTx {
     /// The number of packets sent
     count: usize,
+
+    /// The number of syscalls performed
+    syscalls: usize,
+
+    /// The number of syscalls that got blocked
+    blocked_syscalls: usize,
+
+    /// The total number of errors encountered since the last event
+    total_errors: usize,
+
+    /// The number of specific error codes dropped
+    ///
+    /// This can happen when a burst of errors exceeds the capacity of the recorder
+    dropped_errors: usize,
 }
 
 #[event("platform:tx_error")]
@@ -30,6 +44,20 @@ impl From<PlatformTxError> for std::io::Error {
 struct PlatformRx {
     /// The number of packets received
     count: usize,
+
+    /// The number of syscalls performed
+    syscalls: usize,
+
+    /// The number of syscalls that got blocked
+    blocked_syscalls: usize,
+
+    /// The total number of errors encountered since the last event
+    total_errors: usize,
+
+    /// The number of specific error codes dropped
+    ///
+    /// This can happen when a burst of errors exceeds the capacity of the recorder
+    dropped_errors: usize,
 }
 
 #[event("platform:rx_error")]
@@ -90,4 +118,11 @@ struct PlatformEventLoopSleep {
     timeout: Option<core::time::Duration>,
     /// The amount of time spent processing endpoint events in a single event loop
     processing_duration: core::time::Duration,
+}
+
+#[event("platform:started")]
+#[subject(endpoint)]
+struct PlatformEventLoopStarted<'a> {
+    /// The local address of the socket
+    local_address: SocketAddress<'a>,
 }

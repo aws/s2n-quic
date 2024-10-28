@@ -3,7 +3,7 @@
 
 use crate::{
     message::Message,
-    socket::{ring::Producer, task::events},
+    socket::{ring::Producer, stats, task::events},
 };
 use core::{
     future::Future,
@@ -22,6 +22,7 @@ pub trait Socket<T: Message> {
         cx: &mut Context,
         entries: &mut [T],
         events: &mut Events,
+        stats: &stats::Sender,
     ) -> Result<(), Self::Error>;
 }
 
@@ -31,6 +32,7 @@ pub struct Receiver<T: Message, S: Socket<T>> {
     rx: S,
     ring_cooldown: Cooldown,
     io_cooldown: Cooldown,
+    stats: stats::Sender,
 }
 
 impl<T, S> Receiver<T, S>
@@ -39,12 +41,13 @@ where
     S: Socket<T> + Unpin,
 {
     #[inline]
-    pub fn new(ring: Producer<T>, rx: S, cooldown: Cooldown) -> Self {
+    pub fn new(ring: Producer<T>, rx: S, cooldown: Cooldown, stats: stats::Sender) -> Self {
         Self {
             ring,
             rx,
             ring_cooldown: cooldown.clone(),
             io_cooldown: cooldown,
+            stats,
         }
     }
 
@@ -108,7 +111,7 @@ where
             let entries = this.ring.data();
 
             // perform the recv syscall
-            match this.rx.recv(cx, entries, &mut events) {
+            match this.rx.recv(cx, entries, &mut events, &this.stats) {
                 Ok(_) => {
                     // increment the number of received messages
                     let count = events.take_count() as u32;

@@ -2,18 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{SocketEvents, SocketType, UnixMessage};
+use crate::socket::stats;
 use libc::mmsghdr;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 impl UnixMessage for mmsghdr {
     #[inline]
-    fn send<E: SocketEvents>(fd: RawFd, entries: &mut [Self], events: &mut E) {
-        send(&fd, entries, events)
+    fn send<E: SocketEvents>(
+        fd: RawFd,
+        entries: &mut [Self],
+        events: &mut E,
+        stats: &stats::Sender,
+    ) {
+        send(&fd, entries, events, stats)
     }
 
     #[inline]
-    fn recv<E: SocketEvents>(fd: RawFd, ty: SocketType, entries: &mut [Self], events: &mut E) {
-        recv(&fd, ty, entries, events)
+    fn recv<E: SocketEvents>(
+        fd: RawFd,
+        ty: SocketType,
+        entries: &mut [Self],
+        events: &mut E,
+        stats: &stats::Sender,
+    ) {
+        recv(&fd, ty, entries, events, stats)
     }
 }
 
@@ -22,6 +34,7 @@ pub fn send<Sock: AsRawFd, E: SocketEvents>(
     socket: &Sock,
     packets: &mut [mmsghdr],
     events: &mut E,
+    stats: &stats::Sender,
 ) {
     if packets.is_empty() {
         return;
@@ -72,6 +85,8 @@ pub fn send<Sock: AsRawFd, E: SocketEvents>(
 
     let res = libc!(sendmmsg(sockfd, msgvec, vlen, flags));
 
+    stats.send().on_operation_result(&res, |count| *count as _);
+
     let _ = match res {
         Ok(count) => events.on_complete(count as _),
         Err(error) => events.on_error(error),
@@ -84,6 +99,7 @@ pub fn recv<Sock: AsRawFd, E: SocketEvents>(
     socket_type: SocketType,
     packets: &mut [mmsghdr],
     events: &mut E,
+    stats: &stats::Sender,
 ) {
     if packets.is_empty() {
         return;
@@ -143,6 +159,8 @@ pub fn recv<Sock: AsRawFd, E: SocketEvents>(
     // > msgvec; on error, -1 is returned, and errno is set to indicate the error.
 
     let res = libc!(recvmmsg(sockfd, msgvec, vlen, flags, timeout));
+
+    stats.recv().on_operation_result(&res, |count| *count as _);
 
     let _ = match res {
         Ok(count) => events.on_complete(count as _),

@@ -311,6 +311,9 @@ struct Output {
     pub testing_fields: TokenStream,
     pub testing_fields_init: TokenStream,
     pub subscriber_testing: TokenStream,
+    pub endpoint_subscriber_testing: TokenStream,
+    pub endpoint_testing_fields: TokenStream,
+    pub endpoint_testing_fields_init: TokenStream,
     pub endpoint_publisher_testing: TokenStream,
     pub connection_publisher_testing: TokenStream,
     pub metrics_fields: TokenStream,
@@ -337,6 +340,9 @@ impl ToTokens for Output {
             testing_fields,
             testing_fields_init,
             subscriber_testing,
+            endpoint_subscriber_testing,
+            endpoint_testing_fields,
+            endpoint_testing_fields_init,
             endpoint_publisher_testing,
             connection_publisher_testing,
             metrics_fields,
@@ -746,6 +752,64 @@ impl ToTokens for Output {
                 use crate::event::snapshot::Location;
                 #imports
                 #mutex
+
+                pub mod endpoint {
+                    use super::*;
+
+                    pub struct Subscriber {
+                        location: Option<Location>,
+                        output: #testing_output_type,
+                        #endpoint_testing_fields
+                    }
+
+                    impl Drop for Subscriber {
+                        fn drop(&mut self) {
+                            // don't make any assertions if we're already failing the test
+                            if std::thread::panicking() {
+                                return;
+                            }
+
+                            if let Some(location) = self.location.as_ref() {
+                                location.snapshot_log(&self.output #lock);
+                            }
+                        }
+                    }
+
+                    impl Subscriber {
+                        /// Creates a subscriber with snapshot assertions enabled
+                        #[track_caller]
+                        pub fn snapshot() -> Self {
+                            let mut sub = Self::no_snapshot();
+                            sub.location = Location::from_thread_name();
+                            sub
+                        }
+
+                        /// Creates a subscriber with snapshot assertions enabled
+                        #[track_caller]
+                        pub fn named_snapshot<Name: core::fmt::Display>(name: Name) -> Self {
+                            let mut sub = Self::no_snapshot();
+                            sub.location = Some(Location::new(name));
+                            sub
+                        }
+
+                        /// Creates a subscriber with snapshot assertions disabled
+                        pub fn no_snapshot() -> Self {
+                            Self {
+                                location: None,
+                                output: Default::default(),
+                                #endpoint_testing_fields_init
+                            }
+                        }
+                    }
+
+                    impl super::super::Subscriber for Subscriber {
+                        type ConnectionContext = ();
+
+                        fn create_connection_context(&#mode self, _meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {}
+
+                        #endpoint_subscriber_testing
+                    }
+                }
 
                 #[derive(Clone, Debug)]
                 pub struct Subscriber {
