@@ -1,0 +1,7 @@
+---
+source: quic/s2n-quic-core/src/event/snapshot.rs
+input_file: quic/s2n-quic-core/src/recovery/bbr/probe_rtt.rs
+---
+BbrStateChanged { path_id: 0, state: Startup }
+BbrStateChanged { path_id: 0, state: ProbeBwDown }
+BbrStateChanged { path_id: 0, state: ProbeBwCruise }

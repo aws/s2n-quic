@@ -10,6 +10,10 @@ mod generated;
 pub mod metrics;
 pub use generated::*;
 
+#[cfg(any(test, feature = "testing"))]
+#[doc(hidden)]
+pub mod snapshot;
+
 /// All event types which can be emitted from this library.
 pub trait Event: core::fmt::Debug {
     const NAME: &'static str;

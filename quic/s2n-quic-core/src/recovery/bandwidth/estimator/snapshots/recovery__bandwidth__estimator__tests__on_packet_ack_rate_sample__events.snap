@@ -1,0 +1,7 @@
+---
+source: quic/s2n-quic-core/src/event/snapshot.rs
+input_file: quic/s2n-quic-core/src/recovery/bandwidth/estimator/tests.rs
+---
+DeliveryRateSampled { path_id: 0, rate_sample: RateSample { interval: 10s, delivered_bytes: 201500, lost_bytes: 150, ecn_ce_count: 15, is_app_limited: false, prior_delivered_bytes: 0, bytes_in_flight: 100, prior_lost_bytes: 0, prior_ecn_ce_count: 0, delivery_rate_bytes_per_second: 20150 } }
+DeliveryRateSampled { path_id: 0, rate_sample: RateSample { interval: 11s, delivered_bytes: 3000, lost_bytes: 0, ecn_ce_count: 0, is_app_limited: true, prior_delivered_bytes: 200000, bytes_in_flight: 3100, prior_lost_bytes: 150, prior_ecn_ce_count: 15, delivery_rate_bytes_per_second: 272 } }
+DeliveryRateSampled { path_id: 0, rate_sample: RateSample { interval: 11s, delivered_bytes: 4500, lost_bytes: 0, ecn_ce_count: 0, is_app_limited: true, prior_delivered_bytes: 200000, bytes_in_flight: 3100, prior_lost_bytes: 150, prior_ecn_ce_count: 15, delivery_rate_bytes_per_second: 409 } }

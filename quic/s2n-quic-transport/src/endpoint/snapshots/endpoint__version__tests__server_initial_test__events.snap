@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-core/src/event/snapshot.rs
+input_file: quic/s2n-quic-transport/src/endpoint/version.rs
+---
+VersionInformation { server_versions: [1], client_versions: [123], chosen_version: None }

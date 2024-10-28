@@ -1,7 +1,0 @@
----
-source: quic/s2n-quic-transport/src/space/handshake_status.rs
-expression: ""
----
-HandshakeStatusUpdated { status: Complete }
-HandshakeStatusUpdated { status: Confirmed }
-HandshakeStatusUpdated { status: HandshakeDoneAcked }

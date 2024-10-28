@@ -1,5 +1,0 @@
----
-source: quic/s2n-quic-transport/src/path/manager/tests.rs
-expression: ""
----
-ConnectionIdUpdated { path_id: 0, cid_consumer: Local, previous: 0x69643031, current: 0x69643032 }

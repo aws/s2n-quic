@@ -1,9 +1,0 @@
----
-source: quic/s2n-quic-transport/src/path/manager/tests.rs
-expression: ""
----
-ActivePathUpdated { previous: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x00, id: 0, is_active: false }, active: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x01, id: 1, is_active: true } }
-ConnectionIdUpdated { path_id: 0, cid_consumer: Local, previous: 0x00, current: 0x01 }
-PathChallengeUpdated { path_challenge_status: Abandoned, path: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x00, id: 0, is_active: false }, challenge_data: [123, 122, 121, 120, 127, 126, 125, 124] }
-PathChallengeUpdated { path_challenge_status: Abandoned, path: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x01, id: 1, is_active: true }, challenge_data: [0, 0, 0, 0, 0, 0, 0, 0] }
-PathChallengeUpdated { path_challenge_status: Abandoned, path: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x02, id: 2, is_active: false }, challenge_data: [1, 1, 1, 1, 1, 1, 1, 1] }

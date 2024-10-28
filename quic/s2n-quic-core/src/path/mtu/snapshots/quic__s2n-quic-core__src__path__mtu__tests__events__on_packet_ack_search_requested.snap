@@ -1,5 +1,0 @@
----
-source: quic/s2n-quic-core/src/path/mtu/tests.rs
-expression: ""
----
-MtuUpdated { path_id: 0, mtu: 1472, cause: ProbeAcknowledged, search_complete: false }
