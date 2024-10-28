@@ -1,7 +1,0 @@
----
-source: quic/s2n-quic-transport/src/recovery/manager/tests.rs
-expression: ""
----
-AckRangeReceived { packet_header: OneRtt { number: 0 }, path: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x5065657249640000000000000000506565724964, id: 0, is_active: true }, ack_range: 0..=0 }
-MtuUpdated { path_id: 0, mtu: 1472, cause: ProbeAcknowledged, search_complete: true }
-RecoveryMetrics { path: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x5065657249640000000000000000506565724964, id: 0, is_active: true }, min_rtt: 10ms, smoothed_rtt: 10ms, latest_rtt: 10ms, rtt_variance: 5ms, max_ack_delay: 10ms, pto_count: 0, congestion_window: 15000, bytes_in_flight: 1472, congestion_limited: false }

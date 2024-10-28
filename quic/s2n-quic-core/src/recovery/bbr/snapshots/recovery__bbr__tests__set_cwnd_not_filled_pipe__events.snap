@@ -1,0 +1,5 @@
+---
+source: quic/s2n-quic-core/src/event/snapshot.rs
+input_file: quic/s2n-quic-core/src/recovery/bbr/tests.rs
+---
+DeliveryRateSampled { path_id: 0, rate_sample: RateSample { interval: 0ns, delivered_bytes: 24001, lost_bytes: 0, ecn_ce_count: 0, is_app_limited: false, prior_delivered_bytes: 0, bytes_in_flight: 0, prior_lost_bytes: 0, prior_ecn_ce_count: 0, delivery_rate_bytes_per_second: 0 } }

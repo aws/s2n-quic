@@ -1,0 +1,7 @@
+---
+source: quic/s2n-quic-core/src/event/snapshot.rs
+input_file: quic/s2n-quic-transport/src/recovery/manager/tests.rs
+---
+PacketLost { packet_header: OneRtt { number: 0 }, path: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x5065657249640000000000000000506565724964, id: 0, is_active: true }, bytes_lost: 1, is_mtu_probe: false }
+PacketLost { packet_header: OneRtt { number: 7 }, path: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x5065657249640000000000000000506565724964, id: 0, is_active: true }, bytes_lost: 1, is_mtu_probe: false }
+Congestion { path: Path { local_addr: 0.0.0.0:0, local_cid: 0x4c6f63616c4900000000000000004c6f63616c49, remote_addr: 0.0.0.0:0, remote_cid: 0x5065657249640000000000000000506565724964, id: 0, is_active: true }, source: PacketLoss }

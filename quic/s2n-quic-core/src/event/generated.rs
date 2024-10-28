@@ -7534,6 +7534,7 @@ pub mod metrics {
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::*;
+    use crate::event::snapshot::Location;
     #[derive(Clone, Debug)]
     pub struct Subscriber {
         location: Option<Location>,
@@ -7602,7 +7603,7 @@ pub mod testing {
                 return;
             }
             if let Some(location) = self.location.as_ref() {
-                location.snapshot(&self.output);
+                location.snapshot_log(&self.output);
             }
         }
     }
@@ -7611,7 +7612,14 @@ pub mod testing {
         #[track_caller]
         pub fn snapshot() -> Self {
             let mut sub = Self::no_snapshot();
-            sub.location = Location::try_new();
+            sub.location = Location::from_thread_name();
+            sub
+        }
+        #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+        #[track_caller]
+        pub fn named_snapshot<Name: core::fmt::Display>(name: Name) -> Self {
+            let mut sub = Self::no_snapshot();
+            sub.location = Some(Location::new(name));
             sub
         }
         #[doc = r" Creates a subscriber with snapshot assertions disabled"]
@@ -8325,7 +8333,14 @@ pub mod testing {
         #[track_caller]
         pub fn snapshot() -> Self {
             let mut sub = Self::no_snapshot();
-            sub.location = Location::try_new();
+            sub.location = Location::from_thread_name();
+            sub
+        }
+        #[doc = r" Creates a subscriber with snapshot assertions enabled"]
+        #[track_caller]
+        pub fn named_snapshot<Name: core::fmt::Display>(name: Name) -> Self {
+            let mut sub = Self::no_snapshot();
+            sub.location = Some(Location::new(name));
             sub
         }
         #[doc = r" Creates a publisher with snapshot assertions disabled"]
@@ -8793,52 +8808,8 @@ pub mod testing {
                 return;
             }
             if let Some(location) = self.location.as_ref() {
-                location.snapshot(&self.output);
+                location.snapshot_log(&self.output);
             }
-        }
-    }
-    #[derive(Clone, Debug)]
-    struct Location(&'static core::panic::Location<'static>);
-    impl Location {
-        #[track_caller]
-        fn try_new() -> Option<Self> {
-            let thread = std::thread::current();
-            if thread.name().map_or(false, |name| name != "main") {
-                Some(Self(core::panic::Location::caller()))
-            } else {
-                None
-            }
-        }
-        fn snapshot(&self, output: &[String]) {
-            if cfg!(miri) {
-                return;
-            }
-            use std::path::{Component, Path};
-            let value = output.join("\n");
-            let thread = std::thread::current();
-            let function_name = thread.name().unwrap();
-            let test_path = Path::new(self.0.file().trim_end_matches(".rs"));
-            let module_path = test_path
-                .components()
-                .filter_map(|comp| match comp {
-                    Component::Normal(comp) => comp.to_str(),
-                    _ => Some("_"),
-                })
-                .chain(Some("events"))
-                .collect::<Vec<_>>()
-                .join("::");
-            let current_dir = std::env::current_dir().unwrap();
-            insta::_macro_support::assert_snapshot(
-                insta::_macro_support::AutoName.into(),
-                &value,
-                current_dir.to_str().unwrap(),
-                function_name,
-                &module_path,
-                self.0.file(),
-                self.0.line(),
-                "",
-            )
-            .unwrap()
         }
     }
 }
