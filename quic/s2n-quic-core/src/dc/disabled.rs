@@ -45,6 +45,10 @@ impl Path for () {
         unimplemented!()
     }
 
+    fn on_dc_handshake_complete(&mut self) {
+        unimplemented!()
+    }
+
     fn on_mtu_updated(&mut self, _mtu: u16) {
         unimplemented!()
     }

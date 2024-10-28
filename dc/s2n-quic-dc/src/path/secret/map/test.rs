@@ -41,8 +41,10 @@ fn cleans_after_delay() {
     let first = fake_entry(1);
     let second = fake_entry(1);
     let third = fake_entry(1);
-    map.insert(first.clone());
-    map.insert(second.clone());
+    map.on_new_path_secrets(first.clone());
+    map.on_handshake_complete(first.clone());
+    map.on_new_path_secrets(second.clone());
+    map.on_handshake_complete(second.clone());
 
     assert!(map.state.ids.contains_key(first.secret.id()));
     assert!(map.state.ids.contains_key(second.secret.id()));
@@ -50,7 +52,8 @@ fn cleans_after_delay() {
     map.state.cleaner.clean(&map.state, 1);
     map.state.cleaner.clean(&map.state, 1);
 
-    map.insert(third.clone());
+    map.on_new_path_secrets(third.clone());
+    map.on_handshake_complete(third.clone());
 
     assert!(!map.state.ids.contains_key(first.secret.id()));
     assert!(map.state.ids.contains_key(second.secret.id()));
@@ -86,9 +89,10 @@ struct Model {
 
 #[derive(bolero::TypeGenerator, Debug, Copy, Clone)]
 enum Operation {
-    Insert { ip: u8, path_secret_id: TestId },
+    NewPathSecret { ip: u8, path_secret_id: TestId },
     AdvanceTime,
     ReceiveUnknown { path_secret_id: TestId },
+    HandshakeComplete { path_secret_id: TestId },
 }
 
 #[derive(bolero::TypeGenerator, PartialEq, Eq, Hash, Copy, Clone)]
@@ -130,13 +134,13 @@ enum Invariant {
 impl Model {
     fn perform(&mut self, operation: Operation, state: &Map) {
         match operation {
-            Operation::Insert { ip, path_secret_id } => {
+            Operation::NewPathSecret { ip, path_secret_id } => {
                 let ip = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([0, 0, 0, ip]), 0));
                 let secret = path_secret_id.secret();
                 let id = *secret.id();
 
                 let stateless_reset = state.state.signer.sign(&id);
-                state.insert(Arc::new(Entry::new(
+                state.on_new_path_secrets(Arc::new(Entry::new(
                     ip,
                     secret,
                     sender::State::new(stateless_reset),
@@ -145,8 +149,15 @@ impl Model {
                     dc::testing::TEST_REHANDSHAKE_PERIOD,
                 )));
 
-                self.invariants.insert(Invariant::ContainsIp(ip));
                 self.invariants.insert(Invariant::ContainsId(id));
+            }
+            Operation::HandshakeComplete { path_secret_id } => {
+                if let Some(entry) = state.state.ids.get_by_key(&path_secret_id.id()) {
+                    if !state.state.peers.contains_key(&entry.peer) {
+                        state.on_handshake_complete(entry.clone());
+                    }
+                    self.invariants.insert(Invariant::ContainsIp(entry.peer));
+                }
             }
             Operation::AdvanceTime => {
                 let mut invalidated = Vec::new();
@@ -232,7 +243,7 @@ fn has_duplicate_pids(ops: &[Operation]) -> bool {
     let mut ids = HashSet::new();
     for op in ops.iter() {
         match op {
-            Operation::Insert {
+            Operation::NewPathSecret {
                 ip: _,
                 path_secret_id,
             } => {
@@ -243,6 +254,10 @@ fn has_duplicate_pids(ops: &[Operation]) -> bool {
             Operation::AdvanceTime => {}
             Operation::ReceiveUnknown { path_secret_id: _ } => {
                 // no-op, we're fine receiving unknown pids.
+            }
+            Operation::HandshakeComplete { .. } => {
+                // no-op, a handshake complete for the same pid as a
+                // new path secret is expected
             }
         }
     }
@@ -320,7 +335,9 @@ fn no_memory_growth() {
     map.state.cleaner.stop();
     for idx in 0..500_000 {
         // FIXME: this ends up 2**16 peers in the `peers` map
-        map.insert(fake_entry(idx as u16));
+        let entry = fake_entry(idx as u16);
+        map.on_new_path_secrets(entry.clone());
+        map.on_handshake_complete(entry)
     }
 }
 
