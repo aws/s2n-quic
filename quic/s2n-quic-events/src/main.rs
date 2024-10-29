@@ -213,7 +213,7 @@ impl OutputMode {
                 fn supervisor_timeout(
                     &mut self,
                     conn_context: &mut Self::ConnectionContext,
-                    meta: &ConnectionMeta,
+                    meta: &api::ConnectionMeta,
                     context: &supervisor::Context,
                 ) -> Option<Duration> {
                     None
@@ -228,7 +228,7 @@ impl OutputMode {
                 fn on_supervisor_timeout(
                     &mut self,
                     conn_context: &mut Self::ConnectionContext,
-                    meta: &ConnectionMeta,
+                    meta: &api::ConnectionMeta,
                     context: &supervisor::Context,
                 ) -> supervisor::Outcome {
                     supervisor::Outcome::default()
@@ -245,7 +245,7 @@ impl OutputMode {
                 fn supervisor_timeout(
                     &mut self,
                     conn_context: &mut Self::ConnectionContext,
-                    meta: &ConnectionMeta,
+                    meta: &api::ConnectionMeta,
                     context: &supervisor::Context,
                 ) -> Option<Duration> {
                     let timeout_a = self
@@ -265,7 +265,7 @@ impl OutputMode {
                 fn on_supervisor_timeout(
                     &mut self,
                     conn_context: &mut Self::ConnectionContext,
-                    meta: &ConnectionMeta,
+                    meta: &api::ConnectionMeta,
                     context: &supervisor::Context,
                 ) -> supervisor::Outcome {
                     let outcome_a =
@@ -306,6 +306,7 @@ struct Output {
     pub connection_publisher_subscriber: TokenStream,
     pub tuple_subscriber: TokenStream,
     pub tracing_subscriber: TokenStream,
+    pub tracing_subscriber_attr: TokenStream,
     pub builders: TokenStream,
     pub api: TokenStream,
     pub testing_fields: TokenStream,
@@ -335,6 +336,7 @@ impl ToTokens for Output {
             connection_publisher_subscriber,
             tuple_subscriber,
             tracing_subscriber,
+            tracing_subscriber_attr,
             builders,
             api,
             testing_fields,
@@ -379,7 +381,7 @@ impl ToTokens for Output {
                 #extra
             }
 
-            #[cfg(feature = "event-tracing")]
+            #tracing_subscriber_attr
             pub mod tracing {
                 //! This module contains event integration with [`tracing`](https://docs.rs/tracing)
                 use super::api;
@@ -407,12 +409,16 @@ impl ToTokens for Output {
                 impl super::Subscriber for Subscriber {
                     type ConnectionContext = tracing::Span;
 
-                    fn create_connection_context(&#mode self, meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {
+                    fn create_connection_context(
+                        &#mode self,
+                        meta: &api::ConnectionMeta,
+                        _info: &api::ConnectionInfo
+                    ) -> Self::ConnectionContext {
                         let parent = match meta.endpoint_type {
-                            api::EndpointType::Client {} => {
+                            api::EndpointType::Client { .. } => {
                                 self.client.id()
                             }
-                            api::EndpointType::Server {} => {
+                            api::EndpointType::Server { .. } => {
                                 self.server.id()
                             }
                         };
@@ -434,51 +440,8 @@ impl ToTokens for Output {
             pub use traits::*;
             mod traits {
                 use super::*;
-                use api::*;
                 use core::fmt;
-                use crate::query;
-
-                /// Provides metadata related to an event
-                pub trait Meta: fmt::Debug {
-                    /// Returns whether the local endpoint is a Client or Server
-                    fn endpoint_type(&self) -> &EndpointType;
-
-                    /// A context from which the event is being emitted
-                    ///
-                    /// An event can occur in the context of an Endpoint or Connection
-                    fn subject(&self) -> Subject;
-
-                    /// The time the event occurred
-                    fn timestamp(&self) -> &crate::event::Timestamp;
-                }
-
-                impl Meta for ConnectionMeta {
-                    fn endpoint_type(&self) -> &EndpointType {
-                        &self.endpoint_type
-                    }
-
-                    fn subject(&self) -> Subject {
-                        Subject::Connection { id : self.id }
-                    }
-
-                    fn timestamp(&self) -> &crate::event::Timestamp {
-                        &self.timestamp
-                    }
-                }
-
-                impl Meta for EndpointMeta {
-                    fn endpoint_type(&self) -> &EndpointType {
-                        &self.endpoint_type
-                    }
-
-                    fn subject(&self) -> Subject {
-                        Subject::Endpoint {}
-                    }
-
-                    fn timestamp(&self) -> &crate::event::Timestamp {
-                        &self.timestamp
-                    }
-                }
+                use #s2n_quic_core_path::{query, event::Meta};
 
                 /// Allows for events to be subscribed to
                 pub trait Subscriber: 'static + Send {
@@ -528,7 +491,11 @@ impl ToTokens for Output {
                     type ConnectionContext: 'static + Send;
 
                     /// Creates a context to be passed to each connection-related event
-                    fn create_connection_context(&#mode self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext;
+                    fn create_connection_context(
+                        &#mode self,
+                        meta: &api::ConnectionMeta,
+                        info: &api::ConnectionInfo
+                    ) -> Self::ConnectionContext;
 
                     #supervisor_timeout
 
@@ -543,7 +510,12 @@ impl ToTokens for Output {
 
                     /// Called for each event that relates to a connection
                     #[inline]
-                    fn on_connection_event<E: Event>(&#mode self, context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
+                    fn on_connection_event<E: Event>(
+                        &#mode self,
+                        context: &#mode Self::ConnectionContext,
+                        meta: &api::ConnectionMeta,
+                        event: &E
+                    ) {
                         let _ = context;
                         let _ = meta;
                         let _ = event;
@@ -568,7 +540,11 @@ impl ToTokens for Output {
                     type ConnectionContext = (A::ConnectionContext, B::ConnectionContext);
 
                     #[inline]
-                    fn create_connection_context(&#mode self, meta: &ConnectionMeta, info: &ConnectionInfo) -> Self::ConnectionContext {
+                    fn create_connection_context(
+                        &#mode self,
+                        meta: &api::ConnectionMeta,
+                        info: &api::ConnectionInfo
+                    ) -> Self::ConnectionContext {
                         (self.0.create_connection_context(meta, info), self.1.create_connection_context(meta, info))
                     }
 
@@ -583,7 +559,12 @@ impl ToTokens for Output {
                     }
 
                     #[inline]
-                    fn on_connection_event<E: Event>(&#mode self, context: &#mode Self::ConnectionContext, meta: &ConnectionMeta, event: &E) {
+                    fn on_connection_event<E: Event>(
+                        &#mode self,
+                        context: &#mode Self::ConnectionContext,
+                        meta: &api::ConnectionMeta,
+                        event: &E
+                    ) {
                         self.0.on_connection_event(&#mode context.0, meta, event);
                         self.1.on_connection_event(&#mode context.1, meta, event);
                     }
@@ -606,7 +587,7 @@ impl ToTokens for Output {
                 }
 
                 pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
-                    meta: EndpointMeta,
+                    meta: api::EndpointMeta,
                     quic_version: Option<u32>,
                     subscriber: &'a #mode Sub,
                 }
@@ -651,11 +632,11 @@ impl ToTokens for Output {
                     fn quic_version(&self) -> u32;
 
                     /// Returns the [`Subject`] for the current publisher
-                    fn subject(&self) -> Subject;
+                    fn subject(&self) -> api::Subject;
                 }
 
                 pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
-                    meta: ConnectionMeta,
+                    meta: api::ConnectionMeta,
                     quic_version: u32,
                     subscriber: &'a #mode Sub,
                     context: &'a #mode Sub::ConnectionContext,
@@ -707,7 +688,7 @@ impl ToTokens for Output {
                 #imports
                 use #s2n_quic_core_path::event::metrics::Recorder;
 
-                #[derive(Clone, Debug)]
+                #[derive(Debug)]
                 pub struct Subscriber<S: super::Subscriber>
                     where S::ConnectionContext: Recorder {
                     subscriber: S,
@@ -729,7 +710,11 @@ impl ToTokens for Output {
                     where S::ConnectionContext: Recorder {
                     type ConnectionContext = Context<S::ConnectionContext>;
 
-                    fn create_connection_context(&#mode self, meta: &api::ConnectionMeta, info: &api::ConnectionInfo) -> Self::ConnectionContext {
+                    fn create_connection_context(
+                        &#mode self,
+                        meta: &api::ConnectionMeta,
+                        info: &api::ConnectionInfo
+                    ) -> Self::ConnectionContext {
                         Context {
                             recorder: self.subscriber.create_connection_context(meta, info),
                             #metrics_fields_init
@@ -805,13 +790,17 @@ impl ToTokens for Output {
                     impl super::super::Subscriber for Subscriber {
                         type ConnectionContext = ();
 
-                        fn create_connection_context(&#mode self, _meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {}
+                        fn create_connection_context(
+                            &#mode self,
+                            _meta: &api::ConnectionMeta,
+                            _info: &api::ConnectionInfo
+                        ) -> Self::ConnectionContext {}
 
                         #endpoint_subscriber_testing
                     }
                 }
 
-                #[derive(Clone, Debug)]
+                #[derive(Debug)]
                 pub struct Subscriber {
                     location: Option<Location>,
                     output: #testing_output_type,
@@ -861,12 +850,16 @@ impl ToTokens for Output {
                 impl super::Subscriber for Subscriber {
                     type ConnectionContext = ();
 
-                    fn create_connection_context(&#mode self, _meta: &api::ConnectionMeta, _info: &api::ConnectionInfo) -> Self::ConnectionContext {}
+                    fn create_connection_context(
+                        &#mode self,
+                        _meta: &api::ConnectionMeta,
+                        _info: &api::ConnectionInfo
+                    ) -> Self::ConnectionContext {}
 
                     #subscriber_testing
                 }
 
-                #[derive(Clone, Debug)]
+                #[derive(Debug)]
                 pub struct Publisher {
                     location: Option<Location>,
                     output: #testing_output_type,
@@ -916,7 +909,7 @@ impl ToTokens for Output {
                     }
 
                     fn subject(&self) -> api::Subject {
-                        api::Subject::Connection { id: 0 }
+                        builder::Subject::Connection { id: 0 }.into_event()
                     }
                 }
 
@@ -942,6 +935,9 @@ struct EventInfo<'a> {
     output_path: &'a str,
     output_mode: OutputMode,
     s2n_quic_core_path: TokenStream,
+    api: TokenStream,
+    builder: TokenStream,
+    tracing_subscriber_attr: TokenStream,
 }
 
 fn main() -> Result<()> {
@@ -949,7 +945,24 @@ fn main() -> Result<()> {
         EventInfo {
             input_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../dc/s2n-quic-dc/src/event/events.rs"
+                "/../s2n-quic-core/events/**/*.rs"
+            ),
+            output_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../s2n-quic-core/src/event/generated.rs"
+            ),
+            output_mode: OutputMode::Mut,
+            s2n_quic_core_path: quote!(crate),
+            api: quote!(),
+            builder: quote!(),
+            tracing_subscriber_attr: quote! {
+                #[cfg(feature = "event-tracing")]
+            },
+        },
+        EventInfo {
+            input_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../dc/s2n-quic-dc/events/**/*.rs"
             ),
             output_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -957,23 +970,38 @@ fn main() -> Result<()> {
             ),
             output_mode: OutputMode::Ref,
             s2n_quic_core_path: quote!(s2n_quic_core),
-        },
-        EventInfo {
-            input_path: concat!(env!("CARGO_MANIFEST_DIR"), "/events/**/*.rs"),
-            output_path: concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../s2n-quic-core/src/event/generated.rs"
-            ),
-            output_mode: OutputMode::Mut,
-            s2n_quic_core_path: quote!(crate),
+            api: quote! {
+                pub use s2n_quic_core::event::api::{
+                    ConnectionMeta,
+                    EndpointMeta,
+                    ConnectionInfo,
+                    Subject,
+                    EndpointType,
+                    SocketAddress,
+                };
+            },
+            builder: quote! {
+                pub use s2n_quic_core::event::builder::{
+                    ConnectionMeta,
+                    EndpointMeta,
+                    ConnectionInfo,
+                    Subject,
+                    EndpointType,
+                    SocketAddress,
+                };
+            },
+            tracing_subscriber_attr: quote!(),
         },
     ];
 
     for event_info in event_paths {
         let mut files = vec![];
 
-        for path in glob::glob(event_info.input_path)? {
+        let input_path = event_info.input_path;
+
+        for path in glob::glob(input_path)? {
             let path = path?;
+            eprintln!("loading {}", path.canonicalize().unwrap().display());
             let file = std::fs::read_to_string(path)?;
             files.push(parser::parse(&file).unwrap());
         }
@@ -981,6 +1009,9 @@ fn main() -> Result<()> {
         let mut output = Output {
             mode: event_info.output_mode,
             s2n_quic_core_path: event_info.s2n_quic_core_path,
+            api: event_info.api,
+            builders: event_info.builder,
+            tracing_subscriber_attr: event_info.tracing_subscriber_attr,
             ..Default::default()
         };
 
@@ -988,9 +1019,11 @@ fn main() -> Result<()> {
             file.to_tokens(&mut output);
         }
 
-        let generated = event_info.output_path;
+        let generated = std::path::Path::new(event_info.output_path)
+            .canonicalize()
+            .unwrap();
 
-        let mut o = std::fs::File::create(generated)?;
+        let mut o = std::fs::File::create(&generated)?;
 
         macro_rules! put {
             ($($arg:tt)*) => {{
@@ -1009,11 +1042,13 @@ fn main() -> Result<()> {
         put!("{}", output.to_token_stream());
 
         let status = std::process::Command::new("rustfmt")
-            .arg(generated)
+            .arg(&generated)
             .spawn()?
             .wait()?;
 
         assert!(status.success());
+
+        eprintln!("  wrote {}", generated.display());
     }
 
     Ok(())

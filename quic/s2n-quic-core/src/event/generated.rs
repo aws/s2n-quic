@@ -1765,8 +1765,8 @@ pub mod tracing {
             _info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             tracing :: span ! (target : "s2n_quic" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
         }
@@ -2332,8 +2332,8 @@ pub mod tracing {
             event: &api::VersionInformation,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::VersionInformation {
                 server_versions,
@@ -2349,8 +2349,8 @@ pub mod tracing {
             event: &api::EndpointPacketSent,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::EndpointPacketSent { packet_header } = event;
             tracing :: event ! (target : "endpoint_packet_sent" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
@@ -2362,8 +2362,8 @@ pub mod tracing {
             event: &api::EndpointPacketReceived,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::EndpointPacketReceived { packet_header } = event;
             tracing :: event ! (target : "endpoint_packet_received" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
@@ -2375,8 +2375,8 @@ pub mod tracing {
             event: &api::EndpointDatagramSent,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::EndpointDatagramSent { len, gso_offset } = event;
             tracing :: event ! (target : "endpoint_datagram_sent" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
@@ -2388,8 +2388,8 @@ pub mod tracing {
             event: &api::EndpointDatagramReceived,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::EndpointDatagramReceived { len } = event;
             tracing :: event ! (target : "endpoint_datagram_received" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
@@ -2401,8 +2401,8 @@ pub mod tracing {
             event: &api::EndpointDatagramDropped,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::EndpointDatagramDropped { len, reason } = event;
             tracing :: event ! (target : "endpoint_datagram_dropped" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
@@ -2414,8 +2414,8 @@ pub mod tracing {
             event: &api::EndpointConnectionAttemptFailed,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::EndpointConnectionAttemptFailed { error } = event;
             tracing :: event ! (target : "endpoint_connection_attempt_failed" , parent : parent , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
@@ -2423,8 +2423,8 @@ pub mod tracing {
         #[inline]
         fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::PlatformTx {
                 count,
@@ -2438,8 +2438,8 @@ pub mod tracing {
         #[inline]
         fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::PlatformTxError { errno } = event;
             tracing :: event ! (target : "platform_tx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
@@ -2447,8 +2447,8 @@ pub mod tracing {
         #[inline]
         fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::PlatformRx {
                 count,
@@ -2462,8 +2462,8 @@ pub mod tracing {
         #[inline]
         fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::PlatformRxError { errno } = event;
             tracing :: event ! (target : "platform_rx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
@@ -2475,8 +2475,8 @@ pub mod tracing {
             event: &api::PlatformFeatureConfigured,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::PlatformFeatureConfigured { configuration } = event;
             tracing :: event ! (target : "platform_feature_configured" , parent : parent , tracing :: Level :: DEBUG , configuration = tracing :: field :: debug (configuration));
@@ -2488,8 +2488,8 @@ pub mod tracing {
             event: &api::PlatformEventLoopWakeup,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::PlatformEventLoopWakeup {
                 timeout_expired,
@@ -2506,8 +2506,8 @@ pub mod tracing {
             event: &api::PlatformEventLoopSleep,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::PlatformEventLoopSleep {
                 timeout,
@@ -2522,8 +2522,8 @@ pub mod tracing {
             event: &api::PlatformEventLoopStarted,
         ) {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             let api::PlatformEventLoopStarted { local_address } = event;
             tracing :: event ! (target : "platform_event_loop_started" , parent : parent , tracing :: Level :: DEBUG , local_address = tracing :: field :: debug (local_address));
@@ -4835,42 +4835,8 @@ pub mod supervisor {
 pub use traits::*;
 mod traits {
     use super::*;
-    use crate::query;
-    use api::*;
+    use crate::{event::Meta, query};
     use core::fmt;
-    #[doc = r" Provides metadata related to an event"]
-    pub trait Meta: fmt::Debug {
-        #[doc = r" Returns whether the local endpoint is a Client or Server"]
-        fn endpoint_type(&self) -> &EndpointType;
-        #[doc = r" A context from which the event is being emitted"]
-        #[doc = r""]
-        #[doc = r" An event can occur in the context of an Endpoint or Connection"]
-        fn subject(&self) -> Subject;
-        #[doc = r" The time the event occurred"]
-        fn timestamp(&self) -> &crate::event::Timestamp;
-    }
-    impl Meta for ConnectionMeta {
-        fn endpoint_type(&self) -> &EndpointType {
-            &self.endpoint_type
-        }
-        fn subject(&self) -> Subject {
-            Subject::Connection { id: self.id }
-        }
-        fn timestamp(&self) -> &crate::event::Timestamp {
-            &self.timestamp
-        }
-    }
-    impl Meta for EndpointMeta {
-        fn endpoint_type(&self) -> &EndpointType {
-            &self.endpoint_type
-        }
-        fn subject(&self) -> Subject {
-            Subject::Endpoint {}
-        }
-        fn timestamp(&self) -> &crate::event::Timestamp {
-            &self.timestamp
-        }
-    }
     #[doc = r" Allows for events to be subscribed to"]
     pub trait Subscriber: 'static + Send {
         #[doc = r" An application provided type associated with each connection."]
@@ -4919,8 +4885,8 @@ mod traits {
         #[doc = r" Creates a context to be passed to each connection-related event"]
         fn create_connection_context(
             &mut self,
-            meta: &ConnectionMeta,
-            info: &ConnectionInfo,
+            meta: &api::ConnectionMeta,
+            info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext;
         #[doc = r" The period at which `on_supervisor_timeout` is called"]
         #[doc = r""]
@@ -4937,7 +4903,7 @@ mod traits {
         fn supervisor_timeout(
             &mut self,
             conn_context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
+            meta: &api::ConnectionMeta,
             context: &supervisor::Context,
         ) -> Option<Duration> {
             None
@@ -4951,7 +4917,7 @@ mod traits {
         fn on_supervisor_timeout(
             &mut self,
             conn_context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
+            meta: &api::ConnectionMeta,
             context: &supervisor::Context,
         ) -> supervisor::Outcome {
             supervisor::Outcome::default()
@@ -4961,8 +4927,8 @@ mod traits {
         fn on_application_protocol_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ApplicationProtocolInformation,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationProtocolInformation,
         ) {
             let _ = context;
             let _ = meta;
@@ -4973,8 +4939,8 @@ mod traits {
         fn on_server_name_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ServerNameInformation,
+            meta: &api::ConnectionMeta,
+            event: &api::ServerNameInformation,
         ) {
             let _ = context;
             let _ = meta;
@@ -4985,8 +4951,8 @@ mod traits {
         fn on_packet_skipped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketSkipped,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketSkipped,
         ) {
             let _ = context;
             let _ = meta;
@@ -4997,8 +4963,8 @@ mod traits {
         fn on_packet_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketSent,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketSent,
         ) {
             let _ = context;
             let _ = meta;
@@ -5009,8 +4975,8 @@ mod traits {
         fn on_packet_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketReceived,
         ) {
             let _ = context;
             let _ = meta;
@@ -5021,8 +4987,8 @@ mod traits {
         fn on_active_path_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ActivePathUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::ActivePathUpdated,
         ) {
             let _ = context;
             let _ = meta;
@@ -5033,8 +4999,8 @@ mod traits {
         fn on_path_created(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PathCreated,
+            meta: &api::ConnectionMeta,
+            event: &api::PathCreated,
         ) {
             let _ = context;
             let _ = meta;
@@ -5045,8 +5011,8 @@ mod traits {
         fn on_frame_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &FrameSent,
+            meta: &api::ConnectionMeta,
+            event: &api::FrameSent,
         ) {
             let _ = context;
             let _ = meta;
@@ -5057,8 +5023,8 @@ mod traits {
         fn on_frame_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &FrameReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::FrameReceived,
         ) {
             let _ = context;
             let _ = meta;
@@ -5069,8 +5035,8 @@ mod traits {
         fn on_packet_lost(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketLost,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketLost,
         ) {
             let _ = context;
             let _ = meta;
@@ -5081,8 +5047,8 @@ mod traits {
         fn on_recovery_metrics(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &RecoveryMetrics,
+            meta: &api::ConnectionMeta,
+            event: &api::RecoveryMetrics,
         ) {
             let _ = context;
             let _ = meta;
@@ -5093,8 +5059,8 @@ mod traits {
         fn on_congestion(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &Congestion,
+            meta: &api::ConnectionMeta,
+            event: &api::Congestion,
         ) {
             let _ = context;
             let _ = meta;
@@ -5107,8 +5073,8 @@ mod traits {
         fn on_ack_processed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &AckProcessed,
+            meta: &api::ConnectionMeta,
+            event: &api::AckProcessed,
         ) {
             let _ = context;
             let _ = meta;
@@ -5119,8 +5085,8 @@ mod traits {
         fn on_rx_ack_range_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &RxAckRangeDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::RxAckRangeDropped,
         ) {
             let _ = context;
             let _ = meta;
@@ -5131,8 +5097,8 @@ mod traits {
         fn on_ack_range_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &AckRangeReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::AckRangeReceived,
         ) {
             let _ = context;
             let _ = meta;
@@ -5143,8 +5109,8 @@ mod traits {
         fn on_ack_range_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &AckRangeSent,
+            meta: &api::ConnectionMeta,
+            event: &api::AckRangeSent,
         ) {
             let _ = context;
             let _ = meta;
@@ -5155,8 +5121,8 @@ mod traits {
         fn on_packet_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketDropped,
         ) {
             let _ = context;
             let _ = meta;
@@ -5167,8 +5133,8 @@ mod traits {
         fn on_key_update(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &KeyUpdate,
+            meta: &api::ConnectionMeta,
+            event: &api::KeyUpdate,
         ) {
             let _ = context;
             let _ = meta;
@@ -5179,8 +5145,8 @@ mod traits {
         fn on_key_space_discarded(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &KeySpaceDiscarded,
+            meta: &api::ConnectionMeta,
+            event: &api::KeySpaceDiscarded,
         ) {
             let _ = context;
             let _ = meta;
@@ -5191,8 +5157,8 @@ mod traits {
         fn on_connection_started(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ConnectionStarted,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionStarted,
         ) {
             let _ = context;
             let _ = meta;
@@ -5203,8 +5169,8 @@ mod traits {
         fn on_connection_closed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ConnectionClosed,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
         ) {
             let _ = context;
             let _ = meta;
@@ -5215,8 +5181,8 @@ mod traits {
         fn on_duplicate_packet(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DuplicatePacket,
+            meta: &api::ConnectionMeta,
+            event: &api::DuplicatePacket,
         ) {
             let _ = context;
             let _ = meta;
@@ -5227,8 +5193,8 @@ mod traits {
         fn on_transport_parameters_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TransportParametersReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::TransportParametersReceived,
         ) {
             let _ = context;
             let _ = meta;
@@ -5239,8 +5205,8 @@ mod traits {
         fn on_datagram_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DatagramSent,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramSent,
         ) {
             let _ = context;
             let _ = meta;
@@ -5251,8 +5217,8 @@ mod traits {
         fn on_datagram_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DatagramReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramReceived,
         ) {
             let _ = context;
             let _ = meta;
@@ -5263,8 +5229,8 @@ mod traits {
         fn on_datagram_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DatagramDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramDropped,
         ) {
             let _ = context;
             let _ = meta;
@@ -5275,8 +5241,8 @@ mod traits {
         fn on_connection_id_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ConnectionIdUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionIdUpdated,
         ) {
             let _ = context;
             let _ = meta;
@@ -5287,8 +5253,8 @@ mod traits {
         fn on_ecn_state_changed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &EcnStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::EcnStateChanged,
         ) {
             let _ = context;
             let _ = meta;
@@ -5299,8 +5265,8 @@ mod traits {
         fn on_connection_migration_denied(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ConnectionMigrationDenied,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionMigrationDenied,
         ) {
             let _ = context;
             let _ = meta;
@@ -5311,8 +5277,8 @@ mod traits {
         fn on_handshake_status_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &HandshakeStatusUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::HandshakeStatusUpdated,
         ) {
             let _ = context;
             let _ = meta;
@@ -5323,8 +5289,8 @@ mod traits {
         fn on_tls_exporter_ready(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TlsExporterReady,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsExporterReady,
         ) {
             let _ = context;
             let _ = meta;
@@ -5335,8 +5301,8 @@ mod traits {
         fn on_path_challenge_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PathChallengeUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::PathChallengeUpdated,
         ) {
             let _ = context;
             let _ = meta;
@@ -5347,8 +5313,8 @@ mod traits {
         fn on_tls_client_hello(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TlsClientHello,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsClientHello,
         ) {
             let _ = context;
             let _ = meta;
@@ -5359,8 +5325,8 @@ mod traits {
         fn on_tls_server_hello(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TlsServerHello,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsServerHello,
         ) {
             let _ = context;
             let _ = meta;
@@ -5371,8 +5337,8 @@ mod traits {
         fn on_rx_stream_progress(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &RxStreamProgress,
+            meta: &api::ConnectionMeta,
+            event: &api::RxStreamProgress,
         ) {
             let _ = context;
             let _ = meta;
@@ -5383,8 +5349,8 @@ mod traits {
         fn on_tx_stream_progress(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TxStreamProgress,
+            meta: &api::ConnectionMeta,
+            event: &api::TxStreamProgress,
         ) {
             let _ = context;
             let _ = meta;
@@ -5395,8 +5361,8 @@ mod traits {
         fn on_keep_alive_timer_expired(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &KeepAliveTimerExpired,
+            meta: &api::ConnectionMeta,
+            event: &api::KeepAliveTimerExpired,
         ) {
             let _ = context;
             let _ = meta;
@@ -5407,8 +5373,8 @@ mod traits {
         fn on_mtu_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &MtuUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::MtuUpdated,
         ) {
             let _ = context;
             let _ = meta;
@@ -5419,8 +5385,8 @@ mod traits {
         fn on_slow_start_exited(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &SlowStartExited,
+            meta: &api::ConnectionMeta,
+            event: &api::SlowStartExited,
         ) {
             let _ = context;
             let _ = meta;
@@ -5431,8 +5397,8 @@ mod traits {
         fn on_delivery_rate_sampled(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DeliveryRateSampled,
+            meta: &api::ConnectionMeta,
+            event: &api::DeliveryRateSampled,
         ) {
             let _ = context;
             let _ = meta;
@@ -5443,8 +5409,8 @@ mod traits {
         fn on_pacing_rate_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacingRateUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::PacingRateUpdated,
         ) {
             let _ = context;
             let _ = meta;
@@ -5455,8 +5421,8 @@ mod traits {
         fn on_bbr_state_changed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &BbrStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::BbrStateChanged,
         ) {
             let _ = context;
             let _ = meta;
@@ -5467,8 +5433,8 @@ mod traits {
         fn on_dc_state_changed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DcStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::DcStateChanged,
         ) {
             let _ = context;
             let _ = meta;
@@ -5476,13 +5442,21 @@ mod traits {
         }
         #[doc = "Called when the `VersionInformation` event is triggered"]
         #[inline]
-        fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
+        fn on_version_information(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::VersionInformation,
+        ) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `EndpointPacketSent` event is triggered"]
         #[inline]
-        fn on_endpoint_packet_sent(&mut self, meta: &EndpointMeta, event: &EndpointPacketSent) {
+        fn on_endpoint_packet_sent(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointPacketSent,
+        ) {
             let _ = meta;
             let _ = event;
         }
@@ -5490,15 +5464,19 @@ mod traits {
         #[inline]
         fn on_endpoint_packet_received(
             &mut self,
-            meta: &EndpointMeta,
-            event: &EndpointPacketReceived,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointPacketReceived,
         ) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `EndpointDatagramSent` event is triggered"]
         #[inline]
-        fn on_endpoint_datagram_sent(&mut self, meta: &EndpointMeta, event: &EndpointDatagramSent) {
+        fn on_endpoint_datagram_sent(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramSent,
+        ) {
             let _ = meta;
             let _ = event;
         }
@@ -5506,8 +5484,8 @@ mod traits {
         #[inline]
         fn on_endpoint_datagram_received(
             &mut self,
-            meta: &EndpointMeta,
-            event: &EndpointDatagramReceived,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramReceived,
         ) {
             let _ = meta;
             let _ = event;
@@ -5516,8 +5494,8 @@ mod traits {
         #[inline]
         fn on_endpoint_datagram_dropped(
             &mut self,
-            meta: &EndpointMeta,
-            event: &EndpointDatagramDropped,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramDropped,
         ) {
             let _ = meta;
             let _ = event;
@@ -5526,33 +5504,33 @@ mod traits {
         #[inline]
         fn on_endpoint_connection_attempt_failed(
             &mut self,
-            meta: &EndpointMeta,
-            event: &EndpointConnectionAttemptFailed,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointConnectionAttemptFailed,
         ) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `PlatformTx` event is triggered"]
         #[inline]
-        fn on_platform_tx(&mut self, meta: &EndpointMeta, event: &PlatformTx) {
+        fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `PlatformTxError` event is triggered"]
         #[inline]
-        fn on_platform_tx_error(&mut self, meta: &EndpointMeta, event: &PlatformTxError) {
+        fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `PlatformRx` event is triggered"]
         #[inline]
-        fn on_platform_rx(&mut self, meta: &EndpointMeta, event: &PlatformRx) {
+        fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
             let _ = meta;
             let _ = event;
         }
         #[doc = "Called when the `PlatformRxError` event is triggered"]
         #[inline]
-        fn on_platform_rx_error(&mut self, meta: &EndpointMeta, event: &PlatformRxError) {
+        fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
             let _ = meta;
             let _ = event;
         }
@@ -5560,8 +5538,8 @@ mod traits {
         #[inline]
         fn on_platform_feature_configured(
             &mut self,
-            meta: &EndpointMeta,
-            event: &PlatformFeatureConfigured,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformFeatureConfigured,
         ) {
             let _ = meta;
             let _ = event;
@@ -5570,8 +5548,8 @@ mod traits {
         #[inline]
         fn on_platform_event_loop_wakeup(
             &mut self,
-            meta: &EndpointMeta,
-            event: &PlatformEventLoopWakeup,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopWakeup,
         ) {
             let _ = meta;
             let _ = event;
@@ -5580,8 +5558,8 @@ mod traits {
         #[inline]
         fn on_platform_event_loop_sleep(
             &mut self,
-            meta: &EndpointMeta,
-            event: &PlatformEventLoopSleep,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopSleep,
         ) {
             let _ = meta;
             let _ = event;
@@ -5590,8 +5568,8 @@ mod traits {
         #[inline]
         fn on_platform_event_loop_started(
             &mut self,
-            meta: &EndpointMeta,
-            event: &PlatformEventLoopStarted,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopStarted,
         ) {
             let _ = meta;
             let _ = event;
@@ -5607,7 +5585,7 @@ mod traits {
         fn on_connection_event<E: Event>(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
+            meta: &api::ConnectionMeta,
             event: &E,
         ) {
             let _ = context;
@@ -5642,8 +5620,8 @@ mod traits {
         #[inline]
         fn create_connection_context(
             &mut self,
-            meta: &ConnectionMeta,
-            info: &ConnectionInfo,
+            meta: &api::ConnectionMeta,
+            info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
             (
                 self.0.create_connection_context(meta, info),
@@ -5654,7 +5632,7 @@ mod traits {
         fn supervisor_timeout(
             &mut self,
             conn_context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
+            meta: &api::ConnectionMeta,
             context: &supervisor::Context,
         ) -> Option<Duration> {
             let timeout_a = self
@@ -5673,7 +5651,7 @@ mod traits {
         fn on_supervisor_timeout(
             &mut self,
             conn_context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
+            meta: &api::ConnectionMeta,
             context: &supervisor::Context,
         ) -> supervisor::Outcome {
             let outcome_a = self
@@ -5698,8 +5676,8 @@ mod traits {
         fn on_application_protocol_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ApplicationProtocolInformation,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationProtocolInformation,
         ) {
             (self.0).on_application_protocol_information(&mut context.0, meta, event);
             (self.1).on_application_protocol_information(&mut context.1, meta, event);
@@ -5708,8 +5686,8 @@ mod traits {
         fn on_server_name_information(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ServerNameInformation,
+            meta: &api::ConnectionMeta,
+            event: &api::ServerNameInformation,
         ) {
             (self.0).on_server_name_information(&mut context.0, meta, event);
             (self.1).on_server_name_information(&mut context.1, meta, event);
@@ -5718,8 +5696,8 @@ mod traits {
         fn on_packet_skipped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketSkipped,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketSkipped,
         ) {
             (self.0).on_packet_skipped(&mut context.0, meta, event);
             (self.1).on_packet_skipped(&mut context.1, meta, event);
@@ -5728,8 +5706,8 @@ mod traits {
         fn on_packet_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketSent,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketSent,
         ) {
             (self.0).on_packet_sent(&mut context.0, meta, event);
             (self.1).on_packet_sent(&mut context.1, meta, event);
@@ -5738,8 +5716,8 @@ mod traits {
         fn on_packet_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketReceived,
         ) {
             (self.0).on_packet_received(&mut context.0, meta, event);
             (self.1).on_packet_received(&mut context.1, meta, event);
@@ -5748,8 +5726,8 @@ mod traits {
         fn on_active_path_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ActivePathUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::ActivePathUpdated,
         ) {
             (self.0).on_active_path_updated(&mut context.0, meta, event);
             (self.1).on_active_path_updated(&mut context.1, meta, event);
@@ -5758,8 +5736,8 @@ mod traits {
         fn on_path_created(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PathCreated,
+            meta: &api::ConnectionMeta,
+            event: &api::PathCreated,
         ) {
             (self.0).on_path_created(&mut context.0, meta, event);
             (self.1).on_path_created(&mut context.1, meta, event);
@@ -5768,8 +5746,8 @@ mod traits {
         fn on_frame_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &FrameSent,
+            meta: &api::ConnectionMeta,
+            event: &api::FrameSent,
         ) {
             (self.0).on_frame_sent(&mut context.0, meta, event);
             (self.1).on_frame_sent(&mut context.1, meta, event);
@@ -5778,8 +5756,8 @@ mod traits {
         fn on_frame_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &FrameReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::FrameReceived,
         ) {
             (self.0).on_frame_received(&mut context.0, meta, event);
             (self.1).on_frame_received(&mut context.1, meta, event);
@@ -5788,8 +5766,8 @@ mod traits {
         fn on_packet_lost(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketLost,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketLost,
         ) {
             (self.0).on_packet_lost(&mut context.0, meta, event);
             (self.1).on_packet_lost(&mut context.1, meta, event);
@@ -5798,8 +5776,8 @@ mod traits {
         fn on_recovery_metrics(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &RecoveryMetrics,
+            meta: &api::ConnectionMeta,
+            event: &api::RecoveryMetrics,
         ) {
             (self.0).on_recovery_metrics(&mut context.0, meta, event);
             (self.1).on_recovery_metrics(&mut context.1, meta, event);
@@ -5808,8 +5786,8 @@ mod traits {
         fn on_congestion(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &Congestion,
+            meta: &api::ConnectionMeta,
+            event: &api::Congestion,
         ) {
             (self.0).on_congestion(&mut context.0, meta, event);
             (self.1).on_congestion(&mut context.1, meta, event);
@@ -5819,8 +5797,8 @@ mod traits {
         fn on_ack_processed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &AckProcessed,
+            meta: &api::ConnectionMeta,
+            event: &api::AckProcessed,
         ) {
             (self.0).on_ack_processed(&mut context.0, meta, event);
             (self.1).on_ack_processed(&mut context.1, meta, event);
@@ -5829,8 +5807,8 @@ mod traits {
         fn on_rx_ack_range_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &RxAckRangeDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::RxAckRangeDropped,
         ) {
             (self.0).on_rx_ack_range_dropped(&mut context.0, meta, event);
             (self.1).on_rx_ack_range_dropped(&mut context.1, meta, event);
@@ -5839,8 +5817,8 @@ mod traits {
         fn on_ack_range_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &AckRangeReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::AckRangeReceived,
         ) {
             (self.0).on_ack_range_received(&mut context.0, meta, event);
             (self.1).on_ack_range_received(&mut context.1, meta, event);
@@ -5849,8 +5827,8 @@ mod traits {
         fn on_ack_range_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &AckRangeSent,
+            meta: &api::ConnectionMeta,
+            event: &api::AckRangeSent,
         ) {
             (self.0).on_ack_range_sent(&mut context.0, meta, event);
             (self.1).on_ack_range_sent(&mut context.1, meta, event);
@@ -5859,8 +5837,8 @@ mod traits {
         fn on_packet_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacketDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::PacketDropped,
         ) {
             (self.0).on_packet_dropped(&mut context.0, meta, event);
             (self.1).on_packet_dropped(&mut context.1, meta, event);
@@ -5869,8 +5847,8 @@ mod traits {
         fn on_key_update(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &KeyUpdate,
+            meta: &api::ConnectionMeta,
+            event: &api::KeyUpdate,
         ) {
             (self.0).on_key_update(&mut context.0, meta, event);
             (self.1).on_key_update(&mut context.1, meta, event);
@@ -5879,8 +5857,8 @@ mod traits {
         fn on_key_space_discarded(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &KeySpaceDiscarded,
+            meta: &api::ConnectionMeta,
+            event: &api::KeySpaceDiscarded,
         ) {
             (self.0).on_key_space_discarded(&mut context.0, meta, event);
             (self.1).on_key_space_discarded(&mut context.1, meta, event);
@@ -5889,8 +5867,8 @@ mod traits {
         fn on_connection_started(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ConnectionStarted,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionStarted,
         ) {
             (self.0).on_connection_started(&mut context.0, meta, event);
             (self.1).on_connection_started(&mut context.1, meta, event);
@@ -5899,8 +5877,8 @@ mod traits {
         fn on_connection_closed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ConnectionClosed,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
         ) {
             (self.0).on_connection_closed(&mut context.0, meta, event);
             (self.1).on_connection_closed(&mut context.1, meta, event);
@@ -5909,8 +5887,8 @@ mod traits {
         fn on_duplicate_packet(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DuplicatePacket,
+            meta: &api::ConnectionMeta,
+            event: &api::DuplicatePacket,
         ) {
             (self.0).on_duplicate_packet(&mut context.0, meta, event);
             (self.1).on_duplicate_packet(&mut context.1, meta, event);
@@ -5919,8 +5897,8 @@ mod traits {
         fn on_transport_parameters_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TransportParametersReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::TransportParametersReceived,
         ) {
             (self.0).on_transport_parameters_received(&mut context.0, meta, event);
             (self.1).on_transport_parameters_received(&mut context.1, meta, event);
@@ -5929,8 +5907,8 @@ mod traits {
         fn on_datagram_sent(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DatagramSent,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramSent,
         ) {
             (self.0).on_datagram_sent(&mut context.0, meta, event);
             (self.1).on_datagram_sent(&mut context.1, meta, event);
@@ -5939,8 +5917,8 @@ mod traits {
         fn on_datagram_received(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DatagramReceived,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramReceived,
         ) {
             (self.0).on_datagram_received(&mut context.0, meta, event);
             (self.1).on_datagram_received(&mut context.1, meta, event);
@@ -5949,8 +5927,8 @@ mod traits {
         fn on_datagram_dropped(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DatagramDropped,
+            meta: &api::ConnectionMeta,
+            event: &api::DatagramDropped,
         ) {
             (self.0).on_datagram_dropped(&mut context.0, meta, event);
             (self.1).on_datagram_dropped(&mut context.1, meta, event);
@@ -5959,8 +5937,8 @@ mod traits {
         fn on_connection_id_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ConnectionIdUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionIdUpdated,
         ) {
             (self.0).on_connection_id_updated(&mut context.0, meta, event);
             (self.1).on_connection_id_updated(&mut context.1, meta, event);
@@ -5969,8 +5947,8 @@ mod traits {
         fn on_ecn_state_changed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &EcnStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::EcnStateChanged,
         ) {
             (self.0).on_ecn_state_changed(&mut context.0, meta, event);
             (self.1).on_ecn_state_changed(&mut context.1, meta, event);
@@ -5979,8 +5957,8 @@ mod traits {
         fn on_connection_migration_denied(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &ConnectionMigrationDenied,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionMigrationDenied,
         ) {
             (self.0).on_connection_migration_denied(&mut context.0, meta, event);
             (self.1).on_connection_migration_denied(&mut context.1, meta, event);
@@ -5989,8 +5967,8 @@ mod traits {
         fn on_handshake_status_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &HandshakeStatusUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::HandshakeStatusUpdated,
         ) {
             (self.0).on_handshake_status_updated(&mut context.0, meta, event);
             (self.1).on_handshake_status_updated(&mut context.1, meta, event);
@@ -5999,8 +5977,8 @@ mod traits {
         fn on_tls_exporter_ready(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TlsExporterReady,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsExporterReady,
         ) {
             (self.0).on_tls_exporter_ready(&mut context.0, meta, event);
             (self.1).on_tls_exporter_ready(&mut context.1, meta, event);
@@ -6009,8 +5987,8 @@ mod traits {
         fn on_path_challenge_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PathChallengeUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::PathChallengeUpdated,
         ) {
             (self.0).on_path_challenge_updated(&mut context.0, meta, event);
             (self.1).on_path_challenge_updated(&mut context.1, meta, event);
@@ -6019,8 +5997,8 @@ mod traits {
         fn on_tls_client_hello(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TlsClientHello,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsClientHello,
         ) {
             (self.0).on_tls_client_hello(&mut context.0, meta, event);
             (self.1).on_tls_client_hello(&mut context.1, meta, event);
@@ -6029,8 +6007,8 @@ mod traits {
         fn on_tls_server_hello(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TlsServerHello,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsServerHello,
         ) {
             (self.0).on_tls_server_hello(&mut context.0, meta, event);
             (self.1).on_tls_server_hello(&mut context.1, meta, event);
@@ -6039,8 +6017,8 @@ mod traits {
         fn on_rx_stream_progress(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &RxStreamProgress,
+            meta: &api::ConnectionMeta,
+            event: &api::RxStreamProgress,
         ) {
             (self.0).on_rx_stream_progress(&mut context.0, meta, event);
             (self.1).on_rx_stream_progress(&mut context.1, meta, event);
@@ -6049,8 +6027,8 @@ mod traits {
         fn on_tx_stream_progress(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &TxStreamProgress,
+            meta: &api::ConnectionMeta,
+            event: &api::TxStreamProgress,
         ) {
             (self.0).on_tx_stream_progress(&mut context.0, meta, event);
             (self.1).on_tx_stream_progress(&mut context.1, meta, event);
@@ -6059,8 +6037,8 @@ mod traits {
         fn on_keep_alive_timer_expired(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &KeepAliveTimerExpired,
+            meta: &api::ConnectionMeta,
+            event: &api::KeepAliveTimerExpired,
         ) {
             (self.0).on_keep_alive_timer_expired(&mut context.0, meta, event);
             (self.1).on_keep_alive_timer_expired(&mut context.1, meta, event);
@@ -6069,8 +6047,8 @@ mod traits {
         fn on_mtu_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &MtuUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::MtuUpdated,
         ) {
             (self.0).on_mtu_updated(&mut context.0, meta, event);
             (self.1).on_mtu_updated(&mut context.1, meta, event);
@@ -6079,8 +6057,8 @@ mod traits {
         fn on_slow_start_exited(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &SlowStartExited,
+            meta: &api::ConnectionMeta,
+            event: &api::SlowStartExited,
         ) {
             (self.0).on_slow_start_exited(&mut context.0, meta, event);
             (self.1).on_slow_start_exited(&mut context.1, meta, event);
@@ -6089,8 +6067,8 @@ mod traits {
         fn on_delivery_rate_sampled(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DeliveryRateSampled,
+            meta: &api::ConnectionMeta,
+            event: &api::DeliveryRateSampled,
         ) {
             (self.0).on_delivery_rate_sampled(&mut context.0, meta, event);
             (self.1).on_delivery_rate_sampled(&mut context.1, meta, event);
@@ -6099,8 +6077,8 @@ mod traits {
         fn on_pacing_rate_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &PacingRateUpdated,
+            meta: &api::ConnectionMeta,
+            event: &api::PacingRateUpdated,
         ) {
             (self.0).on_pacing_rate_updated(&mut context.0, meta, event);
             (self.1).on_pacing_rate_updated(&mut context.1, meta, event);
@@ -6109,8 +6087,8 @@ mod traits {
         fn on_bbr_state_changed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &BbrStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::BbrStateChanged,
         ) {
             (self.0).on_bbr_state_changed(&mut context.0, meta, event);
             (self.1).on_bbr_state_changed(&mut context.1, meta, event);
@@ -6119,41 +6097,53 @@ mod traits {
         fn on_dc_state_changed(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &DcStateChanged,
+            meta: &api::ConnectionMeta,
+            event: &api::DcStateChanged,
         ) {
             (self.0).on_dc_state_changed(&mut context.0, meta, event);
             (self.1).on_dc_state_changed(&mut context.1, meta, event);
         }
         #[inline]
-        fn on_version_information(&mut self, meta: &EndpointMeta, event: &VersionInformation) {
+        fn on_version_information(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::VersionInformation,
+        ) {
             (self.0).on_version_information(meta, event);
             (self.1).on_version_information(meta, event);
         }
         #[inline]
-        fn on_endpoint_packet_sent(&mut self, meta: &EndpointMeta, event: &EndpointPacketSent) {
+        fn on_endpoint_packet_sent(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointPacketSent,
+        ) {
             (self.0).on_endpoint_packet_sent(meta, event);
             (self.1).on_endpoint_packet_sent(meta, event);
         }
         #[inline]
         fn on_endpoint_packet_received(
             &mut self,
-            meta: &EndpointMeta,
-            event: &EndpointPacketReceived,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointPacketReceived,
         ) {
             (self.0).on_endpoint_packet_received(meta, event);
             (self.1).on_endpoint_packet_received(meta, event);
         }
         #[inline]
-        fn on_endpoint_datagram_sent(&mut self, meta: &EndpointMeta, event: &EndpointDatagramSent) {
+        fn on_endpoint_datagram_sent(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramSent,
+        ) {
             (self.0).on_endpoint_datagram_sent(meta, event);
             (self.1).on_endpoint_datagram_sent(meta, event);
         }
         #[inline]
         fn on_endpoint_datagram_received(
             &mut self,
-            meta: &EndpointMeta,
-            event: &EndpointDatagramReceived,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramReceived,
         ) {
             (self.0).on_endpoint_datagram_received(meta, event);
             (self.1).on_endpoint_datagram_received(meta, event);
@@ -6161,8 +6151,8 @@ mod traits {
         #[inline]
         fn on_endpoint_datagram_dropped(
             &mut self,
-            meta: &EndpointMeta,
-            event: &EndpointDatagramDropped,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointDatagramDropped,
         ) {
             (self.0).on_endpoint_datagram_dropped(meta, event);
             (self.1).on_endpoint_datagram_dropped(meta, event);
@@ -6170,37 +6160,37 @@ mod traits {
         #[inline]
         fn on_endpoint_connection_attempt_failed(
             &mut self,
-            meta: &EndpointMeta,
-            event: &EndpointConnectionAttemptFailed,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointConnectionAttemptFailed,
         ) {
             (self.0).on_endpoint_connection_attempt_failed(meta, event);
             (self.1).on_endpoint_connection_attempt_failed(meta, event);
         }
         #[inline]
-        fn on_platform_tx(&mut self, meta: &EndpointMeta, event: &PlatformTx) {
+        fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
             (self.0).on_platform_tx(meta, event);
             (self.1).on_platform_tx(meta, event);
         }
         #[inline]
-        fn on_platform_tx_error(&mut self, meta: &EndpointMeta, event: &PlatformTxError) {
+        fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
             (self.0).on_platform_tx_error(meta, event);
             (self.1).on_platform_tx_error(meta, event);
         }
         #[inline]
-        fn on_platform_rx(&mut self, meta: &EndpointMeta, event: &PlatformRx) {
+        fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
             (self.0).on_platform_rx(meta, event);
             (self.1).on_platform_rx(meta, event);
         }
         #[inline]
-        fn on_platform_rx_error(&mut self, meta: &EndpointMeta, event: &PlatformRxError) {
+        fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
             (self.0).on_platform_rx_error(meta, event);
             (self.1).on_platform_rx_error(meta, event);
         }
         #[inline]
         fn on_platform_feature_configured(
             &mut self,
-            meta: &EndpointMeta,
-            event: &PlatformFeatureConfigured,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformFeatureConfigured,
         ) {
             (self.0).on_platform_feature_configured(meta, event);
             (self.1).on_platform_feature_configured(meta, event);
@@ -6208,8 +6198,8 @@ mod traits {
         #[inline]
         fn on_platform_event_loop_wakeup(
             &mut self,
-            meta: &EndpointMeta,
-            event: &PlatformEventLoopWakeup,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopWakeup,
         ) {
             (self.0).on_platform_event_loop_wakeup(meta, event);
             (self.1).on_platform_event_loop_wakeup(meta, event);
@@ -6217,8 +6207,8 @@ mod traits {
         #[inline]
         fn on_platform_event_loop_sleep(
             &mut self,
-            meta: &EndpointMeta,
-            event: &PlatformEventLoopSleep,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopSleep,
         ) {
             (self.0).on_platform_event_loop_sleep(meta, event);
             (self.1).on_platform_event_loop_sleep(meta, event);
@@ -6226,8 +6216,8 @@ mod traits {
         #[inline]
         fn on_platform_event_loop_started(
             &mut self,
-            meta: &EndpointMeta,
-            event: &PlatformEventLoopStarted,
+            meta: &api::EndpointMeta,
+            event: &api::PlatformEventLoopStarted,
         ) {
             (self.0).on_platform_event_loop_started(meta, event);
             (self.1).on_platform_event_loop_started(meta, event);
@@ -6241,7 +6231,7 @@ mod traits {
         fn on_connection_event<E: Event>(
             &mut self,
             context: &mut Self::ConnectionContext,
-            meta: &ConnectionMeta,
+            meta: &api::ConnectionMeta,
             event: &E,
         ) {
             self.0.on_connection_event(&mut context.0, meta, event);
@@ -6306,7 +6296,7 @@ mod traits {
         fn quic_version(&self) -> Option<u32>;
     }
     pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
-        meta: EndpointMeta,
+        meta: api::EndpointMeta,
         quic_version: Option<u32>,
         subscriber: &'a mut Sub,
     }
@@ -6533,10 +6523,10 @@ mod traits {
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
         #[doc = r" Returns the [`Subject`] for the current publisher"]
-        fn subject(&self) -> Subject;
+        fn subject(&self) -> api::Subject;
     }
     pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
-        meta: ConnectionMeta,
+        meta: api::ConnectionMeta,
         quic_version: u32,
         subscriber: &'a mut Sub,
         context: &'a mut Sub::ConnectionContext,
@@ -6973,7 +6963,7 @@ mod traits {
 pub mod metrics {
     use super::*;
     use crate::event::metrics::Recorder;
-    #[derive(Clone, Debug)]
+    #[derive(Debug)]
     pub struct Subscriber<S: super::Subscriber>
     where
         S::ConnectionContext: Recorder,
@@ -7862,7 +7852,7 @@ pub mod testing {
             }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Debug)]
     pub struct Subscriber {
         location: Option<Location>,
         output: Vec<String>,
@@ -8603,7 +8593,7 @@ pub mod testing {
             self.output.push(format!("{meta:?} {event:?}"));
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Debug)]
     pub struct Publisher {
         location: Option<Location>,
         output: Vec<String>,
@@ -9143,7 +9133,7 @@ pub mod testing {
             1
         }
         fn subject(&self) -> api::Subject {
-            api::Subject::Connection { id: 0 }
+            builder::Subject::Connection { id: 0 }.into_event()
         }
     }
     impl Drop for Publisher {
