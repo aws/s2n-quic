@@ -1,70 +1,52 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{receiver, sender};
+use super::*;
+use crate::path::secret::{schedule, sender};
+use s2n_quic_core::dc;
 use std::{
     collections::HashSet,
+    fmt,
     net::{Ipv4Addr, SocketAddrV4},
 };
 
-use super::*;
-
-const VERSION: dc::Version = dc::SUPPORTED_VERSIONS[0];
-
-fn fake_entry(peer: u16) -> Arc<Entry> {
-    let mut secret = [0; 32];
-    aws_lc_rs::rand::fill(&mut secret).unwrap();
-    Arc::new(Entry::new(
-        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, peer)),
-        schedule::Secret::new(
-            schedule::Ciphersuite::AES_GCM_128_SHA256,
-            VERSION,
-            s2n_quic_core::endpoint::Type::Client,
-            &secret,
-        ),
-        sender::State::new([0; control::TAG_LEN]),
-        receiver::State::without_shared(),
-        dc::testing::TEST_APPLICATION_PARAMS,
-        dc::testing::TEST_REHANDSHAKE_PERIOD,
-    ))
+fn fake_entry(port: u16) -> Arc<Entry> {
+    Entry::fake((Ipv4Addr::LOCALHOST, port).into(), None)
 }
 
 #[test]
 fn cleans_after_delay() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = Map::new(signer, 50);
+    let map = State::new(signer, 50);
 
     // Stop background processing. We expect to manually invoke clean, and a background worker
     // might interfere with our state.
-    map.state.cleaner.stop();
+    map.cleaner.stop();
 
     let first = fake_entry(1);
     let second = fake_entry(1);
     let third = fake_entry(1);
-    map.on_new_path_secrets(first.clone());
-    map.on_handshake_complete(first.clone());
-    map.on_new_path_secrets(second.clone());
-    map.on_handshake_complete(second.clone());
+    map.test_insert(first.clone());
+    map.test_insert(second.clone());
 
-    assert!(map.state.ids.contains_key(first.secret.id()));
-    assert!(map.state.ids.contains_key(second.secret.id()));
+    assert!(map.ids.contains_key(first.id()));
+    assert!(map.ids.contains_key(second.id()));
 
-    map.state.cleaner.clean(&map.state, 1);
-    map.state.cleaner.clean(&map.state, 1);
+    map.cleaner.clean(&map, 1);
+    map.cleaner.clean(&map, 1);
 
-    map.on_new_path_secrets(third.clone());
-    map.on_handshake_complete(third.clone());
+    map.test_insert(third.clone());
 
-    assert!(!map.state.ids.contains_key(first.secret.id()));
-    assert!(map.state.ids.contains_key(second.secret.id()));
-    assert!(map.state.ids.contains_key(third.secret.id()));
+    assert!(!map.ids.contains_key(first.id()));
+    assert!(map.ids.contains_key(second.id()));
+    assert!(map.ids.contains_key(third.id()));
 }
 
 #[test]
 fn thread_shutdown() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = Map::new(signer, 10);
-    let state = Arc::downgrade(&map.state);
+    let map = State::new(signer, 10);
+    let state = Arc::downgrade(&map);
     drop(map);
 
     let iterations = 10;
@@ -89,10 +71,9 @@ struct Model {
 
 #[derive(bolero::TypeGenerator, Debug, Copy, Clone)]
 enum Operation {
-    NewPathSecret { ip: u8, path_secret_id: TestId },
+    Insert { ip: u8, path_secret_id: TestId },
     AdvanceTime,
     ReceiveUnknown { path_secret_id: TestId },
-    HandshakeComplete { path_secret_id: TestId },
 }
 
 #[derive(bolero::TypeGenerator, PartialEq, Eq, Hash, Copy, Clone)]
@@ -113,7 +94,7 @@ impl TestId {
         export_secret[0] = self.0;
         schedule::Secret::new(
             schedule::Ciphersuite::AES_GCM_128_SHA256,
-            VERSION,
+            dc::SUPPORTED_VERSIONS[0],
             s2n_quic_core::endpoint::Type::Client,
             &export_secret,
         )
@@ -132,42 +113,33 @@ enum Invariant {
 }
 
 impl Model {
-    fn perform(&mut self, operation: Operation, state: &Map) {
+    fn perform(&mut self, operation: Operation, state: &State) {
         match operation {
-            Operation::NewPathSecret { ip, path_secret_id } => {
+            Operation::Insert { ip, path_secret_id } => {
                 let ip = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([0, 0, 0, ip]), 0));
                 let secret = path_secret_id.secret();
                 let id = *secret.id();
 
-                let stateless_reset = state.state.signer.sign(&id);
-                state.on_new_path_secrets(Arc::new(Entry::new(
+                let stateless_reset = state.signer().sign(&id);
+                state.test_insert(Arc::new(Entry::new(
                     ip,
                     secret,
                     sender::State::new(stateless_reset),
-                    state.state.receiver_shared.clone().new_receiver(),
+                    state.receiver().clone().new_receiver(),
                     dc::testing::TEST_APPLICATION_PARAMS,
                     dc::testing::TEST_REHANDSHAKE_PERIOD,
                 )));
 
+                self.invariants.insert(Invariant::ContainsIp(ip));
                 self.invariants.insert(Invariant::ContainsId(id));
-            }
-            Operation::HandshakeComplete { path_secret_id } => {
-                if let Some(entry) = state.state.ids.get_by_key(&path_secret_id.id()) {
-                    if !state.state.peers.contains_key(&entry.peer) {
-                        state.on_handshake_complete(entry.clone());
-                    }
-                    self.invariants.insert(Invariant::ContainsIp(entry.peer));
-                }
             }
             Operation::AdvanceTime => {
                 let mut invalidated = Vec::new();
                 self.invariants.retain(|invariant| {
                     if let Invariant::ContainsId(id) = invariant {
                         if state
-                            .state
-                            .ids
-                            .get_by_key(id)
-                            .map_or(true, |v| v.retired.retired())
+                            .get_by_id(id)
+                            .map_or(true, |v| v.retired_at().is_some())
                         {
                             invalidated.push(*id);
                             return false;
@@ -181,13 +153,13 @@ impl Model {
                 }
 
                 // Evict all stale records *now*.
-                state.state.cleaner.clean(&state.state, 0);
+                state.cleaner.clean(state, 0);
             }
             Operation::ReceiveUnknown { path_secret_id } => {
                 let id = path_secret_id.id();
                 // This is signing with the "wrong" signer, but currently all of the signers used
                 // in this test are keyed the same way so it doesn't matter.
-                let stateless_reset = state.state.signer.sign(&id);
+                let stateless_reset = state.signer.sign(&id);
                 let packet =
                     crate::packet::secret_control::unknown_path_secret::Packet::new_for_test(
                         id,
@@ -243,7 +215,7 @@ fn has_duplicate_pids(ops: &[Operation]) -> bool {
     let mut ids = HashSet::new();
     for op in ops.iter() {
         match op {
-            Operation::NewPathSecret {
+            Operation::Insert {
                 ip: _,
                 path_secret_id,
             } => {
@@ -254,10 +226,6 @@ fn has_duplicate_pids(ops: &[Operation]) -> bool {
             Operation::AdvanceTime => {}
             Operation::ReceiveUnknown { path_secret_id: _ } => {
                 // no-op, we're fine receiving unknown pids.
-            }
-            Operation::HandshakeComplete { .. } => {
-                // no-op, a handshake complete for the same pid as a
-                // new path secret is expected
             }
         }
     }
@@ -278,18 +246,18 @@ fn check_invariants() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let mut map = Map::new(signer, 10_000);
+            let mut map = State::new(signer, 10_000);
 
             // Avoid background work interfering with testing.
-            map.state.cleaner.stop();
+            map.cleaner.stop();
 
-            Arc::get_mut(&mut map.state).unwrap().set_max_capacity(5);
+            Arc::get_mut(&mut map).unwrap().set_max_capacity(5);
 
-            model.check_invariants(&map.state);
+            model.check_invariants(&map);
 
             for op in input {
                 model.perform(*op, &map);
-                model.check_invariants(&map.state);
+                model.check_invariants(&map);
             }
         })
 }
@@ -308,16 +276,16 @@ fn check_invariants_no_overflow() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let map = Map::new(signer, 10_000);
+            let map = State::new(signer, 10_000);
 
             // Avoid background work interfering with testing.
-            map.state.cleaner.stop();
+            map.cleaner.stop();
 
-            model.check_invariants(&map.state);
+            model.check_invariants(&map);
 
             for op in input {
                 model.perform(*op, &map);
-                model.check_invariants(&map.state);
+                model.check_invariants(&map);
             }
         })
 }
@@ -331,26 +299,11 @@ fn check_invariants_no_overflow() {
 #[ignore = "memory growth takes a long time to run"]
 fn no_memory_growth() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = Map::new(signer, 100_000);
-    map.state.cleaner.stop();
+    let map = State::new(signer, 100_000);
+    map.cleaner.stop();
+
     for idx in 0..500_000 {
         // FIXME: this ends up 2**16 peers in the `peers` map
-        let entry = fake_entry(idx as u16);
-        map.on_new_path_secrets(entry.clone());
-        map.on_handshake_complete(entry)
-    }
-}
-
-#[test]
-fn entry_size() {
-    let mut should_check = true;
-
-    should_check &= cfg!(target_pointer_width = "64");
-    should_check &= cfg!(target_os = "linux");
-    should_check &= std::env::var("S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS").is_ok();
-
-    // This gates to running only on specific GHA to reduce false positives.
-    if should_check {
-        assert_eq!(fake_entry(0).size(), 238);
+        map.test_insert(fake_entry(idx as u16));
     }
 }
