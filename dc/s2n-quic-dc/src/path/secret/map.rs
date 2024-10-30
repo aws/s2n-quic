@@ -488,19 +488,21 @@ impl Map {
         Some(state.clone())
     }
 
-    pub(super) fn insert(&self, entry: Arc<Entry>) {
+    pub(super) fn on_new_path_secrets(&self, entry: Arc<Entry>) {
         // On insert clear our interest in a handshake.
         self.state.requested_handshakes.pin().remove(&entry.peer);
-        let id = *entry.secret.id();
-        let peer = entry.peer;
-        if self.state.ids.insert(id, entry.clone()).is_some() {
+        if self.state.ids.insert(*entry.secret.id(), entry).is_some() {
             // FIXME: Make insertion fallible and fail handshakes instead?
             panic!("inserting a path secret ID twice");
         }
+    }
 
-        if let Some(prev) = self.state.peers.insert(peer, entry) {
-            // This shouldn't happen due to the panic above, but just in case something went wrong
-            // with the secret map we double check here.
+    pub(super) fn on_handshake_complete(&self, entry: Arc<Entry>) {
+        let id = *entry.secret.id();
+
+        if let Some(prev) = self.state.peers.insert(entry.peer, entry) {
+            // This shouldn't happen due to the panic in on_new_path_secrets, but just
+            // in case something went wrong with the secret map we double check here.
             // FIXME: Make insertion fallible and fail handshakes instead?
             assert_ne!(*prev.secret.id(), id, "duplicate path secret id");
 
@@ -546,7 +548,8 @@ impl Map {
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
             );
             let entry = Arc::new(entry);
-            provider.insert(entry);
+            provider.on_new_path_secrets(entry.clone());
+            provider.on_handshake_complete(entry);
         }
 
         (provider, ids)
@@ -573,7 +576,9 @@ impl Map {
             dc::testing::TEST_APPLICATION_PARAMS,
             dc::testing::TEST_REHANDSHAKE_PERIOD,
         );
-        self.insert(Arc::new(entry));
+        let entry = Arc::new(entry);
+        self.on_new_path_secrets(entry.clone());
+        self.on_handshake_complete(entry);
     }
 
     fn send_control(&self, entry: &Entry, credentials: &Credentials, error: receiver::Error) {
@@ -1057,7 +1062,15 @@ impl dc::Path for HandshakingPath {
         );
         let entry = Arc::new(entry);
         self.entry = Some(entry.clone());
-        self.map.insert(entry);
+        self.map.on_new_path_secrets(entry);
+    }
+
+    fn on_dc_handshake_complete(&mut self) {
+        let entry = self.entry.clone().expect(
+            "the dc handshake cannot be complete without \
+        on_peer_stateless_reset_tokens creating a map entry",
+        );
+        self.map.on_handshake_complete(entry);
     }
 
     fn on_mtu_updated(&mut self, mtu: u16) {

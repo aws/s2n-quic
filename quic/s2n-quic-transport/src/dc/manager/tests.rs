@@ -149,7 +149,9 @@ fn on_peer_dc_stateless_reset_tokens<Config, Endpoint>(
 
     if Config::ENDPOINT_TYPE.is_server() {
         assert!(manager.state.is_server_tokens_sent());
+        assert_eq!(0, manager.path().on_dc_handshake_complete);
     } else {
+        assert_eq!(1, manager.path().on_dc_handshake_complete);
         assert!(manager.state.is_complete());
     }
 
@@ -169,6 +171,7 @@ fn on_packet_ack_client() {
 
     // Client completes when it has received stateless reset tokens from the peer
     assert!(!manager.state.is_complete());
+    assert_eq!(0, manager.path().on_dc_handshake_complete);
 }
 
 #[test]
@@ -182,6 +185,7 @@ fn on_packet_ack_server() {
 
     // Server completes when its stateless reset tokens are acked
     assert!(manager.state.is_complete());
+    assert_eq!(1, manager.path().on_dc_handshake_complete);
 }
 
 fn on_packet_ack<Config, Endpoint>(

@@ -34,6 +34,7 @@ impl MockDcEndpoint {
 pub struct MockDcPath {
     pub on_path_secrets_ready_count: u8,
     pub on_peer_stateless_reset_tokens_count: u8,
+    pub on_dc_handshake_complete: u8,
     pub stateless_reset_tokens: Vec<stateless_reset::Token>,
     pub peer_stateless_reset_tokens: Vec<stateless_reset::Token>,
     pub mtu: u16,
@@ -69,6 +70,7 @@ impl dc::Path for MockDcPath {
         &mut self,
         _session: &impl TlsSession,
     ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
+        debug_assert_eq!(0, self.on_path_secrets_ready_count);
         self.on_path_secrets_ready_count += 1;
         Ok(self.stateless_reset_tokens.clone())
     }
@@ -77,9 +79,15 @@ impl dc::Path for MockDcPath {
         &mut self,
         stateless_reset_tokens: impl Iterator<Item = &'a stateless_reset::Token>,
     ) {
+        debug_assert_eq!(0, self.on_peer_stateless_reset_tokens_count);
         self.on_peer_stateless_reset_tokens_count += 1;
         self.peer_stateless_reset_tokens
             .extend(stateless_reset_tokens);
+    }
+
+    fn on_dc_handshake_complete(&mut self) {
+        debug_assert_eq!(0, self.on_dc_handshake_complete);
+        self.on_dc_handshake_complete += 1;
     }
 
     fn on_mtu_updated(&mut self, mtu: u16) {

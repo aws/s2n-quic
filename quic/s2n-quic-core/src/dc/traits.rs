@@ -46,6 +46,11 @@ pub trait Path: 'static + Send {
         stateless_reset_tokens: impl Iterator<Item = &'a stateless_reset::Token>,
     );
 
+    /// Called when the peer has confirmed receipt of `DC_STATELESS_RESET_TOKENS`, either
+    /// by the server sending back its own `DC_STATELESS_RESET_TOKENS` or by the client
+    /// acknowledging the `DC_STATELESS_RESET_TOKENS` frame was received.
+    fn on_dc_handshake_complete(&mut self);
+
     /// Called when the MTU has been updated for the path
     fn on_mtu_updated(&mut self, mtu: u16);
 }
@@ -70,6 +75,13 @@ impl<P: Path> Path for Option<P> {
     ) {
         if let Some(path) = self {
             path.on_peer_stateless_reset_tokens(stateless_reset_tokens)
+        }
+    }
+
+    #[inline]
+    fn on_dc_handshake_complete(&mut self) {
+        if let Some(path) = self {
+            path.on_dc_handshake_complete()
         }
     }
 

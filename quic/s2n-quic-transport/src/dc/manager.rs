@@ -160,6 +160,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         if Config::ENDPOINT_TYPE.is_server() {
             self.stateless_reset_token_sync.send();
         } else {
+            self.path.on_dc_handshake_complete();
             publisher.on_dc_state_changed(DcStateChanged {
                 state: DcState::Complete,
             });
@@ -176,6 +177,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         ensure!(self.state.on_stateless_reset_tokens_acked().is_ok());
 
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
+        self.path.on_dc_handshake_complete();
         publisher.on_dc_state_changed(DcStateChanged {
             state: DcState::Complete,
         });
