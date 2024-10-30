@@ -57,7 +57,7 @@ impl dc::Endpoint for Map {
         &mut self,
         // TODO: Maybe we should confirm that the sender IP at least matches the IP for the
         //       corresponding control secret?
-        _datagram_info: &DatagramInfo,
+        datagram_info: &DatagramInfo,
         payload: &mut [u8],
     ) -> bool {
         let payload = s2n_codec::DecoderBufferMut::new(payload);
@@ -68,7 +68,7 @@ impl dc::Endpoint for Map {
                 ensure!(tail.is_empty(), false);
 
                 // If we successfully decoded a control packet, pass it into our map to handle.
-                self.handle_control_packet(&packet);
+                self.handle_control_packet(&packet, &datagram_info.remote_address.clone().into());
 
                 true
             }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::state::State;
+use crate::event;
 use rand::Rng as _;
 use std::{
     sync::{
@@ -50,7 +51,7 @@ impl Cleaner {
         }
     }
 
-    pub fn spawn_thread(&self, state: Arc<State>) {
+    pub fn spawn_thread<S: event::Subscriber>(&self, state: Arc<State<S>>) {
         let state = Arc::downgrade(&state);
         let handle = std::thread::spawn(move || loop {
             let Some(state) = state.upgrade() else {
@@ -68,7 +69,7 @@ impl Cleaner {
     }
 
     /// Periodic maintenance for various maps.
-    pub fn clean(&self, state: &State, eviction_cycles: u64) {
+    pub fn clean<S: event::Subscriber>(&self, state: &State<S>, eviction_cycles: u64) {
         let current_epoch = self.epoch.fetch_add(1, Ordering::Relaxed);
         let now = Instant::now();
 

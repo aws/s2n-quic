@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::path::secret::{schedule, sender};
+use crate::{
+    event::tracing::Subscriber,
+    path::secret::{schedule, sender},
+};
 use s2n_quic_core::dc;
 use std::{
     collections::HashSet,
@@ -17,7 +20,7 @@ fn fake_entry(port: u16) -> Arc<Entry> {
 #[test]
 fn cleans_after_delay() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(signer, 50);
+    let map = State::new(signer, 50, Subscriber::default());
 
     // Stop background processing. We expect to manually invoke clean, and a background worker
     // might interfere with our state.
@@ -45,7 +48,7 @@ fn cleans_after_delay() {
 #[test]
 fn thread_shutdown() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(signer, 10);
+    let map = State::new(signer, 10, Subscriber::default());
     let state = Arc::downgrade(&map);
     drop(map);
 
@@ -113,7 +116,7 @@ enum Invariant {
 }
 
 impl Model {
-    fn perform(&mut self, operation: Operation, state: &State) {
+    fn perform(&mut self, operation: Operation, state: &State<Subscriber>) {
         match operation {
             Operation::Insert { ip, path_secret_id } => {
                 let ip = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([0, 0, 0, ip]), 0));
@@ -165,7 +168,7 @@ impl Model {
                         id,
                         &stateless_reset,
                     );
-                state.handle_unknown_secret_packet(&packet);
+                state.handle_unknown_secret(&packet, &Default::default());
 
                 // ReceiveUnknown does not cause any action with respect to our invariants, no
                 // updates required.
@@ -173,7 +176,7 @@ impl Model {
         }
     }
 
-    fn check_invariants(&self, state: &State) {
+    fn check_invariants(&self, state: &State<Subscriber>) {
         for invariant in self.invariants.iter() {
             // We avoid assertions for contains() if we're running the small capacity test, since
             // they are likely broken -- we semi-randomly evict peers in that case.
@@ -246,7 +249,7 @@ fn check_invariants() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let mut map = State::new(signer, 10_000);
+            let mut map = State::new(signer, 10_000, Subscriber::default());
 
             // Avoid background work interfering with testing.
             map.cleaner.stop();
@@ -276,7 +279,7 @@ fn check_invariants_no_overflow() {
 
             let mut model = Model::default();
             let signer = stateless_reset::Signer::new(b"secret");
-            let map = State::new(signer, 10_000);
+            let map = State::new(signer, 10_000, Subscriber::default());
 
             // Avoid background work interfering with testing.
             map.cleaner.stop();
@@ -299,7 +302,7 @@ fn check_invariants_no_overflow() {
 #[ignore = "memory growth takes a long time to run"]
 fn no_memory_growth() {
     let signer = stateless_reset::Signer::new(b"secret");
-    let map = State::new(signer, 100_000);
+    let map = State::new(signer, 100_000, Subscriber::default());
     map.cleaner.stop();
 
     for idx in 0..500_000 {

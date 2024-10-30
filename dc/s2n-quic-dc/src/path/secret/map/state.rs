@@ -3,18 +3,18 @@
 
 use super::{cleaner::Cleaner, stateless_reset, Entry, Store};
 use crate::{
-    credentials::Id,
+    credentials::{Credentials, Id},
+    crypto,
+    event::{self, EndpointPublisher as _, IntoEvent as _},
     fixed_map::{self, ReadGuard},
     packet::{secret_control as control, Packet},
     path::secret::receiver,
 };
+use s2n_quic_core::inet::SocketAddress;
 use std::{
     hash::{BuildHasherDefault, Hasher},
     net::{Ipv4Addr, SocketAddr},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::Arc,
     time::Duration,
 };
 
@@ -39,7 +39,7 @@ mod tests;
 // is defined by access to the entry in the map. Unfortunately we lack any good way to authenticate
 // a peer as *not* having credentials, especially after the peer is gone. It's possible that in the
 // future information could also come from the TLS provider.
-pub(super) struct State {
+pub(super) struct State<S: event::Subscriber> {
     // This is in number of entries.
     max_capacity: usize,
 
@@ -70,16 +70,17 @@ pub(super) struct State {
     // This socket is used *only* for sending secret control packets.
     // FIXME: This will get replaced with sending on a handshake socket associated with the map.
     pub(super) control_socket: std::net::UdpSocket,
+    control_socket_port: u16,
 
     pub(super) receiver_shared: Arc<receiver::Shared>,
 
-    handled_control_packets: AtomicUsize,
-
     cleaner: Cleaner,
+
+    subscriber: S,
 }
 
-impl State {
-    pub fn new(signer: stateless_reset::Signer, capacity: usize) -> Arc<Self> {
+impl<S: event::Subscriber> State<S> {
+    pub fn new(signer: stateless_reset::Signer, capacity: usize, subscriber: S) -> Arc<Self> {
         // FIXME: Avoid unwrap and the whole socket.
         //
         // We only ever send on this socket - but we really should be sending on the same
@@ -89,6 +90,7 @@ impl State {
         // of implementation).
         let control_socket = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
         control_socket.set_nonblocking(true).unwrap();
+        let control_socket_port = control_socket.local_addr().unwrap().port();
 
         let state = Self {
             // This is around 500MB with current entry size.
@@ -100,16 +102,22 @@ impl State {
             requested_handshakes: Default::default(),
             cleaner: Cleaner::new(),
             signer,
-
             receiver_shared: receiver::Shared::new(),
-
-            handled_control_packets: AtomicUsize::new(0),
             control_socket,
+            control_socket_port,
+            subscriber,
         };
 
         let state = Arc::new(state);
 
         state.cleaner.spawn_thread(state.clone());
+
+        state.subscriber().on_path_secret_map_initialized(
+            event::builder::PathSecretMapInitialized {
+                capacity,
+                control_socket_port,
+            },
+        );
 
         state
     }
@@ -119,13 +127,33 @@ impl State {
         let handshakes = self.requested_handshakes.pin();
         if handshakes.len() <= 6000 {
             handshakes.insert(peer);
+            self.subscriber()
+                .on_path_secret_map_background_handshake_requested(
+                    event::builder::PathSecretMapBackgroundHandshakeRequested {
+                        peer_address: SocketAddress::from(peer).into_event(),
+                    },
+                );
         }
     }
 
-    fn handle_unknown_secret_packet(&self, packet: &control::unknown_path_secret::Packet) {
+    fn handle_unknown_secret(
+        &self,
+        packet: &control::unknown_path_secret::Packet,
+        peer: &SocketAddress,
+    ) {
+        let peer_address = peer.into_event();
+
+        self.subscriber().on_unknown_path_secret_packet_received(
+            event::builder::UnknownPathSecretPacketReceived {
+                credential_id: packet.credential_id().into_event(),
+                peer_address,
+            },
+        );
+
         let Some(entry) = self.get_by_id(packet.credential_id()) else {
             return;
         };
+
         // Do not mark as live, this is lightly authenticated.
 
         // ensure the packet is authentic
@@ -133,13 +161,117 @@ impl State {
             .authenticate(&entry.sender().stateless_reset)
             .is_none()
         {
+            self.subscriber().on_unknown_path_secret_packet_rejected(
+                event::builder::UnknownPathSecretPacketRejected {
+                    credential_id: packet.credential_id().into_event(),
+                    peer_address,
+                },
+            );
+
             return;
         }
 
-        self.handled_control_packets.fetch_add(1, Ordering::Relaxed);
+        self.subscriber().on_unknown_path_secret_packet_accepted(
+            event::builder::UnknownPathSecretPacketAccepted {
+                credential_id: packet.credential_id().into_event(),
+                peer_address,
+            },
+        );
 
         // FIXME: More actively schedule a new handshake.
         // See comment on requested_handshakes for details.
+        self.request_handshake(*entry.peer());
+    }
+
+    fn handle_stale_key(&self, packet: &control::stale_key::Packet, peer: &SocketAddress) {
+        let peer_address = peer.into_event();
+
+        self.subscriber()
+            .on_stale_key_packet_received(event::builder::StaleKeyPacketReceived {
+                credential_id: packet.credential_id().into_event(),
+                peer_address,
+            });
+
+        let Some(entry) = self.ids.get_by_key(packet.credential_id()) else {
+            // If we get a control packet we don't have a registered path secret for, ignore the
+            // packet.
+            return;
+        };
+
+        let key = entry.control_secret();
+
+        let Some(packet) = packet.authenticate(&key) else {
+            self.subscriber().on_stale_key_packet_rejected(
+                event::builder::StaleKeyPacketRejected {
+                    credential_id: packet.credential_id().into_event(),
+                    peer_address,
+                },
+            );
+
+            return;
+        };
+
+        self.subscriber()
+            .on_stale_key_packet_accepted(event::builder::StaleKeyPacketAccepted {
+                credential_id: packet.credential_id.into_event(),
+                peer_address,
+            });
+
+        entry.sender().update_for_stale_key(packet.min_key_id);
+    }
+
+    fn handle_replay_detected(
+        &self,
+        packet: &control::replay_detected::Packet,
+        peer: &SocketAddress,
+    ) {
+        let peer_address = peer.into_event();
+
+        self.subscriber().on_replay_detected_packet_received(
+            event::builder::ReplayDetectedPacketReceived {
+                credential_id: packet.credential_id().into_event(),
+                peer_address,
+            },
+        );
+
+        let Some(entry) = self.ids.get_by_key(packet.credential_id()) else {
+            // If we get a control packet we don't have a registered path secret for, ignore the
+            // packet.
+            return;
+        };
+
+        let key = entry.control_secret();
+
+        let Some(packet) = packet.authenticate(&key) else {
+            self.subscriber().on_replay_detected_packet_rejected(
+                event::builder::ReplayDetectedPacketRejected {
+                    credential_id: packet.credential_id().into_event(),
+                    peer_address,
+                },
+            );
+            return;
+        };
+
+        self.subscriber().on_replay_detected_packet_accepted(
+            event::builder::ReplayDetectedPacketAccepted {
+                credential_id: packet.credential_id.into_event(),
+                key_id: packet.rejected_key_id.into_event(),
+                peer_address,
+            },
+        );
+
+        // If we see replay then we're going to assume that we should re-handshake in the
+        // background with this peer. Currently we can't handshake in the background (only
+        // in the foreground on next handshake_with).
+        //
+        // Note that there's no good way for us to prevent an attacker causing us to hit
+        // this code: they can always trivially replay a packet we send. At most we could
+        // de-duplicate *receiving* so there's one handshake per sent packet at most, but
+        // that's not particularly useful: we expect to send a lot of new packets that
+        // could be harvested.
+        //
+        // Handshaking will be rate limited per destination peer (and at least
+        // de-duplicated).
         self.request_handshake(*entry.peer());
     }
 
@@ -154,9 +286,17 @@ impl State {
         self.peers = fixed_map::Map::with_capacity(new, Default::default());
         self.ids = fixed_map::Map::with_capacity(new, Default::default());
     }
+
+    fn subscriber(&self) -> event::EndpointPublisherSubscriber<S> {
+        event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {},
+            None,
+            &self.subscriber,
+        )
+    }
 }
 
-impl Store for State {
+impl<S: event::Subscriber> Store for State<S> {
     fn secrets_len(&self) -> usize {
         self.ids.len()
     }
@@ -179,26 +319,52 @@ impl Store for State {
     }
 
     fn on_new_path_secrets(&self, entry: Arc<Entry>) {
-        // On insert clear our interest in a handshake.
-        self.requested_handshakes.pin().remove(entry.peer());
         let id = *entry.id();
+        let peer = entry.peer();
+
+        // On insert clear our interest in a handshake.
+        self.requested_handshakes.pin().remove(peer);
+
         if self.ids.insert(id, entry.clone()).is_some() {
             // FIXME: Make insertion fallible and fail handshakes instead?
             panic!("inserting a path secret ID twice");
         }
+
+        self.subscriber().on_path_secret_map_entry_inserted(
+            event::builder::PathSecretMapEntryInserted {
+                peer_address: SocketAddress::from(*peer).into_event(),
+                credential_id: id.into_event(),
+            },
+        );
     }
 
     fn on_handshake_complete(&self, entry: Arc<Entry>) {
         let id = *entry.id();
         let peer = *entry.peer();
+
         if let Some(prev) = self.peers.insert(peer, entry) {
             // This shouldn't happen due to the panic in on_new_path_secrets, but just
             // in case something went wrong with the secret map we double check here.
             // FIXME: Make insertion fallible and fail handshakes instead?
-            assert_ne!(*prev.id(), id, "duplicate path secret id");
+            let prev_id = *prev.id();
+            assert_ne!(prev_id, id, "duplicate path secret id");
 
             prev.retire(self.cleaner.epoch());
+
+            self.subscriber().on_path_secret_map_entry_replaced(
+                event::builder::PathSecretMapEntryReplaced {
+                    peer_address: SocketAddress::from(peer).into_event(),
+                    new_credential_id: id.into_event(),
+                    previous_credential_id: prev_id.into_event(),
+                },
+            );
         }
+
+        self.subscriber()
+            .on_path_secret_map_entry_ready(event::builder::PathSecretMapEntryReady {
+                peer_address: SocketAddress::from(peer).into_event(),
+                credential_id: id.into_event(),
+            });
     }
 
     fn get_by_addr(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
@@ -209,52 +375,19 @@ impl Store for State {
         self.ids.get_by_key(id)
     }
 
-    fn handle_control_packet(&self, packet: &control::Packet) {
-        if let control::Packet::UnknownPathSecret(ref packet) = &packet {
-            return self.handle_unknown_secret_packet(packet);
-        }
-
-        let Some(entry) = self.ids.get_by_key(packet.credential_id()) else {
-            // If we get a control packet we don't have a registered path secret for, ignore the
-            // packet.
-            return;
-        };
-
-        let key = entry.control_secret();
-
+    fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr) {
         match packet {
-            control::Packet::StaleKey(packet) => {
-                let Some(packet) = packet.authenticate(&key) else {
-                    return;
-                };
-                entry.sender().update_for_stale_key(packet.min_key_id);
-                self.handled_control_packets.fetch_add(1, Ordering::Relaxed);
-            }
+            control::Packet::StaleKey(packet) => self.handle_stale_key(packet, &(*peer).into()),
             control::Packet::ReplayDetected(packet) => {
-                let Some(_packet) = packet.authenticate(&key) else {
-                    return;
-                };
-                self.handled_control_packets.fetch_add(1, Ordering::Relaxed);
-
-                // If we see replay then we're going to assume that we should re-handshake in the
-                // background with this peer. Currently we can't handshake in the background (only
-                // in the foreground on next handshake_with).
-                //
-                // Note that there's no good way for us to prevent an attacker causing us to hit
-                // this code: they can always trivially replay a packet we send. At most we could
-                // de-duplicate *receiving* so there's one handshake per sent packet at most, but
-                // that's not particularly useful: we expect to send a lot of new packets that
-                // could be harvested.
-                //
-                // Handshaking will be rate limited per destination peer (and at least
-                // de-duplicated).
-                self.request_handshake(*entry.peer());
+                self.handle_replay_detected(packet, &(*peer).into())
             }
-            control::Packet::UnknownPathSecret(_) => unreachable!(),
+            control::Packet::UnknownPathSecret(packet) => {
+                self.handle_unknown_secret(packet, &(*peer).into())
+            }
         }
     }
 
-    fn handle_unexpected_packet(&self, packet: &Packet) {
+    fn handle_unexpected_packet(&self, packet: &Packet, peer: &SocketAddr) {
         match packet {
             Packet::Stream(_) => {
                 // no action for now. FIXME: Add metrics.
@@ -265,9 +398,11 @@ impl Store for State {
             Packet::Control(_) => {
                 // no action for now. FIXME: Add metrics.
             }
-            Packet::StaleKey(packet) => self.handle_control_packet(&(*packet).into()),
-            Packet::ReplayDetected(packet) => self.handle_control_packet(&(*packet).into()),
-            Packet::UnknownPathSecret(packet) => self.handle_control_packet(&(*packet).into()),
+            Packet::StaleKey(packet) => self.handle_stale_key(packet, &(*peer).into()),
+            Packet::ReplayDetected(packet) => self.handle_replay_detected(packet, &(*peer).into()),
+            Packet::UnknownPathSecret(packet) => {
+                self.handle_unknown_secret(packet, &(*peer).into())
+            }
         }
     }
 
@@ -279,10 +414,39 @@ impl Store for State {
         &self.receiver_shared
     }
 
-    fn send_control_packet(&self, dst: &SocketAddr, buffer: &[u8]) {
+    fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]) {
         match self.control_socket.send_to(buffer, dst) {
             Ok(_) => {
                 // all done
+                match control::Packet::decode(s2n_codec::DecoderBufferMut::new(buffer))
+                    .map(|(t, _)| t)
+                {
+                    Ok(control::Packet::UnknownPathSecret(packet)) => {
+                        self.subscriber().on_unknown_path_secret_packet_sent(
+                            event::builder::UnknownPathSecretPacketSent {
+                                peer_address: SocketAddress::from(*dst).into_event(),
+                                credential_id: packet.credential_id().into_event(),
+                            },
+                        );
+                    }
+                    Ok(control::Packet::StaleKey(packet)) => {
+                        self.subscriber().on_stale_key_packet_sent(
+                            event::builder::StaleKeyPacketSent {
+                                peer_address: SocketAddress::from(*dst).into_event(),
+                                credential_id: packet.credential_id().into_event(),
+                            },
+                        );
+                    }
+                    Ok(control::Packet::ReplayDetected(packet)) => {
+                        self.subscriber().on_replay_detected_packet_sent(
+                            event::builder::ReplayDetectedPacketSent {
+                                peer_address: SocketAddress::from(*dst).into_event(),
+                                credential_id: packet.credential_id().into_event(),
+                            },
+                        );
+                    }
+                    Err(err) => debug_assert!(false, "decoder error {err:?}"),
+                }
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 // ignore would block -- we're not going to queue up control packet messages.
@@ -295,6 +459,66 @@ impl Store for State {
 
     fn rehandshake_period(&self) -> Duration {
         self.rehandshake_period
+    }
+
+    fn check_dedup(
+        &self,
+        entry: &Entry,
+        key_id: s2n_quic_core::varint::VarInt,
+    ) -> crypto::open::Result {
+        let creds = &Credentials {
+            id: *entry.id(),
+            key_id,
+        };
+        match entry.receiver().post_authentication(creds) {
+            Ok(()) => Ok(()),
+            Err(receiver::Error::AlreadyExists) => {
+                self.send_control_error(entry, creds, receiver::Error::AlreadyExists);
+
+                self.subscriber().on_replay_definitely_detected(
+                    event::builder::ReplayDefinitelyDetected {
+                        credential_id: creds.id.into_event(),
+                        key_id: key_id.into_event(),
+                    },
+                );
+
+                Err(crypto::open::Error::ReplayDefinitelyDetected)
+            }
+            Err(receiver::Error::Unknown) => {
+                self.send_control_error(entry, creds, receiver::Error::Unknown);
+
+                let gap = (*entry.receiver().minimum_unseen_key_id())
+                    // This should never be negative, but saturate anyway to avoid
+                    // wildly large numbers.
+                    .saturating_sub(*creds.key_id);
+
+                self.subscriber().on_replay_potentially_detected(
+                    event::builder::ReplayPotentiallyDetected {
+                        credential_id: creds.id.into_event(),
+                        key_id: key_id.into_event(),
+                        gap,
+                    },
+                );
+
+                Err(crypto::open::Error::ReplayPotentiallyDetected { gap: Some(gap) })
+            }
+        }
+    }
+}
+
+impl<S: event::Subscriber> Drop for State<S> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            return;
+        }
+
+        self.subscriber().on_path_secret_map_uninitialized(
+            event::builder::PathSecretMapUninitialized {
+                capacity: self.secrets_capacity(),
+                control_socket_port: self.control_socket_port,
+                entries: self.secrets_len(),
+            },
+        );
     }
 }
 

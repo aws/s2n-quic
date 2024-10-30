@@ -335,7 +335,11 @@ where
                             any_valid_packets = true;
                         }
                     }
-                    other => self.shared.crypto.map().handle_unexpected_packet(&other),
+                    other => self
+                        .shared
+                        .crypto
+                        .map()
+                        .handle_unexpected_packet(&other, &self.shared.write_remote_addr().into()),
                 }
             }
         }

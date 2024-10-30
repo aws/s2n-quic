@@ -492,7 +492,10 @@ impl Inner {
                 }
                 other => {
                     let kind = other.kind();
-                    shared.crypto.map().handle_unexpected_packet(other);
+                    shared
+                        .crypto
+                        .map()
+                        .handle_unexpected_packet(other, &shared.read_remote_addr().into());
 
                     // if we get a packet we don't expect then it's fatal for streams
                     msg.clear();
@@ -586,7 +589,10 @@ impl Inner {
                         });
                     }
                     other => {
-                        shared.crypto.map().handle_unexpected_packet(&other);
+                        shared
+                            .crypto
+                            .map()
+                            .handle_unexpected_packet(&other, &shared.read_remote_addr().into());
 
                         // TODO if the packet was authentic then close the receiver with an error
                     }

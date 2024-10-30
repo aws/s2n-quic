@@ -1757,6 +1757,14 @@ pub mod tracing {
             Self { client, server }
         }
     }
+    impl Subscriber {
+        fn parent<M: crate::event::Meta>(&self, meta: &M) -> Option<tracing::Id> {
+            match meta.endpoint_type() {
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
+            }
+        }
+    }
     impl super::Subscriber for Subscriber {
         type ConnectionContext = tracing::Span;
         fn create_connection_context(
@@ -1764,10 +1772,7 @@ pub mod tracing {
             meta: &api::ConnectionMeta,
             _info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             tracing :: span ! (target : "s2n_quic" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
         }
         #[inline]
@@ -2331,10 +2336,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::VersionInformation,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::VersionInformation {
                 server_versions,
                 client_versions,
@@ -2348,10 +2350,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::EndpointPacketSent,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::EndpointPacketSent { packet_header } = event;
             tracing :: event ! (target : "endpoint_packet_sent" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
         }
@@ -2361,10 +2360,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::EndpointPacketReceived,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::EndpointPacketReceived { packet_header } = event;
             tracing :: event ! (target : "endpoint_packet_received" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
         }
@@ -2374,10 +2370,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::EndpointDatagramSent,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::EndpointDatagramSent { len, gso_offset } = event;
             tracing :: event ! (target : "endpoint_datagram_sent" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
         }
@@ -2387,10 +2380,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::EndpointDatagramReceived,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::EndpointDatagramReceived { len } = event;
             tracing :: event ! (target : "endpoint_datagram_received" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
         }
@@ -2400,10 +2390,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::EndpointDatagramDropped,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::EndpointDatagramDropped { len, reason } = event;
             tracing :: event ! (target : "endpoint_datagram_dropped" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
         }
@@ -2413,19 +2400,13 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::EndpointConnectionAttemptFailed,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::EndpointConnectionAttemptFailed { error } = event;
             tracing :: event ! (target : "endpoint_connection_attempt_failed" , parent : parent , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
         }
         #[inline]
         fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::PlatformTx {
                 count,
                 syscalls,
@@ -2437,19 +2418,13 @@ pub mod tracing {
         }
         #[inline]
         fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::PlatformTxError { errno } = event;
             tracing :: event ! (target : "platform_tx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
         }
         #[inline]
         fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::PlatformRx {
                 count,
                 syscalls,
@@ -2461,10 +2436,7 @@ pub mod tracing {
         }
         #[inline]
         fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::PlatformRxError { errno } = event;
             tracing :: event ! (target : "platform_rx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
         }
@@ -2474,10 +2446,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::PlatformFeatureConfigured,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::PlatformFeatureConfigured { configuration } = event;
             tracing :: event ! (target : "platform_feature_configured" , parent : parent , tracing :: Level :: DEBUG , configuration = tracing :: field :: debug (configuration));
         }
@@ -2487,10 +2456,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::PlatformEventLoopWakeup,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::PlatformEventLoopWakeup {
                 timeout_expired,
                 rx_ready,
@@ -2505,10 +2471,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::PlatformEventLoopSleep,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::PlatformEventLoopSleep {
                 timeout,
                 processing_duration,
@@ -2521,10 +2484,7 @@ pub mod tracing {
             meta: &api::EndpointMeta,
             event: &api::PlatformEventLoopStarted,
         ) {
-            let parent = match meta.endpoint_type {
-                api::EndpointType::Client { .. } => self.client.id(),
-                api::EndpointType::Server { .. } => self.server.id(),
-            };
+            let parent = self.parent(meta);
             let api::PlatformEventLoopStarted { local_address } = event;
             tracing :: event ! (target : "platform_event_loop_started" , parent : parent , tracing :: Level :: DEBUG , local_address = tracing :: field :: debug (local_address));
         }

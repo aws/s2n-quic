@@ -90,6 +90,13 @@ impl OutputMode {
         }
     }
 
+    fn trait_constraints(&self) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!('static + Send + Sync),
+            OutputMode::Mut => quote!('static + Send),
+        }
+    }
+
     fn query_mut(&self) -> TokenStream {
         match self {
             OutputMode::Ref => quote!(),
@@ -307,6 +314,7 @@ struct Output {
     pub tuple_subscriber: TokenStream,
     pub tracing_subscriber: TokenStream,
     pub tracing_subscriber_attr: TokenStream,
+    pub tracing_subscriber_def: TokenStream,
     pub builders: TokenStream,
     pub api: TokenStream,
     pub testing_fields: TokenStream,
@@ -337,6 +345,7 @@ impl ToTokens for Output {
             tuple_subscriber,
             tracing_subscriber,
             tracing_subscriber_attr,
+            tracing_subscriber_def,
             builders,
             api,
             testing_fields,
@@ -366,6 +375,7 @@ impl ToTokens for Output {
         let supervisor_timeout_tuple = self.mode.supervisor_timeout_tuple();
         let query_mut = self.mode.query_mut();
         let query_mut_tuple = self.mode.query_mut_tuple();
+        let trait_constraints = self.mode.trait_constraints();
 
         tokens.extend(quote!(
             use super::*;
@@ -386,25 +396,7 @@ impl ToTokens for Output {
                 //! This module contains event integration with [`tracing`](https://docs.rs/tracing)
                 use super::api;
 
-                /// Emits events with [`tracing`](https://docs.rs/tracing)
-                #[derive(Clone, Debug)]
-                pub struct Subscriber {
-                    client: tracing::Span,
-                    server: tracing::Span,
-                }
-
-                impl Default for Subscriber {
-                    fn default() -> Self {
-                        let root = tracing::span!(target: #target_crate, tracing::Level::DEBUG, #target_crate);
-                        let client = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "client");
-                        let server = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "server");
-
-                        Self {
-                            client,
-                            server,
-                        }
-                    }
-                }
+                #tracing_subscriber_def
 
                 impl super::Subscriber for Subscriber {
                     type ConnectionContext = tracing::Span;
@@ -414,14 +406,7 @@ impl ToTokens for Output {
                         meta: &api::ConnectionMeta,
                         _info: &api::ConnectionInfo
                     ) -> Self::ConnectionContext {
-                        let parent = match meta.endpoint_type {
-                            api::EndpointType::Client { .. } => {
-                                self.client.id()
-                            }
-                            api::EndpointType::Server { .. } => {
-                                self.server.id()
-                            }
-                        };
+                        let parent = self.parent(meta);
                         tracing::span!(target: #target_crate, parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
                     }
 
@@ -441,10 +426,11 @@ impl ToTokens for Output {
             mod traits {
                 use super::*;
                 use core::fmt;
-                use #s2n_quic_core_path::{query, event::Meta};
+                use #s2n_quic_core_path::query;
+                use crate::event::Meta;
 
                 /// Allows for events to be subscribed to
-                pub trait Subscriber: 'static + Send {
+                pub trait Subscriber: #trait_constraints {
 
                     /// An application provided type associated with each connection.
                     ///
@@ -938,10 +924,42 @@ struct EventInfo<'a> {
     api: TokenStream,
     builder: TokenStream,
     tracing_subscriber_attr: TokenStream,
+    tracing_subscriber_def: TokenStream,
 }
 
-fn main() -> Result<()> {
-    let event_paths = [
+impl EventInfo<'_> {
+    fn s2n_quic() -> Self {
+        let tracing_subscriber_def = quote!(
+        /// Emits events with [`tracing`](https://docs.rs/tracing)
+        #[derive(Clone, Debug)]
+        pub struct Subscriber {
+            client: tracing::Span,
+            server: tracing::Span,
+        }
+
+        impl Default for Subscriber {
+            fn default() -> Self {
+                let root = tracing::span!(target: "s2n_quic", tracing::Level::DEBUG, "s2n_quic");
+                let client = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "client");
+                let server = tracing::span!(parent: root.id(), tracing::Level::DEBUG, "server");
+
+                Self {
+                    client,
+                    server,
+                }
+            }
+        }
+
+        impl Subscriber {
+            fn parent<M: crate::event::Meta>(&self, meta: &M) -> Option<tracing::Id> {
+                match meta.endpoint_type() {
+                    api::EndpointType::Client { .. } => self.client.id(),
+                    api::EndpointType::Server { .. } => self.server.id(),
+                }
+            }
+        }
+        );
+
         EventInfo {
             input_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -958,7 +976,35 @@ fn main() -> Result<()> {
             tracing_subscriber_attr: quote! {
                 #[cfg(feature = "event-tracing")]
             },
-        },
+            tracing_subscriber_def,
+        }
+    }
+
+    fn s2n_quic_dc() -> Self {
+        let tracing_subscriber_def = quote!(
+        /// Emits events with [`tracing`](https://docs.rs/tracing)
+        #[derive(Clone, Debug)]
+        pub struct Subscriber {
+            root: tracing::Span,
+        }
+
+        impl Default for Subscriber {
+            fn default() -> Self {
+                let root = tracing::span!(target: "s2n_quic_dc", tracing::Level::DEBUG, "s2n_quic_dc");
+
+                Self {
+                    root,
+                }
+            }
+        }
+
+        impl Subscriber {
+            fn parent<M: crate::event::Meta>(&self, _meta: &M) -> Option<tracing::Id> {
+                self.root.id()
+            }
+        }
+        );
+
         EventInfo {
             input_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -972,9 +1018,6 @@ fn main() -> Result<()> {
             s2n_quic_core_path: quote!(s2n_quic_core),
             api: quote! {
                 pub use s2n_quic_core::event::api::{
-                    ConnectionMeta,
-                    EndpointMeta,
-                    ConnectionInfo,
                     Subject,
                     EndpointType,
                     SocketAddress,
@@ -982,17 +1025,19 @@ fn main() -> Result<()> {
             },
             builder: quote! {
                 pub use s2n_quic_core::event::builder::{
-                    ConnectionMeta,
-                    EndpointMeta,
-                    ConnectionInfo,
                     Subject,
                     EndpointType,
                     SocketAddress,
                 };
             },
             tracing_subscriber_attr: quote!(),
-        },
-    ];
+            tracing_subscriber_def,
+        }
+    }
+}
+
+fn main() -> Result<()> {
+    let event_paths = [EventInfo::s2n_quic(), EventInfo::s2n_quic_dc()];
 
     for event_info in event_paths {
         let mut files = vec![];
@@ -1012,6 +1057,7 @@ fn main() -> Result<()> {
             api: event_info.api,
             builders: event_info.builder,
             tracing_subscriber_attr: event_info.tracing_subscriber_attr,
+            tracing_subscriber_def: event_info.tracing_subscriber_def,
             ..Default::default()
         };
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{Entry, Map};
-use crate::{credentials::Credentials, crypto, path::secret::receiver};
+use crate::crypto;
 use core::{
     fmt,
     sync::atomic::{AtomicU64, Ordering},
@@ -73,35 +73,7 @@ impl Dedup {
     pub fn check(&self) -> crypto::open::Result {
         *self.cell.get_or_init(|| {
             match self.init.take() {
-                Some((entry, key_id, map)) => {
-                    let creds = &Credentials {
-                        id: *entry.id(),
-                        key_id,
-                    };
-                    match entry.receiver().post_authentication(creds) {
-                        Ok(()) => Ok(()),
-                        Err(receiver::Error::AlreadyExists) => {
-                            map.store.send_control_error(
-                                &entry,
-                                creds,
-                                receiver::Error::AlreadyExists,
-                            );
-                            Err(crypto::open::Error::ReplayDefinitelyDetected)
-                        }
-                        Err(receiver::Error::Unknown) => {
-                            map.store
-                                .send_control_error(&entry, creds, receiver::Error::Unknown);
-                            Err(crypto::open::Error::ReplayPotentiallyDetected {
-                                gap: Some(
-                                    (*entry.receiver().minimum_unseen_key_id())
-                                        // This should never be negative, but saturate anyway to avoid
-                                        // wildly large numbers.
-                                        .saturating_sub(*creds.key_id),
-                                ),
-                            })
-                        }
-                    }
-                }
+                Some((entry, key_id, map)) => map.store.check_dedup(&entry, key_id),
                 None => {
                     // Dedup has been poisoned! TODO log this
                     Err(crypto::open::Error::ReplayPotentiallyDetected { gap: None })

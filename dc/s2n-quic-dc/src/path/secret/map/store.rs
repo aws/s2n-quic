@@ -37,22 +37,29 @@ pub trait Store: 'static + Send + Sync {
 
     fn get_by_id(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
 
-    fn handle_unexpected_packet(&self, packet: &Packet);
+    fn handle_unexpected_packet(&self, packet: &Packet, peer: &SocketAddr);
 
-    fn handle_control_packet(&self, packet: &control::Packet);
+    fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr);
 
     fn signer(&self) -> &stateless_reset::Signer;
 
     fn receiver(&self) -> &Arc<receiver::Shared>;
 
-    fn send_control_packet(&self, dst: &SocketAddr, buffer: &[u8]);
+    fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]);
 
     fn rehandshake_period(&self) -> Duration;
+
+    fn check_dedup(
+        &self,
+        entry: &Entry,
+        key_id: s2n_quic_core::varint::VarInt,
+    ) -> crate::crypto::open::Result;
 
     #[inline]
     fn send_control_error(&self, entry: &Entry, credentials: &Credentials, error: receiver::Error) {
         let mut buffer = [0; control::MAX_PACKET_SIZE];
-        let buffer = error.to_packet(entry, credentials, &mut buffer);
+        let len = error.to_packet(entry, credentials, &mut buffer).len();
+        let buffer = &mut buffer[..len];
         let dst = entry.peer();
         self.send_control_packet(dst, buffer);
     }
