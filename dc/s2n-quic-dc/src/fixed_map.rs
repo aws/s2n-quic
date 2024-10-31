@@ -12,8 +12,10 @@ use core::{
     hash::Hash,
     sync::atomic::{AtomicU8, Ordering},
 };
-use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockUpgradableReadGuard};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockUpgradableReadGuard};
 use std::{collections::hash_map::RandomState, hash::BuildHasher};
+
+pub use parking_lot::MappedRwLockReadGuard as ReadGuard;
 
 pub struct Map<K, V, S = RandomState> {
     slots: Box<[Slot<K, V>]>,
@@ -94,7 +96,7 @@ where
         self.get_by_key(key).is_some()
     }
 
-    pub fn get_by_key(&self, key: &K) -> Option<MappedRwLockReadGuard<'_, V>> {
+    pub fn get_by_key(&self, key: &K) -> Option<ReadGuard<'_, V>> {
         self.slot_by_hash(key).get_by_key(key)
     }
 }
@@ -148,7 +150,7 @@ where
         None
     }
 
-    fn get_by_key(&self, needle: &K) -> Option<MappedRwLockReadGuard<'_, V>> {
+    fn get_by_key(&self, needle: &K) -> Option<ReadGuard<'_, V>> {
         // Scan each value and check if our requested needle is present.
         let values = self.values.read();
         for (value_idx, value) in values.iter().enumerate() {
