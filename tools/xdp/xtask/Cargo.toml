@@ -9,5 +9,5 @@ bindgen = "0.70"
 clap = { version = "4.1", features = ["derive"] }
 elf = "0.7"
 env_logger = "0.11"
-rbpf = "0.2"
+rbpf = "0.3"
 similar = "2"
