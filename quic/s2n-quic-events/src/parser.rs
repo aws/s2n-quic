@@ -171,7 +171,7 @@ impl Struct {
                         #[inline]
                         #deprecated
                         #allow_deprecated
-                        fn #function(&#receiver self, meta: &EndpointMeta, event: &#ident) {
+                        fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
                             let _ = meta;
                             let _ = event;
                         }
@@ -180,7 +180,7 @@ impl Struct {
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&#receiver self, meta: &EndpointMeta, event: &#ident) {
+                        fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
                             (self.0).#function(meta, event);
                             (self.1).#function(meta, event);
                         }
@@ -191,10 +191,10 @@ impl Struct {
                         #allow_deprecated
                         fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
                             let parent = match meta.endpoint_type {
-                                api::EndpointType::Client {} => {
+                                api::EndpointType::Client { .. } => {
                                     self.client.id()
                                 }
-                                api::EndpointType::Server {} => {
+                                api::EndpointType::Server { .. } => {
                                     self.server.id()
                                 }
                             };
@@ -254,7 +254,12 @@ impl Struct {
                         #[inline]
                         #deprecated
                         #allow_deprecated
-                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
+                        fn #function(
+                            &#receiver self,
+                            context: &#receiver Self::ConnectionContext,
+                            meta: &api::ConnectionMeta,
+                            event: &api::#ident
+                        ) {
                             let _ = context;
                             let _ = meta;
                             let _ = event;
@@ -264,7 +269,12 @@ impl Struct {
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
+                        fn #function(
+                            &#receiver self,
+                            context: &#receiver Self::ConnectionContext,
+                            meta: &api::ConnectionMeta,
+                            event: &api::#ident
+                        ) {
                             (self.0).#function(&#receiver context.0, meta, event);
                             (self.1).#function(&#receiver context.1, meta, event);
                         }
@@ -273,7 +283,12 @@ impl Struct {
                     output.tracing_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, _meta: &api::ConnectionMeta, event: &api::#ident) {
+                        fn #function(
+                            &#receiver self,
+                            context: &#receiver Self::ConnectionContext,
+                            _meta: &api::ConnectionMeta,
+                            event: &api::#ident
+                        ) {
                             let id = context.id();
                             let api::#ident { #(#destructure_fields),* } = event;
                             tracing::event!(target: #snake, parent: id, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
@@ -311,15 +326,25 @@ impl Struct {
                     output.subscriber_metrics.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
+                        fn #function(
+                            &#receiver self,
+                            context: &#receiver Self::ConnectionContext,
+                            meta: &api::ConnectionMeta,
+                            event: &api::#ident
+                        ) {
                             context.#counter #counter_increment;
-                            self.subscriber.#function(&mut context.recorder, meta, event);
+                            self.subscriber.#function(&#receiver context.recorder, meta, event);
                         }
                     ));
 
                     output.subscriber_testing.extend(quote!(
                         #allow_deprecated
-                        fn #function(&#receiver self, _context: &#receiver Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
+                        fn #function(
+                            &#receiver self,
+                            _context: &#receiver Self::ConnectionContext,
+                            meta: &api::ConnectionMeta,
+                            event: &api::#ident
+                        ) {
                             self.#counter #counter_increment;
                             if self.location.is_some() {
                                 self.output #lock.push(format!("{meta:?} {event:?}"));

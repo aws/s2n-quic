@@ -9,20 +9,40 @@ use super::*;
 pub mod api {
     #![doc = r" This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)"]
     use super::*;
+    pub use s2n_quic_core::event::api::{
+        ConnectionInfo, ConnectionMeta, EndpointMeta, EndpointType, SocketAddress, Subject,
+    };
     pub use traits::Subscriber;
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Frame was sent"]
-    pub struct FrameSent {
-        pub packet_header: PacketHeader,
-        pub path_id: u64,
-        pub frame: Frame,
+    pub struct ApplicationWrite {
+        #[doc = " The number of bytes that the application tried to write"]
+        pub len: usize,
     }
-    impl Event for FrameSent {
-        const NAME: &'static str = "transport:frame_sent";
+    impl Event for ApplicationWrite {
+        const NAME: &'static str = "application:write";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct ApplicationRead {
+        #[doc = " The number of bytes that the application tried to read"]
+        pub len: usize,
+    }
+    impl Event for ApplicationRead {
+        const NAME: &'static str = "application:write";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct EndpointInitialized<'a> {
+        pub acceptor_addr: SocketAddress<'a>,
+        pub handshake_addr: SocketAddress<'a>,
+        pub tcp: bool,
+        pub udp: bool,
+    }
+    impl<'a> Event for EndpointInitialized<'a> {
+        const NAME: &'static str = "endpoint:initialized";
     }
 }
-#[cfg(feature = "event-tracing")]
 pub mod tracing {
     #![doc = r" This module contains event integration with [`tracing`](https://docs.rs/tracing)"]
     use super::api;
@@ -50,49 +70,107 @@ pub mod tracing {
             _info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
             let parent = match meta.endpoint_type {
-                api::EndpointType::Client {} => self.client.id(),
-                api::EndpointType::Server {} => self.server.id(),
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
             };
             tracing :: span ! (target : "s2n_quic_dc" , parent : parent , tracing :: Level :: DEBUG , "conn" , id = meta . id)
         }
         #[inline]
-        fn on_frame_sent(
+        fn on_application_write(
             &self,
             context: &Self::ConnectionContext,
             _meta: &api::ConnectionMeta,
-            event: &api::FrameSent,
+            event: &api::ApplicationWrite,
         ) {
             let id = context.id();
-            let api::FrameSent {
-                packet_header,
-                path_id,
-                frame,
+            let api::ApplicationWrite { len } = event;
+            tracing :: event ! (target : "application_write" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+        }
+        #[inline]
+        fn on_application_read(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ApplicationRead,
+        ) {
+            let id = context.id();
+            let api::ApplicationRead { len } = event;
+            tracing :: event ! (target : "application_read" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+        }
+        #[inline]
+        fn on_endpoint_initialized(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointInitialized,
+        ) {
+            let parent = match meta.endpoint_type {
+                api::EndpointType::Client { .. } => self.client.id(),
+                api::EndpointType::Server { .. } => self.server.id(),
+            };
+            let api::EndpointInitialized {
+                acceptor_addr,
+                handshake_addr,
+                tcp,
+                udp,
             } = event;
-            tracing :: event ! (target : "frame_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path_id = tracing :: field :: debug (path_id) , frame = tracing :: field :: debug (frame));
+            tracing :: event ! (target : "endpoint_initialized" , parent : parent , tracing :: Level :: DEBUG , acceptor_addr = tracing :: field :: debug (acceptor_addr) , handshake_addr = tracing :: field :: debug (handshake_addr) , tcp = tracing :: field :: debug (tcp) , udp = tracing :: field :: debug (udp));
         }
     }
 }
 pub mod builder {
     use super::*;
+    pub use s2n_quic_core::event::builder::{
+        ConnectionInfo, ConnectionMeta, EndpointMeta, EndpointType, SocketAddress, Subject,
+    };
     #[derive(Clone, Debug)]
-    #[doc = " Frame was sent"]
-    pub struct FrameSent {
-        pub packet_header: PacketHeader,
-        pub path_id: u64,
-        pub frame: Frame,
+    pub struct ApplicationWrite {
+        #[doc = " The number of bytes that the application tried to write"]
+        pub len: usize,
     }
-    impl IntoEvent<api::FrameSent> for FrameSent {
+    impl IntoEvent<api::ApplicationWrite> for ApplicationWrite {
         #[inline]
-        fn into_event(self) -> api::FrameSent {
-            let FrameSent {
-                packet_header,
-                path_id,
-                frame,
+        fn into_event(self) -> api::ApplicationWrite {
+            let ApplicationWrite { len } = self;
+            api::ApplicationWrite {
+                len: len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ApplicationRead {
+        #[doc = " The number of bytes that the application tried to read"]
+        pub len: usize,
+    }
+    impl IntoEvent<api::ApplicationRead> for ApplicationRead {
+        #[inline]
+        fn into_event(self) -> api::ApplicationRead {
+            let ApplicationRead { len } = self;
+            api::ApplicationRead {
+                len: len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EndpointInitialized<'a> {
+        pub acceptor_addr: SocketAddress<'a>,
+        pub handshake_addr: SocketAddress<'a>,
+        pub tcp: bool,
+        pub udp: bool,
+    }
+    impl<'a> IntoEvent<api::EndpointInitialized<'a>> for EndpointInitialized<'a> {
+        #[inline]
+        fn into_event(self) -> api::EndpointInitialized<'a> {
+            let EndpointInitialized {
+                acceptor_addr,
+                handshake_addr,
+                tcp,
+                udp,
             } = self;
-            api::FrameSent {
-                packet_header: packet_header.into_event(),
-                path_id: path_id.into_event(),
-                frame: frame.into_event(),
+            api::EndpointInitialized {
+                acceptor_addr: acceptor_addr.into_event(),
+                handshake_addr: handshake_addr.into_event(),
+                tcp: tcp.into_event(),
+                udp: udp.into_event(),
             }
         }
     }
@@ -100,42 +178,8 @@ pub mod builder {
 pub use traits::*;
 mod traits {
     use super::*;
-    use crate::query;
-    use api::*;
     use core::fmt;
-    #[doc = r" Provides metadata related to an event"]
-    pub trait Meta: fmt::Debug {
-        #[doc = r" Returns whether the local endpoint is a Client or Server"]
-        fn endpoint_type(&self) -> &EndpointType;
-        #[doc = r" A context from which the event is being emitted"]
-        #[doc = r""]
-        #[doc = r" An event can occur in the context of an Endpoint or Connection"]
-        fn subject(&self) -> Subject;
-        #[doc = r" The time the event occurred"]
-        fn timestamp(&self) -> &crate::event::Timestamp;
-    }
-    impl Meta for ConnectionMeta {
-        fn endpoint_type(&self) -> &EndpointType {
-            &self.endpoint_type
-        }
-        fn subject(&self) -> Subject {
-            Subject::Connection { id: self.id }
-        }
-        fn timestamp(&self) -> &crate::event::Timestamp {
-            &self.timestamp
-        }
-    }
-    impl Meta for EndpointMeta {
-        fn endpoint_type(&self) -> &EndpointType {
-            &self.endpoint_type
-        }
-        fn subject(&self) -> Subject {
-            Subject::Endpoint {}
-        }
-        fn timestamp(&self) -> &crate::event::Timestamp {
-            &self.timestamp
-        }
-    }
+    use s2n_quic_core::{event::Meta, query};
     #[doc = r" Allows for events to be subscribed to"]
     pub trait Subscriber: 'static + Send {
         #[doc = r" An application provided type associated with each connection."]
@@ -184,18 +228,40 @@ mod traits {
         #[doc = r" Creates a context to be passed to each connection-related event"]
         fn create_connection_context(
             &self,
-            meta: &ConnectionMeta,
-            info: &ConnectionInfo,
+            meta: &api::ConnectionMeta,
+            info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext;
-        #[doc = "Called when the `FrameSent` event is triggered"]
+        #[doc = "Called when the `ApplicationWrite` event is triggered"]
         #[inline]
-        fn on_frame_sent(
+        fn on_application_write(
             &self,
             context: &Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &FrameSent,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationWrite,
         ) {
             let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `ApplicationRead` event is triggered"]
+        #[inline]
+        fn on_application_read(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationRead,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `EndpointInitialized` event is triggered"]
+        #[inline]
+        fn on_endpoint_initialized(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointInitialized,
+        ) {
             let _ = meta;
             let _ = event;
         }
@@ -210,7 +276,7 @@ mod traits {
         fn on_connection_event<E: Event>(
             &self,
             context: &Self::ConnectionContext,
-            meta: &ConnectionMeta,
+            meta: &api::ConnectionMeta,
             event: &E,
         ) {
             let _ = context;
@@ -237,8 +303,8 @@ mod traits {
         #[inline]
         fn create_connection_context(
             &self,
-            meta: &ConnectionMeta,
-            info: &ConnectionInfo,
+            meta: &api::ConnectionMeta,
+            info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
             (
                 self.0.create_connection_context(meta, info),
@@ -246,14 +312,33 @@ mod traits {
             )
         }
         #[inline]
-        fn on_frame_sent(
+        fn on_application_write(
             &self,
             context: &Self::ConnectionContext,
-            meta: &ConnectionMeta,
-            event: &FrameSent,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationWrite,
         ) {
-            (self.0).on_frame_sent(&context.0, meta, event);
-            (self.1).on_frame_sent(&context.1, meta, event);
+            (self.0).on_application_write(&context.0, meta, event);
+            (self.1).on_application_write(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_application_read(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationRead,
+        ) {
+            (self.0).on_application_read(&context.0, meta, event);
+            (self.1).on_application_read(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_endpoint_initialized(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointInitialized,
+        ) {
+            (self.0).on_endpoint_initialized(meta, event);
+            (self.1).on_endpoint_initialized(meta, event);
         }
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -264,7 +349,7 @@ mod traits {
         fn on_connection_event<E: Event>(
             &self,
             context: &Self::ConnectionContext,
-            meta: &ConnectionMeta,
+            meta: &api::ConnectionMeta,
             event: &E,
         ) {
             self.0.on_connection_event(&context.0, meta, event);
@@ -282,11 +367,13 @@ mod traits {
         }
     }
     pub trait EndpointPublisher {
+        #[doc = "Publishes a `EndpointInitialized` event to the publisher's subscriber"]
+        fn on_endpoint_initialized(&self, event: builder::EndpointInitialized);
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
     pub struct EndpointPublisherSubscriber<'a, Sub: Subscriber> {
-        meta: EndpointMeta,
+        meta: api::EndpointMeta,
         quic_version: Option<u32>,
         subscriber: &'a Sub,
     }
@@ -314,20 +401,28 @@ mod traits {
     }
     impl<'a, Sub: Subscriber> EndpointPublisher for EndpointPublisherSubscriber<'a, Sub> {
         #[inline]
+        fn on_endpoint_initialized(&self, event: builder::EndpointInitialized) {
+            let event = event.into_event();
+            self.subscriber.on_endpoint_initialized(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> Option<u32> {
             self.quic_version
         }
     }
     pub trait ConnectionPublisher {
-        #[doc = "Publishes a `FrameSent` event to the publisher's subscriber"]
-        fn on_frame_sent(&self, event: builder::FrameSent);
+        #[doc = "Publishes a `ApplicationWrite` event to the publisher's subscriber"]
+        fn on_application_write(&self, event: builder::ApplicationWrite);
+        #[doc = "Publishes a `ApplicationRead` event to the publisher's subscriber"]
+        fn on_application_read(&self, event: builder::ApplicationRead);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
         #[doc = r" Returns the [`Subject`] for the current publisher"]
-        fn subject(&self) -> Subject;
+        fn subject(&self) -> api::Subject;
     }
     pub struct ConnectionPublisherSubscriber<'a, Sub: Subscriber> {
-        meta: ConnectionMeta,
+        meta: api::ConnectionMeta,
         quic_version: u32,
         subscriber: &'a Sub,
         context: &'a Sub::ConnectionContext,
@@ -358,10 +453,19 @@ mod traits {
     }
     impl<'a, Sub: Subscriber> ConnectionPublisher for ConnectionPublisherSubscriber<'a, Sub> {
         #[inline]
-        fn on_frame_sent(&self, event: builder::FrameSent) {
+        fn on_application_write(&self, event: builder::ApplicationWrite) {
             let event = event.into_event();
             self.subscriber
-                .on_frame_sent(self.context, &self.meta, &event);
+                .on_application_write(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_application_read(&self, event: builder::ApplicationRead) {
+            let event = event.into_event();
+            self.subscriber
+                .on_application_read(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -380,7 +484,7 @@ pub mod metrics {
     use super::*;
     use core::sync::atomic::{AtomicU32, Ordering};
     use s2n_quic_core::event::metrics::Recorder;
-    #[derive(Clone, Debug)]
+    #[derive(Debug)]
     pub struct Subscriber<S: super::Subscriber>
     where
         S::ConnectionContext: Recorder,
@@ -397,7 +501,8 @@ pub mod metrics {
     }
     pub struct Context<R: Recorder> {
         recorder: R,
-        frame_sent: AtomicU32,
+        application_write: AtomicU32,
+        application_read: AtomicU32,
     }
     impl<S: super::Subscriber> super::Subscriber for Subscriber<S>
     where
@@ -411,25 +516,43 @@ pub mod metrics {
         ) -> Self::ConnectionContext {
             Context {
                 recorder: self.subscriber.create_connection_context(meta, info),
-                frame_sent: AtomicU32::new(0),
+                application_write: AtomicU32::new(0),
+                application_read: AtomicU32::new(0),
             }
         }
         #[inline]
-        fn on_frame_sent(
+        fn on_application_write(
             &self,
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::FrameSent,
+            event: &api::ApplicationWrite,
         ) {
-            context.frame_sent.fetch_add(1, Ordering::Relaxed);
+            context.application_write.fetch_add(1, Ordering::Relaxed);
             self.subscriber
-                .on_frame_sent(&mut context.recorder, meta, event);
+                .on_application_write(&context.recorder, meta, event);
+        }
+        #[inline]
+        fn on_application_read(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationRead,
+        ) {
+            context.application_read.fetch_add(1, Ordering::Relaxed);
+            self.subscriber
+                .on_application_read(&context.recorder, meta, event);
         }
     }
     impl<R: Recorder> Drop for Context<R> {
         fn drop(&mut self) {
-            self.recorder
-                .increment_counter("frame_sent", self.frame_sent.load(Ordering::Relaxed) as _);
+            self.recorder.increment_counter(
+                "application_write",
+                self.application_write.load(Ordering::Relaxed) as _,
+            );
+            self.recorder.increment_counter(
+                "application_read",
+                self.application_read.load(Ordering::Relaxed) as _,
+            );
         }
     }
 }
@@ -444,6 +567,7 @@ pub mod testing {
         pub struct Subscriber {
             location: Option<Location>,
             output: Mutex<Vec<String>>,
+            pub endpoint_initialized: AtomicU32,
         }
         impl Drop for Subscriber {
             fn drop(&mut self) {
@@ -475,6 +599,7 @@ pub mod testing {
                 Self {
                     location: None,
                     output: Default::default(),
+                    endpoint_initialized: AtomicU32::new(0),
                 }
             }
         }
@@ -486,13 +611,26 @@ pub mod testing {
                 _info: &api::ConnectionInfo,
             ) -> Self::ConnectionContext {
             }
+            fn on_endpoint_initialized(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointInitialized,
+            ) {
+                self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
+                self.output
+                    .lock()
+                    .unwrap()
+                    .push(format!("{meta:?} {event:?}"));
+            }
         }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Debug)]
     pub struct Subscriber {
         location: Option<Location>,
         output: Mutex<Vec<String>>,
-        pub frame_sent: AtomicU32,
+        pub application_write: AtomicU32,
+        pub application_read: AtomicU32,
+        pub endpoint_initialized: AtomicU32,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -524,7 +662,9 @@ pub mod testing {
             Self {
                 location: None,
                 output: Default::default(),
-                frame_sent: AtomicU32::new(0),
+                application_write: AtomicU32::new(0),
+                application_read: AtomicU32::new(0),
+                endpoint_initialized: AtomicU32::new(0),
             }
         }
     }
@@ -536,13 +676,13 @@ pub mod testing {
             _info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext {
         }
-        fn on_frame_sent(
+        fn on_application_write(
             &self,
             _context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::FrameSent,
+            event: &api::ApplicationWrite,
         ) {
-            self.frame_sent.fetch_add(1, Ordering::Relaxed);
+            self.application_write.fetch_add(1, Ordering::Relaxed);
             if self.location.is_some() {
                 self.output
                     .lock()
@@ -550,12 +690,39 @@ pub mod testing {
                     .push(format!("{meta:?} {event:?}"));
             }
         }
+        fn on_application_read(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ApplicationRead,
+        ) {
+            self.application_read.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                self.output
+                    .lock()
+                    .unwrap()
+                    .push(format!("{meta:?} {event:?}"));
+            }
+        }
+        fn on_endpoint_initialized(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointInitialized,
+        ) {
+            self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
+            self.output
+                .lock()
+                .unwrap()
+                .push(format!("{meta:?} {event:?}"));
+        }
     }
-    #[derive(Clone, Debug)]
+    #[derive(Debug)]
     pub struct Publisher {
         location: Option<Location>,
         output: Mutex<Vec<String>>,
-        pub frame_sent: AtomicU32,
+        pub application_write: AtomicU32,
+        pub application_read: AtomicU32,
+        pub endpoint_initialized: AtomicU32,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -577,18 +744,32 @@ pub mod testing {
             Self {
                 location: None,
                 output: Default::default(),
-                frame_sent: AtomicU32::new(0),
+                application_write: AtomicU32::new(0),
+                application_read: AtomicU32::new(0),
+                endpoint_initialized: AtomicU32::new(0),
             }
         }
     }
     impl super::EndpointPublisher for Publisher {
+        fn on_endpoint_initialized(&self, event: builder::EndpointInitialized) {
+            self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            self.output.lock().unwrap().push(format!("{event:?}"));
+        }
         fn quic_version(&self) -> Option<u32> {
             Some(1)
         }
     }
     impl super::ConnectionPublisher for Publisher {
-        fn on_frame_sent(&self, event: builder::FrameSent) {
-            self.frame_sent.fetch_add(1, Ordering::Relaxed);
+        fn on_application_write(&self, event: builder::ApplicationWrite) {
+            self.application_write.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                self.output.lock().unwrap().push(format!("{event:?}"));
+            }
+        }
+        fn on_application_read(&self, event: builder::ApplicationRead) {
+            self.application_read.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 self.output.lock().unwrap().push(format!("{event:?}"));
@@ -598,7 +779,7 @@ pub mod testing {
             1
         }
         fn subject(&self) -> api::Subject {
-            api::Subject::Connection { id: 0 }
+            builder::Subject::Connection { id: 0 }.into_event()
         }
     }
     impl Drop for Publisher {

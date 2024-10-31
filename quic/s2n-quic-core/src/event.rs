@@ -179,3 +179,45 @@ impl core::fmt::Debug for TlsSession<'_> {
         f.debug_struct("TlsSession").finish_non_exhaustive()
     }
 }
+
+/// Provides metadata related to an event
+pub trait Meta: core::fmt::Debug {
+    /// Returns whether the local endpoint is a Client or Server
+    fn endpoint_type(&self) -> &api::EndpointType;
+
+    /// A context from which the event is being emitted
+    ///
+    /// An event can occur in the context of an Endpoint or Connection
+    fn subject(&self) -> api::Subject;
+
+    /// The time the event occurred
+    fn timestamp(&self) -> &Timestamp;
+}
+
+impl Meta for api::ConnectionMeta {
+    fn endpoint_type(&self) -> &api::EndpointType {
+        &self.endpoint_type
+    }
+
+    fn subject(&self) -> api::Subject {
+        api::Subject::Connection { id: self.id }
+    }
+
+    fn timestamp(&self) -> &Timestamp {
+        &self.timestamp
+    }
+}
+
+impl Meta for api::EndpointMeta {
+    fn endpoint_type(&self) -> &api::EndpointType {
+        &self.endpoint_type
+    }
+
+    fn subject(&self) -> api::Subject {
+        api::Subject::Endpoint {}
+    }
+
+    fn timestamp(&self) -> &Timestamp {
+        &self.timestamp
+    }
+}
