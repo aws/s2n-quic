@@ -190,14 +190,7 @@ impl Struct {
                         #[inline]
                         #allow_deprecated
                         fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
-                            let parent = match meta.endpoint_type {
-                                api::EndpointType::Client { .. } => {
-                                    self.client.id()
-                                }
-                                api::EndpointType::Server { .. } => {
-                                    self.server.id()
-                                }
-                            };
+                            let parent = self.parent(meta);
                             let api::#ident { #(#destructure_fields),* } = event;
                             tracing::event!(target: #snake, parent: parent, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
                         }

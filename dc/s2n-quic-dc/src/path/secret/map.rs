@@ -3,6 +3,7 @@
 
 use crate::{
     credentials::{Credentials, Id},
+    event,
     packet::{secret_control as control, Packet},
     path::secret::{open, seal, stateless_reset},
     stream::TransportFeatures,
@@ -43,10 +44,13 @@ pub struct Map {
 }
 
 impl Map {
-    pub fn new(signer: stateless_reset::Signer, capacity: usize) -> Self {
-        // TODO add the subscriber
-        let state = state::State::new(signer, capacity);
-        Self { store: state }
+    pub fn new<S: event::Subscriber>(
+        signer: stateless_reset::Signer,
+        capacity: usize,
+        subscriber: S,
+    ) -> Self {
+        let store = state::State::new(signer, capacity, subscriber);
+        Self { store }
     }
 
     /// The number of trusted secrets.
@@ -134,12 +138,12 @@ impl Map {
     ///
     /// For secret control packets, this will process those.
     /// For other packets, the map may collect metrics but will otherwise drop the packets.
-    pub fn handle_unexpected_packet(&self, packet: &Packet) {
-        self.store.handle_unexpected_packet(packet);
+    pub fn handle_unexpected_packet(&self, packet: &Packet, peer: &SocketAddr) {
+        self.store.handle_unexpected_packet(packet, peer);
     }
 
-    pub fn handle_control_packet(&self, packet: &control::Packet) {
-        self.store.handle_control_packet(packet)
+    pub fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr) {
+        self.store.handle_control_packet(packet, peer)
     }
 
     #[doc(hidden)]
@@ -153,7 +157,11 @@ impl Map {
     ) -> (Self, Vec<Id>) {
         use crate::path::secret::{receiver, schedule, sender};
 
-        let provider = Self::new(stateless_reset::Signer::random(), peers.len() * 3);
+        let provider = Self::new(
+            stateless_reset::Signer::random(),
+            peers.len() * 3,
+            event::testing::Subscriber::no_snapshot(),
+        );
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();
         let mut stateless_reset = [0; control::TAG_LEN];
