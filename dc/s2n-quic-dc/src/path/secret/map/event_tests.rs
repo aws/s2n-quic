@@ -2,16 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    event::testing::Subscriber,
+    event,
     packet::{secret_control as control, WireVersion},
     path::secret::{stateless_reset, Map},
 };
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
 use std::sync::Arc;
 
+type Subscriber = (
+    event::testing::Subscriber,
+    event::metrics::aggregate::Subscriber<(
+        event::metrics::aggregate::probe::Registry,
+        event::metrics::aggregate::probe::dynamic::Registry,
+    )>,
+);
+
 #[track_caller]
 fn sub() -> Arc<Subscriber> {
-    Arc::new(Subscriber::snapshot())
+    crate::testing::init_tracing();
+
+    Arc::new((event::testing::Subscriber::snapshot(), Default::default()))
 }
 
 #[track_caller]
@@ -21,6 +31,7 @@ fn map(capacity: usize) -> Map {
 
 fn map_sub(capacity: usize, sub: Arc<Subscriber>) -> Map {
     let signer = stateless_reset::Signer::random();
+
     Map::new(signer, capacity, sub)
 }
 

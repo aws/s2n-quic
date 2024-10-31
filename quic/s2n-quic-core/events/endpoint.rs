@@ -34,6 +34,8 @@ struct EndpointPacketReceived {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.10
 /// Datagram sent by the endpoint
 struct EndpointDatagramSent {
+    #[measure("bytes", "b")]
+    #[measure("bytes.total", "b")]
     len: u16,
     /// The GSO offset at which this datagram was written
     ///
@@ -41,6 +43,7 @@ struct EndpointDatagramSent {
     /// segments in a single buffer.
     ///
     /// See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details.
+    #[measure("gso_offset")]
     gso_offset: usize,
 }
 
@@ -49,6 +52,8 @@ struct EndpointDatagramSent {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.11
 /// Datagram received by the endpoint
 struct EndpointDatagramReceived {
+    #[measure("bytes", "b")]
+    #[measure("bytes.total", "b")]
     len: u16,
 }
 
@@ -57,6 +62,8 @@ struct EndpointDatagramReceived {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.12
 /// Datagram dropped by the endpoint
 struct EndpointDatagramDropped {
+    #[measure("bytes", "b")]
+    #[measure("bytes.total", "b")]
     len: u16,
     reason: DatagramDropReason,
 }

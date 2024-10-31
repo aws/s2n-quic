@@ -6,6 +6,7 @@
 // changes should be made there.
 
 use super::*;
+pub(crate) mod metrics;
 pub mod api {
     #![doc = r" This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)"]
     use super::*;
@@ -2670,82 +2671,6 @@ mod traits {
         #[inline]
         fn subject(&self) -> api::Subject {
             self.meta.subject()
-        }
-    }
-}
-pub mod metrics {
-    use super::*;
-    use core::sync::atomic::{AtomicU32, Ordering};
-    use s2n_quic_core::event::metrics::Recorder;
-    #[derive(Debug)]
-    pub struct Subscriber<S: super::Subscriber>
-    where
-        S::ConnectionContext: Recorder,
-    {
-        subscriber: S,
-    }
-    impl<S: super::Subscriber> Subscriber<S>
-    where
-        S::ConnectionContext: Recorder,
-    {
-        pub fn new(subscriber: S) -> Self {
-            Self { subscriber }
-        }
-    }
-    pub struct Context<R: Recorder> {
-        recorder: R,
-        application_write: AtomicU32,
-        application_read: AtomicU32,
-    }
-    impl<S: super::Subscriber> super::Subscriber for Subscriber<S>
-    where
-        S::ConnectionContext: Recorder,
-    {
-        type ConnectionContext = Context<S::ConnectionContext>;
-        fn create_connection_context(
-            &self,
-            meta: &api::ConnectionMeta,
-            info: &api::ConnectionInfo,
-        ) -> Self::ConnectionContext {
-            Context {
-                recorder: self.subscriber.create_connection_context(meta, info),
-                application_write: AtomicU32::new(0),
-                application_read: AtomicU32::new(0),
-            }
-        }
-        #[inline]
-        fn on_application_write(
-            &self,
-            context: &Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            event: &api::ApplicationWrite,
-        ) {
-            context.application_write.fetch_add(1, Ordering::Relaxed);
-            self.subscriber
-                .on_application_write(&context.recorder, meta, event);
-        }
-        #[inline]
-        fn on_application_read(
-            &self,
-            context: &Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            event: &api::ApplicationRead,
-        ) {
-            context.application_read.fetch_add(1, Ordering::Relaxed);
-            self.subscriber
-                .on_application_read(&context.recorder, meta, event);
-        }
-    }
-    impl<R: Recorder> Drop for Context<R> {
-        fn drop(&mut self) {
-            self.recorder.increment_counter(
-                "application_write",
-                self.application_write.load(Ordering::Relaxed) as _,
-            );
-            self.recorder.increment_counter(
-                "application_read",
-                self.application_read.load(Ordering::Relaxed) as _,
-            );
         }
     }
 }

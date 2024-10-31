@@ -5,24 +5,35 @@ use crate::{Output, Result};
 use heck::ToSnakeCase;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
+use std::path::PathBuf;
 use syn::{
     parse::{Parse, ParseStream},
-    Meta,
+    Meta, Token,
 };
+
+pub fn parse(contents: &str, path: PathBuf) -> Result<File> {
+    let file = syn::parse_str(contents)?;
+    let common = File::parse(file, path);
+    Ok(common)
+}
 
 #[derive(Debug, Default)]
 pub struct File {
     pub structs: Vec<Struct>,
     pub enums: Vec<Enum>,
     pub extra: TokenStream,
+    pub path: PathBuf,
 }
 
 impl File {
-    fn parse(file: syn::File) -> Self {
+    fn parse(file: syn::File, path: PathBuf) -> Self {
         assert!(file.attrs.is_empty());
         assert!(file.shebang.is_none());
 
-        let mut out = File::default();
+        let mut out = File {
+            path,
+            ..Default::default()
+        };
         for item in file.items {
             match item {
                 syn::Item::Enum(v) => out.enums.push(Enum::parse(v)),
@@ -47,10 +58,10 @@ impl File {
 
 #[derive(Debug)]
 pub struct Struct {
-    attrs: ContainerAttrs,
-    ident: syn::Ident,
-    generics: syn::Generics,
-    fields: Vec<Field>,
+    pub attrs: ContainerAttrs,
+    pub ident: syn::Ident,
+    pub generics: syn::Generics,
+    pub fields: Vec<Field>,
 }
 
 impl Struct {
@@ -63,6 +74,26 @@ impl Struct {
             generics: item.generics,
             fields: item.fields.into_iter().map(Field::parse).collect(),
         }
+    }
+
+    pub fn ident_str(&self) -> String {
+        self.ident.to_string()
+    }
+
+    pub fn ident_snake(&self) -> String {
+        self.ident_str().to_snake_case()
+    }
+
+    pub fn function_name(&self) -> String {
+        format!("on_{}", self.ident_snake())
+    }
+
+    pub fn function(&self) -> Ident {
+        Ident::new(&self.function_name(), Span::call_site())
+    }
+
+    pub fn counter(&self) -> Ident {
+        Ident::new(&self.ident_snake(), Span::call_site())
     }
 
     fn to_tokens(&self, output: &mut Output) {
@@ -150,11 +181,10 @@ impl Struct {
                 }
             ));
 
-            let ident_str = ident.to_string();
-            let snake = ident_str.to_snake_case();
-            let function = format!("on_{snake}");
-            let counter = Ident::new(&snake, Span::call_site());
-            let function = Ident::new(&function, Span::call_site());
+            let ident_str = self.ident_str();
+            let snake = self.ident_snake();
+            let counter = self.counter();
+            let function = self.function();
 
             let subscriber_doc = format!("Called when the `{ident_str}` event is triggered");
             let publisher_doc =
@@ -162,7 +192,6 @@ impl Struct {
 
             let counter_type = output.mode.counter_type();
             let counter_init = output.mode.counter_init();
-            let counter_load = output.mode.counter_load();
 
             // add a counter for testing structs
             output.testing_fields.extend(quote!(
@@ -346,32 +375,6 @@ impl Struct {
                         }
                     ));
 
-                    // Metrics is only connection-level events
-                    output.metrics_fields.extend(quote!(
-                        #counter: #counter_type,
-                    ));
-                    output.metrics_fields_init.extend(quote!(
-                        #counter: #counter_init,
-                    ));
-
-                    output.metrics_record.extend(quote!(
-                        self.recorder.increment_counter(#snake, self.#counter #counter_load as _);
-                    ));
-
-                    output.subscriber_metrics.extend(quote!(
-                        #[inline]
-                        #allow_deprecated
-                        fn #function(
-                            &#receiver self,
-                            context: &#receiver Self::ConnectionContext,
-                            meta: &api::ConnectionMeta,
-                            event: &api::#ident
-                        ) {
-                            context.#counter #counter_increment;
-                            self.subscriber.#function(&#receiver context.recorder, meta, event);
-                        }
-                    ));
-
                     output.subscriber_testing.extend(quote!(
                         #allow_deprecated
                         fn #function(
@@ -410,10 +413,10 @@ impl Struct {
 
 #[derive(Debug)]
 pub struct Enum {
-    attrs: ContainerAttrs,
-    ident: syn::Ident,
-    generics: syn::Generics,
-    variants: Vec<Variant>,
+    pub attrs: ContainerAttrs,
+    pub ident: syn::Ident,
+    pub generics: syn::Generics,
+    pub variants: Vec<Variant>,
 }
 
 impl Enum {
@@ -496,17 +499,17 @@ impl Enum {
 }
 
 #[derive(Debug)]
-struct ContainerAttrs {
-    event_name: Option<syn::LitStr>,
-    deprecated: TokenStream,
-    allow_deprecated: TokenStream,
-    subject: Subject,
-    exhaustive: bool,
-    derive: bool,
-    derive_attrs: TokenStream,
-    builder_derive: bool,
-    builder_derive_attrs: TokenStream,
-    extra: TokenStream,
+pub struct ContainerAttrs {
+    pub event_name: Option<syn::LitStr>,
+    pub deprecated: TokenStream,
+    pub allow_deprecated: TokenStream,
+    pub subject: Subject,
+    pub exhaustive: bool,
+    pub derive: bool,
+    pub derive_attrs: TokenStream,
+    pub builder_derive: bool,
+    pub builder_derive_attrs: TokenStream,
+    pub extra: TokenStream,
 }
 
 impl ContainerAttrs {
@@ -559,9 +562,21 @@ impl ContainerAttrs {
 }
 
 #[derive(Debug)]
-enum Subject {
+pub enum Subject {
     Connection,
     Endpoint,
+}
+
+impl Subject {
+    #[allow(dead_code)]
+    pub fn is_connection(&self) -> bool {
+        matches!(self, Self::Connection)
+    }
+
+    #[allow(dead_code)]
+    pub fn is_endpoint(&self) -> bool {
+        matches!(self, Self::Endpoint)
+    }
 }
 
 impl Parse for Subject {
@@ -579,10 +594,10 @@ impl Parse for Subject {
 }
 
 #[derive(Debug)]
-struct Field {
-    attrs: FieldAttrs,
-    ident: Option<syn::Ident>,
-    ty: syn::Type,
+pub struct Field {
+    pub attrs: FieldAttrs,
+    pub ident: Option<syn::Ident>,
+    pub ty: syn::Type,
 }
 
 impl Field {
@@ -674,30 +689,49 @@ impl Field {
     }
 }
 
-#[derive(Debug)]
-struct FieldAttrs {
-    builder: Option<syn::Type>,
-    snapshot: Option<syn::Expr>,
-    extra: TokenStream,
+#[derive(Debug, Default)]
+pub struct FieldAttrs {
+    pub builder: Option<syn::Type>,
+    pub snapshot: Option<syn::Expr>,
+    pub counter: Vec<Metric>,
+    pub measure: Vec<Metric>,
+    pub gauge: Vec<Metric>,
+    pub timer: Vec<Timer>,
+    pub extra: TokenStream,
 }
 
 impl FieldAttrs {
     fn parse(attrs: Vec<syn::Attribute>) -> Self {
-        let mut v = Self {
-            // The event can override the builder with a specific type
-            builder: None,
-            snapshot: None,
-            extra: quote!(),
-        };
+        let mut v = Self::default();
 
         for attr in attrs {
-            if attr.path().is_ident("builder") {
-                v.builder = Some(attr.parse_args().unwrap());
-            } else if attr.path().is_ident("snapshot") {
-                v.snapshot = Some(attr.parse_args().unwrap());
-            } else {
-                attr.to_tokens(&mut v.extra)
+            macro_rules! field {
+                ($name:ident) => {
+                    if attr.path().is_ident(stringify!($name)) {
+                        v.$name = Some(attr.parse_args().unwrap_or_else(|err| {
+                            panic!("{err} in {:?}", attr.into_token_stream().to_string())
+                        }));
+                        continue;
+                    }
+                };
+                ($name:ident[]) => {
+                    if attr.path().is_ident(stringify!($name)) {
+                        v.$name.push(attr.parse_args().unwrap_or_else(|err| {
+                            panic!("{err} in {:?}", attr.into_token_stream().to_string())
+                        }));
+                        continue;
+                    }
+                };
             }
+
+            field!(builder);
+            field!(snapshot);
+            field!(counter[]);
+            field!(measure[]);
+            field!(gauge[]);
+            field!(timer[]);
+
+            attr.to_tokens(&mut v.extra);
         }
 
         v
@@ -705,10 +739,10 @@ impl FieldAttrs {
 }
 
 #[derive(Debug)]
-struct Variant {
-    ident: syn::Ident,
-    attrs: Vec<syn::Attribute>,
-    fields: Vec<Field>,
+pub struct Variant {
+    pub ident: syn::Ident,
+    pub attrs: Vec<syn::Attribute>,
+    pub fields: Vec<Field>,
 }
 
 impl Variant {
@@ -761,8 +795,36 @@ impl Variant {
     }
 }
 
-pub fn parse(contents: &str) -> Result<File> {
-    let file = syn::parse_str(contents)?;
-    let common = File::parse(file);
-    Ok(common)
+#[derive(Debug)]
+pub struct Metric {
+    pub name: syn::LitStr,
+    pub unit: Option<syn::LitStr>,
+}
+
+impl syn::parse::Parse for Metric {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name = input.parse()?;
+        let unit = if input.peek(Token![,]) {
+            let _: Token![,] = input.parse()?;
+            let unit = input.parse()?;
+            Some(unit)
+        } else {
+            None
+        };
+        let _: syn::parse::Nothing = input.parse()?;
+        Ok(Self { name, unit })
+    }
+}
+
+#[derive(Debug)]
+pub struct Timer {
+    pub name: syn::LitStr,
+}
+
+impl syn::parse::Parse for Timer {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name = input.parse()?;
+        let _: syn::parse::Nothing = input.parse()?;
+        Ok(Self { name })
+    }
 }

@@ -1,9 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::OutputMode;
+use crate::{parser::File, OutputMode};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
+use std::path::{Path, PathBuf};
+
+pub mod metrics;
 
 #[derive(Debug, Default)]
 pub struct Output {
@@ -27,13 +30,60 @@ pub struct Output {
     pub endpoint_testing_fields_init: TokenStream,
     pub endpoint_publisher_testing: TokenStream,
     pub connection_publisher_testing: TokenStream,
-    pub metrics_fields: TokenStream,
-    pub metrics_fields_init: TokenStream,
-    pub metrics_record: TokenStream,
-    pub subscriber_metrics: TokenStream,
     pub extra: TokenStream,
     pub mode: OutputMode,
+    pub crate_name: &'static str,
     pub s2n_quic_core_path: TokenStream,
+    pub top_level: TokenStream,
+    pub feature_alloc: TokenStream,
+    pub root: PathBuf,
+}
+
+impl Output {
+    pub fn generate(&mut self, files: &[File]) {
+        for file in files {
+            file.to_tokens(self);
+        }
+
+        self.top_level.extend(metrics::emit(self, files));
+
+        self.emit("generated.rs", &self);
+    }
+
+    pub fn emit<P: AsRef<Path>, T: ToTokens>(&self, path: P, output: T) {
+        let path = self.root.join(path);
+
+        let _ = std::fs::create_dir_all(path.parent().unwrap());
+
+        let mut o = std::fs::File::create(&path).unwrap();
+
+        macro_rules! put {
+            ($($arg:tt)*) => {{
+                use std::io::Write;
+                writeln!(o, $($arg)*).unwrap();
+            }}
+        }
+
+        put!("// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.");
+        put!("// SPDX-License-Identifier: Apache-2.0");
+        put!();
+        put!("// DO NOT MODIFY THIS FILE");
+        put!("// This file was generated with the `s2n-quic-events` crate and any required");
+        put!("// changes should be made there.");
+        put!();
+        put!("{}", output.to_token_stream());
+
+        let status = std::process::Command::new("rustfmt")
+            .arg(&path)
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+
+        assert!(status.success());
+
+        eprintln!("  wrote {}", path.display());
+    }
 }
 
 impl ToTokens for Output {
@@ -59,20 +109,19 @@ impl ToTokens for Output {
             endpoint_testing_fields_init,
             endpoint_publisher_testing,
             connection_publisher_testing,
-            metrics_fields,
-            metrics_fields_init,
-            metrics_record,
-            subscriber_metrics,
             extra,
             mode,
             s2n_quic_core_path,
+            top_level,
+            feature_alloc: _,
+            crate_name,
+            root: _,
         } = self;
 
         let imports = self.mode.imports();
         let mutex = self.mode.mutex();
         let testing_output_type = self.mode.testing_output_type();
         let lock = self.mode.lock();
-        let target_crate = self.mode.target_crate();
         let supervisor = self.mode.supervisor();
         let supervisor_timeout = self.mode.supervisor_timeout();
         let supervisor_timeout_tuple = self.mode.supervisor_timeout_tuple();
@@ -113,6 +162,8 @@ impl ToTokens for Output {
         tokens.extend(quote!(
             use super::*;
 
+            #top_level
+
             pub mod api {
                 //! This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)
                 use super::*;
@@ -140,7 +191,7 @@ impl ToTokens for Output {
                         _info: &api::ConnectionInfo
                     ) -> Self::ConnectionContext {
                         let parent = self.parent(meta);
-                        tracing::span!(target: #target_crate, parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
+                        tracing::span!(target: #crate_name, parent: parent, tracing::Level::DEBUG, "conn", id = meta.id)
                     }
 
                     #tracing_subscriber
@@ -400,54 +451,6 @@ impl ToTokens for Output {
                     #[inline]
                     fn subject(&self) -> api::Subject {
                         self.meta.subject()
-                    }
-                }
-            }
-
-            pub mod metrics {
-                use super::*;
-                #imports
-                use #s2n_quic_core_path::event::metrics::Recorder;
-
-                #[derive(Debug)]
-                pub struct Subscriber<S: super::Subscriber>
-                    where S::ConnectionContext: Recorder {
-                    subscriber: S,
-                }
-
-                impl<S: super::Subscriber> Subscriber<S>
-                    where S::ConnectionContext: Recorder {
-                    pub fn new(subscriber: S) -> Self {
-                        Self { subscriber }
-                    }
-                }
-
-                pub struct Context<R: Recorder> {
-                    recorder: R,
-                    #metrics_fields
-                }
-
-                impl<S: super::Subscriber> super::Subscriber for Subscriber<S>
-                    where S::ConnectionContext: Recorder {
-                    type ConnectionContext = Context<S::ConnectionContext>;
-
-                    fn create_connection_context(
-                        &#mode self,
-                        meta: &api::ConnectionMeta,
-                        info: &api::ConnectionInfo
-                    ) -> Self::ConnectionContext {
-                        Context {
-                            recorder: self.subscriber.create_connection_context(meta, info),
-                            #metrics_fields_init
-                        }
-                    }
-
-                    #subscriber_metrics
-                }
-
-                impl<R: Recorder> Drop for Context<R> {
-                    fn drop(&mut self) {
-                        #metrics_record
                     }
                 }
             }

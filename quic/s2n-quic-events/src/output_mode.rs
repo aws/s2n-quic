@@ -88,13 +88,6 @@ impl OutputMode {
         }
     }
 
-    pub fn target_crate(&self) -> TokenStream {
-        match self {
-            OutputMode::Ref => quote!("s2n_quic_dc"),
-            OutputMode::Mut => quote!("s2n_quic"),
-        }
-    }
-
     pub fn trait_constraints(&self) -> TokenStream {
         match self {
             OutputMode::Ref => quote!('static + Send + Sync),
