@@ -26,7 +26,9 @@ pub mod api {
     #[non_exhaustive]
     pub struct ApplicationWrite {
         #[doc = " The number of bytes that the application tried to write"]
-        pub len: usize,
+        pub total_len: usize,
+        #[doc = " The amount that was written"]
+        pub write_len: usize,
     }
     impl Event for ApplicationWrite {
         const NAME: &'static str = "application:write";
@@ -35,10 +37,12 @@ pub mod api {
     #[non_exhaustive]
     pub struct ApplicationRead {
         #[doc = " The number of bytes that the application tried to read"]
-        pub len: usize,
+        pub capacity: usize,
+        #[doc = " The amount that was read"]
+        pub read_len: usize,
     }
     impl Event for ApplicationRead {
-        const NAME: &'static str = "application:write";
+        const NAME: &'static str = "application:read";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -56,8 +60,6 @@ pub mod api {
     pub struct PathSecretMapInitialized {
         #[doc = " The capacity of the path secret map"]
         pub capacity: usize,
-        #[doc = " The port that the path secret is listening on"]
-        pub control_socket_port: u16,
     }
     impl Event for PathSecretMapInitialized {
         const NAME: &'static str = "path_secret_map:initialized";
@@ -67,8 +69,6 @@ pub mod api {
     pub struct PathSecretMapUninitialized {
         #[doc = " The capacity of the path secret map"]
         pub capacity: usize,
-        #[doc = " The port that the path secret is listening on"]
-        pub control_socket_port: u16,
         #[doc = " The number of entries in the map"]
         pub entries: usize,
     }
@@ -157,6 +157,16 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Emitted when an UnknownPathSecret packet was dropped due to a missing entry"]
+    pub struct UnknownPathSecretPacketDropped<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub credential_id: &'a [u8],
+    }
+    impl<'a> Event for UnknownPathSecretPacketDropped<'a> {
+        const NAME: &'static str = "path_secret_map:unknown_path_secret_packet_dropped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Emitted when credential replay was definitely detected"]
     pub struct ReplayDefinitelyDetected<'a> {
         pub credential_id: &'a [u8],
@@ -220,6 +230,16 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Emitted when an ReplayDetected packet was dropped due to a missing entry"]
+    pub struct ReplayDetectedPacketDropped<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub credential_id: &'a [u8],
+    }
+    impl<'a> Event for ReplayDetectedPacketDropped<'a> {
+        const NAME: &'static str = "path_secret_map:replay_detected_packet_dropped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Emitted when an StaleKey packet was sent"]
     pub struct StaleKeyPacketSent<'a> {
         pub peer_address: SocketAddress<'a>,
@@ -257,6 +277,16 @@ pub mod api {
     }
     impl<'a> Event for StaleKeyPacketRejected<'a> {
         const NAME: &'static str = "path_secret_map:stale_key_packet_rejected";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when an StaleKey packet was dropped due to a missing entry"]
+    pub struct StaleKeyPacketDropped<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub credential_id: &'a [u8],
+    }
+    impl<'a> Event for StaleKeyPacketDropped<'a> {
+        const NAME: &'static str = "path_secret_map:stale_key_packet_dropped";
     }
 }
 pub mod tracing {
@@ -296,8 +326,11 @@ pub mod tracing {
             event: &api::ApplicationWrite,
         ) {
             let id = context.id();
-            let api::ApplicationWrite { len } = event;
-            tracing :: event ! (target : "application_write" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+            let api::ApplicationWrite {
+                total_len,
+                write_len,
+            } = event;
+            tracing :: event ! (target : "application_write" , parent : id , tracing :: Level :: DEBUG , total_len = tracing :: field :: debug (total_len) , write_len = tracing :: field :: debug (write_len));
         }
         #[inline]
         fn on_application_read(
@@ -307,8 +340,8 @@ pub mod tracing {
             event: &api::ApplicationRead,
         ) {
             let id = context.id();
-            let api::ApplicationRead { len } = event;
-            tracing :: event ! (target : "application_read" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+            let api::ApplicationRead { capacity, read_len } = event;
+            tracing :: event ! (target : "application_read" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , read_len = tracing :: field :: debug (read_len));
         }
         #[inline]
         fn on_endpoint_initialized(
@@ -332,11 +365,8 @@ pub mod tracing {
             event: &api::PathSecretMapInitialized,
         ) {
             let parent = self.parent(meta);
-            let api::PathSecretMapInitialized {
-                capacity,
-                control_socket_port,
-            } = event;
-            tracing :: event ! (target : "path_secret_map_initialized" , parent : parent , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , control_socket_port = tracing :: field :: debug (control_socket_port));
+            let api::PathSecretMapInitialized { capacity } = event;
+            tracing :: event ! (target : "path_secret_map_initialized" , parent : parent , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity));
         }
         #[inline]
         fn on_path_secret_map_uninitialized(
@@ -345,12 +375,8 @@ pub mod tracing {
             event: &api::PathSecretMapUninitialized,
         ) {
             let parent = self.parent(meta);
-            let api::PathSecretMapUninitialized {
-                capacity,
-                control_socket_port,
-                entries,
-            } = event;
-            tracing :: event ! (target : "path_secret_map_uninitialized" , parent : parent , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , control_socket_port = tracing :: field :: debug (control_socket_port) , entries = tracing :: field :: debug (entries));
+            let api::PathSecretMapUninitialized { capacity, entries } = event;
+            tracing :: event ! (target : "path_secret_map_uninitialized" , parent : parent , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , entries = tracing :: field :: debug (entries));
         }
         #[inline]
         fn on_path_secret_map_background_handshake_requested(
@@ -455,6 +481,19 @@ pub mod tracing {
             tracing :: event ! (target : "unknown_path_secret_packet_rejected" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
         }
         #[inline]
+        fn on_unknown_path_secret_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::UnknownPathSecretPacketDropped,
+        ) {
+            let parent = self.parent(meta);
+            let api::UnknownPathSecretPacketDropped {
+                peer_address,
+                credential_id,
+            } = event;
+            tracing :: event ! (target : "unknown_path_secret_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+        }
+        #[inline]
         fn on_replay_definitely_detected(
             &self,
             meta: &api::EndpointMeta,
@@ -535,6 +574,19 @@ pub mod tracing {
             tracing :: event ! (target : "replay_detected_packet_rejected" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
         }
         #[inline]
+        fn on_replay_detected_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::ReplayDetectedPacketDropped,
+        ) {
+            let parent = self.parent(meta);
+            let api::ReplayDetectedPacketDropped {
+                peer_address,
+                credential_id,
+            } = event;
+            tracing :: event ! (target : "replay_detected_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+        }
+        #[inline]
         fn on_stale_key_packet_sent(
             &self,
             meta: &api::EndpointMeta,
@@ -586,6 +638,19 @@ pub mod tracing {
             } = event;
             tracing :: event ! (target : "stale_key_packet_rejected" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
         }
+        #[inline]
+        fn on_stale_key_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StaleKeyPacketDropped,
+        ) {
+            let parent = self.parent(meta);
+            let api::StaleKeyPacketDropped {
+                peer_address,
+                credential_id,
+            } = event;
+            tracing :: event ! (target : "stale_key_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+        }
     }
 }
 pub mod builder {
@@ -625,28 +690,37 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct ApplicationWrite {
         #[doc = " The number of bytes that the application tried to write"]
-        pub len: usize,
+        pub total_len: usize,
+        #[doc = " The amount that was written"]
+        pub write_len: usize,
     }
     impl IntoEvent<api::ApplicationWrite> for ApplicationWrite {
         #[inline]
         fn into_event(self) -> api::ApplicationWrite {
-            let ApplicationWrite { len } = self;
+            let ApplicationWrite {
+                total_len,
+                write_len,
+            } = self;
             api::ApplicationWrite {
-                len: len.into_event(),
+                total_len: total_len.into_event(),
+                write_len: write_len.into_event(),
             }
         }
     }
     #[derive(Clone, Debug)]
     pub struct ApplicationRead {
         #[doc = " The number of bytes that the application tried to read"]
-        pub len: usize,
+        pub capacity: usize,
+        #[doc = " The amount that was read"]
+        pub read_len: usize,
     }
     impl IntoEvent<api::ApplicationRead> for ApplicationRead {
         #[inline]
         fn into_event(self) -> api::ApplicationRead {
-            let ApplicationRead { len } = self;
+            let ApplicationRead { capacity, read_len } = self;
             api::ApplicationRead {
-                len: len.into_event(),
+                capacity: capacity.into_event(),
+                read_len: read_len.into_event(),
             }
         }
     }
@@ -678,19 +752,13 @@ pub mod builder {
     pub struct PathSecretMapInitialized {
         #[doc = " The capacity of the path secret map"]
         pub capacity: usize,
-        #[doc = " The port that the path secret is listening on"]
-        pub control_socket_port: u16,
     }
     impl IntoEvent<api::PathSecretMapInitialized> for PathSecretMapInitialized {
         #[inline]
         fn into_event(self) -> api::PathSecretMapInitialized {
-            let PathSecretMapInitialized {
-                capacity,
-                control_socket_port,
-            } = self;
+            let PathSecretMapInitialized { capacity } = self;
             api::PathSecretMapInitialized {
                 capacity: capacity.into_event(),
-                control_socket_port: control_socket_port.into_event(),
             }
         }
     }
@@ -698,22 +766,15 @@ pub mod builder {
     pub struct PathSecretMapUninitialized {
         #[doc = " The capacity of the path secret map"]
         pub capacity: usize,
-        #[doc = " The port that the path secret is listening on"]
-        pub control_socket_port: u16,
         #[doc = " The number of entries in the map"]
         pub entries: usize,
     }
     impl IntoEvent<api::PathSecretMapUninitialized> for PathSecretMapUninitialized {
         #[inline]
         fn into_event(self) -> api::PathSecretMapUninitialized {
-            let PathSecretMapUninitialized {
-                capacity,
-                control_socket_port,
-                entries,
-            } = self;
+            let PathSecretMapUninitialized { capacity, entries } = self;
             api::PathSecretMapUninitialized {
                 capacity: capacity.into_event(),
-                control_socket_port: control_socket_port.into_event(),
                 entries: entries.into_event(),
             }
         }
@@ -877,6 +938,25 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when an UnknownPathSecret packet was dropped due to a missing entry"]
+    pub struct UnknownPathSecretPacketDropped<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub credential_id: &'a [u8],
+    }
+    impl<'a> IntoEvent<api::UnknownPathSecretPacketDropped<'a>> for UnknownPathSecretPacketDropped<'a> {
+        #[inline]
+        fn into_event(self) -> api::UnknownPathSecretPacketDropped<'a> {
+            let UnknownPathSecretPacketDropped {
+                peer_address,
+                credential_id,
+            } = self;
+            api::UnknownPathSecretPacketDropped {
+                peer_address: peer_address.into_event(),
+                credential_id: credential_id.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Emitted when credential replay was definitely detected"]
     pub struct ReplayDefinitelyDetected<'a> {
         pub credential_id: &'a [u8],
@@ -998,6 +1078,25 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when an ReplayDetected packet was dropped due to a missing entry"]
+    pub struct ReplayDetectedPacketDropped<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub credential_id: &'a [u8],
+    }
+    impl<'a> IntoEvent<api::ReplayDetectedPacketDropped<'a>> for ReplayDetectedPacketDropped<'a> {
+        #[inline]
+        fn into_event(self) -> api::ReplayDetectedPacketDropped<'a> {
+            let ReplayDetectedPacketDropped {
+                peer_address,
+                credential_id,
+            } = self;
+            api::ReplayDetectedPacketDropped {
+                peer_address: peer_address.into_event(),
+                credential_id: credential_id.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Emitted when an StaleKey packet was sent"]
     pub struct StaleKeyPacketSent<'a> {
         pub peer_address: SocketAddress<'a>,
@@ -1068,6 +1167,25 @@ pub mod builder {
                 credential_id,
             } = self;
             api::StaleKeyPacketRejected {
+                peer_address: peer_address.into_event(),
+                credential_id: credential_id.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when an StaleKey packet was dropped due to a missing entry"]
+    pub struct StaleKeyPacketDropped<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub credential_id: &'a [u8],
+    }
+    impl<'a> IntoEvent<api::StaleKeyPacketDropped<'a>> for StaleKeyPacketDropped<'a> {
+        #[inline]
+        fn into_event(self) -> api::StaleKeyPacketDropped<'a> {
+            let StaleKeyPacketDropped {
+                peer_address,
+                credential_id,
+            } = self;
+            api::StaleKeyPacketDropped {
                 peer_address: peer_address.into_event(),
                 credential_id: credential_id.into_event(),
             }
@@ -1265,6 +1383,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `UnknownPathSecretPacketDropped` event is triggered"]
+        #[inline]
+        fn on_unknown_path_secret_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::UnknownPathSecretPacketDropped,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `ReplayDefinitelyDetected` event is triggered"]
         #[inline]
         fn on_replay_definitely_detected(
@@ -1325,6 +1453,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `ReplayDetectedPacketDropped` event is triggered"]
+        #[inline]
+        fn on_replay_detected_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::ReplayDetectedPacketDropped,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `StaleKeyPacketSent` event is triggered"]
         #[inline]
         fn on_stale_key_packet_sent(
@@ -1361,6 +1499,16 @@ mod traits {
             &self,
             meta: &api::EndpointMeta,
             event: &api::StaleKeyPacketRejected,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StaleKeyPacketDropped` event is triggered"]
+        #[inline]
+        fn on_stale_key_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StaleKeyPacketDropped,
         ) {
             let _ = meta;
             let _ = event;
@@ -1531,6 +1679,15 @@ mod traits {
             (self.1).on_unknown_path_secret_packet_rejected(meta, event);
         }
         #[inline]
+        fn on_unknown_path_secret_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::UnknownPathSecretPacketDropped,
+        ) {
+            (self.0).on_unknown_path_secret_packet_dropped(meta, event);
+            (self.1).on_unknown_path_secret_packet_dropped(meta, event);
+        }
+        #[inline]
         fn on_replay_definitely_detected(
             &self,
             meta: &api::EndpointMeta,
@@ -1585,6 +1742,15 @@ mod traits {
             (self.1).on_replay_detected_packet_rejected(meta, event);
         }
         #[inline]
+        fn on_replay_detected_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::ReplayDetectedPacketDropped,
+        ) {
+            (self.0).on_replay_detected_packet_dropped(meta, event);
+            (self.1).on_replay_detected_packet_dropped(meta, event);
+        }
+        #[inline]
         fn on_stale_key_packet_sent(
             &self,
             meta: &api::EndpointMeta,
@@ -1619,6 +1785,15 @@ mod traits {
         ) {
             (self.0).on_stale_key_packet_rejected(meta, event);
             (self.1).on_stale_key_packet_rejected(meta, event);
+        }
+        #[inline]
+        fn on_stale_key_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StaleKeyPacketDropped,
+        ) {
+            (self.0).on_stale_key_packet_dropped(meta, event);
+            (self.1).on_stale_key_packet_dropped(meta, event);
         }
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -1681,6 +1856,11 @@ mod traits {
             &self,
             event: builder::UnknownPathSecretPacketRejected,
         );
+        #[doc = "Publishes a `UnknownPathSecretPacketDropped` event to the publisher's subscriber"]
+        fn on_unknown_path_secret_packet_dropped(
+            &self,
+            event: builder::UnknownPathSecretPacketDropped,
+        );
         #[doc = "Publishes a `ReplayDefinitelyDetected` event to the publisher's subscriber"]
         fn on_replay_definitely_detected(&self, event: builder::ReplayDefinitelyDetected);
         #[doc = "Publishes a `ReplayPotentiallyDetected` event to the publisher's subscriber"]
@@ -1693,6 +1873,8 @@ mod traits {
         fn on_replay_detected_packet_accepted(&self, event: builder::ReplayDetectedPacketAccepted);
         #[doc = "Publishes a `ReplayDetectedPacketRejected` event to the publisher's subscriber"]
         fn on_replay_detected_packet_rejected(&self, event: builder::ReplayDetectedPacketRejected);
+        #[doc = "Publishes a `ReplayDetectedPacketDropped` event to the publisher's subscriber"]
+        fn on_replay_detected_packet_dropped(&self, event: builder::ReplayDetectedPacketDropped);
         #[doc = "Publishes a `StaleKeyPacketSent` event to the publisher's subscriber"]
         fn on_stale_key_packet_sent(&self, event: builder::StaleKeyPacketSent);
         #[doc = "Publishes a `StaleKeyPacketReceived` event to the publisher's subscriber"]
@@ -1701,6 +1883,8 @@ mod traits {
         fn on_stale_key_packet_accepted(&self, event: builder::StaleKeyPacketAccepted);
         #[doc = "Publishes a `StaleKeyPacketRejected` event to the publisher's subscriber"]
         fn on_stale_key_packet_rejected(&self, event: builder::StaleKeyPacketRejected);
+        #[doc = "Publishes a `StaleKeyPacketDropped` event to the publisher's subscriber"]
+        fn on_stale_key_packet_dropped(&self, event: builder::StaleKeyPacketDropped);
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
@@ -1821,6 +2005,16 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_unknown_path_secret_packet_dropped(
+            &self,
+            event: builder::UnknownPathSecretPacketDropped,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_unknown_path_secret_packet_dropped(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_replay_definitely_detected(&self, event: builder::ReplayDefinitelyDetected) {
             let event = event.into_event();
             self.subscriber
@@ -1863,6 +2057,13 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_replay_detected_packet_dropped(&self, event: builder::ReplayDetectedPacketDropped) {
+            let event = event.into_event();
+            self.subscriber
+                .on_replay_detected_packet_dropped(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_stale_key_packet_sent(&self, event: builder::StaleKeyPacketSent) {
             let event = event.into_event();
             self.subscriber.on_stale_key_packet_sent(&self.meta, &event);
@@ -1887,6 +2088,13 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_stale_key_packet_rejected(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stale_key_packet_dropped(&self, event: builder::StaleKeyPacketDropped) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stale_key_packet_dropped(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -2061,16 +2269,19 @@ pub mod testing {
             pub unknown_path_secret_packet_received: AtomicU32,
             pub unknown_path_secret_packet_accepted: AtomicU32,
             pub unknown_path_secret_packet_rejected: AtomicU32,
+            pub unknown_path_secret_packet_dropped: AtomicU32,
             pub replay_definitely_detected: AtomicU32,
             pub replay_potentially_detected: AtomicU32,
             pub replay_detected_packet_sent: AtomicU32,
             pub replay_detected_packet_received: AtomicU32,
             pub replay_detected_packet_accepted: AtomicU32,
             pub replay_detected_packet_rejected: AtomicU32,
+            pub replay_detected_packet_dropped: AtomicU32,
             pub stale_key_packet_sent: AtomicU32,
             pub stale_key_packet_received: AtomicU32,
             pub stale_key_packet_accepted: AtomicU32,
             pub stale_key_packet_rejected: AtomicU32,
+            pub stale_key_packet_dropped: AtomicU32,
         }
         impl Drop for Subscriber {
             fn drop(&mut self) {
@@ -2113,16 +2324,19 @@ pub mod testing {
                     unknown_path_secret_packet_received: AtomicU32::new(0),
                     unknown_path_secret_packet_accepted: AtomicU32::new(0),
                     unknown_path_secret_packet_rejected: AtomicU32::new(0),
+                    unknown_path_secret_packet_dropped: AtomicU32::new(0),
                     replay_definitely_detected: AtomicU32::new(0),
                     replay_potentially_detected: AtomicU32::new(0),
                     replay_detected_packet_sent: AtomicU32::new(0),
                     replay_detected_packet_received: AtomicU32::new(0),
                     replay_detected_packet_accepted: AtomicU32::new(0),
                     replay_detected_packet_rejected: AtomicU32::new(0),
+                    replay_detected_packet_dropped: AtomicU32::new(0),
                     stale_key_packet_sent: AtomicU32::new(0),
                     stale_key_packet_received: AtomicU32::new(0),
                     stale_key_packet_accepted: AtomicU32::new(0),
                     stale_key_packet_rejected: AtomicU32::new(0),
+                    stale_key_packet_dropped: AtomicU32::new(0),
                 }
             }
         }
@@ -2265,6 +2479,18 @@ pub mod testing {
                     .unwrap()
                     .push(format!("{meta:?} {event:?}"));
             }
+            fn on_unknown_path_secret_packet_dropped(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::UnknownPathSecretPacketDropped,
+            ) {
+                self.unknown_path_secret_packet_dropped
+                    .fetch_add(1, Ordering::Relaxed);
+                self.output
+                    .lock()
+                    .unwrap()
+                    .push(format!("{meta:?} {event:?}"));
+            }
             fn on_replay_definitely_detected(
                 &self,
                 meta: &api::EndpointMeta,
@@ -2337,6 +2563,18 @@ pub mod testing {
                     .unwrap()
                     .push(format!("{meta:?} {event:?}"));
             }
+            fn on_replay_detected_packet_dropped(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::ReplayDetectedPacketDropped,
+            ) {
+                self.replay_detected_packet_dropped
+                    .fetch_add(1, Ordering::Relaxed);
+                self.output
+                    .lock()
+                    .unwrap()
+                    .push(format!("{meta:?} {event:?}"));
+            }
             fn on_stale_key_packet_sent(
                 &self,
                 meta: &api::EndpointMeta,
@@ -2384,6 +2622,18 @@ pub mod testing {
                     .unwrap()
                     .push(format!("{meta:?} {event:?}"));
             }
+            fn on_stale_key_packet_dropped(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::StaleKeyPacketDropped,
+            ) {
+                self.stale_key_packet_dropped
+                    .fetch_add(1, Ordering::Relaxed);
+                self.output
+                    .lock()
+                    .unwrap()
+                    .push(format!("{meta:?} {event:?}"));
+            }
         }
     }
     #[derive(Debug)]
@@ -2403,16 +2653,19 @@ pub mod testing {
         pub unknown_path_secret_packet_received: AtomicU32,
         pub unknown_path_secret_packet_accepted: AtomicU32,
         pub unknown_path_secret_packet_rejected: AtomicU32,
+        pub unknown_path_secret_packet_dropped: AtomicU32,
         pub replay_definitely_detected: AtomicU32,
         pub replay_potentially_detected: AtomicU32,
         pub replay_detected_packet_sent: AtomicU32,
         pub replay_detected_packet_received: AtomicU32,
         pub replay_detected_packet_accepted: AtomicU32,
         pub replay_detected_packet_rejected: AtomicU32,
+        pub replay_detected_packet_dropped: AtomicU32,
         pub stale_key_packet_sent: AtomicU32,
         pub stale_key_packet_received: AtomicU32,
         pub stale_key_packet_accepted: AtomicU32,
         pub stale_key_packet_rejected: AtomicU32,
+        pub stale_key_packet_dropped: AtomicU32,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -2457,16 +2710,19 @@ pub mod testing {
                 unknown_path_secret_packet_received: AtomicU32::new(0),
                 unknown_path_secret_packet_accepted: AtomicU32::new(0),
                 unknown_path_secret_packet_rejected: AtomicU32::new(0),
+                unknown_path_secret_packet_dropped: AtomicU32::new(0),
                 replay_definitely_detected: AtomicU32::new(0),
                 replay_potentially_detected: AtomicU32::new(0),
                 replay_detected_packet_sent: AtomicU32::new(0),
                 replay_detected_packet_received: AtomicU32::new(0),
                 replay_detected_packet_accepted: AtomicU32::new(0),
                 replay_detected_packet_rejected: AtomicU32::new(0),
+                replay_detected_packet_dropped: AtomicU32::new(0),
                 stale_key_packet_sent: AtomicU32::new(0),
                 stale_key_packet_received: AtomicU32::new(0),
                 stale_key_packet_accepted: AtomicU32::new(0),
                 stale_key_packet_rejected: AtomicU32::new(0),
+                stale_key_packet_dropped: AtomicU32::new(0),
             }
         }
     }
@@ -2637,6 +2893,18 @@ pub mod testing {
                 .unwrap()
                 .push(format!("{meta:?} {event:?}"));
         }
+        fn on_unknown_path_secret_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::UnknownPathSecretPacketDropped,
+        ) {
+            self.unknown_path_secret_packet_dropped
+                .fetch_add(1, Ordering::Relaxed);
+            self.output
+                .lock()
+                .unwrap()
+                .push(format!("{meta:?} {event:?}"));
+        }
         fn on_replay_definitely_detected(
             &self,
             meta: &api::EndpointMeta,
@@ -2709,6 +2977,18 @@ pub mod testing {
                 .unwrap()
                 .push(format!("{meta:?} {event:?}"));
         }
+        fn on_replay_detected_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::ReplayDetectedPacketDropped,
+        ) {
+            self.replay_detected_packet_dropped
+                .fetch_add(1, Ordering::Relaxed);
+            self.output
+                .lock()
+                .unwrap()
+                .push(format!("{meta:?} {event:?}"));
+        }
         fn on_stale_key_packet_sent(
             &self,
             meta: &api::EndpointMeta,
@@ -2756,6 +3036,18 @@ pub mod testing {
                 .unwrap()
                 .push(format!("{meta:?} {event:?}"));
         }
+        fn on_stale_key_packet_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StaleKeyPacketDropped,
+        ) {
+            self.stale_key_packet_dropped
+                .fetch_add(1, Ordering::Relaxed);
+            self.output
+                .lock()
+                .unwrap()
+                .push(format!("{meta:?} {event:?}"));
+        }
     }
     #[derive(Debug)]
     pub struct Publisher {
@@ -2774,16 +3066,19 @@ pub mod testing {
         pub unknown_path_secret_packet_received: AtomicU32,
         pub unknown_path_secret_packet_accepted: AtomicU32,
         pub unknown_path_secret_packet_rejected: AtomicU32,
+        pub unknown_path_secret_packet_dropped: AtomicU32,
         pub replay_definitely_detected: AtomicU32,
         pub replay_potentially_detected: AtomicU32,
         pub replay_detected_packet_sent: AtomicU32,
         pub replay_detected_packet_received: AtomicU32,
         pub replay_detected_packet_accepted: AtomicU32,
         pub replay_detected_packet_rejected: AtomicU32,
+        pub replay_detected_packet_dropped: AtomicU32,
         pub stale_key_packet_sent: AtomicU32,
         pub stale_key_packet_received: AtomicU32,
         pub stale_key_packet_accepted: AtomicU32,
         pub stale_key_packet_rejected: AtomicU32,
+        pub stale_key_packet_dropped: AtomicU32,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -2818,16 +3113,19 @@ pub mod testing {
                 unknown_path_secret_packet_received: AtomicU32::new(0),
                 unknown_path_secret_packet_accepted: AtomicU32::new(0),
                 unknown_path_secret_packet_rejected: AtomicU32::new(0),
+                unknown_path_secret_packet_dropped: AtomicU32::new(0),
                 replay_definitely_detected: AtomicU32::new(0),
                 replay_potentially_detected: AtomicU32::new(0),
                 replay_detected_packet_sent: AtomicU32::new(0),
                 replay_detected_packet_received: AtomicU32::new(0),
                 replay_detected_packet_accepted: AtomicU32::new(0),
                 replay_detected_packet_rejected: AtomicU32::new(0),
+                replay_detected_packet_dropped: AtomicU32::new(0),
                 stale_key_packet_sent: AtomicU32::new(0),
                 stale_key_packet_received: AtomicU32::new(0),
                 stale_key_packet_accepted: AtomicU32::new(0),
                 stale_key_packet_rejected: AtomicU32::new(0),
+                stale_key_packet_dropped: AtomicU32::new(0),
             }
         }
     }
@@ -2909,6 +3207,15 @@ pub mod testing {
             let event = event.into_event();
             self.output.lock().unwrap().push(format!("{event:?}"));
         }
+        fn on_unknown_path_secret_packet_dropped(
+            &self,
+            event: builder::UnknownPathSecretPacketDropped,
+        ) {
+            self.unknown_path_secret_packet_dropped
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            self.output.lock().unwrap().push(format!("{event:?}"));
+        }
         fn on_replay_definitely_detected(&self, event: builder::ReplayDefinitelyDetected) {
             self.replay_definitely_detected
                 .fetch_add(1, Ordering::Relaxed);
@@ -2945,6 +3252,12 @@ pub mod testing {
             let event = event.into_event();
             self.output.lock().unwrap().push(format!("{event:?}"));
         }
+        fn on_replay_detected_packet_dropped(&self, event: builder::ReplayDetectedPacketDropped) {
+            self.replay_detected_packet_dropped
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            self.output.lock().unwrap().push(format!("{event:?}"));
+        }
         fn on_stale_key_packet_sent(&self, event: builder::StaleKeyPacketSent) {
             self.stale_key_packet_sent.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
@@ -2964,6 +3277,12 @@ pub mod testing {
         }
         fn on_stale_key_packet_rejected(&self, event: builder::StaleKeyPacketRejected) {
             self.stale_key_packet_rejected
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            self.output.lock().unwrap().push(format!("{event:?}"));
+        }
+        fn on_stale_key_packet_dropped(&self, event: builder::StaleKeyPacketDropped) {
+            self.stale_key_packet_dropped
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             self.output.lock().unwrap().push(format!("{event:?}"));

@@ -6,9 +6,6 @@
 struct PathSecretMapInitialized {
     /// The capacity of the path secret map
     capacity: usize,
-
-    /// The port that the path secret is listening on
-    control_socket_port: u16,
 }
 
 #[event("path_secret_map:uninitialized")]
@@ -16,9 +13,6 @@ struct PathSecretMapInitialized {
 struct PathSecretMapUninitialized {
     /// The capacity of the path secret map
     capacity: usize,
-
-    /// The port that the path secret is listening on
-    control_socket_port: u16,
 
     /// The number of entries in the map
     entries: usize,
@@ -92,6 +86,14 @@ struct UnknownPathSecretPacketRejected<'a> {
     credential_id: &'a [u8],
 }
 
+#[event("path_secret_map:unknown_path_secret_packet_dropped")]
+#[subject(endpoint)]
+/// Emitted when an UnknownPathSecret packet was dropped due to a missing entry
+struct UnknownPathSecretPacketDropped<'a> {
+    peer_address: SocketAddress<'a>,
+    credential_id: &'a [u8],
+}
+
 #[event("path_secret_map:replay_definitely_detected")]
 #[subject(endpoint)]
 /// Emitted when credential replay was definitely detected
@@ -143,6 +145,14 @@ struct ReplayDetectedPacketRejected<'a> {
     credential_id: &'a [u8],
 }
 
+#[event("path_secret_map:replay_detected_packet_dropped")]
+#[subject(endpoint)]
+/// Emitted when an ReplayDetected packet was dropped due to a missing entry
+struct ReplayDetectedPacketDropped<'a> {
+    peer_address: SocketAddress<'a>,
+    credential_id: &'a [u8],
+}
+
 #[event("path_secret_map:stale_key_packet_sent")]
 #[subject(endpoint)]
 /// Emitted when an StaleKey packet was sent
@@ -171,6 +181,14 @@ struct StaleKeyPacketAccepted<'a> {
 #[subject(endpoint)]
 /// Emitted when an StaleKey packet was rejected as invalid
 struct StaleKeyPacketRejected<'a> {
+    peer_address: SocketAddress<'a>,
+    credential_id: &'a [u8],
+}
+
+#[event("path_secret_map:stale_key_packet_dropped")]
+#[subject(endpoint)]
+/// Emitted when an StaleKey packet was dropped due to a missing entry
+struct StaleKeyPacketDropped<'a> {
     peer_address: SocketAddress<'a>,
     credential_id: &'a [u8],
 }

@@ -70,7 +70,6 @@ pub(super) struct State<S: event::Subscriber> {
     // This socket is used *only* for sending secret control packets.
     // FIXME: This will get replaced with sending on a handshake socket associated with the map.
     pub(super) control_socket: std::net::UdpSocket,
-    control_socket_port: u16,
 
     pub(super) receiver_shared: Arc<receiver::Shared>,
 
@@ -90,7 +89,6 @@ impl<S: event::Subscriber> State<S> {
         // of implementation).
         let control_socket = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
         control_socket.set_nonblocking(true).unwrap();
-        let control_socket_port = control_socket.local_addr().unwrap().port();
 
         let state = Self {
             // This is around 500MB with current entry size.
@@ -104,7 +102,6 @@ impl<S: event::Subscriber> State<S> {
             signer,
             receiver_shared: receiver::Shared::new(),
             control_socket,
-            control_socket_port,
             subscriber,
         };
 
@@ -112,12 +109,9 @@ impl<S: event::Subscriber> State<S> {
 
         state.cleaner.spawn_thread(state.clone());
 
-        state.subscriber().on_path_secret_map_initialized(
-            event::builder::PathSecretMapInitialized {
-                capacity,
-                control_socket_port,
-            },
-        );
+        state
+            .subscriber()
+            .on_path_secret_map_initialized(event::builder::PathSecretMapInitialized { capacity });
 
         state
     }
@@ -151,6 +145,13 @@ impl<S: event::Subscriber> State<S> {
         );
 
         let Some(entry) = self.get_by_id(packet.credential_id()) else {
+            self.subscriber().on_unknown_path_secret_packet_dropped(
+                event::builder::UnknownPathSecretPacketDropped {
+                    credential_id: packet.credential_id().into_event(),
+                    peer_address,
+                },
+            );
+
             return;
         };
 
@@ -193,8 +194,11 @@ impl<S: event::Subscriber> State<S> {
             });
 
         let Some(entry) = self.ids.get_by_key(packet.credential_id()) else {
-            // If we get a control packet we don't have a registered path secret for, ignore the
-            // packet.
+            self.subscriber()
+                .on_stale_key_packet_dropped(event::builder::StaleKeyPacketDropped {
+                    credential_id: packet.credential_id().into_event(),
+                    peer_address,
+                });
             return;
         };
 
@@ -235,8 +239,12 @@ impl<S: event::Subscriber> State<S> {
         );
 
         let Some(entry) = self.ids.get_by_key(packet.credential_id()) else {
-            // If we get a control packet we don't have a registered path secret for, ignore the
-            // packet.
+            self.subscriber().on_replay_detected_packet_dropped(
+                event::builder::ReplayDetectedPacketDropped {
+                    credential_id: packet.credential_id().into_event(),
+                    peer_address,
+                },
+            );
             return;
         };
 
@@ -515,7 +523,6 @@ impl<S: event::Subscriber> Drop for State<S> {
         self.subscriber().on_path_secret_map_uninitialized(
             event::builder::PathSecretMapUninitialized {
                 capacity: self.secrets_capacity(),
-                control_socket_port: self.control_socket_port,
                 entries: self.secrets_len(),
             },
         );
