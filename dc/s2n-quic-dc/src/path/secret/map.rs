@@ -19,6 +19,9 @@ mod state;
 mod status;
 mod store;
 
+#[cfg(test)]
+mod event_tests;
+
 use entry::Entry;
 use store::Store;
 
@@ -202,5 +205,51 @@ impl Map {
         let receiver = self.store.receiver().clone().new_receiver();
         let entry = Entry::fake(peer, Some(receiver));
         self.store.test_insert(entry);
+    }
+
+    #[cfg(test)]
+    fn test_insert_pair(
+        &self,
+        local_addr: SocketAddr,
+        peer: &Self,
+        peer_addr: SocketAddr,
+    ) -> crate::credentials::Id {
+        use crate::path::secret::{schedule, sender};
+        use s2n_quic_core::endpoint::Type;
+
+        let ciphersuite = schedule::Ciphersuite::AES_GCM_128_SHA256;
+
+        let mut secret = [0; 32];
+        aws_lc_rs::rand::fill(&mut secret).unwrap();
+
+        let insert = |map: &Self, peer: &Self, peer_addr, endpoint| {
+            let secret =
+                schedule::Secret::new(ciphersuite, dc::SUPPORTED_VERSIONS[0], endpoint, &secret);
+            let id = *secret.id();
+
+            let srt = peer.store.signer().sign(&id);
+
+            let sender = sender::State::new(srt);
+
+            let entry = Entry::new(
+                peer_addr,
+                secret,
+                sender,
+                map.store.receiver().clone().new_receiver(),
+                dc::testing::TEST_APPLICATION_PARAMS,
+                dc::testing::TEST_REHANDSHAKE_PERIOD,
+            );
+            let entry = Arc::new(entry);
+            map.store.test_insert(entry);
+
+            id
+        };
+
+        let client_id = insert(self, peer, peer_addr, Type::Client);
+        let server_id = insert(peer, self, local_addr, Type::Server);
+
+        assert_eq!(client_id, server_id);
+
+        client_id
     }
 }

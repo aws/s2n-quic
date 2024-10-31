@@ -17,15 +17,41 @@ pub mod api {
         pub id: u64,
         pub timestamp: crate::event::Timestamp,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for ConnectionMeta {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionMeta");
+            fmt.field("endpoint_type", &self.endpoint_type);
+            fmt.field("id", &self.id);
+            fmt.field("timestamp", &self.timestamp);
+            fmt.finish()
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub struct EndpointMeta {
         pub endpoint_type: EndpointType,
         pub timestamp: crate::event::Timestamp,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for EndpointMeta {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EndpointMeta");
+            fmt.field("endpoint_type", &self.endpoint_type);
+            fmt.field("timestamp", &self.timestamp);
+            fmt.finish()
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub struct ConnectionInfo {}
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for ConnectionInfo {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionInfo");
+            fmt.finish()
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub struct TransportParameters<'a> {
@@ -48,6 +74,52 @@ pub mod api {
         pub max_datagram_frame_size: u64,
         pub dc_supported_versions: &'a [u32],
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for TransportParameters<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("TransportParameters");
+            fmt.field(
+                "original_destination_connection_id",
+                &self.original_destination_connection_id,
+            );
+            fmt.field(
+                "initial_source_connection_id",
+                &self.initial_source_connection_id,
+            );
+            fmt.field(
+                "retry_source_connection_id",
+                &self.retry_source_connection_id,
+            );
+            fmt.field("stateless_reset_token", &self.stateless_reset_token);
+            fmt.field("preferred_address", &self.preferred_address);
+            fmt.field("migration_support", &self.migration_support);
+            fmt.field("max_idle_timeout", &self.max_idle_timeout);
+            fmt.field("ack_delay_exponent", &self.ack_delay_exponent);
+            fmt.field("max_ack_delay", &self.max_ack_delay);
+            fmt.field("max_udp_payload_size", &self.max_udp_payload_size);
+            fmt.field(
+                "active_connection_id_limit",
+                &self.active_connection_id_limit,
+            );
+            fmt.field(
+                "initial_max_stream_data_bidi_local",
+                &self.initial_max_stream_data_bidi_local,
+            );
+            fmt.field(
+                "initial_max_stream_data_bidi_remote",
+                &self.initial_max_stream_data_bidi_remote,
+            );
+            fmt.field(
+                "initial_max_stream_data_uni",
+                &self.initial_max_stream_data_uni,
+            );
+            fmt.field("initial_max_streams_bidi", &self.initial_max_streams_bidi);
+            fmt.field("initial_max_streams_uni", &self.initial_max_streams_uni);
+            fmt.field("max_datagram_frame_size", &self.max_datagram_frame_size);
+            fmt.field("dc_supported_versions", &self.dc_supported_versions);
+            fmt.finish()
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub struct PreferredAddress<'a> {
@@ -55,6 +127,17 @@ pub mod api {
         pub ipv6_address: Option<SocketAddress<'a>>,
         pub connection_id: ConnectionId<'a>,
         pub stateless_reset_token: &'a [u8],
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for PreferredAddress<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PreferredAddress");
+            fmt.field("ipv4_address", &self.ipv4_address);
+            fmt.field("ipv6_address", &self.ipv6_address);
+            fmt.field("connection_id", &self.connection_id);
+            fmt.field("stateless_reset_token", &self.stateless_reset_token);
+            fmt.finish()
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -66,10 +149,31 @@ pub mod api {
         pub id: u64,
         pub is_active: bool,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for Path<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("Path");
+            fmt.field("local_addr", &self.local_addr);
+            fmt.field("local_cid", &self.local_cid);
+            fmt.field("remote_addr", &self.remote_addr);
+            fmt.field("remote_cid", &self.remote_cid);
+            fmt.field("id", &self.id);
+            fmt.field("is_active", &self.is_active);
+            fmt.finish()
+        }
+    }
     #[non_exhaustive]
     #[derive(Clone)]
     pub struct ConnectionId<'a> {
         pub bytes: &'a [u8],
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for ConnectionId<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionId");
+            fmt.field("bytes", &self.bytes);
+            fmt.finish()
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -84,12 +188,32 @@ pub mod api {
         #[doc = " received with the CE codepoint."]
         pub ce_count: u64,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for EcnCounts {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EcnCounts");
+            fmt.field("ect_0_count", &self.ect_0_count);
+            fmt.field("ect_1_count", &self.ect_1_count);
+            fmt.field("ce_count", &self.ce_count);
+            fmt.finish()
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub struct MtuConfig {
         pub initial_mtu: u16,
         pub base_mtu: u16,
         pub max_mtu: u16,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for MtuConfig {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("MtuConfig");
+            fmt.field("initial_mtu", &self.initial_mtu);
+            fmt.field("base_mtu", &self.base_mtu);
+            fmt.field("max_mtu", &self.max_mtu);
+            fmt.finish()
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -115,6 +239,26 @@ pub mod api {
         pub prior_ecn_ce_count: u64,
         #[doc = " The delivery rate for this rate sample"]
         pub delivery_rate_bytes_per_second: u64,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for RateSample {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("RateSample");
+            fmt.field("interval", &self.interval);
+            fmt.field("delivered_bytes", &self.delivered_bytes);
+            fmt.field("lost_bytes", &self.lost_bytes);
+            fmt.field("ecn_ce_count", &self.ecn_ce_count);
+            fmt.field("is_app_limited", &self.is_app_limited);
+            fmt.field("prior_delivered_bytes", &self.prior_delivered_bytes);
+            fmt.field("bytes_in_flight", &self.bytes_in_flight);
+            fmt.field("prior_lost_bytes", &self.prior_lost_bytes);
+            fmt.field("prior_ecn_ce_count", &self.prior_ecn_ce_count);
+            fmt.field(
+                "delivery_rate_bytes_per_second",
+                &self.delivery_rate_bytes_per_second,
+            );
+            fmt.finish()
+        }
     }
     #[non_exhaustive]
     #[derive(Clone)]
@@ -624,6 +768,17 @@ pub mod api {
     pub struct ApplicationProtocolInformation<'a> {
         pub chosen_application_protocol: &'a [u8],
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for ApplicationProtocolInformation<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ApplicationProtocolInformation");
+            fmt.field(
+                "chosen_application_protocol",
+                &self.chosen_application_protocol,
+            );
+            fmt.finish()
+        }
+    }
     impl<'a> Event for ApplicationProtocolInformation<'a> {
         const NAME: &'static str = "transport:application_protocol_information";
     }
@@ -632,6 +787,14 @@ pub mod api {
     #[doc = " Server Name was negotiated for the connection"]
     pub struct ServerNameInformation<'a> {
         pub chosen_server_name: &'a str,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for ServerNameInformation<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ServerNameInformation");
+            fmt.field("chosen_server_name", &self.chosen_server_name);
+            fmt.finish()
+        }
     }
     impl<'a> Event for ServerNameInformation<'a> {
         const NAME: &'static str = "transport:server_name_information";
@@ -644,6 +807,16 @@ pub mod api {
         pub space: KeySpace,
         pub reason: PacketSkipReason,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PacketSkipped {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PacketSkipped");
+            fmt.field("number", &self.number);
+            fmt.field("space", &self.space);
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
+    }
     impl Event for PacketSkipped {
         const NAME: &'static str = "transport:packet_skipped";
     }
@@ -654,6 +827,15 @@ pub mod api {
         pub packet_header: PacketHeader,
         pub packet_len: usize,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PacketSent {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PacketSent");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.field("packet_len", &self.packet_len);
+            fmt.finish()
+        }
+    }
     impl Event for PacketSent {
         const NAME: &'static str = "transport:packet_sent";
     }
@@ -662,6 +844,14 @@ pub mod api {
     #[doc = " Packet was received by a connection"]
     pub struct PacketReceived {
         pub packet_header: PacketHeader,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PacketReceived {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PacketReceived");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.finish()
+        }
     }
     impl Event for PacketReceived {
         const NAME: &'static str = "transport:packet_received";
@@ -673,6 +863,15 @@ pub mod api {
         pub previous: Path<'a>,
         pub active: Path<'a>,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for ActivePathUpdated<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ActivePathUpdated");
+            fmt.field("previous", &self.previous);
+            fmt.field("active", &self.active);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for ActivePathUpdated<'a> {
         const NAME: &'static str = "connectivity:active_path_updated";
     }
@@ -682,6 +881,15 @@ pub mod api {
     pub struct PathCreated<'a> {
         pub active: Path<'a>,
         pub new: Path<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for PathCreated<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PathCreated");
+            fmt.field("active", &self.active);
+            fmt.field("new", &self.new);
+            fmt.finish()
+        }
     }
     impl<'a> Event for PathCreated<'a> {
         const NAME: &'static str = "transport:path_created";
@@ -694,6 +902,16 @@ pub mod api {
         pub path_id: u64,
         pub frame: Frame,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for FrameSent {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("FrameSent");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.field("path_id", &self.path_id);
+            fmt.field("frame", &self.frame);
+            fmt.finish()
+        }
+    }
     impl Event for FrameSent {
         const NAME: &'static str = "transport:frame_sent";
     }
@@ -704,6 +922,16 @@ pub mod api {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
         pub frame: Frame,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for FrameReceived<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("FrameReceived");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.field("path", &self.path);
+            fmt.field("frame", &self.frame);
+            fmt.finish()
+        }
     }
     impl<'a> Event for FrameReceived<'a> {
         const NAME: &'static str = "transport:frame_received";
@@ -716,6 +944,17 @@ pub mod api {
         pub path: Path<'a>,
         pub bytes_lost: u16,
         pub is_mtu_probe: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for PacketLost<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PacketLost");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.field("path", &self.path);
+            fmt.field("bytes_lost", &self.bytes_lost);
+            fmt.field("is_mtu_probe", &self.is_mtu_probe);
+            fmt.finish()
+        }
     }
     impl<'a> Event for PacketLost<'a> {
         const NAME: &'static str = "recovery:packet_lost";
@@ -735,6 +974,23 @@ pub mod api {
         pub bytes_in_flight: u32,
         pub congestion_limited: bool,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for RecoveryMetrics<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("RecoveryMetrics");
+            fmt.field("path", &self.path);
+            fmt.field("min_rtt", &self.min_rtt);
+            fmt.field("smoothed_rtt", &self.smoothed_rtt);
+            fmt.field("latest_rtt", &self.latest_rtt);
+            fmt.field("rtt_variance", &self.rtt_variance);
+            fmt.field("max_ack_delay", &self.max_ack_delay);
+            fmt.field("pto_count", &self.pto_count);
+            fmt.field("congestion_window", &self.congestion_window);
+            fmt.field("bytes_in_flight", &self.bytes_in_flight);
+            fmt.field("congestion_limited", &self.congestion_limited);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for RecoveryMetrics<'a> {
         const NAME: &'static str = "recovery:metrics_updated";
     }
@@ -744,6 +1000,15 @@ pub mod api {
     pub struct Congestion<'a> {
         pub path: Path<'a>,
         pub source: CongestionSource,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for Congestion<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("Congestion");
+            fmt.field("path", &self.path);
+            fmt.field("source", &self.source);
+            fmt.finish()
+        }
     }
     impl<'a> Event for Congestion<'a> {
         const NAME: &'static str = "recovery:congestion";
@@ -756,6 +1021,16 @@ pub mod api {
     pub struct AckProcessed<'a> {
         pub action: AckAction,
         pub path: Path<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    #[allow(deprecated)]
+    impl<'a> crate::event::snapshot::Fmt for AckProcessed<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AckProcessed");
+            fmt.field("action", &self.action);
+            fmt.field("path", &self.path);
+            fmt.finish()
+        }
     }
     #[allow(deprecated)]
     impl<'a> Event for AckProcessed<'a> {
@@ -780,6 +1055,17 @@ pub mod api {
         #[doc = " The store packet_number range in the IntervalSet"]
         pub stored_range: core::ops::RangeInclusive<u64>,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for RxAckRangeDropped<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("RxAckRangeDropped");
+            fmt.field("path", &self.path);
+            fmt.field("packet_number_range", &self.packet_number_range);
+            fmt.field("capacity", &self.capacity);
+            fmt.field("stored_range", &self.stored_range);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for RxAckRangeDropped<'a> {
         const NAME: &'static str = "recovery:rx_ack_range_dropped";
     }
@@ -790,6 +1076,16 @@ pub mod api {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
         pub ack_range: RangeInclusive<u64>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AckRangeReceived<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AckRangeReceived");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.field("path", &self.path);
+            fmt.field("ack_range", &self.ack_range);
+            fmt.finish()
+        }
     }
     impl<'a> Event for AckRangeReceived<'a> {
         const NAME: &'static str = "recovery:ack_range_received";
@@ -802,6 +1098,16 @@ pub mod api {
         pub path_id: u64,
         pub ack_range: RangeInclusive<u64>,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for AckRangeSent {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AckRangeSent");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.field("path_id", &self.path_id);
+            fmt.field("ack_range", &self.ack_range);
+            fmt.finish()
+        }
+    }
     impl Event for AckRangeSent {
         const NAME: &'static str = "recovery:ack_range_sent";
     }
@@ -810,6 +1116,14 @@ pub mod api {
     #[doc = " Packet was dropped with the given reason"]
     pub struct PacketDropped<'a> {
         pub reason: PacketDropReason<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for PacketDropped<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PacketDropped");
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
     }
     impl<'a> Event for PacketDropped<'a> {
         const NAME: &'static str = "transport:packet_dropped";
@@ -821,6 +1135,15 @@ pub mod api {
         pub key_type: KeyType,
         pub cipher_suite: CipherSuite,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for KeyUpdate {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("KeyUpdate");
+            fmt.field("key_type", &self.key_type);
+            fmt.field("cipher_suite", &self.cipher_suite);
+            fmt.finish()
+        }
+    }
     impl Event for KeyUpdate {
         const NAME: &'static str = "security:key_update";
     }
@@ -828,6 +1151,14 @@ pub mod api {
     #[non_exhaustive]
     pub struct KeySpaceDiscarded {
         pub space: KeySpace,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for KeySpaceDiscarded {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("KeySpaceDiscarded");
+            fmt.field("space", &self.space);
+            fmt.finish()
+        }
     }
     impl Event for KeySpaceDiscarded {
         const NAME: &'static str = "security:key_space_discarded";
@@ -838,6 +1169,14 @@ pub mod api {
     pub struct ConnectionStarted<'a> {
         pub path: Path<'a>,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for ConnectionStarted<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionStarted");
+            fmt.field("path", &self.path);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for ConnectionStarted<'a> {
         const NAME: &'static str = "connectivity:connection_started";
     }
@@ -846,6 +1185,14 @@ pub mod api {
     #[doc = " Connection closed"]
     pub struct ConnectionClosed {
         pub error: crate::connection::Error,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for ConnectionClosed {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionClosed");
+            fmt.field("error", &self.error);
+            fmt.finish()
+        }
     }
     impl Event for ConnectionClosed {
         const NAME: &'static str = "connectivity:connection_closed";
@@ -858,6 +1205,16 @@ pub mod api {
         pub path: Path<'a>,
         pub error: DuplicatePacketError,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for DuplicatePacket<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DuplicatePacket");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.field("path", &self.path);
+            fmt.field("error", &self.error);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for DuplicatePacket<'a> {
         const NAME: &'static str = "transport:duplicate_packet";
     }
@@ -866,6 +1223,14 @@ pub mod api {
     #[doc = " Transport parameters received by connection"]
     pub struct TransportParametersReceived<'a> {
         pub transport_parameters: TransportParameters<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for TransportParametersReceived<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("TransportParametersReceived");
+            fmt.field("transport_parameters", &self.transport_parameters);
+            fmt.finish()
+        }
     }
     impl<'a> Event for TransportParametersReceived<'a> {
         const NAME: &'static str = "transport:transport_parameters_received";
@@ -883,6 +1248,15 @@ pub mod api {
         #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
         pub gso_offset: usize,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for DatagramSent {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DatagramSent");
+            fmt.field("len", &self.len);
+            fmt.field("gso_offset", &self.gso_offset);
+            fmt.finish()
+        }
+    }
     impl Event for DatagramSent {
         const NAME: &'static str = "transport:datagram_sent";
     }
@@ -891,6 +1265,14 @@ pub mod api {
     #[doc = " Datagram received by a connection"]
     pub struct DatagramReceived {
         pub len: u16,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for DatagramReceived {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DatagramReceived");
+            fmt.field("len", &self.len);
+            fmt.finish()
+        }
     }
     impl Event for DatagramReceived {
         const NAME: &'static str = "transport:datagram_received";
@@ -901,6 +1283,15 @@ pub mod api {
     pub struct DatagramDropped {
         pub len: u16,
         pub reason: DatagramDropReason,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for DatagramDropped {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DatagramDropped");
+            fmt.field("len", &self.len);
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
     }
     impl Event for DatagramDropped {
         const NAME: &'static str = "transport:datagram_dropped";
@@ -915,6 +1306,17 @@ pub mod api {
         pub previous: ConnectionId<'a>,
         pub current: ConnectionId<'a>,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for ConnectionIdUpdated<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionIdUpdated");
+            fmt.field("path_id", &self.path_id);
+            fmt.field("cid_consumer", &self.cid_consumer);
+            fmt.field("previous", &self.previous);
+            fmt.field("current", &self.current);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for ConnectionIdUpdated<'a> {
         const NAME: &'static str = "connectivity:connection_id_updated";
     }
@@ -924,6 +1326,15 @@ pub mod api {
         pub path: Path<'a>,
         pub state: EcnState,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for EcnStateChanged<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EcnStateChanged");
+            fmt.field("path", &self.path);
+            fmt.field("state", &self.state);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for EcnStateChanged<'a> {
         const NAME: &'static str = "recovery:ecn_state_changed";
     }
@@ -931,6 +1342,14 @@ pub mod api {
     #[non_exhaustive]
     pub struct ConnectionMigrationDenied {
         pub reason: MigrationDenyReason,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for ConnectionMigrationDenied {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionMigrationDenied");
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
     }
     impl Event for ConnectionMigrationDenied {
         const NAME: &'static str = "connectivity:connection_migration_denied";
@@ -940,6 +1359,14 @@ pub mod api {
     pub struct HandshakeStatusUpdated {
         pub status: HandshakeStatus,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for HandshakeStatusUpdated {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("HandshakeStatusUpdated");
+            fmt.field("status", &self.status);
+            fmt.finish()
+        }
+    }
     impl Event for HandshakeStatusUpdated {
         const NAME: &'static str = "connectivity:handshake_status_updated";
     }
@@ -947,6 +1374,14 @@ pub mod api {
     #[non_exhaustive]
     pub struct TlsExporterReady<'a> {
         pub session: crate::event::TlsSession<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for TlsExporterReady<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("TlsExporterReady");
+            fmt.field("session", &self.session);
+            fmt.finish()
+        }
     }
     impl<'a> Event for TlsExporterReady<'a> {
         const NAME: &'static str = "connectivity:tls_exporter_ready";
@@ -959,6 +1394,16 @@ pub mod api {
         pub path: Path<'a>,
         pub challenge_data: &'a [u8],
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for PathChallengeUpdated<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PathChallengeUpdated");
+            fmt.field("path_challenge_status", &self.path_challenge_status);
+            fmt.field("path", &self.path);
+            fmt.field("challenge_data", &self.challenge_data);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for PathChallengeUpdated<'a> {
         const NAME: &'static str = "connectivity:path_challenge_updated";
     }
@@ -966,6 +1411,14 @@ pub mod api {
     #[non_exhaustive]
     pub struct TlsClientHello<'a> {
         pub payload: &'a [&'a [u8]],
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for TlsClientHello<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("TlsClientHello");
+            fmt.field("payload", &self.payload);
+            fmt.finish()
+        }
     }
     impl<'a> Event for TlsClientHello<'a> {
         const NAME: &'static str = "tls:client_hello";
@@ -975,6 +1428,14 @@ pub mod api {
     pub struct TlsServerHello<'a> {
         pub payload: &'a [&'a [u8]],
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for TlsServerHello<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("TlsServerHello");
+            fmt.field("payload", &self.payload);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for TlsServerHello<'a> {
         const NAME: &'static str = "tls:server_hello";
     }
@@ -982,6 +1443,14 @@ pub mod api {
     #[non_exhaustive]
     pub struct RxStreamProgress {
         pub bytes: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for RxStreamProgress {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("RxStreamProgress");
+            fmt.field("bytes", &self.bytes);
+            fmt.finish()
+        }
     }
     impl Event for RxStreamProgress {
         const NAME: &'static str = "transport:rx_stream_progress";
@@ -991,6 +1460,14 @@ pub mod api {
     pub struct TxStreamProgress {
         pub bytes: usize,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for TxStreamProgress {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("TxStreamProgress");
+            fmt.field("bytes", &self.bytes);
+            fmt.finish()
+        }
+    }
     impl Event for TxStreamProgress {
         const NAME: &'static str = "transport:tx_stream_progress";
     }
@@ -998,6 +1475,14 @@ pub mod api {
     #[non_exhaustive]
     pub struct KeepAliveTimerExpired {
         pub timeout: Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for KeepAliveTimerExpired {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("KeepAliveTimerExpired");
+            fmt.field("timeout", &self.timeout);
+            fmt.finish()
+        }
     }
     impl Event for KeepAliveTimerExpired {
         const NAME: &'static str = "connectivity::keep_alive_timer_expired";
@@ -1013,6 +1498,17 @@ pub mod api {
         #[doc = " The search for the maximum MTU has completed for now"]
         pub search_complete: bool,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for MtuUpdated {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("MtuUpdated");
+            fmt.field("path_id", &self.path_id);
+            fmt.field("mtu", &self.mtu);
+            fmt.field("cause", &self.cause);
+            fmt.field("search_complete", &self.search_complete);
+            fmt.finish()
+        }
+    }
     impl Event for MtuUpdated {
         const NAME: &'static str = "connectivity:mtu_updated";
     }
@@ -1023,6 +1519,16 @@ pub mod api {
         pub path_id: u64,
         pub cause: SlowStartExitCause,
         pub congestion_window: u32,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for SlowStartExited {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("SlowStartExited");
+            fmt.field("path_id", &self.path_id);
+            fmt.field("cause", &self.cause);
+            fmt.field("congestion_window", &self.congestion_window);
+            fmt.finish()
+        }
     }
     impl Event for SlowStartExited {
         const NAME: &'static str = "recovery:slow_start_exited";
@@ -1036,6 +1542,15 @@ pub mod api {
         pub path_id: u64,
         pub rate_sample: RateSample,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for DeliveryRateSampled {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DeliveryRateSampled");
+            fmt.field("path_id", &self.path_id);
+            fmt.field("rate_sample", &self.rate_sample);
+            fmt.finish()
+        }
+    }
     impl Event for DeliveryRateSampled {
         const NAME: &'static str = "recovery:delivery_rate_sampled";
     }
@@ -1048,6 +1563,17 @@ pub mod api {
         pub burst_size: u32,
         pub pacing_gain: f32,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PacingRateUpdated {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PacingRateUpdated");
+            fmt.field("path_id", &self.path_id);
+            fmt.field("bytes_per_second", &self.bytes_per_second);
+            fmt.field("burst_size", &self.burst_size);
+            fmt.field("pacing_gain", &self.pacing_gain);
+            fmt.finish()
+        }
+    }
     impl Event for PacingRateUpdated {
         const NAME: &'static str = "recovery:pacing_rate_updated";
     }
@@ -1058,6 +1584,15 @@ pub mod api {
         pub path_id: u64,
         pub state: BbrState,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for BbrStateChanged {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("BbrStateChanged");
+            fmt.field("path_id", &self.path_id);
+            fmt.field("state", &self.state);
+            fmt.finish()
+        }
+    }
     impl Event for BbrStateChanged {
         const NAME: &'static str = "recovery:bbr_state_changed";
     }
@@ -1066,6 +1601,14 @@ pub mod api {
     #[doc = " The DC state has changed"]
     pub struct DcStateChanged {
         pub state: DcState,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for DcStateChanged {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DcStateChanged");
+            fmt.field("state", &self.state);
+            fmt.finish()
+        }
     }
     impl Event for DcStateChanged {
         const NAME: &'static str = "transport:dc_state_changed";
@@ -1078,6 +1621,16 @@ pub mod api {
         pub client_versions: &'a [u32],
         pub chosen_version: Option<u32>,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for VersionInformation<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("VersionInformation");
+            fmt.field("server_versions", &self.server_versions);
+            fmt.field("client_versions", &self.client_versions);
+            fmt.field("chosen_version", &self.chosen_version);
+            fmt.finish()
+        }
+    }
     impl<'a> Event for VersionInformation<'a> {
         const NAME: &'static str = "transport::version_information";
     }
@@ -1087,6 +1640,14 @@ pub mod api {
     pub struct EndpointPacketSent {
         pub packet_header: PacketHeader,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for EndpointPacketSent {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EndpointPacketSent");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.finish()
+        }
+    }
     impl Event for EndpointPacketSent {
         const NAME: &'static str = "transport:packet_sent";
     }
@@ -1095,6 +1656,14 @@ pub mod api {
     #[doc = " Packet was received by the endpoint"]
     pub struct EndpointPacketReceived {
         pub packet_header: PacketHeader,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for EndpointPacketReceived {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EndpointPacketReceived");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.finish()
+        }
     }
     impl Event for EndpointPacketReceived {
         const NAME: &'static str = "transport:packet_received";
@@ -1112,6 +1681,15 @@ pub mod api {
         #[doc = " See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details."]
         pub gso_offset: usize,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for EndpointDatagramSent {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EndpointDatagramSent");
+            fmt.field("len", &self.len);
+            fmt.field("gso_offset", &self.gso_offset);
+            fmt.finish()
+        }
+    }
     impl Event for EndpointDatagramSent {
         const NAME: &'static str = "transport:datagram_sent";
     }
@@ -1120,6 +1698,14 @@ pub mod api {
     #[doc = " Datagram received by the endpoint"]
     pub struct EndpointDatagramReceived {
         pub len: u16,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for EndpointDatagramReceived {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EndpointDatagramReceived");
+            fmt.field("len", &self.len);
+            fmt.finish()
+        }
     }
     impl Event for EndpointDatagramReceived {
         const NAME: &'static str = "transport:datagram_received";
@@ -1131,6 +1717,15 @@ pub mod api {
         pub len: u16,
         pub reason: DatagramDropReason,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for EndpointDatagramDropped {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EndpointDatagramDropped");
+            fmt.field("len", &self.len);
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
+    }
     impl Event for EndpointDatagramDropped {
         const NAME: &'static str = "transport:datagram_dropped";
     }
@@ -1138,6 +1733,14 @@ pub mod api {
     #[non_exhaustive]
     pub struct EndpointConnectionAttemptFailed {
         pub error: crate::connection::Error,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for EndpointConnectionAttemptFailed {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EndpointConnectionAttemptFailed");
+            fmt.field("error", &self.error);
+            fmt.finish()
+        }
     }
     impl Event for EndpointConnectionAttemptFailed {
         const NAME: &'static str = "transport:connection_attempt_failed";
@@ -1159,6 +1762,18 @@ pub mod api {
         #[doc = " This can happen when a burst of errors exceeds the capacity of the recorder"]
         pub dropped_errors: usize,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PlatformTx {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PlatformTx");
+            fmt.field("count", &self.count);
+            fmt.field("syscalls", &self.syscalls);
+            fmt.field("blocked_syscalls", &self.blocked_syscalls);
+            fmt.field("total_errors", &self.total_errors);
+            fmt.field("dropped_errors", &self.dropped_errors);
+            fmt.finish()
+        }
+    }
     impl Event for PlatformTx {
         const NAME: &'static str = "platform:tx";
     }
@@ -1168,6 +1783,14 @@ pub mod api {
     pub struct PlatformTxError {
         #[doc = " The error code returned by the platform"]
         pub errno: i32,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PlatformTxError {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PlatformTxError");
+            fmt.field("errno", &self.errno);
+            fmt.finish()
+        }
     }
     impl Event for PlatformTxError {
         const NAME: &'static str = "platform:tx_error";
@@ -1189,6 +1812,18 @@ pub mod api {
         #[doc = " This can happen when a burst of errors exceeds the capacity of the recorder"]
         pub dropped_errors: usize,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PlatformRx {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PlatformRx");
+            fmt.field("count", &self.count);
+            fmt.field("syscalls", &self.syscalls);
+            fmt.field("blocked_syscalls", &self.blocked_syscalls);
+            fmt.field("total_errors", &self.total_errors);
+            fmt.field("dropped_errors", &self.dropped_errors);
+            fmt.finish()
+        }
+    }
     impl Event for PlatformRx {
         const NAME: &'static str = "platform:rx";
     }
@@ -1199,6 +1834,14 @@ pub mod api {
         #[doc = " The error code returned by the platform"]
         pub errno: i32,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PlatformRxError {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PlatformRxError");
+            fmt.field("errno", &self.errno);
+            fmt.finish()
+        }
+    }
     impl Event for PlatformRxError {
         const NAME: &'static str = "platform:rx_error";
     }
@@ -1207,6 +1850,14 @@ pub mod api {
     #[doc = " Emitted when a platform feature is configured"]
     pub struct PlatformFeatureConfigured {
         pub configuration: PlatformFeatureConfiguration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PlatformFeatureConfigured {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PlatformFeatureConfigured");
+            fmt.field("configuration", &self.configuration);
+            fmt.finish()
+        }
     }
     impl Event for PlatformFeatureConfigured {
         const NAME: &'static str = "platform:feature_configured";
@@ -1219,6 +1870,17 @@ pub mod api {
         pub tx_ready: bool,
         pub application_wakeup: bool,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PlatformEventLoopWakeup {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PlatformEventLoopWakeup");
+            fmt.field("timeout_expired", &self.timeout_expired);
+            fmt.field("rx_ready", &self.rx_ready);
+            fmt.field("tx_ready", &self.tx_ready);
+            fmt.field("application_wakeup", &self.application_wakeup);
+            fmt.finish()
+        }
+    }
     impl Event for PlatformEventLoopWakeup {
         const NAME: &'static str = "platform:event_loop_wakeup";
     }
@@ -1230,6 +1892,15 @@ pub mod api {
         #[doc = " The amount of time spent processing endpoint events in a single event loop"]
         pub processing_duration: core::time::Duration,
     }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PlatformEventLoopSleep {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PlatformEventLoopSleep");
+            fmt.field("timeout", &self.timeout);
+            fmt.field("processing_duration", &self.processing_duration);
+            fmt.finish()
+        }
+    }
     impl Event for PlatformEventLoopSleep {
         const NAME: &'static str = "platform:event_loop_sleep";
     }
@@ -1238,6 +1909,14 @@ pub mod api {
     pub struct PlatformEventLoopStarted<'a> {
         #[doc = " The local address of the socket"]
         pub local_address: SocketAddress<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for PlatformEventLoopStarted<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PlatformEventLoopStarted");
+            fmt.field("local_address", &self.local_address);
+            fmt.finish()
+        }
     }
     impl<'a> Event for PlatformEventLoopStarted<'a> {
         const NAME: &'static str = "platform:started";
@@ -7704,6 +8383,8 @@ pub mod testing {
                 event: &api::VersionInformation,
             ) {
                 self.version_information += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_endpoint_packet_sent(
@@ -7712,6 +8393,8 @@ pub mod testing {
                 event: &api::EndpointPacketSent,
             ) {
                 self.endpoint_packet_sent += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_endpoint_packet_received(
@@ -7720,6 +8403,8 @@ pub mod testing {
                 event: &api::EndpointPacketReceived,
             ) {
                 self.endpoint_packet_received += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_endpoint_datagram_sent(
@@ -7728,6 +8413,8 @@ pub mod testing {
                 event: &api::EndpointDatagramSent,
             ) {
                 self.endpoint_datagram_sent += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_endpoint_datagram_received(
@@ -7736,6 +8423,8 @@ pub mod testing {
                 event: &api::EndpointDatagramReceived,
             ) {
                 self.endpoint_datagram_received += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_endpoint_datagram_dropped(
@@ -7744,6 +8433,8 @@ pub mod testing {
                 event: &api::EndpointDatagramDropped,
             ) {
                 self.endpoint_datagram_dropped += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_endpoint_connection_attempt_failed(
@@ -7752,10 +8443,14 @@ pub mod testing {
                 event: &api::EndpointConnectionAttemptFailed,
             ) {
                 self.endpoint_connection_attempt_failed += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
                 self.platform_tx += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_platform_tx_error(
@@ -7764,10 +8459,14 @@ pub mod testing {
                 event: &api::PlatformTxError,
             ) {
                 self.platform_tx_error += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
                 self.platform_rx += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_platform_rx_error(
@@ -7776,6 +8475,8 @@ pub mod testing {
                 event: &api::PlatformRxError,
             ) {
                 self.platform_rx_error += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_platform_feature_configured(
@@ -7784,6 +8485,8 @@ pub mod testing {
                 event: &api::PlatformFeatureConfigured,
             ) {
                 self.platform_feature_configured += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_platform_event_loop_wakeup(
@@ -7792,6 +8495,8 @@ pub mod testing {
                 event: &api::PlatformEventLoopWakeup,
             ) {
                 self.platform_event_loop_wakeup += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_platform_event_loop_sleep(
@@ -7800,6 +8505,8 @@ pub mod testing {
                 event: &api::PlatformEventLoopSleep,
             ) {
                 self.platform_event_loop_sleep += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
             fn on_platform_event_loop_started(
@@ -7808,6 +8515,8 @@ pub mod testing {
                 event: &api::PlatformEventLoopStarted,
             ) {
                 self.platform_event_loop_started += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -7982,6 +8691,8 @@ pub mod testing {
         ) {
             self.application_protocol_information += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -7993,6 +8704,8 @@ pub mod testing {
         ) {
             self.server_name_information += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8004,6 +8717,8 @@ pub mod testing {
         ) {
             self.packet_skipped += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8015,6 +8730,8 @@ pub mod testing {
         ) {
             self.packet_sent += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8026,6 +8743,8 @@ pub mod testing {
         ) {
             self.packet_received += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8037,6 +8756,8 @@ pub mod testing {
         ) {
             self.active_path_updated += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8048,6 +8769,8 @@ pub mod testing {
         ) {
             self.path_created += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8059,6 +8782,8 @@ pub mod testing {
         ) {
             self.frame_sent += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8070,6 +8795,8 @@ pub mod testing {
         ) {
             self.frame_received += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8081,6 +8808,8 @@ pub mod testing {
         ) {
             self.packet_lost += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8092,6 +8821,8 @@ pub mod testing {
         ) {
             self.recovery_metrics += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8103,6 +8834,8 @@ pub mod testing {
         ) {
             self.congestion += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8115,6 +8848,8 @@ pub mod testing {
         ) {
             self.ack_processed += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8126,6 +8861,8 @@ pub mod testing {
         ) {
             self.rx_ack_range_dropped += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8137,6 +8874,8 @@ pub mod testing {
         ) {
             self.ack_range_received += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8148,6 +8887,8 @@ pub mod testing {
         ) {
             self.ack_range_sent += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8159,6 +8900,8 @@ pub mod testing {
         ) {
             self.packet_dropped += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8170,6 +8913,8 @@ pub mod testing {
         ) {
             self.key_update += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8181,6 +8926,8 @@ pub mod testing {
         ) {
             self.key_space_discarded += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8192,6 +8939,8 @@ pub mod testing {
         ) {
             self.connection_started += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8203,6 +8952,8 @@ pub mod testing {
         ) {
             self.connection_closed += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8214,6 +8965,8 @@ pub mod testing {
         ) {
             self.duplicate_packet += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8225,6 +8978,8 @@ pub mod testing {
         ) {
             self.transport_parameters_received += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8236,6 +8991,8 @@ pub mod testing {
         ) {
             self.datagram_sent += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8247,6 +9004,8 @@ pub mod testing {
         ) {
             self.datagram_received += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8258,6 +9017,8 @@ pub mod testing {
         ) {
             self.datagram_dropped += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8269,6 +9030,8 @@ pub mod testing {
         ) {
             self.connection_id_updated += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8280,6 +9043,8 @@ pub mod testing {
         ) {
             self.ecn_state_changed += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8291,6 +9056,8 @@ pub mod testing {
         ) {
             self.connection_migration_denied += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8302,6 +9069,8 @@ pub mod testing {
         ) {
             self.handshake_status_updated += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8313,6 +9082,8 @@ pub mod testing {
         ) {
             self.tls_exporter_ready += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8324,6 +9095,8 @@ pub mod testing {
         ) {
             self.path_challenge_updated += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8335,6 +9108,8 @@ pub mod testing {
         ) {
             self.tls_client_hello += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8346,6 +9121,8 @@ pub mod testing {
         ) {
             self.tls_server_hello += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8357,6 +9134,8 @@ pub mod testing {
         ) {
             self.rx_stream_progress += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8368,6 +9147,8 @@ pub mod testing {
         ) {
             self.tx_stream_progress += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8379,6 +9160,8 @@ pub mod testing {
         ) {
             self.keep_alive_timer_expired += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8390,6 +9173,8 @@ pub mod testing {
         ) {
             self.mtu_updated += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8401,6 +9186,8 @@ pub mod testing {
         ) {
             self.slow_start_exited += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8412,6 +9199,8 @@ pub mod testing {
         ) {
             self.delivery_rate_sampled += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8423,6 +9212,8 @@ pub mod testing {
         ) {
             self.pacing_rate_updated += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8434,6 +9225,8 @@ pub mod testing {
         ) {
             self.bbr_state_changed += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8445,6 +9238,8 @@ pub mod testing {
         ) {
             self.dc_state_changed += 1;
             if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 self.output.push(format!("{meta:?} {event:?}"));
             }
         }
@@ -8454,6 +9249,8 @@ pub mod testing {
             event: &api::VersionInformation,
         ) {
             self.version_information += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_endpoint_packet_sent(
@@ -8462,6 +9259,8 @@ pub mod testing {
             event: &api::EndpointPacketSent,
         ) {
             self.endpoint_packet_sent += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_endpoint_packet_received(
@@ -8470,6 +9269,8 @@ pub mod testing {
             event: &api::EndpointPacketReceived,
         ) {
             self.endpoint_packet_received += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_endpoint_datagram_sent(
@@ -8478,6 +9279,8 @@ pub mod testing {
             event: &api::EndpointDatagramSent,
         ) {
             self.endpoint_datagram_sent += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_endpoint_datagram_received(
@@ -8486,6 +9289,8 @@ pub mod testing {
             event: &api::EndpointDatagramReceived,
         ) {
             self.endpoint_datagram_received += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_endpoint_datagram_dropped(
@@ -8494,6 +9299,8 @@ pub mod testing {
             event: &api::EndpointDatagramDropped,
         ) {
             self.endpoint_datagram_dropped += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_endpoint_connection_attempt_failed(
@@ -8502,22 +9309,32 @@ pub mod testing {
             event: &api::EndpointConnectionAttemptFailed,
         ) {
             self.endpoint_connection_attempt_failed += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
             self.platform_tx += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
             self.platform_tx_error += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
             self.platform_rx += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
             self.platform_rx_error += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_platform_feature_configured(
@@ -8526,6 +9343,8 @@ pub mod testing {
             event: &api::PlatformFeatureConfigured,
         ) {
             self.platform_feature_configured += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_platform_event_loop_wakeup(
@@ -8534,6 +9353,8 @@ pub mod testing {
             event: &api::PlatformEventLoopWakeup,
         ) {
             self.platform_event_loop_wakeup += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_platform_event_loop_sleep(
@@ -8542,6 +9363,8 @@ pub mod testing {
             event: &api::PlatformEventLoopSleep,
         ) {
             self.platform_event_loop_sleep += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
         fn on_platform_event_loop_started(
@@ -8550,6 +9373,8 @@ pub mod testing {
             event: &api::PlatformEventLoopStarted,
         ) {
             self.platform_event_loop_started += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
             self.output.push(format!("{meta:?} {event:?}"));
         }
     }
@@ -8701,31 +9526,37 @@ pub mod testing {
         fn on_version_information(&mut self, event: builder::VersionInformation) {
             self.version_information += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_endpoint_packet_sent(&mut self, event: builder::EndpointPacketSent) {
             self.endpoint_packet_sent += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_endpoint_packet_received(&mut self, event: builder::EndpointPacketReceived) {
             self.endpoint_packet_received += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_endpoint_datagram_sent(&mut self, event: builder::EndpointDatagramSent) {
             self.endpoint_datagram_sent += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_endpoint_datagram_received(&mut self, event: builder::EndpointDatagramReceived) {
             self.endpoint_datagram_received += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_endpoint_datagram_dropped(&mut self, event: builder::EndpointDatagramDropped) {
             self.endpoint_datagram_dropped += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_endpoint_connection_attempt_failed(
@@ -8734,46 +9565,55 @@ pub mod testing {
         ) {
             self.endpoint_connection_attempt_failed += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_platform_tx(&mut self, event: builder::PlatformTx) {
             self.platform_tx += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_platform_tx_error(&mut self, event: builder::PlatformTxError) {
             self.platform_tx_error += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_platform_rx(&mut self, event: builder::PlatformRx) {
             self.platform_rx += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_platform_rx_error(&mut self, event: builder::PlatformRxError) {
             self.platform_rx_error += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_platform_feature_configured(&mut self, event: builder::PlatformFeatureConfigured) {
             self.platform_feature_configured += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_platform_event_loop_wakeup(&mut self, event: builder::PlatformEventLoopWakeup) {
             self.platform_event_loop_wakeup += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_platform_event_loop_sleep(&mut self, event: builder::PlatformEventLoopSleep) {
             self.platform_event_loop_sleep += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn on_platform_event_loop_started(&mut self, event: builder::PlatformEventLoopStarted) {
             self.platform_event_loop_started += 1;
             let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             self.output.push(format!("{event:?}"));
         }
         fn quic_version(&self) -> Option<u32> {
@@ -8788,6 +9628,7 @@ pub mod testing {
             self.application_protocol_information += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8795,6 +9636,7 @@ pub mod testing {
             self.server_name_information += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8802,6 +9644,7 @@ pub mod testing {
             self.packet_skipped += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8809,6 +9652,7 @@ pub mod testing {
             self.packet_sent += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8816,6 +9660,7 @@ pub mod testing {
             self.packet_received += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8823,6 +9668,7 @@ pub mod testing {
             self.active_path_updated += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8830,6 +9676,7 @@ pub mod testing {
             self.path_created += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8837,6 +9684,7 @@ pub mod testing {
             self.frame_sent += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8844,6 +9692,7 @@ pub mod testing {
             self.frame_received += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8851,6 +9700,7 @@ pub mod testing {
             self.packet_lost += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8858,6 +9708,7 @@ pub mod testing {
             self.recovery_metrics += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8865,6 +9716,7 @@ pub mod testing {
             self.congestion += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8873,6 +9725,7 @@ pub mod testing {
             self.ack_processed += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8880,6 +9733,7 @@ pub mod testing {
             self.rx_ack_range_dropped += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8887,6 +9741,7 @@ pub mod testing {
             self.ack_range_received += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8894,6 +9749,7 @@ pub mod testing {
             self.ack_range_sent += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8901,6 +9757,7 @@ pub mod testing {
             self.packet_dropped += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8908,6 +9765,7 @@ pub mod testing {
             self.key_update += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8915,6 +9773,7 @@ pub mod testing {
             self.key_space_discarded += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8922,6 +9781,7 @@ pub mod testing {
             self.connection_started += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8929,6 +9789,7 @@ pub mod testing {
             self.connection_closed += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8936,6 +9797,7 @@ pub mod testing {
             self.duplicate_packet += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8946,6 +9808,7 @@ pub mod testing {
             self.transport_parameters_received += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8953,6 +9816,7 @@ pub mod testing {
             self.datagram_sent += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8960,6 +9824,7 @@ pub mod testing {
             self.datagram_received += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8967,6 +9832,7 @@ pub mod testing {
             self.datagram_dropped += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8974,6 +9840,7 @@ pub mod testing {
             self.connection_id_updated += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8981,6 +9848,7 @@ pub mod testing {
             self.ecn_state_changed += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8988,6 +9856,7 @@ pub mod testing {
             self.connection_migration_denied += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -8995,6 +9864,7 @@ pub mod testing {
             self.handshake_status_updated += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9002,6 +9872,7 @@ pub mod testing {
             self.tls_exporter_ready += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9009,6 +9880,7 @@ pub mod testing {
             self.path_challenge_updated += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9016,6 +9888,7 @@ pub mod testing {
             self.tls_client_hello += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9023,6 +9896,7 @@ pub mod testing {
             self.tls_server_hello += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9030,6 +9904,7 @@ pub mod testing {
             self.rx_stream_progress += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9037,6 +9912,7 @@ pub mod testing {
             self.tx_stream_progress += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9044,6 +9920,7 @@ pub mod testing {
             self.keep_alive_timer_expired += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9051,6 +9928,7 @@ pub mod testing {
             self.mtu_updated += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9058,6 +9936,7 @@ pub mod testing {
             self.slow_start_exited += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9065,6 +9944,7 @@ pub mod testing {
             self.delivery_rate_sampled += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9072,6 +9952,7 @@ pub mod testing {
             self.pacing_rate_updated += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9079,6 +9960,7 @@ pub mod testing {
             self.bbr_state_changed += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }
@@ -9086,6 +9968,7 @@ pub mod testing {
             self.dc_state_changed += 1;
             let event = event.into_event();
             if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
                 self.output.push(format!("{event:?}"));
             }
         }

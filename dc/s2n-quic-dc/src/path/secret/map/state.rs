@@ -202,7 +202,7 @@ impl<S: event::Subscriber> State<S> {
             return;
         };
 
-        let key = entry.control_secret();
+        let key = entry.control_opener();
 
         let Some(packet) = packet.authenticate(&key) else {
             self.subscriber().on_stale_key_packet_rejected(
@@ -248,7 +248,7 @@ impl<S: event::Subscriber> State<S> {
             return;
         };
 
-        let key = entry.control_secret();
+        let key = entry.control_opener();
 
         let Some(packet) = packet.authenticate(&key) else {
             self.subscriber().on_replay_detected_packet_rejected(

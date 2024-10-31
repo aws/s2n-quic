@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::panic;
+use core::{fmt, panic};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug)]
@@ -75,5 +75,21 @@ impl Location {
             .parent()
             .unwrap()
             .join("snapshots")
+    }
+}
+
+pub trait Fmt {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result;
+
+    fn to_snapshot(&self) -> ToSnapshot<Self> {
+        ToSnapshot(self)
+    }
+}
+
+pub struct ToSnapshot<'a, T: ?Sized>(&'a T);
+
+impl<T: Fmt + ?Sized> fmt::Debug for ToSnapshot<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }

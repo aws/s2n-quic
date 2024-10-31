@@ -230,8 +230,12 @@ impl Entry {
         &self.sender
     }
 
-    pub fn control_secret(&self) -> crate::crypto::awslc::open::control::Secret {
+    pub fn control_opener(&self) -> crate::crypto::awslc::open::control::Secret {
         self.sender.control_secret(&self.secret)
+    }
+
+    pub fn control_sealer(&self) -> crate::crypto::awslc::seal::control::Secret {
+        self.secret.control_sealer()
     }
 }
 
@@ -250,13 +254,13 @@ impl receiver::Error {
                 credential_id: credentials.id,
                 rejected_key_id: credentials.key_id,
             }
-            .encode(encoder, &entry.secret.control_sealer()),
+            .encode(encoder, &entry.control_sealer()),
             receiver::Error::Unknown => control::StaleKey {
                 wire_version: WireVersion::ZERO,
                 credential_id: credentials.id,
                 min_key_id: entry.receiver.minimum_unseen_key_id(),
             }
-            .encode(encoder, &entry.secret.control_sealer()),
+            .encode(encoder, &entry.control_sealer()),
         };
         &buffer[..length]
     }

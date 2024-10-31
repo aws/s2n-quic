@@ -31,6 +31,7 @@ struct PathSecretMapBackgroundHandshakeRequested<'a> {
 struct PathSecretMapEntryInserted<'a> {
     peer_address: SocketAddress<'a>,
 
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -40,6 +41,7 @@ struct PathSecretMapEntryInserted<'a> {
 struct PathSecretMapEntryReady<'a> {
     peer_address: SocketAddress<'a>,
 
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -49,8 +51,10 @@ struct PathSecretMapEntryReady<'a> {
 struct PathSecretMapEntryReplaced<'a> {
     peer_address: SocketAddress<'a>,
 
+    #[snapshot("[HIDDEN]")]
     new_credential_id: &'a [u8],
 
+    #[snapshot("[HIDDEN]")]
     previous_credential_id: &'a [u8],
 }
 
@@ -59,6 +63,8 @@ struct PathSecretMapEntryReplaced<'a> {
 /// Emitted when an UnknownPathSecret packet was sent
 struct UnknownPathSecretPacketSent<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -67,6 +73,8 @@ struct UnknownPathSecretPacketSent<'a> {
 /// Emitted when an UnknownPathSecret packet was received
 struct UnknownPathSecretPacketReceived<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -75,6 +83,8 @@ struct UnknownPathSecretPacketReceived<'a> {
 /// Emitted when an UnknownPathSecret packet was authentic and processed
 struct UnknownPathSecretPacketAccepted<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -83,6 +93,8 @@ struct UnknownPathSecretPacketAccepted<'a> {
 /// Emitted when an UnknownPathSecret packet was rejected as invalid
 struct UnknownPathSecretPacketRejected<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -91,6 +103,8 @@ struct UnknownPathSecretPacketRejected<'a> {
 /// Emitted when an UnknownPathSecret packet was dropped due to a missing entry
 struct UnknownPathSecretPacketDropped<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -98,7 +112,9 @@ struct UnknownPathSecretPacketDropped<'a> {
 #[subject(endpoint)]
 /// Emitted when credential replay was definitely detected
 struct ReplayDefinitelyDetected<'a> {
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
+
     key_id: u64,
 }
 
@@ -107,8 +123,11 @@ struct ReplayDefinitelyDetected<'a> {
 /// Emitted when credential replay was potentially detected, but could not be verified
 /// due to a limiting tracking window
 struct ReplayPotentiallyDetected<'a> {
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
+
     key_id: u64,
+
     gap: u64,
 }
 
@@ -117,6 +136,8 @@ struct ReplayPotentiallyDetected<'a> {
 /// Emitted when an ReplayDetected packet was sent
 struct ReplayDetectedPacketSent<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -125,6 +146,8 @@ struct ReplayDetectedPacketSent<'a> {
 /// Emitted when an ReplayDetected packet was received
 struct ReplayDetectedPacketReceived<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -133,7 +156,10 @@ struct ReplayDetectedPacketReceived<'a> {
 /// Emitted when an StaleKey packet was authentic and processed
 struct ReplayDetectedPacketAccepted<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
+
     key_id: u64,
 }
 
@@ -142,6 +168,8 @@ struct ReplayDetectedPacketAccepted<'a> {
 /// Emitted when an ReplayDetected packet was rejected as invalid
 struct ReplayDetectedPacketRejected<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -150,6 +178,8 @@ struct ReplayDetectedPacketRejected<'a> {
 /// Emitted when an ReplayDetected packet was dropped due to a missing entry
 struct ReplayDetectedPacketDropped<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -158,6 +188,8 @@ struct ReplayDetectedPacketDropped<'a> {
 /// Emitted when an StaleKey packet was sent
 struct StaleKeyPacketSent<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -166,6 +198,8 @@ struct StaleKeyPacketSent<'a> {
 /// Emitted when an StaleKey packet was received
 struct StaleKeyPacketReceived<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -174,6 +208,8 @@ struct StaleKeyPacketReceived<'a> {
 /// Emitted when an StaleKey packet was authentic and processed
 struct StaleKeyPacketAccepted<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -182,6 +218,8 @@ struct StaleKeyPacketAccepted<'a> {
 /// Emitted when an StaleKey packet was rejected as invalid
 struct StaleKeyPacketRejected<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
 
@@ -190,5 +228,7 @@ struct StaleKeyPacketRejected<'a> {
 /// Emitted when an StaleKey packet was dropped due to a missing entry
 struct StaleKeyPacketDropped<'a> {
     peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
