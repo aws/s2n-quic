@@ -72,6 +72,7 @@ impl Struct {
             generics,
             fields,
         } = self;
+        let ident_str = ident.to_string();
 
         let derive_attrs = &attrs.derive_attrs;
         let builder_derive_attrs = &attrs.builder_derive_attrs;
@@ -83,6 +84,7 @@ impl Struct {
         let builder_fields = fields.iter().map(Field::builder);
         let builder_field_impls = fields.iter().map(Field::builder_impl);
         let api_fields = fields.iter().map(Field::api);
+        let snapshot_fields = fields.iter().map(Field::snapshot);
 
         if attrs.builder_derive {
             output.builders.extend(quote!(
@@ -127,6 +129,16 @@ impl Struct {
             #allow_deprecated
             pub struct #ident #generics {
                 #(#api_fields)*
+            }
+
+            #[cfg(any(test, feature = "testing"))]
+            #allow_deprecated
+            impl #generics crate::event::snapshot::Fmt for #ident #generics {
+                fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+                    let mut fmt = fmt.debug_struct(#ident_str);
+                    #(#snapshot_fields)*
+                    fmt.finish()
+                }
             }
         ));
 
@@ -186,6 +198,16 @@ impl Struct {
                         }
                     ));
 
+                    if output.mode.is_ref() {
+                        output.ref_subscriber.extend(quote!(
+                            #[inline]
+                            #allow_deprecated
+                            fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
+                                self.as_ref().#function(meta, event);
+                            }
+                        ));
+                    }
+
                     output.tracing_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
@@ -219,7 +241,10 @@ impl Struct {
                             #allow_deprecated
                             fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
                                 self.#counter #counter_increment;
-                                self.output #lock.push(format!("{meta:?} {event:?}"));
+                                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                                let out = format!("{meta:?} {event:?}");
+                                self.output #lock.push(out);
                             }
                         ));
                     }
@@ -237,7 +262,9 @@ impl Struct {
                         fn #function(&#receiver self, event: builder::#ident) {
                             self.#counter #counter_increment;
                             let event = event.into_event();
-                            self.output #lock.push(format!("{event:?}"));
+                            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                            let out = format!("{event:?}");
+                            self.output #lock.push(out);
                         }
                     ));
                 }
@@ -272,6 +299,21 @@ impl Struct {
                             (self.1).#function(&#receiver context.1, meta, event);
                         }
                     ));
+
+                    if output.mode.is_ref() {
+                        output.ref_subscriber.extend(quote!(
+                            #[inline]
+                            #allow_deprecated
+                            fn #function(
+                                &#receiver self,
+                                context: &#receiver Self::ConnectionContext,
+                                meta: &api::ConnectionMeta,
+                                event: &api::#ident
+                            ) {
+                                self.as_ref().#function(context, meta, event);
+                            }
+                        ));
+                    }
 
                     output.tracing_subscriber.extend(quote!(
                         #[inline]
@@ -340,7 +382,10 @@ impl Struct {
                         ) {
                             self.#counter #counter_increment;
                             if self.location.is_some() {
-                                self.output #lock.push(format!("{meta:?} {event:?}"));
+                                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                                let out = format!("{meta:?} {event:?}");
+                                self.output #lock.push(out);
                             }
                         }
                     ));
@@ -351,7 +396,9 @@ impl Struct {
                             self.#counter #counter_increment;
                             let event = event.into_event();
                             if self.location.is_some() {
-                                self.output #lock.push(format!("{event:?}"));
+                                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                                let out = format!("{event:?}");
+                                self.output #lock.push(out);
                             }
                         }
                     ));
@@ -602,6 +649,17 @@ impl Field {
         }
     }
 
+    fn snapshot(&self) -> TokenStream {
+        let Self { attrs, ident, .. } = self;
+        let ident = ident.as_ref().expect("all events should have field names");
+        let ident_str = ident.to_string();
+        if let Some(expr) = attrs.snapshot.as_ref() {
+            quote!(fmt.field(#ident_str, &#expr);)
+        } else {
+            quote!(fmt.field(#ident_str, &self.#ident);)
+        }
+    }
+
     fn builder_impl(&self) -> TokenStream {
         let Self { ident, .. } = self;
         quote!(#ident: #ident.into_event(),)
@@ -619,6 +677,7 @@ impl Field {
 #[derive(Debug)]
 struct FieldAttrs {
     builder: Option<syn::Type>,
+    snapshot: Option<syn::Expr>,
     extra: TokenStream,
 }
 
@@ -627,12 +686,15 @@ impl FieldAttrs {
         let mut v = Self {
             // The event can override the builder with a specific type
             builder: None,
+            snapshot: None,
             extra: quote!(),
         };
 
         for attr in attrs {
             if attr.path().is_ident("builder") {
                 v.builder = Some(attr.parse_args().unwrap());
+            } else if attr.path().is_ident("snapshot") {
+                v.snapshot = Some(attr.parse_args().unwrap());
             } else {
                 attr.to_tokens(&mut v.extra)
             }
