@@ -243,7 +243,8 @@ impl Struct {
                                 self.#counter #counter_increment;
                                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                                self.output #lock.push(format!("{meta:?} {event:?}"));
+                                let out = format!("{meta:?} {event:?}");
+                                self.output #lock.push(out);
                             }
                         ));
                     }
@@ -262,7 +263,8 @@ impl Struct {
                             self.#counter #counter_increment;
                             let event = event.into_event();
                             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-                            self.output #lock.push(format!("{event:?}"));
+                            let out = format!("{event:?}");
+                            self.output #lock.push(out);
                         }
                     ));
                 }
@@ -382,7 +384,8 @@ impl Struct {
                             if self.location.is_some() {
                                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                                self.output #lock.push(format!("{meta:?} {event:?}"));
+                                let out = format!("{meta:?} {event:?}");
+                                self.output #lock.push(out);
                             }
                         }
                     ));
@@ -394,7 +397,8 @@ impl Struct {
                             let event = event.into_event();
                             if self.location.is_some() {
                                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-                                self.output #lock.push(format!("{event:?}"));
+                                let out = format!("{event:?}");
+                                self.output #lock.push(out);
                             }
                         }
                     ));

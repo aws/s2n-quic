@@ -58,8 +58,8 @@ fn control_packets() {
         };
     }
 
-    let server_entry = server.store.get_by_id(&id).unwrap();
-    let client_entry = client.store.get_by_id(&id).unwrap();
+    let server_entry = server.store.get_by_id(&id).unwrap().clone();
+    let client_entry = client.store.get_by_id(&id).unwrap().clone();
 
     let fake_secret =
         crate::path::secret::seal::control::Secret::new(&[0; 32], &aws_lc_rs::hmac::HMAC_SHA256);

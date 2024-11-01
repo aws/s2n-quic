@@ -2858,10 +2858,8 @@ pub mod testing {
                 self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_path_secret_map_initialized(
                 &self,
@@ -2872,10 +2870,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_path_secret_map_uninitialized(
                 &self,
@@ -2886,10 +2882,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_path_secret_map_background_handshake_requested(
                 &self,
@@ -2900,10 +2894,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_path_secret_map_entry_inserted(
                 &self,
@@ -2914,10 +2906,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_path_secret_map_entry_ready(
                 &self,
@@ -2928,10 +2918,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_path_secret_map_entry_replaced(
                 &self,
@@ -2942,10 +2930,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_unknown_path_secret_packet_sent(
                 &self,
@@ -2956,10 +2942,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_unknown_path_secret_packet_received(
                 &self,
@@ -2970,10 +2954,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_unknown_path_secret_packet_accepted(
                 &self,
@@ -2984,10 +2966,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_unknown_path_secret_packet_rejected(
                 &self,
@@ -2998,10 +2978,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_unknown_path_secret_packet_dropped(
                 &self,
@@ -3012,10 +2990,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_replay_definitely_detected(
                 &self,
@@ -3026,10 +3002,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_replay_potentially_detected(
                 &self,
@@ -3040,10 +3014,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_replay_detected_packet_sent(
                 &self,
@@ -3054,10 +3026,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_replay_detected_packet_received(
                 &self,
@@ -3068,10 +3038,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_replay_detected_packet_accepted(
                 &self,
@@ -3082,10 +3050,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_replay_detected_packet_rejected(
                 &self,
@@ -3096,10 +3062,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_replay_detected_packet_dropped(
                 &self,
@@ -3110,10 +3074,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_stale_key_packet_sent(
                 &self,
@@ -3123,10 +3085,8 @@ pub mod testing {
                 self.stale_key_packet_sent.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_stale_key_packet_received(
                 &self,
@@ -3137,10 +3097,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_stale_key_packet_accepted(
                 &self,
@@ -3151,10 +3109,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_stale_key_packet_rejected(
                 &self,
@@ -3165,10 +3121,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
             fn on_stale_key_packet_dropped(
                 &self,
@@ -3179,10 +3133,8 @@ pub mod testing {
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
         }
     }
@@ -3294,10 +3246,8 @@ pub mod testing {
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
         }
         fn on_application_read(
@@ -3310,10 +3260,8 @@ pub mod testing {
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                self.output
-                    .lock()
-                    .unwrap()
-                    .push(format!("{meta:?} {event:?}"));
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
             }
         }
         fn on_endpoint_initialized(
@@ -3324,10 +3272,8 @@ pub mod testing {
             self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_initialized(
             &self,
@@ -3338,10 +3284,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_uninitialized(
             &self,
@@ -3352,10 +3296,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_background_handshake_requested(
             &self,
@@ -3366,10 +3308,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_entry_inserted(
             &self,
@@ -3380,10 +3320,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_entry_ready(
             &self,
@@ -3394,10 +3332,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_entry_replaced(
             &self,
@@ -3408,10 +3344,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_sent(
             &self,
@@ -3422,10 +3356,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_received(
             &self,
@@ -3436,10 +3368,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_accepted(
             &self,
@@ -3450,10 +3380,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_rejected(
             &self,
@@ -3464,10 +3392,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_dropped(
             &self,
@@ -3478,10 +3404,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_definitely_detected(
             &self,
@@ -3492,10 +3416,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_potentially_detected(
             &self,
@@ -3506,10 +3428,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_sent(
             &self,
@@ -3520,10 +3440,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_received(
             &self,
@@ -3534,10 +3452,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_accepted(
             &self,
@@ -3548,10 +3464,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_rejected(
             &self,
@@ -3562,10 +3476,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_dropped(
             &self,
@@ -3576,10 +3488,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_sent(
             &self,
@@ -3589,10 +3499,8 @@ pub mod testing {
             self.stale_key_packet_sent.fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_received(
             &self,
@@ -3603,10 +3511,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_accepted(
             &self,
@@ -3617,10 +3523,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_rejected(
             &self,
@@ -3631,10 +3535,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_dropped(
             &self,
@@ -3645,10 +3547,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
-            self.output
-                .lock()
-                .unwrap()
-                .push(format!("{meta:?} {event:?}"));
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
         }
     }
     #[derive(Debug)]
@@ -3736,21 +3636,24 @@ pub mod testing {
             self.endpoint_initialized.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_initialized(&self, event: builder::PathSecretMapInitialized) {
             self.path_secret_map_initialized
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_uninitialized(&self, event: builder::PathSecretMapUninitialized) {
             self.path_secret_map_uninitialized
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_background_handshake_requested(
             &self,
@@ -3760,35 +3663,40 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_entry_inserted(&self, event: builder::PathSecretMapEntryInserted) {
             self.path_secret_map_entry_inserted
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_entry_ready(&self, event: builder::PathSecretMapEntryReady) {
             self.path_secret_map_entry_ready
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_path_secret_map_entry_replaced(&self, event: builder::PathSecretMapEntryReplaced) {
             self.path_secret_map_entry_replaced
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_sent(&self, event: builder::UnknownPathSecretPacketSent) {
             self.unknown_path_secret_packet_sent
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_received(
             &self,
@@ -3798,7 +3706,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_accepted(
             &self,
@@ -3808,7 +3717,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_rejected(
             &self,
@@ -3818,7 +3728,8 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_unknown_path_secret_packet_dropped(
             &self,
@@ -3828,90 +3739,103 @@ pub mod testing {
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_definitely_detected(&self, event: builder::ReplayDefinitelyDetected) {
             self.replay_definitely_detected
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_potentially_detected(&self, event: builder::ReplayPotentiallyDetected) {
             self.replay_potentially_detected
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_sent(&self, event: builder::ReplayDetectedPacketSent) {
             self.replay_detected_packet_sent
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_received(&self, event: builder::ReplayDetectedPacketReceived) {
             self.replay_detected_packet_received
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_accepted(&self, event: builder::ReplayDetectedPacketAccepted) {
             self.replay_detected_packet_accepted
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_rejected(&self, event: builder::ReplayDetectedPacketRejected) {
             self.replay_detected_packet_rejected
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_replay_detected_packet_dropped(&self, event: builder::ReplayDetectedPacketDropped) {
             self.replay_detected_packet_dropped
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_sent(&self, event: builder::StaleKeyPacketSent) {
             self.stale_key_packet_sent.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_received(&self, event: builder::StaleKeyPacketReceived) {
             self.stale_key_packet_received
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_accepted(&self, event: builder::StaleKeyPacketAccepted) {
             self.stale_key_packet_accepted
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_rejected(&self, event: builder::StaleKeyPacketRejected) {
             self.stale_key_packet_rejected
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn on_stale_key_packet_dropped(&self, event: builder::StaleKeyPacketDropped) {
             self.stale_key_packet_dropped
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-            self.output.lock().unwrap().push(format!("{event:?}"));
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
         }
         fn quic_version(&self) -> Option<u32> {
             Some(1)
@@ -3923,7 +3847,8 @@ pub mod testing {
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-                self.output.lock().unwrap().push(format!("{event:?}"));
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
             }
         }
         fn on_application_read(&self, event: builder::ApplicationRead) {
@@ -3931,7 +3856,8 @@ pub mod testing {
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-                self.output.lock().unwrap().push(format!("{event:?}"));
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
             }
         }
         fn quic_version(&self) -> u32 {
