@@ -7,238 +7,238 @@
 
 use crate::event::{
     self, api,
-    metrics::aggregate::{info, AsMetric as _, Info, Recorder, Registry},
+    metrics::aggregate::{
+        info::{self, Str},
+        AsMetric as _, Info, Recorder, Registry,
+    },
 };
-const fn new_str(bytes: &'static str) -> info::Str<'static> {
-    unsafe { info::Str::new_unchecked(bytes) }
-}
 static INFO: &[Info; 36usize] = &[
     info::Builder {
         id: 0usize,
-        name: new_str("application_write\0"),
-        units: new_str("\0"),
+        name: Str::new("application_write\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 1usize,
-        name: new_str("application_write.bytes.provided\0"),
-        units: new_str("b\0"),
+        name: Str::new("application_write.provided\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 2usize,
-        name: new_str("application_write.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("application_write.committed.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 3usize,
-        name: new_str("application_write.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("application_write.committed\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 4usize,
-        name: new_str("application_read\0"),
-        units: new_str("\0"),
+        name: Str::new("application_read\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 5usize,
-        name: new_str("application_read.bytes.capacity\0"),
-        units: new_str("b\0"),
+        name: Str::new("application_read.capacity\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 6usize,
-        name: new_str("application_read.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("application_read.committed.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 7usize,
-        name: new_str("application_read.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("application_read.committed\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 8usize,
-        name: new_str("endpoint_initialized\0"),
-        units: new_str("\0"),
+        name: Str::new("endpoint_initialized\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 9usize,
-        name: new_str("path_secret_map_initialized\0"),
-        units: new_str("\0"),
+        name: Str::new("path_secret_map_initialized\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 10usize,
-        name: new_str("path_secret_map_initialized.capacity\0"),
-        units: new_str("\0"),
+        name: Str::new("path_secret_map_initialized.capacity\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 11usize,
-        name: new_str("path_secret_map_uninitialized\0"),
-        units: new_str("\0"),
+        name: Str::new("path_secret_map_uninitialized\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 12usize,
-        name: new_str("path_secret_map_uninitialized.capacity\0"),
-        units: new_str("\0"),
+        name: Str::new("path_secret_map_uninitialized.capacity\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 13usize,
-        name: new_str("path_secret_map_uninitialized.entries\0"),
-        units: new_str("\0"),
+        name: Str::new("path_secret_map_uninitialized.entries\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 14usize,
-        name: new_str("path_secret_map_background_handshake_requested\0"),
-        units: new_str("\0"),
+        name: Str::new("path_secret_map_background_handshake_requested\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 15usize,
-        name: new_str("path_secret_map_entry_inserted\0"),
-        units: new_str("\0"),
+        name: Str::new("path_secret_map_entry_inserted\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 16usize,
-        name: new_str("path_secret_map_entry_ready\0"),
-        units: new_str("\0"),
+        name: Str::new("path_secret_map_entry_ready\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 17usize,
-        name: new_str("path_secret_map_entry_replaced\0"),
-        units: new_str("\0"),
+        name: Str::new("path_secret_map_entry_replaced\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 18usize,
-        name: new_str("unknown_path_secret_packet_sent\0"),
-        units: new_str("\0"),
+        name: Str::new("unknown_path_secret_packet_sent\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 19usize,
-        name: new_str("unknown_path_secret_packet_received\0"),
-        units: new_str("\0"),
+        name: Str::new("unknown_path_secret_packet_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 20usize,
-        name: new_str("unknown_path_secret_packet_accepted\0"),
-        units: new_str("\0"),
+        name: Str::new("unknown_path_secret_packet_accepted\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 21usize,
-        name: new_str("unknown_path_secret_packet_rejected\0"),
-        units: new_str("\0"),
+        name: Str::new("unknown_path_secret_packet_rejected\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 22usize,
-        name: new_str("unknown_path_secret_packet_dropped\0"),
-        units: new_str("\0"),
+        name: Str::new("unknown_path_secret_packet_dropped\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 23usize,
-        name: new_str("replay_definitely_detected\0"),
-        units: new_str("\0"),
+        name: Str::new("replay_definitely_detected\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 24usize,
-        name: new_str("replay_potentially_detected\0"),
-        units: new_str("\0"),
+        name: Str::new("replay_potentially_detected\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 25usize,
-        name: new_str("replay_potentially_detected.gap\0"),
-        units: new_str("\0"),
+        name: Str::new("replay_potentially_detected.gap\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 26usize,
-        name: new_str("replay_detected_packet_sent\0"),
-        units: new_str("\0"),
+        name: Str::new("replay_detected_packet_sent\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 27usize,
-        name: new_str("replay_detected_packet_received\0"),
-        units: new_str("\0"),
+        name: Str::new("replay_detected_packet_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 28usize,
-        name: new_str("replay_detected_packet_accepted\0"),
-        units: new_str("\0"),
+        name: Str::new("replay_detected_packet_accepted\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 29usize,
-        name: new_str("replay_detected_packet_rejected\0"),
-        units: new_str("\0"),
+        name: Str::new("replay_detected_packet_rejected\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 30usize,
-        name: new_str("replay_detected_packet_dropped\0"),
-        units: new_str("\0"),
+        name: Str::new("replay_detected_packet_dropped\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 31usize,
-        name: new_str("stale_key_packet_sent\0"),
-        units: new_str("\0"),
+        name: Str::new("stale_key_packet_sent\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 32usize,
-        name: new_str("stale_key_packet_received\0"),
-        units: new_str("\0"),
+        name: Str::new("stale_key_packet_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 33usize,
-        name: new_str("stale_key_packet_accepted\0"),
-        units: new_str("\0"),
+        name: Str::new("stale_key_packet_accepted\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 34usize,
-        name: new_str("stale_key_packet_rejected\0"),
-        units: new_str("\0"),
+        name: Str::new("stale_key_packet_rejected\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 35usize,
-        name: new_str("stale_key_packet_dropped\0"),
-        units: new_str("\0"),
+        name: Str::new("stale_key_packet_dropped\0"),
+        units: Str::new("\0"),
     }
     .build(),
 ];
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter]>,
+    counters: Box<[R::Counter; 28usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure]>,
+    measures: Box<[R::Measure; 8usize]>,
     #[allow(dead_code)]
-    gauges: Box<[R::Gauge]>,
+    gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer]>,
+    timers: Box<[R::Timer; 0usize]>,
     #[allow(dead_code)]
     registry: R,
 }
@@ -298,10 +298,14 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[13usize]));
         measures.push(registry.register_measure(&INFO[25usize]));
         Self {
-            counters: counters.into(),
-            measures: measures.into(),
-            gauges: gauges.into(),
-            timers: timers.into(),
+            counters: counters
+                .try_into()
+                .unwrap_or_else(|_| panic!("invalid len")),
+            measures: measures
+                .try_into()
+                .unwrap_or_else(|_| panic!("invalid len")),
+            gauges: gauges.try_into().unwrap_or_else(|_| panic!("invalid len")),
+            timers: timers.try_into().unwrap_or_else(|_| panic!("invalid len")),
             registry,
         }
     }
@@ -346,8 +350,8 @@ impl<R: Registry> Subscriber<R> {
     #[allow(dead_code)]
     #[inline(always)]
     fn count(&self, info: usize, id: usize, value: u64) {
-        let info = unsafe { INFO.get_unchecked(info) };
-        let counter = unsafe { self.counters.get_unchecked(id) };
+        let info = &INFO[info];
+        let counter = &self.counters[id];
         counter.record(info, value);
     }
     #[doc = r" Returns all of the registered measures"]
@@ -371,8 +375,8 @@ impl<R: Registry> Subscriber<R> {
     #[allow(dead_code)]
     #[inline(always)]
     fn measure(&self, info: usize, id: usize, value: u64) {
-        let info = unsafe { INFO.get_unchecked(info) };
-        let measure = unsafe { self.measures.get_unchecked(id) };
+        let info = &INFO[info];
+        let measure = &self.measures[id];
         measure.record(info, value);
     }
     #[doc = r" Returns all of the registered gauges"]
@@ -383,8 +387,8 @@ impl<R: Registry> Subscriber<R> {
     #[allow(dead_code)]
     #[inline(always)]
     fn gauge(&self, info: usize, id: usize, value: u64) {
-        let info = unsafe { INFO.get_unchecked(info) };
-        let gauge = unsafe { self.gauges.get_unchecked(id) };
+        let info = &INFO[info];
+        let gauge = &self.gauges[id];
         gauge.record(info, value);
     }
     #[doc = r" Returns all of the registered timers"]
@@ -395,8 +399,8 @@ impl<R: Registry> Subscriber<R> {
     #[allow(dead_code)]
     #[inline(always)]
     fn time(&self, info: usize, id: usize, value: u64) {
-        let info = unsafe { INFO.get_unchecked(info) };
-        let timer = unsafe { self.timers.get_unchecked(id) };
+        let info = &INFO[info];
+        let timer = &self.timers[id];
         timer.record(info, value);
     }
 }

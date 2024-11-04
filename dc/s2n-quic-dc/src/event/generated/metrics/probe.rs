@@ -15,9 +15,9 @@ mod counter {
         pub(super) fn new(info: &'static Info) -> Self {
             match info.id {
                 0usize => Self(application_write),
-                2usize => Self(application_write__bytes__total),
+                2usize => Self(application_write__committed__total),
                 4usize => Self(application_read),
-                6usize => Self(application_read__bytes__total),
+                6usize => Self(application_read__committed__total),
                 8usize => Self(endpoint_initialized),
                 9usize => Self(path_secret_map_initialized),
                 11usize => Self(path_secret_map_uninitialized),
@@ -55,12 +55,12 @@ mod counter {
         extern "probe" {
             # [link_name = s2n_quic_dc__event__counter__application_write]
             fn application_write(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__application_write__bytes__total]
-            fn application_write__bytes__total(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__application_write__committed__total]
+            fn application_write__committed__total(value: u64);
             # [link_name = s2n_quic_dc__event__counter__application_read]
             fn application_read(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__application_read__bytes__total]
-            fn application_read__bytes__total(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__application_read__committed__total]
+            fn application_read__committed__total(value: u64);
             # [link_name = s2n_quic_dc__event__counter__endpoint_initialized]
             fn endpoint_initialized(value: u64);
             # [link_name = s2n_quic_dc__event__counter__path_secret_map_initialized]
@@ -119,10 +119,10 @@ mod measure {
     impl Recorder {
         pub(super) fn new(info: &'static Info) -> Self {
             match info.id {
-                1usize => Self(application_write__bytes__provided),
-                3usize => Self(application_write__bytes),
-                5usize => Self(application_read__bytes__capacity),
-                7usize => Self(application_read__bytes),
+                1usize => Self(application_write__provided),
+                3usize => Self(application_write__committed),
+                5usize => Self(application_read__capacity),
+                7usize => Self(application_read__committed),
                 10usize => Self(path_secret_map_initialized__capacity),
                 12usize => Self(path_secret_map_uninitialized__capacity),
                 13usize => Self(path_secret_map_uninitialized__entries),
@@ -138,14 +138,14 @@ mod measure {
     }
     super::define!(
         extern "probe" {
-            # [link_name = s2n_quic_dc__event__measure__application_write__bytes__provided]
-            fn application_write__bytes__provided(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__application_write__bytes]
-            fn application_write__bytes(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__application_read__bytes__capacity]
-            fn application_read__bytes__capacity(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__application_read__bytes]
-            fn application_read__bytes(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__application_write__provided]
+            fn application_write__provided(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__application_write__committed]
+            fn application_write__committed(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__application_read__capacity]
+            fn application_read__capacity(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__application_read__committed]
+            fn application_read__committed(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_initialized__capacity]
             fn path_secret_map_initialized__capacity(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_uninitialized__capacity]

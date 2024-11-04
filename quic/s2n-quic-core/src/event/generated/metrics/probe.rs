@@ -27,7 +27,7 @@ mod counter {
                 9usize => Self(frame_sent),
                 10usize => Self(frame_received),
                 11usize => Self(packet_lost),
-                12usize => Self(packet_lost__bytes_lost__total),
+                12usize => Self(packet_lost__bytes__total),
                 14usize => Self(recovery_metrics),
                 23usize => Self(congestion),
                 24usize => Self(rx_ack_range_dropped),
@@ -123,8 +123,8 @@ mod counter {
             fn frame_received(value: u64);
             # [link_name = s2n_quic__event__counter__packet_lost]
             fn packet_lost(value: u64);
-            # [link_name = s2n_quic__event__counter__packet_lost__bytes_lost__total]
-            fn packet_lost__bytes_lost__total(value: u64);
+            # [link_name = s2n_quic__event__counter__packet_lost__bytes__total]
+            fn packet_lost__bytes__total(value: u64);
             # [link_name = s2n_quic__event__counter__recovery_metrics]
             fn recovery_metrics(value: u64);
             # [link_name = s2n_quic__event__counter__congestion]
@@ -260,7 +260,7 @@ mod measure {
         pub(super) fn new(info: &'static Info) -> Self {
             match info.id {
                 5usize => Self(packet_sent__bytes),
-                13usize => Self(packet_lost__bytes_lost),
+                13usize => Self(packet_lost__bytes),
                 15usize => Self(recovery_metrics__min_rtt),
                 16usize => Self(recovery_metrics__smoothed_rtt),
                 17usize => Self(recovery_metrics__latest_rtt),
@@ -309,8 +309,8 @@ mod measure {
         extern "probe" {
             # [link_name = s2n_quic__event__measure__packet_sent__bytes]
             fn packet_sent__bytes(value: u64);
-            # [link_name = s2n_quic__event__measure__packet_lost__bytes_lost]
-            fn packet_lost__bytes_lost(value: u64);
+            # [link_name = s2n_quic__event__measure__packet_lost__bytes]
+            fn packet_lost__bytes(value: u64);
             # [link_name = s2n_quic__event__measure__recovery_metrics__min_rtt]
             fn recovery_metrics__min_rtt(value: u64);
             # [link_name = s2n_quic__event__measure__recovery_metrics__smoothed_rtt]

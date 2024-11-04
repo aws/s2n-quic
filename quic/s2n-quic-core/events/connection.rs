@@ -87,8 +87,8 @@ struct FrameReceived<'a> {
 struct PacketLost<'a> {
     packet_header: PacketHeader,
     path: Path<'a>,
-    #[measure("bytes_lost", "b")]
-    #[counter("bytes_lost.total", "b")]
+    #[measure("bytes", "b")]
+    #[counter("bytes.total", "b")]
     bytes_lost: u16,
     is_mtu_probe: bool,
 }

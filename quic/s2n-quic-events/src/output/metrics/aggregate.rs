@@ -10,7 +10,7 @@ use quote::{quote, ToTokens};
 
 fn new_str(value: impl AsRef<str>) -> TokenStream {
     let value_c = format!("{}\0", value.as_ref());
-    quote!(new_str(#value_c))
+    quote!(Str::new(#value_c))
 }
 
 pub fn emit(output: &Output, files: &[File]) -> TokenStream {
@@ -156,25 +156,29 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
 
     let tokens = quote!(
         #imports
-        use crate::event::{metrics::aggregate::{Registry, Recorder, Info, info, AsMetric as _}, api, self};
-
-        const fn new_str(bytes: &'static str) -> info::Str<'static> {
-            unsafe {
-                info::Str::new_unchecked(bytes)
-            }
-        }
+        use crate::event::{
+            metrics::aggregate::{
+                Registry,
+                Recorder,
+                Info,
+                info::{self, Str},
+                AsMetric as _
+            },
+            api,
+            self
+        };
 
         static INFO: &[Info; #info_len] = &[#info];
 
         pub struct Subscriber<R: Registry> {
             #[allow(dead_code)]
-            counters: Box<[R::Counter]>,
+            counters: Box<[R::Counter; #counters_len]>,
             #[allow(dead_code)]
-            measures: Box<[R::Measure]>,
+            measures: Box<[R::Measure; #measures_len]>,
             #[allow(dead_code)]
-            gauges: Box<[R::Gauge]>,
+            gauges: Box<[R::Gauge; #gauges_len]>,
             #[allow(dead_code)]
-            timers: Box<[R::Timer]>,
+            timers: Box<[R::Timer; #timers_len]>,
             #[allow(dead_code)]
             registry: R,
         }
@@ -206,10 +210,10 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                 #timers_init
 
                 Self {
-                    counters: counters.into(),
-                    measures: measures.into(),
-                    gauges: gauges.into(),
-                    timers: timers.into(),
+                    counters: counters.try_into().unwrap_or_else(|_| panic!("invalid len")),
+                    measures: measures.try_into().unwrap_or_else(|_| panic!("invalid len")),
+                    gauges: gauges.try_into().unwrap_or_else(|_| panic!("invalid len")),
+                    timers: timers.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     registry,
                 }
             }
@@ -223,8 +227,8 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             #[allow(dead_code)]
             #[inline(always)]
             fn count(&self, info: usize, id: usize, value: u64) {
-                let info = unsafe { INFO.get_unchecked(info) };
-                let counter = unsafe { self.counters.get_unchecked(id) };
+                let info = &INFO[info];
+                let counter = &self.counters[id];
                 counter.record(info, value);
             }
 
@@ -237,8 +241,8 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             #[allow(dead_code)]
             #[inline(always)]
             fn measure(&self, info: usize, id: usize, value: u64) {
-                let info = unsafe { INFO.get_unchecked(info) };
-                let measure = unsafe { self.measures.get_unchecked(id) };
+                let info = &INFO[info];
+                let measure = &self.measures[id];
                 measure.record(info, value);
             }
 
@@ -251,8 +255,8 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             #[allow(dead_code)]
             #[inline(always)]
             fn gauge(&self, info: usize, id: usize, value: u64) {
-                let info = unsafe { INFO.get_unchecked(info) };
-                let gauge = unsafe { self.gauges.get_unchecked(id) };
+                let info = &INFO[info];
+                let gauge = &self.gauges[id];
                 gauge.record(info, value);
             }
 
@@ -265,8 +269,8 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             #[allow(dead_code)]
             #[inline(always)]
             fn time(&self, info: usize, id: usize, value: u64) {
-                let info = unsafe { INFO.get_unchecked(info) };
-                let timer = unsafe { self.timers.get_unchecked(id) };
+                let info = &INFO[info];
+                let timer = &self.timers[id];
                 timer.record(info, value);
             }
         }

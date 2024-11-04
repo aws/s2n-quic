@@ -42,10 +42,10 @@ macro_rules! recorder {
             define!(
                 extern "probe" {
                     #[link_name = $register]
-                    fn register(id: usize, name: Str, units: Str);
+                    fn register(id: usize, name: &Str, units: &Str);
 
                     #[link_name = $record]
-                    fn record(id: usize, name: Str, units: Str, value: u64);
+                    fn record(id: usize, name: &Str, units: &Str, value: u64);
                 }
             );
 

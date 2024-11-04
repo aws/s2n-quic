@@ -7,695 +7,695 @@
 
 use crate::event::{
     self, api,
-    metrics::aggregate::{info, AsMetric as _, Info, Recorder, Registry},
+    metrics::aggregate::{
+        info::{self, Str},
+        AsMetric as _, Info, Recorder, Registry,
+    },
 };
 use alloc::{boxed::Box, vec::Vec};
-const fn new_str(bytes: &'static str) -> info::Str<'static> {
-    unsafe { info::Str::new_unchecked(bytes) }
-}
 static INFO: &[Info; 112usize] = &[
     info::Builder {
         id: 0usize,
-        name: new_str("application_protocol_information\0"),
-        units: new_str("\0"),
+        name: Str::new("application_protocol_information\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 1usize,
-        name: new_str("server_name_information\0"),
-        units: new_str("\0"),
+        name: Str::new("server_name_information\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 2usize,
-        name: new_str("packet_skipped\0"),
-        units: new_str("\0"),
+        name: Str::new("packet_skipped\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 3usize,
-        name: new_str("packet_sent\0"),
-        units: new_str("\0"),
+        name: Str::new("packet_sent\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 4usize,
-        name: new_str("packet_sent.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("packet_sent.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 5usize,
-        name: new_str("packet_sent.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("packet_sent.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 6usize,
-        name: new_str("packet_received\0"),
-        units: new_str("\0"),
+        name: Str::new("packet_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 7usize,
-        name: new_str("active_path_updated\0"),
-        units: new_str("\0"),
+        name: Str::new("active_path_updated\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 8usize,
-        name: new_str("path_created\0"),
-        units: new_str("\0"),
+        name: Str::new("path_created\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 9usize,
-        name: new_str("frame_sent\0"),
-        units: new_str("\0"),
+        name: Str::new("frame_sent\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 10usize,
-        name: new_str("frame_received\0"),
-        units: new_str("\0"),
+        name: Str::new("frame_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 11usize,
-        name: new_str("packet_lost\0"),
-        units: new_str("\0"),
+        name: Str::new("packet_lost\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 12usize,
-        name: new_str("packet_lost.bytes_lost.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("packet_lost.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 13usize,
-        name: new_str("packet_lost.bytes_lost\0"),
-        units: new_str("b\0"),
+        name: Str::new("packet_lost.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 14usize,
-        name: new_str("recovery_metrics\0"),
-        units: new_str("\0"),
+        name: Str::new("recovery_metrics\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 15usize,
-        name: new_str("recovery_metrics.min_rtt\0"),
-        units: new_str("us\0"),
+        name: Str::new("recovery_metrics.min_rtt\0"),
+        units: Str::new("us\0"),
     }
     .build(),
     info::Builder {
         id: 16usize,
-        name: new_str("recovery_metrics.smoothed_rtt\0"),
-        units: new_str("us\0"),
+        name: Str::new("recovery_metrics.smoothed_rtt\0"),
+        units: Str::new("us\0"),
     }
     .build(),
     info::Builder {
         id: 17usize,
-        name: new_str("recovery_metrics.latest_rtt\0"),
-        units: new_str("us\0"),
+        name: Str::new("recovery_metrics.latest_rtt\0"),
+        units: Str::new("us\0"),
     }
     .build(),
     info::Builder {
         id: 18usize,
-        name: new_str("recovery_metrics.rtt_variance\0"),
-        units: new_str("us\0"),
+        name: Str::new("recovery_metrics.rtt_variance\0"),
+        units: Str::new("us\0"),
     }
     .build(),
     info::Builder {
         id: 19usize,
-        name: new_str("recovery_metrics.max_ack_delay\0"),
-        units: new_str("us\0"),
+        name: Str::new("recovery_metrics.max_ack_delay\0"),
+        units: Str::new("us\0"),
     }
     .build(),
     info::Builder {
         id: 20usize,
-        name: new_str("recovery_metrics.pto_count\0"),
-        units: new_str("\0"),
+        name: Str::new("recovery_metrics.pto_count\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 21usize,
-        name: new_str("recovery_metrics.congestion_window\0"),
-        units: new_str("b\0"),
+        name: Str::new("recovery_metrics.congestion_window\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 22usize,
-        name: new_str("recovery_metrics.bytes_in_flight\0"),
-        units: new_str("b\0"),
+        name: Str::new("recovery_metrics.bytes_in_flight\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 23usize,
-        name: new_str("congestion\0"),
-        units: new_str("\0"),
+        name: Str::new("congestion\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 24usize,
-        name: new_str("rx_ack_range_dropped\0"),
-        units: new_str("\0"),
+        name: Str::new("rx_ack_range_dropped\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 25usize,
-        name: new_str("ack_range_received\0"),
-        units: new_str("\0"),
+        name: Str::new("ack_range_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 26usize,
-        name: new_str("ack_range_sent\0"),
-        units: new_str("\0"),
+        name: Str::new("ack_range_sent\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 27usize,
-        name: new_str("packet_dropped\0"),
-        units: new_str("\0"),
+        name: Str::new("packet_dropped\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 28usize,
-        name: new_str("key_update\0"),
-        units: new_str("\0"),
+        name: Str::new("key_update\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 29usize,
-        name: new_str("key_space_discarded\0"),
-        units: new_str("\0"),
+        name: Str::new("key_space_discarded\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 30usize,
-        name: new_str("connection_started\0"),
-        units: new_str("\0"),
+        name: Str::new("connection_started\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 31usize,
-        name: new_str("connection_closed\0"),
-        units: new_str("\0"),
+        name: Str::new("connection_closed\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 32usize,
-        name: new_str("duplicate_packet\0"),
-        units: new_str("\0"),
+        name: Str::new("duplicate_packet\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 33usize,
-        name: new_str("transport_parameters_received\0"),
-        units: new_str("\0"),
+        name: Str::new("transport_parameters_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 34usize,
-        name: new_str("datagram_sent\0"),
-        units: new_str("\0"),
+        name: Str::new("datagram_sent\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 35usize,
-        name: new_str("datagram_sent.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("datagram_sent.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 36usize,
-        name: new_str("datagram_sent.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("datagram_sent.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 37usize,
-        name: new_str("datagram_sent.gso_offset\0"),
-        units: new_str("\0"),
+        name: Str::new("datagram_sent.gso_offset\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 38usize,
-        name: new_str("datagram_received\0"),
-        units: new_str("\0"),
+        name: Str::new("datagram_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 39usize,
-        name: new_str("datagram_received.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("datagram_received.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 40usize,
-        name: new_str("datagram_received.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("datagram_received.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 41usize,
-        name: new_str("datagram_dropped\0"),
-        units: new_str("\0"),
+        name: Str::new("datagram_dropped\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 42usize,
-        name: new_str("datagram_dropped.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("datagram_dropped.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 43usize,
-        name: new_str("datagram_dropped.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("datagram_dropped.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 44usize,
-        name: new_str("connection_id_updated\0"),
-        units: new_str("\0"),
+        name: Str::new("connection_id_updated\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 45usize,
-        name: new_str("ecn_state_changed\0"),
-        units: new_str("\0"),
+        name: Str::new("ecn_state_changed\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 46usize,
-        name: new_str("connection_migration_denied\0"),
-        units: new_str("\0"),
+        name: Str::new("connection_migration_denied\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 47usize,
-        name: new_str("handshake_status_updated\0"),
-        units: new_str("\0"),
+        name: Str::new("handshake_status_updated\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 48usize,
-        name: new_str("tls_exporter_ready\0"),
-        units: new_str("\0"),
+        name: Str::new("tls_exporter_ready\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 49usize,
-        name: new_str("path_challenge_updated\0"),
-        units: new_str("\0"),
+        name: Str::new("path_challenge_updated\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 50usize,
-        name: new_str("tls_client_hello\0"),
-        units: new_str("\0"),
+        name: Str::new("tls_client_hello\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 51usize,
-        name: new_str("tls_server_hello\0"),
-        units: new_str("\0"),
+        name: Str::new("tls_server_hello\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 52usize,
-        name: new_str("rx_stream_progress\0"),
-        units: new_str("\0"),
+        name: Str::new("rx_stream_progress\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 53usize,
-        name: new_str("rx_stream_progress.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("rx_stream_progress.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 54usize,
-        name: new_str("rx_stream_progress.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("rx_stream_progress.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 55usize,
-        name: new_str("tx_stream_progress\0"),
-        units: new_str("\0"),
+        name: Str::new("tx_stream_progress\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 56usize,
-        name: new_str("tx_stream_progress.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("tx_stream_progress.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 57usize,
-        name: new_str("tx_stream_progress.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("tx_stream_progress.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 58usize,
-        name: new_str("keep_alive_timer_expired\0"),
-        units: new_str("\0"),
+        name: Str::new("keep_alive_timer_expired\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 59usize,
-        name: new_str("mtu_updated\0"),
-        units: new_str("\0"),
+        name: Str::new("mtu_updated\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 60usize,
-        name: new_str("mtu_updated.mtu\0"),
-        units: new_str("b\0"),
+        name: Str::new("mtu_updated.mtu\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 61usize,
-        name: new_str("slow_start_exited\0"),
-        units: new_str("\0"),
+        name: Str::new("slow_start_exited\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 62usize,
-        name: new_str("slow_start_exited.congestion_window\0"),
-        units: new_str("b\0"),
+        name: Str::new("slow_start_exited.congestion_window\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 63usize,
-        name: new_str("delivery_rate_sampled\0"),
-        units: new_str("\0"),
+        name: Str::new("delivery_rate_sampled\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 64usize,
-        name: new_str("pacing_rate_updated\0"),
-        units: new_str("\0"),
+        name: Str::new("pacing_rate_updated\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 65usize,
-        name: new_str("pacing_rate_updated.bytes_per_second\0"),
-        units: new_str("b\0"),
+        name: Str::new("pacing_rate_updated.bytes_per_second\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 66usize,
-        name: new_str("pacing_rate_updated.burst_size\0"),
-        units: new_str("b\0"),
+        name: Str::new("pacing_rate_updated.burst_size\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 67usize,
-        name: new_str("bbr_state_changed\0"),
-        units: new_str("\0"),
+        name: Str::new("bbr_state_changed\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 68usize,
-        name: new_str("dc_state_changed\0"),
-        units: new_str("\0"),
+        name: Str::new("dc_state_changed\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 69usize,
-        name: new_str("version_information\0"),
-        units: new_str("\0"),
+        name: Str::new("version_information\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 70usize,
-        name: new_str("endpoint_packet_sent\0"),
-        units: new_str("\0"),
+        name: Str::new("endpoint_packet_sent\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 71usize,
-        name: new_str("endpoint_packet_received\0"),
-        units: new_str("\0"),
+        name: Str::new("endpoint_packet_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 72usize,
-        name: new_str("endpoint_datagram_sent\0"),
-        units: new_str("\0"),
+        name: Str::new("endpoint_datagram_sent\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 73usize,
-        name: new_str("endpoint_datagram_sent.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("endpoint_datagram_sent.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 74usize,
-        name: new_str("endpoint_datagram_sent.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("endpoint_datagram_sent.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 75usize,
-        name: new_str("endpoint_datagram_sent.gso_offset\0"),
-        units: new_str("\0"),
+        name: Str::new("endpoint_datagram_sent.gso_offset\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 76usize,
-        name: new_str("endpoint_datagram_received\0"),
-        units: new_str("\0"),
+        name: Str::new("endpoint_datagram_received\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 77usize,
-        name: new_str("endpoint_datagram_received.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("endpoint_datagram_received.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 78usize,
-        name: new_str("endpoint_datagram_received.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("endpoint_datagram_received.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 79usize,
-        name: new_str("endpoint_datagram_dropped\0"),
-        units: new_str("\0"),
+        name: Str::new("endpoint_datagram_dropped\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 80usize,
-        name: new_str("endpoint_datagram_dropped.bytes\0"),
-        units: new_str("b\0"),
+        name: Str::new("endpoint_datagram_dropped.bytes\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 81usize,
-        name: new_str("endpoint_datagram_dropped.bytes.total\0"),
-        units: new_str("b\0"),
+        name: Str::new("endpoint_datagram_dropped.bytes.total\0"),
+        units: Str::new("b\0"),
     }
     .build(),
     info::Builder {
         id: 82usize,
-        name: new_str("endpoint_connection_attempt_failed\0"),
-        units: new_str("\0"),
+        name: Str::new("endpoint_connection_attempt_failed\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 83usize,
-        name: new_str("platform_tx\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 84usize,
-        name: new_str("platform_tx.packets.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.packets.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 85usize,
-        name: new_str("platform_tx.packets\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.packets\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 86usize,
-        name: new_str("platform_tx.syscalls.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.syscalls.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 87usize,
-        name: new_str("platform_tx.syscalls\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.syscalls\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 88usize,
-        name: new_str("platform_tx.syscalls.blocked.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.syscalls.blocked.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 89usize,
-        name: new_str("platform_tx.syscalls.blocked\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.syscalls.blocked\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 90usize,
-        name: new_str("platform_tx.errors.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.errors.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 91usize,
-        name: new_str("platform_tx.errors\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.errors\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 92usize,
-        name: new_str("platform_tx.errors.dropped.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.errors.dropped.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 93usize,
-        name: new_str("platform_tx.errors.dropped\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx.errors.dropped\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 94usize,
-        name: new_str("platform_tx_error\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_tx_error\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 95usize,
-        name: new_str("platform_rx\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 96usize,
-        name: new_str("platform_rx.packets.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.packets.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 97usize,
-        name: new_str("platform_rx.packets\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.packets\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 98usize,
-        name: new_str("platform_rx.syscalls.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.syscalls.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 99usize,
-        name: new_str("platform_rx.syscalls\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.syscalls\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 100usize,
-        name: new_str("platform_rx.syscalls.blocked.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.syscalls.blocked.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 101usize,
-        name: new_str("platform_rx.syscalls.blocked\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.syscalls.blocked\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 102usize,
-        name: new_str("platform_rx.errors.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.errors.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 103usize,
-        name: new_str("platform_rx.errors\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.errors\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 104usize,
-        name: new_str("platform_rx.errors.dropped.total\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.errors.dropped.total\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 105usize,
-        name: new_str("platform_rx.errors.dropped\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx.errors.dropped\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 106usize,
-        name: new_str("platform_rx_error\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_rx_error\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 107usize,
-        name: new_str("platform_feature_configured\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_feature_configured\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 108usize,
-        name: new_str("platform_event_loop_wakeup\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_event_loop_wakeup\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 109usize,
-        name: new_str("platform_event_loop_sleep\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_event_loop_sleep\0"),
+        units: Str::new("\0"),
     }
     .build(),
     info::Builder {
         id: 110usize,
-        name: new_str("platform_event_loop_sleep.processing_duration\0"),
-        units: new_str("us\0"),
+        name: Str::new("platform_event_loop_sleep.processing_duration\0"),
+        units: Str::new("us\0"),
     }
     .build(),
     info::Builder {
         id: 111usize,
-        name: new_str("platform_event_loop_started\0"),
-        units: new_str("\0"),
+        name: Str::new("platform_event_loop_started\0"),
+        units: Str::new("\0"),
     }
     .build(),
 ];
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter]>,
+    counters: Box<[R::Counter; 74usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure]>,
+    measures: Box<[R::Measure; 37usize]>,
     #[allow(dead_code)]
-    gauges: Box<[R::Gauge]>,
+    gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer]>,
+    timers: Box<[R::Timer; 1usize]>,
     #[allow(dead_code)]
     registry: R,
 }
@@ -831,10 +831,14 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[105usize]));
         timers.push(registry.register_timer(&INFO[110usize]));
         Self {
-            counters: counters.into(),
-            measures: measures.into(),
-            gauges: gauges.into(),
-            timers: timers.into(),
+            counters: counters
+                .try_into()
+                .unwrap_or_else(|_| panic!("invalid len")),
+            measures: measures
+                .try_into()
+                .unwrap_or_else(|_| panic!("invalid len")),
+            gauges: gauges.try_into().unwrap_or_else(|_| panic!("invalid len")),
+            timers: timers.try_into().unwrap_or_else(|_| panic!("invalid len")),
             registry,
         }
     }
@@ -925,8 +929,8 @@ impl<R: Registry> Subscriber<R> {
     #[allow(dead_code)]
     #[inline(always)]
     fn count(&self, info: usize, id: usize, value: u64) {
-        let info = unsafe { INFO.get_unchecked(info) };
-        let counter = unsafe { self.counters.get_unchecked(id) };
+        let info = &INFO[info];
+        let counter = &self.counters[id];
         counter.record(info, value);
     }
     #[doc = r" Returns all of the registered measures"]
@@ -979,8 +983,8 @@ impl<R: Registry> Subscriber<R> {
     #[allow(dead_code)]
     #[inline(always)]
     fn measure(&self, info: usize, id: usize, value: u64) {
-        let info = unsafe { INFO.get_unchecked(info) };
-        let measure = unsafe { self.measures.get_unchecked(id) };
+        let info = &INFO[info];
+        let measure = &self.measures[id];
         measure.record(info, value);
     }
     #[doc = r" Returns all of the registered gauges"]
@@ -991,8 +995,8 @@ impl<R: Registry> Subscriber<R> {
     #[allow(dead_code)]
     #[inline(always)]
     fn gauge(&self, info: usize, id: usize, value: u64) {
-        let info = unsafe { INFO.get_unchecked(info) };
-        let gauge = unsafe { self.gauges.get_unchecked(id) };
+        let info = &INFO[info];
+        let gauge = &self.gauges[id];
         gauge.record(info, value);
     }
     #[doc = r" Returns all of the registered timers"]
@@ -1009,8 +1013,8 @@ impl<R: Registry> Subscriber<R> {
     #[allow(dead_code)]
     #[inline(always)]
     fn time(&self, info: usize, id: usize, value: u64) {
-        let info = unsafe { INFO.get_unchecked(info) };
-        let timer = unsafe { self.timers.get_unchecked(id) };
+        let info = &INFO[info];
+        let timer = &self.timers[id];
         timer.record(info, value);
     }
 }
