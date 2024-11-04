@@ -1,0 +1,7 @@
+[advisories]
+ignore = [
+  # `atty` is a dependency of structopt and only used in s2n-quic-qns and s2n-quic-sim
+  "RUSTSEC-2021-0145",
+  # `atty` is a dependency of structopt and only used in s2n-quic-qns and s2n-quic-sim
+  "RUSTSEC-2024-0375"
+]
