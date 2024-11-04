@@ -6,20 +6,30 @@
 /// Emitted when the platform sends at least one packet
 struct PlatformTx {
     /// The number of packets sent
+    #[measure("packets")]
+    #[counter("packets.total")]
     count: usize,
 
     /// The number of syscalls performed
+    #[measure("syscalls")]
+    #[counter("syscalls.total")]
     syscalls: usize,
 
     /// The number of syscalls that got blocked
+    #[measure("syscalls.blocked")]
+    #[counter("syscalls.blocked.total")]
     blocked_syscalls: usize,
 
     /// The total number of errors encountered since the last event
+    #[measure("errors")]
+    #[counter("errors.total")]
     total_errors: usize,
 
     /// The number of specific error codes dropped
     ///
     /// This can happen when a burst of errors exceeds the capacity of the recorder
+    #[measure("errors.dropped")]
+    #[counter("errors.dropped.total")]
     dropped_errors: usize,
 }
 
@@ -28,6 +38,7 @@ struct PlatformTx {
 /// Emitted when the platform returns an error while sending datagrams
 struct PlatformTxError {
     /// The error code returned by the platform
+    // TODO support nominal counters
     errno: i32,
 }
 
@@ -43,20 +54,30 @@ impl From<PlatformTxError> for std::io::Error {
 /// Emitted when the platform receives at least one packet
 struct PlatformRx {
     /// The number of packets received
+    #[measure("packets")]
+    #[counter("packets.total")]
     count: usize,
 
     /// The number of syscalls performed
+    #[measure("syscalls")]
+    #[counter("syscalls.total")]
     syscalls: usize,
 
     /// The number of syscalls that got blocked
+    #[measure("syscalls.blocked")]
+    #[counter("syscalls.blocked.total")]
     blocked_syscalls: usize,
 
     /// The total number of errors encountered since the last event
+    #[measure("errors")]
+    #[counter("errors.total")]
     total_errors: usize,
 
     /// The number of specific error codes dropped
     ///
     /// This can happen when a burst of errors exceeds the capacity of the recorder
+    #[measure("errors.dropped")]
+    #[counter("errors.dropped.total")]
     dropped_errors: usize,
 }
 
@@ -117,6 +138,7 @@ struct PlatformEventLoopSleep {
     /// The next time at which the event loop will wake
     timeout: Option<core::time::Duration>,
     /// The amount of time spent processing endpoint events in a single event loop
+    #[timer("processing_duration")]
     processing_duration: core::time::Duration,
 }
 

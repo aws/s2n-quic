@@ -29,6 +29,8 @@ struct PacketSkipped {
 /// Packet was sent by a connection
 struct PacketSent {
     packet_header: PacketHeader,
+    #[measure("bytes", "b")]
+    #[counter("bytes.total", "b")]
     packet_len: usize,
 }
 
@@ -85,6 +87,8 @@ struct FrameReceived<'a> {
 struct PacketLost<'a> {
     packet_header: PacketHeader,
     path: Path<'a>,
+    #[measure("bytes", "b")]
+    #[counter("bytes.total", "b")]
     bytes_lost: u16,
     is_mtu_probe: bool,
 }
@@ -94,14 +98,23 @@ struct PacketLost<'a> {
 /// Recovery metrics updated
 struct RecoveryMetrics<'a> {
     path: Path<'a>,
+    #[measure("min_rtt", "us")]
     min_rtt: Duration,
+    #[measure("smoothed_rtt", "us")]
     smoothed_rtt: Duration,
+    #[measure("latest_rtt", "us")]
     latest_rtt: Duration,
+    #[measure("rtt_variance", "us")]
     rtt_variance: Duration,
+    #[measure("max_ack_delay", "us")]
     max_ack_delay: Duration,
+    #[measure("pto_count")]
     pto_count: u32,
+    #[measure("congestion_window", "b")]
     congestion_window: u32,
+    #[measure("bytes_in_flight", "b")]
     bytes_in_flight: u32,
+    // TODO add support for counting bools
     congestion_limited: bool,
 }
 
@@ -206,13 +219,17 @@ struct TransportParametersReceived<'a> {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.10
 /// Datagram sent by a connection
 struct DatagramSent {
+    #[measure("bytes", "b")]
+    #[counter("bytes.total", "b")]
     len: u16,
+
     /// The GSO offset at which this datagram was written
     ///
     /// If this value is greater than 0, it indicates that this datagram has been sent with other
     /// segments in a single buffer.
     ///
     /// See the [Linux kernel documentation](https://www.kernel.org/doc/html/latest/networking/segmentation-offloads.html#generic-segmentation-offload) for more details.
+    #[measure("gso_offset")]
     gso_offset: usize,
 }
 
@@ -220,6 +237,8 @@ struct DatagramSent {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.11
 /// Datagram received by a connection
 struct DatagramReceived {
+    #[measure("bytes", "b")]
+    #[counter("bytes.total", "b")]
     len: u16,
 }
 
@@ -227,7 +246,10 @@ struct DatagramReceived {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.12
 /// Datagram dropped by a connection
 struct DatagramDropped {
+    #[measure("bytes", "b")]
+    #[counter("bytes.total", "b")]
     len: u16,
+    // TODO support nominal counters
     reason: DatagramDropReason,
 }
 
@@ -283,11 +305,15 @@ struct TlsServerHello<'a> {
 
 #[event("transport:rx_stream_progress")]
 struct RxStreamProgress {
+    #[measure("bytes", "b")]
+    #[counter("bytes.total", "b")]
     bytes: usize,
 }
 
 #[event("transport:tx_stream_progress")]
 struct TxStreamProgress {
+    #[measure("bytes", "b")]
+    #[counter("bytes.total", "b")]
     bytes: usize,
 }
 
@@ -301,6 +327,7 @@ pub struct KeepAliveTimerExpired {
 struct MtuUpdated {
     path_id: u64,
     /// The maximum QUIC datagram size, not including UDP and IP headers
+    #[measure("mtu", "b")]
     mtu: u16,
     cause: MtuUpdatedCause,
     /// The search for the maximum MTU has completed for now
@@ -312,6 +339,7 @@ struct MtuUpdated {
 struct SlowStartExited {
     path_id: u64,
     cause: SlowStartExitCause,
+    #[measure("congestion_window", "b")]
     congestion_window: u32,
 }
 
@@ -328,7 +356,9 @@ struct DeliveryRateSampled {
 /// The pacing rate has been updated
 struct PacingRateUpdated {
     path_id: u64,
+    #[measure("bytes_per_second", "b")]
     bytes_per_second: u64,
+    #[measure("burst_size", "b")]
     burst_size: u32,
     pacing_gain: f32,
 }

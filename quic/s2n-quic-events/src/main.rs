@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::quote;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Result<T, E = Error> = core::result::Result<T, E>;
@@ -17,12 +17,14 @@ use output_mode::OutputMode;
 struct EventInfo<'a> {
     input_path: &'a str,
     output_path: &'a str,
+    crate_name: &'a str,
     output_mode: OutputMode,
     s2n_quic_core_path: TokenStream,
     api: TokenStream,
     builder: TokenStream,
     tracing_subscriber_attr: TokenStream,
     tracing_subscriber_def: TokenStream,
+    feature_alloc: TokenStream,
 }
 
 impl EventInfo<'_> {
@@ -59,14 +61,12 @@ impl EventInfo<'_> {
         );
 
         EventInfo {
+            crate_name: "s2n_quic",
             input_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../s2n-quic-core/events/**/*.rs"
             ),
-            output_path: concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../s2n-quic-core/src/event/generated.rs"
-            ),
+            output_path: concat!(env!("CARGO_MANIFEST_DIR"), "/../s2n-quic-core/src/event"),
             output_mode: OutputMode::Mut,
             s2n_quic_core_path: quote!(crate),
             api: quote!(),
@@ -75,6 +75,7 @@ impl EventInfo<'_> {
                 #[cfg(feature = "event-tracing")]
             },
             tracing_subscriber_def,
+            feature_alloc: quote!(#[cfg(feature = "alloc")]),
         }
     }
 
@@ -104,13 +105,14 @@ impl EventInfo<'_> {
         );
 
         EventInfo {
+            crate_name: "s2n_quic_dc",
             input_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../dc/s2n-quic-dc/events/**/*.rs"
             ),
             output_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../dc/s2n-quic-dc/src/event/generated.rs"
+                "/../../dc/s2n-quic-dc/src/event"
             ),
             output_mode: OutputMode::Ref,
             s2n_quic_core_path: quote!(s2n_quic_core),
@@ -130,6 +132,7 @@ impl EventInfo<'_> {
             },
             tracing_subscriber_attr: quote!(),
             tracing_subscriber_def,
+            feature_alloc: quote!(),
         }
     }
 }
@@ -145,9 +148,16 @@ fn main() -> Result<()> {
         for path in glob::glob(input_path)? {
             let path = path?;
             eprintln!("loading {}", path.canonicalize().unwrap().display());
-            let file = std::fs::read_to_string(path)?;
-            files.push(parser::parse(&file).unwrap());
+            let file = std::fs::read_to_string(&path)?;
+            files.push(parser::parse(&file, path).unwrap());
         }
+
+        // make sure events are in a deterministic order
+        files.sort_by(|a, b| a.path.as_os_str().cmp(b.path.as_os_str()));
+
+        let root = std::path::Path::new(event_info.output_path);
+        let _ = std::fs::create_dir_all(root);
+        let root = root.canonicalize()?;
 
         let mut output = Output {
             mode: event_info.output_mode,
@@ -156,43 +166,13 @@ fn main() -> Result<()> {
             builders: event_info.builder,
             tracing_subscriber_attr: event_info.tracing_subscriber_attr,
             tracing_subscriber_def: event_info.tracing_subscriber_def,
+            feature_alloc: event_info.feature_alloc,
+            crate_name: event_info.crate_name,
+            root,
             ..Default::default()
         };
 
-        for file in &files {
-            file.to_tokens(&mut output);
-        }
-
-        let generated = std::path::Path::new(event_info.output_path)
-            .canonicalize()
-            .unwrap();
-
-        let mut o = std::fs::File::create(&generated)?;
-
-        macro_rules! put {
-            ($($arg:tt)*) => {{
-                use std::io::Write;
-                writeln!(o, $($arg)*)?;
-            }}
-        }
-
-        put!("// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.");
-        put!("// SPDX-License-Identifier: Apache-2.0");
-        put!();
-        put!("// DO NOT MODIFY THIS FILE");
-        put!("// This file was generated with the `s2n-quic-events` crate and any required");
-        put!("// changes should be made there.");
-        put!();
-        put!("{}", output.to_token_stream());
-
-        let status = std::process::Command::new("rustfmt")
-            .arg(&generated)
-            .spawn()?
-            .wait()?;
-
-        assert!(status.success());
-
-        eprintln!("  wrote {}", generated.display());
+        output.generate(&files);
     }
 
     Ok(())

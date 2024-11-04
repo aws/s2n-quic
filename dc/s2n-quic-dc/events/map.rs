@@ -5,6 +5,7 @@
 #[subject(endpoint)]
 struct PathSecretMapInitialized {
     /// The capacity of the path secret map
+    #[measure("capacity")]
     capacity: usize,
 }
 
@@ -12,9 +13,11 @@ struct PathSecretMapInitialized {
 #[subject(endpoint)]
 struct PathSecretMapUninitialized {
     /// The capacity of the path secret map
+    #[measure("capacity")]
     capacity: usize,
 
     /// The number of entries in the map
+    #[measure("entries")]
     entries: usize,
 }
 
@@ -128,6 +131,7 @@ struct ReplayPotentiallyDetected<'a> {
 
     key_id: u64,
 
+    #[measure("gap")]
     gap: u64,
 }
 

@@ -28,3 +28,20 @@ impl Meta for api::EndpointMeta {
 
 mod generated;
 pub use generated::*;
+
+pub mod metrics {
+    pub use crate::event::generated::metrics::*;
+    pub use s2n_quic_core::event::metrics::Recorder;
+
+    pub mod aggregate {
+        pub use crate::event::generated::metrics::aggregate::*;
+        pub use s2n_quic_core::event::metrics::aggregate::{
+            info, AsMetric, Info, Recorder, Registry,
+        };
+
+        pub mod probe {
+            pub use crate::event::generated::metrics::probe::*;
+            pub use s2n_quic_core::event::metrics::aggregate::probe::dynamic;
+        }
+    }
+}
