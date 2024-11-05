@@ -1,7 +1,18 @@
 [advisories]
 yanked = "deny"
 ignore = [
-    "RUSTSEC-2021-0139", # criterion, structopt, and tracing-subscriber (test dependencies) use ansi_term
+  # `atty` is a dependency of `structopt` and only used in s2n-quic-qns and s2n-quic-sim
+  # https://github.com/aws/s2n-quic/issues/2324
+  "RUSTSEC-2021-0145",
+  # `atty` is a dependency of `structopt` and only used in s2n-quic-qns and s2n-quic-sim
+  # https://github.com/aws/s2n-quic/issues/2324
+  "RUSTSEC-2024-0375",
+  # ` proc-macro-error` is a dependency of `structopt` and only used in s2n-quic-qns and s2n-quic-sim
+  # https://github.com/aws/s2n-quic/issues/2324
+  "RUSTSEC-2024-0370",
+  # `ansi_term` is a dependency of `structopt` and only used in s2n-quic-qns and s2n-quic-sim
+  # https://github.com/aws/s2n-quic/issues/2324
+  "RUSTSEC-2021-0139"
 ]
 
 [bans]
@@ -43,6 +54,7 @@ allow = [
     "OpenSSL",
     "Unicode-DFS-2016",
     "Zlib",
+    "Unicode-3.0",
 ]
 
 [[licenses.clarify]]
