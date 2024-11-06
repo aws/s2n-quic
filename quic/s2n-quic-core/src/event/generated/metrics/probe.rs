@@ -6,12 +6,13 @@
 // changes should be made there.
 
 use crate::{
-    event::metrics::aggregate::{self, Info, Recorder},
+    event::metrics::aggregate::{self, info, Info, NominalRecorder, Recorder},
     probe::define,
 };
 mod counter {
     #![allow(non_snake_case)]
     use super::Info;
+    use crate::event::metrics::aggregate::AsMetric;
     pub struct Recorder(fn(u64));
     impl Recorder {
         pub(super) fn new(info: &'static Info) -> Self {
@@ -25,78 +26,83 @@ mod counter {
                 7usize => Self(active_path_updated),
                 8usize => Self(path_created),
                 9usize => Self(frame_sent),
-                10usize => Self(frame_received),
-                11usize => Self(packet_lost),
-                12usize => Self(packet_lost__bytes__total),
-                14usize => Self(recovery_metrics),
-                23usize => Self(congestion),
-                24usize => Self(rx_ack_range_dropped),
-                25usize => Self(ack_range_received),
-                26usize => Self(ack_range_sent),
-                27usize => Self(packet_dropped),
-                28usize => Self(key_update),
-                29usize => Self(key_space_discarded),
-                30usize => Self(connection_started),
-                31usize => Self(connection_closed),
-                32usize => Self(duplicate_packet),
-                33usize => Self(transport_parameters_received),
-                34usize => Self(datagram_sent),
-                35usize => Self(datagram_sent__bytes__total),
-                38usize => Self(datagram_received),
-                39usize => Self(datagram_received__bytes__total),
-                41usize => Self(datagram_dropped),
-                42usize => Self(datagram_dropped__bytes__total),
-                44usize => Self(connection_id_updated),
-                45usize => Self(ecn_state_changed),
-                46usize => Self(connection_migration_denied),
-                47usize => Self(handshake_status_updated),
-                48usize => Self(tls_exporter_ready),
-                49usize => Self(path_challenge_updated),
-                50usize => Self(tls_client_hello),
-                51usize => Self(tls_server_hello),
-                52usize => Self(rx_stream_progress),
-                53usize => Self(rx_stream_progress__bytes__total),
-                55usize => Self(tx_stream_progress),
-                56usize => Self(tx_stream_progress__bytes__total),
-                58usize => Self(keep_alive_timer_expired),
-                59usize => Self(mtu_updated),
-                61usize => Self(slow_start_exited),
-                63usize => Self(delivery_rate_sampled),
-                64usize => Self(pacing_rate_updated),
-                67usize => Self(bbr_state_changed),
-                68usize => Self(dc_state_changed),
-                69usize => Self(version_information),
-                70usize => Self(endpoint_packet_sent),
-                71usize => Self(endpoint_packet_received),
-                72usize => Self(endpoint_datagram_sent),
-                76usize => Self(endpoint_datagram_received),
-                79usize => Self(endpoint_datagram_dropped),
-                82usize => Self(endpoint_connection_attempt_failed),
-                83usize => Self(platform_tx),
-                84usize => Self(platform_tx__packets__total),
-                86usize => Self(platform_tx__syscalls__total),
-                88usize => Self(platform_tx__syscalls__blocked__total),
-                90usize => Self(platform_tx__errors__total),
-                92usize => Self(platform_tx__errors__dropped__total),
-                94usize => Self(platform_tx_error),
-                95usize => Self(platform_rx),
-                96usize => Self(platform_rx__packets__total),
-                98usize => Self(platform_rx__syscalls__total),
-                100usize => Self(platform_rx__syscalls__blocked__total),
-                102usize => Self(platform_rx__errors__total),
-                104usize => Self(platform_rx__errors__dropped__total),
-                106usize => Self(platform_rx_error),
-                107usize => Self(platform_feature_configured),
-                108usize => Self(platform_event_loop_wakeup),
-                109usize => Self(platform_event_loop_sleep),
-                111usize => Self(platform_event_loop_started),
+                11usize => Self(frame_received),
+                13usize => Self(packet_lost),
+                14usize => Self(packet_lost__bytes__total),
+                17usize => Self(recovery_metrics),
+                27usize => Self(congestion),
+                29usize => Self(rx_ack_range_dropped),
+                30usize => Self(ack_range_received),
+                31usize => Self(ack_range_sent),
+                32usize => Self(packet_dropped),
+                34usize => Self(key_update),
+                35usize => Self(key_space_discarded),
+                37usize => Self(connection_started),
+                38usize => Self(connection_closed),
+                40usize => Self(duplicate_packet),
+                42usize => Self(transport_parameters_received),
+                43usize => Self(datagram_sent),
+                44usize => Self(datagram_sent__bytes__total),
+                47usize => Self(datagram_received),
+                48usize => Self(datagram_received__bytes__total),
+                50usize => Self(datagram_dropped),
+                51usize => Self(datagram_dropped__bytes__total),
+                54usize => Self(connection_id_updated),
+                55usize => Self(ecn_state_changed),
+                57usize => Self(connection_migration_denied),
+                59usize => Self(handshake_status_updated),
+                61usize => Self(tls_exporter_ready),
+                62usize => Self(path_challenge_updated),
+                63usize => Self(tls_client_hello),
+                64usize => Self(tls_server_hello),
+                65usize => Self(rx_stream_progress),
+                66usize => Self(rx_stream_progress__bytes__total),
+                68usize => Self(tx_stream_progress),
+                69usize => Self(tx_stream_progress__bytes__total),
+                71usize => Self(keep_alive_timer_expired),
+                72usize => Self(mtu_updated),
+                76usize => Self(slow_start_exited),
+                79usize => Self(delivery_rate_sampled),
+                80usize => Self(pacing_rate_updated),
+                83usize => Self(bbr_state_changed),
+                85usize => Self(dc_state_changed),
+                87usize => Self(version_information),
+                88usize => Self(endpoint_packet_sent),
+                89usize => Self(endpoint_packet_received),
+                90usize => Self(endpoint_datagram_sent),
+                94usize => Self(endpoint_datagram_received),
+                97usize => Self(endpoint_datagram_dropped),
+                101usize => Self(endpoint_connection_attempt_failed),
+                103usize => Self(platform_tx),
+                104usize => Self(platform_tx__packets__total),
+                106usize => Self(platform_tx__syscalls__total),
+                108usize => Self(platform_tx__syscalls__blocked__total),
+                110usize => Self(platform_tx__errors__total),
+                112usize => Self(platform_tx__errors__dropped__total),
+                114usize => Self(platform_tx_error),
+                115usize => Self(platform_rx),
+                116usize => Self(platform_rx__packets__total),
+                118usize => Self(platform_rx__syscalls__total),
+                120usize => Self(platform_rx__syscalls__blocked__total),
+                122usize => Self(platform_rx__errors__total),
+                124usize => Self(platform_rx__errors__dropped__total),
+                126usize => Self(platform_rx_error),
+                127usize => Self(platform_feature_configured),
+                128usize => Self(platform_event_loop_wakeup),
+                129usize => Self(platform_event_loop_sleep),
+                131usize => Self(platform_event_loop_started),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
     }
-    impl super::Recorder for Recorder {
+    impl super::Recorder<u64> for Recorder {
         fn record(&self, _info: &'static Info, value: u64) {
             (self.0)(value);
+        }
+    }
+    impl super::Recorder<core::time::Duration> for Recorder {
+        fn record(&self, info: &'static Info, value: core::time::Duration) {
+            (self.0)(value.as_metric(info.units));
         }
     }
     super::define!(
@@ -252,57 +258,171 @@ mod counter {
         }
     );
 }
+mod nominal_counter {
+    #![allow(non_snake_case)]
+    use super::{info, Info};
+    use crate::event::metrics::aggregate::AsMetric;
+    pub struct Recorder(fn(u64, u64, &info::Str));
+    impl Recorder {
+        pub(super) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
+            match info.id {
+                10usize => Self(frame_sent__frame),
+                12usize => Self(frame_received__frame),
+                16usize => Self(packet_lost__is_mtu_probe),
+                26usize => Self(recovery_metrics__congestion_limited),
+                28usize => Self(congestion__source),
+                33usize => Self(packet_dropped__reason),
+                36usize => Self(key_space_discarded__space),
+                39usize => Self(connection_closed__error),
+                41usize => Self(duplicate_packet__error),
+                53usize => Self(datagram_dropped__reason),
+                56usize => Self(ecn_state_changed__state),
+                58usize => Self(connection_migration_denied__reason),
+                60usize => Self(handshake_status_updated__status),
+                74usize => Self(mtu_updated__cause),
+                75usize => Self(mtu_updated__search_complete),
+                77usize => Self(slow_start_exited__cause),
+                84usize => Self(bbr_state_changed__state),
+                86usize => Self(dc_state_changed__state),
+                100usize => Self(endpoint_datagram_dropped__reason),
+                102usize => Self(endpoint_connection_attempt_failed__error),
+                _ => unreachable!("invalid info: {info:?}"),
+            }
+        }
+    }
+    impl super::NominalRecorder<u64> for Recorder {
+        fn record(&self, _info: &'static Info, variant: &'static info::Variant, value: u64) {
+            (self.0)(value, variant.id as _, variant.name);
+        }
+    }
+    impl super::NominalRecorder<core::time::Duration> for Recorder {
+        fn record(
+            &self,
+            info: &'static Info,
+            variant: &'static info::Variant,
+            value: core::time::Duration,
+        ) {
+            (self.0)(value.as_metric(info.units), variant.id as _, variant.name);
+        }
+    }
+    super::define!(
+        extern "probe" {
+            # [link_name = s2n_quic__event__nominal_counter__frame_sent__frame]
+            fn frame_sent__frame(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__frame_received__frame]
+            fn frame_received__frame(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__packet_lost__is_mtu_probe]
+            fn packet_lost__is_mtu_probe(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__recovery_metrics__congestion_limited]
+            fn recovery_metrics__congestion_limited(
+                value: u64,
+                variant: u64,
+                variant_name: &info::Str,
+            );
+            # [link_name = s2n_quic__event__nominal_counter__congestion__source]
+            fn congestion__source(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__packet_dropped__reason]
+            fn packet_dropped__reason(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__key_space_discarded__space]
+            fn key_space_discarded__space(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__connection_closed__error]
+            fn connection_closed__error(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__duplicate_packet__error]
+            fn duplicate_packet__error(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__datagram_dropped__reason]
+            fn datagram_dropped__reason(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__ecn_state_changed__state]
+            fn ecn_state_changed__state(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__connection_migration_denied__reason]
+            fn connection_migration_denied__reason(
+                value: u64,
+                variant: u64,
+                variant_name: &info::Str,
+            );
+            # [link_name = s2n_quic__event__nominal_counter__handshake_status_updated__status]
+            fn handshake_status_updated__status(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__mtu_updated__cause]
+            fn mtu_updated__cause(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__mtu_updated__search_complete]
+            fn mtu_updated__search_complete(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__slow_start_exited__cause]
+            fn slow_start_exited__cause(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__bbr_state_changed__state]
+            fn bbr_state_changed__state(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__dc_state_changed__state]
+            fn dc_state_changed__state(value: u64, variant: u64, variant_name: &info::Str);
+            # [link_name = s2n_quic__event__nominal_counter__endpoint_datagram_dropped__reason]
+            fn endpoint_datagram_dropped__reason(
+                value: u64,
+                variant: u64,
+                variant_name: &info::Str,
+            );
+            # [link_name = s2n_quic__event__nominal_counter__endpoint_connection_attempt_failed__error]
+            fn endpoint_connection_attempt_failed__error(
+                value: u64,
+                variant: u64,
+                variant_name: &info::Str,
+            );
+        }
+    );
+}
 mod measure {
     #![allow(non_snake_case)]
     use super::Info;
+    use crate::event::metrics::aggregate::AsMetric;
     pub struct Recorder(fn(u64));
     impl Recorder {
         pub(super) fn new(info: &'static Info) -> Self {
             match info.id {
                 5usize => Self(packet_sent__bytes),
-                13usize => Self(packet_lost__bytes),
-                15usize => Self(recovery_metrics__min_rtt),
-                16usize => Self(recovery_metrics__smoothed_rtt),
-                17usize => Self(recovery_metrics__latest_rtt),
-                18usize => Self(recovery_metrics__rtt_variance),
-                19usize => Self(recovery_metrics__max_ack_delay),
-                20usize => Self(recovery_metrics__pto_count),
-                21usize => Self(recovery_metrics__congestion_window),
-                22usize => Self(recovery_metrics__bytes_in_flight),
-                36usize => Self(datagram_sent__bytes),
-                37usize => Self(datagram_sent__gso_offset),
-                40usize => Self(datagram_received__bytes),
-                43usize => Self(datagram_dropped__bytes),
-                54usize => Self(rx_stream_progress__bytes),
-                57usize => Self(tx_stream_progress__bytes),
-                60usize => Self(mtu_updated__mtu),
-                62usize => Self(slow_start_exited__congestion_window),
-                65usize => Self(pacing_rate_updated__bytes_per_second),
-                66usize => Self(pacing_rate_updated__burst_size),
-                73usize => Self(endpoint_datagram_sent__bytes),
-                74usize => Self(endpoint_datagram_sent__bytes__total),
-                75usize => Self(endpoint_datagram_sent__gso_offset),
-                77usize => Self(endpoint_datagram_received__bytes),
-                78usize => Self(endpoint_datagram_received__bytes__total),
-                80usize => Self(endpoint_datagram_dropped__bytes),
-                81usize => Self(endpoint_datagram_dropped__bytes__total),
-                85usize => Self(platform_tx__packets),
-                87usize => Self(platform_tx__syscalls),
-                89usize => Self(platform_tx__syscalls__blocked),
-                91usize => Self(platform_tx__errors),
-                93usize => Self(platform_tx__errors__dropped),
-                97usize => Self(platform_rx__packets),
-                99usize => Self(platform_rx__syscalls),
-                101usize => Self(platform_rx__syscalls__blocked),
-                103usize => Self(platform_rx__errors),
-                105usize => Self(platform_rx__errors__dropped),
+                15usize => Self(packet_lost__bytes),
+                18usize => Self(recovery_metrics__min_rtt),
+                19usize => Self(recovery_metrics__smoothed_rtt),
+                20usize => Self(recovery_metrics__latest_rtt),
+                21usize => Self(recovery_metrics__rtt_variance),
+                22usize => Self(recovery_metrics__max_ack_delay),
+                23usize => Self(recovery_metrics__pto_count),
+                24usize => Self(recovery_metrics__congestion_window),
+                25usize => Self(recovery_metrics__bytes_in_flight),
+                45usize => Self(datagram_sent__bytes),
+                46usize => Self(datagram_sent__gso_offset),
+                49usize => Self(datagram_received__bytes),
+                52usize => Self(datagram_dropped__bytes),
+                67usize => Self(rx_stream_progress__bytes),
+                70usize => Self(tx_stream_progress__bytes),
+                73usize => Self(mtu_updated__mtu),
+                78usize => Self(slow_start_exited__congestion_window),
+                81usize => Self(pacing_rate_updated__bytes_per_second),
+                82usize => Self(pacing_rate_updated__burst_size),
+                91usize => Self(endpoint_datagram_sent__bytes),
+                92usize => Self(endpoint_datagram_sent__bytes__total),
+                93usize => Self(endpoint_datagram_sent__gso_offset),
+                95usize => Self(endpoint_datagram_received__bytes),
+                96usize => Self(endpoint_datagram_received__bytes__total),
+                98usize => Self(endpoint_datagram_dropped__bytes),
+                99usize => Self(endpoint_datagram_dropped__bytes__total),
+                105usize => Self(platform_tx__packets),
+                107usize => Self(platform_tx__syscalls),
+                109usize => Self(platform_tx__syscalls__blocked),
+                111usize => Self(platform_tx__errors),
+                113usize => Self(platform_tx__errors__dropped),
+                117usize => Self(platform_rx__packets),
+                119usize => Self(platform_rx__syscalls),
+                121usize => Self(platform_rx__syscalls__blocked),
+                123usize => Self(platform_rx__errors),
+                125usize => Self(platform_rx__errors__dropped),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
     }
-    impl super::Recorder for Recorder {
+    impl super::Recorder<u64> for Recorder {
         fn record(&self, _info: &'static Info, value: u64) {
             (self.0)(value);
+        }
+    }
+    impl super::Recorder<core::time::Duration> for Recorder {
+        fn record(&self, info: &'static Info, value: core::time::Duration) {
+            (self.0)(value.as_metric(info.units));
         }
     }
     super::define!(
@@ -387,33 +507,45 @@ mod measure {
 mod gauge {
     #![allow(non_snake_case)]
     use super::Info;
+    use crate::event::metrics::aggregate::AsMetric;
     pub struct Recorder(fn(u64));
     impl Recorder {
         pub(super) fn new(info: &'static Info) -> Self {
             unreachable!("invalid info: {info:?}")
         }
     }
-    impl super::Recorder for Recorder {
+    impl super::Recorder<u64> for Recorder {
         fn record(&self, _info: &'static Info, value: u64) {
             (self.0)(value);
+        }
+    }
+    impl super::Recorder<core::time::Duration> for Recorder {
+        fn record(&self, info: &'static Info, value: core::time::Duration) {
+            (self.0)(value.as_metric(info.units));
         }
     }
 }
 mod timer {
     #![allow(non_snake_case)]
     use super::Info;
+    use crate::event::metrics::aggregate::AsMetric;
     pub struct Recorder(fn(u64));
     impl Recorder {
         pub(super) fn new(info: &'static Info) -> Self {
             match info.id {
-                110usize => Self(platform_event_loop_sleep__processing_duration),
+                130usize => Self(platform_event_loop_sleep__processing_duration),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
     }
-    impl super::Recorder for Recorder {
+    impl super::Recorder<u64> for Recorder {
         fn record(&self, _info: &'static Info, value: u64) {
             (self.0)(value);
+        }
+    }
+    impl super::Recorder<core::time::Duration> for Recorder {
+        fn record(&self, info: &'static Info, value: core::time::Duration) {
+            (self.0)(value.as_metric(info.units));
         }
     }
     super::define!(
@@ -427,12 +559,21 @@ mod timer {
 pub struct Registry(());
 impl aggregate::Registry for Registry {
     type Counter = counter::Recorder;
+    type NominalCounter = nominal_counter::Recorder;
     type Measure = measure::Recorder;
     type Gauge = gauge::Recorder;
     type Timer = timer::Recorder;
     #[inline]
     fn register_counter(&self, info: &'static Info) -> Self::Counter {
         counter::Recorder::new(info)
+    }
+    #[inline]
+    fn register_nominal_counter(
+        &self,
+        info: &'static Info,
+        variant: &'static info::Variant,
+    ) -> Self::NominalCounter {
+        nominal_counter::Recorder::new(info, variant)
     }
     #[inline]
     fn register_measure(&self, info: &'static Info) -> Self::Measure {

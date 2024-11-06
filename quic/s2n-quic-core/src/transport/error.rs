@@ -5,6 +5,7 @@
 
 use crate::{
     crypto::tls,
+    event::metrics::aggregate,
     frame::ConnectionClose,
     varint::{VarInt, VarIntError},
 };
@@ -165,6 +166,72 @@ macro_rules! impl_errors {
             }
         }
 
+        impl aggregate::AsVariant for Code {
+            const VARIANTS: &'static [aggregate::info::Variant] = &{
+                use aggregate::info::{Variant, Str};
+
+                const fn count(_v: u64) -> usize {
+                    1
+                }
+
+                const QUIC_VARIANTS: usize = 0 $( + count($code))*;
+
+                const TLS: &'static [Variant] = tls::Error::VARIANTS;
+
+                let mut array = [
+                    Variant { name: Str::new("\0"), id: 0 };
+                    QUIC_VARIANTS + TLS.len() + 1
+                ];
+
+                let mut idx = 0;
+
+                $(
+                    array[idx] = Variant {
+                        name: Str::new(concat!("QUIC_", stringify!($name), "\0")),
+                        id: $code,
+                    };
+                    idx += 1;
+                )*
+
+                let mut tls_idx = 0;
+                while tls_idx < TLS.len() {
+                    let variant = TLS[tls_idx];
+                    array[idx] = Variant {
+                        name: variant.name,
+                        id: variant.id | 0x100,
+                    };
+                    idx += 1;
+                    tls_idx += 1;
+                }
+
+                array[idx] = Variant {
+                    name: Str::new("QUIC_UNKNOWN_ERROR\0"),
+                    id: u32::MAX as _,
+                };
+
+                array
+            };
+
+            #[inline]
+            fn variant_idx(&self) -> usize {
+                let mut idx = 0;
+                let code = self.0.as_u64();
+
+                $(
+                    if code == $code {
+                        return idx;
+                    }
+                    idx += 1;
+                )*
+
+                if (0x100..=0x1ff).contains(&code) {
+                    return tls::Error::new(code as _).variant_idx() + idx;
+                }
+
+                idx + tls::Error::VARIANTS.len()
+            }
+        }
+
         impl Error {
             $(
                 $(#[doc = $doc])*
@@ -183,6 +250,18 @@ macro_rules! impl_errors {
                 assert_eq!(&Error::$name.to_string(), stringify!($name));
             )*
             assert_eq!(&Error::from(tls::Error::DECODE_ERROR).to_string(), "DECODE_ERROR");
+        }
+
+        #[test]
+        #[cfg_attr(miri, ignore)]
+        fn variants_test() {
+            use aggregate::AsVariant;
+            insta::assert_debug_snapshot!(Code::VARIANTS);
+
+            let mut seen = std::collections::HashSet::new();
+            for variant in Code::VARIANTS {
+                assert!(seen.insert(variant.id));
+            }
         }
     };
 }

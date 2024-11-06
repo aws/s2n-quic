@@ -65,11 +65,13 @@ struct EndpointDatagramDropped {
     #[measure("bytes", "b")]
     #[measure("bytes.total", "b")]
     len: u16,
+    #[nominal_counter("reason", "")]
     reason: DatagramDropReason,
 }
 
 #[event("transport:connection_attempt_failed")]
 #[subject(endpoint)]
 struct EndpointConnectionAttemptFailed {
+    #[nominal_counter("error", "")]
     error: crate::connection::Error,
 }

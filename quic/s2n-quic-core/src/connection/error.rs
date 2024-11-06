@@ -580,3 +580,108 @@ impl From<packet_protection::Error> for ProcessingError {
         Self::DecryptError
     }
 }
+
+mod metrics {
+    use super::{transport, Error};
+    use crate::event::metrics::aggregate::{
+        info::{Str, Variant},
+        AsVariant,
+    };
+
+    macro_rules! impl_variants {
+        ($($name:ident => ($name_str:literal, $id:literal)),* $(,)?) => {
+            impl AsVariant for Error {
+                const VARIANTS: &'static [Variant] = &{
+                    const fn count(_id: usize) -> usize {
+                        1
+                    }
+
+                    const VARIANTS: usize = 0 $( + count($id))*;
+
+                    const TRANSPORT: &'static [Variant] = transport::error::Code::VARIANTS;
+
+                    let mut array = [
+                        Variant { name: Str::new("\0"), id: 0 };
+                        VARIANTS + TRANSPORT.len()
+                    ];
+
+                    let mut idx = 0;
+
+                    $(
+                        array[idx] = Variant {
+                            name: Str::new(concat!($name_str, "\0")),
+                            id: $id | (u16::MAX as usize + 1),
+                        };
+                        idx += 1;
+                    )*
+
+                    let mut transport_idx = 0;
+                    while transport_idx < TRANSPORT.len() {
+                        let variant = TRANSPORT[transport_idx];
+                        array[idx] = Variant {
+                            name: variant.name,
+                            id: variant.id,
+                        };
+                        idx += 1;
+                        transport_idx += 1;
+                    }
+
+                    array
+                };
+
+                #[inline]
+                fn variant_idx(&self) -> usize {
+                    let mut idx = 0;
+
+                    $(
+                        if matches!(self, Error::$name { .. }) {
+                            return idx;
+                        }
+                        idx += 1;
+                    )*
+
+                    if let Error::Transport { code, ..} = self {
+                        code.variant_idx() + idx
+                    } else {
+                        panic!()
+                    }
+                }
+            }
+
+            #[allow(dead_code)]
+            fn exhaustive_test(error: &Error) {
+                match error {
+                    $(
+                        Error::$name { .. } => {},
+                    )*
+                    Error::Transport { .. } => {},
+                }
+            }
+
+            #[test]
+            #[cfg_attr(miri, ignore)]
+            fn variants_test() {
+                insta::assert_debug_snapshot!(Error::VARIANTS);
+
+                let mut seen = std::collections::HashSet::new();
+                for variant in Error::VARIANTS {
+                    assert!(seen.insert(variant.id));
+                }
+            }
+        };
+    }
+
+    impl_variants!(
+        Closed => ("CLOSED", 0),
+        Application => ("APPLICATION", 1),
+        StatelessReset => ("STATELESS_RESET", 2),
+        IdleTimerExpired => ("IDLE_TIMER_EXPIRED", 3),
+        NoValidPath => ("NO_VALID_PATH", 4),
+        StreamIdExhausted => ("STREAM_ID_EXHAUSTED", 5),
+        MaxHandshakeDurationExceeded => ("MAX_HANDSHAKE_DURATION_EXCEEDED", 6),
+        ImmediateClose => ("IMMEDIATE_CLOSE", 7),
+        EndpointClosing => ("ENDPOINT_CLOSING", 8),
+        InvalidConfiguration => ("INVALID_CONFIGURATION", 9),
+        Unspecified => ("UNSPECIFIED", 10),
+    );
+}

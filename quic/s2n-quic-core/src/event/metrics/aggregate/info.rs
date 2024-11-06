@@ -4,12 +4,19 @@
 use crate::probe;
 use core::{ffi::CStr, fmt, ops};
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 #[non_exhaustive]
 pub struct Info {
     pub id: usize,
     pub name: &'static Str,
     pub units: &'static Str,
+}
+
+#[derive(Copy, Clone, Debug)]
+#[non_exhaustive]
+pub struct Variant {
+    pub id: usize,
+    pub name: &'static Str,
 }
 
 #[doc(hidden)]

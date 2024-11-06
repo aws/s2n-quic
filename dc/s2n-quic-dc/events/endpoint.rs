@@ -6,6 +6,8 @@
 struct EndpointInitialized<'a> {
     acceptor_addr: SocketAddress<'a>,
     handshake_addr: SocketAddress<'a>,
+    #[nominal_counter("tcp", "")]
     tcp: bool,
+    #[nominal_counter("udp", "")]
     udp: bool,
 }

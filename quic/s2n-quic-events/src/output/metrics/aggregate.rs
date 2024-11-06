@@ -34,6 +34,13 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
         format!("{}__event__counter", output.crate_name),
     );
 
+    let mut nominal_counters = Registry::new(
+        quote!(nominal_counters),
+        quote!(register_nominal_counter),
+        format!("{}__event__nominal_counter", output.crate_name),
+    );
+    nominal_counters.nominal_offsets = quote!(nominal_offsets);
+
     let mut measures = Registry::new(
         quote!(measures),
         quote!(register_measure),
@@ -59,7 +66,7 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
 
         let count_info = &info.push(&snake, "");
 
-        let count_id = counters.push(count_info);
+        let count_id = counters.push(count_info, None);
 
         on_event.extend(quote!(
             self.count(#count_info, #count_id, 1);
@@ -77,7 +84,7 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                     let name = format!("{snake}.{}", metric.name.value());
                     let units = metric.unit.as_ref().map(|v| v.value()).unwrap_or_default();
                     let info = &info.push(&name, &units);
-                    let id = target.push(info);
+                    let id = target.push(info, None);
 
                     let field = field.ident.as_ref().unwrap();
                     on_event.extend(quote!(
@@ -90,12 +97,24 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                 let name = format!("{snake}.{}", metric.name.value());
                 let units = "us";
                 let info = &info.push(&name, units);
-                let id = timers.push(info);
+                let id = timers.push(info, None);
 
                 let field = field.ident.as_ref().unwrap();
                 on_event.extend(quote!(
                     self.time(#info, #id, event.#field.as_metric(#units));
                 ))
+            }
+
+            for metric in &field.attrs.nominal_counter {
+                let name = format!("{snake}.{}", metric.name.value());
+                let units = metric.unit.as_ref().map(|v| v.value()).unwrap_or_default();
+                let info = &info.push(&name, units);
+                let id = nominal_counters.push(info, Some(&field.ty));
+
+                let field = field.ident.as_ref().unwrap();
+                on_event.extend(quote!(
+                    self.nominal_count(#info, #id, &event.#field);
+                ));
             }
         }
 
@@ -136,6 +155,9 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
     let counters_init = counters.init();
     let counters_probes = counters.probe();
     let counters_len = counters.len;
+    let nominal_counters_init = nominal_counters.init();
+    let nominal_counters_probes = nominal_counters.probe();
+    let nominal_counters_len = nominal_counters.len;
     let measures_init = measures.init();
     let measures_probes = measures.probe();
     let measures_len = measures.len;
@@ -160,9 +182,11 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             metrics::aggregate::{
                 Registry,
                 Recorder,
+                NominalRecorder,
                 Info,
                 info::{self, Str},
-                AsMetric as _
+                AsMetric as _,
+                AsVariant,
             },
             api,
             self
@@ -173,6 +197,10 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
         pub struct Subscriber<R: Registry> {
             #[allow(dead_code)]
             counters: Box<[R::Counter; #counters_len]>,
+            #[allow(dead_code)]
+            nominal_counters: Box<[R::NominalCounter]>,
+            #[allow(dead_code)]
+            nominal_offsets: Box<[usize; #nominal_counters_len]>,
             #[allow(dead_code)]
             measures: Box<[R::Measure; #measures_len]>,
             #[allow(dead_code)]
@@ -200,17 +228,22 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             #[inline]
             pub fn new(registry: R) -> Self {
                 let mut counters = Vec::with_capacity(#counters_len);
+                let mut nominal_offsets = Vec::with_capacity(#nominal_counters_len);
+                let mut nominal_counters = Vec::with_capacity(#nominal_counters_len);
                 let mut measures = Vec::with_capacity(#measures_len);
                 let mut gauges = Vec::with_capacity(#gauges_len);
                 let mut timers = Vec::with_capacity(#timers_len);
 
                 #counters_init
+                #nominal_counters_init
                 #measures_init
                 #gauges_init
                 #timers_init
 
                 Self {
                     counters: counters.try_into().unwrap_or_else(|_| panic!("invalid len")),
+                    nominal_counters: nominal_counters.into(),
+                    nominal_offsets: nominal_offsets.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     measures: measures.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     gauges: gauges.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     timers: timers.try_into().unwrap_or_else(|_| panic!("invalid len")),
@@ -230,6 +263,22 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                 let info = &INFO[info];
                 let counter = &self.counters[id];
                 counter.record(info, value);
+            }
+
+            /// Returns all of the registered nominal counters
+            #[inline]
+            pub fn nominal_counters(&self) -> impl Iterator<Item = (&'static Info, &[R::NominalCounter], &[info::Variant])> + '_ {
+                use api::*;
+                #nominal_counters
+            }
+
+            #[allow(dead_code)]
+            #[inline(always)]
+            fn nominal_count<T: AsVariant>(&self, info: usize, id: usize, value: &T) {
+                let info = &INFO[info];
+                let idx = self.nominal_offsets[id] + value.variant_idx();
+                let counter = &self.nominal_counters[idx];
+                counter.record(info, value.as_variant(), 1);
             }
 
             /// Returns all of the registered measures
@@ -268,7 +317,7 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
 
             #[allow(dead_code)]
             #[inline(always)]
-            fn time(&self, info: usize, id: usize, value: u64) {
+            fn time(&self, info: usize, id: usize, value: core::time::Duration) {
                 let info = &INFO[info];
                 let timer = &self.timers[id];
                 timer.record(info, value);
@@ -291,10 +340,13 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
 
     let probe = quote!(
         use #s2n_quic_core_path::probe::define;
-        use crate::event::metrics::aggregate::{self, Recorder, Info};
+        use crate::event::metrics::aggregate::{self, Recorder, NominalRecorder, Info, info};
 
         mod counter {
             #counters_probes
+        }
+        mod nominal_counter {
+            #nominal_counters_probes
         }
         mod measure {
             #measures_probes
@@ -311,6 +363,7 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
 
         impl aggregate::Registry for Registry {
             type Counter = counter::Recorder;
+            type NominalCounter = nominal_counter::Recorder;
             type Measure = measure::Recorder;
             type Gauge = gauge::Recorder;
             type Timer = timer::Recorder;
@@ -318,6 +371,11 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             #[inline]
             fn register_counter(&self, info: &'static Info) -> Self::Counter {
                 counter::Recorder::new(info)
+            }
+
+            #[inline]
+            fn register_nominal_counter(&self, info: &'static Info, variant: &'static info::Variant) -> Self::NominalCounter {
+                nominal_counter::Recorder::new(info, variant)
             }
 
             #[inline]
@@ -407,6 +465,7 @@ struct Registry {
     probe_new: TokenStream,
     probe_defs: TokenStream,
     entries: TokenStream,
+    nominal_offsets: TokenStream,
 }
 
 impl Registry {
@@ -420,11 +479,21 @@ impl Registry {
             probe_new: quote!(),
             probe_defs: quote!(),
             entries: quote!(),
+            nominal_offsets: quote!(),
         }
     }
 
     pub fn init(&mut self) -> TokenStream {
-        self.init.clone()
+        if !self.nominal_offsets.is_empty() {
+            let init = &self.init;
+            quote!({
+                #[allow(unused_imports)]
+                use api::*;
+                #init
+            })
+        } else {
+            self.init.clone()
+        }
     }
 
     pub fn probe(&self) -> TokenStream {
@@ -454,43 +523,73 @@ impl Registry {
             )
         };
 
-        quote!(
-            #![allow(non_snake_case)]
+        if !self.nominal_offsets.is_empty() {
+            quote!(
+                #![allow(non_snake_case)]
 
-            use super::Info;
+                use super::{info, Info};
+                use crate::event::metrics::aggregate::AsMetric;
 
-            pub struct Recorder(fn(u64));
+                pub struct Recorder(fn(u64, u64, &info::Str));
 
-            impl Recorder {
-                pub(super) fn new(info: &'static Info) -> Self {
-                    #probe_new
+                impl Recorder {
+                    pub(super) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
+                        #probe_new
+                    }
                 }
-            }
 
-            impl super::Recorder for Recorder {
-                fn record(&self, _info: &'static Info, value: u64) {
-                    (self.0)(value);
+                impl super::NominalRecorder<u64> for Recorder {
+                    fn record(&self, _info: &'static Info, variant: &'static info::Variant, value: u64) {
+                        (self.0)(value, variant.id as _, variant.name);
+                    }
                 }
-            }
 
-            #probe_defs
-        )
+                impl super::NominalRecorder<core::time::Duration> for Recorder {
+                    fn record(&self, info: &'static Info, variant: &'static info::Variant, value: core::time::Duration) {
+                        (self.0)(value.as_metric(info.units), variant.id as _, variant.name);
+                    }
+                }
+
+                #probe_defs
+            )
+        } else {
+            quote!(
+                #![allow(non_snake_case)]
+
+                use super::Info;
+                use crate::event::metrics::aggregate::AsMetric;
+
+                pub struct Recorder(fn(u64));
+
+                impl Recorder {
+                    pub(super) fn new(info: &'static Info) -> Self {
+                        #probe_new
+                    }
+                }
+
+                impl super::Recorder<u64> for Recorder {
+                    fn record(&self, _info: &'static Info, value: u64) {
+                        (self.0)(value);
+                    }
+                }
+
+                impl super::Recorder<core::time::Duration> for Recorder {
+                    fn record(&self, info: &'static Info, value: core::time::Duration) {
+                        (self.0)(value.as_metric(info.units));
+                    }
+                }
+
+                #probe_defs
+            )
+        }
     }
 
-    pub fn push(&mut self, info: &Info) -> usize {
+    pub fn push(&mut self, info: &Info, field_ty: Option<&syn::Type>) -> usize {
         let id = self.len;
         self.len += 1;
 
         let dest = &self.dest;
         let register = &self.register;
-
-        self.init.extend(quote!(
-            #dest.push(registry.#register(&INFO[#info]));
-        ));
-
-        self.entries.extend(quote!(
-            #id => (&INFO[#info], entry),
-        ));
 
         let probe = &Ident::new(&info.name, Span::call_site());
         let link_name = &Ident::new(
@@ -503,10 +602,60 @@ impl Registry {
             #info_id => Self(#probe),
         ));
 
-        self.probe_defs.extend(quote!(
-            #[link_name = #link_name]
-            fn #probe(value: u64);
-        ));
+        if !self.nominal_offsets.is_empty() {
+            let nominal_offsets = &self.nominal_offsets;
+
+            let field_ty = field_ty.expect("need field type for nominal");
+
+            // trim off any generics
+            let field_ty_tokens = quote!(#field_ty);
+            let mut field_ty: syn::Path = syn::parse2(field_ty_tokens).unwrap();
+
+            if let Some(syn::PathSegment { arguments, .. }) = field_ty.segments.last_mut() {
+                *arguments = syn::PathArguments::None;
+            }
+
+            let variants = &quote!(<#field_ty as AsVariant>::VARIANTS);
+
+            self.init.extend(quote!({
+                let offset = #dest.len();
+                let mut count = 0;
+
+                for variant in #variants.iter() {
+                    #dest.push(registry.#register(&INFO[#info], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                #nominal_offsets.push(offset);
+            }));
+
+            self.entries.extend(quote!(
+                #id => {
+                    let offset = *entry;
+                    let variants = #variants;
+                    let entries = &self.#dest[offset..offset + variants.len()];
+                    (&INFO[#info], entries, variants)
+                }
+            ));
+
+            self.probe_defs.extend(quote!(
+                #[link_name = #link_name]
+                fn #probe(value: u64, variant: u64, variant_name: &info::Str);
+            ));
+        } else {
+            self.init.extend(quote!(
+                #dest.push(registry.#register(&INFO[#info]));
+            ));
+
+            self.entries.extend(quote!(
+                #id => (&INFO[#info], entry),
+            ));
+
+            self.probe_defs.extend(quote!(
+                #[link_name = #link_name]
+                fn #probe(value: u64);
+            ));
+        }
 
         id
     }
@@ -519,7 +668,12 @@ impl ToTokens for Registry {
             return;
         }
 
-        let dest = &self.dest;
+        let dest = if self.nominal_offsets.is_empty() {
+            &self.dest
+        } else {
+            &self.nominal_offsets
+        };
+
         let entries = &self.entries;
         tokens.extend(quote!(
             self.#dest.iter().enumerate().map(|(idx, entry)| {
