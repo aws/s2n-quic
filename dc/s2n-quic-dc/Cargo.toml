@@ -37,7 +37,7 @@ s2n-codec = { version = "=0.49.0", path = "../../common/s2n-codec", default-feat
 s2n-quic-core = { version = "=0.49.0", path = "../../quic/s2n-quic-core", default-features = false }
 s2n-quic-platform = { version = "=0.49.0", path = "../../quic/s2n-quic-platform" }
 slotmap = "1"
-thiserror = "1"
+thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
