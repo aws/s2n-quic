@@ -17,6 +17,7 @@ impl aggregate::Registry for Registry {
     type Measure = Measure;
     type Gauge = Gauge;
     type Timer = Timer;
+    type NominalTimer = NominalTimer;
 
     #[inline]
     fn register_counter(&self, info: &'static Info) -> Self::Counter {
@@ -50,6 +51,15 @@ impl aggregate::Registry for Registry {
     #[inline]
     fn register_timer(&self, info: &'static Info) -> Self::Timer {
         Self::Timer::new(info)
+    }
+
+    #[inline]
+    fn register_nominal_timer(
+        &self,
+        info: &'static Info,
+        variant: &'static info::Variant,
+    ) -> Self::NominalTimer {
+        Self::NominalTimer::new(info, variant)
     }
 }
 
@@ -140,6 +150,15 @@ recorder!(
     s2n_quic__timer__register,
     s2n_quic__timer__record,
     as_duration: core::time::Duration
+);
+recorder!(
+    NominalRecorder,
+    NominalTimer,
+    nominal_timer,
+    s2n_quic__timer__nominal__register,
+    s2n_quic__timer__nominal__record,
+    as_duration: core::time::Duration,
+    variant: &'static info::Variant
 );
 
 mod bool_counter {

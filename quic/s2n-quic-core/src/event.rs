@@ -4,7 +4,7 @@
 use crate::{connection, endpoint};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
-use core::{ops::RangeInclusive, time::Duration};
+use core::{fmt, ops::RangeInclusive, time::Duration};
 
 mod generated;
 pub mod metrics;
@@ -89,8 +89,20 @@ impl<T> IntoEvent<RangeInclusive<T>> for RangeInclusive<T> {
     }
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Copy)]
 pub struct Timestamp(crate::time::Timestamp);
+
+impl fmt::Debug for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl fmt::Display for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl Timestamp {
     /// The duration since the start of the s2n-quic process.
@@ -132,6 +144,13 @@ impl IntoEvent<Timestamp> for crate::time::Timestamp {
     #[inline]
     fn into_event(self) -> Timestamp {
         Timestamp(self)
+    }
+}
+
+impl IntoEvent<Timestamp> for Timestamp {
+    #[inline]
+    fn into_event(self) -> Timestamp {
+        self
     }
 }
 

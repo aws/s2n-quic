@@ -7,6 +7,7 @@ use crate::{
     path::secret::{stateless_reset, Map},
 };
 use s2n_codec::{DecoderBufferMut, EncoderBuffer};
+use s2n_quic_core::time::NoopClock;
 use std::sync::Arc;
 
 type Subscriber = (
@@ -32,7 +33,7 @@ fn map(capacity: usize) -> Map {
 fn map_sub(capacity: usize, sub: Arc<Subscriber>) -> Map {
     let signer = stateless_reset::Signer::random();
 
-    Map::new(signer, capacity, sub)
+    Map::new(signer, capacity, NoopClock, sub)
 }
 
 #[test]
