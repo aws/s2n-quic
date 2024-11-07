@@ -20,7 +20,7 @@ struct PathSecretMapUninitialized {
     #[measure("entries")]
     entries: usize,
 
-    #[measure("lifetime")]
+    #[measure("lifetime", Duration)]
     lifetime: core::time::Duration,
 }
 

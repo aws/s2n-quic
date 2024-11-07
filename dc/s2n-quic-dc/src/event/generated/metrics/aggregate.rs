@@ -124,7 +124,7 @@ static INFO: &[Info; 60usize] = &[
     info::Builder {
         id: 18usize,
         name: Str::new("path_secret_map_uninitialized.lifetime\0"),
-        units: Units::None,
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
