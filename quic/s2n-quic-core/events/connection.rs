@@ -28,6 +28,7 @@ struct PacketSkipped {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.5
 /// Packet was sent by a connection
 struct PacketSent {
+    #[nominal_counter("kind")]
     packet_header: PacketHeader,
     #[measure("bytes", Bytes)]
     #[counter("bytes.total", Bytes)]
@@ -38,6 +39,7 @@ struct PacketSent {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.6
 /// Packet was received by a connection
 struct PacketReceived {
+    #[nominal_counter("kind")]
     packet_header: PacketHeader,
 }
 
@@ -65,6 +67,7 @@ struct PathCreated<'a> {
 // packet events.
 /// Frame was sent
 struct FrameSent {
+    #[nominal_counter("packet")]
     packet_header: PacketHeader,
     path_id: u64,
     #[nominal_counter("frame")]
@@ -77,6 +80,7 @@ struct FrameSent {
 // packet events.
 /// Frame was received
 struct FrameReceived<'a> {
+    #[nominal_counter("packet")]
     packet_header: PacketHeader,
     path: Path<'a>,
     #[nominal_counter("frame")]
@@ -87,6 +91,7 @@ struct FrameReceived<'a> {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.4.5
 /// Packet was lost
 struct PacketLost<'a> {
+    #[nominal_counter("kind")]
     packet_header: PacketHeader,
     path: Path<'a>,
     #[measure("bytes", Bytes)]
@@ -160,6 +165,7 @@ struct RxAckRangeDropped<'a> {
 #[event("recovery:ack_range_received")]
 /// ACK range was received
 struct AckRangeReceived<'a> {
+    #[nominal_counter("packet")]
     packet_header: PacketHeader,
     path: Path<'a>,
     ack_range: RangeInclusive<u64>,
@@ -168,6 +174,7 @@ struct AckRangeReceived<'a> {
 #[event("recovery:ack_range_sent")]
 /// ACK range was sent
 struct AckRangeSent {
+    #[nominal_counter("packet")]
     packet_header: PacketHeader,
     path_id: u64,
     ack_range: RangeInclusive<u64>,
@@ -184,7 +191,9 @@ struct PacketDropped<'a> {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.2.1
 /// Crypto key updated
 struct KeyUpdate {
+    #[nominal_counter("key_type")]
     key_type: KeyType,
+    #[nominal_counter("cipher_suite")]
     cipher_suite: CipherSuite,
 }
 
@@ -216,6 +225,7 @@ struct ConnectionClosed {
 #[event("transport:duplicate_packet")]
 /// Duplicate packet received
 struct DuplicatePacket<'a> {
+    #[nominal_counter("kind")]
     packet_header: PacketHeader,
     path: Path<'a>,
     #[nominal_counter("error")]
@@ -308,6 +318,7 @@ struct TlsExporterReady<'a> {
 #[event("connectivity:path_challenge_updated")]
 /// Path challenge updated
 struct PathChallengeUpdated<'a> {
+    #[nominal_counter("status")]
     path_challenge_status: PathChallengeStatus,
     path: Path<'a>,
     challenge_data: &'a [u8],

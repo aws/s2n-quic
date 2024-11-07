@@ -23,76 +23,76 @@ mod counter {
                 1usize => Self(server_name_information),
                 2usize => Self(packet_skipped),
                 3usize => Self(packet_sent),
-                4usize => Self(packet_sent__bytes__total),
-                6usize => Self(packet_received),
-                7usize => Self(active_path_updated),
-                8usize => Self(path_created),
-                9usize => Self(frame_sent),
-                11usize => Self(frame_received),
-                13usize => Self(packet_lost),
-                14usize => Self(packet_lost__bytes__total),
-                17usize => Self(recovery_metrics),
-                27usize => Self(congestion),
-                29usize => Self(rx_ack_range_dropped),
-                30usize => Self(ack_range_received),
-                31usize => Self(ack_range_sent),
-                32usize => Self(packet_dropped),
-                34usize => Self(key_update),
-                35usize => Self(key_space_discarded),
-                40usize => Self(connection_started),
-                41usize => Self(connection_closed),
-                44usize => Self(duplicate_packet),
-                46usize => Self(transport_parameters_received),
-                48usize => Self(datagram_sent),
-                49usize => Self(datagram_sent__bytes__total),
-                52usize => Self(datagram_received),
-                53usize => Self(datagram_received__bytes__total),
-                55usize => Self(datagram_dropped),
-                56usize => Self(datagram_dropped__bytes__total),
-                59usize => Self(connection_id_updated),
-                60usize => Self(ecn_state_changed),
-                62usize => Self(connection_migration_denied),
-                64usize => Self(handshake_status_updated),
-                69usize => Self(tls_exporter_ready),
-                70usize => Self(path_challenge_updated),
-                71usize => Self(tls_client_hello),
-                73usize => Self(tls_server_hello),
-                75usize => Self(rx_stream_progress),
-                76usize => Self(rx_stream_progress__bytes__total),
-                78usize => Self(tx_stream_progress),
-                79usize => Self(tx_stream_progress__bytes__total),
-                81usize => Self(keep_alive_timer_expired),
-                82usize => Self(mtu_updated),
-                86usize => Self(slow_start_exited),
-                90usize => Self(delivery_rate_sampled),
-                91usize => Self(pacing_rate_updated),
-                95usize => Self(bbr_state_changed),
-                97usize => Self(dc_state_changed),
-                103usize => Self(version_information),
-                104usize => Self(endpoint_packet_sent),
-                105usize => Self(endpoint_packet_received),
-                106usize => Self(endpoint_datagram_sent),
-                110usize => Self(endpoint_datagram_received),
-                113usize => Self(endpoint_datagram_dropped),
-                117usize => Self(endpoint_connection_attempt_failed),
-                119usize => Self(platform_tx),
-                120usize => Self(platform_tx__packets__total),
-                122usize => Self(platform_tx__syscalls__total),
-                124usize => Self(platform_tx__syscalls__blocked__total),
-                126usize => Self(platform_tx__errors__total),
-                128usize => Self(platform_tx__errors__dropped__total),
-                130usize => Self(platform_tx_error),
-                131usize => Self(platform_rx),
-                132usize => Self(platform_rx__packets__total),
-                134usize => Self(platform_rx__syscalls__total),
-                136usize => Self(platform_rx__syscalls__blocked__total),
-                138usize => Self(platform_rx__errors__total),
-                140usize => Self(platform_rx__errors__dropped__total),
-                142usize => Self(platform_rx_error),
-                143usize => Self(platform_feature_configured),
-                144usize => Self(platform_event_loop_wakeup),
-                145usize => Self(platform_event_loop_sleep),
-                147usize => Self(platform_event_loop_started),
+                5usize => Self(packet_sent__bytes__total),
+                7usize => Self(packet_received),
+                9usize => Self(active_path_updated),
+                10usize => Self(path_created),
+                11usize => Self(frame_sent),
+                14usize => Self(frame_received),
+                17usize => Self(packet_lost),
+                19usize => Self(packet_lost__bytes__total),
+                22usize => Self(recovery_metrics),
+                32usize => Self(congestion),
+                34usize => Self(rx_ack_range_dropped),
+                35usize => Self(ack_range_received),
+                37usize => Self(ack_range_sent),
+                39usize => Self(packet_dropped),
+                41usize => Self(key_update),
+                44usize => Self(key_space_discarded),
+                49usize => Self(connection_started),
+                50usize => Self(connection_closed),
+                53usize => Self(duplicate_packet),
+                56usize => Self(transport_parameters_received),
+                58usize => Self(datagram_sent),
+                59usize => Self(datagram_sent__bytes__total),
+                62usize => Self(datagram_received),
+                63usize => Self(datagram_received__bytes__total),
+                65usize => Self(datagram_dropped),
+                66usize => Self(datagram_dropped__bytes__total),
+                69usize => Self(connection_id_updated),
+                70usize => Self(ecn_state_changed),
+                72usize => Self(connection_migration_denied),
+                74usize => Self(handshake_status_updated),
+                79usize => Self(tls_exporter_ready),
+                80usize => Self(path_challenge_updated),
+                82usize => Self(tls_client_hello),
+                84usize => Self(tls_server_hello),
+                86usize => Self(rx_stream_progress),
+                87usize => Self(rx_stream_progress__bytes__total),
+                89usize => Self(tx_stream_progress),
+                90usize => Self(tx_stream_progress__bytes__total),
+                92usize => Self(keep_alive_timer_expired),
+                93usize => Self(mtu_updated),
+                97usize => Self(slow_start_exited),
+                101usize => Self(delivery_rate_sampled),
+                102usize => Self(pacing_rate_updated),
+                106usize => Self(bbr_state_changed),
+                108usize => Self(dc_state_changed),
+                114usize => Self(version_information),
+                115usize => Self(endpoint_packet_sent),
+                116usize => Self(endpoint_packet_received),
+                117usize => Self(endpoint_datagram_sent),
+                121usize => Self(endpoint_datagram_received),
+                124usize => Self(endpoint_datagram_dropped),
+                128usize => Self(endpoint_connection_attempt_failed),
+                130usize => Self(platform_tx),
+                131usize => Self(platform_tx__packets__total),
+                133usize => Self(platform_tx__syscalls__total),
+                135usize => Self(platform_tx__syscalls__blocked__total),
+                137usize => Self(platform_tx__errors__total),
+                139usize => Self(platform_tx__errors__dropped__total),
+                141usize => Self(platform_tx_error),
+                142usize => Self(platform_rx),
+                143usize => Self(platform_rx__packets__total),
+                145usize => Self(platform_rx__syscalls__total),
+                147usize => Self(platform_rx__syscalls__blocked__total),
+                149usize => Self(platform_rx__errors__total),
+                151usize => Self(platform_rx__errors__dropped__total),
+                153usize => Self(platform_rx_error),
+                154usize => Self(platform_feature_configured),
+                155usize => Self(platform_event_loop_wakeup),
+                156usize => Self(platform_event_loop_sleep),
+                158usize => Self(platform_event_loop_started),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -261,9 +261,9 @@ mod counter {
         impl Recorder {
             pub(crate) fn new(info: &'static Info) -> Self {
                 match info.id {
-                    16usize => Self(packet_lost__is_mtu_probe),
-                    26usize => Self(recovery_metrics__congestion_limited),
-                    85usize => Self(mtu_updated__search_complete),
+                    21usize => Self(packet_lost__is_mtu_probe),
+                    31usize => Self(recovery_metrics__congestion_limited),
+                    96usize => Self(mtu_updated__search_complete),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -292,23 +292,34 @@ mod counter {
         impl Recorder {
             pub(crate) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
                 match info.id {
-                    10usize => Self(frame_sent__frame),
-                    12usize => Self(frame_received__frame),
-                    28usize => Self(congestion__source),
-                    33usize => Self(packet_dropped__reason),
-                    39usize => Self(key_space_discarded__space),
-                    43usize => Self(connection_closed__error),
-                    45usize => Self(duplicate_packet__error),
-                    58usize => Self(datagram_dropped__reason),
-                    61usize => Self(ecn_state_changed__state),
-                    63usize => Self(connection_migration_denied__reason),
-                    68usize => Self(handshake_status_updated__status),
-                    84usize => Self(mtu_updated__cause),
-                    87usize => Self(slow_start_exited__cause),
-                    96usize => Self(bbr_state_changed__state),
-                    102usize => Self(dc_state_changed__state),
-                    116usize => Self(endpoint_datagram_dropped__reason),
-                    118usize => Self(endpoint_connection_attempt_failed__error),
+                    4usize => Self(packet_sent__kind),
+                    8usize => Self(packet_received__kind),
+                    12usize => Self(frame_sent__packet),
+                    13usize => Self(frame_sent__frame),
+                    15usize => Self(frame_received__packet),
+                    16usize => Self(frame_received__frame),
+                    18usize => Self(packet_lost__kind),
+                    33usize => Self(congestion__source),
+                    36usize => Self(ack_range_received__packet),
+                    38usize => Self(ack_range_sent__packet),
+                    40usize => Self(packet_dropped__reason),
+                    42usize => Self(key_update__key_type),
+                    43usize => Self(key_update__cipher_suite),
+                    48usize => Self(key_space_discarded__space),
+                    52usize => Self(connection_closed__error),
+                    54usize => Self(duplicate_packet__kind),
+                    55usize => Self(duplicate_packet__error),
+                    68usize => Self(datagram_dropped__reason),
+                    71usize => Self(ecn_state_changed__state),
+                    73usize => Self(connection_migration_denied__reason),
+                    78usize => Self(handshake_status_updated__status),
+                    81usize => Self(path_challenge_updated__status),
+                    95usize => Self(mtu_updated__cause),
+                    98usize => Self(slow_start_exited__cause),
+                    107usize => Self(bbr_state_changed__state),
+                    113usize => Self(dc_state_changed__state),
+                    127usize => Self(endpoint_datagram_dropped__reason),
+                    129usize => Self(endpoint_connection_attempt_failed__error),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -325,18 +336,38 @@ mod counter {
         }
         define!(
             extern "probe" {
+                # [link_name = s2n_quic__event__counter__nominal__packet_sent__kind]
+                fn packet_sent__kind(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__packet_received__kind]
+                fn packet_received__kind(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__frame_sent__packet]
+                fn frame_sent__packet(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__frame_sent__frame]
                 fn frame_sent__frame(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__frame_received__packet]
+                fn frame_received__packet(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__frame_received__frame]
                 fn frame_received__frame(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__packet_lost__kind]
+                fn packet_lost__kind(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__congestion__source]
                 fn congestion__source(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__ack_range_received__packet]
+                fn ack_range_received__packet(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__ack_range_sent__packet]
+                fn ack_range_sent__packet(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__packet_dropped__reason]
                 fn packet_dropped__reason(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__key_update__key_type]
+                fn key_update__key_type(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__key_update__cipher_suite]
+                fn key_update__cipher_suite(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__key_space_discarded__space]
                 fn key_space_discarded__space(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__connection_closed__error]
                 fn connection_closed__error(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__duplicate_packet__kind]
+                fn duplicate_packet__kind(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__duplicate_packet__error]
                 fn duplicate_packet__error(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__datagram_dropped__reason]
@@ -351,6 +382,12 @@ mod counter {
                 );
                 # [link_name = s2n_quic__event__counter__nominal__handshake_status_updated__status]
                 fn handshake_status_updated__status(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
+                # [link_name = s2n_quic__event__counter__nominal__path_challenge_updated__status]
+                fn path_challenge_updated__status(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
@@ -387,44 +424,44 @@ mod measure {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                5usize => Self(packet_sent__bytes),
-                15usize => Self(packet_lost__bytes),
-                18usize => Self(recovery_metrics__min_rtt),
-                19usize => Self(recovery_metrics__smoothed_rtt),
-                20usize => Self(recovery_metrics__latest_rtt),
-                21usize => Self(recovery_metrics__rtt_variance),
-                22usize => Self(recovery_metrics__max_ack_delay),
-                23usize => Self(recovery_metrics__pto_count),
-                24usize => Self(recovery_metrics__congestion_window),
-                25usize => Self(recovery_metrics__bytes_in_flight),
-                50usize => Self(datagram_sent__bytes),
-                51usize => Self(datagram_sent__gso_offset),
-                54usize => Self(datagram_received__bytes),
-                57usize => Self(datagram_dropped__bytes),
-                77usize => Self(rx_stream_progress__bytes),
-                80usize => Self(tx_stream_progress__bytes),
-                83usize => Self(mtu_updated__mtu),
-                89usize => Self(slow_start_exited__congestion_window),
-                92usize => Self(pacing_rate_updated__bytes_per_second),
-                93usize => Self(pacing_rate_updated__burst_size),
-                94usize => Self(pacing_rate_updated__pacing_gain),
-                107usize => Self(endpoint_datagram_sent__bytes),
-                108usize => Self(endpoint_datagram_sent__bytes__total),
-                109usize => Self(endpoint_datagram_sent__gso_offset),
-                111usize => Self(endpoint_datagram_received__bytes),
-                112usize => Self(endpoint_datagram_received__bytes__total),
-                114usize => Self(endpoint_datagram_dropped__bytes),
-                115usize => Self(endpoint_datagram_dropped__bytes__total),
-                121usize => Self(platform_tx__packets),
-                123usize => Self(platform_tx__syscalls),
-                125usize => Self(platform_tx__syscalls__blocked),
-                127usize => Self(platform_tx__errors),
-                129usize => Self(platform_tx__errors__dropped),
-                133usize => Self(platform_rx__packets),
-                135usize => Self(platform_rx__syscalls),
-                137usize => Self(platform_rx__syscalls__blocked),
-                139usize => Self(platform_rx__errors),
-                141usize => Self(platform_rx__errors__dropped),
+                6usize => Self(packet_sent__bytes),
+                20usize => Self(packet_lost__bytes),
+                23usize => Self(recovery_metrics__min_rtt),
+                24usize => Self(recovery_metrics__smoothed_rtt),
+                25usize => Self(recovery_metrics__latest_rtt),
+                26usize => Self(recovery_metrics__rtt_variance),
+                27usize => Self(recovery_metrics__max_ack_delay),
+                28usize => Self(recovery_metrics__pto_count),
+                29usize => Self(recovery_metrics__congestion_window),
+                30usize => Self(recovery_metrics__bytes_in_flight),
+                60usize => Self(datagram_sent__bytes),
+                61usize => Self(datagram_sent__gso_offset),
+                64usize => Self(datagram_received__bytes),
+                67usize => Self(datagram_dropped__bytes),
+                88usize => Self(rx_stream_progress__bytes),
+                91usize => Self(tx_stream_progress__bytes),
+                94usize => Self(mtu_updated__mtu),
+                100usize => Self(slow_start_exited__congestion_window),
+                103usize => Self(pacing_rate_updated__bytes_per_second),
+                104usize => Self(pacing_rate_updated__burst_size),
+                105usize => Self(pacing_rate_updated__pacing_gain),
+                118usize => Self(endpoint_datagram_sent__bytes),
+                119usize => Self(endpoint_datagram_sent__bytes__total),
+                120usize => Self(endpoint_datagram_sent__gso_offset),
+                122usize => Self(endpoint_datagram_received__bytes),
+                123usize => Self(endpoint_datagram_received__bytes__total),
+                125usize => Self(endpoint_datagram_dropped__bytes),
+                126usize => Self(endpoint_datagram_dropped__bytes__total),
+                132usize => Self(platform_tx__packets),
+                134usize => Self(platform_tx__syscalls),
+                136usize => Self(platform_tx__syscalls__blocked),
+                138usize => Self(platform_tx__errors),
+                140usize => Self(platform_tx__errors__dropped),
+                144usize => Self(platform_rx__packets),
+                146usize => Self(platform_rx__syscalls),
+                148usize => Self(platform_rx__syscalls__blocked),
+                150usize => Self(platform_rx__errors),
+                152usize => Self(platform_rx__errors__dropped),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -539,21 +576,21 @@ mod timer {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                36usize => Self(key_space_discarded__initial__latency),
-                37usize => Self(key_space_discarded__handshake__latency),
-                38usize => Self(key_space_discarded__one_rtt__latency),
-                42usize => Self(connection_closed__latency),
-                47usize => Self(transport_parameters_received__latency),
-                65usize => Self(handshake_status_updated__complete__latency),
-                66usize => Self(handshake_status_updated__confirmed__latency),
-                67usize => Self(handshake_status_updated__handshake_done_acked__latency),
-                72usize => Self(tls_client_hello__latency),
-                74usize => Self(tls_server_hello__latency),
-                98usize => Self(dc_state_changed__version_negotiated__latency),
-                99usize => Self(dc_state_changed__no_version_negotiated__latency),
-                100usize => Self(dc_state_changed__path_secrets__latency),
-                101usize => Self(dc_state_changed__complete__latency),
-                146usize => Self(platform_event_loop_sleep__processing_duration),
+                45usize => Self(key_space_discarded__initial__latency),
+                46usize => Self(key_space_discarded__handshake__latency),
+                47usize => Self(key_space_discarded__one_rtt__latency),
+                51usize => Self(connection_closed__latency),
+                57usize => Self(transport_parameters_received__latency),
+                75usize => Self(handshake_status_updated__complete__latency),
+                76usize => Self(handshake_status_updated__confirmed__latency),
+                77usize => Self(handshake_status_updated__handshake_done_acked__latency),
+                83usize => Self(tls_client_hello__latency),
+                85usize => Self(tls_server_hello__latency),
+                109usize => Self(dc_state_changed__version_negotiated__latency),
+                110usize => Self(dc_state_changed__no_version_negotiated__latency),
+                111usize => Self(dc_state_changed__path_secrets__latency),
+                112usize => Self(dc_state_changed__complete__latency),
+                157usize => Self(platform_event_loop_sleep__processing_duration),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -605,7 +642,7 @@ mod timer {
         impl Recorder {
             pub(crate) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
                 match info.id {
-                    88usize => Self(slow_start_exited__latency),
+                    99usize => Self(slow_start_exited__latency),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }

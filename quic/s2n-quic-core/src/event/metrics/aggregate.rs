@@ -10,6 +10,9 @@ pub mod probe;
 mod recorder;
 mod variant;
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 pub use info::Info;
 pub use metric::*;
 pub use recorder::*;
