@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::time::Duration;
-
 #[cfg(feature = "alloc")]
 pub use crate::event::generated::metrics::aggregate::*;
 
@@ -18,13 +16,16 @@ pub use recorder::*;
 pub use variant::*;
 
 pub trait Registry: 'static + Send + Sync {
-    type Counter: Recorder<u64>;
-    type NominalCounter: NominalRecorder<u64>;
-    type Measure: Recorder<u64>;
-    type Gauge: Recorder<u64>;
-    type Timer: Recorder<Duration>;
+    type Counter: Recorder;
+    type BoolCounter: BoolRecorder;
+    type NominalCounter: NominalRecorder;
+    type Measure: Recorder;
+    type Gauge: Recorder;
+    type Timer: Recorder;
 
     fn register_counter(&self, info: &'static Info) -> Self::Counter;
+
+    fn register_bool_counter(&self, info: &'static Info) -> Self::BoolCounter;
 
     fn register_nominal_counter(
         &self,
@@ -45,6 +46,7 @@ where
     B: Registry,
 {
     type Counter = (A::Counter, B::Counter);
+    type BoolCounter = (A::BoolCounter, B::BoolCounter);
     type NominalCounter = (A::NominalCounter, B::NominalCounter);
     type Measure = (A::Measure, B::Measure);
     type Gauge = (A::Gauge, B::Gauge);
@@ -53,6 +55,14 @@ where
     #[inline]
     fn register_counter(&self, info: &'static Info) -> Self::Counter {
         (self.0.register_counter(info), self.1.register_counter(info))
+    }
+
+    #[inline]
+    fn register_bool_counter(&self, info: &'static Info) -> Self::BoolCounter {
+        (
+            self.0.register_bool_counter(info),
+            self.1.register_bool_counter(info),
+        )
     }
 
     #[inline]
@@ -86,6 +96,7 @@ where
 #[cfg(feature = "alloc")]
 impl<T: Registry> Registry for alloc::sync::Arc<T> {
     type Counter = T::Counter;
+    type BoolCounter = T::BoolCounter;
     type NominalCounter = T::NominalCounter;
     type Measure = T::Measure;
     type Gauge = T::Gauge;
@@ -94,6 +105,11 @@ impl<T: Registry> Registry for alloc::sync::Arc<T> {
     #[inline]
     fn register_counter(&self, info: &'static Info) -> Self::Counter {
         self.as_ref().register_counter(info)
+    }
+
+    #[inline]
+    fn register_bool_counter(&self, info: &'static Info) -> Self::BoolCounter {
+        self.as_ref().register_bool_counter(info)
     }
 
     #[inline]

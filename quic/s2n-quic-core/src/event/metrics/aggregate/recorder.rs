@@ -5,44 +5,39 @@ use super::{
     info::{self, Info},
     Metric,
 };
-use core::time::Duration;
 
-pub trait Recorder<T>: 'static + Send + Sync
-where
-    T: Metric,
-{
-    fn record(&self, info: &'static Info, value: T);
+pub trait Recorder: 'static + Send + Sync {
+    fn record<T: Metric>(&self, info: &'static Info, value: T);
 }
 
-pub trait NominalRecorder<T>: 'static + Send + Sync
-where
-    T: Metric,
-{
-    fn record(&self, info: &'static Info, variant: &'static info::Variant, value: T);
+pub trait BoolRecorder: 'static + Send + Sync {
+    fn record(&self, info: &'static Info, value: bool);
+}
+
+pub trait NominalRecorder: 'static + Send + Sync {
+    fn record<T: Metric>(&self, info: &'static Info, variant: &'static info::Variant, value: T);
 }
 
 macro_rules! impl_recorder {
     ($trait:ident $(, $extra_param:ident: $extra_type:ty)?) => {
-        impl<A, B, T> $trait<T> for (A, B)
+        impl<A, B> $trait for (A, B)
         where
-            A: $trait<T>,
-            B: $trait<T>,
-            T: Metric,
+            A: $trait,
+            B: $trait,
         {
             #[inline]
-            fn record(&self, info: &'static Info, $($extra_param: $extra_type,)? value: T) {
+            fn record<T: Metric>(&self, info: &'static Info, $($extra_param: $extra_type,)? value: T) {
                 self.0.record(info, $($extra_param,)? value);
                 self.1.record(info, $($extra_param,)? value);
             }
         }
 
-        impl<R, T> $trait<T> for Option<R>
+        impl<R> $trait for Option<R>
         where
-            R: $trait<T>,
-            T: Metric,
+            R: $trait,
         {
             #[inline]
-            fn record(&self, info: &'static Info, $($extra_param: $extra_type,)? value: T) {
+            fn record<T: Metric>(&self, info: &'static Info, $($extra_param: $extra_type,)? value: T) {
                 if let Some(recorder) = self {
                     recorder.record(info, $($extra_param,)? value);
                 }
@@ -50,34 +45,21 @@ macro_rules! impl_recorder {
         }
 
         #[cfg(target_has_atomic = "64")]
-        impl $trait<u64> for core::sync::atomic::AtomicU64 {
+        impl $trait for core::sync::atomic::AtomicU64 {
             #[inline]
-            fn record(&self, _info: &'static Info, $($extra_param: $extra_type,)? value: u64) {
-                self.fetch_add(value, core::sync::atomic::Ordering::Relaxed);
-                $(let _ = $extra_param;)?
-            }
-        }
-
-        #[cfg(target_has_atomic = "64")]
-        impl $trait<Duration> for core::sync::atomic::AtomicU64 {
-            #[inline]
-            fn record(&self, _info: &'static Info, $($extra_param: $extra_type,)? value: Duration) {
-                self.fetch_add(
-                    value.as_micros() as _,
-                    core::sync::atomic::Ordering::Relaxed,
-                );
+            fn record<T: Metric>(&self, _info: &'static Info, $($extra_param: $extra_type,)? value: T) {
+                self.fetch_add(value.as_u64(), core::sync::atomic::Ordering::Relaxed);
                 $(let _ = $extra_param;)?
             }
         }
 
         #[cfg(feature = "alloc")]
-        impl<R, T> $trait<T> for alloc::sync::Arc<R>
+        impl<R> $trait for alloc::sync::Arc<R>
         where
-            R: $trait<T>,
-            T: Metric,
+            R: $trait,
         {
             #[inline]
-            fn record(&self, info: &'static Info, $($extra_param: $extra_type,)? value: T) {
+            fn record<T: Metric>(&self, info: &'static Info, $($extra_param: $extra_type,)? value: T) {
                 self.as_ref().record(info, $($extra_param,)? value );
             }
         }
@@ -86,3 +68,48 @@ macro_rules! impl_recorder {
 
 impl_recorder!(Recorder);
 impl_recorder!(NominalRecorder, variant: &'static info::Variant);
+
+impl<A, B> BoolRecorder for (A, B)
+where
+    A: BoolRecorder,
+    B: BoolRecorder,
+{
+    #[inline]
+    fn record(&self, info: &'static Info, value: bool) {
+        self.0.record(info, value);
+        self.1.record(info, value);
+    }
+}
+
+impl<A> BoolRecorder for Option<A>
+where
+    A: BoolRecorder,
+{
+    #[inline]
+    fn record(&self, info: &'static Info, value: bool) {
+        if let Some(recorder) = self {
+            recorder.record(info, value);
+        }
+    }
+}
+
+#[cfg(target_has_atomic = "64")]
+impl BoolRecorder for core::sync::atomic::AtomicU64 {
+    #[inline]
+    fn record(&self, _info: &'static Info, value: bool) {
+        if value {
+            self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<R> BoolRecorder for alloc::sync::Arc<R>
+where
+    R: BoolRecorder,
+{
+    #[inline]
+    fn record(&self, info: &'static Info, value: bool) {
+        self.as_ref().record(info, value);
+    }
+}

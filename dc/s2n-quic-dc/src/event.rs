@@ -36,7 +36,7 @@ pub mod metrics {
     pub mod aggregate {
         pub use crate::event::generated::metrics::aggregate::*;
         pub use s2n_quic_core::event::metrics::aggregate::{
-            info, AsMetric, AsVariant, Info, NominalRecorder, Recorder, Registry,
+            info, AsVariant, BoolRecorder, Info, Metric, NominalRecorder, Recorder, Registry, Units,
         };
 
         pub mod probe {

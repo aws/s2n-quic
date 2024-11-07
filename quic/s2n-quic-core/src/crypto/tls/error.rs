@@ -81,18 +81,33 @@ macro_rules! alert_descriptions {
         }
 
         impl aggregate::AsVariant for Error {
-            const VARIANTS: &'static [aggregate::info::Variant] = &[
+            const VARIANTS: &'static [aggregate::info::Variant] = &{
+                use aggregate::info::{Variant, Str};
+
+                const fn count(_v: u64) -> usize {
+                    1
+                }
+
+                const LEN: usize = 1 $(+ count($value))*;
+                let mut array = [Variant { name: Str::new("\0"), id: 0 }; LEN];
+
+                let mut id = 0;
+
                 $(
-                    aggregate::info::Variant {
-                        name: aggregate::info::Str::new(concat!("TLS_", stringify!($name), "\0")),
-                        id: $value,
-                    },
+                    array[id] = Variant {
+                        name: Str::new(concat!("TLS_", stringify!($name), "\0")),
+                        id,
+                    };
+                    id += 1;
                 )*
-                aggregate::info::Variant {
+
+                array[id] = aggregate::info::Variant {
                     name: aggregate::info::Str::new("TLS_UNKNOWN_ERROR\0"),
-                    id: 255,
-                },
-            ];
+                    id,
+                };
+
+                array
+            };
 
             #[inline]
             fn variant_idx(&self) -> usize {

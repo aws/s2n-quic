@@ -725,10 +725,11 @@ pub struct FieldAttrs {
     pub builder: Option<syn::Type>,
     pub snapshot: Option<syn::Expr>,
     pub counter: Vec<Metric>,
+    pub bool_counter: Vec<MetricNoUnit>,
     pub nominal_counter: Vec<Metric>,
     pub measure: Vec<Metric>,
     pub gauge: Vec<Metric>,
-    pub timer: Vec<Timer>,
+    pub timer: Vec<MetricNoUnit>,
     pub extra: TokenStream,
 }
 
@@ -759,6 +760,7 @@ impl FieldAttrs {
             field!(builder);
             field!(snapshot);
             field!(counter[]);
+            field!(bool_counter[]);
             field!(nominal_counter[]);
             field!(measure[]);
             field!(gauge[]);
@@ -831,7 +833,7 @@ impl Variant {
 #[derive(Debug)]
 pub struct Metric {
     pub name: syn::LitStr,
-    pub unit: Option<syn::LitStr>,
+    pub unit: Option<syn::Ident>,
 }
 
 impl syn::parse::Parse for Metric {
@@ -850,11 +852,11 @@ impl syn::parse::Parse for Metric {
 }
 
 #[derive(Debug)]
-pub struct Timer {
+pub struct MetricNoUnit {
     pub name: syn::LitStr,
 }
 
-impl syn::parse::Parse for Timer {
+impl syn::parse::Parse for MetricNoUnit {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let name = input.parse()?;
         let _: syn::parse::Nothing = input.parse()?;

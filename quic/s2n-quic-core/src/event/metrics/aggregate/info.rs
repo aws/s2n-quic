@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use super::Units;
 use crate::probe;
 use core::{ffi::CStr, fmt, ops};
 
@@ -9,7 +10,7 @@ use core::{ffi::CStr, fmt, ops};
 pub struct Info {
     pub id: usize,
     pub name: &'static Str,
-    pub units: &'static Str,
+    pub units: Units,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -23,7 +24,7 @@ pub struct Variant {
 pub struct Builder {
     pub id: usize,
     pub name: &'static Str,
-    pub units: &'static Str,
+    pub units: Units,
 }
 
 impl Builder {

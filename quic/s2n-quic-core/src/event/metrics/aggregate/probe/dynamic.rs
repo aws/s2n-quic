@@ -12,14 +12,20 @@ pub struct Registry(());
 
 impl aggregate::Registry for Registry {
     type Counter = Counter;
+    type BoolCounter = BoolCounter;
     type NominalCounter = NominalCounter;
     type Measure = Measure;
     type Gauge = Gauge;
-    type Timer = Measure;
+    type Timer = Timer;
 
     #[inline]
     fn register_counter(&self, info: &'static Info) -> Self::Counter {
         Self::Counter::new(info)
+    }
+
+    #[inline]
+    fn register_bool_counter(&self, info: &'static Info) -> Self::BoolCounter {
+        Self::BoolCounter::new(info)
     }
 
     #[inline]
@@ -53,14 +59,14 @@ macro_rules! recorder {
         $name:ident,
         $module:ident,
         $register:ident,
-        $record:ident
+        $record:ident,
+        $as_metric:ident : $metric_ty:ty
         $(, $variant:ident : $variant_ty:ty)?
     ) => {
         mod $module {
             use super::*;
             use crate::probe::define;
-            use aggregate::AsMetric;
-            use core::time::Duration;
+            use aggregate::Metric;
 
             define!(
                 extern "probe" {
@@ -68,7 +74,7 @@ macro_rules! recorder {
                     fn register(id: usize, name: &Str, units: &Str, $($variant: &Str)?);
 
                     #[link_name = $record]
-                    fn record(id: usize, name: &Str, units: &Str, $($variant: &Str, )? value: u64);
+                    fn record(id: usize, name: &Str, units: &Str, $($variant: &Str, )? value: $metric_ty);
                 }
             );
 
@@ -77,22 +83,15 @@ macro_rules! recorder {
 
             impl $name {
                 pub(super) fn new(info: &'static Info $(, $variant: $variant_ty)?) -> Self {
-                    register(info.id, info.name, info.units $(, $variant.name)?);
+                    register(info.id, info.name, info.units.as_str(), $($variant.name)?);
                     Self(())
                 }
             }
 
-            impl aggregate::$recorder<u64> for $name {
+            impl aggregate::$recorder for $name {
                 #[inline]
-                fn record(&self, info: &'static Info, $($variant: $variant_ty, )? value: u64) {
-                    record(info.id, info.name, info.units, $($variant.name, )? value);
-                }
-            }
-
-            impl aggregate::$recorder<Duration> for $name {
-                #[inline]
-                fn record(&self, info: &'static Info, $($variant: $variant_ty, )? value: Duration) {
-                    record(info.id, info.name, info.units, $($variant.name, )? value.as_metric(info.units));
+                fn record<T: Metric>(&self, info: &'static Info, $($variant: $variant_ty, )? value: T) {
+                    record(info.id, info.name, info.units.as_str(), $($variant.name, )? value.$as_metric());
                 }
             }
         }
@@ -106,14 +105,16 @@ recorder!(
     Counter,
     counter,
     s2n_quic__counter__register,
-    s2n_quic__counter__record
+    s2n_quic__counter__record,
+    as_u64: u64
 );
 recorder!(
     NominalRecorder,
     NominalCounter,
     nominal_counter,
-    s2n_quic__nominal_counter__register,
-    s2n_quic__nominal_counter__record,
+    s2n_quic__counter__nominal__register,
+    s2n_quic__counter__nominal__record,
+    as_u64: u64,
     variant: &'static info::Variant
 );
 recorder!(
@@ -121,12 +122,56 @@ recorder!(
     Measure,
     measure,
     s2n_quic__measure__register,
-    s2n_quic__measure__record
+    s2n_quic__measure__record,
+    as_u64: u64
 );
 recorder!(
     Recorder,
     Gauge,
     gauge,
     s2n_quic__gauge__register,
-    s2n_quic__gauge__record
+    s2n_quic__gauge__record,
+    as_u64: u64
 );
+recorder!(
+    Recorder,
+    Timer,
+    timer,
+    s2n_quic__timer__register,
+    s2n_quic__timer__record,
+    as_duration: core::time::Duration
+);
+
+mod bool_counter {
+    use super::*;
+    use crate::probe::define;
+
+    define!(
+        extern "probe" {
+            #[link_name = s2n_quic__counter__bool__register]
+            fn register(id: usize, name: &Str);
+
+            #[link_name = s2n_quic__counter__bool__record]
+            fn record(id: usize, name: &Str, value: bool);
+        }
+    );
+
+    #[derive(Copy, Clone, Debug, Default)]
+    pub struct BoolCounter(());
+
+    impl BoolCounter {
+        pub(super) fn new(info: &'static Info) -> Self {
+            register(info.id, info.name);
+            Self(())
+        }
+    }
+
+    impl aggregate::BoolRecorder for BoolCounter {
+        #[inline]
+        fn record(&self, info: &'static Info, value: bool) {
+            record(info.id, info.name, value);
+        }
+    }
+}
+
+pub use bool_counter::BoolCounter;

@@ -4,10 +4,12 @@
 #[event("endpoint:initialized")]
 #[subject(endpoint)]
 struct EndpointInitialized<'a> {
+    #[nominal_counter("acceptor.protocol")]
     acceptor_addr: SocketAddress<'a>,
+    #[nominal_counter("handshake.protocol")]
     handshake_addr: SocketAddress<'a>,
-    #[nominal_counter("tcp", "")]
+    #[bool_counter("tcp")]
     tcp: bool,
-    #[nominal_counter("udp", "")]
+    #[bool_counter("udp")]
     udp: bool,
 }

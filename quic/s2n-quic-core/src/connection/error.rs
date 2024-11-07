@@ -589,14 +589,14 @@ mod metrics {
     };
 
     macro_rules! impl_variants {
-        ($($name:ident => ($name_str:literal, $id:literal)),* $(,)?) => {
+        ($($name:ident => $name_str:literal),* $(,)?) => {
             impl AsVariant for Error {
                 const VARIANTS: &'static [Variant] = &{
-                    const fn count(_id: usize) -> usize {
+                    const fn count(_id: &str) -> usize {
                         1
                     }
 
-                    const VARIANTS: usize = 0 $( + count($id))*;
+                    const VARIANTS: usize = 0 $( + count($name_str))*;
 
                     const TRANSPORT: &'static [Variant] = transport::error::Code::VARIANTS;
 
@@ -605,24 +605,24 @@ mod metrics {
                         VARIANTS + TRANSPORT.len()
                     ];
 
-                    let mut idx = 0;
+                    let mut id = 0;
 
                     $(
-                        array[idx] = Variant {
+                        array[id] = Variant {
                             name: Str::new(concat!($name_str, "\0")),
-                            id: $id | (u16::MAX as usize + 1),
+                            id,
                         };
-                        idx += 1;
+                        id += 1;
                     )*
 
                     let mut transport_idx = 0;
                     while transport_idx < TRANSPORT.len() {
                         let variant = TRANSPORT[transport_idx];
-                        array[idx] = Variant {
+                        array[id] = Variant {
                             name: variant.name,
-                            id: variant.id,
+                            id,
                         };
-                        idx += 1;
+                        id += 1;
                         transport_idx += 1;
                     }
 
@@ -672,16 +672,16 @@ mod metrics {
     }
 
     impl_variants!(
-        Closed => ("CLOSED", 0),
-        Application => ("APPLICATION", 1),
-        StatelessReset => ("STATELESS_RESET", 2),
-        IdleTimerExpired => ("IDLE_TIMER_EXPIRED", 3),
-        NoValidPath => ("NO_VALID_PATH", 4),
-        StreamIdExhausted => ("STREAM_ID_EXHAUSTED", 5),
-        MaxHandshakeDurationExceeded => ("MAX_HANDSHAKE_DURATION_EXCEEDED", 6),
-        ImmediateClose => ("IMMEDIATE_CLOSE", 7),
-        EndpointClosing => ("ENDPOINT_CLOSING", 8),
-        InvalidConfiguration => ("INVALID_CONFIGURATION", 9),
-        Unspecified => ("UNSPECIFIED", 10),
+        Closed => "CLOSED",
+        Application => "APPLICATION",
+        StatelessReset => "STATELESS_RESET",
+        IdleTimerExpired => "IDLE_TIMER_EXPIRED",
+        NoValidPath => "NO_VALID_PATH",
+        StreamIdExhausted => "STREAM_ID_EXHAUSTED",
+        MaxHandshakeDurationExceeded => "MAX_HANDSHAKE_DURATION_EXCEEDED",
+        ImmediateClose => "IMMEDIATE_CLOSE",
+        EndpointClosing => "ENDPOINT_CLOSING",
+        InvalidConfiguration => "INVALID_CONFIGURATION",
+        Unspecified => "UNSPECIFIED",
     );
 }
