@@ -4,23 +4,23 @@
 #[event("application:write")]
 pub struct ApplicationWrite {
     /// The number of bytes that the application tried to write
-    #[measure("provided", "b")]
+    #[measure("provided", Bytes)]
     total_len: usize,
 
     /// The amount that was written
-    #[measure("committed", "b")]
-    #[counter("committed.total", "b")]
+    #[measure("committed", Bytes)]
+    #[counter("committed.total", Bytes)]
     write_len: usize,
 }
 
 #[event("application:read")]
 pub struct ApplicationRead {
     /// The number of bytes that the application tried to read
-    #[measure("capacity", "b")]
+    #[measure("capacity", Bytes)]
     capacity: usize,
 
     /// The amount that was read
-    #[measure("committed", "b")]
-    #[counter("committed.total", "b")]
+    #[measure("committed", Bytes)]
+    #[counter("committed.total", Bytes)]
     read_len: usize,
 }

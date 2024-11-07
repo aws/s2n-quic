@@ -29,8 +29,8 @@ struct PacketSkipped {
 /// Packet was sent by a connection
 struct PacketSent {
     packet_header: PacketHeader,
-    #[measure("bytes", "b")]
-    #[counter("bytes.total", "b")]
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
     packet_len: usize,
 }
 
@@ -67,6 +67,7 @@ struct PathCreated<'a> {
 struct FrameSent {
     packet_header: PacketHeader,
     path_id: u64,
+    #[nominal_counter("frame")]
     frame: Frame,
 }
 
@@ -78,6 +79,7 @@ struct FrameSent {
 struct FrameReceived<'a> {
     packet_header: PacketHeader,
     path: Path<'a>,
+    #[nominal_counter("frame")]
     frame: Frame,
 }
 
@@ -87,9 +89,10 @@ struct FrameReceived<'a> {
 struct PacketLost<'a> {
     packet_header: PacketHeader,
     path: Path<'a>,
-    #[measure("bytes", "b")]
-    #[counter("bytes.total", "b")]
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
     bytes_lost: u16,
+    #[bool_counter("is_mtu_probe")]
     is_mtu_probe: bool,
 }
 
@@ -98,23 +101,23 @@ struct PacketLost<'a> {
 /// Recovery metrics updated
 struct RecoveryMetrics<'a> {
     path: Path<'a>,
-    #[measure("min_rtt", "us")]
+    #[measure("min_rtt", Duration)]
     min_rtt: Duration,
-    #[measure("smoothed_rtt", "us")]
+    #[measure("smoothed_rtt", Duration)]
     smoothed_rtt: Duration,
-    #[measure("latest_rtt", "us")]
+    #[measure("latest_rtt", Duration)]
     latest_rtt: Duration,
-    #[measure("rtt_variance", "us")]
+    #[measure("rtt_variance", Duration)]
     rtt_variance: Duration,
-    #[measure("max_ack_delay", "us")]
+    #[measure("max_ack_delay", Duration)]
     max_ack_delay: Duration,
     #[measure("pto_count")]
     pto_count: u32,
-    #[measure("congestion_window", "b")]
+    #[measure("congestion_window", Duration)]
     congestion_window: u32,
-    #[measure("bytes_in_flight", "b")]
+    #[measure("bytes_in_flight", Duration)]
     bytes_in_flight: u32,
-    // TODO add support for counting bools
+    #[bool_counter("congestion_limited")]
     congestion_limited: bool,
 }
 
@@ -122,6 +125,7 @@ struct RecoveryMetrics<'a> {
 /// Congestion (ECN or packet loss) has occurred
 struct Congestion<'a> {
     path: Path<'a>,
+    #[nominal_counter("source")]
     source: CongestionSource,
 }
 
@@ -129,6 +133,7 @@ struct Congestion<'a> {
 #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
 /// Events related to ACK processing
 struct AckProcessed<'a> {
+    #[nominal_counter("action")]
     action: AckAction,
     path: Path<'a>,
 }
@@ -171,6 +176,7 @@ struct AckRangeSent {
 #[event("transport:packet_dropped")]
 /// Packet was dropped with the given reason
 struct PacketDropped<'a> {
+    #[nominal_counter("reason")]
     reason: PacketDropReason<'a>,
 }
 
@@ -184,6 +190,7 @@ struct KeyUpdate {
 
 #[event("security:key_space_discarded")]
 struct KeySpaceDiscarded {
+    #[nominal_counter("space")]
     space: KeySpace,
 }
 
@@ -198,6 +205,7 @@ struct ConnectionStarted<'a> {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.3
 /// Connection closed
 struct ConnectionClosed {
+    #[nominal_counter("error")]
     error: crate::connection::Error,
 }
 
@@ -206,6 +214,7 @@ struct ConnectionClosed {
 struct DuplicatePacket<'a> {
     packet_header: PacketHeader,
     path: Path<'a>,
+    #[nominal_counter("error")]
     error: DuplicatePacketError,
 }
 
@@ -219,8 +228,8 @@ struct TransportParametersReceived<'a> {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.10
 /// Datagram sent by a connection
 struct DatagramSent {
-    #[measure("bytes", "b")]
-    #[counter("bytes.total", "b")]
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
     len: u16,
 
     /// The GSO offset at which this datagram was written
@@ -237,8 +246,8 @@ struct DatagramSent {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.11
 /// Datagram received by a connection
 struct DatagramReceived {
-    #[measure("bytes", "b")]
-    #[counter("bytes.total", "b")]
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
     len: u16,
 }
 
@@ -246,10 +255,10 @@ struct DatagramReceived {
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.12
 /// Datagram dropped by a connection
 struct DatagramDropped {
-    #[measure("bytes", "b")]
-    #[counter("bytes.total", "b")]
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
     len: u16,
-    // TODO support nominal counters
+    #[nominal_counter("reason")]
     reason: DatagramDropReason,
 }
 
@@ -267,16 +276,19 @@ struct ConnectionIdUpdated<'a> {
 #[event("recovery:ecn_state_changed")]
 struct EcnStateChanged<'a> {
     path: Path<'a>,
+    #[nominal_counter("state")]
     state: EcnState,
 }
 
 #[event("connectivity:connection_migration_denied")]
 struct ConnectionMigrationDenied {
+    #[nominal_counter("reason")]
     reason: MigrationDenyReason,
 }
 
 #[event("connectivity:handshake_status_updated")]
 struct HandshakeStatusUpdated {
+    #[nominal_counter("status")]
     status: HandshakeStatus,
 }
 
@@ -305,15 +317,15 @@ struct TlsServerHello<'a> {
 
 #[event("transport:rx_stream_progress")]
 struct RxStreamProgress {
-    #[measure("bytes", "b")]
-    #[counter("bytes.total", "b")]
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
     bytes: usize,
 }
 
 #[event("transport:tx_stream_progress")]
 struct TxStreamProgress {
-    #[measure("bytes", "b")]
-    #[counter("bytes.total", "b")]
+    #[measure("bytes", Bytes)]
+    #[counter("bytes.total", Bytes)]
     bytes: usize,
 }
 
@@ -327,10 +339,12 @@ pub struct KeepAliveTimerExpired {
 struct MtuUpdated {
     path_id: u64,
     /// The maximum QUIC datagram size, not including UDP and IP headers
-    #[measure("mtu", "b")]
+    #[measure("mtu", Bytes)]
     mtu: u16,
+    #[nominal_counter("cause")]
     cause: MtuUpdatedCause,
     /// The search for the maximum MTU has completed for now
+    #[bool_counter("search_complete")]
     search_complete: bool,
 }
 
@@ -338,8 +352,9 @@ struct MtuUpdated {
 /// The slow start congestion controller state has been exited
 struct SlowStartExited {
     path_id: u64,
+    #[nominal_counter("cause")]
     cause: SlowStartExitCause,
-    #[measure("congestion_window", "b")]
+    #[measure("congestion_window", Bytes)]
     congestion_window: u32,
 }
 
@@ -356,10 +371,11 @@ struct DeliveryRateSampled {
 /// The pacing rate has been updated
 struct PacingRateUpdated {
     path_id: u64,
-    #[measure("bytes_per_second", "b")]
+    #[measure("bytes_per_second", Bytes)]
     bytes_per_second: u64,
-    #[measure("burst_size", "b")]
+    #[measure("burst_size", Bytes)]
     burst_size: u32,
+    #[measure("pacing_gain")]
     pacing_gain: f32,
 }
 
@@ -367,11 +383,13 @@ struct PacingRateUpdated {
 /// The BBR state has changed
 struct BbrStateChanged {
     path_id: u64,
+    #[nominal_counter("state")]
     state: BbrState,
 }
 
 #[event("transport:dc_state_changed")]
 /// The DC state has changed
 struct DcStateChanged {
+    #[nominal_counter("state")]
     state: DcState,
 }

@@ -5,16 +5,33 @@
 pub use crate::event::generated::metrics::aggregate::*;
 
 pub mod info;
+mod metric;
 pub mod probe;
+mod recorder;
+mod variant;
+
 pub use info::Info;
+pub use metric::*;
+pub use recorder::*;
+pub use variant::*;
 
 pub trait Registry: 'static + Send + Sync {
     type Counter: Recorder;
+    type BoolCounter: BoolRecorder;
+    type NominalCounter: NominalRecorder;
     type Measure: Recorder;
     type Gauge: Recorder;
     type Timer: Recorder;
 
     fn register_counter(&self, info: &'static Info) -> Self::Counter;
+
+    fn register_bool_counter(&self, info: &'static Info) -> Self::BoolCounter;
+
+    fn register_nominal_counter(
+        &self,
+        info: &'static Info,
+        variant: &'static info::Variant,
+    ) -> Self::NominalCounter;
 
     fn register_measure(&self, info: &'static Info) -> Self::Measure;
 
@@ -29,6 +46,8 @@ where
     B: Registry,
 {
     type Counter = (A::Counter, B::Counter);
+    type BoolCounter = (A::BoolCounter, B::BoolCounter);
+    type NominalCounter = (A::NominalCounter, B::NominalCounter);
     type Measure = (A::Measure, B::Measure);
     type Gauge = (A::Gauge, B::Gauge);
     type Timer = (A::Timer, B::Timer);
@@ -36,6 +55,26 @@ where
     #[inline]
     fn register_counter(&self, info: &'static Info) -> Self::Counter {
         (self.0.register_counter(info), self.1.register_counter(info))
+    }
+
+    #[inline]
+    fn register_bool_counter(&self, info: &'static Info) -> Self::BoolCounter {
+        (
+            self.0.register_bool_counter(info),
+            self.1.register_bool_counter(info),
+        )
+    }
+
+    #[inline]
+    fn register_nominal_counter(
+        &self,
+        info: &'static Info,
+        variant: &'static info::Variant,
+    ) -> Self::NominalCounter {
+        (
+            self.0.register_nominal_counter(info, variant),
+            self.1.register_nominal_counter(info, variant),
+        )
     }
 
     #[inline]
@@ -57,6 +96,8 @@ where
 #[cfg(feature = "alloc")]
 impl<T: Registry> Registry for alloc::sync::Arc<T> {
     type Counter = T::Counter;
+    type BoolCounter = T::BoolCounter;
+    type NominalCounter = T::NominalCounter;
     type Measure = T::Measure;
     type Gauge = T::Gauge;
     type Timer = T::Timer;
@@ -64,6 +105,20 @@ impl<T: Registry> Registry for alloc::sync::Arc<T> {
     #[inline]
     fn register_counter(&self, info: &'static Info) -> Self::Counter {
         self.as_ref().register_counter(info)
+    }
+
+    #[inline]
+    fn register_bool_counter(&self, info: &'static Info) -> Self::BoolCounter {
+        self.as_ref().register_bool_counter(info)
+    }
+
+    #[inline]
+    fn register_nominal_counter(
+        &self,
+        info: &'static Info,
+        variant: &'static info::Variant,
+    ) -> Self::NominalCounter {
+        self.as_ref().register_nominal_counter(info, variant)
     }
 
     #[inline]
@@ -79,69 +134,5 @@ impl<T: Registry> Registry for alloc::sync::Arc<T> {
     #[inline]
     fn register_timer(&self, info: &'static Info) -> Self::Timer {
         self.as_ref().register_timer(info)
-    }
-}
-
-pub trait Recorder: 'static + Send + Sync {
-    fn record(&self, info: &'static Info, value: u64);
-}
-
-impl<A, B> Recorder for (A, B)
-where
-    A: Recorder,
-    B: Recorder,
-{
-    #[inline]
-    fn record(&self, info: &'static Info, value: u64) {
-        self.0.record(info, value);
-        self.1.record(info, value);
-    }
-}
-
-#[cfg(target_has_atomic = "64")]
-impl Recorder for core::sync::atomic::AtomicU64 {
-    #[inline]
-    fn record(&self, _info: &'static Info, value: u64) {
-        self.fetch_add(value, core::sync::atomic::Ordering::Relaxed);
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl<T: Recorder> Recorder for alloc::sync::Arc<T> {
-    #[inline]
-    fn record(&self, info: &'static Info, value: u64) {
-        self.as_ref().record(info, value);
-    }
-}
-
-pub trait AsMetric {
-    fn as_metric(&self, unit: &str) -> u64;
-}
-
-macro_rules! impl_as_metric_number {
-    ($($ty:ty),* $(,)?) => {
-        $(
-            impl AsMetric for $ty {
-                #[inline]
-                fn as_metric(&self, _unit: &str) -> u64 {
-                    *self as _
-                }
-            }
-        )*
-    }
-}
-
-impl_as_metric_number!(u8, u16, u32, u64, usize);
-
-impl AsMetric for core::time::Duration {
-    #[inline]
-    fn as_metric(&self, unit: &str) -> u64 {
-        match unit {
-            "s" => self.as_secs(),
-            "ms" => self.as_millis().try_into().unwrap_or(u64::MAX),
-            "us" => self.as_micros().try_into().unwrap_or(u64::MAX),
-            "ns" => self.as_nanos().try_into().unwrap_or(u64::MAX),
-            _ => panic!("invalid unit - {unit:?}"),
-        }
     }
 }

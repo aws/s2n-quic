@@ -1,0 +1,146 @@
+---
+source: quic/s2n-quic-core/src/crypto/tls/error.rs
+expression: "Error::VARIANTS"
+---
+[
+    Variant {
+        id: 0,
+        name: "TLS_CLOSE_NOTIFY",
+    },
+    Variant {
+        id: 1,
+        name: "TLS_UNEXPECTED_MESSAGE",
+    },
+    Variant {
+        id: 2,
+        name: "TLS_BAD_RECORD_MAC",
+    },
+    Variant {
+        id: 3,
+        name: "TLS_DECRYPTION_FAILED_RESERVED",
+    },
+    Variant {
+        id: 4,
+        name: "TLS_RECORD_OVERFLOW",
+    },
+    Variant {
+        id: 5,
+        name: "TLS_DECOMPRESSION_FAILURE_RESERVED",
+    },
+    Variant {
+        id: 6,
+        name: "TLS_HANDSHAKE_FAILURE",
+    },
+    Variant {
+        id: 7,
+        name: "TLS_NO_CERTIFICATE_RESERVED",
+    },
+    Variant {
+        id: 8,
+        name: "TLS_BAD_CERTIFICATE",
+    },
+    Variant {
+        id: 9,
+        name: "TLS_UNSUPPORTED_CERTIFICATE",
+    },
+    Variant {
+        id: 10,
+        name: "TLS_CERTIFICATE_REVOKED",
+    },
+    Variant {
+        id: 11,
+        name: "TLS_CERTIFICATE_EXPIRED",
+    },
+    Variant {
+        id: 12,
+        name: "TLS_CERTIFICATE_UNKNOWN",
+    },
+    Variant {
+        id: 13,
+        name: "TLS_ILLEGAL_PARAMETER",
+    },
+    Variant {
+        id: 14,
+        name: "TLS_UNKNOWN_CA",
+    },
+    Variant {
+        id: 15,
+        name: "TLS_ACCESS_DENIED",
+    },
+    Variant {
+        id: 16,
+        name: "TLS_DECODE_ERROR",
+    },
+    Variant {
+        id: 17,
+        name: "TLS_DECRYPT_ERROR",
+    },
+    Variant {
+        id: 18,
+        name: "TLS_EXPORT_RESTRICTION_RESERVED",
+    },
+    Variant {
+        id: 19,
+        name: "TLS_PROTOCOL_VERSION",
+    },
+    Variant {
+        id: 20,
+        name: "TLS_INSUFFICIENT_SECURITY",
+    },
+    Variant {
+        id: 21,
+        name: "TLS_INTERNAL_ERROR",
+    },
+    Variant {
+        id: 22,
+        name: "TLS_INAPPROPRIATE_FALLBACK",
+    },
+    Variant {
+        id: 23,
+        name: "TLS_USER_CANCELED",
+    },
+    Variant {
+        id: 24,
+        name: "TLS_NO_RENEGOTIATION_RESERVED",
+    },
+    Variant {
+        id: 25,
+        name: "TLS_MISSING_EXTENSION",
+    },
+    Variant {
+        id: 26,
+        name: "TLS_UNSUPPORTED_EXTENSION",
+    },
+    Variant {
+        id: 27,
+        name: "TLS_CERTIFICATE_UNOBTAINABLE_RESERVED",
+    },
+    Variant {
+        id: 28,
+        name: "TLS_UNRECOGNIZED_NAME",
+    },
+    Variant {
+        id: 29,
+        name: "TLS_BAD_CERTIFICATE_STATUS_RESPONSE",
+    },
+    Variant {
+        id: 30,
+        name: "TLS_BAD_CERTIFICATE_HASH_VALUE_RESERVED",
+    },
+    Variant {
+        id: 31,
+        name: "TLS_UNKNOWN_PSK_IDENTITY",
+    },
+    Variant {
+        id: 32,
+        name: "TLS_CERTIFICATE_REQUIRED",
+    },
+    Variant {
+        id: 33,
+        name: "TLS_NO_APPLICATION_PROTOCOL",
+    },
+    Variant {
+        id: 34,
+        name: "TLS_UNKNOWN_ERROR",
+    },
+]

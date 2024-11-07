@@ -168,6 +168,10 @@ impl ToTokens for Output {
                 //! This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)
                 use super::*;
 
+                // we may or may not need to derive traits aggregate metrics
+                #[allow(unused_imports)]
+                use crate::event::metrics::aggregate;
+
                 pub use traits::Subscriber;
 
                 #api

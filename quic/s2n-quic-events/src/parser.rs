@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{Output, Result};
-use heck::ToSnakeCase;
+use heck::{ToShoutySnakeCase, ToSnakeCase};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 use std::path::PathBuf;
@@ -487,12 +487,43 @@ impl Enum {
             output.api.extend(quote!(#[non_exhaustive]));
         }
 
+        let mut variant_defs = quote!();
+        let mut variant_matches = quote!();
+
+        for (idx, variant) in variants.iter().enumerate() {
+            let ident = &variant.ident;
+            let name = ident.to_string();
+            let mut name = name.to_shouty_snake_case();
+            name.push('\0');
+
+            variant_defs.extend(quote!(aggregate::info::Variant {
+                name: aggregate::info::Str::new(#name),
+                id: #idx,
+            },));
+
+            variant_matches.extend(quote!(
+                Self::#ident { .. } => #idx,
+            ));
+        }
+
         output.api.extend(quote!(
             #derive_attrs
             #extra_attrs
             #deprecated
             pub enum #ident #generics {
                 #(#api_fields)*
+            }
+
+            #allow_deprecated
+            impl #generics aggregate::AsVariant for #ident #generics {
+                const VARIANTS: &'static [aggregate::info::Variant] = &[#variant_defs];
+
+                #[inline]
+                fn variant_idx(&self) -> usize {
+                    match self {
+                        #variant_matches
+                    }
+                }
             }
         ));
     }
@@ -694,9 +725,11 @@ pub struct FieldAttrs {
     pub builder: Option<syn::Type>,
     pub snapshot: Option<syn::Expr>,
     pub counter: Vec<Metric>,
+    pub bool_counter: Vec<MetricNoUnit>,
+    pub nominal_counter: Vec<Metric>,
     pub measure: Vec<Metric>,
     pub gauge: Vec<Metric>,
-    pub timer: Vec<Timer>,
+    pub timer: Vec<MetricNoUnit>,
     pub extra: TokenStream,
 }
 
@@ -727,6 +760,8 @@ impl FieldAttrs {
             field!(builder);
             field!(snapshot);
             field!(counter[]);
+            field!(bool_counter[]);
+            field!(nominal_counter[]);
             field!(measure[]);
             field!(gauge[]);
             field!(timer[]);
@@ -798,7 +833,7 @@ impl Variant {
 #[derive(Debug)]
 pub struct Metric {
     pub name: syn::LitStr,
-    pub unit: Option<syn::LitStr>,
+    pub unit: Option<syn::Ident>,
 }
 
 impl syn::parse::Parse for Metric {
@@ -817,11 +852,11 @@ impl syn::parse::Parse for Metric {
 }
 
 #[derive(Debug)]
-pub struct Timer {
+pub struct MetricNoUnit {
     pub name: syn::LitStr,
 }
 
-impl syn::parse::Parse for Timer {
+impl syn::parse::Parse for MetricNoUnit {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let name = input.parse()?;
         let _: syn::parse::Nothing = input.parse()?;

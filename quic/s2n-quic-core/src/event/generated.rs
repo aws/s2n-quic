@@ -10,6 +10,8 @@ pub(crate) mod metrics;
 pub mod api {
     #![doc = r" This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)"]
     use super::*;
+    #[allow(unused_imports)]
+    use crate::event::metrics::aggregate;
     pub use traits::Subscriber;
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -269,6 +271,25 @@ pub mod api {
         #[non_exhaustive]
         IpV6 { ip: &'a [u8; 16], port: u16 },
     }
+    impl<'a> aggregate::AsVariant for SocketAddress<'a> {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("IP_V4\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("IP_V6\0"),
+                id: 1usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::IpV4 { .. } => 0usize,
+                Self::IpV6 { .. } => 1usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum DuplicatePacketError {
@@ -283,6 +304,25 @@ pub mod api {
         #[doc = " is received, the allowed range would be limited to `14-142`. If an endpoint received"]
         #[doc = " packet `< 14`, it would trigger this event."]
         TooOld {},
+    }
+    impl aggregate::AsVariant for DuplicatePacketError {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("DUPLICATE\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("TOO_OLD\0"),
+                id: 1usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Duplicate { .. } => 0usize,
+                Self::TooOld { .. } => 1usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -358,6 +398,125 @@ pub mod api {
         #[non_exhaustive]
         DcStatelessResetTokens {},
     }
+    impl aggregate::AsVariant for Frame {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PADDING\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PING\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ACK\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("RESET_STREAM\0"),
+                id: 3usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("STOP_SENDING\0"),
+                id: 4usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CRYPTO\0"),
+                id: 5usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("NEW_TOKEN\0"),
+                id: 6usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("STREAM\0"),
+                id: 7usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("MAX_DATA\0"),
+                id: 8usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("MAX_STREAM_DATA\0"),
+                id: 9usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("MAX_STREAMS\0"),
+                id: 10usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("DATA_BLOCKED\0"),
+                id: 11usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("STREAM_DATA_BLOCKED\0"),
+                id: 12usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("STREAMS_BLOCKED\0"),
+                id: 13usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("NEW_CONNECTION_ID\0"),
+                id: 14usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("RETIRE_CONNECTION_ID\0"),
+                id: 15usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PATH_CHALLENGE\0"),
+                id: 16usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PATH_RESPONSE\0"),
+                id: 17usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CONNECTION_CLOSE\0"),
+                id: 18usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("HANDSHAKE_DONE\0"),
+                id: 19usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("DATAGRAM\0"),
+                id: 20usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("DC_STATELESS_RESET_TOKENS\0"),
+                id: 21usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Padding { .. } => 0usize,
+                Self::Ping { .. } => 1usize,
+                Self::Ack { .. } => 2usize,
+                Self::ResetStream { .. } => 3usize,
+                Self::StopSending { .. } => 4usize,
+                Self::Crypto { .. } => 5usize,
+                Self::NewToken { .. } => 6usize,
+                Self::Stream { .. } => 7usize,
+                Self::MaxData { .. } => 8usize,
+                Self::MaxStreamData { .. } => 9usize,
+                Self::MaxStreams { .. } => 10usize,
+                Self::DataBlocked { .. } => 11usize,
+                Self::StreamDataBlocked { .. } => 12usize,
+                Self::StreamsBlocked { .. } => 13usize,
+                Self::NewConnectionId { .. } => 14usize,
+                Self::RetireConnectionId { .. } => 15usize,
+                Self::PathChallenge { .. } => 16usize,
+                Self::PathResponse { .. } => 17usize,
+                Self::ConnectionClose { .. } => 18usize,
+                Self::HandshakeDone { .. } => 19usize,
+                Self::Datagram { .. } => 20usize,
+                Self::DcStatelessResetTokens { .. } => 21usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum StreamType {
@@ -365,6 +524,25 @@ pub mod api {
         Bidirectional {},
         #[non_exhaustive]
         Unidirectional {},
+    }
+    impl aggregate::AsVariant for StreamType {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("BIDIRECTIONAL\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("UNIDIRECTIONAL\0"),
+                id: 1usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Bidirectional { .. } => 0usize,
+                Self::Unidirectional { .. } => 1usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -384,6 +562,50 @@ pub mod api {
         #[non_exhaustive]
         StatelessReset {},
     }
+    impl aggregate::AsVariant for PacketHeader {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INITIAL\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("HANDSHAKE\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ZERO_RTT\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ONE_RTT\0"),
+                id: 3usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("RETRY\0"),
+                id: 4usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("VERSION_NEGOTIATION\0"),
+                id: 5usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("STATELESS_RESET\0"),
+                id: 6usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Initial { .. } => 0usize,
+                Self::Handshake { .. } => 1usize,
+                Self::ZeroRtt { .. } => 2usize,
+                Self::OneRtt { .. } => 3usize,
+                Self::Retry { .. } => 4usize,
+                Self::VersionNegotiation { .. } => 5usize,
+                Self::StatelessReset { .. } => 6usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum PacketType {
@@ -402,6 +624,50 @@ pub mod api {
         #[non_exhaustive]
         StatelessReset {},
     }
+    impl aggregate::AsVariant for PacketType {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INITIAL\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("HANDSHAKE\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ZERO_RTT\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ONE_RTT\0"),
+                id: 3usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("RETRY\0"),
+                id: 4usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("VERSION_NEGOTIATION\0"),
+                id: 5usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("STATELESS_RESET\0"),
+                id: 6usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Initial { .. } => 0usize,
+                Self::Handshake { .. } => 1usize,
+                Self::ZeroRtt { .. } => 2usize,
+                Self::OneRtt { .. } => 3usize,
+                Self::Retry { .. } => 4usize,
+                Self::VersionNegotiation { .. } => 5usize,
+                Self::StatelessReset { .. } => 6usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum KeyType {
@@ -413,6 +679,35 @@ pub mod api {
         ZeroRtt {},
         #[non_exhaustive]
         OneRtt { generation: u16 },
+    }
+    impl aggregate::AsVariant for KeyType {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INITIAL\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("HANDSHAKE\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ZERO_RTT\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ONE_RTT\0"),
+                id: 3usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Initial { .. } => 0usize,
+                Self::Handshake { .. } => 1usize,
+                Self::ZeroRtt { .. } => 2usize,
+                Self::OneRtt { .. } => 3usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -426,6 +721,25 @@ pub mod api {
         #[doc = " This maps to an internal connection id, which is a stable identifier across CID changes."]
         Connection { id: u64 },
     }
+    impl aggregate::AsVariant for Subject {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ENDPOINT\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CONNECTION\0"),
+                id: 1usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Endpoint { .. } => 0usize,
+                Self::Connection { .. } => 1usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[doc = " An endpoint may be either a Server or a Client"]
     pub enum EndpointType {
@@ -433,6 +747,25 @@ pub mod api {
         Server {},
         #[non_exhaustive]
         Client {},
+    }
+    impl aggregate::AsVariant for EndpointType {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("SERVER\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CLIENT\0"),
+                id: 1usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Server { .. } => 0usize,
+                Self::Client { .. } => 1usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -485,6 +818,80 @@ pub mod api {
         #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
         InsufficientConnectionIds {},
     }
+    impl aggregate::AsVariant for DatagramDropReason {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("DECODING_FAILED\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INVALID_RETRY_TOKEN\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("UNSUPPORTED_VERSION\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INVALID_DESTINATION_CONNECTION_ID\0"),
+                id: 3usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INVALID_SOURCE_CONNECTION_ID\0"),
+                id: 4usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INVALID_MTU_CONFIGURATION\0"),
+                id: 5usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("UNKNOWN_DESTINATION_CONNECTION_ID\0"),
+                id: 6usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("REJECTED_CONNECTION_ATTEMPT\0"),
+                id: 7usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("UNKNOWN_SERVER_ADDRESS\0"),
+                id: 8usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CONNECTION_MIGRATION_DURING_HANDSHAKE\0"),
+                id: 9usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("REJECTED_CONNECTION_MIGRATION\0"),
+                id: 10usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PATH_LIMIT_EXCEEDED\0"),
+                id: 11usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INSUFFICIENT_CONNECTION_IDS\0"),
+                id: 12usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::DecodingFailed { .. } => 0usize,
+                Self::InvalidRetryToken { .. } => 1usize,
+                Self::UnsupportedVersion { .. } => 2usize,
+                Self::InvalidDestinationConnectionId { .. } => 3usize,
+                Self::InvalidSourceConnectionId { .. } => 4usize,
+                Self::InvalidMtuConfiguration { .. } => 5usize,
+                Self::UnknownDestinationConnectionId { .. } => 6usize,
+                Self::RejectedConnectionAttempt { .. } => 7usize,
+                Self::UnknownServerAddress { .. } => 8usize,
+                Self::ConnectionMigrationDuringHandshake { .. } => 9usize,
+                Self::RejectedConnectionMigration { .. } => 10usize,
+                Self::PathLimitExceeded { .. } => 11usize,
+                Self::InsufficientConnectionIds { .. } => 12usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum KeySpace {
@@ -497,6 +904,35 @@ pub mod api {
         #[non_exhaustive]
         OneRtt {},
     }
+    impl aggregate::AsVariant for KeySpace {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INITIAL\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("HANDSHAKE\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ZERO_RTT\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ONE_RTT\0"),
+                id: 3usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Initial { .. } => 0usize,
+                Self::Handshake { .. } => 1usize,
+                Self::ZeroRtt { .. } => 2usize,
+                Self::OneRtt { .. } => 3usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum PacketSkipReason {
@@ -506,6 +942,25 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " Skipped a packet number to detect an Optimistic Ack attack"]
         OptimisticAckMitigation {},
+    }
+    impl aggregate::AsVariant for PacketSkipReason {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PTO_PROBE\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("OPTIMISTIC_ACK_MITIGATION\0"),
+                id: 1usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::PtoProbe { .. } => 0usize,
+                Self::OptimisticAckMitigation { .. } => 1usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -565,6 +1020,70 @@ pub mod api {
             packet_type: PacketType,
         },
     }
+    impl<'a> aggregate::AsVariant for PacketDropReason<'a> {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CONNECTION_ERROR\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("HANDSHAKE_NOT_COMPLETE\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("VERSION_MISMATCH\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CONNECTION_ID_MISMATCH\0"),
+                id: 3usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("UNPROTECT_FAILED\0"),
+                id: 4usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("DECRYPTION_FAILED\0"),
+                id: 5usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("DECODING_FAILED\0"),
+                id: 6usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("NON_EMPTY_RETRY_TOKEN\0"),
+                id: 7usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("RETRY_DISCARDED\0"),
+                id: 8usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("UNDERSIZED_INITIAL_PACKET\0"),
+                id: 9usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INITIAL_CONNECTION_ID_INVALID_SPACE\0"),
+                id: 10usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::ConnectionError { .. } => 0usize,
+                Self::HandshakeNotComplete { .. } => 1usize,
+                Self::VersionMismatch { .. } => 2usize,
+                Self::ConnectionIdMismatch { .. } => 3usize,
+                Self::UnprotectFailed { .. } => 4usize,
+                Self::DecryptionFailed { .. } => 5usize,
+                Self::DecodingFailed { .. } => 6usize,
+                Self::NonEmptyRetryToken { .. } => 7usize,
+                Self::RetryDiscarded { .. } => 8usize,
+                Self::UndersizedInitialPacket { .. } => 9usize,
+                Self::InitialConnectionIdInvalidSpace { .. } => 10usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
@@ -587,6 +1106,19 @@ pub mod api {
             stored_range: core::ops::RangeInclusive<u64>,
         },
     }
+    #[allow(deprecated)]
+    impl aggregate::AsVariant for AckAction {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[aggregate::info::Variant {
+            name: aggregate::info::Str::new("RX_ACK_RANGE_DROPPED\0"),
+            id: 0usize,
+        }];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::RxAckRangeDropped { .. } => 0usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum RetryDiscardReason<'a> {
@@ -604,6 +1136,35 @@ pub mod api {
         #[doc = " The Retry packet received contained an invalid retry integrity tag"]
         InvalidIntegrityTag {},
     }
+    impl<'a> aggregate::AsVariant for RetryDiscardReason<'a> {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("SCID_EQUALS_DCID\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("RETRY_ALREADY_PROCESSED\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INITIAL_ALREADY_PROCESSED\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INVALID_INTEGRITY_TAG\0"),
+                id: 3usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::ScidEqualsDcid { .. } => 0usize,
+                Self::RetryAlreadyProcessed { .. } => 1usize,
+                Self::InitialAlreadyProcessed { .. } => 2usize,
+                Self::InvalidIntegrityTag { .. } => 3usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum MigrationDenyReason {
@@ -615,6 +1176,35 @@ pub mod api {
         IpScopeChange {},
         #[non_exhaustive]
         ConnectionMigrationDisabled {},
+    }
+    impl aggregate::AsVariant for MigrationDenyReason {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("BLOCKED_PORT\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PORT_SCOPE_CHANGED\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("IP_SCOPE_CHANGE\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CONNECTION_MIGRATION_DISABLED\0"),
+                id: 3usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::BlockedPort { .. } => 0usize,
+                Self::PortScopeChanged { .. } => 1usize,
+                Self::IpScopeChange { .. } => 2usize,
+                Self::ConnectionMigrationDisabled { .. } => 3usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -632,6 +1222,35 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " ECN capability has been confirmed"]
         Capable {},
+    }
+    impl aggregate::AsVariant for EcnState {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("TESTING\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("UNKNOWN\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("FAILED\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CAPABLE\0"),
+                id: 3usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Testing { .. } => 0usize,
+                Self::Unknown { .. } => 1usize,
+                Self::Failed { .. } => 2usize,
+                Self::Capable { .. } => 3usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -657,6 +1276,35 @@ pub mod api {
         #[doc = " HANDSHAKE_DONE frame until it is acked by the peer."]
         HandshakeDoneLost {},
     }
+    impl aggregate::AsVariant for HandshakeStatus {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("COMPLETE\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("CONFIRMED\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("HANDSHAKE_DONE_ACKED\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("HANDSHAKE_DONE_LOST\0"),
+                id: 3usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Complete { .. } => 0usize,
+                Self::Confirmed { .. } => 1usize,
+                Self::HandshakeDoneAcked { .. } => 2usize,
+                Self::HandshakeDoneLost { .. } => 3usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " The source that caused a congestion event"]
@@ -667,6 +1315,25 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " One or more packets were detected lost"]
         PacketLoss {},
+    }
+    impl aggregate::AsVariant for CongestionSource {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ECN\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PACKET_LOSS\0"),
+                id: 1usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Ecn { .. } => 0usize,
+                Self::PacketLoss { .. } => 1usize,
+            }
+        }
     }
     #[non_exhaustive]
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -681,6 +1348,35 @@ pub mod api {
         #[non_exhaustive]
         Unknown {},
     }
+    impl aggregate::AsVariant for CipherSuite {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("TLS_AES_128_GCM_SHA256\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("TLS_AES_256_GCM_SHA384\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("TLS_CHACHA20_POLY1305_SHA256\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("UNKNOWN\0"),
+                id: 3usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::TLS_AES_128_GCM_SHA256 { .. } => 0usize,
+                Self::TLS_AES_256_GCM_SHA384 { .. } => 1usize,
+                Self::TLS_CHACHA20_POLY1305_SHA256 { .. } => 2usize,
+                Self::Unknown { .. } => 3usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum PathChallengeStatus {
@@ -688,6 +1384,25 @@ pub mod api {
         Validated {},
         #[non_exhaustive]
         Abandoned {},
+    }
+    impl aggregate::AsVariant for PathChallengeStatus {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("VALIDATED\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ABANDONED\0"),
+                id: 1usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Validated { .. } => 0usize,
+                Self::Abandoned { .. } => 1usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -709,6 +1424,35 @@ pub mod api {
         #[doc = " Slow Start, when the previously determined Slow Start threshold is exceed by the"]
         #[doc = " congestion window."]
         Other {},
+    }
+    impl aggregate::AsVariant for SlowStartExitCause {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PACKET_LOSS\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ECN\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("RTT\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("OTHER\0"),
+                id: 3usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::PacketLoss { .. } => 0usize,
+                Self::Ecn { .. } => 1usize,
+                Self::Rtt { .. } => 2usize,
+                Self::Other { .. } => 3usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -733,6 +1477,45 @@ pub mod api {
         #[doc = " MTU probes larger than the current MTU were not acknowledged"]
         LargerProbesLost {},
     }
+    impl aggregate::AsVariant for MtuUpdatedCause {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("NEW_PATH\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PROBE_ACKNOWLEDGED\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("BLACKHOLE\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INITIAL_MTU_PACKET_LOST\0"),
+                id: 3usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INITIAL_MTU_PACKET_ACKNOWLEDGED\0"),
+                id: 4usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("LARGER_PROBES_LOST\0"),
+                id: 5usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::NewPath { .. } => 0usize,
+                Self::ProbeAcknowledged { .. } => 1usize,
+                Self::Blackhole { .. } => 2usize,
+                Self::InitialMtuPacketLost { .. } => 3usize,
+                Self::InitialMtuPacketAcknowledged { .. } => 4usize,
+                Self::LargerProbesLost { .. } => 5usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum BbrState {
@@ -751,6 +1534,50 @@ pub mod api {
         #[non_exhaustive]
         ProbeRtt {},
     }
+    impl aggregate::AsVariant for BbrState {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("STARTUP\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("DRAIN\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PROBE_BW_DOWN\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PROBE_BW_CRUISE\0"),
+                id: 3usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PROBE_BW_REFILL\0"),
+                id: 4usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PROBE_BW_UP\0"),
+                id: 5usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PROBE_RTT\0"),
+                id: 6usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Startup { .. } => 0usize,
+                Self::Drain { .. } => 1usize,
+                Self::ProbeBwDown { .. } => 2usize,
+                Self::ProbeBwCruise { .. } => 3usize,
+                Self::ProbeBwRefill { .. } => 4usize,
+                Self::ProbeBwUp { .. } => 5usize,
+                Self::ProbeRtt { .. } => 6usize,
+            }
+        }
+    }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     pub enum DcState {
@@ -762,6 +1589,35 @@ pub mod api {
         PathSecretsReady {},
         #[non_exhaustive]
         Complete {},
+    }
+    impl aggregate::AsVariant for DcState {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("VERSION_NEGOTIATED\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("NO_VERSION_NEGOTIATED\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("PATH_SECRETS_READY\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("COMPLETE\0"),
+                id: 3usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::VersionNegotiated { .. } => 0usize,
+                Self::NoVersionNegotiated { .. } => 1usize,
+                Self::PathSecretsReady { .. } => 2usize,
+                Self::Complete { .. } => 3usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1948,6 +2804,45 @@ pub mod api {
         #[non_exhaustive]
         #[doc = " Emitted when the max maximum transmission unit is configured"]
         MaxMtu { mtu: u16 },
+    }
+    impl aggregate::AsVariant for PlatformFeatureConfiguration {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("GSO\0"),
+                id: 0usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("GRO\0"),
+                id: 1usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("ECN\0"),
+                id: 2usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("BASE_MTU\0"),
+                id: 3usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("INITIAL_MTU\0"),
+                id: 4usize,
+            },
+            aggregate::info::Variant {
+                name: aggregate::info::Str::new("MAX_MTU\0"),
+                id: 5usize,
+            },
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Gso { .. } => 0usize,
+                Self::Gro { .. } => 1usize,
+                Self::Ecn { .. } => 2usize,
+                Self::BaseMtu { .. } => 3usize,
+                Self::InitialMtu { .. } => 4usize,
+                Self::MaxMtu { .. } => 5usize,
+            }
+        }
     }
     impl<'a> IntoEvent<builder::PreferredAddress<'a>>
         for &'a crate::transport::parameters::PreferredAddress

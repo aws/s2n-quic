@@ -10,6 +10,8 @@ pub(crate) mod metrics;
 pub mod api {
     #![doc = r" This module contains events that are emitted to the [`Subscriber`](crate::event::Subscriber)"]
     use super::*;
+    #[allow(unused_imports)]
+    use crate::event::metrics::aggregate;
     pub use s2n_quic_core::event::api::{EndpointType, SocketAddress, Subject};
     pub use traits::Subscriber;
     #[derive(Clone, Debug)]

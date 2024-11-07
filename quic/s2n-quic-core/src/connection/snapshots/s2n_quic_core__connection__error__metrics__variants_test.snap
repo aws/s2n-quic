@@ -1,0 +1,258 @@
+---
+source: quic/s2n-quic-core/src/connection/error.rs
+expression: "Error::VARIANTS"
+---
+[
+    Variant {
+        id: 0,
+        name: "CLOSED",
+    },
+    Variant {
+        id: 1,
+        name: "APPLICATION",
+    },
+    Variant {
+        id: 2,
+        name: "STATELESS_RESET",
+    },
+    Variant {
+        id: 3,
+        name: "IDLE_TIMER_EXPIRED",
+    },
+    Variant {
+        id: 4,
+        name: "NO_VALID_PATH",
+    },
+    Variant {
+        id: 5,
+        name: "STREAM_ID_EXHAUSTED",
+    },
+    Variant {
+        id: 6,
+        name: "MAX_HANDSHAKE_DURATION_EXCEEDED",
+    },
+    Variant {
+        id: 7,
+        name: "IMMEDIATE_CLOSE",
+    },
+    Variant {
+        id: 8,
+        name: "ENDPOINT_CLOSING",
+    },
+    Variant {
+        id: 9,
+        name: "INVALID_CONFIGURATION",
+    },
+    Variant {
+        id: 10,
+        name: "UNSPECIFIED",
+    },
+    Variant {
+        id: 11,
+        name: "QUIC_NO_ERROR",
+    },
+    Variant {
+        id: 12,
+        name: "QUIC_INTERNAL_ERROR",
+    },
+    Variant {
+        id: 13,
+        name: "QUIC_CONNECTION_REFUSED",
+    },
+    Variant {
+        id: 14,
+        name: "QUIC_FLOW_CONTROL_ERROR",
+    },
+    Variant {
+        id: 15,
+        name: "QUIC_STREAM_LIMIT_ERROR",
+    },
+    Variant {
+        id: 16,
+        name: "QUIC_STREAM_STATE_ERROR",
+    },
+    Variant {
+        id: 17,
+        name: "QUIC_FINAL_SIZE_ERROR",
+    },
+    Variant {
+        id: 18,
+        name: "QUIC_FRAME_ENCODING_ERROR",
+    },
+    Variant {
+        id: 19,
+        name: "QUIC_TRANSPORT_PARAMETER_ERROR",
+    },
+    Variant {
+        id: 20,
+        name: "QUIC_CONNECTION_ID_LIMIT_ERROR",
+    },
+    Variant {
+        id: 21,
+        name: "QUIC_PROTOCOL_VIOLATION",
+    },
+    Variant {
+        id: 22,
+        name: "QUIC_INVALID_TOKEN",
+    },
+    Variant {
+        id: 23,
+        name: "QUIC_APPLICATION_ERROR",
+    },
+    Variant {
+        id: 24,
+        name: "QUIC_CRYPTO_BUFFER_EXCEEDED",
+    },
+    Variant {
+        id: 25,
+        name: "QUIC_KEY_UPDATE_ERROR",
+    },
+    Variant {
+        id: 26,
+        name: "QUIC_AEAD_LIMIT_REACHED",
+    },
+    Variant {
+        id: 27,
+        name: "TLS_CLOSE_NOTIFY",
+    },
+    Variant {
+        id: 28,
+        name: "TLS_UNEXPECTED_MESSAGE",
+    },
+    Variant {
+        id: 29,
+        name: "TLS_BAD_RECORD_MAC",
+    },
+    Variant {
+        id: 30,
+        name: "TLS_DECRYPTION_FAILED_RESERVED",
+    },
+    Variant {
+        id: 31,
+        name: "TLS_RECORD_OVERFLOW",
+    },
+    Variant {
+        id: 32,
+        name: "TLS_DECOMPRESSION_FAILURE_RESERVED",
+    },
+    Variant {
+        id: 33,
+        name: "TLS_HANDSHAKE_FAILURE",
+    },
+    Variant {
+        id: 34,
+        name: "TLS_NO_CERTIFICATE_RESERVED",
+    },
+    Variant {
+        id: 35,
+        name: "TLS_BAD_CERTIFICATE",
+    },
+    Variant {
+        id: 36,
+        name: "TLS_UNSUPPORTED_CERTIFICATE",
+    },
+    Variant {
+        id: 37,
+        name: "TLS_CERTIFICATE_REVOKED",
+    },
+    Variant {
+        id: 38,
+        name: "TLS_CERTIFICATE_EXPIRED",
+    },
+    Variant {
+        id: 39,
+        name: "TLS_CERTIFICATE_UNKNOWN",
+    },
+    Variant {
+        id: 40,
+        name: "TLS_ILLEGAL_PARAMETER",
+    },
+    Variant {
+        id: 41,
+        name: "TLS_UNKNOWN_CA",
+    },
+    Variant {
+        id: 42,
+        name: "TLS_ACCESS_DENIED",
+    },
+    Variant {
+        id: 43,
+        name: "TLS_DECODE_ERROR",
+    },
+    Variant {
+        id: 44,
+        name: "TLS_DECRYPT_ERROR",
+    },
+    Variant {
+        id: 45,
+        name: "TLS_EXPORT_RESTRICTION_RESERVED",
+    },
+    Variant {
+        id: 46,
+        name: "TLS_PROTOCOL_VERSION",
+    },
+    Variant {
+        id: 47,
+        name: "TLS_INSUFFICIENT_SECURITY",
+    },
+    Variant {
+        id: 48,
+        name: "TLS_INTERNAL_ERROR",
+    },
+    Variant {
+        id: 49,
+        name: "TLS_INAPPROPRIATE_FALLBACK",
+    },
+    Variant {
+        id: 50,
+        name: "TLS_USER_CANCELED",
+    },
+    Variant {
+        id: 51,
+        name: "TLS_NO_RENEGOTIATION_RESERVED",
+    },
+    Variant {
+        id: 52,
+        name: "TLS_MISSING_EXTENSION",
+    },
+    Variant {
+        id: 53,
+        name: "TLS_UNSUPPORTED_EXTENSION",
+    },
+    Variant {
+        id: 54,
+        name: "TLS_CERTIFICATE_UNOBTAINABLE_RESERVED",
+    },
+    Variant {
+        id: 55,
+        name: "TLS_UNRECOGNIZED_NAME",
+    },
+    Variant {
+        id: 56,
+        name: "TLS_BAD_CERTIFICATE_STATUS_RESPONSE",
+    },
+    Variant {
+        id: 57,
+        name: "TLS_BAD_CERTIFICATE_HASH_VALUE_RESERVED",
+    },
+    Variant {
+        id: 58,
+        name: "TLS_UNKNOWN_PSK_IDENTITY",
+    },
+    Variant {
+        id: 59,
+        name: "TLS_CERTIFICATE_REQUIRED",
+    },
+    Variant {
+        id: 60,
+        name: "TLS_NO_APPLICATION_PROTOCOL",
+    },
+    Variant {
+        id: 61,
+        name: "TLS_UNKNOWN_ERROR",
+    },
+    Variant {
+        id: 62,
+        name: "QUIC_UNKNOWN_ERROR",
+    },
+]
