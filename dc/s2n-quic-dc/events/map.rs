@@ -19,6 +19,9 @@ struct PathSecretMapUninitialized {
     /// The number of entries in the map
     #[measure("entries")]
     entries: usize,
+
+    #[measure("lifetime", Duration)]
+    lifetime: core::time::Duration,
 }
 
 #[event("path_secret_map:background_handshake_requested")]

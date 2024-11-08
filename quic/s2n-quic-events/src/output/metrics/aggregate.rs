@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    parser::{File, Subject},
+    parser::{File, Metric, MetricNoUnit, Subject},
     Output,
 };
 use proc_macro2::{Ident, Span, TokenStream};
@@ -52,8 +52,8 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
         quote!(u64),
         quote!(.as_u64()),
     );
-    nominal_counters.registry_type = RegistryType::NominalCounter {
-        nominal_offsets: quote!(nominal_offsets),
+    nominal_counters.registry_type = RegistryType::Nominal {
+        offsets: quote!(nominal_counter_offsets),
     };
 
     let mut measures = Registry::new(
@@ -78,6 +78,17 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
         quote!(.as_duration()),
     );
 
+    let mut nominal_timers = Registry::new(
+        quote!(nominal_timers),
+        quote!(register_nominal_timer),
+        format!("{}__event__timer__nominal", output.crate_name),
+        quote!(core::time::Duration),
+        quote!(.as_duration()),
+    );
+    nominal_timers.registry_type = RegistryType::Nominal {
+        offsets: quote!(nominal_timer_offsets),
+    };
+
     let units_none = Ident::new("None", Span::call_site());
     let units_duration = Ident::new("Duration", Span::call_site());
 
@@ -96,63 +107,98 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             self.count(#count_info, #count_id, 1usize);
         ));
 
+        for checkpoint in event.attrs.checkpoint.iter() {
+            let evt = &event.ident;
+            let name = format!("{snake}.{}", checkpoint.name.value());
+            let info = &info.push(&name, &units_duration);
+            let id = timers.push(info, None);
+            let duration = quote!(meta.timestamp.saturating_duration_since(context.start_time));
+
+            if let Some(condition) = checkpoint.condition.as_ref() {
+                let inputs = &condition.inputs;
+                assert_eq!(inputs.len(), 1);
+                let input = &inputs[0];
+                let body = &condition.body;
+                on_event.extend(quote!({
+                    fn check(#input: &api::#evt) -> bool {
+                        #body
+                    }
+                    if check(event) {
+                        self.time(#info, #id, #duration);
+                    }
+                }));
+            } else {
+                on_event.extend(quote!(
+                    self.time(#info, #id, #duration);
+                ));
+            }
+        }
+
         for field in &event.fields {
+            let field_name = field.ident.as_ref().unwrap();
+
             let metrics = [
-                (quote!(count), &field.attrs.counter, &mut counters, None),
+                (
+                    quote!(count),
+                    metrics_iter(&field.attrs.counter),
+                    &mut counters,
+                    quote!(event.#field_name),
+                    None,
+                ),
                 (
                     quote!(count_nominal),
-                    &field.attrs.nominal_counter,
+                    metrics_iter(&field.attrs.nominal_counter),
                     &mut nominal_counters,
+                    quote!(&event.#field_name),
                     Some(&field.ty),
                 ),
-                (quote!(measure), &field.attrs.measure, &mut measures, None),
-                (quote!(gauge), &field.attrs.gauge, &mut gauges, None),
-            ];
-
-            for (function, list, target, field_ty) in metrics {
-                let borrow = if field_ty.is_some() {
-                    quote!(&)
-                } else {
-                    quote!()
-                };
-                for metric in list {
-                    let name = format!("{snake}.{}", metric.name.value());
-                    let units = metric.unit.as_ref().unwrap_or(&units_none);
-                    let info = &info.push(&name, units);
-                    let id = target.push(info, field_ty);
-
-                    let field = field.ident.as_ref().unwrap();
-                    on_event.extend(quote!(
-                        self.#function(#info, #id, #borrow event.#field);
-                    ));
-                }
-            }
-
-            let metrics = [
+                (
+                    quote!(measure),
+                    metrics_iter(&field.attrs.measure),
+                    &mut measures,
+                    quote!(event.#field_name),
+                    None,
+                ),
+                (
+                    quote!(gauge),
+                    metrics_iter(&field.attrs.gauge),
+                    &mut gauges,
+                    quote!(event.#field_name),
+                    None,
+                ),
                 (
                     quote!(time),
-                    &field.attrs.timer,
+                    metrics_iter_with_unit(&field.attrs.timer, Some(&units_duration)),
                     &mut timers,
-                    &units_duration,
+                    quote!(event.#field_name),
+                    None,
                 ),
                 (
                     quote!(count_bool),
-                    &field.attrs.bool_counter,
+                    metrics_iter_with_unit(&field.attrs.bool_counter, Some(&units_none)),
                     &mut bool_counters,
-                    &units_none,
+                    quote!(event.#field_name),
+                    None,
+                ),
+                (
+                    quote!(time_nominal),
+                    metrics_iter_with_unit(&field.attrs.nominal_checkpoint, Some(&units_duration)),
+                    &mut nominal_timers,
+                    quote!(&event.#field_name, meta.timestamp.saturating_duration_since(context.start_time)),
+                    Some(&field.ty),
                 ),
             ];
 
-            for (function, list, target, units) in metrics {
-                for metric in list {
-                    let name = format!("{snake}.{}", metric.name.value());
+            for (function, list, target, value, field_ty) in metrics {
+                for (name, units) in list {
+                    let name = format!("{snake}.{}", name.value());
+                    let units = units.unwrap_or(&units_none);
                     let info = &info.push(&name, units);
-                    let id = target.push(info, None);
+                    let id = target.push(info, field_ty);
 
-                    let field = field.ident.as_ref().unwrap();
                     on_event.extend(quote!(
-                        self.#function(#info, #id, event.#field);
-                    ))
+                        self.#function(#info, #id, #value);
+                    ));
                 }
             }
         }
@@ -167,6 +213,9 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                         meta: &api::ConnectionMeta,
                         event: &api::#ident
                     ) {
+                        #[allow(unused_imports)]
+                        use api::*;
+
                         #on_event
                         let _ = context;
                         let _ = meta;
@@ -182,6 +231,9 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                         meta: &api::EndpointMeta,
                         event: &api::#ident
                     ) {
+                        #[allow(unused_imports)]
+                        use api::*;
+
                         #on_event
                         let _ = event;
                         let _ = meta;
@@ -209,6 +261,9 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
     let timers_init = timers.init();
     let timers_probes = timers.probe();
     let timers_len = timers.len;
+    let nominal_timers_init = nominal_timers.init();
+    let nominal_timers_probes = nominal_timers.probe();
+    let nominal_timers_len = nominal_timers.len;
     let info_len = info.len;
     let mut imports = quote!();
 
@@ -238,6 +293,12 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
 
         static INFO: &[Info; #info_len] = &[#info];
 
+        #[derive(Clone, Copy, Debug)]
+        #[allow(dead_code)]
+        pub struct ConnectionContext {
+            start_time: crate::event::Timestamp,
+        }
+
         pub struct Subscriber<R: Registry> {
             #[allow(dead_code)]
             counters: Box<[R::Counter; #counters_len]>,
@@ -246,13 +307,17 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             #[allow(dead_code)]
             nominal_counters: Box<[R::NominalCounter]>,
             #[allow(dead_code)]
-            nominal_offsets: Box<[usize; #nominal_counters_len]>,
+            nominal_counter_offsets: Box<[usize; #nominal_counters_len]>,
             #[allow(dead_code)]
             measures: Box<[R::Measure; #measures_len]>,
             #[allow(dead_code)]
             gauges: Box<[R::Gauge; #gauges_len]>,
             #[allow(dead_code)]
             timers: Box<[R::Timer; #timers_len]>,
+            #[allow(dead_code)]
+            nominal_timers: Box<[R::NominalTimer]>,
+            #[allow(dead_code)]
+            nominal_timer_offsets: Box<[usize; #nominal_timers_len]>,
             #[allow(dead_code)]
             registry: R,
         }
@@ -275,11 +340,13 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             pub fn new(registry: R) -> Self {
                 let mut counters = Vec::with_capacity(#counters_len);
                 let mut bool_counters = Vec::with_capacity(#bool_counters_len);
-                let mut nominal_offsets = Vec::with_capacity(#nominal_counters_len);
                 let mut nominal_counters = Vec::with_capacity(#nominal_counters_len);
+                let mut nominal_counter_offsets = Vec::with_capacity(#nominal_counters_len);
                 let mut measures = Vec::with_capacity(#measures_len);
                 let mut gauges = Vec::with_capacity(#gauges_len);
                 let mut timers = Vec::with_capacity(#timers_len);
+                let mut nominal_timers = Vec::with_capacity(#nominal_timers_len);
+                let mut nominal_timer_offsets = Vec::with_capacity(#nominal_timers_len);
 
                 #counters_init
                 #bool_counters_init
@@ -287,15 +354,18 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                 #measures_init
                 #gauges_init
                 #timers_init
+                #nominal_timers_init
 
                 Self {
                     counters: counters.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     bool_counters: bool_counters.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     nominal_counters: nominal_counters.into(),
-                    nominal_offsets: nominal_offsets.try_into().unwrap_or_else(|_| panic!("invalid len")),
+                    nominal_counter_offsets: nominal_counter_offsets.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     measures: measures.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     gauges: gauges.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     timers: timers.try_into().unwrap_or_else(|_| panic!("invalid len")),
+                    nominal_timers: nominal_timers.into(),
+                    nominal_timer_offsets: nominal_timer_offsets.try_into().unwrap_or_else(|_| panic!("invalid len")),
                     registry,
                 }
             }
@@ -339,7 +409,7 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             #[inline(always)]
             fn count_nominal<T: AsVariant>(&self, info: usize, id: usize, value: &T) {
                 let info = &INFO[info];
-                let idx = self.nominal_offsets[id] + value.variant_idx();
+                let idx = self.nominal_counter_offsets[id] + value.variant_idx();
                 let counter = &self.nominal_counters[idx];
                 counter.record(info, value.as_variant(), 1usize);
             }
@@ -385,17 +455,29 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                 let timer = &self.timers[id];
                 timer.record(info, value);
             }
+
+            #[allow(dead_code)]
+            #[inline(always)]
+            fn time_nominal<T: AsVariant>(&self, info: usize, id: usize, value: &T, duration: core::time::Duration) {
+                let info = &INFO[info];
+                let idx = self.nominal_timer_offsets[id] + value.variant_idx();
+                let counter = &self.nominal_timers[idx];
+                counter.record(info, value.as_variant(), duration);
+            }
         }
 
         impl<R: Registry> event::Subscriber for Subscriber<R> {
-            // TODO include some per-connection context to get aggregates for those
-            type ConnectionContext = ();
+            type ConnectionContext = ConnectionContext;
 
             fn create_connection_context(
                 &#mode self,
-                _meta: &api::ConnectionMeta,
+                meta: &api::ConnectionMeta,
                 _info: &api::ConnectionInfo
-            ) -> Self::ConnectionContext {}
+            ) -> Self::ConnectionContext {
+                Self::ConnectionContext {
+                    start_time: meta.timestamp,
+                }
+            }
 
             #subscriber
         }
@@ -431,6 +513,10 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
         }
         mod timer {
             #timers_probes
+
+            pub mod nominal {
+                #nominal_timers_probes
+            }
         }
 
         #[derive(Default)]
@@ -443,6 +529,7 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             type Measure = measure::Recorder;
             type Gauge = gauge::Recorder;
             type Timer = timer::Recorder;
+            type NominalTimer = timer::nominal::Recorder;
 
             #[inline]
             fn register_counter(&self, info: &'static Info) -> Self::Counter {
@@ -473,6 +560,11 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             fn register_timer(&self, info: &'static Info) -> Self::Timer {
                 timer::Recorder::new(info)
             }
+
+            #[inline]
+            fn register_nominal_timer(&self, info: &'static Info, variant: &'static info::Variant) -> Self::NominalTimer {
+                timer::nominal::Recorder::new(info, variant)
+            }
         }
     );
 
@@ -485,6 +577,21 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
         pub(crate) mod aggregate;
         pub(crate) mod probe;
     )
+}
+
+fn metrics_iter<'a>(
+    metrics: &'a [Metric],
+) -> Box<dyn 'a + Iterator<Item = (&'a syn::LitStr, Option<&'a Ident>)>> {
+    Box::new(metrics.iter().map(|m| (&m.name, m.unit.as_ref())))
+        as Box<dyn Iterator<Item = (&syn::LitStr, Option<&Ident>)>>
+}
+
+fn metrics_iter_with_unit<'a>(
+    metrics: &'a [MetricNoUnit],
+    unit: Option<&'a Ident>,
+) -> Box<dyn 'a + Iterator<Item = (&'a syn::LitStr, Option<&'a Ident>)>> {
+    Box::new(metrics.iter().map(move |m| (&m.name, unit)))
+        as Box<dyn Iterator<Item = (&syn::LitStr, Option<&Ident>)>>
 }
 
 #[derive(Default)]
@@ -539,7 +646,7 @@ impl ToTokens for Info {
 enum RegistryType {
     Basic,
     BoolCounter,
-    NominalCounter { nominal_offsets: TokenStream },
+    Nominal { offsets: TokenStream },
 }
 
 struct Registry {
@@ -580,7 +687,7 @@ impl Registry {
     }
 
     pub fn init(&mut self) -> TokenStream {
-        if matches!(self.registry_type, RegistryType::NominalCounter { .. }) {
+        if matches!(self.registry_type, RegistryType::Nominal { .. }) {
             let init = &self.init;
             quote!({
                 #[allow(unused_imports)]
@@ -670,7 +777,7 @@ impl Registry {
                     #probe_defs
                 )
             }
-            RegistryType::NominalCounter { .. } => {
+            RegistryType::Nominal { .. } => {
                 quote!(
                     #![allow(non_snake_case)]
 
@@ -732,7 +839,7 @@ impl Registry {
                     fn #probe(value: #metric_ty);
                 ));
             }
-            RegistryType::NominalCounter { nominal_offsets } => {
+            RegistryType::Nominal { offsets } => {
                 let field_ty = field_ty.expect("need field type for nominal");
 
                 // trim off any generics
@@ -754,7 +861,7 @@ impl Registry {
                         count += 1;
                     }
                     debug_assert_ne!(count, 0, "field type needs at least one variant");
-                    #nominal_offsets.push(offset);
+                    #offsets.push(offset);
                 }));
 
                 self.entries.extend(quote!(
@@ -784,8 +891,8 @@ impl ToTokens for Registry {
             return;
         }
 
-        let dest = if let RegistryType::NominalCounter { nominal_offsets } = &self.registry_type {
-            nominal_offsets
+        let dest = if let RegistryType::Nominal { offsets } = &self.registry_type {
+            offsets
         } else {
             &self.dest
         };

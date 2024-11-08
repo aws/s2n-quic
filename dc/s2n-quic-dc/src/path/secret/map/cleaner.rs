@@ -4,6 +4,7 @@
 use super::state::State;
 use crate::event;
 use rand::Rng as _;
+use s2n_quic_core::time;
 use std::{
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -51,7 +52,11 @@ impl Cleaner {
         }
     }
 
-    pub fn spawn_thread<S: event::Subscriber>(&self, state: Arc<State<S>>) {
+    pub fn spawn_thread<C, S>(&self, state: Arc<State<C, S>>)
+    where
+        C: 'static + time::Clock + Send + Sync,
+        S: event::Subscriber,
+    {
         let state = Arc::downgrade(&state);
         let handle = std::thread::spawn(move || loop {
             let Some(state) = state.upgrade() else {
@@ -69,7 +74,11 @@ impl Cleaner {
     }
 
     /// Periodic maintenance for various maps.
-    pub fn clean<S: event::Subscriber>(&self, state: &State<S>, eviction_cycles: u64) {
+    pub fn clean<C, S>(&self, state: &State<C, S>, eviction_cycles: u64)
+    where
+        C: 'static + time::Clock + Send + Sync,
+        S: event::Subscriber,
+    {
         let current_epoch = self.epoch.fetch_add(1, Ordering::Relaxed);
         let now = Instant::now();
 

@@ -540,6 +540,7 @@ pub struct ContainerAttrs {
     pub derive_attrs: TokenStream,
     pub builder_derive: bool,
     pub builder_derive_attrs: TokenStream,
+    pub checkpoint: Vec<Checkpoint>,
     pub extra: TokenStream,
 }
 
@@ -558,6 +559,7 @@ impl ContainerAttrs {
             derive_attrs: quote!(),
             builder_derive: false,
             builder_derive_attrs: quote!(),
+            checkpoint: vec![],
             extra: quote!(),
         };
 
@@ -583,16 +585,22 @@ impl ContainerAttrs {
                 if let Meta::List(list) = attr.parse_args().unwrap() {
                     list.to_tokens(&mut v.builder_derive_attrs);
                 }
+            } else if path.is_ident("checkpoint") {
+                v.checkpoint.push(attr.parse_args().unwrap());
             } else {
                 attr.to_tokens(&mut v.extra)
             }
+        }
+
+        if !v.checkpoint.is_empty() {
+            assert_eq!(v.subject, Subject::Connection);
         }
 
         v
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Subject {
     Connection,
     Endpoint,
@@ -727,6 +735,7 @@ pub struct FieldAttrs {
     pub counter: Vec<Metric>,
     pub bool_counter: Vec<MetricNoUnit>,
     pub nominal_counter: Vec<Metric>,
+    pub nominal_checkpoint: Vec<MetricNoUnit>,
     pub measure: Vec<Metric>,
     pub gauge: Vec<Metric>,
     pub timer: Vec<MetricNoUnit>,
@@ -762,6 +771,7 @@ impl FieldAttrs {
             field!(counter[]);
             field!(bool_counter[]);
             field!(nominal_counter[]);
+            field!(nominal_checkpoint[]);
             field!(measure[]);
             field!(gauge[]);
             field!(timer[]);
@@ -861,5 +871,26 @@ impl syn::parse::Parse for MetricNoUnit {
         let name = input.parse()?;
         let _: syn::parse::Nothing = input.parse()?;
         Ok(Self { name })
+    }
+}
+
+#[derive(Debug)]
+pub struct Checkpoint {
+    pub name: syn::LitStr,
+    pub condition: Option<syn::ExprClosure>,
+}
+
+impl syn::parse::Parse for Checkpoint {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name = input.parse()?;
+        let condition = if input.peek(Token![,]) {
+            let _: Token![,] = input.parse()?;
+            let v = input.parse()?;
+            Some(v)
+        } else {
+            None
+        };
+        let _: syn::parse::Nothing = input.parse()?;
+        Ok(Self { name, condition })
     }
 }
