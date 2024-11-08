@@ -299,6 +299,9 @@ impl Session {
                         quic::KeyChange::OneRtt { keys, next } => {
                             let (key, header_key) = OneRttKey::new(keys, next, cipher_suite);
 
+                            // at this point we should have both SNI and ALPN values
+                            self.emit_events(context)?;
+
                             let application_parameters = self.application_parameters()?;
 
                             context.on_one_rtt_keys(key, header_key, application_parameters)?;
