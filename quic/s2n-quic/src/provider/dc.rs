@@ -4,6 +4,7 @@
 //! Provides dc support
 
 mod confirm;
+mod mtu_confirm;
 
 use s2n_quic_core::dc::Disabled;
 
