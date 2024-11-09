@@ -18,22 +18,27 @@ pub mod api {
     #[non_exhaustive]
     pub struct ConnectionMeta {
         pub id: u64,
+        pub timestamp: Timestamp,
     }
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for ConnectionMeta {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("ConnectionMeta");
             fmt.field("id", &self.id);
+            fmt.field("timestamp", &self.timestamp);
             fmt.finish()
         }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct EndpointMeta {}
+    pub struct EndpointMeta {
+        pub timestamp: Timestamp,
+    }
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for EndpointMeta {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("EndpointMeta");
+            fmt.field("timestamp", &self.timestamp);
             fmt.finish()
         }
     }
@@ -133,6 +138,7 @@ pub mod api {
         pub capacity: usize,
         #[doc = " The number of entries in the map"]
         pub entries: usize,
+        pub lifetime: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for PathSecretMapUninitialized {
@@ -140,6 +146,7 @@ pub mod api {
             let mut fmt = fmt.debug_struct("PathSecretMapUninitialized");
             fmt.field("capacity", &self.capacity);
             fmt.field("entries", &self.entries);
+            fmt.field("lifetime", &self.lifetime);
             fmt.finish()
         }
     }
@@ -637,8 +644,12 @@ pub mod tracing {
             event: &api::PathSecretMapUninitialized,
         ) {
             let parent = self.parent(meta);
-            let api::PathSecretMapUninitialized { capacity, entries } = event;
-            tracing :: event ! (target : "path_secret_map_uninitialized" , parent : parent , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , entries = tracing :: field :: debug (entries));
+            let api::PathSecretMapUninitialized {
+                capacity,
+                entries,
+                lifetime,
+            } = event;
+            tracing :: event ! (target : "path_secret_map_uninitialized" , parent : parent , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , entries = tracing :: field :: debug (entries) , lifetime = tracing :: field :: debug (lifetime));
         }
         #[inline]
         fn on_path_secret_map_background_handshake_requested(
@@ -921,23 +932,29 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct ConnectionMeta {
         pub id: u64,
+        pub timestamp: Timestamp,
     }
     impl IntoEvent<api::ConnectionMeta> for ConnectionMeta {
         #[inline]
         fn into_event(self) -> api::ConnectionMeta {
-            let ConnectionMeta { id } = self;
+            let ConnectionMeta { id, timestamp } = self;
             api::ConnectionMeta {
                 id: id.into_event(),
+                timestamp: timestamp.into_event(),
             }
         }
     }
     #[derive(Clone, Debug)]
-    pub struct EndpointMeta {}
+    pub struct EndpointMeta {
+        pub timestamp: Timestamp,
+    }
     impl IntoEvent<api::EndpointMeta> for EndpointMeta {
         #[inline]
         fn into_event(self) -> api::EndpointMeta {
-            let EndpointMeta {} = self;
-            api::EndpointMeta {}
+            let EndpointMeta { timestamp } = self;
+            api::EndpointMeta {
+                timestamp: timestamp.into_event(),
+            }
         }
     }
     #[derive(Clone, Debug)]
@@ -1030,14 +1047,20 @@ pub mod builder {
         pub capacity: usize,
         #[doc = " The number of entries in the map"]
         pub entries: usize,
+        pub lifetime: core::time::Duration,
     }
     impl IntoEvent<api::PathSecretMapUninitialized> for PathSecretMapUninitialized {
         #[inline]
         fn into_event(self) -> api::PathSecretMapUninitialized {
-            let PathSecretMapUninitialized { capacity, entries } = self;
+            let PathSecretMapUninitialized {
+                capacity,
+                entries,
+                lifetime,
+            } = self;
             api::PathSecretMapUninitialized {
                 capacity: capacity.into_event(),
                 entries: entries.into_event(),
+                lifetime: lifetime.into_event(),
             }
         }
     }

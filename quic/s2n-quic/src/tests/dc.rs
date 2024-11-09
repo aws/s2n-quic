@@ -19,6 +19,7 @@ use s2n_quic_core::{
             ConnectionMeta, DatagramDropReason, DcState, EndpointDatagramDropped, EndpointMeta,
             MtuUpdated, Subject,
         },
+        metrics::aggregate,
         Timestamp,
     },
     frame::ConnectionClose,
@@ -299,6 +300,7 @@ fn dc_possible_secret_control_packet(
     Ok(())
 }
 
+#[track_caller]
 fn self_test<S: ServerProviders, C: ClientProviders>(
     server: server::Builder<S>,
     client: client::Builder<C>,
@@ -316,12 +318,16 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     let client_events = client_subscriber.clone();
 
     test(model, |handle| {
+        let metrics = aggregate::testing::Registry::snapshot();
+
+        let server_event = (
+            ((dc::ConfirmComplete, dc::MtuConfirmComplete), metrics.subscriber("server")),
+            (tracing_events(), server_subscriber),
+        );
+
         let mut server = server
             .with_io(handle.builder().build()?)?
-            .with_event((
-                (dc::ConfirmComplete, dc::MtuConfirmComplete),
-                (tracing_events(), server_subscriber),
-            ))?
+            .with_event(server_event)?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -347,12 +353,14 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
             }
         });
 
+        let client_event = (
+            ((dc::ConfirmComplete, dc::MtuConfirmComplete), metrics.subscriber("client")),
+            (tracing_events(), client_subscriber),
+        );
+
         let client = client
             .with_io(handle.builder().build().unwrap())?
-            .with_event((
-                (dc::ConfirmComplete, dc::MtuConfirmComplete),
-                (tracing_events(), client_subscriber),
-            ))?
+            .with_event(client_event)?
             .with_random(Random::with_seed(456))?
             .start()?;
 

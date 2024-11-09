@@ -40,7 +40,7 @@ pub trait Timer {
 impl_ready_future!(Timer, TimerReady, ());
 
 /// A clock which always returns a Timestamp of value 1us
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct NoopClock;
 
 impl Clock for NoopClock {

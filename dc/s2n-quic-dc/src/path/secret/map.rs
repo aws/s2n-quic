@@ -8,7 +8,7 @@ use crate::{
     path::secret::{open, seal, stateless_reset},
     stream::TransportFeatures,
 };
-use s2n_quic_core::dc;
+use s2n_quic_core::{dc, time};
 use std::{net::SocketAddr, sync::Arc};
 
 mod cleaner;
@@ -47,12 +47,17 @@ pub struct Map {
 }
 
 impl Map {
-    pub fn new<S: event::Subscriber>(
+    pub fn new<C, S>(
         signer: stateless_reset::Signer,
         capacity: usize,
+        clock: C,
         subscriber: S,
-    ) -> Self {
-        let store = state::State::new(signer, capacity, subscriber);
+    ) -> Self
+    where
+        C: 'static + time::Clock + Send + Sync,
+        S: event::Subscriber,
+    {
+        let store = state::State::new(signer, capacity, clock, subscriber);
         Self { store }
     }
 
@@ -163,6 +168,7 @@ impl Map {
         let provider = Self::new(
             stateless_reset::Signer::random(),
             peers.len() * 3,
+            time::NoopClock,
             event::testing::Subscriber::no_snapshot(),
         );
         let mut secret = [0; 32];

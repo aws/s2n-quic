@@ -4,7 +4,7 @@
 #[cfg(any(test, feature = "testing"))]
 use s2n_quic_core::event::snapshot;
 
-pub use s2n_quic_core::event::{Event, IntoEvent};
+pub use s2n_quic_core::event::{Event, IntoEvent, Timestamp};
 
 /// Provides metadata related to an event
 pub trait Meta: core::fmt::Debug {

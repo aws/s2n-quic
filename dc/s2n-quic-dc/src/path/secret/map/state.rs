@@ -10,7 +10,10 @@ use crate::{
     packet::{secret_control as control, Packet},
     path::secret::receiver,
 };
-use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_core::{
+    inet::SocketAddress,
+    time::{self, Timestamp},
+};
 use std::{
     hash::{BuildHasherDefault, Hasher},
     net::{Ipv4Addr, SocketAddr},
@@ -39,7 +42,11 @@ mod tests;
 // is defined by access to the entry in the map. Unfortunately we lack any good way to authenticate
 // a peer as *not* having credentials, especially after the peer is gone. It's possible that in the
 // future information could also come from the TLS provider.
-pub(super) struct State<S: event::Subscriber> {
+pub(super) struct State<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
     // This is in number of entries.
     max_capacity: usize,
 
@@ -75,11 +82,24 @@ pub(super) struct State<S: event::Subscriber> {
 
     cleaner: Cleaner,
 
+    init_time: Timestamp,
+
+    clock: C,
+
     subscriber: S,
 }
 
-impl<S: event::Subscriber> State<S> {
-    pub fn new(signer: stateless_reset::Signer, capacity: usize, subscriber: S) -> Arc<Self> {
+impl<C, S> State<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    pub fn new(
+        signer: stateless_reset::Signer,
+        capacity: usize,
+        clock: C,
+        subscriber: S,
+    ) -> Arc<Self> {
         // FIXME: Avoid unwrap and the whole socket.
         //
         // We only ever send on this socket - but we really should be sending on the same
@@ -89,6 +109,8 @@ impl<S: event::Subscriber> State<S> {
         // of implementation).
         let control_socket = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
         control_socket.set_nonblocking(true).unwrap();
+
+        let init_time = clock.get_time();
 
         let state = Self {
             // This is around 500MB with current entry size.
@@ -102,6 +124,8 @@ impl<S: event::Subscriber> State<S> {
             signer,
             receiver_shared: receiver::Shared::new(),
             control_socket,
+            init_time,
+            clock,
             subscriber,
         };
 
@@ -296,15 +320,23 @@ impl<S: event::Subscriber> State<S> {
     }
 
     fn subscriber(&self) -> event::EndpointPublisherSubscriber<S> {
+        use event::IntoEvent as _;
+
+        let timestamp = self.clock.get_time().into_event();
+
         event::EndpointPublisherSubscriber::new(
-            event::builder::EndpointMeta {},
+            event::builder::EndpointMeta { timestamp },
             None,
             &self.subscriber,
         )
     }
 }
 
-impl<S: event::Subscriber> Store for State<S> {
+impl<C, S> Store for State<C, S>
+where
+    C: time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
     fn secrets_len(&self) -> usize {
         self.ids.len()
     }
@@ -514,16 +546,26 @@ impl<S: event::Subscriber> Store for State<S> {
     }
 }
 
-impl<S: event::Subscriber> Drop for State<S> {
+impl<C, S> Drop for State<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
     fn drop(&mut self) {
         if std::thread::panicking() {
             return;
         }
 
+        let lifetime = self
+            .clock
+            .get_time()
+            .saturating_duration_since(self.init_time);
+
         self.subscriber().on_path_secret_map_uninitialized(
             event::builder::PathSecretMapUninitialized {
                 capacity: self.secrets_capacity(),
                 entries: self.secrets_len(),
+                lifetime,
             },
         );
     }

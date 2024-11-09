@@ -10,6 +10,9 @@ pub mod probe;
 mod recorder;
 mod variant;
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 pub use info::Info;
 pub use metric::*;
 pub use recorder::*;
@@ -22,6 +25,7 @@ pub trait Registry: 'static + Send + Sync {
     type Measure: Recorder;
     type Gauge: Recorder;
     type Timer: Recorder;
+    type NominalTimer: NominalRecorder;
 
     fn register_counter(&self, info: &'static Info) -> Self::Counter;
 
@@ -38,6 +42,12 @@ pub trait Registry: 'static + Send + Sync {
     fn register_gauge(&self, info: &'static Info) -> Self::Gauge;
 
     fn register_timer(&self, info: &'static Info) -> Self::Timer;
+
+    fn register_nominal_timer(
+        &self,
+        info: &'static Info,
+        variant: &'static info::Variant,
+    ) -> Self::NominalTimer;
 }
 
 impl<A, B> Registry for (A, B)
@@ -51,6 +61,7 @@ where
     type Measure = (A::Measure, B::Measure);
     type Gauge = (A::Gauge, B::Gauge);
     type Timer = (A::Timer, B::Timer);
+    type NominalTimer = (A::NominalTimer, B::NominalTimer);
 
     #[inline]
     fn register_counter(&self, info: &'static Info) -> Self::Counter {
@@ -91,6 +102,18 @@ where
     fn register_timer(&self, info: &'static Info) -> Self::Timer {
         (self.0.register_timer(info), self.1.register_timer(info))
     }
+
+    #[inline]
+    fn register_nominal_timer(
+        &self,
+        info: &'static Info,
+        variant: &'static info::Variant,
+    ) -> Self::NominalTimer {
+        (
+            self.0.register_nominal_timer(info, variant),
+            self.1.register_nominal_timer(info, variant),
+        )
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -101,6 +124,7 @@ impl<T: Registry> Registry for alloc::sync::Arc<T> {
     type Measure = T::Measure;
     type Gauge = T::Gauge;
     type Timer = T::Timer;
+    type NominalTimer = T::NominalTimer;
 
     #[inline]
     fn register_counter(&self, info: &'static Info) -> Self::Counter {
@@ -134,5 +158,14 @@ impl<T: Registry> Registry for alloc::sync::Arc<T> {
     #[inline]
     fn register_timer(&self, info: &'static Info) -> Self::Timer {
         self.as_ref().register_timer(info)
+    }
+
+    #[inline]
+    fn register_nominal_timer(
+        &self,
+        info: &'static Info,
+        variant: &'static info::Variant,
+    ) -> Self::NominalTimer {
+        self.as_ref().register_nominal_timer(info, variant)
     }
 }
