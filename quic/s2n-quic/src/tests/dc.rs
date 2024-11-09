@@ -321,7 +321,10 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         let metrics = aggregate::testing::Registry::snapshot();
 
         let server_event = (
-            ((dc::ConfirmComplete, dc::MtuConfirmComplete), metrics.subscriber("server")),
+            (
+                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                metrics.subscriber("server"),
+            ),
             (tracing_events(), server_subscriber),
         );
 
@@ -354,7 +357,10 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
         });
 
         let client_event = (
-            ((dc::ConfirmComplete, dc::MtuConfirmComplete), metrics.subscriber("client")),
+            (
+                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                metrics.subscriber("client"),
+            ),
             (tracing_events(), client_subscriber),
         );
 
@@ -478,7 +484,7 @@ fn assert_dc_complete(events: &[DcStateChangedEvent]) {
 }
 
 fn assert_mtu_probing_completed(events: &[MtuUpdatedEvent]) {
-    assert!(events.len() > 0);
+    assert!(!events.is_empty());
     let last_event = events.last().unwrap();
     assert!(last_event.search_complete);
     // 1472 = default MaxMtu (1500) - headers
