@@ -1,5 +1,5 @@
 ### Release Summary:
-<!-- If this is a feature or bug that impacts customers and is significant enough to include in the "Summary" section of the next version release, please include a brief (1-2 sentences) description of the change. The audience of this summary is future customers, not maintainers or reviewers. See https://github.com/aws/s2n-tls/releases/tag/v1.5.7 for an example. Otherwise, leave this section blank -->
+<!-- If this is a feature or bug that impacts customers and is significant enough to include in the "Summary" section of the next version release, please include a brief (1-2 sentences) description of the change. The audience of this summary is customers, not maintainers or reviewers. See https://github.com/aws/s2n-tls/releases/tag/v1.5.7 for an example. Otherwise, leave this section blank -->
 
 ### Resolved issues:
 
