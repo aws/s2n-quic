@@ -13,13 +13,6 @@ pub struct Info {
     pub units: Units,
 }
 
-#[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
-pub struct Variant {
-    pub id: usize,
-    pub name: &'static Str,
-}
-
 #[doc(hidden)]
 pub struct Builder {
     pub id: usize,
@@ -34,6 +27,32 @@ impl Builder {
             id: self.id,
             name: self.name,
             units: self.units,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+#[non_exhaustive]
+pub struct Variant {
+    pub id: usize,
+    pub name: &'static Str,
+}
+
+#[doc(hidden)]
+pub mod variant {
+    use super::*;
+
+    pub struct Builder {
+        pub id: usize,
+        pub name: &'static Str,
+    }
+
+    impl Builder {
+        pub const fn build(self) -> Variant {
+            Variant {
+                id: self.id,
+                name: self.name,
+            }
         }
     }
 }

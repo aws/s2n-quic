@@ -199,6 +199,14 @@ impl core::fmt::Debug for TlsSession<'_> {
     }
 }
 
+#[cfg(feature = "std")]
+impl<'a> IntoEvent<&'a std::io::Error> for &'a std::io::Error {
+    #[inline]
+    fn into_event(self) -> &'a std::io::Error {
+        self
+    }
+}
+
 /// Provides metadata related to an event
 pub trait Meta: core::fmt::Debug {
     /// Returns whether the local endpoint is a Client or Server

@@ -17,6 +17,7 @@ use core::cell::UnsafeCell;
 use s2n_quic_core::{
     dc, endpoint,
     inet::{ExplicitCongestionNotification, SocketAddress},
+    time::Clock as _,
     varint::VarInt,
 };
 use std::{io, sync::Arc};
@@ -158,6 +159,8 @@ where
     Env: Environment,
     P: Peer<Env>,
 {
+    let now = env.clock().get_time();
+
     let features = peer.features();
 
     let sockets = peer.setup(env)?;
@@ -328,6 +331,7 @@ where
         write,
         shared,
         sockets: sockets.application,
+        queue_time: now,
     };
 
     Ok(stream)

@@ -1,14 +1,17 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::{
-    recv::application::{self as recv, Reader},
-    send::application::{self as send, Writer},
-    shared::ArcShared,
-    socket,
+use crate::{
+    event,
+    stream::{
+        recv::application::{self as recv, Reader},
+        send::application::{self as send, Writer},
+        shared::ArcShared,
+        socket,
+    },
 };
 use core::fmt;
-use s2n_quic_core::buffer;
+use s2n_quic_core::{buffer, time::Timestamp};
 use std::{io, net::SocketAddr};
 
 pub struct Builder {
@@ -16,21 +19,73 @@ pub struct Builder {
     pub write: send::Builder,
     pub shared: ArcShared,
     pub sockets: Box<dyn socket::application::Builder>,
+    pub queue_time: Timestamp,
 }
 
 impl Builder {
+    /// Builds the stream and emits an event indicating that the stream was built
     #[inline]
-    pub fn build(self) -> io::Result<Stream> {
+    pub(crate) fn build<Pub>(self, publisher: &Pub) -> io::Result<Stream>
+    where
+        Pub: event::EndpointPublisher,
+    {
+        {
+            let remote_address = self.shared.read_remote_addr();
+            let remote_address = &remote_address;
+            let credential_id = &*self.shared.credentials().id;
+            let stream_id = self.shared.application().stream_id.into_varint().as_u64();
+            let now = self.shared.common.clock.get_time();
+            let sojourn_time = now.saturating_duration_since(self.queue_time);
+
+            publisher.on_acceptor_stream_dequeued(event::builder::AcceptorStreamDequeued {
+                remote_address,
+                credential_id,
+                stream_id,
+                sojourn_time,
+            });
+        }
+
+        self.build_without_event()
+    }
+
+    #[inline]
+    pub(crate) fn build_without_event(self) -> io::Result<Stream> {
         let Self {
             read,
             write,
             shared,
             sockets,
+            queue_time: _,
         } = self;
+
         let sockets = sockets.build()?;
         let read = read.build(shared.clone(), sockets.clone());
         let write = write.build(shared, sockets);
         Ok(Stream { read, write })
+    }
+
+    /// Emits an event indicating that the stream was pruned
+    #[inline]
+    pub(crate) fn prune<Pub>(
+        self,
+        reason: event::builder::AcceptorStreamPruneReason,
+        publisher: &Pub,
+    ) where
+        Pub: event::EndpointPublisher,
+    {
+        let now = self.shared.clock.get_time();
+        let remote_address = self.shared.read_remote_addr();
+        let remote_address = &remote_address;
+        let credential_id = &*self.shared.credentials().id;
+        let stream_id = self.shared.application().stream_id.into_varint().as_u64();
+        let sojourn_time = now.saturating_duration_since(self.queue_time);
+        publisher.on_acceptor_stream_pruned(event::builder::AcceptorStreamPruned {
+            remote_address,
+            credential_id,
+            stream_id,
+            sojourn_time,
+            reason,
+        });
     }
 }
 
