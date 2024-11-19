@@ -111,6 +111,8 @@ where
             publisher.on_acceptor_tcp_loop_iteration_completed(
                 event::builder::AcceptorTcpLoopIterationCompleted {
                     pending_streams: workers.working.len(),
+                    slots_idle: workers.free.len(),
+                    slot_utilization: workers.working.len() as f32 / workers.workers.len() as f32,
                     processing_duration: self.env.clock().get_time().saturating_duration_since(now),
                     max_sojourn_time: workers.max_sojourn_time(),
                 },
@@ -753,6 +755,7 @@ impl WorkerState {
                             stream_id: packet.stream_id.into_varint().as_u64(),
                             payload_len: packet.payload_len,
                             is_fin: packet.is_fin,
+                            is_fin_known: packet.is_fin_known,
                             sojourn_time,
                         },
                     );

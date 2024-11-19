@@ -19,6 +19,7 @@ pub struct InitialPacket {
     pub is_zero_offset: bool,
     pub is_retransmission: bool,
     pub is_fin: bool,
+    pub is_fin_known: bool,
 }
 
 impl InitialPacket {
@@ -55,6 +56,7 @@ impl<'a> From<packet::stream::decoder::Packet<'a>> for InitialPacket {
         let is_zero_offset = packet.stream_offset().as_u64() == 0;
         let is_retransmission = packet.is_retransmission();
         let is_fin = packet.is_fin();
+        let is_fin_known = packet.final_offset().is_some();
         Self {
             credentials,
             stream_id,
@@ -64,6 +66,7 @@ impl<'a> From<packet::stream::decoder::Packet<'a>> for InitialPacket {
             payload_len,
             is_retransmission,
             is_fin,
+            is_fin_known,
         }
     }
 }

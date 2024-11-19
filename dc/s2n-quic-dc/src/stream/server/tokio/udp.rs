@@ -191,6 +191,7 @@ where
                             is_zero_offset: packet.is_zero_offset,
                             is_retransmission: packet.is_retransmission,
                             is_fin: packet.is_fin,
+                            is_fin_known: packet.is_fin_known,
                         },
                     );
 

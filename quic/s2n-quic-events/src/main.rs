@@ -10,6 +10,7 @@ type Result<T, E = Error> = core::result::Result<T, E>;
 mod output;
 mod output_mode;
 mod parser;
+mod validation;
 
 use output::Output;
 use output_mode::OutputMode;
@@ -154,6 +155,9 @@ fn main() -> Result<()> {
 
         // make sure events are in a deterministic order
         files.sort_by(|a, b| a.path.as_os_str().cmp(b.path.as_os_str()));
+
+        // validate the events
+        validation::validate(&files);
 
         let root = std::path::Path::new(event_info.output_path);
         let _ = std::fs::create_dir_all(root);

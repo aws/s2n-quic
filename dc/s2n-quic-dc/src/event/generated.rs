@@ -44,6 +44,10 @@ pub mod api {
     pub struct AcceptorTcpLoopIterationCompleted {
         #[doc = " The number of streams that are waiting on initial packets"]
         pub pending_streams: usize,
+        #[doc = " The number of slots that are not currently processing a stream"]
+        pub slots_idle: usize,
+        #[doc = " The percentage of slots currently processing streams"]
+        pub slot_utilization: f32,
         #[doc = " The amount of time it took to complete the iteration"]
         pub processing_duration: core::time::Duration,
         #[doc = " The computed max sojourn time that is allowed for streams"]
@@ -57,13 +61,15 @@ pub mod api {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("AcceptorTcpLoopIterationCompleted");
             fmt.field("pending_streams", &self.pending_streams);
+            fmt.field("slots_idle", &self.slots_idle);
+            fmt.field("slot_utilization", &self.slot_utilization);
             fmt.field("processing_duration", &self.processing_duration);
             fmt.field("max_sojourn_time", &self.max_sojourn_time);
             fmt.finish()
         }
     }
     impl Event for AcceptorTcpLoopIterationCompleted {
-        const NAME: &'static str = "acceptor:tcp:started";
+        const NAME: &'static str = "acceptor:tcp:loop_iteration_completed";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -166,6 +172,8 @@ pub mod api {
         pub payload_len: usize,
         #[doc = " If the packet includes the final bytes of the stream"]
         pub is_fin: bool,
+        #[doc = " If the packet includes the final offset of the stream"]
+        pub is_fin_known: bool,
         #[doc = " The amount of time the TCP stream spent in the queue before receiving"]
         #[doc = " the initial packet"]
         pub sojourn_time: core::time::Duration,
@@ -179,6 +187,7 @@ pub mod api {
             fmt.field("stream_id", &self.stream_id);
             fmt.field("payload_len", &self.payload_len);
             fmt.field("is_fin", &self.is_fin);
+            fmt.field("is_fin_known", &self.is_fin_known);
             fmt.field("sojourn_time", &self.sojourn_time);
             fmt.finish()
         }
@@ -319,6 +328,8 @@ pub mod api {
         pub is_retransmission: bool,
         #[doc = " If the packet includes the final bytes of the stream"]
         pub is_fin: bool,
+        #[doc = " If the packet includes the final offset of the stream"]
+        pub is_fin_known: bool,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for AcceptorUdpPacketReceived<'a> {
@@ -331,6 +342,7 @@ pub mod api {
             fmt.field("is_zero_offset", &self.is_zero_offset);
             fmt.field("is_retransmission", &self.is_retransmission);
             fmt.field("is_fin", &self.is_fin);
+            fmt.field("is_fin_known", &self.is_fin_known);
             fmt.finish()
         }
     }
@@ -736,7 +748,7 @@ pub mod api {
         }
     }
     impl<'a> Event for PathSecretMapEntryInserted<'a> {
-        const NAME: &'static str = "path_secret_map:entry_replaced";
+        const NAME: &'static str = "path_secret_map:entry_inserted";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -755,7 +767,7 @@ pub mod api {
         }
     }
     impl<'a> Event for PathSecretMapEntryReady<'a> {
-        const NAME: &'static str = "path_secret_map:entry_replaced";
+        const NAME: &'static str = "path_secret_map:entry_ready";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1171,10 +1183,12 @@ pub mod tracing {
             let parent = self.parent(meta);
             let api::AcceptorTcpLoopIterationCompleted {
                 pending_streams,
+                slots_idle,
+                slot_utilization,
                 processing_duration,
                 max_sojourn_time,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_loop_iteration_completed" , parent : parent , tracing :: Level :: DEBUG , pending_streams = tracing :: field :: debug (pending_streams) , processing_duration = tracing :: field :: debug (processing_duration) , max_sojourn_time = tracing :: field :: debug (max_sojourn_time));
+            tracing :: event ! (target : "acceptor_tcp_loop_iteration_completed" , parent : parent , tracing :: Level :: DEBUG , pending_streams = tracing :: field :: debug (pending_streams) , slots_idle = tracing :: field :: debug (slots_idle) , slot_utilization = tracing :: field :: debug (slot_utilization) , processing_duration = tracing :: field :: debug (processing_duration) , max_sojourn_time = tracing :: field :: debug (max_sojourn_time));
         }
         #[inline]
         fn on_acceptor_tcp_fresh_enqueued(
@@ -1240,9 +1254,10 @@ pub mod tracing {
                 stream_id,
                 payload_len,
                 is_fin,
+                is_fin_known,
                 sojourn_time,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_packet_received" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , payload_len = tracing :: field :: debug (payload_len) , is_fin = tracing :: field :: debug (is_fin) , sojourn_time = tracing :: field :: debug (sojourn_time));
+            tracing :: event ! (target : "acceptor_tcp_packet_received" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , payload_len = tracing :: field :: debug (payload_len) , is_fin = tracing :: field :: debug (is_fin) , is_fin_known = tracing :: field :: debug (is_fin_known) , sojourn_time = tracing :: field :: debug (sojourn_time));
         }
         #[inline]
         fn on_acceptor_tcp_packet_dropped(
@@ -1322,8 +1337,9 @@ pub mod tracing {
                 is_zero_offset,
                 is_retransmission,
                 is_fin,
+                is_fin_known,
             } = event;
-            tracing :: event ! (target : "acceptor_udp_packet_received" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , payload_len = tracing :: field :: debug (payload_len) , is_zero_offset = tracing :: field :: debug (is_zero_offset) , is_retransmission = tracing :: field :: debug (is_retransmission) , is_fin = tracing :: field :: debug (is_fin));
+            tracing :: event ! (target : "acceptor_udp_packet_received" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , payload_len = tracing :: field :: debug (payload_len) , is_zero_offset = tracing :: field :: debug (is_zero_offset) , is_retransmission = tracing :: field :: debug (is_retransmission) , is_fin = tracing :: field :: debug (is_fin) , is_fin_known = tracing :: field :: debug (is_fin_known));
         }
         #[inline]
         fn on_acceptor_udp_packet_dropped(
@@ -1765,6 +1781,10 @@ pub mod builder {
     pub struct AcceptorTcpLoopIterationCompleted {
         #[doc = " The number of streams that are waiting on initial packets"]
         pub pending_streams: usize,
+        #[doc = " The number of slots that are not currently processing a stream"]
+        pub slots_idle: usize,
+        #[doc = " The percentage of slots currently processing streams"]
+        pub slot_utilization: f32,
         #[doc = " The amount of time it took to complete the iteration"]
         pub processing_duration: core::time::Duration,
         #[doc = " The computed max sojourn time that is allowed for streams"]
@@ -1778,11 +1798,15 @@ pub mod builder {
         fn into_event(self) -> api::AcceptorTcpLoopIterationCompleted {
             let AcceptorTcpLoopIterationCompleted {
                 pending_streams,
+                slots_idle,
+                slot_utilization,
                 processing_duration,
                 max_sojourn_time,
             } = self;
             api::AcceptorTcpLoopIterationCompleted {
                 pending_streams: pending_streams.into_event(),
+                slots_idle: slots_idle.into_event(),
+                slot_utilization: slot_utilization.into_event(),
                 processing_duration: processing_duration.into_event(),
                 max_sojourn_time: max_sojourn_time.into_event(),
             }
@@ -1887,6 +1911,8 @@ pub mod builder {
         pub payload_len: usize,
         #[doc = " If the packet includes the final bytes of the stream"]
         pub is_fin: bool,
+        #[doc = " If the packet includes the final offset of the stream"]
+        pub is_fin_known: bool,
         #[doc = " The amount of time the TCP stream spent in the queue before receiving"]
         #[doc = " the initial packet"]
         pub sojourn_time: core::time::Duration,
@@ -1900,6 +1926,7 @@ pub mod builder {
                 stream_id,
                 payload_len,
                 is_fin,
+                is_fin_known,
                 sojourn_time,
             } = self;
             api::AcceptorTcpPacketReceived {
@@ -1908,6 +1935,7 @@ pub mod builder {
                 stream_id: stream_id.into_event(),
                 payload_len: payload_len.into_event(),
                 is_fin: is_fin.into_event(),
+                is_fin_known: is_fin_known.into_event(),
                 sojourn_time: sojourn_time.into_event(),
             }
         }
@@ -2042,6 +2070,8 @@ pub mod builder {
         pub is_retransmission: bool,
         #[doc = " If the packet includes the final bytes of the stream"]
         pub is_fin: bool,
+        #[doc = " If the packet includes the final offset of the stream"]
+        pub is_fin_known: bool,
     }
     impl<'a> IntoEvent<api::AcceptorUdpPacketReceived<'a>> for AcceptorUdpPacketReceived<'a> {
         #[inline]
@@ -2054,6 +2084,7 @@ pub mod builder {
                 is_zero_offset,
                 is_retransmission,
                 is_fin,
+                is_fin_known,
             } = self;
             api::AcceptorUdpPacketReceived {
                 remote_address: remote_address.into_event(),
@@ -2063,6 +2094,7 @@ pub mod builder {
                 is_zero_offset: is_zero_offset.into_event(),
                 is_retransmission: is_retransmission.into_event(),
                 is_fin: is_fin.into_event(),
+                is_fin_known: is_fin_known.into_event(),
             }
         }
     }

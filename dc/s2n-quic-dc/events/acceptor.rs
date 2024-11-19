@@ -17,12 +17,20 @@ struct AcceptorTcpStarted<'a> {
 }
 
 /// Emitted when a TCP acceptor completes a single iteration of the event loop
-#[event("acceptor:tcp:started")]
+#[event("acceptor:tcp:loop_iteration_completed")]
 #[subject(endpoint)]
 struct AcceptorTcpLoopIterationCompleted {
     /// The number of streams that are waiting on initial packets
     #[measure("pending_streams")]
     pending_streams: usize,
+
+    /// The number of slots that are not currently processing a stream
+    #[measure("slots_idle")]
+    slots_idle: usize,
+
+    /// The percentage of slots currently processing streams
+    #[measure("slot_utilization", Percent)]
+    slot_utilization: f32,
 
     /// The amount of time it took to complete the iteration
     #[timer("processing_duration")]
@@ -123,6 +131,10 @@ struct AcceptorTcpPacketReceived<'a> {
     #[bool_counter("is_fin")]
     is_fin: bool,
 
+    /// If the packet includes the final offset of the stream
+    #[bool_counter("is_fin_known")]
+    is_fin_known: bool,
+
     /// The amount of time the TCP stream spent in the queue before receiving
     /// the initial packet
     #[timer("sojourn_time")]
@@ -138,6 +150,7 @@ struct AcceptorTcpPacketDropped<'a> {
     remote_address: SocketAddress<'a>,
 
     /// The reason the packet was dropped
+    #[nominal_counter("reason")]
     reason: AcceptorPacketDropReason,
 
     /// The amount of time the TCP stream spent in the queue before receiving
@@ -233,6 +246,10 @@ struct AcceptorUdpPacketReceived<'a> {
     /// If the packet includes the final bytes of the stream
     #[bool_counter("is_fin")]
     is_fin: bool,
+
+    /// If the packet includes the final offset of the stream
+    #[bool_counter("is_fin_known")]
+    is_fin_known: bool,
 }
 
 /// Emitted when the UDP acceptor received an invalid initial packet
@@ -244,6 +261,7 @@ struct AcceptorUdpPacketDropped<'a> {
     remote_address: SocketAddress<'a>,
 
     /// The reason the packet was dropped
+    #[nominal_counter("reason")]
     reason: AcceptorPacketDropReason,
 }
 

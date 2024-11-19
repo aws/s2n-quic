@@ -32,7 +32,7 @@ struct PathSecretMapBackgroundHandshakeRequested<'a> {
     peer_address: SocketAddress<'a>,
 }
 
-#[event("path_secret_map:entry_replaced")]
+#[event("path_secret_map:entry_inserted")]
 #[subject(endpoint)]
 /// Emitted when the entry is inserted into the path secret map
 struct PathSecretMapEntryInserted<'a> {
@@ -43,7 +43,7 @@ struct PathSecretMapEntryInserted<'a> {
     credential_id: &'a [u8],
 }
 
-#[event("path_secret_map:entry_replaced")]
+#[event("path_secret_map:entry_ready")]
 #[subject(endpoint)]
 /// Emitted when the entry is considered ready for use
 struct PathSecretMapEntryReady<'a> {
