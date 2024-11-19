@@ -496,10 +496,10 @@ impl Enum {
             let mut name = name.to_shouty_snake_case();
             name.push('\0');
 
-            variant_defs.extend(quote!(aggregate::info::Variant {
+            variant_defs.extend(quote!(aggregate::info::variant::Builder {
                 name: aggregate::info::Str::new(#name),
                 id: #idx,
-            },));
+            }.build(),));
 
             variant_matches.extend(quote!(
                 Self::#ident { .. } => #idx,

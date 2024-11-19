@@ -45,3 +45,20 @@ pub mod metrics {
         }
     }
 }
+
+pub mod disabled {
+    #[derive(Debug, Default)]
+    pub struct Subscriber(());
+
+    impl super::Subscriber for Subscriber {
+        type ConnectionContext = ();
+
+        #[inline]
+        fn create_connection_context(
+            &self,
+            _meta: &super::api::ConnectionMeta,
+            _info: &super::api::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+        }
+    }
+}

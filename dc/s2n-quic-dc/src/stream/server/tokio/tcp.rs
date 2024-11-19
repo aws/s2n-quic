@@ -3,6 +3,7 @@
 
 use super::accept;
 use crate::{
+    event::{self, EndpointPublisher, IntoEvent, Subscriber},
     msg,
     path::secret,
     stream::{
@@ -22,8 +23,9 @@ use core::{
     task::{Context, Poll},
     time::Duration,
 };
+use s2n_codec::DecoderError;
 use s2n_quic_core::{
-    ensure,
+    inet::SocketAddress,
     packet::number::PacketNumberSpace,
     ready,
     recovery::RttEstimator,
@@ -34,35 +36,58 @@ use tokio::{
     io::AsyncWrite as _,
     net::{TcpListener, TcpStream},
 };
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 
-pub struct Acceptor {
+pub struct Acceptor<Sub>
+where
+    Sub: Subscriber,
+{
     sender: accept::Sender,
     socket: TcpListener,
     env: Environment,
     secrets: secret::Map,
     backlog: usize,
     accept_flavor: accept::Flavor,
+    subscriber: Sub,
 }
 
-impl Acceptor {
+impl<Sub> Acceptor<Sub>
+where
+    Sub: Subscriber,
+{
     #[inline]
     pub fn new(
+        id: usize,
         socket: TcpListener,
         sender: &accept::Sender,
         env: &Environment,
         secrets: &secret::Map,
         backlog: usize,
         accept_flavor: accept::Flavor,
+        subscriber: Sub,
     ) -> Self {
-        Self {
+        let acceptor = Self {
             sender: sender.clone(),
             socket,
             env: env.clone(),
             secrets: secrets.clone(),
             backlog,
             accept_flavor,
+            subscriber,
+        };
+
+        if let Ok(addr) = acceptor.socket.local_addr() {
+            let local_address: SocketAddress = addr.into();
+            acceptor
+                .publisher()
+                .on_acceptor_tcp_started(event::builder::AcceptorTcpStarted {
+                    id,
+                    local_address: &local_address,
+                    backlog,
+                });
         }
+
+        acceptor
     }
 
     pub async fn run(self) {
@@ -73,17 +98,26 @@ impl Acceptor {
 
         poll_fn(move |cx| {
             let now = self.env.clock().get_time();
+            let publisher = publisher(&self.subscriber, &now);
 
-            fresh.fill(cx, &self.socket);
-            trace!(accepted_backlog = fresh.len());
+            fresh.fill(cx, &self.socket, &publisher);
 
             for socket in fresh.drain() {
-                workers.push(socket, now);
+                workers.push(socket, now, &publisher);
             }
 
-            trace!(pre_worker_count = workers.working.len());
-            let res = workers.poll(cx, &mut context, now);
-            trace!(post_worker_count = workers.working.len());
+            let res = workers.poll(cx, &mut context, now, &publisher);
+
+            publisher.on_acceptor_tcp_loop_iteration_completed(
+                event::builder::AcceptorTcpLoopIterationCompleted {
+                    pending_streams: workers.working.len(),
+                    slots_idle: workers.free.len(),
+                    slot_utilization: (workers.working.len() as f32 / workers.workers.len() as f32)
+                        * 100.0,
+                    processing_duration: self.env.clock().get_time().saturating_duration_since(now),
+                    max_sojourn_time: workers.max_sojourn_time(),
+                },
+            );
 
             workers.invariants();
 
@@ -97,6 +131,23 @@ impl Acceptor {
 
         drop(drop_guard);
     }
+
+    fn publisher(&self) -> event::EndpointPublisherSubscriber<Sub> {
+        publisher(&self.subscriber, self.env.clock())
+    }
+}
+
+fn publisher<'a, Sub: Subscriber, C: Clock>(
+    subscriber: &'a Sub,
+    clock: &C,
+) -> event::EndpointPublisherSubscriber<'a, Sub> {
+    let timestamp = clock.get_time().into_event();
+
+    event::EndpointPublisherSubscriber::new(
+        event::builder::EndpointMeta { timestamp },
+        None,
+        subscriber,
+    )
 }
 
 /// Converts the kernel's TCP FIFO accept queue to LIFO
@@ -107,13 +158,19 @@ struct FreshQueue {
 }
 
 impl FreshQueue {
-    fn new(acceptor: &Acceptor) -> Self {
+    fn new<Sub>(acceptor: &Acceptor<Sub>) -> Self
+    where
+        Sub: Subscriber,
+    {
         Self {
             queue: VecDeque::with_capacity(acceptor.backlog),
         }
     }
 
-    fn fill(&mut self, cx: &mut Context, listener: &TcpListener) {
+    fn fill<Pub>(&mut self, cx: &mut Context, listener: &TcpListener, publisher: &Pub)
+    where
+        Pub: EndpointPublisher,
+    {
         // Allow draining the queue twice the capacity
         //
         // The idea here is to try and reduce the number of connections in the kernel's queue while
@@ -123,34 +180,63 @@ impl FreshQueue {
         // than pop/push with the userspace queue
         let mut remaining = self.queue.capacity() * 2;
 
+        let mut enqueued = 0;
+        let mut dropped = 0;
+        let mut errored = 0;
+
         while let Poll::Ready(res) = listener.poll_accept(cx) {
             match res {
-                Ok((socket, _remote_addr)) => {
+                Ok((socket, remote_addr)) => {
                     if self.queue.len() == self.queue.capacity() {
-                        let _ = self.queue.pop_back();
-                        trace!("fresh backlog too full; dropping stream");
+                        if let Some(remote_addr) = self
+                            .queue
+                            .pop_back()
+                            .and_then(|socket| socket.peer_addr().ok())
+                        {
+                            let remote_address: SocketAddress = remote_addr.into();
+                            let remote_address = &remote_address;
+                            publisher.on_acceptor_tcp_stream_dropped(
+                                event::builder::AcceptorTcpStreamDropped { remote_address, reason: event::builder::AcceptorTcpStreamDropReason::FreshQueueAtCapacity },
+                            );
+                            dropped += 1;
+                        }
                     }
+
+                    let remote_address: SocketAddress = remote_addr.into();
+                    let remote_address = &remote_address;
+                    publisher.on_acceptor_tcp_fresh_enqueued(
+                        event::builder::AcceptorTcpFreshEnqueued { remote_address },
+                    );
+                    enqueued += 1;
+
                     // most recent streams go to the front of the line, since they're the most
                     // likely to be successfully processed
                     self.queue.push_front(socket);
                 }
-                Err(err) => {
+                Err(error) => {
                     // TODO submit to a separate error channel that the application can subscribe
                     // to
-                    error!(listener_error = %err);
+                    publisher.on_acceptor_tcp_io_error(event::builder::AcceptorTcpIoError {
+                        error: &error,
+                    });
+                    errored += 1;
                 }
             }
 
             remaining -= 1;
 
             if remaining == 0 {
-                return;
+                break;
             }
         }
-    }
 
-    fn len(&self) -> usize {
-        self.queue.len()
+        publisher.on_acceptor_tcp_fresh_batch_completed(
+            event::builder::AcceptorTcpFreshBatchCompleted {
+                enqueued,
+                dropped,
+                errored,
+            },
+        )
     }
 
     fn drain(&mut self) -> impl Iterator<Item = TcpStream> + '_ {
@@ -178,7 +264,10 @@ struct WorkerSet {
 
 impl WorkerSet {
     #[inline]
-    pub fn new(acceptor: &Acceptor) -> Self {
+    pub fn new<Sub>(acceptor: &Acceptor<Sub>) -> Self
+    where
+        Sub: Subscriber,
+    {
         let backlog = acceptor.backlog;
         let mut workers = Vec::with_capacity(backlog);
         let mut free = VecDeque::with_capacity(backlog);
@@ -197,36 +286,49 @@ impl WorkerSet {
     }
 
     #[inline]
-    pub fn push(&mut self, stream: TcpStream, now: Timestamp) {
+    pub fn push<Pub>(&mut self, stream: TcpStream, now: Timestamp, publisher: &Pub)
+    where
+        Pub: EndpointPublisher,
+    {
         let Some(idx) = self.next_worker(now) else {
             // NOTE: we do not apply back pressure on the listener's `accept` since the aim is to
             // keep that queue as short as possible so we can control the behavior in userspace.
             //
             // TODO: we need to investigate how this interacts with SYN cookies/retries and fast
             // failure modes in kernel space.
-            trace!(
-                "could not find an available worker; dropping stream {:?}",
-                stream
-            );
+            if let Ok(remote_addr) = stream.peer_addr() {
+                let remote_address: SocketAddress = remote_addr.into();
+                let remote_address = &remote_address;
+                publisher.on_acceptor_tcp_stream_dropped(
+                    event::builder::AcceptorTcpStreamDropped {
+                        remote_address,
+                        reason: event::builder::AcceptorTcpStreamDropReason::SlotsAtCapacity,
+                    },
+                );
+            }
             drop(stream);
             return;
         };
-        self.workers[idx].push(stream, now);
+        self.workers[idx].push(stream, now, publisher);
         self.working.push_back(idx);
     }
 
     #[inline]
-    pub fn poll(
+    pub fn poll<Pub>(
         &mut self,
         cx: &mut Context,
         worker_cx: &mut WorkerContext,
         now: Timestamp,
-    ) -> ControlFlow<()> {
+        publisher: &Pub,
+    ) -> ControlFlow<()>
+    where
+        Pub: EndpointPublisher,
+    {
         let mut cf = ControlFlow::Continue(());
 
         self.working.retain(|&idx| {
             let worker = &mut self.workers[idx];
-            let Poll::Ready(res) = worker.poll(cx, worker_cx, now) else {
+            let Poll::Ready(res) = worker.poll(cx, worker_cx, now, publisher) else {
                 // keep processing it
                 return true;
             };
@@ -234,9 +336,6 @@ impl WorkerSet {
             match res {
                 Ok(ControlFlow::Continue(())) => {
                     // update the accept_time estimate
-                    let sample = worker.sojourn(now);
-                    trace!(sojourn_sample = ?sample);
-
                     self.sojourn_time.update_rtt(
                         Duration::ZERO,
                         worker.sojourn(now),
@@ -248,9 +347,9 @@ impl WorkerSet {
                 Ok(ControlFlow::Break(())) => {
                     cf = ControlFlow::Break(());
                 }
-                Err(err) => {
-                    debug!(accept_stream_error = %err);
-                }
+                Err(Some(err)) => publisher
+                    .on_acceptor_tcp_io_error(event::builder::AcceptorTcpIoError { error: &err }),
+                Err(None) => {}
             }
 
             // the worker is done so remove it from the working queue
@@ -342,7 +441,10 @@ struct WorkerContext {
 }
 
 impl WorkerContext {
-    fn new(acceptor: &Acceptor) -> Self {
+    fn new<Sub>(acceptor: &Acceptor<Sub>) -> Self
+    where
+        Sub: Subscriber,
+    {
         Self {
             recv_buffer: msg::recv::Message::new(u16::MAX),
             sender: acceptor.sender.clone(),
@@ -369,23 +471,42 @@ impl Worker {
     }
 
     #[inline]
-    pub fn push(&mut self, stream: TcpStream, now: Timestamp) {
-        self.queue_time = now;
+    pub fn push<Pub>(&mut self, stream: TcpStream, now: Timestamp, publisher: &Pub)
+    where
+        Pub: EndpointPublisher,
+    {
+        let prev_queue_time = core::mem::replace(&mut self.queue_time, now);
         let prev_state = core::mem::replace(&mut self.state, WorkerState::Init);
         let prev = core::mem::replace(&mut self.stream, Some(stream));
 
-        if prev.is_some() {
-            trace!(worker_prev_state = ?prev_state);
+        if let Some(remote_addr) = prev.and_then(|socket| socket.peer_addr().ok()) {
+            let remote_address: SocketAddress = remote_addr.into();
+            let remote_address = &remote_address;
+            let sojourn_time = now.saturating_duration_since(prev_queue_time);
+            let buffer_len = match prev_state {
+                WorkerState::Init => 0,
+                WorkerState::Buffering { buffer, .. } => buffer.payload_len(),
+                WorkerState::Erroring { .. } => 0,
+            };
+            publisher.on_acceptor_tcp_stream_replaced(event::builder::AcceptorTcpStreamReplaced {
+                remote_address,
+                sojourn_time,
+                buffer_len,
+            });
         }
     }
 
     #[inline]
-    pub fn poll(
+    pub fn poll<Pub>(
         &mut self,
         cx: &mut Context,
         context: &mut WorkerContext,
         now: Timestamp,
-    ) -> Poll<io::Result<ControlFlow<()>>> {
+        publisher: &Pub,
+    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    where
+        Pub: EndpointPublisher,
+    {
         // if we don't have a stream then it's a bug in the worker impl - in production just return
         // `Ready`, which will correct the state
         if self.stream.is_none() {
@@ -399,9 +520,14 @@ impl Worker {
         // make sure another worker didn't leave around a buffer
         context.recv_buffer.clear();
 
-        let res = ready!(self
-            .state
-            .poll(cx, context, &mut self.stream, self.queue_time, now));
+        let res = ready!(self.state.poll(
+            cx,
+            context,
+            &mut self.stream,
+            self.queue_time,
+            now,
+            publisher
+        ));
 
         // if we're ready then reset the worker
         self.state = WorkerState::Init;
@@ -422,7 +548,11 @@ enum WorkerState {
     /// Worker is waiting for a packet
     Init,
     /// Worker received a partial packet and is waiting on more data
-    Buffering(msg::recv::Message),
+    Buffering {
+        buffer: msg::recv::Message,
+        /// The number of times we got Pending from the `recv` call
+        blocked_count: usize,
+    },
     /// Worker encountered an error and is trying to send a response
     Erroring {
         offset: usize,
@@ -432,21 +562,30 @@ enum WorkerState {
 }
 
 impl WorkerState {
-    fn poll(
+    fn poll<Pub>(
         &mut self,
         cx: &mut Context,
         context: &mut WorkerContext,
         stream: &mut Option<TcpStream>,
         queue_time: Timestamp,
         now: Timestamp,
-    ) -> Poll<io::Result<ControlFlow<()>>> {
+        publisher: &Pub,
+    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    where
+        Pub: EndpointPublisher,
+    {
+        let sojourn_time = now.saturating_duration_since(queue_time);
+
         loop {
             // figure out where to put the received bytes
-            let (recv_buffer, recv_buffer_owned) = match self {
+            let (recv_buffer, blocked_count) = match self {
                 // borrow the context's recv buffer initially
-                WorkerState::Init => (&mut context.recv_buffer, false),
+                WorkerState::Init => (&mut context.recv_buffer, 0),
                 // we have our own recv buffer to use
-                WorkerState::Buffering(recv_buffer) => (recv_buffer, true),
+                WorkerState::Buffering {
+                    buffer,
+                    blocked_count,
+                } => (buffer, *blocked_count),
                 // we encountered an error so try and send it back
                 WorkerState::Erroring { offset, buffer, .. } => {
                     let stream = Pin::new(stream.as_mut().unwrap());
@@ -465,26 +604,38 @@ impl WorkerState {
                         unreachable!()
                     };
 
-                    return Err(error).into();
+                    return Err(Some(error)).into();
                 }
             };
 
             // try to read an initial packet from the socket
-            let res = Self::poll_initial_packet(cx, stream.as_mut().unwrap(), recv_buffer);
+            let res = Self::poll_initial_packet(
+                cx,
+                stream.as_mut().unwrap(),
+                recv_buffer,
+                sojourn_time,
+                publisher,
+            );
 
             let Poll::Ready(res) = res else {
                 // if we got `Pending` but we don't own the recv buffer then we need to copy it
                 // into the worker so we can resume where we left off last time
-                if !recv_buffer_owned {
-                    *self = WorkerState::Buffering(recv_buffer.take());
-                };
+                if blocked_count == 0 {
+                    let buffer = recv_buffer.take();
+                    *self = Self::Buffering {
+                        buffer,
+                        blocked_count,
+                    };
+                }
+
+                if let Self::Buffering { blocked_count, .. } = self {
+                    *blocked_count += 1;
+                }
 
                 return Poll::Pending;
             };
 
             let initial_packet = res?;
-
-            debug!(?initial_packet);
 
             let stream_builder = match endpoint::accept_stream(
                 &context.env,
@@ -510,28 +661,42 @@ impl WorkerState {
                             continue;
                         }
                     }
-                    return Err(error.error).into();
+                    return Err(Some(error.error)).into();
                 }
             };
 
-            trace!(
-                enqueue_stream = ?stream_builder.shared.remote_ip(),
-                sojourn_time = ?now.saturating_duration_since(queue_time),
-            );
+            {
+                let remote_address: SocketAddress = stream_builder.shared.read_remote_addr();
+                let remote_address = &remote_address;
+                let credential_id = &*stream_builder.shared.credentials().id;
+                let stream_id = stream_builder
+                    .shared
+                    .application()
+                    .stream_id
+                    .into_varint()
+                    .as_u64();
+                publisher.on_acceptor_tcp_stream_enqueued(
+                    event::builder::AcceptorTcpStreamEnqueued {
+                        remote_address,
+                        credential_id,
+                        stream_id,
+                        sojourn_time,
+                        blocked_count,
+                    },
+                );
+            }
 
-            let item = (stream_builder, queue_time);
             let res = match context.accept_flavor {
-                accept::Flavor::Fifo => context.sender.send_back(item),
-                accept::Flavor::Lifo => context.sender.send_front(item),
+                accept::Flavor::Fifo => context.sender.send_back(stream_builder),
+                accept::Flavor::Lifo => context.sender.send_front(stream_builder),
             };
 
             return Poll::Ready(Ok(match res {
                 Ok(prev) => {
-                    if let Some((stream, queue_time)) = prev {
-                        debug!(
-                            event = "accept::prune",
-                            credentials = ?stream.shared.credentials(),
-                            queue_duration = ?now.saturating_duration_since(queue_time),
+                    if let Some(stream) = prev {
+                        stream.prune(
+                            event::builder::AcceptorStreamPruneReason::AcceptQueueCapacityExceeded,
+                            publisher,
                         );
                     }
                     ControlFlow::Continue(())
@@ -545,41 +710,79 @@ impl WorkerState {
     }
 
     #[inline]
-    fn poll_initial_packet(
+    fn poll_initial_packet<Pub>(
         cx: &mut Context,
         stream: &mut TcpStream,
         recv_buffer: &mut msg::recv::Message,
-    ) -> Poll<io::Result<server::InitialPacket>> {
+        sojourn_time: Duration,
+        publisher: &Pub,
+    ) -> Poll<Result<server::InitialPacket, Option<io::Error>>>
+    where
+        Pub: EndpointPublisher,
+    {
         loop {
-            ensure!(
-                recv_buffer.payload_len() < 10_000,
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "prelude did not come in the first 10k bytes"
-                ))
-                .into()
-            );
+            if recv_buffer.payload_len() > 10_000 {
+                let remote_address = stream
+                    .peer_addr()
+                    .ok()
+                    .map(SocketAddress::from)
+                    .unwrap_or_default();
 
-            let res = ready!(stream.poll_recv_buffer(cx, recv_buffer))?;
+                publisher.on_acceptor_tcp_packet_dropped(
+                    event::builder::AcceptorTcpPacketDropped {
+                        remote_address: &remote_address,
+                        reason: DecoderError::UnexpectedBytes(recv_buffer.payload_len())
+                            .into_event(),
+                        sojourn_time,
+                    },
+                );
+                return Err(None).into();
+            }
+
+            let res = ready!(stream.poll_recv_buffer(cx, recv_buffer)).map_err(Some)?;
 
             match server::InitialPacket::peek(recv_buffer, 16) {
                 Ok(packet) => {
+                    let remote_address = stream
+                        .peer_addr()
+                        .ok()
+                        .map(SocketAddress::from)
+                        .unwrap_or_default();
+
+                    publisher.on_acceptor_tcp_packet_received(
+                        event::builder::AcceptorTcpPacketReceived {
+                            remote_address: &remote_address,
+                            credential_id: &*packet.credentials.id,
+                            stream_id: packet.stream_id.into_varint().as_u64(),
+                            payload_len: packet.payload_len,
+                            is_fin: packet.is_fin,
+                            is_fin_known: packet.is_fin_known,
+                            sojourn_time,
+                        },
+                    );
                     return Ok(packet).into();
                 }
-                Err(s2n_codec::DecoderError::UnexpectedEof(_)) => {
-                    // If at end of the stream, we're not going to succeed. End early.
-                    if res == 0 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            "insufficient data in prelude before EOF",
-                        ))
-                        .into();
-                    }
-                    // we don't have enough bytes buffered so try reading more
-                    continue;
-                }
                 Err(err) => {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())).into();
+                    if matches!(err, DecoderError::UnexpectedEof(_)) && res > 0 {
+                        // we don't have enough bytes buffered so try reading more
+                        continue;
+                    }
+
+                    let remote_address = stream
+                        .peer_addr()
+                        .ok()
+                        .map(SocketAddress::from)
+                        .unwrap_or_default();
+
+                    publisher.on_acceptor_tcp_packet_dropped(
+                        event::builder::AcceptorTcpPacketDropped {
+                            remote_address: &remote_address,
+                            reason: err.into_event(),
+                            sojourn_time,
+                        },
+                    );
+
+                    return Err(None).into();
                 }
             }
         }

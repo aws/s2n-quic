@@ -17,34 +17,52 @@ mod counter {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                0usize => Self(application_write),
-                2usize => Self(application_write__committed__total),
-                4usize => Self(application_read),
-                6usize => Self(application_read__committed__total),
-                8usize => Self(endpoint_initialized),
-                13usize => Self(path_secret_map_initialized),
-                15usize => Self(path_secret_map_uninitialized),
-                19usize => Self(path_secret_map_background_handshake_requested),
-                21usize => Self(path_secret_map_entry_inserted),
-                23usize => Self(path_secret_map_entry_ready),
-                25usize => Self(path_secret_map_entry_replaced),
-                27usize => Self(unknown_path_secret_packet_sent),
-                29usize => Self(unknown_path_secret_packet_received),
-                31usize => Self(unknown_path_secret_packet_accepted),
-                33usize => Self(unknown_path_secret_packet_rejected),
-                35usize => Self(unknown_path_secret_packet_dropped),
-                37usize => Self(replay_definitely_detected),
-                38usize => Self(replay_potentially_detected),
-                40usize => Self(replay_detected_packet_sent),
-                42usize => Self(replay_detected_packet_received),
-                44usize => Self(replay_detected_packet_accepted),
-                46usize => Self(replay_detected_packet_rejected),
-                48usize => Self(replay_detected_packet_dropped),
-                50usize => Self(stale_key_packet_sent),
-                52usize => Self(stale_key_packet_received),
-                54usize => Self(stale_key_packet_accepted),
-                56usize => Self(stale_key_packet_rejected),
-                58usize => Self(stale_key_packet_dropped),
+                0usize => Self(acceptor_tcp_started),
+                1usize => Self(acceptor_tcp_loop_iteration_completed),
+                7usize => Self(acceptor_tcp_fresh_enqueued),
+                8usize => Self(acceptor_tcp_fresh_batch_completed),
+                12usize => Self(acceptor_tcp_stream_dropped),
+                14usize => Self(acceptor_tcp_stream_replaced),
+                17usize => Self(acceptor_tcp_packet_received),
+                22usize => Self(acceptor_tcp_packet_dropped),
+                25usize => Self(acceptor_tcp_stream_enqueued),
+                28usize => Self(acceptor_tcp_io_error),
+                29usize => Self(acceptor_udp_started),
+                30usize => Self(acceptor_udp_datagram_received),
+                32usize => Self(acceptor_udp_packet_received),
+                38usize => Self(acceptor_udp_packet_dropped),
+                40usize => Self(acceptor_udp_stream_enqueued),
+                41usize => Self(acceptor_udp_io_error),
+                42usize => Self(acceptor_stream_pruned),
+                45usize => Self(acceptor_stream_dequeued),
+                47usize => Self(application_write),
+                49usize => Self(application_write__committed__total),
+                51usize => Self(application_read),
+                53usize => Self(application_read__committed__total),
+                55usize => Self(endpoint_initialized),
+                60usize => Self(path_secret_map_initialized),
+                62usize => Self(path_secret_map_uninitialized),
+                66usize => Self(path_secret_map_background_handshake_requested),
+                68usize => Self(path_secret_map_entry_inserted),
+                70usize => Self(path_secret_map_entry_ready),
+                72usize => Self(path_secret_map_entry_replaced),
+                74usize => Self(unknown_path_secret_packet_sent),
+                76usize => Self(unknown_path_secret_packet_received),
+                78usize => Self(unknown_path_secret_packet_accepted),
+                80usize => Self(unknown_path_secret_packet_rejected),
+                82usize => Self(unknown_path_secret_packet_dropped),
+                84usize => Self(replay_definitely_detected),
+                85usize => Self(replay_potentially_detected),
+                87usize => Self(replay_detected_packet_sent),
+                89usize => Self(replay_detected_packet_received),
+                91usize => Self(replay_detected_packet_accepted),
+                93usize => Self(replay_detected_packet_rejected),
+                95usize => Self(replay_detected_packet_dropped),
+                97usize => Self(stale_key_packet_sent),
+                99usize => Self(stale_key_packet_received),
+                101usize => Self(stale_key_packet_accepted),
+                103usize => Self(stale_key_packet_rejected),
+                105usize => Self(stale_key_packet_dropped),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -56,6 +74,42 @@ mod counter {
     }
     define!(
         extern "probe" {
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_started]
+            fn acceptor_tcp_started(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_loop_iteration_completed]
+            fn acceptor_tcp_loop_iteration_completed(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_fresh_enqueued]
+            fn acceptor_tcp_fresh_enqueued(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_fresh_batch_completed]
+            fn acceptor_tcp_fresh_batch_completed(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_stream_dropped]
+            fn acceptor_tcp_stream_dropped(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_stream_replaced]
+            fn acceptor_tcp_stream_replaced(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_packet_received]
+            fn acceptor_tcp_packet_received(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_packet_dropped]
+            fn acceptor_tcp_packet_dropped(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_stream_enqueued]
+            fn acceptor_tcp_stream_enqueued(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_tcp_io_error]
+            fn acceptor_tcp_io_error(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_started]
+            fn acceptor_udp_started(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_datagram_received]
+            fn acceptor_udp_datagram_received(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_packet_received]
+            fn acceptor_udp_packet_received(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_packet_dropped]
+            fn acceptor_udp_packet_dropped(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_stream_enqueued]
+            fn acceptor_udp_stream_enqueued(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_udp_io_error]
+            fn acceptor_udp_io_error(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_stream_pruned]
+            fn acceptor_stream_pruned(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__acceptor_stream_dequeued]
+            fn acceptor_stream_dequeued(value: u64);
             # [link_name = s2n_quic_dc__event__counter__application_write]
             fn application_write(value: u64);
             # [link_name = s2n_quic_dc__event__counter__application_write__committed__total]
@@ -121,8 +175,14 @@ mod counter {
         impl Recorder {
             pub(crate) fn new(info: &'static Info) -> Self {
                 match info.id {
-                    11usize => Self(endpoint_initialized__tcp),
-                    12usize => Self(endpoint_initialized__udp),
+                    19usize => Self(acceptor_tcp_packet_received__is_fin),
+                    20usize => Self(acceptor_tcp_packet_received__is_fin_known),
+                    34usize => Self(acceptor_udp_packet_received__is_zero_offset),
+                    35usize => Self(acceptor_udp_packet_received__is_retransmisson),
+                    36usize => Self(acceptor_udp_packet_received__is_fin),
+                    37usize => Self(acceptor_udp_packet_received__is_fin_known),
+                    58usize => Self(endpoint_initialized__tcp),
+                    59usize => Self(endpoint_initialized__udp),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -134,6 +194,18 @@ mod counter {
         }
         define!(
             extern "probe" {
+                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_tcp_packet_received__is_fin]
+                fn acceptor_tcp_packet_received__is_fin(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_tcp_packet_received__is_fin_known]
+                fn acceptor_tcp_packet_received__is_fin_known(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_zero_offset]
+                fn acceptor_udp_packet_received__is_zero_offset(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_retransmisson]
+                fn acceptor_udp_packet_received__is_retransmisson(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_fin]
+                fn acceptor_udp_packet_received__is_fin(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_fin_known]
+                fn acceptor_udp_packet_received__is_fin_known(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__endpoint_initialized__tcp]
                 fn endpoint_initialized__tcp(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__endpoint_initialized__udp]
@@ -149,29 +221,33 @@ mod counter {
         impl Recorder {
             pub(crate) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
                 match info.id {
-                    9usize => Self(endpoint_initialized__acceptor__protocol),
-                    10usize => Self(endpoint_initialized__handshake__protocol),
-                    20usize => {
+                    13usize => Self(acceptor_tcp_stream_dropped__reason),
+                    23usize => Self(acceptor_tcp_packet_dropped__reason),
+                    39usize => Self(acceptor_udp_packet_dropped__reason),
+                    44usize => Self(acceptor_stream_pruned__reason),
+                    56usize => Self(endpoint_initialized__acceptor__protocol),
+                    57usize => Self(endpoint_initialized__handshake__protocol),
+                    67usize => {
                         Self(path_secret_map_background_handshake_requested__peer_address__protocol)
                     }
-                    22usize => Self(path_secret_map_entry_inserted__peer_address__protocol),
-                    24usize => Self(path_secret_map_entry_ready__peer_address__protocol),
-                    26usize => Self(path_secret_map_entry_replaced__peer_address__protocol),
-                    28usize => Self(unknown_path_secret_packet_sent__peer_address__protocol),
-                    30usize => Self(unknown_path_secret_packet_received__peer_address__protocol),
-                    32usize => Self(unknown_path_secret_packet_accepted__peer_address__protocol),
-                    34usize => Self(unknown_path_secret_packet_rejected__peer_address__protocol),
-                    36usize => Self(unknown_path_secret_packet_dropped__peer_address__protocol),
-                    41usize => Self(replay_detected_packet_sent__peer_address__protocol),
-                    43usize => Self(replay_detected_packet_received__peer_address__protocol),
-                    45usize => Self(replay_detected_packet_accepted__peer_address__protocol),
-                    47usize => Self(replay_detected_packet_rejected__peer_address__protocol),
-                    49usize => Self(replay_detected_packet_dropped__peer_address__protocol),
-                    51usize => Self(stale_key_packet_sent__peer_address__protocol),
-                    53usize => Self(stale_key_packet_received__peer_address__protocol),
-                    55usize => Self(stale_key_packet_accepted__peer_address__protocol),
-                    57usize => Self(stale_key_packet_rejected__peer_address__protocol),
-                    59usize => Self(stale_key_packet_dropped__peer_address__protocol),
+                    69usize => Self(path_secret_map_entry_inserted__peer_address__protocol),
+                    71usize => Self(path_secret_map_entry_ready__peer_address__protocol),
+                    73usize => Self(path_secret_map_entry_replaced__peer_address__protocol),
+                    75usize => Self(unknown_path_secret_packet_sent__peer_address__protocol),
+                    77usize => Self(unknown_path_secret_packet_received__peer_address__protocol),
+                    79usize => Self(unknown_path_secret_packet_accepted__peer_address__protocol),
+                    81usize => Self(unknown_path_secret_packet_rejected__peer_address__protocol),
+                    83usize => Self(unknown_path_secret_packet_dropped__peer_address__protocol),
+                    88usize => Self(replay_detected_packet_sent__peer_address__protocol),
+                    90usize => Self(replay_detected_packet_received__peer_address__protocol),
+                    92usize => Self(replay_detected_packet_accepted__peer_address__protocol),
+                    94usize => Self(replay_detected_packet_rejected__peer_address__protocol),
+                    96usize => Self(replay_detected_packet_dropped__peer_address__protocol),
+                    98usize => Self(stale_key_packet_sent__peer_address__protocol),
+                    100usize => Self(stale_key_packet_received__peer_address__protocol),
+                    102usize => Self(stale_key_packet_accepted__peer_address__protocol),
+                    104usize => Self(stale_key_packet_rejected__peer_address__protocol),
+                    106usize => Self(stale_key_packet_dropped__peer_address__protocol),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -188,6 +264,30 @@ mod counter {
         }
         define!(
             extern "probe" {
+                # [link_name = s2n_quic_dc__event__counter__nominal__acceptor_tcp_stream_dropped__reason]
+                fn acceptor_tcp_stream_dropped__reason(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
+                # [link_name = s2n_quic_dc__event__counter__nominal__acceptor_tcp_packet_dropped__reason]
+                fn acceptor_tcp_packet_dropped__reason(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
+                # [link_name = s2n_quic_dc__event__counter__nominal__acceptor_udp_packet_dropped__reason]
+                fn acceptor_udp_packet_dropped__reason(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
+                # [link_name = s2n_quic_dc__event__counter__nominal__acceptor_stream_pruned__reason]
+                fn acceptor_stream_pruned__reason(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
                 # [link_name = s2n_quic_dc__event__counter__nominal__endpoint_initialized__acceptor__protocol]
                 fn endpoint_initialized__acceptor__protocol(
                     value: u64,
@@ -326,15 +426,27 @@ mod measure {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
-                1usize => Self(application_write__provided),
-                3usize => Self(application_write__committed),
-                5usize => Self(application_read__capacity),
-                7usize => Self(application_read__committed),
-                14usize => Self(path_secret_map_initialized__capacity),
-                16usize => Self(path_secret_map_uninitialized__capacity),
-                17usize => Self(path_secret_map_uninitialized__entries),
-                18usize => Self(path_secret_map_uninitialized__lifetime),
-                39usize => Self(replay_potentially_detected__gap),
+                2usize => Self(acceptor_tcp_loop_iteration_completed__pending_streams),
+                3usize => Self(acceptor_tcp_loop_iteration_completed__slots_idle),
+                4usize => Self(acceptor_tcp_loop_iteration_completed__slot_utilization),
+                6usize => Self(acceptor_tcp_loop_iteration_completed__max_sojourn_time),
+                9usize => Self(acceptor_tcp_fresh_batch_completed__enqueued),
+                10usize => Self(acceptor_tcp_fresh_batch_completed__dropped),
+                11usize => Self(acceptor_tcp_fresh_batch_completed__errored),
+                16usize => Self(acceptor_tcp_stream_replaced__buffer_len),
+                18usize => Self(acceptor_tcp_packet_received__payload_len),
+                27usize => Self(acceptor_tcp_stream_enqueued__blocked_count),
+                31usize => Self(acceptor_udp_datagram_received__len),
+                33usize => Self(acceptor_udp_packet_received__payload_len),
+                48usize => Self(application_write__provided),
+                50usize => Self(application_write__committed),
+                52usize => Self(application_read__capacity),
+                54usize => Self(application_read__committed),
+                61usize => Self(path_secret_map_initialized__capacity),
+                63usize => Self(path_secret_map_uninitialized__capacity),
+                64usize => Self(path_secret_map_uninitialized__entries),
+                65usize => Self(path_secret_map_uninitialized__lifetime),
+                86usize => Self(replay_potentially_detected__gap),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -346,6 +458,30 @@ mod measure {
     }
     define!(
         extern "probe" {
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__pending_streams]
+            fn acceptor_tcp_loop_iteration_completed__pending_streams(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__slots_idle]
+            fn acceptor_tcp_loop_iteration_completed__slots_idle(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__slot_utilization]
+            fn acceptor_tcp_loop_iteration_completed__slot_utilization(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_loop_iteration_completed__max_sojourn_time]
+            fn acceptor_tcp_loop_iteration_completed__max_sojourn_time(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_fresh_batch_completed__enqueued]
+            fn acceptor_tcp_fresh_batch_completed__enqueued(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_fresh_batch_completed__dropped]
+            fn acceptor_tcp_fresh_batch_completed__dropped(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_fresh_batch_completed__errored]
+            fn acceptor_tcp_fresh_batch_completed__errored(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_stream_replaced__buffer_len]
+            fn acceptor_tcp_stream_replaced__buffer_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_packet_received__payload_len]
+            fn acceptor_tcp_packet_received__payload_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_tcp_stream_enqueued__blocked_count]
+            fn acceptor_tcp_stream_enqueued__blocked_count(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_udp_datagram_received__len]
+            fn acceptor_udp_datagram_received__len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__acceptor_udp_packet_received__payload_len]
+            fn acceptor_udp_packet_received__payload_len(value: u64);
             # [link_name = s2n_quic_dc__event__measure__application_write__provided]
             fn application_write__provided(value: u64);
             # [link_name = s2n_quic_dc__event__measure__application_write__committed]
@@ -390,7 +526,16 @@ mod timer {
     pub struct Recorder(fn(core::time::Duration));
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
-            unreachable!("invalid info: {info:?}")
+            match info.id {
+                5usize => Self(acceptor_tcp_loop_iteration_completed__processing_duration),
+                15usize => Self(acceptor_tcp_stream_replaced__sojourn_time),
+                21usize => Self(acceptor_tcp_packet_received__sojourn_time),
+                24usize => Self(acceptor_tcp_packet_dropped__sojourn_time),
+                26usize => Self(acceptor_tcp_stream_enqueued__sojourn_time),
+                43usize => Self(acceptor_stream_pruned__sojourn_time),
+                46usize => Self(acceptor_stream_dequeued__sojourn_time),
+                _ => unreachable!("invalid info: {info:?}"),
+            }
         }
     }
     impl MetricRecorder for Recorder {
@@ -398,6 +543,26 @@ mod timer {
             (self.0)(value.as_duration());
         }
     }
+    define!(
+        extern "probe" {
+            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_loop_iteration_completed__processing_duration]
+            fn acceptor_tcp_loop_iteration_completed__processing_duration(
+                value: core::time::Duration,
+            );
+            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_stream_replaced__sojourn_time]
+            fn acceptor_tcp_stream_replaced__sojourn_time(value: core::time::Duration);
+            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_packet_received__sojourn_time]
+            fn acceptor_tcp_packet_received__sojourn_time(value: core::time::Duration);
+            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_packet_dropped__sojourn_time]
+            fn acceptor_tcp_packet_dropped__sojourn_time(value: core::time::Duration);
+            # [link_name = s2n_quic_dc__event__timer__acceptor_tcp_stream_enqueued__sojourn_time]
+            fn acceptor_tcp_stream_enqueued__sojourn_time(value: core::time::Duration);
+            # [link_name = s2n_quic_dc__event__timer__acceptor_stream_pruned__sojourn_time]
+            fn acceptor_stream_pruned__sojourn_time(value: core::time::Duration);
+            # [link_name = s2n_quic_dc__event__timer__acceptor_stream_dequeued__sojourn_time]
+            fn acceptor_stream_dequeued__sojourn_time(value: core::time::Duration);
+        }
+    );
     pub mod nominal {
         #![allow(non_snake_case)]
         use super::*;

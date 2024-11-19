@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::sync::channel as chan;
+use crate::{event::Subscriber, sync::channel as chan};
 use core::{
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
@@ -30,6 +30,27 @@ impl Sender {
     pub fn send(&self, sojourn_time: Duration) {
         // prefer recent samples
         let _ = self.0.send_back(sojourn_time);
+    }
+}
+
+impl Subscriber for Sender {
+    type ConnectionContext = ();
+
+    #[inline]
+    fn create_connection_context(
+        &self,
+        _meta: &crate::event::api::ConnectionMeta,
+        _info: &crate::event::api::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+    }
+
+    #[inline]
+    fn on_acceptor_stream_dequeued(
+        &self,
+        _meta: &crate::event::api::EndpointMeta,
+        event: &crate::event::api::AcceptorStreamDequeued,
+    ) {
+        self.send(event.sojourn_time);
     }
 }
 

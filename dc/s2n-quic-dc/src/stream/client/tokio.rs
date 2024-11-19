@@ -37,7 +37,7 @@ where
     )?;
 
     // build the stream inside the application context
-    let mut stream = stream.build()?;
+    let mut stream = stream.build_without_event()?;
 
     debug_assert_eq!(stream.protocol(), Protocol::Udp);
 
@@ -70,7 +70,7 @@ where
     )?;
 
     // build the stream inside the application context
-    let mut stream = stream.build()?;
+    let mut stream = stream.build_without_event()?;
 
     debug_assert_eq!(stream.protocol(), Protocol::Tcp);
 
@@ -100,7 +100,7 @@ pub async fn connect_tcp_with(
     )?;
 
     // build the stream inside the application context
-    let mut stream = stream.build()?;
+    let mut stream = stream.build_without_event()?;
 
     debug_assert_eq!(stream.protocol(), Protocol::Tcp);
 

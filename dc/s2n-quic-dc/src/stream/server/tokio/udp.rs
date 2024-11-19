@@ -3,6 +3,7 @@
 
 use super::accept;
 use crate::{
+    event::{self, EndpointPublisher, IntoEvent, Subscriber},
     msg,
     path::secret,
     stream::{
@@ -16,11 +17,15 @@ use crate::{
     },
 };
 use core::ops::ControlFlow;
-use s2n_quic_core::time::Clock as _;
+use s2n_quic_core::{inet::SocketAddress, time::Clock};
 use std::io;
 use tracing::debug;
 
-pub struct Acceptor<S: Socket> {
+pub struct Acceptor<S, Sub>
+where
+    S: Socket,
+    Sub: Subscriber,
+{
     sender: accept::Sender,
     socket: S,
     recv_buffer: msg::recv::Message,
@@ -28,18 +33,25 @@ pub struct Acceptor<S: Socket> {
     env: Environment,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
+    subscriber: Sub,
 }
 
-impl<S: Socket> Acceptor<S> {
+impl<S, Sub> Acceptor<S, Sub>
+where
+    S: Socket,
+    Sub: Subscriber,
+{
     #[inline]
     pub fn new(
+        id: usize,
         socket: S,
         sender: &accept::Sender,
         env: &Environment,
         secrets: &secret::Map,
         accept_flavor: accept::Flavor,
+        subscriber: Sub,
     ) -> Self {
-        Self {
+        let acceptor = Self {
             sender: sender.clone(),
             socket,
             recv_buffer: msg::recv::Message::new(9000.try_into().unwrap()),
@@ -47,7 +59,18 @@ impl<S: Socket> Acceptor<S> {
             env: env.clone(),
             secrets: secrets.clone(),
             accept_flavor,
+            subscriber,
+        };
+
+        if let Ok(addr) = acceptor.socket.local_addr() {
+            let addr: SocketAddress = addr.into();
+            let local_address = addr.into_event();
+            acceptor
+                .publisher()
+                .on_acceptor_udp_started(event::builder::AcceptorUdpStarted { id, local_address });
         }
+
+        acceptor
     }
 
     pub async fn run(mut self) {
@@ -55,8 +78,11 @@ impl<S: Socket> Acceptor<S> {
             match self.accept_one().await {
                 Ok(ControlFlow::Continue(())) => continue,
                 Ok(ControlFlow::Break(())) => break,
-                Err(err) => {
-                    tracing::error!(acceptor_error = %err);
+                Err(error) => {
+                    self.publisher()
+                        .on_acceptor_udp_io_error(event::builder::AcceptorUdpIoError {
+                            error: &error,
+                        });
                 }
             }
         }
@@ -66,6 +92,7 @@ impl<S: Socket> Acceptor<S> {
         let packet = self.recv_packet().await?;
 
         let now = self.env.clock().get_time();
+        let publisher = publisher(&self.subscriber, &now);
 
         let server::handshake::Outcome::Created {
             receiver: handshake,
@@ -100,19 +127,29 @@ impl<S: Socket> Acceptor<S> {
             }
         };
 
-        let item = (stream, now);
+        {
+            let remote_address: SocketAddress = stream.shared.read_remote_addr();
+            let remote_address = &remote_address;
+            let credential_id = &*stream.shared.credentials().id;
+            let stream_id = stream.shared.application().stream_id.into_varint().as_u64();
+            publisher.on_acceptor_udp_stream_enqueued(event::builder::AcceptorUdpStreamEnqueued {
+                remote_address,
+                credential_id,
+                stream_id,
+            });
+        }
+
         let res = match self.accept_flavor {
-            accept::Flavor::Fifo => self.sender.send_back(item),
-            accept::Flavor::Lifo => self.sender.send_front(item),
+            accept::Flavor::Fifo => self.sender.send_back(stream),
+            accept::Flavor::Lifo => self.sender.send_front(stream),
         };
 
         match res {
             Ok(prev) => {
-                if let Some((stream, queue_time)) = prev {
-                    debug!(
-                        event = "accept::prune",
-                        credentials = ?stream.shared.credentials(),
-                        queue_duration = ?now.saturating_duration_since(queue_time),
+                if let Some(stream) = prev {
+                    stream.prune(
+                        event::builder::AcceptorStreamPruneReason::AcceptQueueCapacityExceeded,
+                        &publisher,
                     );
                 }
 
@@ -129,20 +166,65 @@ impl<S: Socket> Acceptor<S> {
         loop {
             // discard any pending packets
             self.recv_buffer.clear();
-            tracing::trace!("recv_start");
             self.socket.recv_buffer(&mut self.recv_buffer).await?;
-            tracing::trace!("recv_finish");
 
-            match server::InitialPacket::peek(&mut self.recv_buffer, 16) {
-                Ok(initial_packet) => {
-                    tracing::debug!(?initial_packet);
-                    return Ok(initial_packet);
+            let remote_address = self.recv_buffer.remote_address();
+            let remote_address = &remote_address;
+            let packet = server::InitialPacket::peek(&mut self.recv_buffer, 16);
+
+            let publisher = self.publisher();
+            publisher.on_acceptor_udp_datagram_received(
+                event::builder::AcceptorUdpDatagramReceived {
+                    remote_address,
+                    len: self.recv_buffer.payload_len(),
+                },
+            );
+
+            match packet {
+                Ok(packet) => {
+                    publisher.on_acceptor_udp_packet_received(
+                        event::builder::AcceptorUdpPacketReceived {
+                            remote_address,
+                            credential_id: &*packet.credentials.id,
+                            stream_id: packet.stream_id.into_varint().as_u64(),
+                            payload_len: packet.payload_len,
+                            is_zero_offset: packet.is_zero_offset,
+                            is_retransmission: packet.is_retransmission,
+                            is_fin: packet.is_fin,
+                            is_fin_known: packet.is_fin_known,
+                        },
+                    );
+
+                    return Ok(packet);
                 }
-                Err(initial_packet_error) => {
-                    tracing::debug!(?initial_packet_error);
+                Err(error) => {
+                    publisher.on_acceptor_udp_packet_dropped(
+                        event::builder::AcceptorUdpPacketDropped {
+                            remote_address,
+                            reason: error.into_event(),
+                        },
+                    );
+
                     continue;
                 }
             }
         }
     }
+
+    fn publisher(&self) -> event::EndpointPublisherSubscriber<Sub> {
+        publisher(&self.subscriber, self.env.clock())
+    }
+}
+
+fn publisher<'a, Sub: Subscriber, C: Clock>(
+    subscriber: &'a Sub,
+    clock: &C,
+) -> event::EndpointPublisherSubscriber<'a, Sub> {
+    let timestamp = clock.get_time().into_event();
+
+    event::EndpointPublisherSubscriber::new(
+        event::builder::EndpointMeta { timestamp },
+        None,
+        subscriber,
+    )
 }

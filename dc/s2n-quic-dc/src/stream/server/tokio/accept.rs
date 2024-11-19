@@ -3,6 +3,7 @@
 
 use super::stats;
 use crate::{
+    event::{self, IntoEvent, Subscriber},
     stream::{
         application::{Builder as StreamBuilder, Stream},
         environment::{tokio::Environment, Environment as _},
@@ -10,7 +11,7 @@ use crate::{
     sync::channel,
 };
 use core::time::Duration;
-use s2n_quic_core::time::{Clock, Timestamp};
+use s2n_quic_core::time::Clock;
 use std::{io, net::SocketAddr};
 use tokio::time::sleep;
 
@@ -21,26 +22,31 @@ pub enum Flavor {
     Lifo,
 }
 
-pub type Sender = channel::Sender<(StreamBuilder, Timestamp)>;
-pub type Receiver = channel::Receiver<(StreamBuilder, Timestamp)>;
+pub type Sender = channel::Sender<StreamBuilder>;
+pub type Receiver = channel::Receiver<StreamBuilder>;
 
 #[inline]
-pub async fn accept(streams: &Receiver, stats: &stats::Sender) -> io::Result<(Stream, SocketAddr)> {
-    let (stream, queue_time) = streams.recv_front().await.map_err(|_err| {
+pub async fn accept<Sub>(streams: &Receiver, subscriber: &Sub) -> io::Result<(Stream, SocketAddr)>
+where
+    Sub: Subscriber,
+{
+    let stream = streams.recv_front().await.map_err(|_err| {
         io::Error::new(
             io::ErrorKind::NotConnected,
             "server acceptor runtime is no longer available",
         )
     })?;
 
-    let now = stream.shared.common.clock.get_time();
-    let sojourn_time = now.saturating_duration_since(queue_time);
-
-    // submit sojourn time statistics
-    stats.send(sojourn_time);
+    let publisher = event::EndpointPublisherSubscriber::new(
+        event::builder::EndpointMeta {
+            timestamp: stream.shared.clock.get_time().into_event(),
+        },
+        None,
+        subscriber,
+    );
 
     // build the stream inside the application context
-    let stream = stream.build()?;
+    let stream = stream.build(&publisher)?;
     let remote_addr = stream.peer_addr()?;
 
     Ok((stream, remote_addr))
@@ -80,12 +86,15 @@ impl Default for Pruner {
 
 impl Pruner {
     /// A task which prunes the accept queue to enforce a maximum sojourn time
-    pub async fn run(
+    pub async fn run<Sub>(
         self,
         env: Environment,
-        channel: channel::WeakReceiver<(StreamBuilder, Timestamp)>,
+        channel: channel::WeakReceiver<StreamBuilder>,
         stats: stats::Stats,
-    ) {
+        subscriber: Sub,
+    ) where
+        Sub: Subscriber,
+    {
         let Self {
             sojourn_multiplier,
             min_threshold,
@@ -113,19 +122,26 @@ impl Pruner {
             // ones.
             let priority = channel::Priority::Optional;
 
+            let publisher = event::EndpointPublisherSubscriber::new(
+                event::builder::EndpointMeta {
+                    timestamp: now.into_event(),
+                },
+                None,
+                &subscriber,
+            );
+
             loop {
                 // pop off any items that have expired
-                let res = channel.pop_back_if(priority, |(_stream, queue_time)| {
-                    queue_time.has_elapsed(queue_time_threshold)
+                let res = channel.pop_back_if(priority, |stream| {
+                    stream.queue_time.has_elapsed(queue_time_threshold)
                 });
 
                 match res {
                     // we pruned a stream
-                    Ok(Some((stream, queue_time))) => {
-                        tracing::debug!(
-                            event = "accept::prune",
-                            credentials = ?stream.shared.credentials(),
-                            queue_duration = ?now.saturating_duration_since(queue_time),
+                    Ok(Some(stream)) => {
+                        stream.prune(
+                            event::builder::AcceptorStreamPruneReason::MaxSojournTimeExceeded,
+                            &publisher,
                         );
                         continue;
                     }
