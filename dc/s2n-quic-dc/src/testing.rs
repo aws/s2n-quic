@@ -20,8 +20,14 @@ pub fn init_tracing() {
             //.with_ansi(false)
             .compact(); // Use a less verbose output format.
 
+        let default_level = if cfg!(debug_assertions) {
+            tracing::Level::DEBUG
+        } else {
+            tracing::Level::WARN
+        };
+
         let env_filter = tracing_subscriber::EnvFilter::builder()
-            .with_default_directive(tracing::Level::DEBUG.into())
+            .with_default_directive(default_level.into())
             .with_env_var("S2N_LOG")
             .from_env()
             .unwrap();

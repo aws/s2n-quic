@@ -25,7 +25,7 @@ fn init(c: &mut Criterion) {
             aws_lc_rs::rand::fill(&mut key).unwrap();
             let key = black_box(&key);
             b.iter(move || {
-                let _ = black_box(aws_lc_rs::hmac::Key::new(alg, &key));
+                let _ = black_box(aws_lc_rs::hmac::Key::new(alg, key));
             });
         });
     }

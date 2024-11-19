@@ -19,6 +19,9 @@ mod state;
 mod status;
 mod store;
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 #[cfg(test)]
 mod event_tests;
 
@@ -213,8 +216,8 @@ impl Map {
         self.store.test_insert(entry);
     }
 
-    #[cfg(test)]
-    fn test_insert_pair(
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) fn test_insert_pair(
         &self,
         local_addr: SocketAddr,
         peer: &Self,

@@ -33,12 +33,7 @@ pub fn benchmarks(c: &mut Criterion) {
                         let mut payload = black_box(payload.to_vec());
                         let mut packet_number = 0u32;
                         b.iter(move || {
-                            let _ = black_box(awslc::encrypt(
-                                &key,
-                                &mut packet_number,
-                                header,
-                                &mut payload,
-                            ));
+                            awslc::encrypt(&key, &mut packet_number, header, &mut payload);
                         });
                     },
                 );
@@ -51,12 +46,7 @@ pub fn benchmarks(c: &mut Criterion) {
                         let mut packet_number = 0u32;
                         b.iter(move || {
                             let key = black_box(awslc::key(algo));
-                            let _ = black_box(awslc::encrypt(
-                                &key,
-                                &mut packet_number,
-                                header,
-                                &mut payload,
-                            ));
+                            awslc::encrypt(&key, &mut packet_number, header, &mut payload);
                         });
                     },
                 );

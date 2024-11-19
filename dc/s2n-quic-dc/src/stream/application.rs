@@ -10,7 +10,7 @@ use crate::{
         socket,
     },
 };
-use core::fmt;
+use core::{fmt, time::Duration};
 use s2n_quic_core::{buffer, time::Timestamp};
 use std::{io, net::SocketAddr};
 
@@ -25,11 +25,11 @@ pub struct Builder {
 impl Builder {
     /// Builds the stream and emits an event indicating that the stream was built
     #[inline]
-    pub(crate) fn build<Pub>(self, publisher: &Pub) -> io::Result<Stream>
+    pub(crate) fn build<Pub>(self, publisher: &Pub) -> io::Result<(Stream, Duration)>
     where
         Pub: event::EndpointPublisher,
     {
-        {
+        let sojourn_time = {
             let remote_address = self.shared.read_remote_addr();
             let remote_address = &remote_address;
             let credential_id = &*self.shared.credentials().id;
@@ -43,9 +43,12 @@ impl Builder {
                 stream_id,
                 sojourn_time,
             });
-        }
+
+            sojourn_time
+        };
 
         self.build_without_event()
+            .map(|stream| (stream, sojourn_time))
     }
 
     #[inline]

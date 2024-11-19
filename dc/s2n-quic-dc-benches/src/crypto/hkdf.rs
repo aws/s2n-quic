@@ -36,7 +36,7 @@ fn psk(c: &mut Criterion) {
                             let label = black_box(vec![42u8; label_len]);
                             let mut out = black_box(vec![0u8; key_len]);
                             b.iter(move || {
-                                let _ = black_box(awslc::derive_psk(&prk, &label, &mut out));
+                                awslc::derive_psk(&prk, &label, &mut out);
                             });
                         },
                     );
@@ -52,7 +52,7 @@ fn psk(c: &mut Criterion) {
                             let mut out = black_box(vec![0u8; key_len]);
                             b.iter(move || {
                                 let prk = black_box(awslc::prk(&key, alg));
-                                let _ = black_box(awslc::derive_psk(&prk, &label, &mut out));
+                                awslc::derive_psk(&prk, &label, &mut out);
                             });
                         },
                     );
@@ -75,7 +75,7 @@ mod awslc {
         let out_len = out.len();
         let out_len = OutLen(out_len);
 
-        prk.expand(&[&label], out_len)
+        prk.expand(&[label], out_len)
             .unwrap()
             .fill(&mut out[..out_len.0])
             .unwrap();

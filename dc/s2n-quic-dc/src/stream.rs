@@ -26,6 +26,9 @@ pub mod server;
 pub mod shared;
 pub mod socket;
 
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct TransportFeatures: u8 {

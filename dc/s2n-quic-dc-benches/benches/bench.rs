@@ -3,5 +3,5 @@
 
 use criterion::{criterion_group, criterion_main};
 
-criterion_group!(benches, ::benches::benchmarks);
+criterion_group!(benches, s2n_quic_dc_benches::benchmarks);
 criterion_main!(benches);

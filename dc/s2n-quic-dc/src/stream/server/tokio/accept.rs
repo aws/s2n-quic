@@ -26,7 +26,16 @@ pub type Sender = channel::Sender<StreamBuilder>;
 pub type Receiver = channel::Receiver<StreamBuilder>;
 
 #[inline]
-pub async fn accept<Sub>(streams: &Receiver, subscriber: &Sub) -> io::Result<(Stream, SocketAddr)>
+pub fn channel(capacity: usize) -> (Sender, Receiver) {
+    channel::new(capacity)
+}
+
+#[inline]
+pub async fn accept<Sub>(
+    streams: &Receiver,
+    stats: &stats::Sender,
+    subscriber: &Sub,
+) -> io::Result<(Stream, SocketAddr)>
 where
     Sub: Subscriber,
 {
@@ -46,7 +55,9 @@ where
     );
 
     // build the stream inside the application context
-    let stream = stream.build(&publisher)?;
+    let (stream, sojourn_time) = stream.build(&publisher)?;
+    stats.send(sojourn_time);
+
     let remote_addr = stream.peer_addr()?;
 
     Ok((stream, remote_addr))
