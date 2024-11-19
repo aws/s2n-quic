@@ -112,7 +112,8 @@ where
                 event::builder::AcceptorTcpLoopIterationCompleted {
                     pending_streams: workers.working.len(),
                     slots_idle: workers.free.len(),
-                    slot_utilization: workers.working.len() as f32 / workers.workers.len() as f32,
+                    slot_utilization: (workers.working.len() as f32 / workers.workers.len() as f32)
+                        * 100.0,
                     processing_duration: self.env.clock().get_time().saturating_duration_since(now),
                     max_sojourn_time: workers.max_sojourn_time(),
                 },
