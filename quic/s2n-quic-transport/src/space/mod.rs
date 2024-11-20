@@ -948,7 +948,9 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                     .map_err(on_error)?;
 
                     // skip processing any other frames and return an error
-                    return Err(frame.into());
+
+                    // use `from` instead of `into` so the location is correctly captured
+                    return Err(connection::Error::from(frame));
                 }
                 Frame::Stream(frame) => {
                     let on_error = on_frame_processed!(frame);
