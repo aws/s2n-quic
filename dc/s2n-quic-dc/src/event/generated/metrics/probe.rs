@@ -51,18 +51,19 @@ mod counter {
                 78usize => Self(unknown_path_secret_packet_accepted),
                 80usize => Self(unknown_path_secret_packet_rejected),
                 82usize => Self(unknown_path_secret_packet_dropped),
-                84usize => Self(replay_definitely_detected),
-                85usize => Self(replay_potentially_detected),
-                87usize => Self(replay_detected_packet_sent),
-                89usize => Self(replay_detected_packet_received),
-                91usize => Self(replay_detected_packet_accepted),
-                93usize => Self(replay_detected_packet_rejected),
-                95usize => Self(replay_detected_packet_dropped),
-                97usize => Self(stale_key_packet_sent),
-                99usize => Self(stale_key_packet_received),
-                101usize => Self(stale_key_packet_accepted),
-                103usize => Self(stale_key_packet_rejected),
-                105usize => Self(stale_key_packet_dropped),
+                84usize => Self(key_accepted),
+                86usize => Self(replay_definitely_detected),
+                87usize => Self(replay_potentially_detected),
+                89usize => Self(replay_detected_packet_sent),
+                91usize => Self(replay_detected_packet_received),
+                93usize => Self(replay_detected_packet_accepted),
+                95usize => Self(replay_detected_packet_rejected),
+                97usize => Self(replay_detected_packet_dropped),
+                99usize => Self(stale_key_packet_sent),
+                101usize => Self(stale_key_packet_received),
+                103usize => Self(stale_key_packet_accepted),
+                105usize => Self(stale_key_packet_rejected),
+                107usize => Self(stale_key_packet_dropped),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -142,6 +143,8 @@ mod counter {
             fn unknown_path_secret_packet_rejected(value: u64);
             # [link_name = s2n_quic_dc__event__counter__unknown_path_secret_packet_dropped]
             fn unknown_path_secret_packet_dropped(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__key_accepted]
+            fn key_accepted(value: u64);
             # [link_name = s2n_quic_dc__event__counter__replay_definitely_detected]
             fn replay_definitely_detected(value: u64);
             # [link_name = s2n_quic_dc__event__counter__replay_potentially_detected]
@@ -238,16 +241,16 @@ mod counter {
                     79usize => Self(unknown_path_secret_packet_accepted__peer_address__protocol),
                     81usize => Self(unknown_path_secret_packet_rejected__peer_address__protocol),
                     83usize => Self(unknown_path_secret_packet_dropped__peer_address__protocol),
-                    88usize => Self(replay_detected_packet_sent__peer_address__protocol),
-                    90usize => Self(replay_detected_packet_received__peer_address__protocol),
-                    92usize => Self(replay_detected_packet_accepted__peer_address__protocol),
-                    94usize => Self(replay_detected_packet_rejected__peer_address__protocol),
-                    96usize => Self(replay_detected_packet_dropped__peer_address__protocol),
-                    98usize => Self(stale_key_packet_sent__peer_address__protocol),
-                    100usize => Self(stale_key_packet_received__peer_address__protocol),
-                    102usize => Self(stale_key_packet_accepted__peer_address__protocol),
-                    104usize => Self(stale_key_packet_rejected__peer_address__protocol),
-                    106usize => Self(stale_key_packet_dropped__peer_address__protocol),
+                    90usize => Self(replay_detected_packet_sent__peer_address__protocol),
+                    92usize => Self(replay_detected_packet_received__peer_address__protocol),
+                    94usize => Self(replay_detected_packet_accepted__peer_address__protocol),
+                    96usize => Self(replay_detected_packet_rejected__peer_address__protocol),
+                    98usize => Self(replay_detected_packet_dropped__peer_address__protocol),
+                    100usize => Self(stale_key_packet_sent__peer_address__protocol),
+                    102usize => Self(stale_key_packet_received__peer_address__protocol),
+                    104usize => Self(stale_key_packet_accepted__peer_address__protocol),
+                    106usize => Self(stale_key_packet_rejected__peer_address__protocol),
+                    108usize => Self(stale_key_packet_dropped__peer_address__protocol),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -446,7 +449,8 @@ mod measure {
                 63usize => Self(path_secret_map_uninitialized__capacity),
                 64usize => Self(path_secret_map_uninitialized__entries),
                 65usize => Self(path_secret_map_uninitialized__lifetime),
-                86usize => Self(replay_potentially_detected__gap),
+                85usize => Self(key_accepted__gap),
+                88usize => Self(replay_potentially_detected__gap),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -498,6 +502,8 @@ mod measure {
             fn path_secret_map_uninitialized__entries(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_uninitialized__lifetime]
             fn path_secret_map_uninitialized__lifetime(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__key_accepted__gap]
+            fn key_accepted__gap(value: u64);
             # [link_name = s2n_quic_dc__event__measure__replay_potentially_detected__gap]
             fn replay_potentially_detected__gap(value: u64);
         }

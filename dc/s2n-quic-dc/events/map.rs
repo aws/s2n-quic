@@ -123,6 +123,21 @@ struct UnknownPathSecretPacketDropped<'a> {
     credential_id: &'a [u8],
 }
 
+#[event("path_secret_map:key_accepted")]
+#[subject(endpoint)]
+/// Emitted when a credential is accepted (i.e., post packet authentication and passes replay
+/// check).
+struct KeyAccepted<'a> {
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a [u8],
+
+    key_id: u64,
+
+    /// How far away this credential is from the leading edge of key IDs.
+    #[measure("gap")]
+    gap: u64,
+}
+
 #[event("path_secret_map:replay_definitely_detected")]
 #[subject(endpoint)]
 /// Emitted when credential replay was definitely detected
