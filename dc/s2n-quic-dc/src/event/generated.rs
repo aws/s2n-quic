@@ -887,6 +887,29 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Emitted when a credential is accepted (i.e., post packet authentication and passes replay"]
+    #[doc = " check)."]
+    pub struct KeyAccepted<'a> {
+        pub credential_id: &'a [u8],
+        pub key_id: u64,
+        #[doc = " How far away this credential is from the leading edge of key IDs."]
+        pub gap: u64,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for KeyAccepted<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("KeyAccepted");
+            fmt.field("credential_id", &"[HIDDEN]");
+            fmt.field("key_id", &self.key_id);
+            fmt.field("gap", &self.gap);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for KeyAccepted<'a> {
+        const NAME: &'static str = "path_secret_map:key_accepted";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Emitted when credential replay was definitely detected"]
     pub struct ReplayDefinitelyDetected<'a> {
         pub credential_id: &'a [u8],
@@ -1587,6 +1610,16 @@ pub mod tracing {
                 credential_id,
             } = event;
             tracing :: event ! (target : "unknown_path_secret_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+        }
+        #[inline]
+        fn on_key_accepted(&self, meta: &api::EndpointMeta, event: &api::KeyAccepted) {
+            let parent = self.parent(meta);
+            let api::KeyAccepted {
+                credential_id,
+                key_id,
+                gap,
+            } = event;
+            tracing :: event ! (target : "key_accepted" , parent : parent , tracing :: Level :: DEBUG , credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id) , gap = tracing :: field :: debug (gap));
         }
         #[inline]
         fn on_replay_definitely_detected(
@@ -2588,6 +2621,30 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Emitted when a credential is accepted (i.e., post packet authentication and passes replay"]
+    #[doc = " check)."]
+    pub struct KeyAccepted<'a> {
+        pub credential_id: &'a [u8],
+        pub key_id: u64,
+        #[doc = " How far away this credential is from the leading edge of key IDs."]
+        pub gap: u64,
+    }
+    impl<'a> IntoEvent<api::KeyAccepted<'a>> for KeyAccepted<'a> {
+        #[inline]
+        fn into_event(self) -> api::KeyAccepted<'a> {
+            let KeyAccepted {
+                credential_id,
+                key_id,
+                gap,
+            } = self;
+            api::KeyAccepted {
+                credential_id: credential_id.into_event(),
+                key_id: key_id.into_event(),
+                gap: gap.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Emitted when credential replay was definitely detected"]
     pub struct ReplayDefinitelyDetected<'a> {
         pub credential_id: &'a [u8],
@@ -3204,6 +3261,12 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `KeyAccepted` event is triggered"]
+        #[inline]
+        fn on_key_accepted(&self, meta: &api::EndpointMeta, event: &api::KeyAccepted) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `ReplayDefinitelyDetected` event is triggered"]
         #[inline]
         fn on_replay_definitely_detected(
@@ -3628,6 +3691,10 @@ mod traits {
                 .on_unknown_path_secret_packet_dropped(meta, event);
         }
         #[inline]
+        fn on_key_accepted(&self, meta: &api::EndpointMeta, event: &api::KeyAccepted) {
+            self.as_ref().on_key_accepted(meta, event);
+        }
+        #[inline]
         fn on_replay_definitely_detected(
             &self,
             meta: &api::EndpointMeta,
@@ -4050,6 +4117,11 @@ mod traits {
             (self.1).on_unknown_path_secret_packet_dropped(meta, event);
         }
         #[inline]
+        fn on_key_accepted(&self, meta: &api::EndpointMeta, event: &api::KeyAccepted) {
+            (self.0).on_key_accepted(meta, event);
+            (self.1).on_key_accepted(meta, event);
+        }
+        #[inline]
         fn on_replay_definitely_detected(
             &self,
             meta: &api::EndpointMeta,
@@ -4265,6 +4337,8 @@ mod traits {
             &self,
             event: builder::UnknownPathSecretPacketDropped,
         );
+        #[doc = "Publishes a `KeyAccepted` event to the publisher's subscriber"]
+        fn on_key_accepted(&self, event: builder::KeyAccepted);
         #[doc = "Publishes a `ReplayDefinitelyDetected` event to the publisher's subscriber"]
         fn on_replay_definitely_detected(&self, event: builder::ReplayDefinitelyDetected);
         #[doc = "Publishes a `ReplayPotentiallyDetected` event to the publisher's subscriber"]
@@ -4547,6 +4621,12 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_key_accepted(&self, event: builder::KeyAccepted) {
+            let event = event.into_event();
+            self.subscriber.on_key_accepted(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_replay_definitely_detected(&self, event: builder::ReplayDefinitelyDetected) {
             let event = event.into_event();
             self.subscriber
@@ -4744,6 +4824,7 @@ pub mod testing {
             pub unknown_path_secret_packet_accepted: AtomicU32,
             pub unknown_path_secret_packet_rejected: AtomicU32,
             pub unknown_path_secret_packet_dropped: AtomicU32,
+            pub key_accepted: AtomicU32,
             pub replay_definitely_detected: AtomicU32,
             pub replay_potentially_detected: AtomicU32,
             pub replay_detected_packet_sent: AtomicU32,
@@ -4817,6 +4898,7 @@ pub mod testing {
                     unknown_path_secret_packet_accepted: AtomicU32::new(0),
                     unknown_path_secret_packet_rejected: AtomicU32::new(0),
                     unknown_path_secret_packet_dropped: AtomicU32::new(0),
+                    key_accepted: AtomicU32::new(0),
                     replay_definitely_detected: AtomicU32::new(0),
                     replay_potentially_detected: AtomicU32::new(0),
                     replay_detected_packet_sent: AtomicU32::new(0),
@@ -5194,6 +5276,13 @@ pub mod testing {
                 let out = format!("{meta:?} {event:?}");
                 self.output.lock().unwrap().push(out);
             }
+            fn on_key_accepted(&self, meta: &api::EndpointMeta, event: &api::KeyAccepted) {
+                self.key_accepted.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
             fn on_replay_definitely_detected(
                 &self,
                 meta: &api::EndpointMeta,
@@ -5375,6 +5464,7 @@ pub mod testing {
         pub unknown_path_secret_packet_accepted: AtomicU32,
         pub unknown_path_secret_packet_rejected: AtomicU32,
         pub unknown_path_secret_packet_dropped: AtomicU32,
+        pub key_accepted: AtomicU32,
         pub replay_definitely_detected: AtomicU32,
         pub replay_potentially_detected: AtomicU32,
         pub replay_detected_packet_sent: AtomicU32,
@@ -5450,6 +5540,7 @@ pub mod testing {
                 unknown_path_secret_packet_accepted: AtomicU32::new(0),
                 unknown_path_secret_packet_rejected: AtomicU32::new(0),
                 unknown_path_secret_packet_dropped: AtomicU32::new(0),
+                key_accepted: AtomicU32::new(0),
                 replay_definitely_detected: AtomicU32::new(0),
                 replay_potentially_detected: AtomicU32::new(0),
                 replay_detected_packet_sent: AtomicU32::new(0),
@@ -5855,6 +5946,13 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_key_accepted(&self, meta: &api::EndpointMeta, event: &api::KeyAccepted) {
+            self.key_accepted.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
         fn on_replay_definitely_detected(
             &self,
             meta: &api::EndpointMeta,
@@ -6035,6 +6133,7 @@ pub mod testing {
         pub unknown_path_secret_packet_accepted: AtomicU32,
         pub unknown_path_secret_packet_rejected: AtomicU32,
         pub unknown_path_secret_packet_dropped: AtomicU32,
+        pub key_accepted: AtomicU32,
         pub replay_definitely_detected: AtomicU32,
         pub replay_potentially_detected: AtomicU32,
         pub replay_detected_packet_sent: AtomicU32,
@@ -6100,6 +6199,7 @@ pub mod testing {
                 unknown_path_secret_packet_accepted: AtomicU32::new(0),
                 unknown_path_secret_packet_rejected: AtomicU32::new(0),
                 unknown_path_secret_packet_dropped: AtomicU32::new(0),
+                key_accepted: AtomicU32::new(0),
                 replay_definitely_detected: AtomicU32::new(0),
                 replay_potentially_detected: AtomicU32::new(0),
                 replay_detected_packet_sent: AtomicU32::new(0),
@@ -6366,6 +6466,13 @@ pub mod testing {
         ) {
             self.unknown_path_secret_packet_dropped
                 .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_key_accepted(&self, event: builder::KeyAccepted) {
+            self.key_accepted.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");
