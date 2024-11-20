@@ -133,9 +133,17 @@ struct KeyAccepted<'a> {
 
     key_id: u64,
 
-    /// How far away this credential is from the leading edge of key IDs.
+    /// How far away this credential is from the leading edge of key IDs (after updating the edge).
+    ///
+    /// Zero if this shifted us forward.
     #[measure("gap")]
     gap: u64,
+
+    /// How far away this credential is from the leading edge of key IDs (before updating the edge).
+    ///
+    /// Zero if this didn't change the leading edge.
+    #[measure("forward_shift")]
+    forward_shift: u64,
 }
 
 #[event("path_secret_map:replay_definitely_detected")]

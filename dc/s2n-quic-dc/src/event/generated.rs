@@ -892,8 +892,14 @@ pub mod api {
     pub struct KeyAccepted<'a> {
         pub credential_id: &'a [u8],
         pub key_id: u64,
-        #[doc = " How far away this credential is from the leading edge of key IDs."]
+        #[doc = " How far away this credential is from the leading edge of key IDs (after updating the edge)."]
+        #[doc = ""]
+        #[doc = " Zero if this shifted us forward."]
         pub gap: u64,
+        #[doc = " How far away this credential is from the leading edge of key IDs (before updating the edge)."]
+        #[doc = ""]
+        #[doc = " Zero if this didn't change the leading edge."]
+        pub forward_shift: u64,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for KeyAccepted<'a> {
@@ -902,6 +908,7 @@ pub mod api {
             fmt.field("credential_id", &"[HIDDEN]");
             fmt.field("key_id", &self.key_id);
             fmt.field("gap", &self.gap);
+            fmt.field("forward_shift", &self.forward_shift);
             fmt.finish()
         }
     }
@@ -1618,8 +1625,9 @@ pub mod tracing {
                 credential_id,
                 key_id,
                 gap,
+                forward_shift,
             } = event;
-            tracing :: event ! (target : "key_accepted" , parent : parent , tracing :: Level :: DEBUG , credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id) , gap = tracing :: field :: debug (gap));
+            tracing :: event ! (target : "key_accepted" , parent : parent , tracing :: Level :: DEBUG , credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id) , gap = tracing :: field :: debug (gap) , forward_shift = tracing :: field :: debug (forward_shift));
         }
         #[inline]
         fn on_replay_definitely_detected(
@@ -2626,8 +2634,14 @@ pub mod builder {
     pub struct KeyAccepted<'a> {
         pub credential_id: &'a [u8],
         pub key_id: u64,
-        #[doc = " How far away this credential is from the leading edge of key IDs."]
+        #[doc = " How far away this credential is from the leading edge of key IDs (after updating the edge)."]
+        #[doc = ""]
+        #[doc = " Zero if this shifted us forward."]
         pub gap: u64,
+        #[doc = " How far away this credential is from the leading edge of key IDs (before updating the edge)."]
+        #[doc = ""]
+        #[doc = " Zero if this didn't change the leading edge."]
+        pub forward_shift: u64,
     }
     impl<'a> IntoEvent<api::KeyAccepted<'a>> for KeyAccepted<'a> {
         #[inline]
@@ -2636,11 +2650,13 @@ pub mod builder {
                 credential_id,
                 key_id,
                 gap,
+                forward_shift,
             } = self;
             api::KeyAccepted {
                 credential_id: credential_id.into_event(),
                 key_id: key_id.into_event(),
                 gap: gap.into_event(),
+                forward_shift: forward_shift.into_event(),
             }
         }
     }
