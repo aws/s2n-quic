@@ -510,6 +510,7 @@ where
             id: *entry.id(),
             key_id,
         };
+        let starting = *entry.receiver().minimum_unseen_key_id();
         match entry.receiver().post_authentication(creds) {
             Ok(()) => {
                 let gap = (*entry.receiver().minimum_unseen_key_id())
@@ -522,6 +523,7 @@ where
                         credential_id: creds.id.into_event(),
                         key_id: key_id.into_event(),
                         gap,
+                        forward_shift: (*creds.key_id).saturating_sub(starting),
                     });
                 Ok(())
             }
