@@ -12,7 +12,7 @@ exclude = ["corpus.tar.gz"]
 
 [features]
 default = ["tokio"]
-testing = ["bolero-generator", "s2n-quic-core/testing", "tracing-subscriber"]
+testing = ["bolero-generator", "s2n-quic-core/testing", "s2n-quic-platform/testing", "tracing-subscriber"]
 tokio = ["tokio/io-util", "tokio/net", "tokio/rt-multi-thread", "tokio/time"]
 
 [dependencies]
@@ -51,6 +51,7 @@ bolero-generator = "0.11"
 insta = "1"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
+s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
@@ -58,4 +59,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 level = "warn"
 check-cfg = [
     'cfg(kani)',
+    'cfg(todo)',
 ]

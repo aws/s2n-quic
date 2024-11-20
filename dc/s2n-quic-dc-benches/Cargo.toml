@@ -1,0 +1,16 @@
+[package]
+name = "s2n-quic-dc-benches"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+aws-lc-rs = "1"
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+s2n-codec = { path = "../../common/s2n-codec" }
+s2n-quic-dc = { path = "../s2n-quic-dc", features = ["testing"] }
+tokio = { version = "1", features = ["full"] }
+
+[[bench]]
+name = "bench"
+harness = false
