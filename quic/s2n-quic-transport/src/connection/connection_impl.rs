@@ -286,7 +286,9 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             datagram,
             dc,
         ) {
-            Poll::Ready(res) => res?,
+            Poll::Ready(Ok(())) => {}
+            // use `from` instead of `into` so the location is correctly captured
+            Poll::Ready(Err(err)) => return Err(connection::Error::from(err)),
             Poll::Pending => return Ok(()),
         }
 

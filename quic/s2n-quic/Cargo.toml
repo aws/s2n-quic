@@ -59,6 +59,8 @@ unstable-provider-dc = ["s2n-quic-transport/unstable-provider-dc"]
 unstable-congestion-controller = ["s2n-quic-core/unstable-congestion-controller"]
 # This feature enables the use of unstable connection limits
 unstable-limits = ["s2n-quic-core/unstable-limits"]
+# The feature enables the close formatter provider
+unstable-provider-connection-close-formatter = []
 
 [dependencies]
 bytes = { version = "1", default-features = false }

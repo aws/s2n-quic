@@ -20,11 +20,18 @@ pub mod tls;
 
 // These providers are not currently exposed to applications
 #[allow(dead_code)]
-pub(crate) mod connection_close_formatter;
-#[allow(dead_code)]
 pub(crate) mod path_migration;
 #[allow(dead_code)]
 pub(crate) mod sync;
+
+cfg_if!(
+    if #[cfg(any(test, feature = "unstable-provider-connection-close-formatter"))] {
+        pub mod connection_close_formatter;
+    } else {
+        #[allow(dead_code)]
+        pub(crate) mod connection_close_formatter;
+    }
+);
 
 cfg_if!(
     if #[cfg(any(test, feature = "unstable-provider-packet-interceptor"))] {

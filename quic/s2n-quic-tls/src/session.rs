@@ -161,6 +161,7 @@ impl tls::Session for Session {
                 .alert()
                 .map(tls::Error::new)
                 .unwrap_or(tls::Error::HANDSHAKE_FAILURE)
+                .with_reason(e.message())
                 .into())),
             Poll::Pending => Poll::Pending,
         }
