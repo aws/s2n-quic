@@ -3,7 +3,7 @@
 
 use crate::{
     msg, packet,
-    path::secret::{self, Map},
+    path::secret::{self, map, Map},
     random::Random,
     stream::{
         application,
@@ -15,10 +15,7 @@ use crate::{
 };
 use core::cell::UnsafeCell;
 use s2n_quic_core::{
-    dc, endpoint,
-    inet::{ExplicitCongestionNotification, SocketAddress},
-    time::Clock as _,
-    varint::VarInt,
+    dc, endpoint, inet::ExplicitCongestionNotification, time::Clock as _, varint::VarInt,
 };
 use std::{io, sync::Arc};
 use tracing::{debug_span, Instrument as _};
@@ -34,24 +31,15 @@ pub struct AcceptError<Peer> {
 #[inline]
 pub fn open_stream<Env, P>(
     env: &Env,
-    handshake_addr: SocketAddress,
+    entry: map::Peer,
     peer: P,
-    map: &Map,
     parameter_override: Option<&dyn Fn(dc::ApplicationParams) -> dc::ApplicationParams>,
 ) -> Result<application::Builder>
 where
     Env: Environment,
     P: Peer<Env>,
 {
-    // derive secrets for the new stream
-    let Some((crypto, mut parameters)) = map.pair_for_peer(handshake_addr.into(), &peer.features())
-    else {
-        // the application didn't perform a handshake with the server before opening the stream
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("missing credentials for server: {handshake_addr}"),
-        ));
-    };
+    let (crypto, mut parameters) = entry.pair(&peer.features());
 
     if let Some(o) = parameter_override {
         parameters = o(parameters);
@@ -70,7 +58,7 @@ where
         stream_id,
         None,
         crypto,
-        map,
+        entry.map(),
         parameters,
         None,
         None,

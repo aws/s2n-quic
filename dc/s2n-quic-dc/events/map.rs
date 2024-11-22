@@ -281,3 +281,16 @@ struct StaleKeyPacketDropped<'a> {
     #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
 }
+
+#[event("path_secret_map:cache_accessed")]
+#[subject(endpoint)]
+/// Emitted when the cache is accessed for connection attempts
+///
+/// This can be used to track cache hit ratios
+struct PathSecretMapCacheAccessed<'a> {
+    #[nominal_counter("peer_address.protocol")]
+    peer_address: SocketAddress<'a>,
+
+    #[bool_counter("hit")]
+    hit: bool,
+}

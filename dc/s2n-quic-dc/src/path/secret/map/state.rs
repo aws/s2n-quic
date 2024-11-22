@@ -8,7 +8,7 @@ use crate::{
     event::{self, EndpointPublisher as _, IntoEvent as _},
     fixed_map::{self, ReadGuard},
     packet::{secret_control as control, Packet},
-    path::secret::receiver,
+    path::secret::{receiver, HandshakeKind},
 };
 use s2n_quic_core::{
     inet::SocketAddress,
@@ -409,6 +409,23 @@ where
 
     fn get_by_addr(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
         self.peers.get_by_key(peer)
+    }
+
+    fn get_by_addr_tracked(
+        &self,
+        peer: &SocketAddr,
+        handshake: HandshakeKind,
+    ) -> Option<ReadGuard<Arc<Entry>>> {
+        let result = self.get_by_addr(peer)?;
+
+        self.subscriber().on_path_secret_map_cache_accessed(
+            event::builder::PathSecretMapCacheAccessed {
+                peer_address: SocketAddress::from(*peer).into_event(),
+                hit: matches!(handshake, HandshakeKind::Cached),
+            },
+        );
+
+        Some(result)
     }
 
     fn get_by_id(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>> {

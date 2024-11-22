@@ -4,7 +4,7 @@
 use super::{server::tokio::stats, socket::Protocol};
 use crate::{
     event,
-    path::secret,
+    path::secret::{self, HandshakeKind},
     stream::{
         application::Stream,
         client::tokio as client,
@@ -35,16 +35,22 @@ impl Client {
     pub fn handshake_with<S: AsRef<ServerHandle>>(
         &self,
         server: &S,
-    ) -> io::Result<secret::HandshakeKind> {
+    ) -> io::Result<secret::map::Peer> {
         let server = server.as_ref();
-        if self.map.contains(server.local_addr) {
-            Ok(secret::HandshakeKind::Cached)
-        } else {
-            let local_addr = "127.0.0.1:1337".parse().unwrap();
-            self.map
-                .test_insert_pair(local_addr, &server.map, server.local_addr);
-            Ok(secret::HandshakeKind::Fresh)
+        let peer = server.local_addr;
+        if let Some(peer) = self.map.get_tracked(peer, HandshakeKind::Cached) {
+            return Ok(peer);
         }
+
+        let local_addr = "127.0.0.1:1337".parse().unwrap();
+        self.map
+            .test_insert_pair(local_addr, &server.map, server.local_addr);
+
+        self.map
+            .get_tracked(peer, HandshakeKind::Fresh)
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::AddrNotAvailable, "path secret not available")
+            })
     }
 
     pub async fn connect_to<S: AsRef<ServerHandle>>(&self, server: &S) -> io::Result<Stream> {
@@ -52,26 +58,8 @@ impl Client {
         let handshake = async { self.handshake_with(server) };
 
         match server.protocol {
-            Protocol::Tcp => {
-                client::connect_tcp(
-                    server.local_addr,
-                    handshake,
-                    server.local_addr,
-                    &self.env,
-                    &self.map,
-                )
-                .await
-            }
-            Protocol::Udp => {
-                client::connect_udp(
-                    server.local_addr,
-                    handshake,
-                    server.local_addr,
-                    &self.env,
-                    &self.map,
-                )
-                .await
-            }
+            Protocol::Tcp => client::connect_tcp(handshake, server.local_addr, &self.env).await,
+            Protocol::Udp => client::connect_udp(handshake, server.local_addr, &self.env).await,
             Protocol::Other(name) => {
                 todo!("protocol {name:?} not implemented")
             }
