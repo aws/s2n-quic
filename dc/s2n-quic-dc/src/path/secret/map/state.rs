@@ -169,7 +169,7 @@ where
         );
 
         // don't track access patterns here since it's not initiated by the local application
-        let Some(entry) = self.get_by_id(packet.credential_id()) else {
+        let Some(entry) = self.get_by_id_untracked(packet.credential_id()) else {
             self.subscriber().on_unknown_path_secret_packet_dropped(
                 event::builder::UnknownPathSecretPacketDropped {
                     credential_id: packet.credential_id().into_event(),
@@ -408,7 +408,7 @@ where
             });
     }
 
-    fn get_by_addr(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
+    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
         self.peers.get_by_key(peer).filter(|_| {
             // ensure this entry isn't requested to rehandshake
             !self.requested_handshakes.pin().contains(peer)
@@ -440,12 +440,12 @@ where
         Some(result)
     }
 
-    fn get_by_id(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>> {
+    fn get_by_id_untracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>> {
         self.ids.get_by_key(id)
     }
 
     fn get_by_id_tracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>> {
-        let result = self.get_by_id(id);
+        let result = self.ids.get_by_key(id);
 
         self.subscriber().on_path_secret_map_id_cache_accessed(
             event::builder::PathSecretMapIdCacheAccessed {

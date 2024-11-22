@@ -149,7 +149,7 @@ impl Model {
                 self.invariants.retain(|invariant| {
                     if let Invariant::ContainsId(id) = invariant {
                         if state
-                            .get_by_id(id)
+                            .get_by_id_untracked(id)
                             .map_or(true, |v| v.retired_at().is_some())
                         {
                             invalidated.push(*id);
