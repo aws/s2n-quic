@@ -1150,24 +1150,45 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Emitted when the cache is accessed for connection attempts"]
+    #[doc = " Emitted when the cache is accessed by peer address"]
     #[doc = ""]
     #[doc = " This can be used to track cache hit ratios"]
-    pub struct PathSecretMapCacheAccessed<'a> {
+    pub struct PathSecretMapAddressCacheAccessed<'a> {
         pub peer_address: SocketAddress<'a>,
         pub hit: bool,
     }
     #[cfg(any(test, feature = "testing"))]
-    impl<'a> crate::event::snapshot::Fmt for PathSecretMapCacheAccessed<'a> {
+    impl<'a> crate::event::snapshot::Fmt for PathSecretMapAddressCacheAccessed<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-            let mut fmt = fmt.debug_struct("PathSecretMapCacheAccessed");
+            let mut fmt = fmt.debug_struct("PathSecretMapAddressCacheAccessed");
             fmt.field("peer_address", &self.peer_address);
             fmt.field("hit", &self.hit);
             fmt.finish()
         }
     }
-    impl<'a> Event for PathSecretMapCacheAccessed<'a> {
-        const NAME: &'static str = "path_secret_map:cache_accessed";
+    impl<'a> Event for PathSecretMapAddressCacheAccessed<'a> {
+        const NAME: &'static str = "path_secret_map:address_cache_accessed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when the cache is accessed by path secret ID"]
+    #[doc = ""]
+    #[doc = " This can be used to track cache hit ratios"]
+    pub struct PathSecretMapIdCacheAccessed<'a> {
+        pub credential_id: &'a [u8],
+        pub hit: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for PathSecretMapIdCacheAccessed<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PathSecretMapIdCacheAccessed");
+            fmt.field("credential_id", &"[HIDDEN]");
+            fmt.field("hit", &self.hit);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for PathSecretMapIdCacheAccessed<'a> {
+        const NAME: &'static str = "path_secret_map:id_cache_accessed";
     }
     impl IntoEvent<builder::AcceptorPacketDropReason> for s2n_codec::DecoderError {
         fn into_event(self) -> builder::AcceptorPacketDropReason {
@@ -1809,14 +1830,24 @@ pub mod tracing {
             tracing :: event ! (target : "stale_key_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
         }
         #[inline]
-        fn on_path_secret_map_cache_accessed(
+        fn on_path_secret_map_address_cache_accessed(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::PathSecretMapCacheAccessed,
+            event: &api::PathSecretMapAddressCacheAccessed,
         ) {
             let parent = self.parent(meta);
-            let api::PathSecretMapCacheAccessed { peer_address, hit } = event;
-            tracing :: event ! (target : "path_secret_map_cache_accessed" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , hit = tracing :: field :: debug (hit));
+            let api::PathSecretMapAddressCacheAccessed { peer_address, hit } = event;
+            tracing :: event ! (target : "path_secret_map_address_cache_accessed" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , hit = tracing :: field :: debug (hit));
+        }
+        #[inline]
+        fn on_path_secret_map_id_cache_accessed(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdCacheAccessed,
+        ) {
+            let parent = self.parent(meta);
+            let api::PathSecretMapIdCacheAccessed { credential_id, hit } = event;
+            tracing :: event ! (target : "path_secret_map_id_cache_accessed" , parent : parent , tracing :: Level :: DEBUG , credential_id = tracing :: field :: debug (credential_id) , hit = tracing :: field :: debug (hit));
         }
     }
 }
@@ -2927,19 +2958,39 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Emitted when the cache is accessed for connection attempts"]
+    #[doc = " Emitted when the cache is accessed by peer address"]
     #[doc = ""]
     #[doc = " This can be used to track cache hit ratios"]
-    pub struct PathSecretMapCacheAccessed<'a> {
+    pub struct PathSecretMapAddressCacheAccessed<'a> {
         pub peer_address: SocketAddress<'a>,
         pub hit: bool,
     }
-    impl<'a> IntoEvent<api::PathSecretMapCacheAccessed<'a>> for PathSecretMapCacheAccessed<'a> {
+    impl<'a> IntoEvent<api::PathSecretMapAddressCacheAccessed<'a>>
+        for PathSecretMapAddressCacheAccessed<'a>
+    {
         #[inline]
-        fn into_event(self) -> api::PathSecretMapCacheAccessed<'a> {
-            let PathSecretMapCacheAccessed { peer_address, hit } = self;
-            api::PathSecretMapCacheAccessed {
+        fn into_event(self) -> api::PathSecretMapAddressCacheAccessed<'a> {
+            let PathSecretMapAddressCacheAccessed { peer_address, hit } = self;
+            api::PathSecretMapAddressCacheAccessed {
                 peer_address: peer_address.into_event(),
+                hit: hit.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when the cache is accessed by path secret ID"]
+    #[doc = ""]
+    #[doc = " This can be used to track cache hit ratios"]
+    pub struct PathSecretMapIdCacheAccessed<'a> {
+        pub credential_id: &'a [u8],
+        pub hit: bool,
+    }
+    impl<'a> IntoEvent<api::PathSecretMapIdCacheAccessed<'a>> for PathSecretMapIdCacheAccessed<'a> {
+        #[inline]
+        fn into_event(self) -> api::PathSecretMapIdCacheAccessed<'a> {
+            let PathSecretMapIdCacheAccessed { credential_id, hit } = self;
+            api::PathSecretMapIdCacheAccessed {
+                credential_id: credential_id.into_event(),
                 hit: hit.into_event(),
             }
         }
@@ -3452,12 +3503,22 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `PathSecretMapCacheAccessed` event is triggered"]
+        #[doc = "Called when the `PathSecretMapAddressCacheAccessed` event is triggered"]
         #[inline]
-        fn on_path_secret_map_cache_accessed(
+        fn on_path_secret_map_address_cache_accessed(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::PathSecretMapCacheAccessed,
+            event: &api::PathSecretMapAddressCacheAccessed,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `PathSecretMapIdCacheAccessed` event is triggered"]
+        #[inline]
+        fn on_path_secret_map_id_cache_accessed(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdCacheAccessed,
         ) {
             let _ = meta;
             let _ = event;
@@ -3869,12 +3930,22 @@ mod traits {
             self.as_ref().on_stale_key_packet_dropped(meta, event);
         }
         #[inline]
-        fn on_path_secret_map_cache_accessed(
+        fn on_path_secret_map_address_cache_accessed(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::PathSecretMapCacheAccessed,
+            event: &api::PathSecretMapAddressCacheAccessed,
         ) {
-            self.as_ref().on_path_secret_map_cache_accessed(meta, event);
+            self.as_ref()
+                .on_path_secret_map_address_cache_accessed(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_id_cache_accessed(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdCacheAccessed,
+        ) {
+            self.as_ref()
+                .on_path_secret_map_id_cache_accessed(meta, event);
         }
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -4313,13 +4384,22 @@ mod traits {
             (self.1).on_stale_key_packet_dropped(meta, event);
         }
         #[inline]
-        fn on_path_secret_map_cache_accessed(
+        fn on_path_secret_map_address_cache_accessed(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::PathSecretMapCacheAccessed,
+            event: &api::PathSecretMapAddressCacheAccessed,
         ) {
-            (self.0).on_path_secret_map_cache_accessed(meta, event);
-            (self.1).on_path_secret_map_cache_accessed(meta, event);
+            (self.0).on_path_secret_map_address_cache_accessed(meta, event);
+            (self.1).on_path_secret_map_address_cache_accessed(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_id_cache_accessed(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdCacheAccessed,
+        ) {
+            (self.0).on_path_secret_map_id_cache_accessed(meta, event);
+            (self.1).on_path_secret_map_id_cache_accessed(meta, event);
         }
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -4455,8 +4535,16 @@ mod traits {
         fn on_stale_key_packet_rejected(&self, event: builder::StaleKeyPacketRejected);
         #[doc = "Publishes a `StaleKeyPacketDropped` event to the publisher's subscriber"]
         fn on_stale_key_packet_dropped(&self, event: builder::StaleKeyPacketDropped);
-        #[doc = "Publishes a `PathSecretMapCacheAccessed` event to the publisher's subscriber"]
-        fn on_path_secret_map_cache_accessed(&self, event: builder::PathSecretMapCacheAccessed);
+        #[doc = "Publishes a `PathSecretMapAddressCacheAccessed` event to the publisher's subscriber"]
+        fn on_path_secret_map_address_cache_accessed(
+            &self,
+            event: builder::PathSecretMapAddressCacheAccessed,
+        );
+        #[doc = "Publishes a `PathSecretMapIdCacheAccessed` event to the publisher's subscriber"]
+        fn on_path_secret_map_id_cache_accessed(
+            &self,
+            event: builder::PathSecretMapIdCacheAccessed,
+        );
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
@@ -4804,10 +4892,23 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
-        fn on_path_secret_map_cache_accessed(&self, event: builder::PathSecretMapCacheAccessed) {
+        fn on_path_secret_map_address_cache_accessed(
+            &self,
+            event: builder::PathSecretMapAddressCacheAccessed,
+        ) {
             let event = event.into_event();
             self.subscriber
-                .on_path_secret_map_cache_accessed(&self.meta, &event);
+                .on_path_secret_map_address_cache_accessed(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_path_secret_map_id_cache_accessed(
+            &self,
+            event: builder::PathSecretMapIdCacheAccessed,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_path_secret_map_id_cache_accessed(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -4938,7 +5039,8 @@ pub mod testing {
             pub stale_key_packet_accepted: AtomicU32,
             pub stale_key_packet_rejected: AtomicU32,
             pub stale_key_packet_dropped: AtomicU32,
-            pub path_secret_map_cache_accessed: AtomicU32,
+            pub path_secret_map_address_cache_accessed: AtomicU32,
+            pub path_secret_map_id_cache_accessed: AtomicU32,
         }
         impl Drop for Subscriber {
             fn drop(&mut self) {
@@ -5013,7 +5115,8 @@ pub mod testing {
                     stale_key_packet_accepted: AtomicU32::new(0),
                     stale_key_packet_rejected: AtomicU32::new(0),
                     stale_key_packet_dropped: AtomicU32::new(0),
-                    path_secret_map_cache_accessed: AtomicU32::new(0),
+                    path_secret_map_address_cache_accessed: AtomicU32::new(0),
+                    path_secret_map_id_cache_accessed: AtomicU32::new(0),
                 }
             }
         }
@@ -5529,12 +5632,24 @@ pub mod testing {
                 let out = format!("{meta:?} {event:?}");
                 self.output.lock().unwrap().push(out);
             }
-            fn on_path_secret_map_cache_accessed(
+            fn on_path_secret_map_address_cache_accessed(
                 &self,
                 meta: &api::EndpointMeta,
-                event: &api::PathSecretMapCacheAccessed,
+                event: &api::PathSecretMapAddressCacheAccessed,
             ) {
-                self.path_secret_map_cache_accessed
+                self.path_secret_map_address_cache_accessed
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_path_secret_map_id_cache_accessed(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::PathSecretMapIdCacheAccessed,
+            ) {
+                self.path_secret_map_id_cache_accessed
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -5592,7 +5707,8 @@ pub mod testing {
         pub stale_key_packet_accepted: AtomicU32,
         pub stale_key_packet_rejected: AtomicU32,
         pub stale_key_packet_dropped: AtomicU32,
-        pub path_secret_map_cache_accessed: AtomicU32,
+        pub path_secret_map_address_cache_accessed: AtomicU32,
+        pub path_secret_map_id_cache_accessed: AtomicU32,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -5669,7 +5785,8 @@ pub mod testing {
                 stale_key_packet_accepted: AtomicU32::new(0),
                 stale_key_packet_rejected: AtomicU32::new(0),
                 stale_key_packet_dropped: AtomicU32::new(0),
-                path_secret_map_cache_accessed: AtomicU32::new(0),
+                path_secret_map_address_cache_accessed: AtomicU32::new(0),
+                path_secret_map_id_cache_accessed: AtomicU32::new(0),
             }
         }
     }
@@ -6213,12 +6330,24 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
-        fn on_path_secret_map_cache_accessed(
+        fn on_path_secret_map_address_cache_accessed(
             &self,
             meta: &api::EndpointMeta,
-            event: &api::PathSecretMapCacheAccessed,
+            event: &api::PathSecretMapAddressCacheAccessed,
         ) {
-            self.path_secret_map_cache_accessed
+            self.path_secret_map_address_cache_accessed
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_id_cache_accessed(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapIdCacheAccessed,
+        ) {
+            self.path_secret_map_id_cache_accessed
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -6275,7 +6404,8 @@ pub mod testing {
         pub stale_key_packet_accepted: AtomicU32,
         pub stale_key_packet_rejected: AtomicU32,
         pub stale_key_packet_dropped: AtomicU32,
-        pub path_secret_map_cache_accessed: AtomicU32,
+        pub path_secret_map_address_cache_accessed: AtomicU32,
+        pub path_secret_map_id_cache_accessed: AtomicU32,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -6342,7 +6472,8 @@ pub mod testing {
                 stale_key_packet_accepted: AtomicU32::new(0),
                 stale_key_packet_rejected: AtomicU32::new(0),
                 stale_key_packet_dropped: AtomicU32::new(0),
-                path_secret_map_cache_accessed: AtomicU32::new(0),
+                path_secret_map_address_cache_accessed: AtomicU32::new(0),
+                path_secret_map_id_cache_accessed: AtomicU32::new(0),
             }
         }
     }
@@ -6704,8 +6835,22 @@ pub mod testing {
             let out = format!("{event:?}");
             self.output.lock().unwrap().push(out);
         }
-        fn on_path_secret_map_cache_accessed(&self, event: builder::PathSecretMapCacheAccessed) {
-            self.path_secret_map_cache_accessed
+        fn on_path_secret_map_address_cache_accessed(
+            &self,
+            event: builder::PathSecretMapAddressCacheAccessed,
+        ) {
+            self.path_secret_map_address_cache_accessed
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_id_cache_accessed(
+            &self,
+            event: builder::PathSecretMapIdCacheAccessed,
+        ) {
+            self.path_secret_map_id_cache_accessed
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);

@@ -168,6 +168,7 @@ where
             },
         );
 
+        // don't track access patterns here since it's not initiated by the local application
         let Some(entry) = self.get_by_id(packet.credential_id()) else {
             self.subscriber().on_unknown_path_secret_packet_dropped(
                 event::builder::UnknownPathSecretPacketDropped {
@@ -408,7 +409,10 @@ where
     }
 
     fn get_by_addr(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
-        self.peers.get_by_key(peer)
+        self.peers.get_by_key(peer).filter(|_| {
+            // ensure this entry isn't requested to rehandshake
+            !self.requested_handshakes.pin().contains(peer)
+        })
     }
 
     fn get_by_addr_tracked(
@@ -416,10 +420,18 @@ where
         peer: &SocketAddr,
         handshake: HandshakeKind,
     ) -> Option<ReadGuard<Arc<Entry>>> {
-        let result = self.get_by_addr(peer)?;
+        let result = self.peers.get_by_key(peer)?;
 
-        self.subscriber().on_path_secret_map_cache_accessed(
-            event::builder::PathSecretMapCacheAccessed {
+        // If this is trying to use a cached handshake but we've got a request to do a handshake, then
+        // force the application to do a new handshake. This is consistent with the `contains` method.
+        if matches!(handshake, HandshakeKind::Cached)
+            && self.requested_handshakes.pin().contains(peer)
+        {
+            return None;
+        }
+
+        self.subscriber().on_path_secret_map_address_cache_accessed(
+            event::builder::PathSecretMapAddressCacheAccessed {
                 peer_address: SocketAddress::from(*peer).into_event(),
                 hit: matches!(handshake, HandshakeKind::Cached),
             },
@@ -430,6 +442,19 @@ where
 
     fn get_by_id(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>> {
         self.ids.get_by_key(id)
+    }
+
+    fn get_by_id_tracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>> {
+        let result = self.get_by_id(id);
+
+        self.subscriber().on_path_secret_map_id_cache_accessed(
+            event::builder::PathSecretMapIdCacheAccessed {
+                credential_id: id.into_event(),
+                hit: result.is_some(),
+            },
+        );
+
+        result
     }
 
     fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr) {

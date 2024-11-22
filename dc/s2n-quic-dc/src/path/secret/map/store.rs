@@ -43,6 +43,8 @@ pub trait Store: 'static + Send + Sync {
 
     fn get_by_id(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
 
+    fn get_by_id_tracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
+
     fn handle_unexpected_packet(&self, packet: &Packet, peer: &SocketAddr);
 
     fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr);
@@ -76,7 +78,7 @@ pub trait Store: 'static + Send + Sync {
         identity: &Credentials,
         control_out: &mut Vec<u8>,
     ) -> Option<Arc<Entry>> {
-        let Some(state) = self.get_by_id(&identity.id) else {
+        let Some(state) = self.get_by_id_tracked(&identity.id) else {
             let packet = control::UnknownPathSecret {
                 wire_version: WireVersion::ZERO,
                 credential_id: identity.id,

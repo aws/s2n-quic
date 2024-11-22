@@ -64,7 +64,8 @@ mod counter {
                 104usize => Self(stale_key_packet_accepted),
                 106usize => Self(stale_key_packet_rejected),
                 108usize => Self(stale_key_packet_dropped),
-                110usize => Self(path_secret_map_cache_accessed),
+                110usize => Self(path_secret_map_address_cache_accessed),
+                113usize => Self(path_secret_map_id_cache_accessed),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -170,8 +171,10 @@ mod counter {
             fn stale_key_packet_rejected(value: u64);
             # [link_name = s2n_quic_dc__event__counter__stale_key_packet_dropped]
             fn stale_key_packet_dropped(value: u64);
-            # [link_name = s2n_quic_dc__event__counter__path_secret_map_cache_accessed]
-            fn path_secret_map_cache_accessed(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__path_secret_map_address_cache_accessed]
+            fn path_secret_map_address_cache_accessed(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__path_secret_map_id_cache_accessed]
+            fn path_secret_map_id_cache_accessed(value: u64);
         }
     );
     pub mod bool {
@@ -189,7 +192,8 @@ mod counter {
                     37usize => Self(acceptor_udp_packet_received__is_fin_known),
                     58usize => Self(endpoint_initialized__tcp),
                     59usize => Self(endpoint_initialized__udp),
-                    112usize => Self(path_secret_map_cache_accessed__hit),
+                    112usize => Self(path_secret_map_address_cache_accessed__hit),
+                    114usize => Self(path_secret_map_id_cache_accessed__hit),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -217,8 +221,10 @@ mod counter {
                 fn endpoint_initialized__tcp(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__endpoint_initialized__udp]
                 fn endpoint_initialized__udp(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__path_secret_map_cache_accessed__hit]
-                fn path_secret_map_cache_accessed__hit(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__path_secret_map_address_cache_accessed__hit]
+                fn path_secret_map_address_cache_accessed__hit(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__path_secret_map_id_cache_accessed__hit]
+                fn path_secret_map_id_cache_accessed__hit(value: bool);
             }
         );
     }
@@ -257,7 +263,9 @@ mod counter {
                     105usize => Self(stale_key_packet_accepted__peer_address__protocol),
                     107usize => Self(stale_key_packet_rejected__peer_address__protocol),
                     109usize => Self(stale_key_packet_dropped__peer_address__protocol),
-                    111usize => Self(path_secret_map_cache_accessed__peer_address__protocol),
+                    111usize => {
+                        Self(path_secret_map_address_cache_accessed__peer_address__protocol)
+                    }
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -424,8 +432,8 @@ mod counter {
                     variant: u64,
                     variant_name: &info::Str,
                 );
-                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_cache_accessed__peer_address__protocol]
-                fn path_secret_map_cache_accessed__peer_address__protocol(
+                # [link_name = s2n_quic_dc__event__counter__nominal__path_secret_map_address_cache_accessed__peer_address__protocol]
+                fn path_secret_map_address_cache_accessed__peer_address__protocol(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,

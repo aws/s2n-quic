@@ -282,14 +282,27 @@ struct StaleKeyPacketDropped<'a> {
     credential_id: &'a [u8],
 }
 
-#[event("path_secret_map:cache_accessed")]
+#[event("path_secret_map:address_cache_accessed")]
 #[subject(endpoint)]
-/// Emitted when the cache is accessed for connection attempts
+/// Emitted when the cache is accessed by peer address
 ///
 /// This can be used to track cache hit ratios
-struct PathSecretMapCacheAccessed<'a> {
+struct PathSecretMapAddressCacheAccessed<'a> {
     #[nominal_counter("peer_address.protocol")]
     peer_address: SocketAddress<'a>,
+
+    #[bool_counter("hit")]
+    hit: bool,
+}
+
+#[event("path_secret_map:id_cache_accessed")]
+#[subject(endpoint)]
+/// Emitted when the cache is accessed by path secret ID
+///
+/// This can be used to track cache hit ratios
+struct PathSecretMapIdCacheAccessed<'a> {
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a [u8],
 
     #[bool_counter("hit")]
     hit: bool,

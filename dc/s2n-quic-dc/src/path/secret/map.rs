@@ -107,7 +107,7 @@ impl Map {
     /// Note that unlike by-IP lookup this should typically not be done significantly after the
     /// original secret was used for decryption.
     pub fn seal_once_id(&self, id: Id) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
-        let entry = self.store.get_by_id(&id)?;
+        let entry = self.store.get_by_id_tracked(&id)?;
         let (sealer, credentials) = entry.uni_sealer();
         Some((sealer, credentials, entry.parameters()))
     }

@@ -12,7 +12,7 @@ use crate::event::{
         AsVariant, BoolRecorder, Info, Metric, NominalRecorder, Recorder, Registry, Units,
     },
 };
-static INFO: &[Info; 113usize] = &[
+static INFO: &[Info; 115usize] = &[
     info::Builder {
         id: 0usize,
         name: Str::new("acceptor_tcp_started\0"),
@@ -675,19 +675,31 @@ static INFO: &[Info; 113usize] = &[
     .build(),
     info::Builder {
         id: 110usize,
-        name: Str::new("path_secret_map_cache_accessed\0"),
+        name: Str::new("path_secret_map_address_cache_accessed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 111usize,
-        name: Str::new("path_secret_map_cache_accessed.peer_address.protocol\0"),
+        name: Str::new("path_secret_map_address_cache_accessed.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 112usize,
-        name: Str::new("path_secret_map_cache_accessed.hit\0"),
+        name: Str::new("path_secret_map_address_cache_accessed.hit\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 113usize,
+        name: Str::new("path_secret_map_id_cache_accessed\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 114usize,
+        name: Str::new("path_secret_map_id_cache_accessed.hit\0"),
         units: Units::None,
     }
     .build(),
@@ -699,9 +711,9 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 48usize]>,
+    counters: Box<[R::Counter; 49usize]>,
     #[allow(dead_code)]
-    bool_counters: Box<[R::BoolCounter; 9usize]>,
+    bool_counters: Box<[R::BoolCounter; 10usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
@@ -734,8 +746,8 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(48usize);
-        let mut bool_counters = Vec::with_capacity(9usize);
+        let mut counters = Vec::with_capacity(49usize);
+        let mut bool_counters = Vec::with_capacity(10usize);
         let mut nominal_counters = Vec::with_capacity(26usize);
         let mut nominal_counter_offsets = Vec::with_capacity(26usize);
         let mut measures = Vec::with_capacity(23usize);
@@ -791,6 +803,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[106usize]));
         counters.push(registry.register_counter(&INFO[108usize]));
         counters.push(registry.register_counter(&INFO[110usize]));
+        counters.push(registry.register_counter(&INFO[113usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[19usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[20usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[34usize]));
@@ -800,6 +813,7 @@ impl<R: Registry> Subscriber<R> {
         bool_counters.push(registry.register_bool_counter(&INFO[58usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[59usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[112usize]));
+        bool_counters.push(registry.register_bool_counter(&INFO[114usize]));
         {
             #[allow(unused_imports)]
             use api::*;
@@ -1202,6 +1216,7 @@ impl<R: Registry> Subscriber<R> {
                 45usize => (&INFO[106usize], entry),
                 46usize => (&INFO[108usize], entry),
                 47usize => (&INFO[110usize], entry),
+                48usize => (&INFO[113usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -1228,6 +1243,7 @@ impl<R: Registry> Subscriber<R> {
                 6usize => (&INFO[58usize], entry),
                 7usize => (&INFO[59usize], entry),
                 8usize => (&INFO[112usize], entry),
+                9usize => (&INFO[114usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -2099,16 +2115,29 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         let _ = meta;
     }
     #[inline]
-    fn on_path_secret_map_cache_accessed(
+    fn on_path_secret_map_address_cache_accessed(
         &self,
         meta: &api::EndpointMeta,
-        event: &api::PathSecretMapCacheAccessed,
+        event: &api::PathSecretMapAddressCacheAccessed,
     ) {
         #[allow(unused_imports)]
         use api::*;
         self.count(110usize, 47usize, 1usize);
         self.count_nominal(111usize, 25usize, &event.peer_address);
         self.count_bool(112usize, 8usize, event.hit);
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_path_secret_map_id_cache_accessed(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::PathSecretMapIdCacheAccessed,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(113usize, 48usize, 1usize);
+        self.count_bool(114usize, 9usize, event.hit);
         let _ = event;
         let _ = meta;
     }
