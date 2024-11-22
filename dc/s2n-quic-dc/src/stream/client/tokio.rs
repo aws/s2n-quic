@@ -16,25 +16,17 @@ use tokio::net::TcpStream;
 /// Connects using the UDP transport layer
 #[inline]
 pub async fn connect_udp<H>(
-    handshake_addr: SocketAddr,
     handshake: H,
     acceptor_addr: SocketAddr,
     env: &Environment,
-    map: &secret::Map,
 ) -> io::Result<Stream>
 where
-    H: core::future::Future<Output = io::Result<secret::HandshakeKind>>,
+    H: core::future::Future<Output = io::Result<secret::map::Peer>>,
 {
     // ensure we have a secret for the peer
-    handshake.await?;
+    let peer = handshake.await?;
 
-    let stream = endpoint::open_stream(
-        env,
-        handshake_addr.into(),
-        env::UdpUnbound(acceptor_addr.into()),
-        map,
-        None,
-    )?;
+    let stream = endpoint::open_stream(env, peer, env::UdpUnbound(acceptor_addr.into()), None)?;
 
     // build the stream inside the application context
     let mut stream = stream.build_without_event()?;
@@ -49,25 +41,17 @@ where
 /// Connects using the TCP transport layer
 #[inline]
 pub async fn connect_tcp<H>(
-    handshake_addr: SocketAddr,
     handshake: H,
     acceptor_addr: SocketAddr,
     env: &Environment,
-    map: &secret::Map,
 ) -> io::Result<Stream>
 where
-    H: core::future::Future<Output = io::Result<secret::HandshakeKind>>,
+    H: core::future::Future<Output = io::Result<secret::map::Peer>>,
 {
     // Race TCP handshake with the TLS handshake
-    let (socket, _) = tokio::try_join!(TcpStream::connect(acceptor_addr), handshake,)?;
+    let (socket, peer) = tokio::try_join!(TcpStream::connect(acceptor_addr), handshake,)?;
 
-    let stream = endpoint::open_stream(
-        env,
-        handshake_addr.into(),
-        env::TcpRegistered(socket),
-        map,
-        None,
-    )?;
+    let stream = endpoint::open_stream(env, peer, env::TcpRegistered(socket), None)?;
 
     // build the stream inside the application context
     let mut stream = stream.build_without_event()?;
@@ -86,18 +70,11 @@ where
 /// The provided `map` must contain a shared secret for the `handshake_addr`
 #[inline]
 pub async fn connect_tcp_with(
-    handshake_addr: SocketAddr,
+    peer: secret::map::Peer,
     stream: TcpStream,
     env: &Environment,
-    map: &secret::Map,
 ) -> io::Result<Stream> {
-    let stream = endpoint::open_stream(
-        env,
-        handshake_addr.into(),
-        env::TcpRegistered(stream),
-        map,
-        None,
-    )?;
+    let stream = endpoint::open_stream(env, peer, env::TcpRegistered(stream), None)?;
 
     // build the stream inside the application context
     let mut stream = stream.build_without_event()?;

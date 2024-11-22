@@ -5,7 +5,7 @@ use crate::{
     credentials::{Credentials, Id},
     event,
     packet::{secret_control as control, Packet},
-    path::secret::{open, seal, stateless_reset},
+    path::secret::{open, seal, stateless_reset, HandshakeKind},
     stream::TransportFeatures,
 };
 use s2n_quic_core::{dc, time};
@@ -14,6 +14,7 @@ use std::{net::SocketAddr, sync::Arc};
 mod cleaner;
 mod entry;
 mod handshake;
+mod peer;
 mod size_of;
 mod state;
 mod status;
@@ -29,6 +30,7 @@ use entry::Entry;
 use store::Store;
 
 pub use entry::{ApplicationPair, Bidirectional, ControlPair};
+pub use peer::Peer;
 
 pub(crate) use size_of::SizeOf;
 pub(crate) use status::Dedup;
@@ -88,13 +90,13 @@ impl Map {
         self.store.contains(peer)
     }
 
-    pub fn seal_once(
-        &self,
-        peer: SocketAddr,
-    ) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
-        let entry = self.store.get_by_addr(&peer)?;
-        let (sealer, credentials) = entry.uni_sealer();
-        Some((sealer, credentials, entry.parameters()))
+    /// Gets the [`Peer`] entry for the given address
+    ///
+    /// NOTE: This function is used to track cache hit ratios so it
+    ///       should only be used for connection attempts.
+    pub fn get_tracked(&self, peer: SocketAddr, handshake: HandshakeKind) -> Option<Peer> {
+        let entry = self.store.get_by_addr_tracked(&peer, handshake)?;
+        Some(Peer::new(&entry, self))
     }
 
     /// Retrieve a sealer by path secret ID.
@@ -105,7 +107,7 @@ impl Map {
     /// Note that unlike by-IP lookup this should typically not be done significantly after the
     /// original secret was used for decryption.
     pub fn seal_once_id(&self, id: Id) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
-        let entry = self.store.get_by_id(&id)?;
+        let entry = self.store.get_by_id_tracked(&id)?;
         let (sealer, credentials) = entry.uni_sealer();
         Some((sealer, credentials, entry.parameters()))
     }
@@ -118,17 +120,6 @@ impl Map {
         let entry = self.store.pre_authentication(credentials, control_out)?;
         let opener = entry.uni_opener(self.clone(), credentials);
         Some(opener)
-    }
-
-    pub fn pair_for_peer(
-        &self,
-        peer: SocketAddr,
-        features: &TransportFeatures,
-    ) -> Option<(entry::Bidirectional, dc::ApplicationParams)> {
-        let entry = self.store.get_by_addr(&peer)?;
-        let keys = entry.bidi_local(features);
-
-        Some((keys, entry.parameters()))
     }
 
     pub fn pair_for_credentials(

@@ -6,7 +6,7 @@ use crate::{
     credentials::{Credentials, Id},
     fixed_map::ReadGuard,
     packet::{secret_control as control, Packet, WireVersion},
-    path::secret::{receiver, stateless_reset},
+    path::secret::{receiver, stateless_reset, HandshakeKind},
 };
 use core::time::Duration;
 use s2n_codec::EncoderBuffer;
@@ -33,9 +33,15 @@ pub trait Store: 'static + Send + Sync {
         self.on_handshake_complete(entry);
     }
 
-    fn get_by_addr(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
+    fn get_by_addr_tracked(
+        &self,
+        peer: &SocketAddr,
+        handshake: HandshakeKind,
+    ) -> Option<ReadGuard<Arc<Entry>>>;
 
-    fn get_by_id(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
+    fn get_by_id_untracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
+
+    fn get_by_id_tracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
 
     fn handle_unexpected_packet(&self, packet: &Packet, peer: &SocketAddr);
 
@@ -70,7 +76,7 @@ pub trait Store: 'static + Send + Sync {
         identity: &Credentials,
         control_out: &mut Vec<u8>,
     ) -> Option<Arc<Entry>> {
-        let Some(state) = self.get_by_id(&identity.id) else {
+        let Some(state) = self.get_by_id_tracked(&identity.id) else {
             let packet = control::UnknownPathSecret {
                 wire_version: WireVersion::ZERO,
                 credential_id: identity.id,
