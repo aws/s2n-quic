@@ -33,8 +33,6 @@ pub trait Store: 'static + Send + Sync {
         self.on_handshake_complete(entry);
     }
 
-    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
-
     fn get_by_addr_tracked(
         &self,
         peer: &SocketAddr,

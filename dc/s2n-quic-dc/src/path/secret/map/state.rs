@@ -408,13 +408,6 @@ where
             });
     }
 
-    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
-        self.peers.get_by_key(peer).filter(|_| {
-            // ensure this entry isn't requested to rehandshake
-            !self.requested_handshakes.pin().contains(peer)
-        })
-    }
-
     fn get_by_addr_tracked(
         &self,
         peer: &SocketAddr,
