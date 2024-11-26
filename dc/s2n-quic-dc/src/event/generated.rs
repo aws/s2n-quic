@@ -3046,7 +3046,7 @@ mod traits {
         #[doc = r"     }"]
         #[doc = r" }"]
         #[doc = r"  ```"]
-        type ConnectionContext: 'static + Send;
+        type ConnectionContext: 'static + Send + Sync;
         #[doc = r" Creates a context to be passed to each connection-related event"]
         fn create_connection_context(
             &self,

@@ -24,13 +24,13 @@ use tracing::debug;
 pub struct Acceptor<S, Sub>
 where
     S: Socket,
-    Sub: Subscriber,
+    Sub: Subscriber + Clone,
 {
-    sender: accept::Sender,
+    sender: accept::Sender<Sub>,
     socket: S,
     recv_buffer: msg::recv::Message,
     handshake: server::handshake::Map,
-    env: Environment,
+    env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
     subscriber: Sub,
@@ -39,14 +39,14 @@ where
 impl<S, Sub> Acceptor<S, Sub>
 where
     S: Socket,
-    Sub: Subscriber,
+    Sub: Subscriber + Clone,
 {
     #[inline]
     pub fn new(
         id: usize,
         socket: S,
-        sender: &accept::Sender,
-        env: &Environment,
+        sender: &accept::Sender<Sub>,
+        env: &Environment<Sub>,
         secrets: &secret::Map,
         accept_flavor: accept::Flavor,
         subscriber: Sub,
@@ -102,13 +102,25 @@ where
         };
 
         let remote_addr = self.recv_buffer.remote_address();
+
+        let meta = event::api::ConnectionMeta {
+            id: 0, // TODO use an actual connection ID
+            timestamp: now.into_event(),
+        };
+        let info = event::api::ConnectionInfo {};
+
+        let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
+
         let stream = match endpoint::accept_stream(
+            now,
             &self.env,
             env::UdpUnbound(remote_addr),
             &packet,
             Some(handshake),
             Some(&mut self.recv_buffer),
             &self.secrets,
+            self.subscriber.clone(),
+            subscriber_ctx,
             None,
         ) {
             Ok(stream) => stream,
@@ -149,7 +161,6 @@ where
                 if let Some(stream) = prev {
                     stream.prune(
                         event::builder::AcceptorStreamPruneReason::AcceptQueueCapacityExceeded,
-                        &publisher,
                     );
                 }
 

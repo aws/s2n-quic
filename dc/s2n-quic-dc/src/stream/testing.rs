@@ -15,9 +15,11 @@ use crate::{
 use std::{io, net::SocketAddr};
 use tracing::Instrument;
 
+type Subscriber = event::tracing::Subscriber;
+
 pub struct Client {
     map: secret::Map,
-    env: env::Environment,
+    env: env::Environment<Subscriber>,
 }
 
 impl Default for Client {
@@ -53,13 +55,22 @@ impl Client {
             })
     }
 
-    pub async fn connect_to<S: AsRef<ServerHandle>>(&self, server: &S) -> io::Result<Stream> {
+    pub async fn connect_to<S: AsRef<ServerHandle>>(
+        &self,
+        server: &S,
+    ) -> io::Result<Stream<Subscriber>> {
         let server = server.as_ref();
         let handshake = async { self.handshake_with(server) };
 
+        let subscriber = Subscriber::default();
+
         match server.protocol {
-            Protocol::Tcp => client::connect_tcp(handshake, server.local_addr, &self.env).await,
-            Protocol::Udp => client::connect_udp(handshake, server.local_addr, &self.env).await,
+            Protocol::Tcp => {
+                client::connect_tcp(handshake, server.local_addr, &self.env, subscriber).await
+            }
+            Protocol::Udp => {
+                client::connect_udp(handshake, server.local_addr, &self.env, subscriber).await
+            }
             Protocol::Other(name) => {
                 todo!("protocol {name:?} not implemented")
             }
@@ -82,7 +93,7 @@ impl AsRef<ServerHandle> for ServerHandle {
 
 pub struct Server {
     handle: ServerHandle,
-    receiver: accept::Receiver,
+    receiver: accept::Receiver<Subscriber>,
     stats: stats::Sender,
     #[allow(dead_code)]
     drop_handle: drop_handle::Sender,
@@ -188,12 +199,7 @@ impl Server {
 
         if matches!(accept_flavor, accept::Flavor::Lifo) {
             let channel = receiver.downgrade();
-            let task = accept::Pruner::default().run(
-                env,
-                channel,
-                stats,
-                event::tracing::Subscriber::default(),
-            );
+            let task = accept::Pruner::default().run(env, channel, stats);
             let task = task.instrument(tracing::info_span!("pruner"));
             let task = drop_handle_receiver.wrap(task);
             tokio::task::spawn(task);
@@ -217,13 +223,8 @@ impl Server {
         self.handle.clone()
     }
 
-    pub async fn accept(&self) -> io::Result<(Stream, SocketAddr)> {
-        accept::accept(
-            &self.receiver,
-            &self.stats,
-            &event::tracing::Subscriber::default(),
-        )
-        .await
+    pub async fn accept(&self) -> io::Result<(Stream<Subscriber>, SocketAddr)> {
+        accept::accept(&self.receiver, &self.stats).await
     }
 }
 
