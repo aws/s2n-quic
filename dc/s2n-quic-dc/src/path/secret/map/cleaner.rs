@@ -58,18 +58,21 @@ impl Cleaner {
         S: event::Subscriber,
     {
         let state = Arc::downgrade(&state);
-        let handle = std::thread::spawn(move || loop {
-            let Some(state) = state.upgrade() else {
-                break;
-            };
-            if state.cleaner().should_stop.load(Ordering::Relaxed) {
-                break;
-            }
-            state.cleaner().clean(&state, EVICTION_CYCLES);
-            let pause = rand::thread_rng().gen_range(5..60);
-            drop(state);
-            std::thread::park_timeout(Duration::from_secs(pause));
-        });
+        let handle = std::thread::Builder::new()
+            .name("dc_quic::cleaner".into())
+            .spawn(move || loop {
+                let Some(state) = state.upgrade() else {
+                    break;
+                };
+                if state.cleaner().should_stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                state.cleaner().clean(&state, EVICTION_CYCLES);
+                let pause = rand::thread_rng().gen_range(5..60);
+                drop(state);
+                std::thread::park_timeout(Duration::from_secs(pause));
+            })
+            .unwrap();
         *self.thread.lock().unwrap() = Some(handle);
     }
 
