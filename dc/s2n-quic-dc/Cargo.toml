@@ -46,7 +46,7 @@ zeroize = "1"
 parking_lot = "0.12"
 
 [dev-dependencies]
-bolero = "0.11"
+bolero = "0.12"
 bolero-generator = "0.11"
 insta = "1"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
