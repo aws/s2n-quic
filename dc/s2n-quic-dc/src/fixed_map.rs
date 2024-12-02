@@ -47,7 +47,7 @@ where
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn count(&self) -> usize {
         self.slots.iter().map(|s| s.len()).sum()
     }
 

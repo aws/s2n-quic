@@ -66,6 +66,7 @@ mod counter {
                 108usize => Self(stale_key_packet_dropped),
                 110usize => Self(path_secret_map_address_cache_accessed),
                 113usize => Self(path_secret_map_id_cache_accessed),
+                115usize => Self(path_secret_map_cleaner_cycled),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -175,6 +176,8 @@ mod counter {
             fn path_secret_map_address_cache_accessed(value: u64);
             # [link_name = s2n_quic_dc__event__counter__path_secret_map_id_cache_accessed]
             fn path_secret_map_id_cache_accessed(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__path_secret_map_cleaner_cycled]
+            fn path_secret_map_cleaner_cycled(value: u64);
         }
     );
     pub mod bool {
@@ -473,6 +476,18 @@ mod measure {
                 85usize => Self(key_accepted__gap),
                 86usize => Self(key_accepted__forward_shift),
                 89usize => Self(replay_potentially_detected__gap),
+                116usize => Self(path_secret_map_cleaner_cycled__entries__id),
+                117usize => Self(path_secret_map_cleaner_cycled__entries__id__retired),
+                118usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization),
+                119usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization__initial),
+                120usize => Self(path_secret_map_cleaner_cycled__entries__address),
+                121usize => Self(path_secret_map_cleaner_cycled__entries__address__retired),
+                122usize => Self(path_secret_map_cleaner_cycled__entries__address__utilization),
+                123usize => {
+                    Self(path_secret_map_cleaner_cycled__entries__address__utilization__initial)
+                }
+                124usize => Self(path_secret_map_cleaner_cycled__handshake_requests),
+                125usize => Self(path_secret_map_cleaner_cycled__handshake_requests__retired),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -530,6 +545,26 @@ mod measure {
             fn key_accepted__forward_shift(value: u64);
             # [link_name = s2n_quic_dc__event__measure__replay_potentially_detected__gap]
             fn replay_potentially_detected__gap(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id]
+            fn path_secret_map_cleaner_cycled__entries__id(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__retired]
+            fn path_secret_map_cleaner_cycled__entries__id__retired(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__utilization]
+            fn path_secret_map_cleaner_cycled__entries__id__utilization(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__utilization__initial]
+            fn path_secret_map_cleaner_cycled__entries__id__utilization__initial(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address]
+            fn path_secret_map_cleaner_cycled__entries__address(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__retired]
+            fn path_secret_map_cleaner_cycled__entries__address__retired(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__utilization]
+            fn path_secret_map_cleaner_cycled__entries__address__utilization(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__utilization__initial]
+            fn path_secret_map_cleaner_cycled__entries__address__utilization__initial(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests]
+            fn path_secret_map_cleaner_cycled__handshake_requests(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests__retired]
+            fn path_secret_map_cleaner_cycled__handshake_requests__retired(value: u64);
         }
     );
 }

@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::state::State;
-use crate::event;
+use crate::{
+    event::{self, EndpointPublisher as _},
+    path::secret::map::store::Store,
+};
 use rand::Rng as _;
 use s2n_quic_core::time;
 use std::{
@@ -61,6 +64,14 @@ impl Cleaner {
         let handle = std::thread::Builder::new()
             .name("dc_quic::cleaner".into())
             .spawn(move || loop {
+                // in tests, we should try and be as deterministic as possible
+                let pause = if cfg!(test) {
+                    60
+                } else {
+                    rand::thread_rng().gen_range(5..60)
+                };
+                std::thread::park_timeout(Duration::from_secs(pause));
+
                 let Some(state) = state.upgrade() else {
                     break;
                 };
@@ -68,9 +79,6 @@ impl Cleaner {
                     break;
                 }
                 state.cleaner().clean(&state, EVICTION_CYCLES);
-                let pause = rand::thread_rng().gen_range(5..60);
-                drop(state);
-                std::thread::park_timeout(Duration::from_secs(pause));
             })
             .unwrap();
         *self.thread.lock().unwrap() = Some(handle);
@@ -85,11 +93,20 @@ impl Cleaner {
         let current_epoch = self.epoch.fetch_add(1, Ordering::Relaxed);
         let now = Instant::now();
 
+        let utilization = |count: usize| (count as f32 / state.secrets_capacity() as f32) * 100.0;
+
+        let mut id_entries_initial = 0usize;
+        let mut address_entries_initial = 0usize;
+        let mut id_entries_retired = 0usize;
+        let mut address_entries_retired = 0usize;
+
         // For non-retired entries, if it's time for them to handshake again, request a
         // handshake to happen. This handshake will currently happen on the next request for this
         // particular peer.
         state.ids.retain(|_, entry| {
-            if let Some(retired_at) = entry.retired_at() {
+            id_entries_initial += 1;
+
+            let retained = if let Some(retired_at) = entry.retired_at() {
                 // retain if we aren't yet ready to evict.
                 current_epoch.saturating_sub(retired_at) < eviction_cycles
             } else {
@@ -99,15 +116,29 @@ impl Cleaner {
 
                 // always retain
                 true
+            };
+
+            if !retained {
+                id_entries_retired += 1;
             }
+
+            retained
         });
 
         // Drop IP entries if we no longer have the path secret ID entry.
         // FIXME: Don't require a loop to do this. This is likely somewhat slow since it takes a
         // write lock + read lock essentially per-entry, but should be near-constant-time.
-        state
-            .peers
-            .retain(|_, entry| state.ids.contains_key(entry.id()));
+        state.peers.retain(|_, entry| {
+            address_entries_initial += 1;
+
+            let retained = state.ids.contains_key(entry.id());
+
+            if !retained {
+                address_entries_retired += 1;
+            }
+
+            retained
+        });
 
         // Iteration order should be effectively random, so this effectively just prunes the list
         // periodically. 5000 is chosen arbitrarily to make sure this isn't a memory leak. Note
@@ -116,11 +147,38 @@ impl Cleaner {
         //
         // FIXME: Long or mid-term it likely makes sense to replace this data structure with a
         // fuzzy set of some kind and/or just moving to immediate background handshake attempts.
-        let mut count = 0;
+        const MAX_REQUESTED_HANDSHAKES: usize = 5000;
+
+        let mut handshake_requests = 0usize;
+        let mut handshake_requests_retired = 0usize;
         state.requested_handshakes.pin().retain(|_| {
-            count += 1;
-            count < 5000
+            handshake_requests += 1;
+            let retain = handshake_requests < MAX_REQUESTED_HANDSHAKES;
+
+            if !retain {
+                handshake_requests_retired += 1;
+            }
+
+            retain
         });
+
+        let id_entries = id_entries_initial - id_entries_retired;
+        let address_entries = address_entries_initial - address_entries_retired;
+
+        state.subscriber().on_path_secret_map_cleaner_cycled(
+            event::builder::PathSecretMapCleanerCycled {
+                id_entries,
+                id_entries_retired,
+                id_entries_utilization: utilization(id_entries),
+                id_entries_initial_utilization: utilization(id_entries_initial),
+                address_entries,
+                address_entries_utilization: utilization(address_entries),
+                address_entries_initial_utilization: utilization(address_entries_initial),
+                address_entries_retired,
+                handshake_requests,
+                handshake_requests_retired,
+            },
+        );
     }
 
     pub fn epoch(&self) -> u64 {

@@ -12,7 +12,7 @@ use crate::event::{
         AsVariant, BoolRecorder, Info, Metric, NominalRecorder, Recorder, Registry, Units,
     },
 };
-static INFO: &[Info; 115usize] = &[
+static INFO: &[Info; 126usize] = &[
     info::Builder {
         id: 0usize,
         name: Str::new("acceptor_tcp_started\0"),
@@ -703,6 +703,72 @@ static INFO: &[Info; 115usize] = &[
         units: Units::None,
     }
     .build(),
+    info::Builder {
+        id: 115usize,
+        name: Str::new("path_secret_map_cleaner_cycled\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 116usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 117usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.retired\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 118usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.utilization\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
+        id: 119usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.utilization.initial\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
+        id: 120usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 121usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address.retired\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 122usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address.utilization\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
+        id: 123usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address.utilization.initial\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
+        id: 124usize,
+        name: Str::new("path_secret_map_cleaner_cycled.handshake_requests\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 125usize,
+        name: Str::new("path_secret_map_cleaner_cycled.handshake_requests.retired\0"),
+        units: Units::None,
+    }
+    .build(),
 ];
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
@@ -711,7 +777,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 49usize]>,
+    counters: Box<[R::Counter; 50usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 10usize]>,
     #[allow(dead_code)]
@@ -719,7 +785,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     nominal_counter_offsets: Box<[usize; 26usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 23usize]>,
+    measures: Box<[R::Measure; 33usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
@@ -746,11 +812,11 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(49usize);
+        let mut counters = Vec::with_capacity(50usize);
         let mut bool_counters = Vec::with_capacity(10usize);
         let mut nominal_counters = Vec::with_capacity(26usize);
         let mut nominal_counter_offsets = Vec::with_capacity(26usize);
-        let mut measures = Vec::with_capacity(23usize);
+        let mut measures = Vec::with_capacity(33usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(7usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
@@ -804,6 +870,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[108usize]));
         counters.push(registry.register_counter(&INFO[110usize]));
         counters.push(registry.register_counter(&INFO[113usize]));
+        counters.push(registry.register_counter(&INFO[115usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[19usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[20usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[34usize]));
@@ -1127,6 +1194,16 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[85usize]));
         measures.push(registry.register_measure(&INFO[86usize]));
         measures.push(registry.register_measure(&INFO[89usize]));
+        measures.push(registry.register_measure(&INFO[116usize]));
+        measures.push(registry.register_measure(&INFO[117usize]));
+        measures.push(registry.register_measure(&INFO[118usize]));
+        measures.push(registry.register_measure(&INFO[119usize]));
+        measures.push(registry.register_measure(&INFO[120usize]));
+        measures.push(registry.register_measure(&INFO[121usize]));
+        measures.push(registry.register_measure(&INFO[122usize]));
+        measures.push(registry.register_measure(&INFO[123usize]));
+        measures.push(registry.register_measure(&INFO[124usize]));
+        measures.push(registry.register_measure(&INFO[125usize]));
         timers.push(registry.register_timer(&INFO[5usize]));
         timers.push(registry.register_timer(&INFO[15usize]));
         timers.push(registry.register_timer(&INFO[21usize]));
@@ -1217,6 +1294,7 @@ impl<R: Registry> Subscriber<R> {
                 46usize => (&INFO[108usize], entry),
                 47usize => (&INFO[110usize], entry),
                 48usize => (&INFO[113usize], entry),
+                49usize => (&INFO[115usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -1461,6 +1539,16 @@ impl<R: Registry> Subscriber<R> {
                 20usize => (&INFO[85usize], entry),
                 21usize => (&INFO[86usize], entry),
                 22usize => (&INFO[89usize], entry),
+                23usize => (&INFO[116usize], entry),
+                24usize => (&INFO[117usize], entry),
+                25usize => (&INFO[118usize], entry),
+                26usize => (&INFO[119usize], entry),
+                27usize => (&INFO[120usize], entry),
+                28usize => (&INFO[121usize], entry),
+                29usize => (&INFO[122usize], entry),
+                30usize => (&INFO[123usize], entry),
+                31usize => (&INFO[124usize], entry),
+                32usize => (&INFO[125usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -2138,6 +2226,28 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         use api::*;
         self.count(113usize, 48usize, 1usize);
         self.count_bool(114usize, 9usize, event.hit);
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_path_secret_map_cleaner_cycled(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::PathSecretMapCleanerCycled,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(115usize, 49usize, 1usize);
+        self.measure(116usize, 23usize, event.id_entries);
+        self.measure(117usize, 24usize, event.id_entries_retired);
+        self.measure(118usize, 25usize, event.id_entries_utilization);
+        self.measure(119usize, 26usize, event.id_entries_initial_utilization);
+        self.measure(120usize, 27usize, event.address_entries);
+        self.measure(121usize, 28usize, event.address_entries_retired);
+        self.measure(122usize, 29usize, event.address_entries_utilization);
+        self.measure(123usize, 30usize, event.address_entries_initial_utilization);
+        self.measure(124usize, 31usize, event.handshake_requests);
+        self.measure(125usize, 32usize, event.handshake_requests_retired);
         let _ = event;
         let _ = meta;
     }
