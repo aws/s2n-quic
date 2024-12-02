@@ -40,11 +40,11 @@ use tracing::{debug, trace};
 
 pub struct Acceptor<Sub>
 where
-    Sub: Subscriber,
+    Sub: Subscriber + Clone,
 {
-    sender: accept::Sender,
+    sender: accept::Sender<Sub>,
     socket: TcpListener,
-    env: Environment,
+    env: Environment<Sub>,
     secrets: secret::Map,
     backlog: usize,
     accept_flavor: accept::Flavor,
@@ -53,14 +53,14 @@ where
 
 impl<Sub> Acceptor<Sub>
 where
-    Sub: Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     #[inline]
     pub fn new(
         id: usize,
         socket: TcpListener,
-        sender: &accept::Sender,
-        env: &Environment,
+        sender: &accept::Sender<Sub>,
+        env: &Environment<Sub>,
         secrets: &secret::Map,
         backlog: usize,
         accept_flavor: accept::Flavor,
@@ -103,7 +103,7 @@ where
             fresh.fill(cx, &self.socket, &publisher);
 
             for socket in fresh.drain() {
-                workers.push(socket, now, &publisher);
+                workers.push(socket, now, &self.subscriber, &publisher);
             }
 
             let res = workers.poll(cx, &mut context, now, &publisher);
@@ -160,7 +160,7 @@ struct FreshQueue {
 impl FreshQueue {
     fn new<Sub>(acceptor: &Acceptor<Sub>) -> Self
     where
-        Sub: Subscriber,
+        Sub: event::Subscriber + Clone,
     {
         Self {
             queue: VecDeque::with_capacity(acceptor.backlog),
@@ -244,9 +244,12 @@ impl FreshQueue {
     }
 }
 
-struct WorkerSet {
+struct WorkerSet<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
     /// A set of worker entries which process newly-accepted streams
-    workers: Box<[Worker]>,
+    workers: Box<[Worker<Sub>]>,
     /// FIFO queue for tracking free [`Worker`] entries
     ///
     /// None of the indices in this queue have associated sockets and are waiting to be assigned
@@ -262,12 +265,12 @@ struct WorkerSet {
     sojourn_time: RttEstimator,
 }
 
-impl WorkerSet {
+impl<Sub> WorkerSet<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
     #[inline]
-    pub fn new<Sub>(acceptor: &Acceptor<Sub>) -> Self
-    where
-        Sub: Subscriber,
-    {
+    pub fn new(acceptor: &Acceptor<Sub>) -> Self {
         let backlog = acceptor.backlog;
         let mut workers = Vec::with_capacity(backlog);
         let mut free = VecDeque::with_capacity(backlog);
@@ -286,8 +289,13 @@ impl WorkerSet {
     }
 
     #[inline]
-    pub fn push<Pub>(&mut self, stream: TcpStream, now: Timestamp, publisher: &Pub)
-    where
+    pub fn push<Pub>(
+        &mut self,
+        stream: TcpStream,
+        now: Timestamp,
+        subscriber: &Sub,
+        publisher: &Pub,
+    ) where
         Pub: EndpointPublisher,
     {
         let Some(idx) = self.next_worker(now) else {
@@ -309,7 +317,7 @@ impl WorkerSet {
             drop(stream);
             return;
         };
-        self.workers[idx].push(stream, now, publisher);
+        self.workers[idx].push(stream, now, subscriber, publisher);
         self.working.push_back(idx);
     }
 
@@ -317,7 +325,7 @@ impl WorkerSet {
     pub fn poll<Pub>(
         &mut self,
         cx: &mut Context,
-        worker_cx: &mut WorkerContext,
+        worker_cx: &mut WorkerContext<Sub>,
         now: Timestamp,
         publisher: &Pub,
     ) -> ControlFlow<()>
@@ -432,54 +440,81 @@ impl WorkerSet {
     }
 }
 
-struct WorkerContext {
+struct WorkerContext<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
     recv_buffer: msg::recv::Message,
-    sender: accept::Sender,
-    env: Environment,
+    sender: accept::Sender<Sub>,
+    env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
+    subscriber: Sub,
 }
 
-impl WorkerContext {
-    fn new<Sub>(acceptor: &Acceptor<Sub>) -> Self
-    where
-        Sub: Subscriber,
-    {
+impl<Sub> WorkerContext<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
+    fn new(acceptor: &Acceptor<Sub>) -> Self {
         Self {
             recv_buffer: msg::recv::Message::new(u16::MAX),
             sender: acceptor.sender.clone(),
             env: acceptor.env.clone(),
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
+            subscriber: acceptor.subscriber.clone(),
         }
     }
 }
 
-struct Worker {
+struct Worker<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
     queue_time: Timestamp,
     stream: Option<TcpStream>,
+    subscriber_ctx: Option<Sub::ConnectionContext>,
     state: WorkerState,
 }
 
-impl Worker {
+impl<Sub> Worker<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
     pub fn new(now: Timestamp) -> Self {
         Self {
             queue_time: now,
             stream: None,
+            subscriber_ctx: None,
             state: WorkerState::Init,
         }
     }
 
     #[inline]
-    pub fn push<Pub>(&mut self, stream: TcpStream, now: Timestamp, publisher: &Pub)
-    where
+    pub fn push<Pub>(
+        &mut self,
+        stream: TcpStream,
+        now: Timestamp,
+        subscriber: &Sub,
+        publisher: &Pub,
+    ) where
         Pub: EndpointPublisher,
     {
+        let meta = event::api::ConnectionMeta {
+            id: 0, // TODO use an actual connection ID
+            timestamp: now.into_event(),
+        };
+        let info = event::api::ConnectionInfo {};
+
+        let subscriber_ctx = subscriber.create_connection_context(&meta, &info);
+
         let prev_queue_time = core::mem::replace(&mut self.queue_time, now);
         let prev_state = core::mem::replace(&mut self.state, WorkerState::Init);
-        let prev = core::mem::replace(&mut self.stream, Some(stream));
+        let prev_stream = core::mem::replace(&mut self.stream, Some(stream));
+        let prev_ctx = core::mem::replace(&mut self.subscriber_ctx, Some(subscriber_ctx));
 
-        if let Some(remote_addr) = prev.and_then(|socket| socket.peer_addr().ok()) {
+        if let Some(remote_addr) = prev_stream.and_then(|socket| socket.peer_addr().ok()) {
             let remote_address: SocketAddress = remote_addr.into();
             let remote_address = &remote_address;
             let sojourn_time = now.saturating_duration_since(prev_queue_time);
@@ -494,13 +529,18 @@ impl Worker {
                 buffer_len,
             });
         }
+
+        if let Some(ctx) = prev_ctx {
+            // TODO emit an event
+            let _ = ctx;
+        }
     }
 
     #[inline]
     pub fn poll<Pub>(
         &mut self,
         cx: &mut Context,
-        context: &mut WorkerContext,
+        context: &mut WorkerContext<Sub>,
         now: Timestamp,
         publisher: &Pub,
     ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
@@ -524,6 +564,7 @@ impl Worker {
             cx,
             context,
             &mut self.stream,
+            &mut self.subscriber_ctx,
             self.queue_time,
             now,
             publisher
@@ -532,6 +573,11 @@ impl Worker {
         // if we're ready then reset the worker
         self.state = WorkerState::Init;
         self.stream = None;
+
+        if let Some(ctx) = self.subscriber_ctx.take() {
+            // TODO emit event on the context
+            let _ = ctx;
+        }
 
         Poll::Ready(res)
     }
@@ -562,16 +608,18 @@ enum WorkerState {
 }
 
 impl WorkerState {
-    fn poll<Pub>(
+    fn poll<Sub, Pub>(
         &mut self,
         cx: &mut Context,
-        context: &mut WorkerContext,
+        context: &mut WorkerContext<Sub>,
         stream: &mut Option<TcpStream>,
+        subscriber_ctx: &mut Option<Sub::ConnectionContext>,
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
     ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
     where
+        Sub: event::Subscriber + Clone,
         Pub: EndpointPublisher,
     {
         let sojourn_time = now.saturating_duration_since(queue_time);
@@ -637,13 +685,18 @@ impl WorkerState {
 
             let initial_packet = res?;
 
+            let subscriber_ctx = subscriber_ctx.take().unwrap();
+
             let stream_builder = match endpoint::accept_stream(
+                now,
                 &context.env,
                 env::TcpReregistered(stream.take().unwrap()),
                 &initial_packet,
                 None,
                 Some(recv_buffer),
                 &context.secrets,
+                context.subscriber.clone(),
+                subscriber_ctx,
                 None,
             ) {
                 Ok(stream) => stream,
@@ -696,7 +749,6 @@ impl WorkerState {
                     if let Some(stream) = prev {
                         stream.prune(
                             event::builder::AcceptorStreamPruneReason::AcceptQueueCapacityExceeded,
-                            publisher,
                         );
                     }
                     ControlFlow::Continue(())

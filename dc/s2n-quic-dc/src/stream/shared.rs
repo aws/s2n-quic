@@ -4,6 +4,7 @@
 use crate::{
     clock::Clock,
     credentials::Credentials,
+    event::{self, IntoEvent as _},
     stream::{
         recv::shared as recv,
         send::{application, shared as send},
@@ -31,17 +32,23 @@ pub enum Half {
     Write,
 }
 
-pub type ArcShared = Arc<Shared<dyn Clock>>;
+pub type ArcShared<Sub> = Arc<Shared<Sub, dyn Clock>>;
 
-#[derive(Debug)]
-pub struct Shared<Clock: ?Sized> {
+pub struct Shared<Subscriber, Clock: ?Sized>
+where
+    Subscriber: event::Subscriber,
+{
     pub receiver: recv::State,
     pub sender: send::State,
     pub crypto: Crypto,
-    pub common: Common<Clock>,
+    pub common: Common<Subscriber, Clock>,
 }
 
-impl<C: Clock + ?Sized> Shared<C> {
+impl<Sub, C> Shared<Sub, C>
+where
+    Sub: event::Subscriber,
+    C: Clock + ?Sized,
+{
     #[inline]
     pub fn on_valid_packet(
         &self,
@@ -79,7 +86,11 @@ impl<C: Clock + ?Sized> Shared<C> {
     }
 }
 
-impl<C: ?Sized> Shared<C> {
+impl<Sub, C> Shared<Sub, C>
+where
+    Sub: event::Subscriber,
+    C: ?Sized,
+{
     #[inline]
     pub fn last_peer_activity(&self) -> Timestamp {
         let timestamp = self.last_peer_activity.load(Ordering::Relaxed);
@@ -132,8 +143,12 @@ impl<C: ?Sized> Shared<C> {
     }
 }
 
-impl<C: ?Sized> ops::Deref for Shared<C> {
-    type Target = Common<C>;
+impl<Sub, C> ops::Deref for Shared<Sub, C>
+where
+    Sub: event::Subscriber,
+    C: ?Sized,
+{
+    type Target = Common<Sub, C>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -141,8 +156,11 @@ impl<C: ?Sized> ops::Deref for Shared<C> {
     }
 }
 
-#[derive(Debug)]
-pub struct Common<Clock: ?Sized> {
+pub struct Common<Sub, Clock>
+where
+    Sub: event::Subscriber,
+    Clock: ?Sized,
+{
     pub gso: features::Gso,
     pub read_remote_port: AtomicU16,
     pub write_remote_port: AtomicU16,
@@ -150,10 +168,16 @@ pub struct Common<Clock: ?Sized> {
     /// The last time we received a packet from the peer
     pub last_peer_activity: AtomicU64,
     pub closed_halves: AtomicU8,
+    pub subscriber: Sub,
+    pub subscriber_ctx: Sub::ConnectionContext,
     pub clock: Clock,
 }
 
-impl<Clock: ?Sized> Common<Clock> {
+impl<Sub, Clock> Common<Sub, Clock>
+where
+    Sub: event::Subscriber,
+    Clock: ?Sized,
+{
     #[inline]
     pub fn ensure_open(&self) -> std::io::Result<()> {
         ensure!(
@@ -168,10 +192,36 @@ impl<Clock: ?Sized> Common<Clock> {
         );
         Ok(())
     }
+
+    #[inline]
+    pub fn publisher(&self, timestamp: Timestamp) -> event::ConnectionPublisherSubscriber<Sub> {
+        event::ConnectionPublisherSubscriber::new(
+            event::builder::ConnectionMeta {
+                id: 0, // TODO
+                timestamp: timestamp.into_event(),
+            },
+            0,
+            &self.subscriber,
+            &self.subscriber_ctx,
+        )
+    }
+
+    #[inline]
+    pub fn endpoint_publisher(
+        &self,
+        timestamp: Timestamp,
+    ) -> event::EndpointPublisherSubscriber<Sub> {
+        event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
+                timestamp: timestamp.into_event(),
+            },
+            None,
+            &self.subscriber,
+        )
+    }
 }
 
 /// Values that don't change while the state is shared between threads
-#[derive(Debug)]
 pub struct FixedValues {
     pub remote_ip: UnsafeCell<IpAddress>,
     pub source_control_port: UnsafeCell<u16>,

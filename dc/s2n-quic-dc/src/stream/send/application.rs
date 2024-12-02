@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    clock, msg,
+    clock, event, msg,
     stream::{
         pacer, runtime,
         send::{flow, queue},
@@ -26,18 +26,24 @@ pub mod transmission;
 
 pub use builder::Builder;
 
-pub struct Writer(Box<Inner>);
+pub struct Writer<Sub: event::Subscriber>(Box<Inner<Sub>>);
 
-struct Inner {
-    shared: ArcShared,
+struct Inner<Sub>
+where
+    Sub: event::Subscriber,
+{
+    shared: ArcShared<Sub>,
     sockets: socket::ArcApplication,
     queue: queue::Queue,
     pacer: pacer::Naive,
     open: bool,
-    runtime: runtime::ArcHandle,
+    runtime: runtime::ArcHandle<Sub>,
 }
 
-impl fmt::Debug for Writer {
+impl<Sub> fmt::Debug for Writer<Sub>
+where
+    Sub: event::Subscriber,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Writer")
             .field("peer_addr", &self.peer_addr().unwrap())
@@ -46,7 +52,10 @@ impl fmt::Debug for Writer {
     }
 }
 
-impl Writer {
+impl<Sub> Writer<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.shared.common.ensure_open()?;
@@ -111,7 +120,10 @@ impl Writer {
     }
 }
 
-impl Inner {
+impl<Sub> Inner<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline(always)]
     fn poll_write_from<S>(
         &mut self,
@@ -296,7 +308,10 @@ impl Inner {
 }
 
 #[cfg(feature = "tokio")]
-impl tokio::io::AsyncWrite for Writer {
+impl<Sub> tokio::io::AsyncWrite for Writer<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn poll_write(
         mut self: Pin<&mut Self>,
@@ -337,7 +352,10 @@ impl tokio::io::AsyncWrite for Writer {
     }
 }
 
-impl Drop for Writer {
+impl<Sub> Drop for Writer<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn drop(&mut self) {
         let _ = self.0.shutdown(ShutdownType::Drop {
@@ -352,14 +370,20 @@ enum ShutdownType {
     Drop { is_panicking: bool },
 }
 
-pub struct Shutdown {
+pub struct Shutdown<Sub>
+where
+    Sub: event::Subscriber,
+{
     queue: queue::Queue,
-    shared: ArcShared,
+    shared: ArcShared<Sub>,
     sockets: socket::ArcApplication,
     ty: ShutdownType,
 }
 
-impl core::future::Future for Shutdown {
+impl<Sub> core::future::Future for Shutdown<Sub>
+where
+    Sub: event::Subscriber,
+{
     type Output = ();
 
     #[inline]
@@ -396,7 +420,10 @@ mod tests {
     use super::*;
 
     #[allow(dead_code)]
-    fn shutdown_traits_test(shutdown: &Shutdown) {
+    fn shutdown_traits_test<Sub>(shutdown: &Shutdown<Sub>)
+    where
+        Sub: event::Subscriber,
+    {
         use crate::testing::*;
 
         assert_send(shutdown);

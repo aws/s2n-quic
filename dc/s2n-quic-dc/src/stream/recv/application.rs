@@ -3,7 +3,7 @@
 
 use crate::{
     clock::Timer,
-    msg,
+    event, msg,
     stream::{recv, runtime, shared::ArcShared, socket},
 };
 use core::{
@@ -38,20 +38,26 @@ pub enum ReadMode {
     Drain,
 }
 
-pub struct Reader(ManuallyDrop<Box<Inner>>);
+pub struct Reader<Sub: event::Subscriber>(ManuallyDrop<Box<Inner<Sub>>>);
 
-pub(crate) struct Inner {
-    shared: ArcShared,
+pub(crate) struct Inner<Sub>
+where
+    Sub: event::Subscriber,
+{
+    shared: ArcShared<Sub>,
     sockets: socket::ArcApplication,
     send_buffer: msg::send::Message,
     read_mode: ReadMode,
     ack_mode: AckMode,
     timer: Option<Timer>,
     local_state: LocalState,
-    runtime: runtime::ArcHandle,
+    runtime: runtime::ArcHandle<Sub>,
 }
 
-impl fmt::Debug for Reader {
+impl<Sub> fmt::Debug for Reader<Sub>
+where
+    Sub: event::Subscriber,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Reader")
             .field("peer_addr", &self.peer_addr().unwrap())
@@ -86,7 +92,10 @@ impl LocalState {
     }
 
     #[inline]
-    fn transition(&mut self, target: Self, shared: &ArcShared) {
+    fn transition<Sub>(&mut self, target: Self, shared: &ArcShared<Sub>)
+    where
+        Sub: event::Subscriber,
+    {
         ensure!(matches!(self, Self::Ready | Self::Reading));
         *self = target;
 
@@ -97,7 +106,10 @@ impl LocalState {
     }
 }
 
-impl Reader {
+impl<Sub> Reader<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.shared.common.ensure_open()?;
@@ -153,7 +165,10 @@ impl Reader {
     }
 }
 
-impl Inner {
+impl<Sub> Inner<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline(always)]
     fn poll_read_into<S>(
         &mut self,
@@ -316,7 +331,10 @@ impl Inner {
 }
 
 #[cfg(feature = "tokio")]
-impl tokio::io::AsyncRead for Reader {
+impl<Sub> tokio::io::AsyncRead for Reader<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -329,7 +347,10 @@ impl tokio::io::AsyncRead for Reader {
     }
 }
 
-impl Drop for Reader {
+impl<Sub> Drop for Reader<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn drop(&mut self) {
         let inner = unsafe {
@@ -340,9 +361,12 @@ impl Drop for Reader {
     }
 }
 
-pub struct Shutdown(Box<Inner>);
+pub struct Shutdown<Sub: event::Subscriber>(Box<Inner<Sub>>);
 
-impl core::future::Future for Shutdown {
+impl<Sub> core::future::Future for Shutdown<Sub>
+where
+    Sub: event::Subscriber,
+{
     type Output = ();
 
     #[inline]
@@ -358,7 +382,10 @@ mod tests {
     use super::*;
 
     #[allow(dead_code)]
-    fn shutdown_traits_test(shutdown: &Shutdown) {
+    fn shutdown_traits_test<Sub>(shutdown: &Shutdown<Sub>)
+    where
+        Sub: event::Subscriber,
+    {
         use crate::testing::*;
 
         assert_send(shutdown);

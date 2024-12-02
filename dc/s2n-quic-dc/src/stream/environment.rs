@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    clock,
+    clock, event,
     stream::{runtime, socket, TransportFeatures},
 };
 use core::future::Future;
@@ -17,12 +17,13 @@ pub mod tokio;
 
 pub trait Environment {
     type Clock: Clone + clock::Clock;
+    type Subscriber: event::Subscriber;
 
     fn clock(&self) -> &Self::Clock;
     fn gso(&self) -> features::Gso;
-    fn reader_rt(&self) -> runtime::ArcHandle;
+    fn reader_rt(&self) -> runtime::ArcHandle<Self::Subscriber>;
     fn spawn_reader<F: 'static + Send + Future<Output = ()>>(&self, f: F);
-    fn writer_rt(&self) -> runtime::ArcHandle;
+    fn writer_rt(&self) -> runtime::ArcHandle<Self::Subscriber>;
     fn spawn_writer<F: 'static + Send + Future<Output = ()>>(&self, f: F);
 }
 

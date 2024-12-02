@@ -3,6 +3,7 @@
 
 use crate::{
     clock::tokio::Clock,
+    event,
     stream::{
         runtime::{tokio as runtime, ArcHandle},
         socket::{self, Socket as _},
@@ -17,25 +18,42 @@ use s2n_quic_platform::features;
 use std::{io, net::UdpSocket, sync::Arc};
 use tokio::{io::unix::AsyncFd, net::TcpStream};
 
-#[derive(Clone, Default)]
-pub struct Builder {
+#[derive(Clone)]
+pub struct Builder<Sub> {
     clock: Option<Clock>,
     gso: Option<features::Gso>,
     socket_options: Option<socket::Options>,
-    reader_rt: Option<runtime::Shared>,
-    writer_rt: Option<runtime::Shared>,
+    reader_rt: Option<runtime::Shared<Sub>>,
+    writer_rt: Option<runtime::Shared<Sub>>,
     thread_name_prefix: Option<String>,
     threads: Option<usize>,
 }
 
-impl Builder {
+impl<Sub> Default for Builder<Sub> {
+    fn default() -> Self {
+        Self {
+            clock: None,
+            gso: None,
+            socket_options: None,
+            reader_rt: None,
+            writer_rt: None,
+            thread_name_prefix: None,
+            threads: None,
+        }
+    }
+}
+
+impl<Sub> Builder<Sub>
+where
+    Sub: event::Subscriber,
+{
     pub fn with_threads(mut self, threads: usize) -> Self {
         self.threads = Some(threads);
         self
     }
 
     #[inline]
-    pub fn build(self) -> io::Result<Environment> {
+    pub fn build(self) -> io::Result<Environment<Sub>> {
         let clock = self.clock.unwrap_or_default();
         let gso = self.gso.unwrap_or_default();
         let socket_options = self.socket_options.unwrap_or_default();
@@ -74,30 +92,37 @@ impl Builder {
 }
 
 #[derive(Clone)]
-pub struct Environment {
+pub struct Environment<Sub> {
     clock: Clock,
     gso: features::Gso,
     socket_options: socket::Options,
-    reader_rt: runtime::Shared,
-    writer_rt: runtime::Shared,
+    reader_rt: runtime::Shared<Sub>,
+    writer_rt: runtime::Shared<Sub>,
 }
 
-impl Default for Environment {
+impl<Sub> Default for Environment<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn default() -> Self {
         Self::builder().build().unwrap()
     }
 }
 
-impl Environment {
+impl<Sub> Environment<Sub> {
     #[inline]
-    pub fn builder() -> Builder {
+    pub fn builder() -> Builder<Sub> {
         Default::default()
     }
 }
 
-impl super::Environment for Environment {
+impl<Sub> super::Environment for Environment<Sub>
+where
+    Sub: event::Subscriber,
+{
     type Clock = Clock;
+    type Subscriber = Sub;
 
     #[inline]
     fn clock(&self) -> &Self::Clock {
@@ -110,7 +135,7 @@ impl super::Environment for Environment {
     }
 
     #[inline]
-    fn reader_rt(&self) -> ArcHandle {
+    fn reader_rt(&self) -> ArcHandle<Self::Subscriber> {
         self.reader_rt.handle()
     }
 
@@ -120,7 +145,7 @@ impl super::Environment for Environment {
     }
 
     #[inline]
-    fn writer_rt(&self) -> ArcHandle {
+    fn writer_rt(&self) -> ArcHandle<Self::Subscriber> {
         self.writer_rt.handle()
     }
 
@@ -133,7 +158,10 @@ impl super::Environment for Environment {
 #[derive(Clone, Copy, Debug)]
 pub struct UdpUnbound(pub SocketAddress);
 
-impl super::Peer<Environment> for UdpUnbound {
+impl<Sub> super::Peer<Environment<Sub>> for UdpUnbound
+where
+    Sub: event::Subscriber,
+{
     type WorkerSocket = AsyncFd<Arc<UdpSocket>>;
 
     #[inline]
@@ -147,7 +175,7 @@ impl super::Peer<Environment> for UdpUnbound {
     }
 
     #[inline]
-    fn setup(self, env: &Environment) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
+    fn setup(self, env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
         let mut options = env.socket_options.clone();
         let remote_addr = self.0;
 
@@ -229,7 +257,10 @@ impl super::Peer<Environment> for UdpUnbound {
 /// A socket that is already registered with the application runtime
 pub struct TcpRegistered(pub TcpStream);
 
-impl super::Peer<Environment> for TcpRegistered {
+impl<Sub> super::Peer<Environment<Sub>> for TcpRegistered
+where
+    Sub: event::Subscriber,
+{
     type WorkerSocket = TcpStream;
 
     fn features(&self) -> TransportFeatures {
@@ -242,7 +273,7 @@ impl super::Peer<Environment> for TcpRegistered {
     }
 
     #[inline]
-    fn setup(self, _env: &Environment) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
+    fn setup(self, _env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
         let remote_addr = self.0.peer_addr()?.into();
         let source_control_port = self.0.local_addr()?.port();
         let application = Box::new(self.0);
@@ -260,7 +291,10 @@ impl super::Peer<Environment> for TcpRegistered {
 /// A socket that should be reregistered with the application runtime
 pub struct TcpReregistered(pub TcpStream);
 
-impl super::Peer<Environment> for TcpReregistered {
+impl<Sub> super::Peer<Environment<Sub>> for TcpReregistered
+where
+    Sub: event::Subscriber,
+{
     type WorkerSocket = TcpStream;
 
     fn features(&self) -> TransportFeatures {
@@ -273,7 +307,7 @@ impl super::Peer<Environment> for TcpReregistered {
     }
 
     #[inline]
-    fn setup(self, _env: &Environment) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
+    fn setup(self, _env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
         let remote_addr = self.0.peer_addr()?.into();
         let source_control_port = self.0.local_addr()?.port();
         let application = Box::new(self.0.into_std()?);

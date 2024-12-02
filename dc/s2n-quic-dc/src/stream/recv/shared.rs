@@ -3,7 +3,7 @@
 
 use crate::{
     allocator::Allocator,
-    clock, msg,
+    clock, event, msg,
     packet::{stream, Packet},
     stream::{
         recv,
@@ -121,13 +121,16 @@ impl State {
     }
 
     #[inline]
-    pub fn application_guard<'a>(
+    pub fn application_guard<'a, Sub>(
         &'a self,
         ack_mode: AckMode,
         send_buffer: &'a mut msg::send::Message,
-        shared: &'a ArcShared,
+        shared: &'a ArcShared<Sub>,
         sockets: &'a dyn socket::Application,
-    ) -> io::Result<AppGuard<'a>> {
+    ) -> io::Result<AppGuard<'a, Sub>>
+    where
+        Sub: event::Subscriber,
+    {
         // increment the epoch at which we acquired the guard
         self.application_epoch.fetch_add(1, Ordering::AcqRel);
 
@@ -168,16 +171,22 @@ impl State {
     }
 }
 
-pub struct AppGuard<'a> {
+pub struct AppGuard<'a, Sub>
+where
+    Sub: event::Subscriber,
+{
     inner: ManuallyDrop<MutexGuard<'a, Inner>>,
     ack_mode: AckMode,
     send_buffer: &'a mut msg::send::Message,
-    shared: &'a ArcShared,
+    shared: &'a ArcShared<Sub>,
     sockets: &'a dyn socket::Application,
     initial_state: state::Receiver,
 }
 
-impl<'a> AppGuard<'a> {
+impl<'a, Sub> AppGuard<'a, Sub>
+where
+    Sub: event::Subscriber,
+{
     /// Returns `true` if the read worker should be woken
     #[inline]
     fn send_ack(&mut self) -> bool {
@@ -214,7 +223,10 @@ impl<'a> AppGuard<'a> {
     }
 }
 
-impl<'a> ops::Deref for AppGuard<'a> {
+impl<'a, Sub> ops::Deref for AppGuard<'a, Sub>
+where
+    Sub: event::Subscriber,
+{
     type Target = Inner;
 
     #[inline]
@@ -223,14 +235,20 @@ impl<'a> ops::Deref for AppGuard<'a> {
     }
 }
 
-impl<'a> ops::DerefMut for AppGuard<'a> {
+impl<'a, Sub> ops::DerefMut for AppGuard<'a, Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
 }
 
-impl<'a> Drop for AppGuard<'a> {
+impl<'a, Sub> Drop for AppGuard<'a, Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn drop(&mut self) {
         let wake_worker_for_ack = self.send_ack();
@@ -266,11 +284,13 @@ pub struct Inner {
 
 impl Inner {
     #[inline]
-    pub fn fill_transmit_queue(
+    pub fn fill_transmit_queue<Sub>(
         &mut self,
-        shared: &ArcShared,
+        shared: &ArcShared<Sub>,
         send_buffer: &mut msg::send::Message,
-    ) {
+    ) where
+        Sub: event::Subscriber,
+    {
         let source_control_port = shared.source_control_port();
 
         self.receiver.on_transmit(
@@ -323,12 +343,15 @@ impl Inner {
     }
 
     #[inline]
-    pub fn process_recv_buffer(
+    pub fn process_recv_buffer<Sub>(
         &mut self,
         out_buf: &mut impl buffer::writer::Storage,
-        shared: &ArcShared,
+        shared: &ArcShared<Sub>,
         features: TransportFeatures,
-    ) -> bool {
+    ) -> bool
+    where
+        Sub: event::Subscriber,
+    {
         let clock = clock::Cached::new(&shared.clock);
         let clock = &clock;
 
@@ -360,13 +383,16 @@ impl Inner {
     }
 
     #[inline]
-    fn dispatch_buffer_stream<C: Clock + ?Sized>(
+    fn dispatch_buffer_stream<Sub, C>(
         &mut self,
         out_buf: &mut impl buffer::writer::Storage,
-        shared: &ArcShared,
+        shared: &ArcShared<Sub>,
         clock: &C,
         features: TransportFeatures,
-    ) {
+    ) where
+        Sub: event::Subscriber,
+        C: Clock + ?Sized,
+    {
         let msg = &mut self.recv_buffer;
         let remote_addr = msg.remote_address();
         let ecn = msg.ecn();
@@ -516,13 +542,16 @@ impl Inner {
     }
 
     #[inline]
-    fn dispatch_buffer_datagram<C: Clock + ?Sized>(
+    fn dispatch_buffer_datagram<Sub, C>(
         &mut self,
         out_buf: &mut impl buffer::writer::Storage,
-        shared: &ArcShared,
+        shared: &ArcShared<Sub>,
         clock: &C,
         features: TransportFeatures,
-    ) {
+    ) where
+        Sub: event::Subscriber,
+        C: Clock + ?Sized,
+    {
         let msg = &mut self.recv_buffer;
         let remote_addr = msg.remote_address();
         let ecn = msg.ecn();

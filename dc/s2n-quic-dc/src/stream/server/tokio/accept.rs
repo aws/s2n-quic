@@ -3,7 +3,7 @@
 
 use super::stats;
 use crate::{
-    event::{self, IntoEvent, Subscriber},
+    event,
     stream::{
         application::{Builder as StreamBuilder, Stream},
         environment::{tokio::Environment, Environment as _},
@@ -22,22 +22,24 @@ pub enum Flavor {
     Lifo,
 }
 
-pub type Sender = channel::Sender<StreamBuilder>;
-pub type Receiver = channel::Receiver<StreamBuilder>;
+pub type Sender<Sub> = channel::Sender<StreamBuilder<Sub>>;
+pub type Receiver<Sub> = channel::Receiver<StreamBuilder<Sub>>;
 
 #[inline]
-pub fn channel(capacity: usize) -> (Sender, Receiver) {
+pub fn channel<Sub>(capacity: usize) -> (Sender<Sub>, Receiver<Sub>)
+where
+    Sub: event::Subscriber,
+{
     channel::new(capacity)
 }
 
 #[inline]
 pub async fn accept<Sub>(
-    streams: &Receiver,
+    streams: &Receiver<Sub>,
     stats: &stats::Sender,
-    subscriber: &Sub,
-) -> io::Result<(Stream, SocketAddr)>
+) -> io::Result<(Stream<Sub>, SocketAddr)>
 where
-    Sub: Subscriber,
+    Sub: event::Subscriber,
 {
     let stream = streams.recv_front().await.map_err(|_err| {
         io::Error::new(
@@ -46,16 +48,8 @@ where
         )
     })?;
 
-    let publisher = event::EndpointPublisherSubscriber::new(
-        event::builder::EndpointMeta {
-            timestamp: stream.shared.clock.get_time().into_event(),
-        },
-        None,
-        subscriber,
-    );
-
     // build the stream inside the application context
-    let (stream, sojourn_time) = stream.build(&publisher)?;
+    let (stream, sojourn_time) = stream.accept()?;
     stats.send(sojourn_time);
 
     let remote_addr = stream.peer_addr()?;
@@ -99,12 +93,11 @@ impl Pruner {
     /// A task which prunes the accept queue to enforce a maximum sojourn time
     pub async fn run<Sub>(
         self,
-        env: Environment,
-        channel: channel::WeakReceiver<StreamBuilder>,
+        env: Environment<Sub>,
+        channel: channel::WeakReceiver<StreamBuilder<Sub>>,
         stats: stats::Stats,
-        subscriber: Sub,
     ) where
-        Sub: Subscriber,
+        Sub: event::Subscriber,
     {
         let Self {
             sojourn_multiplier,
@@ -133,14 +126,6 @@ impl Pruner {
             // ones.
             let priority = channel::Priority::Optional;
 
-            let publisher = event::EndpointPublisherSubscriber::new(
-                event::builder::EndpointMeta {
-                    timestamp: now.into_event(),
-                },
-                None,
-                &subscriber,
-            );
-
             loop {
                 // pop off any items that have expired
                 let res = channel.pop_back_if(priority, |stream| {
@@ -152,7 +137,6 @@ impl Pruner {
                     Ok(Some(stream)) => {
                         stream.prune(
                             event::builder::AcceptorStreamPruneReason::MaxSojournTimeExceeded,
-                            &publisher,
                         );
                         continue;
                     }

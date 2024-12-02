@@ -262,7 +262,7 @@ impl ToTokens for Output {
                     ///     }
                     /// }
                     ///  ```
-                    type ConnectionContext: 'static + Send;
+                    type ConnectionContext: #trait_constraints;
 
                     /// Creates a context to be passed to each connection-related event
                     fn create_connection_context(

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event::{self, api::Subscriber as _, IntoEvent as _},
     msg, packet,
     path::secret::{self, map, Map},
     random::Random,
@@ -15,7 +16,10 @@ use crate::{
 };
 use core::cell::UnsafeCell;
 use s2n_quic_core::{
-    dc, endpoint, inet::ExplicitCongestionNotification, time::Clock as _, varint::VarInt,
+    dc, endpoint,
+    inet::ExplicitCongestionNotification,
+    time::{Clock as _, Timestamp},
+    varint::VarInt,
 };
 use std::{io, sync::Arc};
 use tracing::{debug_span, Instrument as _};
@@ -33,8 +37,9 @@ pub fn open_stream<Env, P>(
     env: &Env,
     entry: map::Peer,
     peer: P,
+    subscriber: Env::Subscriber,
     parameter_override: Option<&dyn Fn(dc::ApplicationParams) -> dc::ApplicationParams>,
-) -> Result<application::Builder>
+) -> Result<application::Builder<Env::Subscriber>>
 where
     Env: Environment,
     P: Peer<Env>,
@@ -52,7 +57,18 @@ where
         is_bidirectional: true,
     };
 
+    let now = env.clock().get_time();
+
+    let meta = event::api::ConnectionMeta {
+        id: 0, // TODO use an actual connection ID
+        timestamp: now.into_event(),
+    };
+    let info = event::api::ConnectionInfo {};
+
+    let subscriber_ctx = subscriber.create_connection_context(&meta, &info);
+
     build_stream(
+        now,
         env,
         peer,
         stream_id,
@@ -63,19 +79,24 @@ where
         None,
         None,
         endpoint::Type::Client,
+        subscriber,
+        subscriber_ctx,
     )
 }
 
 #[inline]
 pub fn accept_stream<Env, P>(
+    now: Timestamp,
     env: &Env,
     mut peer: P,
     packet: &server::InitialPacket,
     handshake: Option<server::handshake::Receiver>,
     buffer: Option<&mut msg::recv::Message>,
     map: &Map,
+    subscriber: Env::Subscriber,
+    subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
     parameter_override: Option<&dyn Fn(dc::ApplicationParams) -> dc::ApplicationParams>,
-) -> Result<application::Builder, AcceptError<P>>
+) -> Result<application::Builder<Env::Subscriber>, AcceptError<P>>
 where
     Env: Environment,
     P: Peer<Env>,
@@ -105,6 +126,7 @@ where
     peer.with_source_control_port(packet.source_control_port);
 
     let res = build_stream(
+        now,
         env,
         peer,
         packet.stream_id,
@@ -115,6 +137,8 @@ where
         handshake,
         buffer,
         endpoint::Type::Server,
+        subscriber,
+        subscriber_ctx,
     );
 
     match res {
@@ -132,6 +156,7 @@ where
 
 #[inline]
 fn build_stream<Env, P>(
+    now: Timestamp,
     env: &Env,
     peer: P,
     stream_id: packet::stream::Id,
@@ -142,13 +167,13 @@ fn build_stream<Env, P>(
     handshake: Option<server::handshake::Receiver>,
     recv_buffer: Option<&mut msg::recv::Message>,
     endpoint_type: endpoint::Type,
-) -> Result<application::Builder>
+    subscriber: Env::Subscriber,
+    subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
+) -> Result<application::Builder<Env::Subscriber>>
 where
     Env: Environment,
     P: Peer<Env>,
 {
-    let now = env.clock().get_time();
-
     let features = peer.features();
 
     let sockets = peer.setup(env)?;
@@ -222,6 +247,8 @@ where
             last_peer_activity: Default::default(),
             fixed,
             closed_halves: 0u8.into(),
+            subscriber,
+            subscriber_ctx,
         }
     };
 
