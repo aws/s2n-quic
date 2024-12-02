@@ -594,6 +594,11 @@ where
             }
         }
     }
+
+    #[cfg(test)]
+    fn test_stop_cleaner(&self) {
+        self.cleaner.stop();
+    }
 }
 
 impl<C, S> Drop for State<C, S>

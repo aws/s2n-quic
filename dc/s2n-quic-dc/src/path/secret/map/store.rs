@@ -27,12 +27,6 @@ pub trait Store: 'static + Send + Sync {
 
     fn on_handshake_complete(&self, entry: Arc<Entry>);
 
-    #[cfg(any(test, feature = "testing"))]
-    fn test_insert(&self, entry: Arc<Entry>) {
-        self.on_new_path_secrets(entry.clone());
-        self.on_handshake_complete(entry);
-    }
-
     fn get_by_addr_tracked(
         &self,
         peer: &SocketAddr,
@@ -60,6 +54,16 @@ pub trait Store: 'static + Send + Sync {
         entry: &Entry,
         key_id: s2n_quic_core::varint::VarInt,
     ) -> crate::crypto::open::Result;
+
+    #[cfg(any(test, feature = "testing"))]
+    fn test_insert(&self, entry: Arc<Entry>) {
+        self.on_new_path_secrets(entry.clone());
+        self.on_handshake_complete(entry);
+    }
+
+    /// Stops the cleaner thread
+    #[cfg(test)]
+    fn test_stop_cleaner(&self);
 
     #[inline]
     fn send_control_error(&self, entry: &Entry, credentials: &Credentials, error: receiver::Error) {

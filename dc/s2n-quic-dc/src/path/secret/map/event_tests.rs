@@ -35,8 +35,8 @@ fn map_sub(capacity: usize, sub: Arc<Subscriber>) -> Map {
 
     let map = Map::new(signer, capacity, NoopClock, sub);
 
-    // sleep so the cleaner has time to emit events
-    std::thread::sleep(core::time::Duration::from_millis(100));
+    // stop the cleaner thread to avoid any out of order events
+    map.test_stop_cleaner();
 
     map
 }

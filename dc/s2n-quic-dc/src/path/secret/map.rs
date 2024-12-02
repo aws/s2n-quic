@@ -200,6 +200,12 @@ impl Map {
     }
 
     #[doc(hidden)]
+    #[cfg(test)]
+    pub fn test_stop_cleaner(&self) {
+        self.store.test_stop_cleaner();
+    }
+
+    #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
     pub fn test_insert(&self, peer: SocketAddr) {
         let receiver = self.store.receiver().clone().new_receiver();

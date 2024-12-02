@@ -64,6 +64,14 @@ impl Cleaner {
         let handle = std::thread::Builder::new()
             .name("dc_quic::cleaner".into())
             .spawn(move || loop {
+                // in tests, we should try and be as deterministic as possible
+                let pause = if cfg!(test) {
+                    60
+                } else {
+                    rand::thread_rng().gen_range(5..60)
+                };
+                std::thread::park_timeout(Duration::from_secs(pause));
+
                 let Some(state) = state.upgrade() else {
                     break;
                 };
@@ -71,14 +79,6 @@ impl Cleaner {
                     break;
                 }
                 state.cleaner().clean(&state, EVICTION_CYCLES);
-                // in tests, we should try and be deterministic
-                let pause = if cfg!(test) {
-                    60
-                } else {
-                    rand::thread_rng().gen_range(5..60)
-                };
-                drop(state);
-                std::thread::park_timeout(Duration::from_secs(pause));
             })
             .unwrap();
         *self.thread.lock().unwrap() = Some(handle);
