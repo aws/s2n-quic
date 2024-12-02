@@ -476,16 +476,18 @@ mod measure {
                 85usize => Self(key_accepted__gap),
                 86usize => Self(key_accepted__forward_shift),
                 89usize => Self(replay_potentially_detected__gap),
-                116usize => Self(path_secret_map_cleaner_cycled__entries),
-                117usize => Self(path_secret_map_cleaner_cycled__entries__retired),
-                118usize => Self(path_secret_map_cleaner_cycled__entries__utilization),
-                119usize => Self(path_secret_map_cleaner_cycled__entries__utilization__initial),
-                120usize => Self(path_secret_map_cleaner_cycled__addresses),
-                121usize => Self(path_secret_map_cleaner_cycled__addresses__retired),
-                122usize => Self(path_secret_map_cleaner_cycled__addresses__utilization),
-                123usize => Self(path_secret_map_cleaner_cycled__addresses__utilization__initial),
+                116usize => Self(path_secret_map_cleaner_cycled__entries__id),
+                117usize => Self(path_secret_map_cleaner_cycled__entries__id__retired),
+                118usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization),
+                119usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization__initial),
+                120usize => Self(path_secret_map_cleaner_cycled__entries__address),
+                121usize => Self(path_secret_map_cleaner_cycled__entries__address__retired),
+                122usize => Self(path_secret_map_cleaner_cycled__entries__address__utilization),
+                123usize => {
+                    Self(path_secret_map_cleaner_cycled__entries__address__utilization__initial)
+                }
                 124usize => Self(path_secret_map_cleaner_cycled__handshake_requests),
-                125usize => Self(path_secret_map_cleaner_cycled__retired_handshake_requests),
+                125usize => Self(path_secret_map_cleaner_cycled__handshake_requests__retired),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -543,26 +545,26 @@ mod measure {
             fn key_accepted__forward_shift(value: u64);
             # [link_name = s2n_quic_dc__event__measure__replay_potentially_detected__gap]
             fn replay_potentially_detected__gap(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries]
-            fn path_secret_map_cleaner_cycled__entries(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__retired]
-            fn path_secret_map_cleaner_cycled__entries__retired(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__utilization]
-            fn path_secret_map_cleaner_cycled__entries__utilization(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__utilization__initial]
-            fn path_secret_map_cleaner_cycled__entries__utilization__initial(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__addresses]
-            fn path_secret_map_cleaner_cycled__addresses(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__addresses__retired]
-            fn path_secret_map_cleaner_cycled__addresses__retired(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__addresses__utilization]
-            fn path_secret_map_cleaner_cycled__addresses__utilization(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__addresses__utilization__initial]
-            fn path_secret_map_cleaner_cycled__addresses__utilization__initial(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id]
+            fn path_secret_map_cleaner_cycled__entries__id(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__retired]
+            fn path_secret_map_cleaner_cycled__entries__id__retired(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__utilization]
+            fn path_secret_map_cleaner_cycled__entries__id__utilization(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__utilization__initial]
+            fn path_secret_map_cleaner_cycled__entries__id__utilization__initial(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address]
+            fn path_secret_map_cleaner_cycled__entries__address(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__retired]
+            fn path_secret_map_cleaner_cycled__entries__address__retired(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__utilization]
+            fn path_secret_map_cleaner_cycled__entries__address__utilization(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__address__utilization__initial]
+            fn path_secret_map_cleaner_cycled__entries__address__utilization__initial(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests]
             fn path_secret_map_cleaner_cycled__handshake_requests(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__retired_handshake_requests]
-            fn path_secret_map_cleaner_cycled__retired_handshake_requests(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests__retired]
+            fn path_secret_map_cleaner_cycled__handshake_requests__retired(value: u64);
         }
     );
 }

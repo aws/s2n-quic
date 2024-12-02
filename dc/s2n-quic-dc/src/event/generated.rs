@@ -1197,48 +1197,51 @@ pub mod api {
     #[doc = " This can be used to track cache utilization"]
     pub struct PathSecretMapCleanerCycled {
         #[doc = " The number of Path Secret ID entries left after the cleaning cycle"]
-        pub entries: usize,
+        pub id_entries: usize,
         #[doc = " The number of Path Secret ID entries that were retired in the cycle"]
-        pub retired_entries: usize,
+        pub id_entries_retired: usize,
         #[doc = " The utilization percentage of the available number of entries after the cycle"]
-        pub entries_utilization: f32,
+        pub id_entries_utilization: f32,
         #[doc = " The utilization percentage of the available number of entries before the cycle"]
-        pub entries_initial_utilization: f32,
+        pub id_entries_initial_utilization: f32,
         #[doc = " The number of SocketAddress entries left after the cleaning cycle"]
-        pub addresses: usize,
+        pub address_entries: usize,
         #[doc = " The number of SocketAddress entries that were retired in the cycle"]
-        pub retired_addresses: usize,
+        pub address_entries_retired: usize,
         #[doc = " The utilization percentage of the available number of address entries after the cycle"]
-        pub addresses_utilization: f32,
+        pub address_entries_utilization: f32,
         #[doc = " The utilization percentage of the available number of address entries before the cycle"]
-        pub addresses_initial_utilization: f32,
+        pub address_entries_initial_utilization: f32,
         #[doc = " The number of handshake requests that are pending after the cleaning cycle"]
         pub handshake_requests: usize,
         #[doc = " The number of handshake requests that were retired in the cycle"]
-        pub retired_handshake_requests: usize,
+        pub handshake_requests_retired: usize,
     }
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for PathSecretMapCleanerCycled {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("PathSecretMapCleanerCycled");
-            fmt.field("entries", &self.entries);
-            fmt.field("retired_entries", &self.retired_entries);
-            fmt.field("entries_utilization", &self.entries_utilization);
+            fmt.field("id_entries", &self.id_entries);
+            fmt.field("id_entries_retired", &self.id_entries_retired);
+            fmt.field("id_entries_utilization", &self.id_entries_utilization);
             fmt.field(
-                "entries_initial_utilization",
-                &self.entries_initial_utilization,
+                "id_entries_initial_utilization",
+                &self.id_entries_initial_utilization,
             );
-            fmt.field("addresses", &self.addresses);
-            fmt.field("retired_addresses", &self.retired_addresses);
-            fmt.field("addresses_utilization", &self.addresses_utilization);
+            fmt.field("address_entries", &self.address_entries);
+            fmt.field("address_entries_retired", &self.address_entries_retired);
             fmt.field(
-                "addresses_initial_utilization",
-                &self.addresses_initial_utilization,
+                "address_entries_utilization",
+                &self.address_entries_utilization,
+            );
+            fmt.field(
+                "address_entries_initial_utilization",
+                &self.address_entries_initial_utilization,
             );
             fmt.field("handshake_requests", &self.handshake_requests);
             fmt.field(
-                "retired_handshake_requests",
-                &self.retired_handshake_requests,
+                "handshake_requests_retired",
+                &self.handshake_requests_retired,
             );
             fmt.finish()
         }
@@ -1913,18 +1916,18 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::PathSecretMapCleanerCycled {
-                entries,
-                retired_entries,
-                entries_utilization,
-                entries_initial_utilization,
-                addresses,
-                retired_addresses,
-                addresses_utilization,
-                addresses_initial_utilization,
+                id_entries,
+                id_entries_retired,
+                id_entries_utilization,
+                id_entries_initial_utilization,
+                address_entries,
+                address_entries_retired,
+                address_entries_utilization,
+                address_entries_initial_utilization,
                 handshake_requests,
-                retired_handshake_requests,
+                handshake_requests_retired,
             } = event;
-            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , entries = tracing :: field :: debug (entries) , retired_entries = tracing :: field :: debug (retired_entries) , entries_utilization = tracing :: field :: debug (entries_utilization) , entries_initial_utilization = tracing :: field :: debug (entries_initial_utilization) , addresses = tracing :: field :: debug (addresses) , retired_addresses = tracing :: field :: debug (retired_addresses) , addresses_utilization = tracing :: field :: debug (addresses_utilization) , addresses_initial_utilization = tracing :: field :: debug (addresses_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , retired_handshake_requests = tracing :: field :: debug (retired_handshake_requests));
+            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_retired = tracing :: field :: debug (handshake_requests_retired));
         }
     }
 }
@@ -3078,52 +3081,53 @@ pub mod builder {
     #[doc = " This can be used to track cache utilization"]
     pub struct PathSecretMapCleanerCycled {
         #[doc = " The number of Path Secret ID entries left after the cleaning cycle"]
-        pub entries: usize,
+        pub id_entries: usize,
         #[doc = " The number of Path Secret ID entries that were retired in the cycle"]
-        pub retired_entries: usize,
+        pub id_entries_retired: usize,
         #[doc = " The utilization percentage of the available number of entries after the cycle"]
-        pub entries_utilization: f32,
+        pub id_entries_utilization: f32,
         #[doc = " The utilization percentage of the available number of entries before the cycle"]
-        pub entries_initial_utilization: f32,
+        pub id_entries_initial_utilization: f32,
         #[doc = " The number of SocketAddress entries left after the cleaning cycle"]
-        pub addresses: usize,
+        pub address_entries: usize,
         #[doc = " The number of SocketAddress entries that were retired in the cycle"]
-        pub retired_addresses: usize,
+        pub address_entries_retired: usize,
         #[doc = " The utilization percentage of the available number of address entries after the cycle"]
-        pub addresses_utilization: f32,
+        pub address_entries_utilization: f32,
         #[doc = " The utilization percentage of the available number of address entries before the cycle"]
-        pub addresses_initial_utilization: f32,
+        pub address_entries_initial_utilization: f32,
         #[doc = " The number of handshake requests that are pending after the cleaning cycle"]
         pub handshake_requests: usize,
         #[doc = " The number of handshake requests that were retired in the cycle"]
-        pub retired_handshake_requests: usize,
+        pub handshake_requests_retired: usize,
     }
     impl IntoEvent<api::PathSecretMapCleanerCycled> for PathSecretMapCleanerCycled {
         #[inline]
         fn into_event(self) -> api::PathSecretMapCleanerCycled {
             let PathSecretMapCleanerCycled {
-                entries,
-                retired_entries,
-                entries_utilization,
-                entries_initial_utilization,
-                addresses,
-                retired_addresses,
-                addresses_utilization,
-                addresses_initial_utilization,
+                id_entries,
+                id_entries_retired,
+                id_entries_utilization,
+                id_entries_initial_utilization,
+                address_entries,
+                address_entries_retired,
+                address_entries_utilization,
+                address_entries_initial_utilization,
                 handshake_requests,
-                retired_handshake_requests,
+                handshake_requests_retired,
             } = self;
             api::PathSecretMapCleanerCycled {
-                entries: entries.into_event(),
-                retired_entries: retired_entries.into_event(),
-                entries_utilization: entries_utilization.into_event(),
-                entries_initial_utilization: entries_initial_utilization.into_event(),
-                addresses: addresses.into_event(),
-                retired_addresses: retired_addresses.into_event(),
-                addresses_utilization: addresses_utilization.into_event(),
-                addresses_initial_utilization: addresses_initial_utilization.into_event(),
+                id_entries: id_entries.into_event(),
+                id_entries_retired: id_entries_retired.into_event(),
+                id_entries_utilization: id_entries_utilization.into_event(),
+                id_entries_initial_utilization: id_entries_initial_utilization.into_event(),
+                address_entries: address_entries.into_event(),
+                address_entries_retired: address_entries_retired.into_event(),
+                address_entries_utilization: address_entries_utilization.into_event(),
+                address_entries_initial_utilization: address_entries_initial_utilization
+                    .into_event(),
                 handshake_requests: handshake_requests.into_event(),
-                retired_handshake_requests: retired_handshake_requests.into_event(),
+                handshake_requests_retired: handshake_requests_retired.into_event(),
             }
         }
     }

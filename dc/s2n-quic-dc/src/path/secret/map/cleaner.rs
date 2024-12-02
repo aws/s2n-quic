@@ -95,16 +95,16 @@ impl Cleaner {
 
         let utilization = |count: usize| (count as f32 / state.secrets_capacity() as f32) * 100.0;
 
-        let mut initial_ids_count = 0usize;
-        let mut initial_addresses_count = 0usize;
-        let mut retired_ids_count = 0usize;
-        let mut retired_addresses_count = 0usize;
+        let mut id_entries_initial = 0usize;
+        let mut address_entries_initial = 0usize;
+        let mut id_entries_retired = 0usize;
+        let mut address_entries_retired = 0usize;
 
         // For non-retired entries, if it's time for them to handshake again, request a
         // handshake to happen. This handshake will currently happen on the next request for this
         // particular peer.
         state.ids.retain(|_, entry| {
-            initial_ids_count += 1;
+            id_entries_initial += 1;
 
             let retained = if let Some(retired_at) = entry.retired_at() {
                 // retain if we aren't yet ready to evict.
@@ -119,7 +119,7 @@ impl Cleaner {
             };
 
             if !retained {
-                retired_ids_count += 1;
+                id_entries_retired += 1;
             }
 
             retained
@@ -129,12 +129,12 @@ impl Cleaner {
         // FIXME: Don't require a loop to do this. This is likely somewhat slow since it takes a
         // write lock + read lock essentially per-entry, but should be near-constant-time.
         state.peers.retain(|_, entry| {
-            initial_addresses_count += 1;
+            address_entries_initial += 1;
 
             let retained = state.ids.contains_key(entry.id());
 
             if !retained {
-                retired_addresses_count += 1;
+                address_entries_retired += 1;
             }
 
             retained
@@ -149,34 +149,34 @@ impl Cleaner {
         // fuzzy set of some kind and/or just moving to immediate background handshake attempts.
         const MAX_REQUESTED_HANDSHAKES: usize = 5000;
 
-        let mut handshake_requests_count = 0usize;
-        let mut retired_handshake_requests_count = 0usize;
+        let mut handshake_requests = 0usize;
+        let mut handshake_requests_retired = 0usize;
         state.requested_handshakes.pin().retain(|_| {
-            handshake_requests_count += 1;
-            let retain = handshake_requests_count < MAX_REQUESTED_HANDSHAKES;
+            handshake_requests += 1;
+            let retain = handshake_requests < MAX_REQUESTED_HANDSHAKES;
 
             if !retain {
-                retired_handshake_requests_count += 1;
+                handshake_requests_retired += 1;
             }
 
             retain
         });
 
-        let entries = initial_ids_count - retired_ids_count;
-        let addresses = initial_addresses_count - retired_addresses_count;
+        let id_entries = id_entries_initial - id_entries_retired;
+        let address_entries = address_entries_initial - address_entries_retired;
 
         state.subscriber().on_path_secret_map_cleaner_cycled(
             event::builder::PathSecretMapCleanerCycled {
-                entries,
-                retired_entries: retired_ids_count,
-                entries_utilization: utilization(entries),
-                entries_initial_utilization: utilization(initial_ids_count),
-                addresses,
-                addresses_utilization: utilization(addresses),
-                addresses_initial_utilization: utilization(initial_addresses_count),
-                retired_addresses: retired_addresses_count,
-                handshake_requests: handshake_requests_count,
-                retired_handshake_requests: retired_handshake_requests_count,
+                id_entries,
+                id_entries_retired,
+                id_entries_utilization: utilization(id_entries),
+                id_entries_initial_utilization: utilization(id_entries_initial),
+                address_entries,
+                address_entries_utilization: utilization(address_entries),
+                address_entries_initial_utilization: utilization(address_entries_initial),
+                address_entries_retired,
+                handshake_requests,
+                handshake_requests_retired,
             },
         );
     }

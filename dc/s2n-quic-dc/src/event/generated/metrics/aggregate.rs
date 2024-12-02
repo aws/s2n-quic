@@ -711,49 +711,49 @@ static INFO: &[Info; 126usize] = &[
     .build(),
     info::Builder {
         id: 116usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 117usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.retired\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.retired\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 118usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.utilization\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.utilization\0"),
         units: Units::Percent,
     }
     .build(),
     info::Builder {
         id: 119usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.utilization.initial\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.utilization.initial\0"),
         units: Units::Percent,
     }
     .build(),
     info::Builder {
         id: 120usize,
-        name: Str::new("path_secret_map_cleaner_cycled.addresses\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 121usize,
-        name: Str::new("path_secret_map_cleaner_cycled.addresses.retired\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address.retired\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 122usize,
-        name: Str::new("path_secret_map_cleaner_cycled.addresses.utilization\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address.utilization\0"),
         units: Units::Percent,
     }
     .build(),
     info::Builder {
         id: 123usize,
-        name: Str::new("path_secret_map_cleaner_cycled.addresses.utilization.initial\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address.utilization.initial\0"),
         units: Units::Percent,
     }
     .build(),
@@ -765,7 +765,7 @@ static INFO: &[Info; 126usize] = &[
     .build(),
     info::Builder {
         id: 125usize,
-        name: Str::new("path_secret_map_cleaner_cycled.retired_handshake_requests\0"),
+        name: Str::new("path_secret_map_cleaner_cycled.handshake_requests.retired\0"),
         units: Units::None,
     }
     .build(),
@@ -2238,16 +2238,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         #[allow(unused_imports)]
         use api::*;
         self.count(115usize, 49usize, 1usize);
-        self.measure(116usize, 23usize, event.entries);
-        self.measure(117usize, 24usize, event.retired_entries);
-        self.measure(118usize, 25usize, event.entries_utilization);
-        self.measure(119usize, 26usize, event.entries_initial_utilization);
-        self.measure(120usize, 27usize, event.addresses);
-        self.measure(121usize, 28usize, event.retired_addresses);
-        self.measure(122usize, 29usize, event.addresses_utilization);
-        self.measure(123usize, 30usize, event.addresses_initial_utilization);
+        self.measure(116usize, 23usize, event.id_entries);
+        self.measure(117usize, 24usize, event.id_entries_retired);
+        self.measure(118usize, 25usize, event.id_entries_utilization);
+        self.measure(119usize, 26usize, event.id_entries_initial_utilization);
+        self.measure(120usize, 27usize, event.address_entries);
+        self.measure(121usize, 28usize, event.address_entries_retired);
+        self.measure(122usize, 29usize, event.address_entries_utilization);
+        self.measure(123usize, 30usize, event.address_entries_initial_utilization);
         self.measure(124usize, 31usize, event.handshake_requests);
-        self.measure(125usize, 32usize, event.retired_handshake_requests);
+        self.measure(125usize, 32usize, event.handshake_requests_retired);
         let _ = event;
         let _ = meta;
     }

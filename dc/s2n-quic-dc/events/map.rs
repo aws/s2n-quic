@@ -315,42 +315,42 @@ struct PathSecretMapIdCacheAccessed<'a> {
 /// This can be used to track cache utilization
 struct PathSecretMapCleanerCycled {
     /// The number of Path Secret ID entries left after the cleaning cycle
-    #[measure("entries")]
-    entries: usize,
+    #[measure("entries.id")]
+    id_entries: usize,
 
     /// The number of Path Secret ID entries that were retired in the cycle
-    #[measure("entries.retired")]
-    retired_entries: usize,
+    #[measure("entries.id.retired")]
+    id_entries_retired: usize,
 
     /// The utilization percentage of the available number of entries after the cycle
-    #[measure("entries.utilization", Percent)]
-    entries_utilization: f32,
+    #[measure("entries.id.utilization", Percent)]
+    id_entries_utilization: f32,
 
     /// The utilization percentage of the available number of entries before the cycle
-    #[measure("entries.utilization.initial", Percent)]
-    entries_initial_utilization: f32,
+    #[measure("entries.id.utilization.initial", Percent)]
+    id_entries_initial_utilization: f32,
 
     /// The number of SocketAddress entries left after the cleaning cycle
-    #[measure("addresses")]
-    addresses: usize,
+    #[measure("entries.address")]
+    address_entries: usize,
 
     /// The number of SocketAddress entries that were retired in the cycle
-    #[measure("addresses.retired")]
-    retired_addresses: usize,
+    #[measure("entries.address.retired")]
+    address_entries_retired: usize,
 
     /// The utilization percentage of the available number of address entries after the cycle
-    #[measure("addresses.utilization", Percent)]
-    addresses_utilization: f32,
+    #[measure("entries.address.utilization", Percent)]
+    address_entries_utilization: f32,
 
     /// The utilization percentage of the available number of address entries before the cycle
-    #[measure("addresses.utilization.initial", Percent)]
-    addresses_initial_utilization: f32,
+    #[measure("entries.address.utilization.initial", Percent)]
+    address_entries_initial_utilization: f32,
 
     /// The number of handshake requests that are pending after the cleaning cycle
     #[measure("handshake_requests")]
     handshake_requests: usize,
 
     /// The number of handshake requests that were retired in the cycle
-    #[measure("retired_handshake_requests")]
-    retired_handshake_requests: usize,
+    #[measure("handshake_requests.retired")]
+    handshake_requests_retired: usize,
 }
