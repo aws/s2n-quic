@@ -15,7 +15,7 @@ impl<'a, T: bytes::BufMut> BufMut<'a, T> {
     }
 }
 
-impl<'a, T: bytes::BufMut> Storage for BufMut<'a, T> {
+impl<T: bytes::BufMut> Storage for BufMut<'_, T> {
     #[inline]
     fn put_slice(&mut self, bytes: &[u8]) {
         self.buf_mut.put_slice(bytes);

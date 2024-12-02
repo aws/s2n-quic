@@ -49,8 +49,8 @@ pub struct Transmission<'a, 'sub, Config: endpoint::Config, P: Payload> {
     pub packet_interceptor: &'a mut <Config as endpoint::Config>::PacketInterceptor,
 }
 
-impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
-    for Transmission<'a, 'sub, Config, P>
+impl<Config: endpoint::Config, P: Payload> PacketPayloadEncoder
+    for Transmission<'_, '_, Config, P>
 {
     fn encoding_size_hint<E: Encoder>(&mut self, encoder: &E, minimum_len: usize) -> usize {
         if self.has_transmission_interest() {
@@ -126,8 +126,8 @@ impl<'a, 'sub, Config: endpoint::Config, P: Payload> PacketPayloadEncoder
     }
 }
 
-impl<'a, 'sub, Config: endpoint::Config, P: Payload> transmission::interest::Provider
-    for Transmission<'a, 'sub, Config, P>
+impl<Config: endpoint::Config, P: Payload> transmission::interest::Provider
+    for Transmission<'_, '_, Config, P>
 {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,

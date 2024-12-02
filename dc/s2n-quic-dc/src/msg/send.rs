@@ -607,7 +607,7 @@ impl<'a> Iterator for Drain<'a> {
     }
 }
 
-impl<'a> Drop for Drain<'a> {
+impl Drop for Drain<'_> {
     #[inline]
     fn drop(&mut self) {
         self.message.force_clear();

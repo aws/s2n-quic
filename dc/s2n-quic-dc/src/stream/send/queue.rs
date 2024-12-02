@@ -40,7 +40,7 @@ pub struct Message<'a> {
     segment_alloc: &'a buffer::Allocator,
 }
 
-impl<'a> application::state::Message for Message<'a> {
+impl application::state::Message for Message<'_> {
     #[inline]
     fn max_segments(&self) -> usize {
         self.max_segments

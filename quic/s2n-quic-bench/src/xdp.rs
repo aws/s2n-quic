@@ -108,7 +108,7 @@ struct Message {
     payload_len: usize,
 }
 
-impl<'a> tx::Message for &'a Message {
+impl tx::Message for &Message {
     type Handle = path::Tuple;
 
     fn path_handle(&self) -> &Self::Handle {

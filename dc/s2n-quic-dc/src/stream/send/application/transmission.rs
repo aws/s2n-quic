@@ -59,7 +59,7 @@ pub struct Drain<'a, Buffer> {
     queue: &'a Queue<Buffer>,
 }
 
-impl<'a, Buffer> Iterator for Drain<'a, Buffer> {
+impl<Buffer> Iterator for Drain<'_, Buffer> {
     type Item = Event<Buffer>;
 
     #[inline]

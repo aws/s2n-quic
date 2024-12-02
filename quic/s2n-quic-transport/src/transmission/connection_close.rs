@@ -10,7 +10,7 @@ pub struct Payload<'a> {
     pub connection_close: &'a frame::ConnectionClose<'a>,
 }
 
-impl<'a> super::Payload for Payload<'a> {
+impl super::Payload for Payload<'_> {
     fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
         (*range.start()).max(self.connection_close.encoding_size())
     }
@@ -20,7 +20,7 @@ impl<'a> super::Payload for Payload<'a> {
     }
 }
 
-impl<'a> transmission::interest::Provider for Payload<'a> {
+impl transmission::interest::Provider for Payload<'_> {
     #[inline]
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,

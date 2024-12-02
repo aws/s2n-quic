@@ -553,7 +553,7 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
     path_manager: &'a mut path::Manager<Config>,
 }
 
-impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'a, Config> {
+impl<Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'_, Config> {
     const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {

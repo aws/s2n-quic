@@ -84,7 +84,7 @@ pub struct MsghdrEncoder<'a> {
     msghdr: &'a mut msghdr,
 }
 
-impl<'a> Encoder for MsghdrEncoder<'a> {
+impl Encoder for MsghdrEncoder<'_> {
     #[inline]
     fn encode_cmsg<T: Copy>(
         &mut self,

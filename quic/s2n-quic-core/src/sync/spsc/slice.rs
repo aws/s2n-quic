@@ -66,7 +66,7 @@ impl<'a, T> Slice<'a, UnsafeCell<T>> {
     }
 }
 
-impl<'a, T> Deref for Slice<'a, T> {
+impl<T> Deref for Slice<'_, T> {
     type Target = [T];
 
     #[inline]
@@ -75,7 +75,7 @@ impl<'a, T> Deref for Slice<'a, T> {
     }
 }
 
-impl<'a, T: PartialEq> PartialEq<[T]> for Slice<'a, UnsafeCell<T>> {
+impl<T: PartialEq> PartialEq<[T]> for Slice<'_, UnsafeCell<T>> {
     #[inline]
     fn eq(&self, other: &[T]) -> bool {
         if self.len() != other.len() {

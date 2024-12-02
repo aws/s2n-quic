@@ -58,7 +58,7 @@ pub struct Packet<'a> {
     auth_tag: &'a mut [u8],
 }
 
-impl<'a> std::fmt::Debug for Packet<'a> {
+impl std::fmt::Debug for Packet<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Packet")
             .field("tag", &self.tag)
@@ -79,7 +79,7 @@ impl<'a> std::fmt::Debug for Packet<'a> {
     }
 }
 
-impl<'a> Packet<'a> {
+impl Packet<'_> {
     #[inline]
     pub fn tag(&self) -> Tag {
         self.tag

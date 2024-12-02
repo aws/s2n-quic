@@ -31,7 +31,7 @@ where
     pub receiver: &'a mut Receiver,
 }
 
-impl<'a, 'p, D, K, C: Clock> reader::Storage for Packet<'a, 'p, D, K, C>
+impl<D, K, C: Clock> reader::Storage for Packet<'_, '_, D, K, C>
 where
     D: crypto::open::Application,
     K: crypto::open::control::Stream,
@@ -114,7 +114,7 @@ where
     }
 }
 
-impl<'a, 'p, D, K, C: Clock> Reader for Packet<'a, 'p, D, K, C>
+impl<D, K, C: Clock> Reader for Packet<'_, '_, D, K, C>
 where
     D: crypto::open::Application,
     K: crypto::open::control::Stream,

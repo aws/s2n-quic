@@ -35,7 +35,7 @@ pub struct PathChallenge<'a> {
     pub data: &'a [u8; DATA_LEN],
 }
 
-impl<'a> PathChallenge<'a> {
+impl PathChallenge<'_> {
     pub const fn tag(&self) -> u8 {
         path_challenge_tag!()
     }
@@ -56,7 +56,7 @@ decoder_parameterized_value!(
     }
 );
 
-impl<'a> EncoderValue for PathChallenge<'a> {
+impl EncoderValue for PathChallenge<'_> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
         buffer.encode(&self.data.as_ref());

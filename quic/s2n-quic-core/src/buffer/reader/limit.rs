@@ -26,7 +26,7 @@ impl<'a, R: Reader + ?Sized> Limit<'a, R> {
     }
 }
 
-impl<'a, R: Reader + ?Sized> Storage for Limit<'a, R> {
+impl<R: Reader + ?Sized> Storage for Limit<'_, R> {
     type Error = R::Error;
 
     #[inline]
@@ -78,7 +78,7 @@ impl<'a, R: Reader + ?Sized> Storage for Limit<'a, R> {
     }
 }
 
-impl<'a, R: Reader + ?Sized> Reader for Limit<'a, R> {
+impl<R: Reader + ?Sized> Reader for Limit<'_, R> {
     #[inline]
     fn current_offset(&self) -> VarInt {
         self.reader.current_offset()

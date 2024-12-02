@@ -361,7 +361,7 @@ impl<'a> Slice<'a> for Bytes {
     }
 }
 
-impl<'a> EncoderValue for &mut View<'a> {
+impl EncoderValue for &mut View<'_> {
     #[inline]
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         // Specialize on writing byte chunks directly instead of copying the slices

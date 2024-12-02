@@ -758,7 +758,7 @@ pub struct Iter<'a, T> {
     tail: Option<Interval<T>>,
 }
 
-impl<'a, T: IntervalBound> Iterator for Iter<'a, T> {
+impl<T: IntervalBound> Iterator for Iter<'_, T> {
     type Item = T;
 
     #[inline]
@@ -782,7 +782,7 @@ impl<'a, T: IntervalBound> Iterator for Iter<'a, T> {
     }
 }
 
-impl<'a, T: IntervalBound> DoubleEndedIterator for Iter<'a, T> {
+impl<T: IntervalBound> DoubleEndedIterator for Iter<'_, T> {
     #[inline]
     fn next_back(&mut self) -> Option<T> {
         loop {

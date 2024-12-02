@@ -160,6 +160,8 @@ impl ToTokens for Output {
         ));
 
         tokens.extend(quote!(
+            #![allow(clippy::needless_lifetimes)]
+
             use super::*;
 
             #top_level

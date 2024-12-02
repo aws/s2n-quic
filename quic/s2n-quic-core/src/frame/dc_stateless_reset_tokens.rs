@@ -128,7 +128,7 @@ impl<'a> ::s2n_codec::DecoderParameterizedValueMut<'a> for DcStatelessResetToken
     }
 }
 
-impl<'a> EncoderValue for DcStatelessResetTokens<'a> {
+impl EncoderValue for DcStatelessResetTokens<'_> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&TAG);
         let count =

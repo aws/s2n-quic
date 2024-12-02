@@ -27,7 +27,7 @@ pub struct PathResponse<'a> {
     pub data: &'a [u8; DATA_LEN],
 }
 
-impl<'a> PathResponse<'a> {
+impl PathResponse<'_> {
     pub const fn tag(&self) -> u8 {
         path_response_tag!()
     }
@@ -51,7 +51,7 @@ decoder_parameterized_value!(
     }
 );
 
-impl<'a> EncoderValue for PathResponse<'a> {
+impl EncoderValue for PathResponse<'_> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
         buffer.encode(&self.data.as_ref());

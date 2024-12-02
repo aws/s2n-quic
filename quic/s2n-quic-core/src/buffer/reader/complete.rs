@@ -36,7 +36,7 @@ where
     }
 }
 
-impl<'a, S> Storage for Complete<'a, S>
+impl<S> Storage for Complete<'_, S>
 where
     S: Storage,
 {
@@ -83,7 +83,7 @@ where
     }
 }
 
-impl<'a, C> Reader for Complete<'a, C>
+impl<C> Reader for Complete<'_, C>
 where
     C: Storage,
 {

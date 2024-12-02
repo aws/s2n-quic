@@ -325,7 +325,7 @@ struct SetRemoveIter<'a> {
     transmissions: &'a mut TransmissionSlab,
 }
 
-impl<'a> Iterator for SetRemoveIter<'a> {
+impl Iterator for SetRemoveIter<'_> {
     type Item = Interval<VarInt>;
 
     #[inline]

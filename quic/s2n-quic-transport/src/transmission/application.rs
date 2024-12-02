@@ -71,7 +71,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
     }
 }
 
-impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
+impl<Config: endpoint::Config> super::Payload for Payload<'_, Config> {
     fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
         // We need at least 1 byte to write a HANDSHAKE_DONE or PING frame
         (*range.start()).max(1)
@@ -86,7 +86,7 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
     }
 }
 
-impl<'a, Config: endpoint::Config> transmission::interest::Provider for Payload<'a, Config> {
+impl<Config: endpoint::Config> transmission::interest::Provider for Payload<'_, Config> {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,
@@ -113,7 +113,7 @@ pub struct Normal<'a, Config: endpoint::Config> {
     prioritize_datagrams: bool,
 }
 
-impl<'a, Config: endpoint::Config> Normal<'a, Config> {
+impl<Config: endpoint::Config> Normal<'_, Config> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         let can_transmit = context.transmission_constraint().can_transmit()
             || context.transmission_constraint().can_retransmit();
@@ -192,7 +192,7 @@ impl<'a, Config: endpoint::Config> Normal<'a, Config> {
     }
 }
 
-impl<'a, Config: endpoint::Config> transmission::interest::Provider for Normal<'a, Config> {
+impl<Config: endpoint::Config> transmission::interest::Provider for Normal<'_, Config> {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,
@@ -218,7 +218,7 @@ pub struct MtuProbe<'a> {
     mtu_controller: &'a mut mtu::Controller,
 }
 
-impl<'a> MtuProbe<'a> {
+impl MtuProbe<'_> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if context.transmission_constraint().can_transmit() {
             self.mtu_controller.on_transmit(context)
@@ -226,7 +226,7 @@ impl<'a> MtuProbe<'a> {
     }
 }
 
-impl<'a> transmission::interest::Provider for MtuProbe<'a> {
+impl transmission::interest::Provider for MtuProbe<'_> {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,
@@ -239,7 +239,7 @@ pub struct PathValidationOnly<'a, Config: endpoint::Config> {
     path: &'a mut path::Path<Config>,
 }
 
-impl<'a, Config: endpoint::Config> PathValidationOnly<'a, Config> {
+impl<Config: endpoint::Config> PathValidationOnly<'_, Config> {
     fn on_transmit<W: WriteContext>(&mut self, context: &mut W) {
         if context.transmission_constraint().can_transmit() {
             self.path.on_transmit(context)
@@ -247,9 +247,7 @@ impl<'a, Config: endpoint::Config> PathValidationOnly<'a, Config> {
     }
 }
 
-impl<'a, Config: endpoint::Config> transmission::interest::Provider
-    for PathValidationOnly<'a, Config>
-{
+impl<Config: endpoint::Config> transmission::interest::Provider for PathValidationOnly<'_, Config> {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,

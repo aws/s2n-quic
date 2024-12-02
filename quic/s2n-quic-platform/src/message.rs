@@ -140,7 +140,7 @@ pub struct RxMessage<'a, Handle: Copy> {
     pub payload: &'a mut [u8],
 }
 
-impl<'a, Handle: Copy> RxMessage<'a, Handle> {
+impl<Handle: Copy> RxMessage<'_, Handle> {
     #[inline]
     pub fn for_each<F: FnMut(datagram::Header<Handle>, &mut [u8])>(self, mut on_packet: F) {
         // `chunks_mut` doesn't know what to do with zero-sized segments so return early

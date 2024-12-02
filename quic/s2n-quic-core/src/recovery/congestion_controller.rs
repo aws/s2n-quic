@@ -76,7 +76,7 @@ impl<'a, Pub: event::ConnectionPublisher> PathPublisher<'a, Pub> {
     }
 }
 
-impl<'a, Pub: event::ConnectionPublisher> Publisher for PathPublisher<'a, Pub> {
+impl<Pub: event::ConnectionPublisher> Publisher for PathPublisher<'_, Pub> {
     #[inline]
     fn on_slow_start_exited(&mut self, cause: SlowStartExitCause, congestion_window: u32) {
         self.publisher

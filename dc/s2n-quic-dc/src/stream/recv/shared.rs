@@ -183,7 +183,7 @@ where
     initial_state: state::Receiver,
 }
 
-impl<'a, Sub> AppGuard<'a, Sub>
+impl<Sub> AppGuard<'_, Sub>
 where
     Sub: event::Subscriber,
 {
@@ -223,7 +223,7 @@ where
     }
 }
 
-impl<'a, Sub> ops::Deref for AppGuard<'a, Sub>
+impl<Sub> ops::Deref for AppGuard<'_, Sub>
 where
     Sub: event::Subscriber,
 {
@@ -235,7 +235,7 @@ where
     }
 }
 
-impl<'a, Sub> ops::DerefMut for AppGuard<'a, Sub>
+impl<Sub> ops::DerefMut for AppGuard<'_, Sub>
 where
     Sub: event::Subscriber,
 {
@@ -245,7 +245,7 @@ where
     }
 }
 
-impl<'a, Sub> Drop for AppGuard<'a, Sub>
+impl<Sub> Drop for AppGuard<'_, Sub>
 where
     Sub: event::Subscriber,
 {

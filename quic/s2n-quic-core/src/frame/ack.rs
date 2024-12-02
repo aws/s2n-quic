@@ -227,14 +227,14 @@ impl<'a> AckRanges for AckRangesDecoder<'a> {
     }
 }
 
-impl<'a> PartialEq for AckRangesDecoder<'a> {
+impl PartialEq for AckRangesDecoder<'_> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.ack_ranges().eq(other.ack_ranges())
     }
 }
 
-impl<'a> core::fmt::Debug for AckRangesDecoder<'a> {
+impl core::fmt::Debug for AckRangesDecoder<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         core::fmt::Debug::fmt(&self.ack_ranges(), f)
     }
@@ -362,7 +362,7 @@ pub struct AckRangesIter<'a> {
     range_buffer: DecoderBuffer<'a>,
 }
 
-impl<'a> Iterator for AckRangesIter<'a> {
+impl Iterator for AckRangesIter<'_> {
     type Item = RangeInclusive<VarInt>;
 
     #[inline]
@@ -397,9 +397,9 @@ impl<'a> Iterator for AckRangesIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for AckRangesIter<'a> {}
+impl ExactSizeIterator for AckRangesIter<'_> {}
 
-impl<'a> core::fmt::Debug for AckRangesIter<'a> {
+impl core::fmt::Debug for AckRangesIter<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_list().entries(*self).finish()
     }

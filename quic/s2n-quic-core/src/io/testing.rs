@@ -126,7 +126,7 @@ pub struct Queue<'a> {
     messages: &'a mut Vec<Message>,
 }
 
-impl<'a> tx::Queue for Queue<'a> {
+impl tx::Queue for Queue<'_> {
     type Handle = Tuple;
 
     #[inline]
@@ -155,7 +155,7 @@ impl<'a> tx::Queue for Queue<'a> {
     }
 }
 
-impl<'a> rx::Queue for Queue<'a> {
+impl rx::Queue for Queue<'_> {
     type Handle = Tuple;
 
     #[inline]

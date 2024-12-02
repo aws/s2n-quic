@@ -82,7 +82,7 @@ where
     handle: PhantomData<U>,
 }
 
-impl<'a, Map, Tx, U> tx::Queue for Queue<'a, Map, Tx, U>
+impl<Map, Tx, U> tx::Queue for Queue<'_, Map, Tx, U>
 where
     Map: Fn(&U) -> Tx::Handle,
     Tx: tx::Queue,

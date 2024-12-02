@@ -196,7 +196,7 @@ pub struct TxQueue<'a, T: Message> {
     is_full: &'a mut bool,
 }
 
-impl<'a, T: Message> TxQueue<'a, T> {
+impl<T: Message> TxQueue<'_, T> {
     /// Tries to send a message as a GSO segment
     ///
     /// Returns the Err(Message) if it was not able to. Otherwise, the index of the GSO'd message is returned.
@@ -382,7 +382,7 @@ impl<'a, T: Message> TxQueue<'a, T> {
     }
 }
 
-impl<'a, T: Message> tx::Queue for TxQueue<'a, T> {
+impl<T: Message> tx::Queue for TxQueue<'_, T> {
     type Handle = T::Handle;
 
     const SUPPORTS_ECN: bool = T::SUPPORTS_ECN;
@@ -464,7 +464,7 @@ impl<'a, T: Message> tx::Queue for TxQueue<'a, T> {
     }
 }
 
-impl<'a, T: Message> Drop for TxQueue<'a, T> {
+impl<T: Message> Drop for TxQueue<'_, T> {
     #[inline]
     fn drop(&mut self) {
         // flush the current GSO message, if possible

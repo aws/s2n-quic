@@ -687,7 +687,7 @@ impl FromStr for Query {
 
 struct StrVisitor<T>(core::marker::PhantomData<T>);
 
-impl<'de, T> serde::de::Visitor<'de> for StrVisitor<T>
+impl<T> serde::de::Visitor<'_> for StrVisitor<T>
 where
     T: FromStr,
     <T as FromStr>::Err: core::fmt::Display,

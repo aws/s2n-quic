@@ -219,7 +219,7 @@ impl<'a> EncryptedInitial<'a> {
     }
 }
 
-impl<'a> CleartextInitial<'a> {
+impl CleartextInitial<'_> {
     #[inline]
     pub fn destination_connection_id(&self) -> &[u8] {
         self.destination_connection_id

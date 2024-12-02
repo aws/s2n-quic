@@ -142,7 +142,7 @@ pub struct Wakeups<'a, E: Endpoint, C: Clock> {
     clock: &'a C,
 }
 
-impl<'a, E: Endpoint, C: Clock> Future for Wakeups<'a, E, C> {
+impl<E: Endpoint, C: Clock> Future for Wakeups<'_, E, C> {
     type Output = Result<usize, CloseError>;
 
     fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

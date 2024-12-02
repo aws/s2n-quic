@@ -43,7 +43,7 @@ impl StreamInterests {
 
 pub struct TransmissionInterest<'a>(&'a mut Interest);
 
-impl<'a> Query for TransmissionInterest<'a> {
+impl Query for TransmissionInterest<'_> {
     fn on_interest(&mut self, interest: Interest) -> Result {
         debug_assert_ne!(
             interest,

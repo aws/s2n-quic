@@ -109,7 +109,7 @@ pub struct RxQueue<'a, T: Message> {
     local_address: &'a LocalAddress,
 }
 
-impl<'a, T: Message> rx::Queue for RxQueue<'a, T> {
+impl<T: Message> rx::Queue for RxQueue<'_, T> {
     type Handle = T::Handle;
 
     #[inline]

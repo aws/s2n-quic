@@ -104,7 +104,7 @@ pub struct ExtRecvBuffer<'a, T: Socket + ?Sized> {
     msg: &'a mut msg::recv::Message,
 }
 
-impl<'a, T: Socket> core::future::Future for ExtRecvBuffer<'a, T> {
+impl<T: Socket> core::future::Future for ExtRecvBuffer<'_, T> {
     type Output = io::Result<usize>;
 
     fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

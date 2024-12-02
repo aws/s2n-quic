@@ -115,7 +115,7 @@ pub struct Packet<'a> {
     auth_tag: &'a mut [u8],
 }
 
-impl<'a> fmt::Debug for Packet<'a> {
+impl fmt::Debug for Packet<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("stream::Packet")
             .field("tag", &self.tag)
@@ -134,7 +134,7 @@ impl<'a> fmt::Debug for Packet<'a> {
     }
 }
 
-impl<'a> Packet<'a> {
+impl Packet<'_> {
     #[inline]
     pub fn tag(&self) -> Tag {
         self.tag

@@ -100,7 +100,7 @@ impl<'a> Buffer<'a> {
     fn flush(&mut self) {}
 }
 
-impl<'a> Encoder for Buffer<'a> {
+impl Encoder for Buffer<'_> {
     /// We have special handling for writes that include `Bytes` so signal that
     #[cfg(feature = "bytes")]
     const SPECIALIZES_BYTES: bool = true;

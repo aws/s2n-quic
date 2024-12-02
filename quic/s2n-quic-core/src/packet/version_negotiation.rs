@@ -157,7 +157,7 @@ impl<'a> IntoIterator for ProtectedVersionNegotiation<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct VersionNegotiationIterator<'a>(DecoderBuffer<'a>);
 
-impl<'a> Iterator for VersionNegotiationIterator<'a> {
+impl Iterator for VersionNegotiationIterator<'_> {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -170,9 +170,7 @@ impl<'a> Iterator for VersionNegotiationIterator<'a> {
     }
 }
 
-impl<'a, SupportedVersions: EncoderValue> EncoderValue
-    for VersionNegotiation<'a, SupportedVersions>
-{
+impl<SupportedVersions: EncoderValue> EncoderValue for VersionNegotiation<'_, SupportedVersions> {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         (self.tag | ENCODING_TAG).encode(encoder);
         VERSION.encode(encoder);

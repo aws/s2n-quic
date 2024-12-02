@@ -68,7 +68,7 @@ pub struct WithStorage<'a, C: Storage> {
     storage: &'a mut C,
 }
 
-impl<'a, C: Storage> WithStorage<'a, C> {
+impl<C: Storage> WithStorage<'_, C> {
     #[inline]
     pub fn set_fin(&mut self) -> Result<&mut Self, Error> {
         let final_offset = self
@@ -88,7 +88,7 @@ impl<'a, C: Storage> WithStorage<'a, C> {
     }
 }
 
-impl<'a, C: Storage> Storage for WithStorage<'a, C> {
+impl<C: Storage> Storage for WithStorage<'_, C> {
     type Error = C::Error;
 
     #[inline]
@@ -127,7 +127,7 @@ impl<'a, C: Storage> Storage for WithStorage<'a, C> {
     }
 }
 
-impl<'a, C: Storage> Reader for WithStorage<'a, C> {
+impl<C: Storage> Reader for WithStorage<'_, C> {
     #[inline]
     fn current_offset(&self) -> VarInt {
         self.incremental.current_offset()
