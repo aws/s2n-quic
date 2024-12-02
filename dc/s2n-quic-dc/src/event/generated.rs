@@ -1190,6 +1190,62 @@ pub mod api {
     impl<'a> Event for PathSecretMapIdCacheAccessed<'a> {
         const NAME: &'static str = "path_secret_map:id_cache_accessed";
     }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Emitted when the cleaner task performed a single cycle"]
+    #[doc = ""]
+    #[doc = " This can be used to track cache utilization"]
+    pub struct PathSecretMapCleanerCycled {
+        #[doc = " The number of Path Secret ID entries left after the cleaning cycle"]
+        pub entries: usize,
+        #[doc = " The number of Path Secret ID entries that were retired in the cycle"]
+        pub retired_entries: usize,
+        #[doc = " The utilization percentage of the available number of entries after the cycle"]
+        pub entries_utilization: f32,
+        #[doc = " The utilization percentage of the available number of entries before the cycle"]
+        pub entries_initial_utilization: f32,
+        #[doc = " The number of SocketAddress entries left after the cleaning cycle"]
+        pub addresses: usize,
+        #[doc = " The number of SocketAddress entries that were retired in the cycle"]
+        pub retired_addresses: usize,
+        #[doc = " The utilization percentage of the available number of address entries after the cycle"]
+        pub addresses_utilization: f32,
+        #[doc = " The utilization percentage of the available number of address entries before the cycle"]
+        pub addresses_initial_utilization: f32,
+        #[doc = " The number of handshake requests that are pending after the cleaning cycle"]
+        pub handshake_requests: usize,
+        #[doc = " The number of handshake requests that were retired in the cycle"]
+        pub retired_handshake_requests: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for PathSecretMapCleanerCycled {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("PathSecretMapCleanerCycled");
+            fmt.field("entries", &self.entries);
+            fmt.field("retired_entries", &self.retired_entries);
+            fmt.field("entries_utilization", &self.entries_utilization);
+            fmt.field(
+                "entries_initial_utilization",
+                &self.entries_initial_utilization,
+            );
+            fmt.field("addresses", &self.addresses);
+            fmt.field("retired_addresses", &self.retired_addresses);
+            fmt.field("addresses_utilization", &self.addresses_utilization);
+            fmt.field(
+                "addresses_initial_utilization",
+                &self.addresses_initial_utilization,
+            );
+            fmt.field("handshake_requests", &self.handshake_requests);
+            fmt.field(
+                "retired_handshake_requests",
+                &self.retired_handshake_requests,
+            );
+            fmt.finish()
+        }
+    }
+    impl Event for PathSecretMapCleanerCycled {
+        const NAME: &'static str = "path_secret_map:cleaner_cycled";
+    }
     impl IntoEvent<builder::AcceptorPacketDropReason> for s2n_codec::DecoderError {
         fn into_event(self) -> builder::AcceptorPacketDropReason {
             use builder::AcceptorPacketDropReason as Reason;
@@ -1848,6 +1904,27 @@ pub mod tracing {
             let parent = self.parent(meta);
             let api::PathSecretMapIdCacheAccessed { credential_id, hit } = event;
             tracing :: event ! (target : "path_secret_map_id_cache_accessed" , parent : parent , tracing :: Level :: DEBUG , credential_id = tracing :: field :: debug (credential_id) , hit = tracing :: field :: debug (hit));
+        }
+        #[inline]
+        fn on_path_secret_map_cleaner_cycled(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapCleanerCycled,
+        ) {
+            let parent = self.parent(meta);
+            let api::PathSecretMapCleanerCycled {
+                entries,
+                retired_entries,
+                entries_utilization,
+                entries_initial_utilization,
+                addresses,
+                retired_addresses,
+                addresses_utilization,
+                addresses_initial_utilization,
+                handshake_requests,
+                retired_handshake_requests,
+            } = event;
+            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , entries = tracing :: field :: debug (entries) , retired_entries = tracing :: field :: debug (retired_entries) , entries_utilization = tracing :: field :: debug (entries_utilization) , entries_initial_utilization = tracing :: field :: debug (entries_initial_utilization) , addresses = tracing :: field :: debug (addresses) , retired_addresses = tracing :: field :: debug (retired_addresses) , addresses_utilization = tracing :: field :: debug (addresses_utilization) , addresses_initial_utilization = tracing :: field :: debug (addresses_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , retired_handshake_requests = tracing :: field :: debug (retired_handshake_requests));
         }
     }
 }
@@ -2995,6 +3072,61 @@ pub mod builder {
             }
         }
     }
+    #[derive(Clone, Debug)]
+    #[doc = " Emitted when the cleaner task performed a single cycle"]
+    #[doc = ""]
+    #[doc = " This can be used to track cache utilization"]
+    pub struct PathSecretMapCleanerCycled {
+        #[doc = " The number of Path Secret ID entries left after the cleaning cycle"]
+        pub entries: usize,
+        #[doc = " The number of Path Secret ID entries that were retired in the cycle"]
+        pub retired_entries: usize,
+        #[doc = " The utilization percentage of the available number of entries after the cycle"]
+        pub entries_utilization: f32,
+        #[doc = " The utilization percentage of the available number of entries before the cycle"]
+        pub entries_initial_utilization: f32,
+        #[doc = " The number of SocketAddress entries left after the cleaning cycle"]
+        pub addresses: usize,
+        #[doc = " The number of SocketAddress entries that were retired in the cycle"]
+        pub retired_addresses: usize,
+        #[doc = " The utilization percentage of the available number of address entries after the cycle"]
+        pub addresses_utilization: f32,
+        #[doc = " The utilization percentage of the available number of address entries before the cycle"]
+        pub addresses_initial_utilization: f32,
+        #[doc = " The number of handshake requests that are pending after the cleaning cycle"]
+        pub handshake_requests: usize,
+        #[doc = " The number of handshake requests that were retired in the cycle"]
+        pub retired_handshake_requests: usize,
+    }
+    impl IntoEvent<api::PathSecretMapCleanerCycled> for PathSecretMapCleanerCycled {
+        #[inline]
+        fn into_event(self) -> api::PathSecretMapCleanerCycled {
+            let PathSecretMapCleanerCycled {
+                entries,
+                retired_entries,
+                entries_utilization,
+                entries_initial_utilization,
+                addresses,
+                retired_addresses,
+                addresses_utilization,
+                addresses_initial_utilization,
+                handshake_requests,
+                retired_handshake_requests,
+            } = self;
+            api::PathSecretMapCleanerCycled {
+                entries: entries.into_event(),
+                retired_entries: retired_entries.into_event(),
+                entries_utilization: entries_utilization.into_event(),
+                entries_initial_utilization: entries_initial_utilization.into_event(),
+                addresses: addresses.into_event(),
+                retired_addresses: retired_addresses.into_event(),
+                addresses_utilization: addresses_utilization.into_event(),
+                addresses_initial_utilization: addresses_initial_utilization.into_event(),
+                handshake_requests: handshake_requests.into_event(),
+                retired_handshake_requests: retired_handshake_requests.into_event(),
+            }
+        }
+    }
 }
 pub use traits::*;
 mod traits {
@@ -3523,6 +3655,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `PathSecretMapCleanerCycled` event is triggered"]
+        #[inline]
+        fn on_path_secret_map_cleaner_cycled(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapCleanerCycled,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = r" Called for each event that relates to the endpoint and all connections"]
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -3946,6 +4088,14 @@ mod traits {
         ) {
             self.as_ref()
                 .on_path_secret_map_id_cache_accessed(meta, event);
+        }
+        #[inline]
+        fn on_path_secret_map_cleaner_cycled(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapCleanerCycled,
+        ) {
+            self.as_ref().on_path_secret_map_cleaner_cycled(meta, event);
         }
         #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
@@ -4402,6 +4552,15 @@ mod traits {
             (self.1).on_path_secret_map_id_cache_accessed(meta, event);
         }
         #[inline]
+        fn on_path_secret_map_cleaner_cycled(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapCleanerCycled,
+        ) {
+            (self.0).on_path_secret_map_cleaner_cycled(meta, event);
+            (self.1).on_path_secret_map_cleaner_cycled(meta, event);
+        }
+        #[inline]
         fn on_event<M: Meta, E: Event>(&self, meta: &M, event: &E) {
             self.0.on_event(meta, event);
             self.1.on_event(meta, event);
@@ -4545,6 +4704,8 @@ mod traits {
             &self,
             event: builder::PathSecretMapIdCacheAccessed,
         );
+        #[doc = "Publishes a `PathSecretMapCleanerCycled` event to the publisher's subscriber"]
+        fn on_path_secret_map_cleaner_cycled(&self, event: builder::PathSecretMapCleanerCycled);
         #[doc = r" Returns the QUIC version, if any"]
         fn quic_version(&self) -> Option<u32>;
     }
@@ -4912,6 +5073,13 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_path_secret_map_cleaner_cycled(&self, event: builder::PathSecretMapCleanerCycled) {
+            let event = event.into_event();
+            self.subscriber
+                .on_path_secret_map_cleaner_cycled(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> Option<u32> {
             self.quic_version
         }
@@ -5041,6 +5209,7 @@ pub mod testing {
             pub stale_key_packet_dropped: AtomicU32,
             pub path_secret_map_address_cache_accessed: AtomicU32,
             pub path_secret_map_id_cache_accessed: AtomicU32,
+            pub path_secret_map_cleaner_cycled: AtomicU32,
         }
         impl Drop for Subscriber {
             fn drop(&mut self) {
@@ -5117,6 +5286,7 @@ pub mod testing {
                     stale_key_packet_dropped: AtomicU32::new(0),
                     path_secret_map_address_cache_accessed: AtomicU32::new(0),
                     path_secret_map_id_cache_accessed: AtomicU32::new(0),
+                    path_secret_map_cleaner_cycled: AtomicU32::new(0),
                 }
             }
         }
@@ -5656,6 +5826,18 @@ pub mod testing {
                 let out = format!("{meta:?} {event:?}");
                 self.output.lock().unwrap().push(out);
             }
+            fn on_path_secret_map_cleaner_cycled(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::PathSecretMapCleanerCycled,
+            ) {
+                self.path_secret_map_cleaner_cycled
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
         }
     }
     #[derive(Debug)]
@@ -5709,6 +5891,7 @@ pub mod testing {
         pub stale_key_packet_dropped: AtomicU32,
         pub path_secret_map_address_cache_accessed: AtomicU32,
         pub path_secret_map_id_cache_accessed: AtomicU32,
+        pub path_secret_map_cleaner_cycled: AtomicU32,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -5787,6 +5970,7 @@ pub mod testing {
                 stale_key_packet_dropped: AtomicU32::new(0),
                 path_secret_map_address_cache_accessed: AtomicU32::new(0),
                 path_secret_map_id_cache_accessed: AtomicU32::new(0),
+                path_secret_map_cleaner_cycled: AtomicU32::new(0),
             }
         }
     }
@@ -6354,6 +6538,18 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_path_secret_map_cleaner_cycled(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::PathSecretMapCleanerCycled,
+        ) {
+            self.path_secret_map_cleaner_cycled
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
     }
     #[derive(Debug)]
     pub struct Publisher {
@@ -6406,6 +6602,7 @@ pub mod testing {
         pub stale_key_packet_dropped: AtomicU32,
         pub path_secret_map_address_cache_accessed: AtomicU32,
         pub path_secret_map_id_cache_accessed: AtomicU32,
+        pub path_secret_map_cleaner_cycled: AtomicU32,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -6474,6 +6671,7 @@ pub mod testing {
                 stale_key_packet_dropped: AtomicU32::new(0),
                 path_secret_map_address_cache_accessed: AtomicU32::new(0),
                 path_secret_map_id_cache_accessed: AtomicU32::new(0),
+                path_secret_map_cleaner_cycled: AtomicU32::new(0),
             }
         }
     }
@@ -6851,6 +7049,14 @@ pub mod testing {
             event: builder::PathSecretMapIdCacheAccessed,
         ) {
             self.path_secret_map_id_cache_accessed
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_path_secret_map_cleaner_cycled(&self, event: builder::PathSecretMapCleanerCycled) {
+            self.path_secret_map_cleaner_cycled
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);

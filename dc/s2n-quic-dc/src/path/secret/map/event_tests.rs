@@ -33,7 +33,12 @@ fn map(capacity: usize) -> Map {
 fn map_sub(capacity: usize, sub: Arc<Subscriber>) -> Map {
     let signer = stateless_reset::Signer::random();
 
-    Map::new(signer, capacity, NoopClock, sub)
+    let map = Map::new(signer, capacity, NoopClock, sub);
+
+    // sleep so the cleaner has time to emit events
+    std::thread::sleep(core::time::Duration::from_millis(100));
+
+    map
 }
 
 #[test]

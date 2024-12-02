@@ -320,7 +320,7 @@ where
         self.ids = fixed_map::Map::with_capacity(new, Default::default());
     }
 
-    fn subscriber(&self) -> event::EndpointPublisherSubscriber<S> {
+    pub(super) fn subscriber(&self) -> event::EndpointPublisherSubscriber<S> {
         use event::IntoEvent as _;
 
         let timestamp = self.clock.get_time().into_event();
@@ -339,11 +339,11 @@ where
     S: event::Subscriber,
 {
     fn secrets_len(&self) -> usize {
-        self.ids.len()
+        self.ids.count()
     }
 
     fn peers_len(&self) -> usize {
-        self.peers.len()
+        self.peers.count()
     }
 
     fn secrets_capacity(&self) -> usize {
