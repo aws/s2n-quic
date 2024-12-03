@@ -501,6 +501,9 @@ where
     ) where
         Pub: EndpointPublisher,
     {
+        // Make sure TCP_NODELAY is set
+        let _ = stream.set_nodelay(true);
+
         let meta = event::api::ConnectionMeta {
             id: 0, // TODO use an actual connection ID
             timestamp: now.into_event(),
