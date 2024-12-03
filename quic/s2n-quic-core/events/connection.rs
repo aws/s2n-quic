@@ -213,15 +213,6 @@ struct ConnectionStarted<'a> {
     path: Path<'a>,
 }
 
-#[event("connectivity:connection_closed")]
-//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.3
-/// Connection closed
-#[checkpoint("latency")]
-struct ConnectionClosed {
-    #[nominal_counter("error")]
-    error: crate::connection::Error,
-}
-
 #[event("transport:duplicate_packet")]
 /// Duplicate packet received
 struct DuplicatePacket<'a> {
@@ -418,4 +409,14 @@ struct BbrStateChanged {
 struct DcStateChanged {
     #[nominal_counter("state")]
     state: DcState,
+}
+
+// NOTE - This event MUST come last, since connection-level aggregation depends on it
+#[event("connectivity:connection_closed")]
+//= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.3
+/// Connection closed
+#[checkpoint("latency")]
+struct ConnectionClosed {
+    #[nominal_counter("error")]
+    error: crate::connection::Error,
 }

@@ -40,34 +40,34 @@ mod counter {
                 41usize => Self(key_update),
                 44usize => Self(key_space_discarded),
                 49usize => Self(connection_started),
-                50usize => Self(connection_closed),
-                53usize => Self(duplicate_packet),
-                56usize => Self(transport_parameters_received),
-                58usize => Self(datagram_sent),
-                59usize => Self(datagram_sent__bytes__total),
-                62usize => Self(datagram_received),
-                63usize => Self(datagram_received__bytes__total),
-                65usize => Self(datagram_dropped),
-                66usize => Self(datagram_dropped__bytes__total),
-                69usize => Self(connection_id_updated),
-                70usize => Self(ecn_state_changed),
-                72usize => Self(connection_migration_denied),
-                74usize => Self(handshake_status_updated),
-                79usize => Self(tls_exporter_ready),
-                80usize => Self(path_challenge_updated),
-                82usize => Self(tls_client_hello),
-                84usize => Self(tls_server_hello),
-                86usize => Self(rx_stream_progress),
-                87usize => Self(rx_stream_progress__bytes__total),
-                89usize => Self(tx_stream_progress),
-                90usize => Self(tx_stream_progress__bytes__total),
-                92usize => Self(keep_alive_timer_expired),
-                93usize => Self(mtu_updated),
-                97usize => Self(slow_start_exited),
-                101usize => Self(delivery_rate_sampled),
-                102usize => Self(pacing_rate_updated),
-                106usize => Self(bbr_state_changed),
-                108usize => Self(dc_state_changed),
+                50usize => Self(duplicate_packet),
+                53usize => Self(transport_parameters_received),
+                55usize => Self(datagram_sent),
+                56usize => Self(datagram_sent__bytes__total),
+                59usize => Self(datagram_received),
+                60usize => Self(datagram_received__bytes__total),
+                62usize => Self(datagram_dropped),
+                63usize => Self(datagram_dropped__bytes__total),
+                66usize => Self(connection_id_updated),
+                67usize => Self(ecn_state_changed),
+                69usize => Self(connection_migration_denied),
+                71usize => Self(handshake_status_updated),
+                76usize => Self(tls_exporter_ready),
+                77usize => Self(path_challenge_updated),
+                79usize => Self(tls_client_hello),
+                81usize => Self(tls_server_hello),
+                83usize => Self(rx_stream_progress),
+                84usize => Self(rx_stream_progress__bytes__total),
+                86usize => Self(tx_stream_progress),
+                87usize => Self(tx_stream_progress__bytes__total),
+                89usize => Self(keep_alive_timer_expired),
+                90usize => Self(mtu_updated),
+                94usize => Self(slow_start_exited),
+                98usize => Self(delivery_rate_sampled),
+                99usize => Self(pacing_rate_updated),
+                103usize => Self(bbr_state_changed),
+                105usize => Self(dc_state_changed),
+                111usize => Self(connection_closed),
                 114usize => Self(version_information),
                 115usize => Self(endpoint_packet_sent),
                 116usize => Self(endpoint_packet_received),
@@ -146,8 +146,6 @@ mod counter {
             fn key_space_discarded(value: u64);
             # [link_name = s2n_quic__event__counter__connection_started]
             fn connection_started(value: u64);
-            # [link_name = s2n_quic__event__counter__connection_closed]
-            fn connection_closed(value: u64);
             # [link_name = s2n_quic__event__counter__duplicate_packet]
             fn duplicate_packet(value: u64);
             # [link_name = s2n_quic__event__counter__transport_parameters_received]
@@ -202,6 +200,8 @@ mod counter {
             fn bbr_state_changed(value: u64);
             # [link_name = s2n_quic__event__counter__dc_state_changed]
             fn dc_state_changed(value: u64);
+            # [link_name = s2n_quic__event__counter__connection_closed]
+            fn connection_closed(value: u64);
             # [link_name = s2n_quic__event__counter__version_information]
             fn version_information(value: u64);
             # [link_name = s2n_quic__event__counter__endpoint_packet_sent]
@@ -263,7 +263,7 @@ mod counter {
                 match info.id {
                     21usize => Self(packet_lost__is_mtu_probe),
                     31usize => Self(recovery_metrics__congestion_limited),
-                    96usize => Self(mtu_updated__search_complete),
+                    93usize => Self(mtu_updated__search_complete),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -306,18 +306,18 @@ mod counter {
                     42usize => Self(key_update__key_type),
                     43usize => Self(key_update__cipher_suite),
                     48usize => Self(key_space_discarded__space),
-                    52usize => Self(connection_closed__error),
-                    54usize => Self(duplicate_packet__kind),
-                    55usize => Self(duplicate_packet__error),
-                    68usize => Self(datagram_dropped__reason),
-                    71usize => Self(ecn_state_changed__state),
-                    73usize => Self(connection_migration_denied__reason),
-                    78usize => Self(handshake_status_updated__status),
-                    81usize => Self(path_challenge_updated__status),
-                    95usize => Self(mtu_updated__cause),
-                    98usize => Self(slow_start_exited__cause),
-                    107usize => Self(bbr_state_changed__state),
-                    113usize => Self(dc_state_changed__state),
+                    51usize => Self(duplicate_packet__kind),
+                    52usize => Self(duplicate_packet__error),
+                    65usize => Self(datagram_dropped__reason),
+                    68usize => Self(ecn_state_changed__state),
+                    70usize => Self(connection_migration_denied__reason),
+                    75usize => Self(handshake_status_updated__status),
+                    78usize => Self(path_challenge_updated__status),
+                    92usize => Self(mtu_updated__cause),
+                    95usize => Self(slow_start_exited__cause),
+                    104usize => Self(bbr_state_changed__state),
+                    110usize => Self(dc_state_changed__state),
+                    113usize => Self(connection_closed__error),
                     127usize => Self(endpoint_datagram_dropped__reason),
                     129usize => Self(endpoint_connection_attempt_failed__error),
                     _ => unreachable!("invalid info: {info:?}"),
@@ -364,8 +364,6 @@ mod counter {
                 fn key_update__cipher_suite(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__key_space_discarded__space]
                 fn key_space_discarded__space(value: u64, variant: u64, variant_name: &info::Str);
-                # [link_name = s2n_quic__event__counter__nominal__connection_closed__error]
-                fn connection_closed__error(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__duplicate_packet__kind]
                 fn duplicate_packet__kind(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__duplicate_packet__error]
@@ -400,6 +398,8 @@ mod counter {
                 fn bbr_state_changed__state(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__dc_state_changed__state]
                 fn dc_state_changed__state(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic__event__counter__nominal__connection_closed__error]
+                fn connection_closed__error(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic__event__counter__nominal__endpoint_datagram_dropped__reason]
                 fn endpoint_datagram_dropped__reason(
                     value: u64,
@@ -434,17 +434,17 @@ mod measure {
                 28usize => Self(recovery_metrics__pto_count),
                 29usize => Self(recovery_metrics__congestion_window),
                 30usize => Self(recovery_metrics__bytes_in_flight),
-                60usize => Self(datagram_sent__bytes),
-                61usize => Self(datagram_sent__gso_offset),
-                64usize => Self(datagram_received__bytes),
-                67usize => Self(datagram_dropped__bytes),
-                88usize => Self(rx_stream_progress__bytes),
-                91usize => Self(tx_stream_progress__bytes),
-                94usize => Self(mtu_updated__mtu),
-                100usize => Self(slow_start_exited__congestion_window),
-                103usize => Self(pacing_rate_updated__bytes_per_second),
-                104usize => Self(pacing_rate_updated__burst_size),
-                105usize => Self(pacing_rate_updated__pacing_gain),
+                57usize => Self(datagram_sent__bytes),
+                58usize => Self(datagram_sent__gso_offset),
+                61usize => Self(datagram_received__bytes),
+                64usize => Self(datagram_dropped__bytes),
+                85usize => Self(rx_stream_progress__bytes),
+                88usize => Self(tx_stream_progress__bytes),
+                91usize => Self(mtu_updated__mtu),
+                97usize => Self(slow_start_exited__congestion_window),
+                100usize => Self(pacing_rate_updated__bytes_per_second),
+                101usize => Self(pacing_rate_updated__burst_size),
+                102usize => Self(pacing_rate_updated__pacing_gain),
                 118usize => Self(endpoint_datagram_sent__bytes),
                 119usize => Self(endpoint_datagram_sent__bytes__total),
                 120usize => Self(endpoint_datagram_sent__gso_offset),
@@ -579,17 +579,17 @@ mod timer {
                 45usize => Self(key_space_discarded__initial__latency),
                 46usize => Self(key_space_discarded__handshake__latency),
                 47usize => Self(key_space_discarded__one_rtt__latency),
-                51usize => Self(connection_closed__latency),
-                57usize => Self(transport_parameters_received__latency),
-                75usize => Self(handshake_status_updated__complete__latency),
-                76usize => Self(handshake_status_updated__confirmed__latency),
-                77usize => Self(handshake_status_updated__handshake_done_acked__latency),
-                83usize => Self(tls_client_hello__latency),
-                85usize => Self(tls_server_hello__latency),
-                109usize => Self(dc_state_changed__version_negotiated__latency),
-                110usize => Self(dc_state_changed__no_version_negotiated__latency),
-                111usize => Self(dc_state_changed__path_secrets__latency),
-                112usize => Self(dc_state_changed__complete__latency),
+                54usize => Self(transport_parameters_received__latency),
+                72usize => Self(handshake_status_updated__complete__latency),
+                73usize => Self(handshake_status_updated__confirmed__latency),
+                74usize => Self(handshake_status_updated__handshake_done_acked__latency),
+                80usize => Self(tls_client_hello__latency),
+                82usize => Self(tls_server_hello__latency),
+                106usize => Self(dc_state_changed__version_negotiated__latency),
+                107usize => Self(dc_state_changed__no_version_negotiated__latency),
+                108usize => Self(dc_state_changed__path_secrets__latency),
+                109usize => Self(dc_state_changed__complete__latency),
+                112usize => Self(connection_closed__latency),
                 157usize => Self(platform_event_loop_sleep__processing_duration),
                 _ => unreachable!("invalid info: {info:?}"),
             }
@@ -608,8 +608,6 @@ mod timer {
             fn key_space_discarded__handshake__latency(value: core::time::Duration);
             # [link_name = s2n_quic__event__timer__key_space_discarded__one_rtt__latency]
             fn key_space_discarded__one_rtt__latency(value: core::time::Duration);
-            # [link_name = s2n_quic__event__timer__connection_closed__latency]
-            fn connection_closed__latency(value: core::time::Duration);
             # [link_name = s2n_quic__event__timer__transport_parameters_received__latency]
             fn transport_parameters_received__latency(value: core::time::Duration);
             # [link_name = s2n_quic__event__timer__handshake_status_updated__complete__latency]
@@ -630,6 +628,8 @@ mod timer {
             fn dc_state_changed__path_secrets__latency(value: core::time::Duration);
             # [link_name = s2n_quic__event__timer__dc_state_changed__complete__latency]
             fn dc_state_changed__complete__latency(value: core::time::Duration);
+            # [link_name = s2n_quic__event__timer__connection_closed__latency]
+            fn connection_closed__latency(value: core::time::Duration);
             # [link_name = s2n_quic__event__timer__platform_event_loop_sleep__processing_duration]
             fn platform_event_loop_sleep__processing_duration(value: core::time::Duration);
         }
@@ -642,7 +642,7 @@ mod timer {
         impl Recorder {
             pub(crate) fn new(info: &'static Info, _variant: &'static info::Variant) -> Self {
                 match info.id {
-                    99usize => Self(slow_start_exited__latency),
+                    96usize => Self(slow_start_exited__latency),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }

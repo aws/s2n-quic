@@ -6,7 +6,7 @@
 // changes should be made there.
 
 use crate::event::{self, api, metrics::Recorder};
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 pub(crate) mod aggregate;
 pub(crate) mod probe;
 #[derive(Debug)]
@@ -26,22 +26,23 @@ where
 }
 pub struct Context<R: Recorder> {
     recorder: R,
-    stream_write_flushed: AtomicU32,
-    stream_write_fin_flushed: AtomicU32,
-    stream_write_blocked: AtomicU32,
-    stream_write_errored: AtomicU32,
-    stream_write_shutdown: AtomicU32,
-    stream_write_socket_flushed: AtomicU32,
-    stream_write_socket_blocked: AtomicU32,
-    stream_write_socket_errored: AtomicU32,
-    stream_read_flushed: AtomicU32,
-    stream_read_fin_flushed: AtomicU32,
-    stream_read_blocked: AtomicU32,
-    stream_read_errored: AtomicU32,
-    stream_read_shutdown: AtomicU32,
-    stream_read_socket_flushed: AtomicU32,
-    stream_read_socket_blocked: AtomicU32,
-    stream_read_socket_errored: AtomicU32,
+    stream_write_flushed: AtomicU64,
+    stream_write_fin_flushed: AtomicU64,
+    stream_write_blocked: AtomicU64,
+    stream_write_errored: AtomicU64,
+    stream_write_shutdown: AtomicU64,
+    stream_write_socket_flushed: AtomicU64,
+    stream_write_socket_blocked: AtomicU64,
+    stream_write_socket_errored: AtomicU64,
+    stream_read_flushed: AtomicU64,
+    stream_read_fin_flushed: AtomicU64,
+    stream_read_blocked: AtomicU64,
+    stream_read_errored: AtomicU64,
+    stream_read_shutdown: AtomicU64,
+    stream_read_socket_flushed: AtomicU64,
+    stream_read_socket_blocked: AtomicU64,
+    stream_read_socket_errored: AtomicU64,
+    connection_closed: AtomicU64,
 }
 impl<S: event::Subscriber> event::Subscriber for Subscriber<S>
 where
@@ -55,22 +56,23 @@ where
     ) -> Self::ConnectionContext {
         Context {
             recorder: self.subscriber.create_connection_context(meta, info),
-            stream_write_flushed: AtomicU32::new(0),
-            stream_write_fin_flushed: AtomicU32::new(0),
-            stream_write_blocked: AtomicU32::new(0),
-            stream_write_errored: AtomicU32::new(0),
-            stream_write_shutdown: AtomicU32::new(0),
-            stream_write_socket_flushed: AtomicU32::new(0),
-            stream_write_socket_blocked: AtomicU32::new(0),
-            stream_write_socket_errored: AtomicU32::new(0),
-            stream_read_flushed: AtomicU32::new(0),
-            stream_read_fin_flushed: AtomicU32::new(0),
-            stream_read_blocked: AtomicU32::new(0),
-            stream_read_errored: AtomicU32::new(0),
-            stream_read_shutdown: AtomicU32::new(0),
-            stream_read_socket_flushed: AtomicU32::new(0),
-            stream_read_socket_blocked: AtomicU32::new(0),
-            stream_read_socket_errored: AtomicU32::new(0),
+            stream_write_flushed: AtomicU64::new(0),
+            stream_write_fin_flushed: AtomicU64::new(0),
+            stream_write_blocked: AtomicU64::new(0),
+            stream_write_errored: AtomicU64::new(0),
+            stream_write_shutdown: AtomicU64::new(0),
+            stream_write_socket_flushed: AtomicU64::new(0),
+            stream_write_socket_blocked: AtomicU64::new(0),
+            stream_write_socket_errored: AtomicU64::new(0),
+            stream_read_flushed: AtomicU64::new(0),
+            stream_read_fin_flushed: AtomicU64::new(0),
+            stream_read_blocked: AtomicU64::new(0),
+            stream_read_errored: AtomicU64::new(0),
+            stream_read_shutdown: AtomicU64::new(0),
+            stream_read_socket_flushed: AtomicU64::new(0),
+            stream_read_socket_blocked: AtomicU64::new(0),
+            stream_read_socket_errored: AtomicU64::new(0),
+            connection_closed: AtomicU64::new(0),
         }
     }
     #[inline]
@@ -267,6 +269,17 @@ where
         self.subscriber
             .on_stream_read_socket_errored(&context.recorder, meta, event);
     }
+    #[inline]
+    fn on_connection_closed(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::ConnectionClosed,
+    ) {
+        context.connection_closed.fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_connection_closed(&context.recorder, meta, event);
+    }
 }
 impl<R: Recorder> Drop for Context<R> {
     fn drop(&mut self) {
@@ -333,6 +346,10 @@ impl<R: Recorder> Drop for Context<R> {
         self.recorder.increment_counter(
             "stream_read_socket_errored",
             self.stream_read_socket_errored.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "connection_closed",
+            self.connection_closed.load(Ordering::Relaxed) as _,
         );
     }
 }

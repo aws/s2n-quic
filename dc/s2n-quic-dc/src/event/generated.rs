@@ -964,6 +964,19 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct ConnectionClosed {}
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for ConnectionClosed {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionClosed");
+            fmt.finish()
+        }
+    }
+    impl Event for ConnectionClosed {
+        const NAME: &'static str = "connection:closed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct EndpointInitialized<'a> {
         pub acceptor_addr: SocketAddress<'a>,
         pub handshake_addr: SocketAddress<'a>,
@@ -1612,7 +1625,7 @@ pub mod tracing {
                 local_address,
                 backlog,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_started" , parent : parent , tracing :: Level :: DEBUG , id = tracing :: field :: debug (id) , local_address = tracing :: field :: debug (local_address) , backlog = tracing :: field :: debug (backlog));
+            tracing :: event ! (target : "acceptor_tcp_started" , parent : parent , tracing :: Level :: DEBUG , { id = tracing :: field :: debug (id) , local_address = tracing :: field :: debug (local_address) , backlog = tracing :: field :: debug (backlog) });
         }
         #[inline]
         fn on_acceptor_tcp_loop_iteration_completed(
@@ -1628,7 +1641,7 @@ pub mod tracing {
                 processing_duration,
                 max_sojourn_time,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_loop_iteration_completed" , parent : parent , tracing :: Level :: DEBUG , pending_streams = tracing :: field :: debug (pending_streams) , slots_idle = tracing :: field :: debug (slots_idle) , slot_utilization = tracing :: field :: debug (slot_utilization) , processing_duration = tracing :: field :: debug (processing_duration) , max_sojourn_time = tracing :: field :: debug (max_sojourn_time));
+            tracing :: event ! (target : "acceptor_tcp_loop_iteration_completed" , parent : parent , tracing :: Level :: DEBUG , { pending_streams = tracing :: field :: debug (pending_streams) , slots_idle = tracing :: field :: debug (slots_idle) , slot_utilization = tracing :: field :: debug (slot_utilization) , processing_duration = tracing :: field :: debug (processing_duration) , max_sojourn_time = tracing :: field :: debug (max_sojourn_time) });
         }
         #[inline]
         fn on_acceptor_tcp_fresh_enqueued(
@@ -1638,7 +1651,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::AcceptorTcpFreshEnqueued { remote_address } = event;
-            tracing :: event ! (target : "acceptor_tcp_fresh_enqueued" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address));
+            tracing :: event ! (target : "acceptor_tcp_fresh_enqueued" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) });
         }
         #[inline]
         fn on_acceptor_tcp_fresh_batch_completed(
@@ -1652,7 +1665,7 @@ pub mod tracing {
                 dropped,
                 errored,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_fresh_batch_completed" , parent : parent , tracing :: Level :: DEBUG , enqueued = tracing :: field :: debug (enqueued) , dropped = tracing :: field :: debug (dropped) , errored = tracing :: field :: debug (errored));
+            tracing :: event ! (target : "acceptor_tcp_fresh_batch_completed" , parent : parent , tracing :: Level :: DEBUG , { enqueued = tracing :: field :: debug (enqueued) , dropped = tracing :: field :: debug (dropped) , errored = tracing :: field :: debug (errored) });
         }
         #[inline]
         fn on_acceptor_tcp_stream_dropped(
@@ -1665,7 +1678,7 @@ pub mod tracing {
                 remote_address,
                 reason,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_stream_dropped" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , reason = tracing :: field :: debug (reason));
+            tracing :: event ! (target : "acceptor_tcp_stream_dropped" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_acceptor_tcp_stream_replaced(
@@ -1679,7 +1692,7 @@ pub mod tracing {
                 sojourn_time,
                 buffer_len,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_stream_replaced" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , sojourn_time = tracing :: field :: debug (sojourn_time) , buffer_len = tracing :: field :: debug (buffer_len));
+            tracing :: event ! (target : "acceptor_tcp_stream_replaced" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , sojourn_time = tracing :: field :: debug (sojourn_time) , buffer_len = tracing :: field :: debug (buffer_len) });
         }
         #[inline]
         fn on_acceptor_tcp_packet_received(
@@ -1697,7 +1710,7 @@ pub mod tracing {
                 is_fin_known,
                 sojourn_time,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_packet_received" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , payload_len = tracing :: field :: debug (payload_len) , is_fin = tracing :: field :: debug (is_fin) , is_fin_known = tracing :: field :: debug (is_fin_known) , sojourn_time = tracing :: field :: debug (sojourn_time));
+            tracing :: event ! (target : "acceptor_tcp_packet_received" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , payload_len = tracing :: field :: debug (payload_len) , is_fin = tracing :: field :: debug (is_fin) , is_fin_known = tracing :: field :: debug (is_fin_known) , sojourn_time = tracing :: field :: debug (sojourn_time) });
         }
         #[inline]
         fn on_acceptor_tcp_packet_dropped(
@@ -1711,7 +1724,7 @@ pub mod tracing {
                 reason,
                 sojourn_time,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , reason = tracing :: field :: debug (reason) , sojourn_time = tracing :: field :: debug (sojourn_time));
+            tracing :: event ! (target : "acceptor_tcp_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , reason = tracing :: field :: debug (reason) , sojourn_time = tracing :: field :: debug (sojourn_time) });
         }
         #[inline]
         fn on_acceptor_tcp_stream_enqueued(
@@ -1727,7 +1740,7 @@ pub mod tracing {
                 sojourn_time,
                 blocked_count,
             } = event;
-            tracing :: event ! (target : "acceptor_tcp_stream_enqueued" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) , blocked_count = tracing :: field :: debug (blocked_count));
+            tracing :: event ! (target : "acceptor_tcp_stream_enqueued" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) , blocked_count = tracing :: field :: debug (blocked_count) });
         }
         #[inline]
         fn on_acceptor_tcp_io_error(
@@ -1737,7 +1750,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::AcceptorTcpIoError { error } = event;
-            tracing :: event ! (target : "acceptor_tcp_io_error" , parent : parent , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
+            tracing :: event ! (target : "acceptor_tcp_io_error" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) });
         }
         #[inline]
         fn on_acceptor_udp_started(
@@ -1747,7 +1760,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::AcceptorUdpStarted { id, local_address } = event;
-            tracing :: event ! (target : "acceptor_udp_started" , parent : parent , tracing :: Level :: DEBUG , id = tracing :: field :: debug (id) , local_address = tracing :: field :: debug (local_address));
+            tracing :: event ! (target : "acceptor_udp_started" , parent : parent , tracing :: Level :: DEBUG , { id = tracing :: field :: debug (id) , local_address = tracing :: field :: debug (local_address) });
         }
         #[inline]
         fn on_acceptor_udp_datagram_received(
@@ -1760,7 +1773,7 @@ pub mod tracing {
                 remote_address,
                 len,
             } = event;
-            tracing :: event ! (target : "acceptor_udp_datagram_received" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , len = tracing :: field :: debug (len));
+            tracing :: event ! (target : "acceptor_udp_datagram_received" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , len = tracing :: field :: debug (len) });
         }
         #[inline]
         fn on_acceptor_udp_packet_received(
@@ -1779,7 +1792,7 @@ pub mod tracing {
                 is_fin,
                 is_fin_known,
             } = event;
-            tracing :: event ! (target : "acceptor_udp_packet_received" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , payload_len = tracing :: field :: debug (payload_len) , is_zero_offset = tracing :: field :: debug (is_zero_offset) , is_retransmission = tracing :: field :: debug (is_retransmission) , is_fin = tracing :: field :: debug (is_fin) , is_fin_known = tracing :: field :: debug (is_fin_known));
+            tracing :: event ! (target : "acceptor_udp_packet_received" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , payload_len = tracing :: field :: debug (payload_len) , is_zero_offset = tracing :: field :: debug (is_zero_offset) , is_retransmission = tracing :: field :: debug (is_retransmission) , is_fin = tracing :: field :: debug (is_fin) , is_fin_known = tracing :: field :: debug (is_fin_known) });
         }
         #[inline]
         fn on_acceptor_udp_packet_dropped(
@@ -1792,7 +1805,7 @@ pub mod tracing {
                 remote_address,
                 reason,
             } = event;
-            tracing :: event ! (target : "acceptor_udp_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , reason = tracing :: field :: debug (reason));
+            tracing :: event ! (target : "acceptor_udp_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_acceptor_udp_stream_enqueued(
@@ -1806,7 +1819,7 @@ pub mod tracing {
                 credential_id,
                 stream_id,
             } = event;
-            tracing :: event ! (target : "acceptor_udp_stream_enqueued" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id));
+            tracing :: event ! (target : "acceptor_udp_stream_enqueued" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) });
         }
         #[inline]
         fn on_acceptor_udp_io_error(
@@ -1816,7 +1829,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::AcceptorUdpIoError { error } = event;
-            tracing :: event ! (target : "acceptor_udp_io_error" , parent : parent , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
+            tracing :: event ! (target : "acceptor_udp_io_error" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) });
         }
         #[inline]
         fn on_acceptor_stream_pruned(
@@ -1832,7 +1845,7 @@ pub mod tracing {
                 sojourn_time,
                 reason,
             } = event;
-            tracing :: event ! (target : "acceptor_stream_pruned" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) , reason = tracing :: field :: debug (reason));
+            tracing :: event ! (target : "acceptor_stream_pruned" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) , reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_acceptor_stream_dequeued(
@@ -1847,7 +1860,7 @@ pub mod tracing {
                 stream_id,
                 sojourn_time,
             } = event;
-            tracing :: event ! (target : "acceptor_stream_dequeued" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time));
+            tracing :: event ! (target : "acceptor_stream_dequeued" , parent : parent , tracing :: Level :: DEBUG , { remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time) });
         }
         #[inline]
         fn on_stream_write_flushed(
@@ -1862,7 +1875,7 @@ pub mod tracing {
                 committed_len,
                 processing_duration,
             } = event;
-            tracing :: event ! (target : "stream_write_flushed" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , committed_len = tracing :: field :: debug (committed_len) , processing_duration = tracing :: field :: debug (processing_duration));
+            tracing :: event ! (target : "stream_write_flushed" , parent : id , tracing :: Level :: DEBUG , { provided_len = tracing :: field :: debug (provided_len) , committed_len = tracing :: field :: debug (committed_len) , processing_duration = tracing :: field :: debug (processing_duration) });
         }
         #[inline]
         fn on_stream_write_fin_flushed(
@@ -1877,7 +1890,7 @@ pub mod tracing {
                 committed_len,
                 processing_duration,
             } = event;
-            tracing :: event ! (target : "stream_write_fin_flushed" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , committed_len = tracing :: field :: debug (committed_len) , processing_duration = tracing :: field :: debug (processing_duration));
+            tracing :: event ! (target : "stream_write_fin_flushed" , parent : id , tracing :: Level :: DEBUG , { provided_len = tracing :: field :: debug (provided_len) , committed_len = tracing :: field :: debug (committed_len) , processing_duration = tracing :: field :: debug (processing_duration) });
         }
         #[inline]
         fn on_stream_write_blocked(
@@ -1892,7 +1905,7 @@ pub mod tracing {
                 is_fin,
                 processing_duration,
             } = event;
-            tracing :: event ! (target : "stream_write_blocked" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , is_fin = tracing :: field :: debug (is_fin) , processing_duration = tracing :: field :: debug (processing_duration));
+            tracing :: event ! (target : "stream_write_blocked" , parent : id , tracing :: Level :: DEBUG , { provided_len = tracing :: field :: debug (provided_len) , is_fin = tracing :: field :: debug (is_fin) , processing_duration = tracing :: field :: debug (processing_duration) });
         }
         #[inline]
         fn on_stream_write_errored(
@@ -1908,7 +1921,7 @@ pub mod tracing {
                 processing_duration,
                 errno,
             } = event;
-            tracing :: event ! (target : "stream_write_errored" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , is_fin = tracing :: field :: debug (is_fin) , processing_duration = tracing :: field :: debug (processing_duration) , errno = tracing :: field :: debug (errno));
+            tracing :: event ! (target : "stream_write_errored" , parent : id , tracing :: Level :: DEBUG , { provided_len = tracing :: field :: debug (provided_len) , is_fin = tracing :: field :: debug (is_fin) , processing_duration = tracing :: field :: debug (processing_duration) , errno = tracing :: field :: debug (errno) });
         }
         #[inline]
         fn on_stream_write_shutdown(
@@ -1922,7 +1935,7 @@ pub mod tracing {
                 buffer_len,
                 background,
             } = event;
-            tracing :: event ! (target : "stream_write_shutdown" , parent : id , tracing :: Level :: DEBUG , buffer_len = tracing :: field :: debug (buffer_len) , background = tracing :: field :: debug (background));
+            tracing :: event ! (target : "stream_write_shutdown" , parent : id , tracing :: Level :: DEBUG , { buffer_len = tracing :: field :: debug (buffer_len) , background = tracing :: field :: debug (background) });
         }
         #[inline]
         fn on_stream_write_socket_flushed(
@@ -1936,7 +1949,7 @@ pub mod tracing {
                 provided_len,
                 committed_len,
             } = event;
-            tracing :: event ! (target : "stream_write_socket_flushed" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , committed_len = tracing :: field :: debug (committed_len));
+            tracing :: event ! (target : "stream_write_socket_flushed" , parent : id , tracing :: Level :: DEBUG , { provided_len = tracing :: field :: debug (provided_len) , committed_len = tracing :: field :: debug (committed_len) });
         }
         #[inline]
         fn on_stream_write_socket_blocked(
@@ -1947,7 +1960,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::StreamWriteSocketBlocked { provided_len } = event;
-            tracing :: event ! (target : "stream_write_socket_blocked" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len));
+            tracing :: event ! (target : "stream_write_socket_blocked" , parent : id , tracing :: Level :: DEBUG , { provided_len = tracing :: field :: debug (provided_len) });
         }
         #[inline]
         fn on_stream_write_socket_errored(
@@ -1961,7 +1974,7 @@ pub mod tracing {
                 provided_len,
                 errno,
             } = event;
-            tracing :: event ! (target : "stream_write_socket_errored" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , errno = tracing :: field :: debug (errno));
+            tracing :: event ! (target : "stream_write_socket_errored" , parent : id , tracing :: Level :: DEBUG , { provided_len = tracing :: field :: debug (provided_len) , errno = tracing :: field :: debug (errno) });
         }
         #[inline]
         fn on_stream_read_flushed(
@@ -1976,7 +1989,7 @@ pub mod tracing {
                 committed_len,
                 processing_duration,
             } = event;
-            tracing :: event ! (target : "stream_read_flushed" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , committed_len = tracing :: field :: debug (committed_len) , processing_duration = tracing :: field :: debug (processing_duration));
+            tracing :: event ! (target : "stream_read_flushed" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , committed_len = tracing :: field :: debug (committed_len) , processing_duration = tracing :: field :: debug (processing_duration) });
         }
         #[inline]
         fn on_stream_read_fin_flushed(
@@ -1990,7 +2003,7 @@ pub mod tracing {
                 capacity,
                 processing_duration,
             } = event;
-            tracing :: event ! (target : "stream_read_fin_flushed" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration));
+            tracing :: event ! (target : "stream_read_fin_flushed" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration) });
         }
         #[inline]
         fn on_stream_read_blocked(
@@ -2004,7 +2017,7 @@ pub mod tracing {
                 capacity,
                 processing_duration,
             } = event;
-            tracing :: event ! (target : "stream_read_blocked" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration));
+            tracing :: event ! (target : "stream_read_blocked" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration) });
         }
         #[inline]
         fn on_stream_read_errored(
@@ -2019,7 +2032,7 @@ pub mod tracing {
                 processing_duration,
                 errno,
             } = event;
-            tracing :: event ! (target : "stream_read_errored" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration) , errno = tracing :: field :: debug (errno));
+            tracing :: event ! (target : "stream_read_errored" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration) , errno = tracing :: field :: debug (errno) });
         }
         #[inline]
         fn on_stream_read_shutdown(
@@ -2030,7 +2043,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::StreamReadShutdown { background } = event;
-            tracing :: event ! (target : "stream_read_shutdown" , parent : id , tracing :: Level :: DEBUG , background = tracing :: field :: debug (background));
+            tracing :: event ! (target : "stream_read_shutdown" , parent : id , tracing :: Level :: DEBUG , { background = tracing :: field :: debug (background) });
         }
         #[inline]
         fn on_stream_read_socket_flushed(
@@ -2044,7 +2057,7 @@ pub mod tracing {
                 capacity,
                 committed_len,
             } = event;
-            tracing :: event ! (target : "stream_read_socket_flushed" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , committed_len = tracing :: field :: debug (committed_len));
+            tracing :: event ! (target : "stream_read_socket_flushed" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , committed_len = tracing :: field :: debug (committed_len) });
         }
         #[inline]
         fn on_stream_read_socket_blocked(
@@ -2055,7 +2068,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::StreamReadSocketBlocked { capacity } = event;
-            tracing :: event ! (target : "stream_read_socket_blocked" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity));
+            tracing :: event ! (target : "stream_read_socket_blocked" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) });
         }
         #[inline]
         fn on_stream_read_socket_errored(
@@ -2066,7 +2079,18 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::StreamReadSocketErrored { capacity, errno } = event;
-            tracing :: event ! (target : "stream_read_socket_errored" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , errno = tracing :: field :: debug (errno));
+            tracing :: event ! (target : "stream_read_socket_errored" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , errno = tracing :: field :: debug (errno) });
+        }
+        #[inline]
+        fn on_connection_closed(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
+        ) {
+            let id = context.id();
+            let api::ConnectionClosed {} = event;
+            tracing :: event ! (target : "connection_closed" , parent : id , tracing :: Level :: DEBUG , { });
         }
         #[inline]
         fn on_endpoint_initialized(
@@ -2081,7 +2105,7 @@ pub mod tracing {
                 tcp,
                 udp,
             } = event;
-            tracing :: event ! (target : "endpoint_initialized" , parent : parent , tracing :: Level :: DEBUG , acceptor_addr = tracing :: field :: debug (acceptor_addr) , handshake_addr = tracing :: field :: debug (handshake_addr) , tcp = tracing :: field :: debug (tcp) , udp = tracing :: field :: debug (udp));
+            tracing :: event ! (target : "endpoint_initialized" , parent : parent , tracing :: Level :: DEBUG , { acceptor_addr = tracing :: field :: debug (acceptor_addr) , handshake_addr = tracing :: field :: debug (handshake_addr) , tcp = tracing :: field :: debug (tcp) , udp = tracing :: field :: debug (udp) });
         }
         #[inline]
         fn on_path_secret_map_initialized(
@@ -2091,7 +2115,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::PathSecretMapInitialized { capacity } = event;
-            tracing :: event ! (target : "path_secret_map_initialized" , parent : parent , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity));
+            tracing :: event ! (target : "path_secret_map_initialized" , parent : parent , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) });
         }
         #[inline]
         fn on_path_secret_map_uninitialized(
@@ -2105,7 +2129,7 @@ pub mod tracing {
                 entries,
                 lifetime,
             } = event;
-            tracing :: event ! (target : "path_secret_map_uninitialized" , parent : parent , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , entries = tracing :: field :: debug (entries) , lifetime = tracing :: field :: debug (lifetime));
+            tracing :: event ! (target : "path_secret_map_uninitialized" , parent : parent , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , entries = tracing :: field :: debug (entries) , lifetime = tracing :: field :: debug (lifetime) });
         }
         #[inline]
         fn on_path_secret_map_background_handshake_requested(
@@ -2115,7 +2139,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::PathSecretMapBackgroundHandshakeRequested { peer_address } = event;
-            tracing :: event ! (target : "path_secret_map_background_handshake_requested" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address));
+            tracing :: event ! (target : "path_secret_map_background_handshake_requested" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) });
         }
         #[inline]
         fn on_path_secret_map_entry_inserted(
@@ -2128,7 +2152,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "path_secret_map_entry_inserted" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "path_secret_map_entry_inserted" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_path_secret_map_entry_ready(
@@ -2141,7 +2165,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "path_secret_map_entry_ready" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "path_secret_map_entry_ready" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_path_secret_map_entry_replaced(
@@ -2155,7 +2179,7 @@ pub mod tracing {
                 new_credential_id,
                 previous_credential_id,
             } = event;
-            tracing :: event ! (target : "path_secret_map_entry_replaced" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , new_credential_id = tracing :: field :: debug (new_credential_id) , previous_credential_id = tracing :: field :: debug (previous_credential_id));
+            tracing :: event ! (target : "path_secret_map_entry_replaced" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , new_credential_id = tracing :: field :: debug (new_credential_id) , previous_credential_id = tracing :: field :: debug (previous_credential_id) });
         }
         #[inline]
         fn on_unknown_path_secret_packet_sent(
@@ -2168,7 +2192,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "unknown_path_secret_packet_sent" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "unknown_path_secret_packet_sent" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_unknown_path_secret_packet_received(
@@ -2181,7 +2205,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "unknown_path_secret_packet_received" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "unknown_path_secret_packet_received" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_unknown_path_secret_packet_accepted(
@@ -2194,7 +2218,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "unknown_path_secret_packet_accepted" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "unknown_path_secret_packet_accepted" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_unknown_path_secret_packet_rejected(
@@ -2207,7 +2231,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "unknown_path_secret_packet_rejected" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "unknown_path_secret_packet_rejected" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_unknown_path_secret_packet_dropped(
@@ -2220,7 +2244,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "unknown_path_secret_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "unknown_path_secret_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_key_accepted(&self, meta: &api::EndpointMeta, event: &api::KeyAccepted) {
@@ -2231,7 +2255,7 @@ pub mod tracing {
                 gap,
                 forward_shift,
             } = event;
-            tracing :: event ! (target : "key_accepted" , parent : parent , tracing :: Level :: DEBUG , credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id) , gap = tracing :: field :: debug (gap) , forward_shift = tracing :: field :: debug (forward_shift));
+            tracing :: event ! (target : "key_accepted" , parent : parent , tracing :: Level :: DEBUG , { credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id) , gap = tracing :: field :: debug (gap) , forward_shift = tracing :: field :: debug (forward_shift) });
         }
         #[inline]
         fn on_replay_definitely_detected(
@@ -2244,7 +2268,7 @@ pub mod tracing {
                 credential_id,
                 key_id,
             } = event;
-            tracing :: event ! (target : "replay_definitely_detected" , parent : parent , tracing :: Level :: DEBUG , credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id));
+            tracing :: event ! (target : "replay_definitely_detected" , parent : parent , tracing :: Level :: DEBUG , { credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id) });
         }
         #[inline]
         fn on_replay_potentially_detected(
@@ -2258,7 +2282,7 @@ pub mod tracing {
                 key_id,
                 gap,
             } = event;
-            tracing :: event ! (target : "replay_potentially_detected" , parent : parent , tracing :: Level :: DEBUG , credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id) , gap = tracing :: field :: debug (gap));
+            tracing :: event ! (target : "replay_potentially_detected" , parent : parent , tracing :: Level :: DEBUG , { credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id) , gap = tracing :: field :: debug (gap) });
         }
         #[inline]
         fn on_replay_detected_packet_sent(
@@ -2271,7 +2295,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "replay_detected_packet_sent" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "replay_detected_packet_sent" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_replay_detected_packet_received(
@@ -2284,7 +2308,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "replay_detected_packet_received" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "replay_detected_packet_received" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_replay_detected_packet_accepted(
@@ -2298,7 +2322,7 @@ pub mod tracing {
                 credential_id,
                 key_id,
             } = event;
-            tracing :: event ! (target : "replay_detected_packet_accepted" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id));
+            tracing :: event ! (target : "replay_detected_packet_accepted" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) , key_id = tracing :: field :: debug (key_id) });
         }
         #[inline]
         fn on_replay_detected_packet_rejected(
@@ -2311,7 +2335,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "replay_detected_packet_rejected" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "replay_detected_packet_rejected" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_replay_detected_packet_dropped(
@@ -2324,7 +2348,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "replay_detected_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "replay_detected_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_stale_key_packet_sent(
@@ -2337,7 +2361,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "stale_key_packet_sent" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "stale_key_packet_sent" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_stale_key_packet_received(
@@ -2350,7 +2374,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "stale_key_packet_received" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "stale_key_packet_received" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_stale_key_packet_accepted(
@@ -2363,7 +2387,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "stale_key_packet_accepted" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "stale_key_packet_accepted" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_stale_key_packet_rejected(
@@ -2376,7 +2400,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "stale_key_packet_rejected" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "stale_key_packet_rejected" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_stale_key_packet_dropped(
@@ -2389,7 +2413,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
             } = event;
-            tracing :: event ! (target : "stale_key_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id));
+            tracing :: event ! (target : "stale_key_packet_dropped" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , credential_id = tracing :: field :: debug (credential_id) });
         }
         #[inline]
         fn on_path_secret_map_address_cache_accessed(
@@ -2399,7 +2423,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::PathSecretMapAddressCacheAccessed { peer_address, hit } = event;
-            tracing :: event ! (target : "path_secret_map_address_cache_accessed" , parent : parent , tracing :: Level :: DEBUG , peer_address = tracing :: field :: debug (peer_address) , hit = tracing :: field :: debug (hit));
+            tracing :: event ! (target : "path_secret_map_address_cache_accessed" , parent : parent , tracing :: Level :: DEBUG , { peer_address = tracing :: field :: debug (peer_address) , hit = tracing :: field :: debug (hit) });
         }
         #[inline]
         fn on_path_secret_map_id_cache_accessed(
@@ -2409,7 +2433,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::PathSecretMapIdCacheAccessed { credential_id, hit } = event;
-            tracing :: event ! (target : "path_secret_map_id_cache_accessed" , parent : parent , tracing :: Level :: DEBUG , credential_id = tracing :: field :: debug (credential_id) , hit = tracing :: field :: debug (hit));
+            tracing :: event ! (target : "path_secret_map_id_cache_accessed" , parent : parent , tracing :: Level :: DEBUG , { credential_id = tracing :: field :: debug (credential_id) , hit = tracing :: field :: debug (hit) });
         }
         #[inline]
         fn on_path_secret_map_cleaner_cycled(
@@ -2430,7 +2454,7 @@ pub mod tracing {
                 handshake_requests,
                 handshake_requests_retired,
             } = event;
-            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_retired = tracing :: field :: debug (handshake_requests_retired));
+            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , { id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_retired = tracing :: field :: debug (handshake_requests_retired) });
         }
     }
 }
@@ -3339,6 +3363,15 @@ pub mod builder {
                 capacity: capacity.into_event(),
                 errno: errno.into_event(),
             }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ConnectionClosed {}
+    impl IntoEvent<api::ConnectionClosed> for ConnectionClosed {
+        #[inline]
+        fn into_event(self) -> api::ConnectionClosed {
+            let ConnectionClosed {} = self;
+            api::ConnectionClosed {}
         }
     }
     #[derive(Clone, Debug)]
@@ -4370,6 +4403,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `ConnectionClosed` event is triggered"]
+        #[inline]
+        fn on_connection_closed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `EndpointInitialized` event is triggered"]
         #[inline]
         fn on_endpoint_initialized(
@@ -4982,6 +5027,15 @@ mod traits {
                 .on_stream_read_socket_errored(context, meta, event);
         }
         #[inline]
+        fn on_connection_closed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
+        ) {
+            self.as_ref().on_connection_closed(context, meta, event);
+        }
+        #[inline]
         fn on_endpoint_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -5566,6 +5620,16 @@ mod traits {
         ) {
             (self.0).on_stream_read_socket_errored(&context.0, meta, event);
             (self.1).on_stream_read_socket_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_connection_closed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
+        ) {
+            (self.0).on_connection_closed(&context.0, meta, event);
+            (self.1).on_connection_closed(&context.1, meta, event);
         }
         #[inline]
         fn on_endpoint_initialized(
@@ -6372,6 +6436,8 @@ mod traits {
         fn on_stream_read_socket_blocked(&self, event: builder::StreamReadSocketBlocked);
         #[doc = "Publishes a `StreamReadSocketErrored` event to the publisher's subscriber"]
         fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored);
+        #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
+        fn on_connection_closed(&self, event: builder::ConnectionClosed);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
         #[doc = r" Returns the [`Subject`] for the current publisher"]
@@ -6553,6 +6619,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_connection_closed(&self, event: builder::ConnectionClosed) {
+            let event = event.into_event();
+            self.subscriber
+                .on_connection_closed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -6566,59 +6641,59 @@ mod traits {
 pub mod testing {
     use super::*;
     use crate::event::snapshot::Location;
-    use core::sync::atomic::{AtomicU32, Ordering};
+    use core::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Mutex;
     pub mod endpoint {
         use super::*;
         pub struct Subscriber {
             location: Option<Location>,
             output: Mutex<Vec<String>>,
-            pub acceptor_tcp_started: AtomicU32,
-            pub acceptor_tcp_loop_iteration_completed: AtomicU32,
-            pub acceptor_tcp_fresh_enqueued: AtomicU32,
-            pub acceptor_tcp_fresh_batch_completed: AtomicU32,
-            pub acceptor_tcp_stream_dropped: AtomicU32,
-            pub acceptor_tcp_stream_replaced: AtomicU32,
-            pub acceptor_tcp_packet_received: AtomicU32,
-            pub acceptor_tcp_packet_dropped: AtomicU32,
-            pub acceptor_tcp_stream_enqueued: AtomicU32,
-            pub acceptor_tcp_io_error: AtomicU32,
-            pub acceptor_udp_started: AtomicU32,
-            pub acceptor_udp_datagram_received: AtomicU32,
-            pub acceptor_udp_packet_received: AtomicU32,
-            pub acceptor_udp_packet_dropped: AtomicU32,
-            pub acceptor_udp_stream_enqueued: AtomicU32,
-            pub acceptor_udp_io_error: AtomicU32,
-            pub acceptor_stream_pruned: AtomicU32,
-            pub acceptor_stream_dequeued: AtomicU32,
-            pub endpoint_initialized: AtomicU32,
-            pub path_secret_map_initialized: AtomicU32,
-            pub path_secret_map_uninitialized: AtomicU32,
-            pub path_secret_map_background_handshake_requested: AtomicU32,
-            pub path_secret_map_entry_inserted: AtomicU32,
-            pub path_secret_map_entry_ready: AtomicU32,
-            pub path_secret_map_entry_replaced: AtomicU32,
-            pub unknown_path_secret_packet_sent: AtomicU32,
-            pub unknown_path_secret_packet_received: AtomicU32,
-            pub unknown_path_secret_packet_accepted: AtomicU32,
-            pub unknown_path_secret_packet_rejected: AtomicU32,
-            pub unknown_path_secret_packet_dropped: AtomicU32,
-            pub key_accepted: AtomicU32,
-            pub replay_definitely_detected: AtomicU32,
-            pub replay_potentially_detected: AtomicU32,
-            pub replay_detected_packet_sent: AtomicU32,
-            pub replay_detected_packet_received: AtomicU32,
-            pub replay_detected_packet_accepted: AtomicU32,
-            pub replay_detected_packet_rejected: AtomicU32,
-            pub replay_detected_packet_dropped: AtomicU32,
-            pub stale_key_packet_sent: AtomicU32,
-            pub stale_key_packet_received: AtomicU32,
-            pub stale_key_packet_accepted: AtomicU32,
-            pub stale_key_packet_rejected: AtomicU32,
-            pub stale_key_packet_dropped: AtomicU32,
-            pub path_secret_map_address_cache_accessed: AtomicU32,
-            pub path_secret_map_id_cache_accessed: AtomicU32,
-            pub path_secret_map_cleaner_cycled: AtomicU32,
+            pub acceptor_tcp_started: AtomicU64,
+            pub acceptor_tcp_loop_iteration_completed: AtomicU64,
+            pub acceptor_tcp_fresh_enqueued: AtomicU64,
+            pub acceptor_tcp_fresh_batch_completed: AtomicU64,
+            pub acceptor_tcp_stream_dropped: AtomicU64,
+            pub acceptor_tcp_stream_replaced: AtomicU64,
+            pub acceptor_tcp_packet_received: AtomicU64,
+            pub acceptor_tcp_packet_dropped: AtomicU64,
+            pub acceptor_tcp_stream_enqueued: AtomicU64,
+            pub acceptor_tcp_io_error: AtomicU64,
+            pub acceptor_udp_started: AtomicU64,
+            pub acceptor_udp_datagram_received: AtomicU64,
+            pub acceptor_udp_packet_received: AtomicU64,
+            pub acceptor_udp_packet_dropped: AtomicU64,
+            pub acceptor_udp_stream_enqueued: AtomicU64,
+            pub acceptor_udp_io_error: AtomicU64,
+            pub acceptor_stream_pruned: AtomicU64,
+            pub acceptor_stream_dequeued: AtomicU64,
+            pub endpoint_initialized: AtomicU64,
+            pub path_secret_map_initialized: AtomicU64,
+            pub path_secret_map_uninitialized: AtomicU64,
+            pub path_secret_map_background_handshake_requested: AtomicU64,
+            pub path_secret_map_entry_inserted: AtomicU64,
+            pub path_secret_map_entry_ready: AtomicU64,
+            pub path_secret_map_entry_replaced: AtomicU64,
+            pub unknown_path_secret_packet_sent: AtomicU64,
+            pub unknown_path_secret_packet_received: AtomicU64,
+            pub unknown_path_secret_packet_accepted: AtomicU64,
+            pub unknown_path_secret_packet_rejected: AtomicU64,
+            pub unknown_path_secret_packet_dropped: AtomicU64,
+            pub key_accepted: AtomicU64,
+            pub replay_definitely_detected: AtomicU64,
+            pub replay_potentially_detected: AtomicU64,
+            pub replay_detected_packet_sent: AtomicU64,
+            pub replay_detected_packet_received: AtomicU64,
+            pub replay_detected_packet_accepted: AtomicU64,
+            pub replay_detected_packet_rejected: AtomicU64,
+            pub replay_detected_packet_dropped: AtomicU64,
+            pub stale_key_packet_sent: AtomicU64,
+            pub stale_key_packet_received: AtomicU64,
+            pub stale_key_packet_accepted: AtomicU64,
+            pub stale_key_packet_rejected: AtomicU64,
+            pub stale_key_packet_dropped: AtomicU64,
+            pub path_secret_map_address_cache_accessed: AtomicU64,
+            pub path_secret_map_id_cache_accessed: AtomicU64,
+            pub path_secret_map_cleaner_cycled: AtomicU64,
         }
         impl Drop for Subscriber {
             fn drop(&mut self) {
@@ -6650,52 +6725,52 @@ pub mod testing {
                 Self {
                     location: None,
                     output: Default::default(),
-                    acceptor_tcp_started: AtomicU32::new(0),
-                    acceptor_tcp_loop_iteration_completed: AtomicU32::new(0),
-                    acceptor_tcp_fresh_enqueued: AtomicU32::new(0),
-                    acceptor_tcp_fresh_batch_completed: AtomicU32::new(0),
-                    acceptor_tcp_stream_dropped: AtomicU32::new(0),
-                    acceptor_tcp_stream_replaced: AtomicU32::new(0),
-                    acceptor_tcp_packet_received: AtomicU32::new(0),
-                    acceptor_tcp_packet_dropped: AtomicU32::new(0),
-                    acceptor_tcp_stream_enqueued: AtomicU32::new(0),
-                    acceptor_tcp_io_error: AtomicU32::new(0),
-                    acceptor_udp_started: AtomicU32::new(0),
-                    acceptor_udp_datagram_received: AtomicU32::new(0),
-                    acceptor_udp_packet_received: AtomicU32::new(0),
-                    acceptor_udp_packet_dropped: AtomicU32::new(0),
-                    acceptor_udp_stream_enqueued: AtomicU32::new(0),
-                    acceptor_udp_io_error: AtomicU32::new(0),
-                    acceptor_stream_pruned: AtomicU32::new(0),
-                    acceptor_stream_dequeued: AtomicU32::new(0),
-                    endpoint_initialized: AtomicU32::new(0),
-                    path_secret_map_initialized: AtomicU32::new(0),
-                    path_secret_map_uninitialized: AtomicU32::new(0),
-                    path_secret_map_background_handshake_requested: AtomicU32::new(0),
-                    path_secret_map_entry_inserted: AtomicU32::new(0),
-                    path_secret_map_entry_ready: AtomicU32::new(0),
-                    path_secret_map_entry_replaced: AtomicU32::new(0),
-                    unknown_path_secret_packet_sent: AtomicU32::new(0),
-                    unknown_path_secret_packet_received: AtomicU32::new(0),
-                    unknown_path_secret_packet_accepted: AtomicU32::new(0),
-                    unknown_path_secret_packet_rejected: AtomicU32::new(0),
-                    unknown_path_secret_packet_dropped: AtomicU32::new(0),
-                    key_accepted: AtomicU32::new(0),
-                    replay_definitely_detected: AtomicU32::new(0),
-                    replay_potentially_detected: AtomicU32::new(0),
-                    replay_detected_packet_sent: AtomicU32::new(0),
-                    replay_detected_packet_received: AtomicU32::new(0),
-                    replay_detected_packet_accepted: AtomicU32::new(0),
-                    replay_detected_packet_rejected: AtomicU32::new(0),
-                    replay_detected_packet_dropped: AtomicU32::new(0),
-                    stale_key_packet_sent: AtomicU32::new(0),
-                    stale_key_packet_received: AtomicU32::new(0),
-                    stale_key_packet_accepted: AtomicU32::new(0),
-                    stale_key_packet_rejected: AtomicU32::new(0),
-                    stale_key_packet_dropped: AtomicU32::new(0),
-                    path_secret_map_address_cache_accessed: AtomicU32::new(0),
-                    path_secret_map_id_cache_accessed: AtomicU32::new(0),
-                    path_secret_map_cleaner_cycled: AtomicU32::new(0),
+                    acceptor_tcp_started: AtomicU64::new(0),
+                    acceptor_tcp_loop_iteration_completed: AtomicU64::new(0),
+                    acceptor_tcp_fresh_enqueued: AtomicU64::new(0),
+                    acceptor_tcp_fresh_batch_completed: AtomicU64::new(0),
+                    acceptor_tcp_stream_dropped: AtomicU64::new(0),
+                    acceptor_tcp_stream_replaced: AtomicU64::new(0),
+                    acceptor_tcp_packet_received: AtomicU64::new(0),
+                    acceptor_tcp_packet_dropped: AtomicU64::new(0),
+                    acceptor_tcp_stream_enqueued: AtomicU64::new(0),
+                    acceptor_tcp_io_error: AtomicU64::new(0),
+                    acceptor_udp_started: AtomicU64::new(0),
+                    acceptor_udp_datagram_received: AtomicU64::new(0),
+                    acceptor_udp_packet_received: AtomicU64::new(0),
+                    acceptor_udp_packet_dropped: AtomicU64::new(0),
+                    acceptor_udp_stream_enqueued: AtomicU64::new(0),
+                    acceptor_udp_io_error: AtomicU64::new(0),
+                    acceptor_stream_pruned: AtomicU64::new(0),
+                    acceptor_stream_dequeued: AtomicU64::new(0),
+                    endpoint_initialized: AtomicU64::new(0),
+                    path_secret_map_initialized: AtomicU64::new(0),
+                    path_secret_map_uninitialized: AtomicU64::new(0),
+                    path_secret_map_background_handshake_requested: AtomicU64::new(0),
+                    path_secret_map_entry_inserted: AtomicU64::new(0),
+                    path_secret_map_entry_ready: AtomicU64::new(0),
+                    path_secret_map_entry_replaced: AtomicU64::new(0),
+                    unknown_path_secret_packet_sent: AtomicU64::new(0),
+                    unknown_path_secret_packet_received: AtomicU64::new(0),
+                    unknown_path_secret_packet_accepted: AtomicU64::new(0),
+                    unknown_path_secret_packet_rejected: AtomicU64::new(0),
+                    unknown_path_secret_packet_dropped: AtomicU64::new(0),
+                    key_accepted: AtomicU64::new(0),
+                    replay_definitely_detected: AtomicU64::new(0),
+                    replay_potentially_detected: AtomicU64::new(0),
+                    replay_detected_packet_sent: AtomicU64::new(0),
+                    replay_detected_packet_received: AtomicU64::new(0),
+                    replay_detected_packet_accepted: AtomicU64::new(0),
+                    replay_detected_packet_rejected: AtomicU64::new(0),
+                    replay_detected_packet_dropped: AtomicU64::new(0),
+                    stale_key_packet_sent: AtomicU64::new(0),
+                    stale_key_packet_received: AtomicU64::new(0),
+                    stale_key_packet_accepted: AtomicU64::new(0),
+                    stale_key_packet_rejected: AtomicU64::new(0),
+                    stale_key_packet_dropped: AtomicU64::new(0),
+                    path_secret_map_address_cache_accessed: AtomicU64::new(0),
+                    path_secret_map_id_cache_accessed: AtomicU64::new(0),
+                    path_secret_map_cleaner_cycled: AtomicU64::new(0),
                 }
             }
         }
@@ -7253,68 +7328,69 @@ pub mod testing {
     pub struct Subscriber {
         location: Option<Location>,
         output: Mutex<Vec<String>>,
-        pub acceptor_tcp_started: AtomicU32,
-        pub acceptor_tcp_loop_iteration_completed: AtomicU32,
-        pub acceptor_tcp_fresh_enqueued: AtomicU32,
-        pub acceptor_tcp_fresh_batch_completed: AtomicU32,
-        pub acceptor_tcp_stream_dropped: AtomicU32,
-        pub acceptor_tcp_stream_replaced: AtomicU32,
-        pub acceptor_tcp_packet_received: AtomicU32,
-        pub acceptor_tcp_packet_dropped: AtomicU32,
-        pub acceptor_tcp_stream_enqueued: AtomicU32,
-        pub acceptor_tcp_io_error: AtomicU32,
-        pub acceptor_udp_started: AtomicU32,
-        pub acceptor_udp_datagram_received: AtomicU32,
-        pub acceptor_udp_packet_received: AtomicU32,
-        pub acceptor_udp_packet_dropped: AtomicU32,
-        pub acceptor_udp_stream_enqueued: AtomicU32,
-        pub acceptor_udp_io_error: AtomicU32,
-        pub acceptor_stream_pruned: AtomicU32,
-        pub acceptor_stream_dequeued: AtomicU32,
-        pub stream_write_flushed: AtomicU32,
-        pub stream_write_fin_flushed: AtomicU32,
-        pub stream_write_blocked: AtomicU32,
-        pub stream_write_errored: AtomicU32,
-        pub stream_write_shutdown: AtomicU32,
-        pub stream_write_socket_flushed: AtomicU32,
-        pub stream_write_socket_blocked: AtomicU32,
-        pub stream_write_socket_errored: AtomicU32,
-        pub stream_read_flushed: AtomicU32,
-        pub stream_read_fin_flushed: AtomicU32,
-        pub stream_read_blocked: AtomicU32,
-        pub stream_read_errored: AtomicU32,
-        pub stream_read_shutdown: AtomicU32,
-        pub stream_read_socket_flushed: AtomicU32,
-        pub stream_read_socket_blocked: AtomicU32,
-        pub stream_read_socket_errored: AtomicU32,
-        pub endpoint_initialized: AtomicU32,
-        pub path_secret_map_initialized: AtomicU32,
-        pub path_secret_map_uninitialized: AtomicU32,
-        pub path_secret_map_background_handshake_requested: AtomicU32,
-        pub path_secret_map_entry_inserted: AtomicU32,
-        pub path_secret_map_entry_ready: AtomicU32,
-        pub path_secret_map_entry_replaced: AtomicU32,
-        pub unknown_path_secret_packet_sent: AtomicU32,
-        pub unknown_path_secret_packet_received: AtomicU32,
-        pub unknown_path_secret_packet_accepted: AtomicU32,
-        pub unknown_path_secret_packet_rejected: AtomicU32,
-        pub unknown_path_secret_packet_dropped: AtomicU32,
-        pub key_accepted: AtomicU32,
-        pub replay_definitely_detected: AtomicU32,
-        pub replay_potentially_detected: AtomicU32,
-        pub replay_detected_packet_sent: AtomicU32,
-        pub replay_detected_packet_received: AtomicU32,
-        pub replay_detected_packet_accepted: AtomicU32,
-        pub replay_detected_packet_rejected: AtomicU32,
-        pub replay_detected_packet_dropped: AtomicU32,
-        pub stale_key_packet_sent: AtomicU32,
-        pub stale_key_packet_received: AtomicU32,
-        pub stale_key_packet_accepted: AtomicU32,
-        pub stale_key_packet_rejected: AtomicU32,
-        pub stale_key_packet_dropped: AtomicU32,
-        pub path_secret_map_address_cache_accessed: AtomicU32,
-        pub path_secret_map_id_cache_accessed: AtomicU32,
-        pub path_secret_map_cleaner_cycled: AtomicU32,
+        pub acceptor_tcp_started: AtomicU64,
+        pub acceptor_tcp_loop_iteration_completed: AtomicU64,
+        pub acceptor_tcp_fresh_enqueued: AtomicU64,
+        pub acceptor_tcp_fresh_batch_completed: AtomicU64,
+        pub acceptor_tcp_stream_dropped: AtomicU64,
+        pub acceptor_tcp_stream_replaced: AtomicU64,
+        pub acceptor_tcp_packet_received: AtomicU64,
+        pub acceptor_tcp_packet_dropped: AtomicU64,
+        pub acceptor_tcp_stream_enqueued: AtomicU64,
+        pub acceptor_tcp_io_error: AtomicU64,
+        pub acceptor_udp_started: AtomicU64,
+        pub acceptor_udp_datagram_received: AtomicU64,
+        pub acceptor_udp_packet_received: AtomicU64,
+        pub acceptor_udp_packet_dropped: AtomicU64,
+        pub acceptor_udp_stream_enqueued: AtomicU64,
+        pub acceptor_udp_io_error: AtomicU64,
+        pub acceptor_stream_pruned: AtomicU64,
+        pub acceptor_stream_dequeued: AtomicU64,
+        pub stream_write_flushed: AtomicU64,
+        pub stream_write_fin_flushed: AtomicU64,
+        pub stream_write_blocked: AtomicU64,
+        pub stream_write_errored: AtomicU64,
+        pub stream_write_shutdown: AtomicU64,
+        pub stream_write_socket_flushed: AtomicU64,
+        pub stream_write_socket_blocked: AtomicU64,
+        pub stream_write_socket_errored: AtomicU64,
+        pub stream_read_flushed: AtomicU64,
+        pub stream_read_fin_flushed: AtomicU64,
+        pub stream_read_blocked: AtomicU64,
+        pub stream_read_errored: AtomicU64,
+        pub stream_read_shutdown: AtomicU64,
+        pub stream_read_socket_flushed: AtomicU64,
+        pub stream_read_socket_blocked: AtomicU64,
+        pub stream_read_socket_errored: AtomicU64,
+        pub connection_closed: AtomicU64,
+        pub endpoint_initialized: AtomicU64,
+        pub path_secret_map_initialized: AtomicU64,
+        pub path_secret_map_uninitialized: AtomicU64,
+        pub path_secret_map_background_handshake_requested: AtomicU64,
+        pub path_secret_map_entry_inserted: AtomicU64,
+        pub path_secret_map_entry_ready: AtomicU64,
+        pub path_secret_map_entry_replaced: AtomicU64,
+        pub unknown_path_secret_packet_sent: AtomicU64,
+        pub unknown_path_secret_packet_received: AtomicU64,
+        pub unknown_path_secret_packet_accepted: AtomicU64,
+        pub unknown_path_secret_packet_rejected: AtomicU64,
+        pub unknown_path_secret_packet_dropped: AtomicU64,
+        pub key_accepted: AtomicU64,
+        pub replay_definitely_detected: AtomicU64,
+        pub replay_potentially_detected: AtomicU64,
+        pub replay_detected_packet_sent: AtomicU64,
+        pub replay_detected_packet_received: AtomicU64,
+        pub replay_detected_packet_accepted: AtomicU64,
+        pub replay_detected_packet_rejected: AtomicU64,
+        pub replay_detected_packet_dropped: AtomicU64,
+        pub stale_key_packet_sent: AtomicU64,
+        pub stale_key_packet_received: AtomicU64,
+        pub stale_key_packet_accepted: AtomicU64,
+        pub stale_key_packet_rejected: AtomicU64,
+        pub stale_key_packet_dropped: AtomicU64,
+        pub path_secret_map_address_cache_accessed: AtomicU64,
+        pub path_secret_map_id_cache_accessed: AtomicU64,
+        pub path_secret_map_cleaner_cycled: AtomicU64,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -7346,68 +7422,69 @@ pub mod testing {
             Self {
                 location: None,
                 output: Default::default(),
-                acceptor_tcp_started: AtomicU32::new(0),
-                acceptor_tcp_loop_iteration_completed: AtomicU32::new(0),
-                acceptor_tcp_fresh_enqueued: AtomicU32::new(0),
-                acceptor_tcp_fresh_batch_completed: AtomicU32::new(0),
-                acceptor_tcp_stream_dropped: AtomicU32::new(0),
-                acceptor_tcp_stream_replaced: AtomicU32::new(0),
-                acceptor_tcp_packet_received: AtomicU32::new(0),
-                acceptor_tcp_packet_dropped: AtomicU32::new(0),
-                acceptor_tcp_stream_enqueued: AtomicU32::new(0),
-                acceptor_tcp_io_error: AtomicU32::new(0),
-                acceptor_udp_started: AtomicU32::new(0),
-                acceptor_udp_datagram_received: AtomicU32::new(0),
-                acceptor_udp_packet_received: AtomicU32::new(0),
-                acceptor_udp_packet_dropped: AtomicU32::new(0),
-                acceptor_udp_stream_enqueued: AtomicU32::new(0),
-                acceptor_udp_io_error: AtomicU32::new(0),
-                acceptor_stream_pruned: AtomicU32::new(0),
-                acceptor_stream_dequeued: AtomicU32::new(0),
-                stream_write_flushed: AtomicU32::new(0),
-                stream_write_fin_flushed: AtomicU32::new(0),
-                stream_write_blocked: AtomicU32::new(0),
-                stream_write_errored: AtomicU32::new(0),
-                stream_write_shutdown: AtomicU32::new(0),
-                stream_write_socket_flushed: AtomicU32::new(0),
-                stream_write_socket_blocked: AtomicU32::new(0),
-                stream_write_socket_errored: AtomicU32::new(0),
-                stream_read_flushed: AtomicU32::new(0),
-                stream_read_fin_flushed: AtomicU32::new(0),
-                stream_read_blocked: AtomicU32::new(0),
-                stream_read_errored: AtomicU32::new(0),
-                stream_read_shutdown: AtomicU32::new(0),
-                stream_read_socket_flushed: AtomicU32::new(0),
-                stream_read_socket_blocked: AtomicU32::new(0),
-                stream_read_socket_errored: AtomicU32::new(0),
-                endpoint_initialized: AtomicU32::new(0),
-                path_secret_map_initialized: AtomicU32::new(0),
-                path_secret_map_uninitialized: AtomicU32::new(0),
-                path_secret_map_background_handshake_requested: AtomicU32::new(0),
-                path_secret_map_entry_inserted: AtomicU32::new(0),
-                path_secret_map_entry_ready: AtomicU32::new(0),
-                path_secret_map_entry_replaced: AtomicU32::new(0),
-                unknown_path_secret_packet_sent: AtomicU32::new(0),
-                unknown_path_secret_packet_received: AtomicU32::new(0),
-                unknown_path_secret_packet_accepted: AtomicU32::new(0),
-                unknown_path_secret_packet_rejected: AtomicU32::new(0),
-                unknown_path_secret_packet_dropped: AtomicU32::new(0),
-                key_accepted: AtomicU32::new(0),
-                replay_definitely_detected: AtomicU32::new(0),
-                replay_potentially_detected: AtomicU32::new(0),
-                replay_detected_packet_sent: AtomicU32::new(0),
-                replay_detected_packet_received: AtomicU32::new(0),
-                replay_detected_packet_accepted: AtomicU32::new(0),
-                replay_detected_packet_rejected: AtomicU32::new(0),
-                replay_detected_packet_dropped: AtomicU32::new(0),
-                stale_key_packet_sent: AtomicU32::new(0),
-                stale_key_packet_received: AtomicU32::new(0),
-                stale_key_packet_accepted: AtomicU32::new(0),
-                stale_key_packet_rejected: AtomicU32::new(0),
-                stale_key_packet_dropped: AtomicU32::new(0),
-                path_secret_map_address_cache_accessed: AtomicU32::new(0),
-                path_secret_map_id_cache_accessed: AtomicU32::new(0),
-                path_secret_map_cleaner_cycled: AtomicU32::new(0),
+                acceptor_tcp_started: AtomicU64::new(0),
+                acceptor_tcp_loop_iteration_completed: AtomicU64::new(0),
+                acceptor_tcp_fresh_enqueued: AtomicU64::new(0),
+                acceptor_tcp_fresh_batch_completed: AtomicU64::new(0),
+                acceptor_tcp_stream_dropped: AtomicU64::new(0),
+                acceptor_tcp_stream_replaced: AtomicU64::new(0),
+                acceptor_tcp_packet_received: AtomicU64::new(0),
+                acceptor_tcp_packet_dropped: AtomicU64::new(0),
+                acceptor_tcp_stream_enqueued: AtomicU64::new(0),
+                acceptor_tcp_io_error: AtomicU64::new(0),
+                acceptor_udp_started: AtomicU64::new(0),
+                acceptor_udp_datagram_received: AtomicU64::new(0),
+                acceptor_udp_packet_received: AtomicU64::new(0),
+                acceptor_udp_packet_dropped: AtomicU64::new(0),
+                acceptor_udp_stream_enqueued: AtomicU64::new(0),
+                acceptor_udp_io_error: AtomicU64::new(0),
+                acceptor_stream_pruned: AtomicU64::new(0),
+                acceptor_stream_dequeued: AtomicU64::new(0),
+                stream_write_flushed: AtomicU64::new(0),
+                stream_write_fin_flushed: AtomicU64::new(0),
+                stream_write_blocked: AtomicU64::new(0),
+                stream_write_errored: AtomicU64::new(0),
+                stream_write_shutdown: AtomicU64::new(0),
+                stream_write_socket_flushed: AtomicU64::new(0),
+                stream_write_socket_blocked: AtomicU64::new(0),
+                stream_write_socket_errored: AtomicU64::new(0),
+                stream_read_flushed: AtomicU64::new(0),
+                stream_read_fin_flushed: AtomicU64::new(0),
+                stream_read_blocked: AtomicU64::new(0),
+                stream_read_errored: AtomicU64::new(0),
+                stream_read_shutdown: AtomicU64::new(0),
+                stream_read_socket_flushed: AtomicU64::new(0),
+                stream_read_socket_blocked: AtomicU64::new(0),
+                stream_read_socket_errored: AtomicU64::new(0),
+                connection_closed: AtomicU64::new(0),
+                endpoint_initialized: AtomicU64::new(0),
+                path_secret_map_initialized: AtomicU64::new(0),
+                path_secret_map_uninitialized: AtomicU64::new(0),
+                path_secret_map_background_handshake_requested: AtomicU64::new(0),
+                path_secret_map_entry_inserted: AtomicU64::new(0),
+                path_secret_map_entry_ready: AtomicU64::new(0),
+                path_secret_map_entry_replaced: AtomicU64::new(0),
+                unknown_path_secret_packet_sent: AtomicU64::new(0),
+                unknown_path_secret_packet_received: AtomicU64::new(0),
+                unknown_path_secret_packet_accepted: AtomicU64::new(0),
+                unknown_path_secret_packet_rejected: AtomicU64::new(0),
+                unknown_path_secret_packet_dropped: AtomicU64::new(0),
+                key_accepted: AtomicU64::new(0),
+                replay_definitely_detected: AtomicU64::new(0),
+                replay_potentially_detected: AtomicU64::new(0),
+                replay_detected_packet_sent: AtomicU64::new(0),
+                replay_detected_packet_received: AtomicU64::new(0),
+                replay_detected_packet_accepted: AtomicU64::new(0),
+                replay_detected_packet_rejected: AtomicU64::new(0),
+                replay_detected_packet_dropped: AtomicU64::new(0),
+                stale_key_packet_sent: AtomicU64::new(0),
+                stale_key_packet_received: AtomicU64::new(0),
+                stale_key_packet_accepted: AtomicU64::new(0),
+                stale_key_packet_rejected: AtomicU64::new(0),
+                stale_key_packet_dropped: AtomicU64::new(0),
+                path_secret_map_address_cache_accessed: AtomicU64::new(0),
+                path_secret_map_id_cache_accessed: AtomicU64::new(0),
+                path_secret_map_cleaner_cycled: AtomicU64::new(0),
             }
         }
     }
@@ -7861,6 +7938,20 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_connection_closed(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
+        ) {
+            self.connection_closed.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_endpoint_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -8195,68 +8286,69 @@ pub mod testing {
     pub struct Publisher {
         location: Option<Location>,
         output: Mutex<Vec<String>>,
-        pub acceptor_tcp_started: AtomicU32,
-        pub acceptor_tcp_loop_iteration_completed: AtomicU32,
-        pub acceptor_tcp_fresh_enqueued: AtomicU32,
-        pub acceptor_tcp_fresh_batch_completed: AtomicU32,
-        pub acceptor_tcp_stream_dropped: AtomicU32,
-        pub acceptor_tcp_stream_replaced: AtomicU32,
-        pub acceptor_tcp_packet_received: AtomicU32,
-        pub acceptor_tcp_packet_dropped: AtomicU32,
-        pub acceptor_tcp_stream_enqueued: AtomicU32,
-        pub acceptor_tcp_io_error: AtomicU32,
-        pub acceptor_udp_started: AtomicU32,
-        pub acceptor_udp_datagram_received: AtomicU32,
-        pub acceptor_udp_packet_received: AtomicU32,
-        pub acceptor_udp_packet_dropped: AtomicU32,
-        pub acceptor_udp_stream_enqueued: AtomicU32,
-        pub acceptor_udp_io_error: AtomicU32,
-        pub acceptor_stream_pruned: AtomicU32,
-        pub acceptor_stream_dequeued: AtomicU32,
-        pub stream_write_flushed: AtomicU32,
-        pub stream_write_fin_flushed: AtomicU32,
-        pub stream_write_blocked: AtomicU32,
-        pub stream_write_errored: AtomicU32,
-        pub stream_write_shutdown: AtomicU32,
-        pub stream_write_socket_flushed: AtomicU32,
-        pub stream_write_socket_blocked: AtomicU32,
-        pub stream_write_socket_errored: AtomicU32,
-        pub stream_read_flushed: AtomicU32,
-        pub stream_read_fin_flushed: AtomicU32,
-        pub stream_read_blocked: AtomicU32,
-        pub stream_read_errored: AtomicU32,
-        pub stream_read_shutdown: AtomicU32,
-        pub stream_read_socket_flushed: AtomicU32,
-        pub stream_read_socket_blocked: AtomicU32,
-        pub stream_read_socket_errored: AtomicU32,
-        pub endpoint_initialized: AtomicU32,
-        pub path_secret_map_initialized: AtomicU32,
-        pub path_secret_map_uninitialized: AtomicU32,
-        pub path_secret_map_background_handshake_requested: AtomicU32,
-        pub path_secret_map_entry_inserted: AtomicU32,
-        pub path_secret_map_entry_ready: AtomicU32,
-        pub path_secret_map_entry_replaced: AtomicU32,
-        pub unknown_path_secret_packet_sent: AtomicU32,
-        pub unknown_path_secret_packet_received: AtomicU32,
-        pub unknown_path_secret_packet_accepted: AtomicU32,
-        pub unknown_path_secret_packet_rejected: AtomicU32,
-        pub unknown_path_secret_packet_dropped: AtomicU32,
-        pub key_accepted: AtomicU32,
-        pub replay_definitely_detected: AtomicU32,
-        pub replay_potentially_detected: AtomicU32,
-        pub replay_detected_packet_sent: AtomicU32,
-        pub replay_detected_packet_received: AtomicU32,
-        pub replay_detected_packet_accepted: AtomicU32,
-        pub replay_detected_packet_rejected: AtomicU32,
-        pub replay_detected_packet_dropped: AtomicU32,
-        pub stale_key_packet_sent: AtomicU32,
-        pub stale_key_packet_received: AtomicU32,
-        pub stale_key_packet_accepted: AtomicU32,
-        pub stale_key_packet_rejected: AtomicU32,
-        pub stale_key_packet_dropped: AtomicU32,
-        pub path_secret_map_address_cache_accessed: AtomicU32,
-        pub path_secret_map_id_cache_accessed: AtomicU32,
-        pub path_secret_map_cleaner_cycled: AtomicU32,
+        pub acceptor_tcp_started: AtomicU64,
+        pub acceptor_tcp_loop_iteration_completed: AtomicU64,
+        pub acceptor_tcp_fresh_enqueued: AtomicU64,
+        pub acceptor_tcp_fresh_batch_completed: AtomicU64,
+        pub acceptor_tcp_stream_dropped: AtomicU64,
+        pub acceptor_tcp_stream_replaced: AtomicU64,
+        pub acceptor_tcp_packet_received: AtomicU64,
+        pub acceptor_tcp_packet_dropped: AtomicU64,
+        pub acceptor_tcp_stream_enqueued: AtomicU64,
+        pub acceptor_tcp_io_error: AtomicU64,
+        pub acceptor_udp_started: AtomicU64,
+        pub acceptor_udp_datagram_received: AtomicU64,
+        pub acceptor_udp_packet_received: AtomicU64,
+        pub acceptor_udp_packet_dropped: AtomicU64,
+        pub acceptor_udp_stream_enqueued: AtomicU64,
+        pub acceptor_udp_io_error: AtomicU64,
+        pub acceptor_stream_pruned: AtomicU64,
+        pub acceptor_stream_dequeued: AtomicU64,
+        pub stream_write_flushed: AtomicU64,
+        pub stream_write_fin_flushed: AtomicU64,
+        pub stream_write_blocked: AtomicU64,
+        pub stream_write_errored: AtomicU64,
+        pub stream_write_shutdown: AtomicU64,
+        pub stream_write_socket_flushed: AtomicU64,
+        pub stream_write_socket_blocked: AtomicU64,
+        pub stream_write_socket_errored: AtomicU64,
+        pub stream_read_flushed: AtomicU64,
+        pub stream_read_fin_flushed: AtomicU64,
+        pub stream_read_blocked: AtomicU64,
+        pub stream_read_errored: AtomicU64,
+        pub stream_read_shutdown: AtomicU64,
+        pub stream_read_socket_flushed: AtomicU64,
+        pub stream_read_socket_blocked: AtomicU64,
+        pub stream_read_socket_errored: AtomicU64,
+        pub connection_closed: AtomicU64,
+        pub endpoint_initialized: AtomicU64,
+        pub path_secret_map_initialized: AtomicU64,
+        pub path_secret_map_uninitialized: AtomicU64,
+        pub path_secret_map_background_handshake_requested: AtomicU64,
+        pub path_secret_map_entry_inserted: AtomicU64,
+        pub path_secret_map_entry_ready: AtomicU64,
+        pub path_secret_map_entry_replaced: AtomicU64,
+        pub unknown_path_secret_packet_sent: AtomicU64,
+        pub unknown_path_secret_packet_received: AtomicU64,
+        pub unknown_path_secret_packet_accepted: AtomicU64,
+        pub unknown_path_secret_packet_rejected: AtomicU64,
+        pub unknown_path_secret_packet_dropped: AtomicU64,
+        pub key_accepted: AtomicU64,
+        pub replay_definitely_detected: AtomicU64,
+        pub replay_potentially_detected: AtomicU64,
+        pub replay_detected_packet_sent: AtomicU64,
+        pub replay_detected_packet_received: AtomicU64,
+        pub replay_detected_packet_accepted: AtomicU64,
+        pub replay_detected_packet_rejected: AtomicU64,
+        pub replay_detected_packet_dropped: AtomicU64,
+        pub stale_key_packet_sent: AtomicU64,
+        pub stale_key_packet_received: AtomicU64,
+        pub stale_key_packet_accepted: AtomicU64,
+        pub stale_key_packet_rejected: AtomicU64,
+        pub stale_key_packet_dropped: AtomicU64,
+        pub path_secret_map_address_cache_accessed: AtomicU64,
+        pub path_secret_map_id_cache_accessed: AtomicU64,
+        pub path_secret_map_cleaner_cycled: AtomicU64,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -8278,68 +8370,69 @@ pub mod testing {
             Self {
                 location: None,
                 output: Default::default(),
-                acceptor_tcp_started: AtomicU32::new(0),
-                acceptor_tcp_loop_iteration_completed: AtomicU32::new(0),
-                acceptor_tcp_fresh_enqueued: AtomicU32::new(0),
-                acceptor_tcp_fresh_batch_completed: AtomicU32::new(0),
-                acceptor_tcp_stream_dropped: AtomicU32::new(0),
-                acceptor_tcp_stream_replaced: AtomicU32::new(0),
-                acceptor_tcp_packet_received: AtomicU32::new(0),
-                acceptor_tcp_packet_dropped: AtomicU32::new(0),
-                acceptor_tcp_stream_enqueued: AtomicU32::new(0),
-                acceptor_tcp_io_error: AtomicU32::new(0),
-                acceptor_udp_started: AtomicU32::new(0),
-                acceptor_udp_datagram_received: AtomicU32::new(0),
-                acceptor_udp_packet_received: AtomicU32::new(0),
-                acceptor_udp_packet_dropped: AtomicU32::new(0),
-                acceptor_udp_stream_enqueued: AtomicU32::new(0),
-                acceptor_udp_io_error: AtomicU32::new(0),
-                acceptor_stream_pruned: AtomicU32::new(0),
-                acceptor_stream_dequeued: AtomicU32::new(0),
-                stream_write_flushed: AtomicU32::new(0),
-                stream_write_fin_flushed: AtomicU32::new(0),
-                stream_write_blocked: AtomicU32::new(0),
-                stream_write_errored: AtomicU32::new(0),
-                stream_write_shutdown: AtomicU32::new(0),
-                stream_write_socket_flushed: AtomicU32::new(0),
-                stream_write_socket_blocked: AtomicU32::new(0),
-                stream_write_socket_errored: AtomicU32::new(0),
-                stream_read_flushed: AtomicU32::new(0),
-                stream_read_fin_flushed: AtomicU32::new(0),
-                stream_read_blocked: AtomicU32::new(0),
-                stream_read_errored: AtomicU32::new(0),
-                stream_read_shutdown: AtomicU32::new(0),
-                stream_read_socket_flushed: AtomicU32::new(0),
-                stream_read_socket_blocked: AtomicU32::new(0),
-                stream_read_socket_errored: AtomicU32::new(0),
-                endpoint_initialized: AtomicU32::new(0),
-                path_secret_map_initialized: AtomicU32::new(0),
-                path_secret_map_uninitialized: AtomicU32::new(0),
-                path_secret_map_background_handshake_requested: AtomicU32::new(0),
-                path_secret_map_entry_inserted: AtomicU32::new(0),
-                path_secret_map_entry_ready: AtomicU32::new(0),
-                path_secret_map_entry_replaced: AtomicU32::new(0),
-                unknown_path_secret_packet_sent: AtomicU32::new(0),
-                unknown_path_secret_packet_received: AtomicU32::new(0),
-                unknown_path_secret_packet_accepted: AtomicU32::new(0),
-                unknown_path_secret_packet_rejected: AtomicU32::new(0),
-                unknown_path_secret_packet_dropped: AtomicU32::new(0),
-                key_accepted: AtomicU32::new(0),
-                replay_definitely_detected: AtomicU32::new(0),
-                replay_potentially_detected: AtomicU32::new(0),
-                replay_detected_packet_sent: AtomicU32::new(0),
-                replay_detected_packet_received: AtomicU32::new(0),
-                replay_detected_packet_accepted: AtomicU32::new(0),
-                replay_detected_packet_rejected: AtomicU32::new(0),
-                replay_detected_packet_dropped: AtomicU32::new(0),
-                stale_key_packet_sent: AtomicU32::new(0),
-                stale_key_packet_received: AtomicU32::new(0),
-                stale_key_packet_accepted: AtomicU32::new(0),
-                stale_key_packet_rejected: AtomicU32::new(0),
-                stale_key_packet_dropped: AtomicU32::new(0),
-                path_secret_map_address_cache_accessed: AtomicU32::new(0),
-                path_secret_map_id_cache_accessed: AtomicU32::new(0),
-                path_secret_map_cleaner_cycled: AtomicU32::new(0),
+                acceptor_tcp_started: AtomicU64::new(0),
+                acceptor_tcp_loop_iteration_completed: AtomicU64::new(0),
+                acceptor_tcp_fresh_enqueued: AtomicU64::new(0),
+                acceptor_tcp_fresh_batch_completed: AtomicU64::new(0),
+                acceptor_tcp_stream_dropped: AtomicU64::new(0),
+                acceptor_tcp_stream_replaced: AtomicU64::new(0),
+                acceptor_tcp_packet_received: AtomicU64::new(0),
+                acceptor_tcp_packet_dropped: AtomicU64::new(0),
+                acceptor_tcp_stream_enqueued: AtomicU64::new(0),
+                acceptor_tcp_io_error: AtomicU64::new(0),
+                acceptor_udp_started: AtomicU64::new(0),
+                acceptor_udp_datagram_received: AtomicU64::new(0),
+                acceptor_udp_packet_received: AtomicU64::new(0),
+                acceptor_udp_packet_dropped: AtomicU64::new(0),
+                acceptor_udp_stream_enqueued: AtomicU64::new(0),
+                acceptor_udp_io_error: AtomicU64::new(0),
+                acceptor_stream_pruned: AtomicU64::new(0),
+                acceptor_stream_dequeued: AtomicU64::new(0),
+                stream_write_flushed: AtomicU64::new(0),
+                stream_write_fin_flushed: AtomicU64::new(0),
+                stream_write_blocked: AtomicU64::new(0),
+                stream_write_errored: AtomicU64::new(0),
+                stream_write_shutdown: AtomicU64::new(0),
+                stream_write_socket_flushed: AtomicU64::new(0),
+                stream_write_socket_blocked: AtomicU64::new(0),
+                stream_write_socket_errored: AtomicU64::new(0),
+                stream_read_flushed: AtomicU64::new(0),
+                stream_read_fin_flushed: AtomicU64::new(0),
+                stream_read_blocked: AtomicU64::new(0),
+                stream_read_errored: AtomicU64::new(0),
+                stream_read_shutdown: AtomicU64::new(0),
+                stream_read_socket_flushed: AtomicU64::new(0),
+                stream_read_socket_blocked: AtomicU64::new(0),
+                stream_read_socket_errored: AtomicU64::new(0),
+                connection_closed: AtomicU64::new(0),
+                endpoint_initialized: AtomicU64::new(0),
+                path_secret_map_initialized: AtomicU64::new(0),
+                path_secret_map_uninitialized: AtomicU64::new(0),
+                path_secret_map_background_handshake_requested: AtomicU64::new(0),
+                path_secret_map_entry_inserted: AtomicU64::new(0),
+                path_secret_map_entry_ready: AtomicU64::new(0),
+                path_secret_map_entry_replaced: AtomicU64::new(0),
+                unknown_path_secret_packet_sent: AtomicU64::new(0),
+                unknown_path_secret_packet_received: AtomicU64::new(0),
+                unknown_path_secret_packet_accepted: AtomicU64::new(0),
+                unknown_path_secret_packet_rejected: AtomicU64::new(0),
+                unknown_path_secret_packet_dropped: AtomicU64::new(0),
+                key_accepted: AtomicU64::new(0),
+                replay_definitely_detected: AtomicU64::new(0),
+                replay_potentially_detected: AtomicU64::new(0),
+                replay_detected_packet_sent: AtomicU64::new(0),
+                replay_detected_packet_received: AtomicU64::new(0),
+                replay_detected_packet_accepted: AtomicU64::new(0),
+                replay_detected_packet_rejected: AtomicU64::new(0),
+                replay_detected_packet_dropped: AtomicU64::new(0),
+                stale_key_packet_sent: AtomicU64::new(0),
+                stale_key_packet_received: AtomicU64::new(0),
+                stale_key_packet_accepted: AtomicU64::new(0),
+                stale_key_packet_rejected: AtomicU64::new(0),
+                stale_key_packet_dropped: AtomicU64::new(0),
+                path_secret_map_address_cache_accessed: AtomicU64::new(0),
+                path_secret_map_id_cache_accessed: AtomicU64::new(0),
+                path_secret_map_cleaner_cycled: AtomicU64::new(0),
             }
         }
     }
@@ -8880,6 +8973,15 @@ pub mod testing {
         fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored) {
             self.stream_read_socket_errored
                 .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_connection_closed(&self, event: builder::ConnectionClosed) {
+            self.connection_closed.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

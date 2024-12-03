@@ -3,6 +3,7 @@
 
 #[event("stream:write_flushed")]
 #[checkpoint("latency")]
+#[measure_counter("conn")]
 pub struct StreamWriteFlushed {
     /// The number of bytes that the application tried to write
     #[measure("provided", Bytes)]
@@ -11,17 +12,20 @@ pub struct StreamWriteFlushed {
     /// The amount that was written
     #[measure("committed", Bytes)]
     #[counter("committed.total", Bytes)]
+    #[measure_counter("committed.conn", Bytes)]
     committed_len: usize,
 
     /// The amount of time it took to process the write request
     ///
     /// Note that this includes both any syscall and encryption overhead
     #[measure("processing_duration", Duration)]
+    #[measure_counter("processing_duration.conn", Duration)]
     processing_duration: core::time::Duration,
 }
 
 #[event("stream:write_fin_flushed")]
 #[checkpoint("latency")]
+#[measure_counter("conn")]
 pub struct StreamWriteFinFlushed {
     /// The number of bytes that the application tried to write
     #[measure("provided", Bytes)]
@@ -30,17 +34,20 @@ pub struct StreamWriteFinFlushed {
     /// The amount that was written
     #[measure("committed", Bytes)]
     #[counter("committed.total", Bytes)]
+    #[measure_counter("committed.conn", Bytes)]
     committed_len: usize,
 
     /// The amount of time it took to process the write request
     ///
     /// Note that this includes both any syscall and encryption overhead
     #[measure("processing_duration", Duration)]
+    #[measure_counter("processing_duration.conn", Duration)]
     processing_duration: core::time::Duration,
 }
 
 #[event("stream:write_blocked")]
 #[checkpoint("latency")]
+#[measure_counter("conn.stream.write.blocked")]
 pub struct StreamWriteBlocked {
     /// The number of bytes that the application tried to write
     #[measure("provided", Bytes)]
@@ -53,6 +60,7 @@ pub struct StreamWriteBlocked {
     ///
     /// Note that this includes both any syscall and encryption overhead
     #[measure("processing_duration", Duration)]
+    #[measure_counter("processing_duration.conn", Duration)]
     processing_duration: core::time::Duration,
 }
 
@@ -70,6 +78,7 @@ pub struct StreamWriteErrored {
     ///
     /// Note that this includes both any syscall and encryption overhead
     #[measure("processing_duration", Duration)]
+    #[measure_counter("processing_duration.conn", Duration)]
     processing_duration: core::time::Duration,
 
     /// The system `errno` from the returned error
@@ -89,6 +98,7 @@ pub struct StreamWriteShutdown {
 }
 
 #[event("stream:write_socket_flushed")]
+#[measure_counter("conn")]
 pub struct StreamWriteSocketFlushed {
     /// The number of bytes that the stream tried to write to the socket
     #[measure("provided", Bytes)]
@@ -97,10 +107,12 @@ pub struct StreamWriteSocketFlushed {
     /// The amount that was written
     #[measure("committed", Bytes)]
     #[counter("committed.total", Bytes)]
+    #[measure_counter("committed.conn", Bytes)]
     committed_len: usize,
 }
 
 #[event("stream:write_socket_blocked")]
+#[measure_counter("conn.stream.write.socket.blocked")]
 pub struct StreamWriteSocketBlocked {
     /// The number of bytes that the stream tried to write to the socket
     #[measure("provided", Bytes)]
@@ -119,6 +131,7 @@ pub struct StreamWriteSocketErrored {
 
 #[event("stream:read_flushed")]
 #[checkpoint("latency")]
+#[measure_counter("conn")]
 pub struct StreamReadFlushed {
     /// The number of bytes that the application tried to read
     #[measure("capacity", Bytes)]
@@ -127,17 +140,20 @@ pub struct StreamReadFlushed {
     /// The amount that was read into the provided buffer
     #[measure("committed", Bytes)]
     #[counter("committed.total", Bytes)]
+    #[measure_counter("committed.conn", Bytes)]
     committed_len: usize,
 
     /// The amount of time it took to process the read request
     ///
     /// Note that this includes both any syscall and decryption overhead
     #[measure("processing_duration", Duration)]
+    #[measure_counter("processing_duration.conn", Duration)]
     processing_duration: core::time::Duration,
 }
 
 #[event("stream:read_fin_flushed")]
 #[checkpoint("latency")]
+#[measure_counter("conn")]
 pub struct StreamReadFinFlushed {
     /// The number of bytes that the application tried to read
     #[measure("capacity", Bytes)]
@@ -147,6 +163,7 @@ pub struct StreamReadFinFlushed {
     ///
     /// Note that this includes both any syscall and decryption overhead
     #[measure("processing_duration", Duration)]
+    #[measure_counter("processing_duration.conn", Duration)]
     processing_duration: core::time::Duration,
 }
 
@@ -161,6 +178,7 @@ pub struct StreamReadBlocked {
     ///
     /// Note that this includes both any syscall and decryption overhead
     #[measure("processing_duration", Duration)]
+    #[measure_counter("processing_duration.conn", Duration)]
     processing_duration: core::time::Duration,
 }
 
@@ -175,6 +193,7 @@ pub struct StreamReadErrored {
     ///
     /// Note that this includes both any syscall and decryption overhead
     #[measure("processing_duration", Duration)]
+    #[measure_counter("processing_duration.conn", Duration)]
     processing_duration: core::time::Duration,
 
     /// The system `errno` from the returned error
@@ -190,6 +209,7 @@ pub struct StreamReadShutdown {
 }
 
 #[event("stream:read_socket_flushed")]
+#[measure_counter("conn")]
 pub struct StreamReadSocketFlushed {
     /// The number of bytes that the stream tried to read from the socket
     #[measure("capacity", Bytes)]
@@ -198,10 +218,12 @@ pub struct StreamReadSocketFlushed {
     /// The amount that was read into the provided buffer
     #[measure("committed", Bytes)]
     #[counter("committed.total", Bytes)]
+    #[measure_counter("committed.conn", Bytes)]
     committed_len: usize,
 }
 
 #[event("stream:read_socket_blocked")]
+#[measure_counter("conn")]
 pub struct StreamReadSocketBlocked {
     /// The number of bytes that the stream tried to read from the socket
     #[measure("capacity", Bytes)]
@@ -217,3 +239,8 @@ pub struct StreamReadSocketErrored {
     /// The system `errno` from the returned error
     errno: Option<i32>,
 }
+
+// NOTE - This event MUST come last, since connection-level aggregation depends on it
+#[event("connection:closed")]
+// #[checkpoint("latency")]
+pub struct ConnectionClosed {}

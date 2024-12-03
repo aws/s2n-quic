@@ -26,49 +26,49 @@ where
 }
 pub struct Context<R: Recorder> {
     recorder: R,
-    application_protocol_information: u32,
-    server_name_information: u32,
-    packet_skipped: u32,
-    packet_sent: u32,
-    packet_received: u32,
-    active_path_updated: u32,
-    path_created: u32,
-    frame_sent: u32,
-    frame_received: u32,
-    packet_lost: u32,
-    recovery_metrics: u32,
-    congestion: u32,
-    ack_processed: u32,
-    rx_ack_range_dropped: u32,
-    ack_range_received: u32,
-    ack_range_sent: u32,
-    packet_dropped: u32,
-    key_update: u32,
-    key_space_discarded: u32,
-    connection_started: u32,
-    connection_closed: u32,
-    duplicate_packet: u32,
-    transport_parameters_received: u32,
-    datagram_sent: u32,
-    datagram_received: u32,
-    datagram_dropped: u32,
-    connection_id_updated: u32,
-    ecn_state_changed: u32,
-    connection_migration_denied: u32,
-    handshake_status_updated: u32,
-    tls_exporter_ready: u32,
-    path_challenge_updated: u32,
-    tls_client_hello: u32,
-    tls_server_hello: u32,
-    rx_stream_progress: u32,
-    tx_stream_progress: u32,
-    keep_alive_timer_expired: u32,
-    mtu_updated: u32,
-    slow_start_exited: u32,
-    delivery_rate_sampled: u32,
-    pacing_rate_updated: u32,
-    bbr_state_changed: u32,
-    dc_state_changed: u32,
+    application_protocol_information: u64,
+    server_name_information: u64,
+    packet_skipped: u64,
+    packet_sent: u64,
+    packet_received: u64,
+    active_path_updated: u64,
+    path_created: u64,
+    frame_sent: u64,
+    frame_received: u64,
+    packet_lost: u64,
+    recovery_metrics: u64,
+    congestion: u64,
+    ack_processed: u64,
+    rx_ack_range_dropped: u64,
+    ack_range_received: u64,
+    ack_range_sent: u64,
+    packet_dropped: u64,
+    key_update: u64,
+    key_space_discarded: u64,
+    connection_started: u64,
+    duplicate_packet: u64,
+    transport_parameters_received: u64,
+    datagram_sent: u64,
+    datagram_received: u64,
+    datagram_dropped: u64,
+    connection_id_updated: u64,
+    ecn_state_changed: u64,
+    connection_migration_denied: u64,
+    handshake_status_updated: u64,
+    tls_exporter_ready: u64,
+    path_challenge_updated: u64,
+    tls_client_hello: u64,
+    tls_server_hello: u64,
+    rx_stream_progress: u64,
+    tx_stream_progress: u64,
+    keep_alive_timer_expired: u64,
+    mtu_updated: u64,
+    slow_start_exited: u64,
+    delivery_rate_sampled: u64,
+    pacing_rate_updated: u64,
+    bbr_state_changed: u64,
+    dc_state_changed: u64,
+    connection_closed: u64,
 }
 impl<S: event::Subscriber> event::Subscriber for Subscriber<S>
 where
@@ -102,7 +102,6 @@ where
             key_update: 0,
             key_space_discarded: 0,
             connection_started: 0,
-            connection_closed: 0,
             duplicate_packet: 0,
             transport_parameters_received: 0,
             datagram_sent: 0,
@@ -125,6 +124,7 @@ where
             pacing_rate_updated: 0,
             bbr_state_changed: 0,
             dc_state_changed: 0,
+            connection_closed: 0,
         }
     }
     #[inline]
@@ -347,17 +347,6 @@ where
         context.connection_started += 1;
         self.subscriber
             .on_connection_started(&mut context.recorder, meta, event);
-    }
-    #[inline]
-    fn on_connection_closed(
-        &mut self,
-        context: &mut Self::ConnectionContext,
-        meta: &api::ConnectionMeta,
-        event: &api::ConnectionClosed,
-    ) {
-        context.connection_closed += 1;
-        self.subscriber
-            .on_connection_closed(&mut context.recorder, meta, event);
     }
     #[inline]
     fn on_duplicate_packet(
@@ -601,6 +590,17 @@ where
         self.subscriber
             .on_dc_state_changed(&mut context.recorder, meta, event);
     }
+    #[inline]
+    fn on_connection_closed(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::ConnectionClosed,
+    ) {
+        context.connection_closed += 1;
+        self.subscriber
+            .on_connection_closed(&mut context.recorder, meta, event);
+    }
 }
 impl<R: Recorder> Drop for Context<R> {
     fn drop(&mut self) {
@@ -646,8 +646,6 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("key_space_discarded", self.key_space_discarded as _);
         self.recorder
             .increment_counter("connection_started", self.connection_started as _);
-        self.recorder
-            .increment_counter("connection_closed", self.connection_closed as _);
         self.recorder
             .increment_counter("duplicate_packet", self.duplicate_packet as _);
         self.recorder.increment_counter(
@@ -700,5 +698,7 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("bbr_state_changed", self.bbr_state_changed as _);
         self.recorder
             .increment_counter("dc_state_changed", self.dc_state_changed as _);
+        self.recorder
+            .increment_counter("connection_closed", self.connection_closed as _);
     }
 }
