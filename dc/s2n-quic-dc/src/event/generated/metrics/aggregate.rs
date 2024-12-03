@@ -418,7 +418,7 @@ static INFO: &[Info; 202usize] = &[
     .build(),
     info::Builder {
         id: 67usize,
-        name: Str::new("stream_write_blocked.conn.stream.write.blocked\0"),
+        name: Str::new("stream_write_blocked.conn\0"),
         units: Units::None,
     }
     .build(),
@@ -538,7 +538,7 @@ static INFO: &[Info; 202usize] = &[
     .build(),
     info::Builder {
         id: 87usize,
-        name: Str::new("stream_write_socket_blocked.conn.stream.write.socket.blocked\0"),
+        name: Str::new("stream_write_socket_blocked.conn\0"),
         units: Units::None,
     }
     .build(),
