@@ -91,3 +91,11 @@ s2n-quic-transport = { path = "../s2n-quic-transport", features = ["unstable_res
 tokio = { version = "1", features = ["full"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Compile with the `s2n_docsrs` feature to enable feature tagging in rust docs. See
+# documentation for additional configuration options: https://docs.rs/about/metadata
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "s2n_docsrs"]
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(s2n_docsrs)'] }
