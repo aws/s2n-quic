@@ -316,385 +316,385 @@ static INFO: &[Info; 159usize] = &[
     .build(),
     info::Builder {
         id: 50usize,
-        name: Str::new("connection_closed\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: 51usize,
-        name: Str::new("connection_closed.latency\0"),
-        units: Units::Duration,
-    }
-    .build(),
-    info::Builder {
-        id: 52usize,
-        name: Str::new("connection_closed.error\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: 53usize,
         name: Str::new("duplicate_packet\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 54usize,
+        id: 51usize,
         name: Str::new("duplicate_packet.kind\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 55usize,
+        id: 52usize,
         name: Str::new("duplicate_packet.error\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 56usize,
+        id: 53usize,
         name: Str::new("transport_parameters_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 57usize,
+        id: 54usize,
         name: Str::new("transport_parameters_received.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 58usize,
+        id: 55usize,
         name: Str::new("datagram_sent\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 59usize,
+        id: 56usize,
         name: Str::new("datagram_sent.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 60usize,
+        id: 57usize,
         name: Str::new("datagram_sent.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 61usize,
+        id: 58usize,
         name: Str::new("datagram_sent.gso_offset\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 62usize,
+        id: 59usize,
         name: Str::new("datagram_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 63usize,
+        id: 60usize,
         name: Str::new("datagram_received.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 64usize,
+        id: 61usize,
         name: Str::new("datagram_received.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 65usize,
+        id: 62usize,
         name: Str::new("datagram_dropped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 66usize,
+        id: 63usize,
         name: Str::new("datagram_dropped.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 67usize,
+        id: 64usize,
         name: Str::new("datagram_dropped.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 68usize,
+        id: 65usize,
         name: Str::new("datagram_dropped.reason\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 69usize,
+        id: 66usize,
         name: Str::new("connection_id_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 70usize,
+        id: 67usize,
         name: Str::new("ecn_state_changed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 71usize,
+        id: 68usize,
         name: Str::new("ecn_state_changed.state\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 72usize,
+        id: 69usize,
         name: Str::new("connection_migration_denied\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 73usize,
+        id: 70usize,
         name: Str::new("connection_migration_denied.reason\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 74usize,
+        id: 71usize,
         name: Str::new("handshake_status_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 75usize,
+        id: 72usize,
         name: Str::new("handshake_status_updated.complete.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 76usize,
+        id: 73usize,
         name: Str::new("handshake_status_updated.confirmed.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 77usize,
+        id: 74usize,
         name: Str::new("handshake_status_updated.handshake_done_acked.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 78usize,
+        id: 75usize,
         name: Str::new("handshake_status_updated.status\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 79usize,
+        id: 76usize,
         name: Str::new("tls_exporter_ready\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 80usize,
+        id: 77usize,
         name: Str::new("path_challenge_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 81usize,
+        id: 78usize,
         name: Str::new("path_challenge_updated.status\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 82usize,
+        id: 79usize,
         name: Str::new("tls_client_hello\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 83usize,
+        id: 80usize,
         name: Str::new("tls_client_hello.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 84usize,
+        id: 81usize,
         name: Str::new("tls_server_hello\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 85usize,
+        id: 82usize,
         name: Str::new("tls_server_hello.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 86usize,
+        id: 83usize,
         name: Str::new("rx_stream_progress\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 87usize,
+        id: 84usize,
         name: Str::new("rx_stream_progress.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 88usize,
+        id: 85usize,
         name: Str::new("rx_stream_progress.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 89usize,
+        id: 86usize,
         name: Str::new("tx_stream_progress\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 90usize,
+        id: 87usize,
         name: Str::new("tx_stream_progress.bytes.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 91usize,
+        id: 88usize,
         name: Str::new("tx_stream_progress.bytes\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 92usize,
+        id: 89usize,
         name: Str::new("keep_alive_timer_expired\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 93usize,
+        id: 90usize,
         name: Str::new("mtu_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 94usize,
+        id: 91usize,
         name: Str::new("mtu_updated.mtu\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 95usize,
+        id: 92usize,
         name: Str::new("mtu_updated.cause\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 96usize,
+        id: 93usize,
         name: Str::new("mtu_updated.search_complete\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 97usize,
+        id: 94usize,
         name: Str::new("slow_start_exited\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 98usize,
+        id: 95usize,
         name: Str::new("slow_start_exited.cause\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 99usize,
+        id: 96usize,
         name: Str::new("slow_start_exited.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 100usize,
+        id: 97usize,
         name: Str::new("slow_start_exited.congestion_window\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 101usize,
+        id: 98usize,
         name: Str::new("delivery_rate_sampled\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 102usize,
+        id: 99usize,
         name: Str::new("pacing_rate_updated\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 103usize,
+        id: 100usize,
         name: Str::new("pacing_rate_updated.bytes_per_second\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 104usize,
+        id: 101usize,
         name: Str::new("pacing_rate_updated.burst_size\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 105usize,
+        id: 102usize,
         name: Str::new("pacing_rate_updated.pacing_gain\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 106usize,
+        id: 103usize,
         name: Str::new("bbr_state_changed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 107usize,
+        id: 104usize,
         name: Str::new("bbr_state_changed.state\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 108usize,
+        id: 105usize,
         name: Str::new("dc_state_changed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 109usize,
+        id: 106usize,
         name: Str::new("dc_state_changed.version_negotiated.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 110usize,
+        id: 107usize,
         name: Str::new("dc_state_changed.no_version_negotiated.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 111usize,
+        id: 108usize,
         name: Str::new("dc_state_changed.path_secrets.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 112usize,
+        id: 109usize,
         name: Str::new("dc_state_changed.complete.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 113usize,
+        id: 110usize,
         name: Str::new("dc_state_changed.state\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 111usize,
+        name: Str::new("connection_closed\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 112usize,
+        name: Str::new("connection_closed.latency\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: 113usize,
+        name: Str::new("connection_closed.error\0"),
         units: Units::None,
     }
     .build(),
@@ -969,7 +969,7 @@ static INFO: &[Info; 159usize] = &[
     }
     .build(),
 ];
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct ConnectionContext {
     start_time: crate::event::Timestamp,
@@ -1043,32 +1043,32 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[49usize]));
         counters.push(registry.register_counter(&INFO[50usize]));
         counters.push(registry.register_counter(&INFO[53usize]));
+        counters.push(registry.register_counter(&INFO[55usize]));
         counters.push(registry.register_counter(&INFO[56usize]));
-        counters.push(registry.register_counter(&INFO[58usize]));
         counters.push(registry.register_counter(&INFO[59usize]));
+        counters.push(registry.register_counter(&INFO[60usize]));
         counters.push(registry.register_counter(&INFO[62usize]));
         counters.push(registry.register_counter(&INFO[63usize]));
-        counters.push(registry.register_counter(&INFO[65usize]));
         counters.push(registry.register_counter(&INFO[66usize]));
+        counters.push(registry.register_counter(&INFO[67usize]));
         counters.push(registry.register_counter(&INFO[69usize]));
-        counters.push(registry.register_counter(&INFO[70usize]));
-        counters.push(registry.register_counter(&INFO[72usize]));
-        counters.push(registry.register_counter(&INFO[74usize]));
+        counters.push(registry.register_counter(&INFO[71usize]));
+        counters.push(registry.register_counter(&INFO[76usize]));
+        counters.push(registry.register_counter(&INFO[77usize]));
         counters.push(registry.register_counter(&INFO[79usize]));
-        counters.push(registry.register_counter(&INFO[80usize]));
-        counters.push(registry.register_counter(&INFO[82usize]));
+        counters.push(registry.register_counter(&INFO[81usize]));
+        counters.push(registry.register_counter(&INFO[83usize]));
         counters.push(registry.register_counter(&INFO[84usize]));
         counters.push(registry.register_counter(&INFO[86usize]));
         counters.push(registry.register_counter(&INFO[87usize]));
         counters.push(registry.register_counter(&INFO[89usize]));
         counters.push(registry.register_counter(&INFO[90usize]));
-        counters.push(registry.register_counter(&INFO[92usize]));
-        counters.push(registry.register_counter(&INFO[93usize]));
-        counters.push(registry.register_counter(&INFO[97usize]));
-        counters.push(registry.register_counter(&INFO[101usize]));
-        counters.push(registry.register_counter(&INFO[102usize]));
-        counters.push(registry.register_counter(&INFO[106usize]));
-        counters.push(registry.register_counter(&INFO[108usize]));
+        counters.push(registry.register_counter(&INFO[94usize]));
+        counters.push(registry.register_counter(&INFO[98usize]));
+        counters.push(registry.register_counter(&INFO[99usize]));
+        counters.push(registry.register_counter(&INFO[103usize]));
+        counters.push(registry.register_counter(&INFO[105usize]));
+        counters.push(registry.register_counter(&INFO[111usize]));
         counters.push(registry.register_counter(&INFO[114usize]));
         counters.push(registry.register_counter(&INFO[115usize]));
         counters.push(registry.register_counter(&INFO[116usize]));
@@ -1096,7 +1096,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[158usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[21usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[31usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[96usize]));
+        bool_counters.push(registry.register_bool_counter(&INFO[93usize]));
         {
             #[allow(unused_imports)]
             use api::*;
@@ -1257,20 +1257,9 @@ impl<R: Registry> Subscriber<R> {
             {
                 let offset = nominal_counters.len();
                 let mut count = 0;
-                for variant in <crate::connection::Error as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[52usize], variant));
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
                 for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[54usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[51usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1281,7 +1270,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <DuplicatePacketError as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[55usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[52usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1292,7 +1281,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <DatagramDropReason as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[68usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[65usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1303,7 +1292,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <EcnState as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[71usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[68usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1314,7 +1303,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <MigrationDenyReason as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[73usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[70usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1325,7 +1314,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <HandshakeStatus as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[78usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[75usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1336,7 +1325,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <PathChallengeStatus as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[81usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[78usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1347,7 +1336,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <MtuUpdatedCause as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[95usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[92usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1358,7 +1347,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SlowStartExitCause as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[98usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[95usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1369,7 +1358,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <BbrState as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[107usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[104usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1379,6 +1368,17 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <DcState as AsVariant>::VARIANTS.iter() {
+                    nominal_counters
+                        .push(registry.register_nominal_counter(&INFO[110usize], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <crate::connection::Error as AsVariant>::VARIANTS.iter() {
                     nominal_counters
                         .push(registry.register_nominal_counter(&INFO[113usize], variant));
                     count += 1;
@@ -1419,17 +1419,17 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[28usize]));
         measures.push(registry.register_measure(&INFO[29usize]));
         measures.push(registry.register_measure(&INFO[30usize]));
-        measures.push(registry.register_measure(&INFO[60usize]));
+        measures.push(registry.register_measure(&INFO[57usize]));
+        measures.push(registry.register_measure(&INFO[58usize]));
         measures.push(registry.register_measure(&INFO[61usize]));
         measures.push(registry.register_measure(&INFO[64usize]));
-        measures.push(registry.register_measure(&INFO[67usize]));
+        measures.push(registry.register_measure(&INFO[85usize]));
         measures.push(registry.register_measure(&INFO[88usize]));
         measures.push(registry.register_measure(&INFO[91usize]));
-        measures.push(registry.register_measure(&INFO[94usize]));
+        measures.push(registry.register_measure(&INFO[97usize]));
         measures.push(registry.register_measure(&INFO[100usize]));
-        measures.push(registry.register_measure(&INFO[103usize]));
-        measures.push(registry.register_measure(&INFO[104usize]));
-        measures.push(registry.register_measure(&INFO[105usize]));
+        measures.push(registry.register_measure(&INFO[101usize]));
+        measures.push(registry.register_measure(&INFO[102usize]));
         measures.push(registry.register_measure(&INFO[118usize]));
         measures.push(registry.register_measure(&INFO[119usize]));
         measures.push(registry.register_measure(&INFO[120usize]));
@@ -1450,16 +1450,16 @@ impl<R: Registry> Subscriber<R> {
         timers.push(registry.register_timer(&INFO[45usize]));
         timers.push(registry.register_timer(&INFO[46usize]));
         timers.push(registry.register_timer(&INFO[47usize]));
-        timers.push(registry.register_timer(&INFO[51usize]));
-        timers.push(registry.register_timer(&INFO[57usize]));
-        timers.push(registry.register_timer(&INFO[75usize]));
-        timers.push(registry.register_timer(&INFO[76usize]));
-        timers.push(registry.register_timer(&INFO[77usize]));
-        timers.push(registry.register_timer(&INFO[83usize]));
-        timers.push(registry.register_timer(&INFO[85usize]));
+        timers.push(registry.register_timer(&INFO[54usize]));
+        timers.push(registry.register_timer(&INFO[72usize]));
+        timers.push(registry.register_timer(&INFO[73usize]));
+        timers.push(registry.register_timer(&INFO[74usize]));
+        timers.push(registry.register_timer(&INFO[80usize]));
+        timers.push(registry.register_timer(&INFO[82usize]));
+        timers.push(registry.register_timer(&INFO[106usize]));
+        timers.push(registry.register_timer(&INFO[107usize]));
+        timers.push(registry.register_timer(&INFO[108usize]));
         timers.push(registry.register_timer(&INFO[109usize]));
-        timers.push(registry.register_timer(&INFO[110usize]));
-        timers.push(registry.register_timer(&INFO[111usize]));
         timers.push(registry.register_timer(&INFO[112usize]));
         timers.push(registry.register_timer(&INFO[157usize]));
         {
@@ -1469,7 +1469,7 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_timers.len();
                 let mut count = 0;
                 for variant in <SlowStartExitCause as AsVariant>::VARIANTS.iter() {
-                    nominal_timers.push(registry.register_nominal_timer(&INFO[99usize], variant));
+                    nominal_timers.push(registry.register_nominal_timer(&INFO[96usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1529,32 +1529,32 @@ impl<R: Registry> Subscriber<R> {
                 20usize => (&INFO[49usize], entry),
                 21usize => (&INFO[50usize], entry),
                 22usize => (&INFO[53usize], entry),
-                23usize => (&INFO[56usize], entry),
-                24usize => (&INFO[58usize], entry),
+                23usize => (&INFO[55usize], entry),
+                24usize => (&INFO[56usize], entry),
                 25usize => (&INFO[59usize], entry),
-                26usize => (&INFO[62usize], entry),
-                27usize => (&INFO[63usize], entry),
-                28usize => (&INFO[65usize], entry),
+                26usize => (&INFO[60usize], entry),
+                27usize => (&INFO[62usize], entry),
+                28usize => (&INFO[63usize], entry),
                 29usize => (&INFO[66usize], entry),
-                30usize => (&INFO[69usize], entry),
-                31usize => (&INFO[70usize], entry),
-                32usize => (&INFO[72usize], entry),
-                33usize => (&INFO[74usize], entry),
-                34usize => (&INFO[79usize], entry),
-                35usize => (&INFO[80usize], entry),
-                36usize => (&INFO[82usize], entry),
-                37usize => (&INFO[84usize], entry),
-                38usize => (&INFO[86usize], entry),
-                39usize => (&INFO[87usize], entry),
-                40usize => (&INFO[89usize], entry),
-                41usize => (&INFO[90usize], entry),
-                42usize => (&INFO[92usize], entry),
-                43usize => (&INFO[93usize], entry),
-                44usize => (&INFO[97usize], entry),
-                45usize => (&INFO[101usize], entry),
-                46usize => (&INFO[102usize], entry),
-                47usize => (&INFO[106usize], entry),
-                48usize => (&INFO[108usize], entry),
+                30usize => (&INFO[67usize], entry),
+                31usize => (&INFO[69usize], entry),
+                32usize => (&INFO[71usize], entry),
+                33usize => (&INFO[76usize], entry),
+                34usize => (&INFO[77usize], entry),
+                35usize => (&INFO[79usize], entry),
+                36usize => (&INFO[81usize], entry),
+                37usize => (&INFO[83usize], entry),
+                38usize => (&INFO[84usize], entry),
+                39usize => (&INFO[86usize], entry),
+                40usize => (&INFO[87usize], entry),
+                41usize => (&INFO[89usize], entry),
+                42usize => (&INFO[90usize], entry),
+                43usize => (&INFO[94usize], entry),
+                44usize => (&INFO[98usize], entry),
+                45usize => (&INFO[99usize], entry),
+                46usize => (&INFO[103usize], entry),
+                47usize => (&INFO[105usize], entry),
+                48usize => (&INFO[111usize], entry),
                 49usize => (&INFO[114usize], entry),
                 50usize => (&INFO[115usize], entry),
                 51usize => (&INFO[116usize], entry),
@@ -1599,7 +1599,7 @@ impl<R: Registry> Subscriber<R> {
             .map(|(idx, entry)| match idx {
                 0usize => (&INFO[21usize], entry),
                 1usize => (&INFO[31usize], entry),
-                2usize => (&INFO[96usize], entry),
+                2usize => (&INFO[93usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -1706,73 +1706,73 @@ impl<R: Registry> Subscriber<R> {
                 }
                 14usize => {
                     let offset = *entry;
-                    let variants = <crate::connection::Error as AsVariant>::VARIANTS;
+                    let variants = <PacketHeader as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[52usize], entries, variants)
+                    (&INFO[51usize], entries, variants)
                 }
                 15usize => {
                     let offset = *entry;
-                    let variants = <PacketHeader as AsVariant>::VARIANTS;
+                    let variants = <DuplicatePacketError as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[54usize], entries, variants)
+                    (&INFO[52usize], entries, variants)
                 }
                 16usize => {
                     let offset = *entry;
-                    let variants = <DuplicatePacketError as AsVariant>::VARIANTS;
+                    let variants = <DatagramDropReason as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[55usize], entries, variants)
+                    (&INFO[65usize], entries, variants)
                 }
                 17usize => {
                     let offset = *entry;
-                    let variants = <DatagramDropReason as AsVariant>::VARIANTS;
+                    let variants = <EcnState as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[68usize], entries, variants)
                 }
                 18usize => {
                     let offset = *entry;
-                    let variants = <EcnState as AsVariant>::VARIANTS;
+                    let variants = <MigrationDenyReason as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[71usize], entries, variants)
+                    (&INFO[70usize], entries, variants)
                 }
                 19usize => {
                     let offset = *entry;
-                    let variants = <MigrationDenyReason as AsVariant>::VARIANTS;
+                    let variants = <HandshakeStatus as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[73usize], entries, variants)
+                    (&INFO[75usize], entries, variants)
                 }
                 20usize => {
                     let offset = *entry;
-                    let variants = <HandshakeStatus as AsVariant>::VARIANTS;
+                    let variants = <PathChallengeStatus as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[78usize], entries, variants)
                 }
                 21usize => {
                     let offset = *entry;
-                    let variants = <PathChallengeStatus as AsVariant>::VARIANTS;
+                    let variants = <MtuUpdatedCause as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[81usize], entries, variants)
+                    (&INFO[92usize], entries, variants)
                 }
                 22usize => {
                     let offset = *entry;
-                    let variants = <MtuUpdatedCause as AsVariant>::VARIANTS;
+                    let variants = <SlowStartExitCause as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[95usize], entries, variants)
                 }
                 23usize => {
                     let offset = *entry;
-                    let variants = <SlowStartExitCause as AsVariant>::VARIANTS;
+                    let variants = <BbrState as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[98usize], entries, variants)
+                    (&INFO[104usize], entries, variants)
                 }
                 24usize => {
                     let offset = *entry;
-                    let variants = <BbrState as AsVariant>::VARIANTS;
+                    let variants = <DcState as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[107usize], entries, variants)
+                    (&INFO[110usize], entries, variants)
                 }
                 25usize => {
                     let offset = *entry;
-                    let variants = <DcState as AsVariant>::VARIANTS;
+                    let variants = <crate::connection::Error as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[113usize], entries, variants)
                 }
@@ -1816,17 +1816,17 @@ impl<R: Registry> Subscriber<R> {
                 7usize => (&INFO[28usize], entry),
                 8usize => (&INFO[29usize], entry),
                 9usize => (&INFO[30usize], entry),
-                10usize => (&INFO[60usize], entry),
-                11usize => (&INFO[61usize], entry),
-                12usize => (&INFO[64usize], entry),
-                13usize => (&INFO[67usize], entry),
-                14usize => (&INFO[88usize], entry),
-                15usize => (&INFO[91usize], entry),
-                16usize => (&INFO[94usize], entry),
-                17usize => (&INFO[100usize], entry),
-                18usize => (&INFO[103usize], entry),
-                19usize => (&INFO[104usize], entry),
-                20usize => (&INFO[105usize], entry),
+                10usize => (&INFO[57usize], entry),
+                11usize => (&INFO[58usize], entry),
+                12usize => (&INFO[61usize], entry),
+                13usize => (&INFO[64usize], entry),
+                14usize => (&INFO[85usize], entry),
+                15usize => (&INFO[88usize], entry),
+                16usize => (&INFO[91usize], entry),
+                17usize => (&INFO[97usize], entry),
+                18usize => (&INFO[100usize], entry),
+                19usize => (&INFO[101usize], entry),
+                20usize => (&INFO[102usize], entry),
                 21usize => (&INFO[118usize], entry),
                 22usize => (&INFO[119usize], entry),
                 23usize => (&INFO[120usize], entry),
@@ -1876,16 +1876,16 @@ impl<R: Registry> Subscriber<R> {
                 0usize => (&INFO[45usize], entry),
                 1usize => (&INFO[46usize], entry),
                 2usize => (&INFO[47usize], entry),
-                3usize => (&INFO[51usize], entry),
-                4usize => (&INFO[57usize], entry),
-                5usize => (&INFO[75usize], entry),
-                6usize => (&INFO[76usize], entry),
-                7usize => (&INFO[77usize], entry),
-                8usize => (&INFO[83usize], entry),
-                9usize => (&INFO[85usize], entry),
-                10usize => (&INFO[109usize], entry),
-                11usize => (&INFO[110usize], entry),
-                12usize => (&INFO[111usize], entry),
+                3usize => (&INFO[54usize], entry),
+                4usize => (&INFO[72usize], entry),
+                5usize => (&INFO[73usize], entry),
+                6usize => (&INFO[74usize], entry),
+                7usize => (&INFO[80usize], entry),
+                8usize => (&INFO[82usize], entry),
+                9usize => (&INFO[106usize], entry),
+                10usize => (&INFO[107usize], entry),
+                11usize => (&INFO[108usize], entry),
+                12usize => (&INFO[109usize], entry),
                 13usize => (&INFO[112usize], entry),
                 14usize => (&INFO[157usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
@@ -2255,26 +2255,6 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         let _ = event;
     }
     #[inline]
-    fn on_connection_closed(
-        &mut self,
-        context: &mut Self::ConnectionContext,
-        meta: &api::ConnectionMeta,
-        event: &api::ConnectionClosed,
-    ) {
-        #[allow(unused_imports)]
-        use api::*;
-        self.count(50usize, 21usize, 1usize);
-        self.time(
-            51usize,
-            3usize,
-            meta.timestamp.saturating_duration_since(context.start_time),
-        );
-        self.count_nominal(52usize, 14usize, &event.error);
-        let _ = context;
-        let _ = meta;
-        let _ = event;
-    }
-    #[inline]
     fn on_duplicate_packet(
         &mut self,
         context: &mut Self::ConnectionContext,
@@ -2283,9 +2263,9 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(53usize, 22usize, 1usize);
-        self.count_nominal(54usize, 15usize, &event.packet_header);
-        self.count_nominal(55usize, 16usize, &event.error);
+        self.count(50usize, 21usize, 1usize);
+        self.count_nominal(51usize, 14usize, &event.packet_header);
+        self.count_nominal(52usize, 15usize, &event.error);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2299,10 +2279,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(56usize, 23usize, 1usize);
+        self.count(53usize, 22usize, 1usize);
         self.time(
-            57usize,
-            4usize,
+            54usize,
+            3usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
         let _ = context;
@@ -2318,10 +2298,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(58usize, 24usize, 1usize);
-        self.count(59usize, 25usize, event.len);
-        self.measure(60usize, 10usize, event.len);
-        self.measure(61usize, 11usize, event.gso_offset);
+        self.count(55usize, 23usize, 1usize);
+        self.count(56usize, 24usize, event.len);
+        self.measure(57usize, 10usize, event.len);
+        self.measure(58usize, 11usize, event.gso_offset);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2335,9 +2315,9 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(62usize, 26usize, 1usize);
-        self.count(63usize, 27usize, event.len);
-        self.measure(64usize, 12usize, event.len);
+        self.count(59usize, 25usize, 1usize);
+        self.count(60usize, 26usize, event.len);
+        self.measure(61usize, 12usize, event.len);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2351,10 +2331,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(65usize, 28usize, 1usize);
-        self.count(66usize, 29usize, event.len);
-        self.measure(67usize, 13usize, event.len);
-        self.count_nominal(68usize, 17usize, &event.reason);
+        self.count(62usize, 27usize, 1usize);
+        self.count(63usize, 28usize, event.len);
+        self.measure(64usize, 13usize, event.len);
+        self.count_nominal(65usize, 16usize, &event.reason);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2368,7 +2348,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(69usize, 30usize, 1usize);
+        self.count(66usize, 29usize, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2382,8 +2362,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(70usize, 31usize, 1usize);
-        self.count_nominal(71usize, 18usize, &event.state);
+        self.count(67usize, 30usize, 1usize);
+        self.count_nominal(68usize, 17usize, &event.state);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2397,8 +2377,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(72usize, 32usize, 1usize);
-        self.count_nominal(73usize, 19usize, &event.reason);
+        self.count(69usize, 31usize, 1usize);
+        self.count_nominal(70usize, 18usize, &event.reason);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2412,15 +2392,15 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(74usize, 33usize, 1usize);
+        self.count(71usize, 32usize, 1usize);
         {
             fn check(evt: &api::HandshakeStatusUpdated) -> bool {
                 matches!(evt.status, HandshakeStatus::Complete { .. })
             }
             if check(event) {
                 self.time(
-                    75usize,
-                    5usize,
+                    72usize,
+                    4usize,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2431,8 +2411,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    76usize,
-                    6usize,
+                    73usize,
+                    5usize,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2443,13 +2423,13 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    77usize,
-                    7usize,
+                    74usize,
+                    6usize,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
         }
-        self.count_nominal(78usize, 20usize, &event.status);
+        self.count_nominal(75usize, 19usize, &event.status);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2463,7 +2443,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(79usize, 34usize, 1usize);
+        self.count(76usize, 33usize, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2477,8 +2457,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(80usize, 35usize, 1usize);
-        self.count_nominal(81usize, 21usize, &event.path_challenge_status);
+        self.count(77usize, 34usize, 1usize);
+        self.count_nominal(78usize, 20usize, &event.path_challenge_status);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2492,10 +2472,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(82usize, 36usize, 1usize);
+        self.count(79usize, 35usize, 1usize);
         self.time(
-            83usize,
-            8usize,
+            80usize,
+            7usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
         let _ = context;
@@ -2511,10 +2491,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(84usize, 37usize, 1usize);
+        self.count(81usize, 36usize, 1usize);
         self.time(
-            85usize,
-            9usize,
+            82usize,
+            8usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
         let _ = context;
@@ -2530,9 +2510,9 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(86usize, 38usize, 1usize);
-        self.count(87usize, 39usize, event.bytes);
-        self.measure(88usize, 14usize, event.bytes);
+        self.count(83usize, 37usize, 1usize);
+        self.count(84usize, 38usize, event.bytes);
+        self.measure(85usize, 14usize, event.bytes);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2546,9 +2526,9 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(89usize, 40usize, 1usize);
-        self.count(90usize, 41usize, event.bytes);
-        self.measure(91usize, 15usize, event.bytes);
+        self.count(86usize, 39usize, 1usize);
+        self.count(87usize, 40usize, event.bytes);
+        self.measure(88usize, 15usize, event.bytes);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2562,7 +2542,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(92usize, 42usize, 1usize);
+        self.count(89usize, 41usize, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2576,10 +2556,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(93usize, 43usize, 1usize);
-        self.measure(94usize, 16usize, event.mtu);
-        self.count_nominal(95usize, 22usize, &event.cause);
-        self.count_bool(96usize, 2usize, event.search_complete);
+        self.count(90usize, 42usize, 1usize);
+        self.measure(91usize, 16usize, event.mtu);
+        self.count_nominal(92usize, 21usize, &event.cause);
+        self.count_bool(93usize, 2usize, event.search_complete);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2593,15 +2573,15 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(97usize, 44usize, 1usize);
-        self.count_nominal(98usize, 23usize, &event.cause);
+        self.count(94usize, 43usize, 1usize);
+        self.count_nominal(95usize, 22usize, &event.cause);
         self.time_nominal(
-            99usize,
+            96usize,
             0usize,
             &event.cause,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(100usize, 17usize, event.congestion_window);
+        self.measure(97usize, 17usize, event.congestion_window);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2615,7 +2595,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(101usize, 45usize, 1usize);
+        self.count(98usize, 44usize, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2629,10 +2609,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(102usize, 46usize, 1usize);
-        self.measure(103usize, 18usize, event.bytes_per_second);
-        self.measure(104usize, 19usize, event.burst_size);
-        self.measure(105usize, 20usize, event.pacing_gain);
+        self.count(99usize, 45usize, 1usize);
+        self.measure(100usize, 18usize, event.bytes_per_second);
+        self.measure(101usize, 19usize, event.burst_size);
+        self.measure(102usize, 20usize, event.pacing_gain);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2646,8 +2626,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(106usize, 47usize, 1usize);
-        self.count_nominal(107usize, 24usize, &event.state);
+        self.count(103usize, 46usize, 1usize);
+        self.count_nominal(104usize, 23usize, &event.state);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2661,15 +2641,15 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(108usize, 48usize, 1usize);
+        self.count(105usize, 47usize, 1usize);
         {
             fn check(evt: &api::DcStateChanged) -> bool {
                 matches!(evt.state, DcState::VersionNegotiated { .. })
             }
             if check(event) {
                 self.time(
-                    109usize,
-                    10usize,
+                    106usize,
+                    9usize,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2680,8 +2660,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    110usize,
-                    11usize,
+                    107usize,
+                    10usize,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2692,8 +2672,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    111usize,
-                    12usize,
+                    108usize,
+                    11usize,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
@@ -2704,13 +2684,33 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             }
             if check(event) {
                 self.time(
-                    112usize,
-                    13usize,
+                    109usize,
+                    12usize,
                     meta.timestamp.saturating_duration_since(context.start_time),
                 );
             }
         }
-        self.count_nominal(113usize, 25usize, &event.state);
+        self.count_nominal(110usize, 24usize, &event.state);
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_connection_closed(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::ConnectionClosed,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(111usize, 48usize, 1usize);
+        self.time(
+            112usize,
+            13usize,
+            meta.timestamp.saturating_duration_since(context.start_time),
+        );
+        self.count_nominal(113usize, 25usize, &event.error);
         let _ = context;
         let _ = meta;
         let _ = event;

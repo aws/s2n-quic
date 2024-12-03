@@ -34,14 +34,15 @@ pub enum Half {
 
 pub type ArcShared<Sub> = Arc<Shared<Sub, dyn Clock>>;
 
-pub struct Shared<Subscriber, Clock: ?Sized>
+pub struct Shared<Subscriber, Clk>
 where
     Subscriber: event::Subscriber,
+    Clk: ?Sized + Clock,
 {
     pub receiver: recv::State,
     pub sender: send::State,
     pub crypto: Crypto,
-    pub common: Common<Subscriber, Clock>,
+    pub common: Common<Subscriber, Clk>,
 }
 
 impl<Sub, C> Shared<Sub, C>
@@ -89,7 +90,7 @@ where
 impl<Sub, C> Shared<Sub, C>
 where
     Sub: event::Subscriber,
-    C: ?Sized,
+    C: ?Sized + Clock,
 {
     #[inline]
     pub fn last_peer_activity(&self) -> Timestamp {
@@ -146,7 +147,7 @@ where
 impl<Sub, C> ops::Deref for Shared<Sub, C>
 where
     Sub: event::Subscriber,
-    C: ?Sized,
+    C: ?Sized + Clock,
 {
     type Target = Common<Sub, C>;
 
@@ -156,10 +157,10 @@ where
     }
 }
 
-pub struct Common<Sub, Clock>
+pub struct Common<Sub, Clk>
 where
     Sub: event::Subscriber,
-    Clock: ?Sized,
+    Clk: ?Sized + Clock,
 {
     pub gso: features::Gso,
     pub read_remote_port: AtomicU16,
@@ -169,13 +170,13 @@ where
     pub last_peer_activity: AtomicU64,
     pub closed_halves: AtomicU8,
     pub subscriber: Subscriber<Sub>,
-    pub clock: Clock,
+    pub clock: Clk,
 }
 
-impl<Sub, Clock> Common<Sub, Clock>
+impl<Sub, Clk> Common<Sub, Clk>
 where
     Sub: event::Subscriber,
-    Clock: ?Sized,
+    Clk: ?Sized + Clock,
 {
     #[inline]
     pub fn ensure_open(&self) -> std::io::Result<()> {
@@ -191,13 +192,7 @@ where
         );
         Ok(())
     }
-}
 
-impl<Sub, Clock> Common<Sub, Clock>
-where
-    Sub: event::Subscriber,
-    Clock: ?Sized + s2n_quic_core::time::Clock,
-{
     #[inline]
     pub fn publisher(&self) -> event::ConnectionPublisherSubscriber<Sub> {
         self.publisher_with_timestamp(self.clock.get_time())
@@ -257,6 +252,20 @@ where
             None,
             &self.subscriber,
         )
+    }
+}
+
+impl<Sub, Clk> Drop for Common<Sub, Clk>
+where
+    Sub: event::Subscriber,
+    Clk: ?Sized + Clock,
+{
+    #[inline]
+    fn drop(&mut self) {
+        use event::ConnectionPublisher as _;
+
+        self.publisher()
+            .on_connection_closed(event::builder::ConnectionClosed {});
     }
 }
 

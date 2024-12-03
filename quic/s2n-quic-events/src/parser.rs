@@ -243,7 +243,7 @@ impl Struct {
                         fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
                             let parent = self.parent(meta);
                             let api::#ident { #(#destructure_fields),* } = event;
-                            tracing::event!(target: #snake, parent: parent, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
+                            tracing::event!(target: #snake, parent: parent, tracing::Level::DEBUG, { #(#destructure_fields = tracing::field::debug(#destructure_fields)),* });
                         }
                     ));
 
@@ -355,7 +355,7 @@ impl Struct {
                         ) {
                             let id = context.id();
                             let api::#ident { #(#destructure_fields),* } = event;
-                            tracing::event!(target: #snake, parent: id, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
+                            tracing::event!(target: #snake, parent: id, tracing::Level::DEBUG, { #(#destructure_fields = tracing::field::debug(#destructure_fields)),* });
                         }
                     ));
 
@@ -541,6 +541,7 @@ pub struct ContainerAttrs {
     pub builder_derive: bool,
     pub builder_derive_attrs: TokenStream,
     pub checkpoint: Vec<Checkpoint>,
+    pub measure_counter: Vec<Metric>,
     pub extra: TokenStream,
 }
 
@@ -560,6 +561,7 @@ impl ContainerAttrs {
             builder_derive: false,
             builder_derive_attrs: quote!(),
             checkpoint: vec![],
+            measure_counter: vec![],
             extra: quote!(),
         };
 
@@ -587,12 +589,14 @@ impl ContainerAttrs {
                 }
             } else if path.is_ident("checkpoint") {
                 v.checkpoint.push(attr.parse_args().unwrap());
+            } else if path.is_ident("measure_counter") {
+                v.measure_counter.push(attr.parse_args().unwrap());
             } else {
                 attr.to_tokens(&mut v.extra)
             }
         }
 
-        if !v.checkpoint.is_empty() {
+        if !(v.checkpoint.is_empty() && v.measure_counter.is_empty()) {
             assert_eq!(v.subject, Subject::Connection);
         }
 
@@ -733,6 +737,7 @@ pub struct FieldAttrs {
     pub builder: Option<syn::Type>,
     pub snapshot: Option<syn::Expr>,
     pub counter: Vec<Metric>,
+    pub measure_counter: Vec<Metric>,
     pub bool_counter: Vec<MetricNoUnit>,
     pub nominal_counter: Vec<Metric>,
     pub nominal_checkpoint: Vec<MetricNoUnit>,
@@ -769,6 +774,7 @@ impl FieldAttrs {
             field!(builder);
             field!(snapshot);
             field!(counter[]);
+            field!(measure_counter[]);
             field!(bool_counter[]);
             field!(nominal_counter[]);
             field!(nominal_checkpoint[]);

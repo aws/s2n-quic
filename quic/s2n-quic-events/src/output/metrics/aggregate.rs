@@ -21,6 +21,10 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
         .filter(|s| s.attrs.allow_deprecated.is_empty());
 
     let mode = &output.mode;
+    let counter_type = &output.mode.counter_type();
+    let counter_increment = &output.mode.counter_increment();
+    let counter_init = &output.mode.counter_init();
+    let counter_load = &output.mode.counter_load();
 
     let receiver = output.mode.receiver();
     let s2n_quic_core_path = &output.s2n_quic_core_path;
@@ -92,6 +96,10 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
     let units_none = Ident::new("None", Span::call_site());
     let units_duration = Ident::new("Duration", Span::call_site());
 
+    let mut context_fields = quote!();
+    let mut context_init = quote!();
+    let mut on_connection_closed = quote!();
+
     for event in events {
         let ident = &event.ident;
         let snake = event.ident_snake();
@@ -132,6 +140,29 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                     self.time(#info, #id, #duration);
                 ));
             }
+        }
+
+        for measure in event.attrs.measure_counter.iter() {
+            let name = format!("{snake}.{}", measure.name.value());
+            let units = measure.unit.as_ref().unwrap_or(&units_none);
+            let info = &info.push(&name, units);
+            let id = measures.push(info, None);
+            let ctx_name = Ident::new(&format!("ctr_{id}"), Span::call_site());
+
+            context_fields.extend(quote!(
+                #ctx_name: #counter_type,
+            ));
+            context_init.extend(quote!(
+                #ctx_name: #counter_init,
+            ));
+
+            on_event.extend(quote!(
+                context.#ctx_name #counter_increment;
+            ));
+
+            on_connection_closed.extend(quote!(
+                self.measure(#info, #id, context.#ctx_name #counter_load);
+            ));
         }
 
         for field in &event.fields {
@@ -201,6 +232,43 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
                     ));
                 }
             }
+
+            for measure in field.attrs.measure_counter.iter() {
+                let name = format!("{snake}.{}", measure.name.value());
+                let units = measure.unit.as_ref().unwrap_or(&units_none);
+                let info = &info.push(&name, units);
+                let id = measures.push(info, None);
+                let ctx_name = Ident::new(&format!("ctr_{id}"), Span::call_site());
+
+                let value = quote!(event.#field_name.as_u64());
+                let counter_increment = output.mode.counter_increment_by(value);
+
+                context_fields.extend(quote!(
+                    #ctx_name: #counter_type,
+                ));
+                context_init.extend(quote!(
+                    #ctx_name: #counter_init,
+                ));
+
+                on_event.extend(quote!(
+                    context.#ctx_name #counter_increment;
+                ));
+
+                if units == "Duration" {
+                    on_connection_closed.extend(quote!(
+                        self.measure(#info, #id, core::time::Duration::from_micros(context.#ctx_name #counter_load));
+                    ));
+                } else {
+                    on_connection_closed.extend(quote!(
+                        self.measure(#info, #id, context.#ctx_name #counter_load);
+                    ));
+                }
+            }
+        }
+
+        // check if we need to do additional things as part of closing
+        if snake == "connection_closed" {
+            on_event.extend(on_connection_closed.clone());
         }
 
         match event.attrs.subject {
@@ -265,7 +333,7 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
     let nominal_timers_probes = nominal_timers.probe();
     let nominal_timers_len = nominal_timers.len;
     let info_len = info.len;
-    let mut imports = quote!();
+    let mut imports = output.mode.imports();
 
     if !output.feature_alloc.is_empty() {
         imports.extend(quote!(
@@ -293,10 +361,11 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
 
         static INFO: &[Info; #info_len] = &[#info];
 
-        #[derive(Clone, Copy, Debug)]
+        #[derive(Debug)]
         #[allow(dead_code)]
         pub struct ConnectionContext {
             start_time: crate::event::Timestamp,
+            #context_fields
         }
 
         pub struct Subscriber<R: Registry> {
@@ -476,6 +545,7 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             ) -> Self::ConnectionContext {
                 Self::ConnectionContext {
                     start_time: meta.timestamp,
+                    #context_init
                 }
             }
 

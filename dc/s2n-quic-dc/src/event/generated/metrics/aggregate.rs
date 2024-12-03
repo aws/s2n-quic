@@ -12,7 +12,8 @@ use crate::event::{
         AsVariant, BoolRecorder, Info, Metric, NominalRecorder, Recorder, Registry, Units,
     },
 };
-static INFO: &[Info; 179usize] = &[
+use core::sync::atomic::{AtomicU64, Ordering};
+static INFO: &[Info; 202usize] = &[
     info::Builder {
         id: 0usize,
         name: Str::new("acceptor_tcp_started\0"),
@@ -309,793 +310,953 @@ static INFO: &[Info; 179usize] = &[
     .build(),
     info::Builder {
         id: 49usize,
+        name: Str::new("stream_write_flushed.conn\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 50usize,
         name: Str::new("stream_write_flushed.provided\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 50usize,
+        id: 51usize,
         name: Str::new("stream_write_flushed.committed.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 51usize,
+        id: 52usize,
         name: Str::new("stream_write_flushed.committed\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 52usize,
+        id: 53usize,
+        name: Str::new("stream_write_flushed.committed.conn\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: 54usize,
         name: Str::new("stream_write_flushed.processing_duration\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 53usize,
+        id: 55usize,
+        name: Str::new("stream_write_flushed.processing_duration.conn\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: 56usize,
         name: Str::new("stream_write_fin_flushed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
-        id: 54usize,
+        id: 57usize,
         name: Str::new("stream_write_fin_flushed.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 55usize,
+        id: 58usize,
+        name: Str::new("stream_write_fin_flushed.conn\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 59usize,
         name: Str::new("stream_write_fin_flushed.provided\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 56usize,
+        id: 60usize,
         name: Str::new("stream_write_fin_flushed.committed.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 57usize,
+        id: 61usize,
         name: Str::new("stream_write_fin_flushed.committed\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
-        id: 58usize,
+        id: 62usize,
+        name: Str::new("stream_write_fin_flushed.committed.conn\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: 63usize,
         name: Str::new("stream_write_fin_flushed.processing_duration\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
-        id: 59usize,
-        name: Str::new("stream_write_blocked\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: 60usize,
-        name: Str::new("stream_write_blocked.latency\0"),
-        units: Units::Duration,
-    }
-    .build(),
-    info::Builder {
-        id: 61usize,
-        name: Str::new("stream_write_blocked.provided\0"),
-        units: Units::Bytes,
-    }
-    .build(),
-    info::Builder {
-        id: 62usize,
-        name: Str::new("stream_write_blocked.processing_duration\0"),
-        units: Units::Duration,
-    }
-    .build(),
-    info::Builder {
-        id: 63usize,
-        name: Str::new("stream_write_errored\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
         id: 64usize,
-        name: Str::new("stream_write_errored.latency\0"),
+        name: Str::new("stream_write_fin_flushed.processing_duration.conn\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 65usize,
-        name: Str::new("stream_write_errored.provided\0"),
-        units: Units::Bytes,
+        name: Str::new("stream_write_blocked\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
         id: 66usize,
-        name: Str::new("stream_write_errored.processing_duration\0"),
+        name: Str::new("stream_write_blocked.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 67usize,
-        name: Str::new("stream_write_shutdown\0"),
+        name: Str::new("stream_write_blocked.conn.stream.write.blocked\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 68usize,
-        name: Str::new("stream_write_shutdown.latency\0"),
-        units: Units::Duration,
-    }
-    .build(),
-    info::Builder {
-        id: 69usize,
-        name: Str::new("stream_write_shutdown.buffer_len\0"),
+        name: Str::new("stream_write_blocked.provided\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
+        id: 69usize,
+        name: Str::new("stream_write_blocked.processing_duration\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
         id: 70usize,
-        name: Str::new("stream_write_shutdown.background\0"),
-        units: Units::None,
+        name: Str::new("stream_write_blocked.processing_duration.conn\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 71usize,
-        name: Str::new("stream_write_socket_flushed\0"),
+        name: Str::new("stream_write_errored\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 72usize,
-        name: Str::new("stream_write_socket_flushed.provided\0"),
-        units: Units::Bytes,
+        name: Str::new("stream_write_errored.latency\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 73usize,
-        name: Str::new("stream_write_socket_flushed.committed.total\0"),
+        name: Str::new("stream_write_errored.provided\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 74usize,
-        name: Str::new("stream_write_socket_flushed.committed\0"),
-        units: Units::Bytes,
+        name: Str::new("stream_write_errored.processing_duration\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 75usize,
-        name: Str::new("stream_write_socket_blocked\0"),
-        units: Units::None,
+        name: Str::new("stream_write_errored.processing_duration.conn\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 76usize,
-        name: Str::new("stream_write_socket_blocked.provided\0"),
-        units: Units::Bytes,
-    }
-    .build(),
-    info::Builder {
-        id: 77usize,
-        name: Str::new("stream_write_socket_errored\0"),
+        name: Str::new("stream_write_shutdown\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
+        id: 77usize,
+        name: Str::new("stream_write_shutdown.latency\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
         id: 78usize,
-        name: Str::new("stream_write_socket_errored.provided\0"),
+        name: Str::new("stream_write_shutdown.buffer_len\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 79usize,
-        name: Str::new("stream_read_flushed\0"),
+        name: Str::new("stream_write_shutdown.background\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 80usize,
-        name: Str::new("stream_read_flushed.latency\0"),
-        units: Units::Duration,
+        name: Str::new("stream_write_socket_flushed\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
         id: 81usize,
-        name: Str::new("stream_read_flushed.capacity\0"),
-        units: Units::Bytes,
+        name: Str::new("stream_write_socket_flushed.conn\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
         id: 82usize,
-        name: Str::new("stream_read_flushed.committed.total\0"),
+        name: Str::new("stream_write_socket_flushed.provided\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 83usize,
-        name: Str::new("stream_read_flushed.committed\0"),
+        name: Str::new("stream_write_socket_flushed.committed.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 84usize,
-        name: Str::new("stream_read_flushed.processing_duration\0"),
-        units: Units::Duration,
-    }
-    .build(),
-    info::Builder {
-        id: 85usize,
-        name: Str::new("stream_read_fin_flushed\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: 86usize,
-        name: Str::new("stream_read_fin_flushed.latency\0"),
-        units: Units::Duration,
-    }
-    .build(),
-    info::Builder {
-        id: 87usize,
-        name: Str::new("stream_read_fin_flushed.capacity\0"),
+        name: Str::new("stream_write_socket_flushed.committed\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
+        id: 85usize,
+        name: Str::new("stream_write_socket_flushed.committed.conn\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: 86usize,
+        name: Str::new("stream_write_socket_blocked\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 87usize,
+        name: Str::new("stream_write_socket_blocked.conn.stream.write.socket.blocked\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: 88usize,
-        name: Str::new("stream_read_fin_flushed.processing_duration\0"),
-        units: Units::Duration,
+        name: Str::new("stream_write_socket_blocked.provided\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 89usize,
-        name: Str::new("stream_read_blocked\0"),
+        name: Str::new("stream_write_socket_errored\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 90usize,
-        name: Str::new("stream_read_blocked.latency\0"),
-        units: Units::Duration,
-    }
-    .build(),
-    info::Builder {
-        id: 91usize,
-        name: Str::new("stream_read_blocked.capacity\0"),
+        name: Str::new("stream_write_socket_errored.provided\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
+        id: 91usize,
+        name: Str::new("stream_read_flushed\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: 92usize,
-        name: Str::new("stream_read_blocked.processing_duration\0"),
+        name: Str::new("stream_read_flushed.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 93usize,
-        name: Str::new("stream_read_errored\0"),
+        name: Str::new("stream_read_flushed.conn\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 94usize,
-        name: Str::new("stream_read_errored.latency\0"),
-        units: Units::Duration,
+        name: Str::new("stream_read_flushed.capacity\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 95usize,
-        name: Str::new("stream_read_errored.capacity\0"),
+        name: Str::new("stream_read_flushed.committed.total\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 96usize,
-        name: Str::new("stream_read_errored.processing_duration\0"),
-        units: Units::Duration,
+        name: Str::new("stream_read_flushed.committed\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 97usize,
-        name: Str::new("stream_read_shutdown\0"),
-        units: Units::None,
+        name: Str::new("stream_read_flushed.committed.conn\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 98usize,
-        name: Str::new("stream_read_shutdown.latency\0"),
+        name: Str::new("stream_read_flushed.processing_duration\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 99usize,
-        name: Str::new("stream_read_shutdown.background\0"),
-        units: Units::None,
+        name: Str::new("stream_read_flushed.processing_duration.conn\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 100usize,
-        name: Str::new("stream_read_socket_flushed\0"),
+        name: Str::new("stream_read_fin_flushed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 101usize,
-        name: Str::new("stream_read_socket_flushed.capacity\0"),
-        units: Units::Bytes,
+        name: Str::new("stream_read_fin_flushed.latency\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 102usize,
-        name: Str::new("stream_read_socket_flushed.committed.total\0"),
-        units: Units::Bytes,
+        name: Str::new("stream_read_fin_flushed.conn\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
         id: 103usize,
-        name: Str::new("stream_read_socket_flushed.committed\0"),
+        name: Str::new("stream_read_fin_flushed.capacity\0"),
         units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 104usize,
-        name: Str::new("stream_read_socket_blocked\0"),
-        units: Units::None,
+        name: Str::new("stream_read_fin_flushed.processing_duration\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 105usize,
-        name: Str::new("stream_read_socket_blocked.capacity\0"),
-        units: Units::Bytes,
+        name: Str::new("stream_read_fin_flushed.processing_duration.conn\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 106usize,
-        name: Str::new("stream_read_socket_errored\0"),
+        name: Str::new("stream_read_blocked\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 107usize,
-        name: Str::new("stream_read_socket_errored.capacity\0"),
-        units: Units::Bytes,
+        name: Str::new("stream_read_blocked.latency\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 108usize,
-        name: Str::new("endpoint_initialized\0"),
-        units: Units::None,
+        name: Str::new("stream_read_blocked.capacity\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 109usize,
-        name: Str::new("endpoint_initialized.acceptor.protocol\0"),
-        units: Units::None,
+        name: Str::new("stream_read_blocked.processing_duration\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 110usize,
-        name: Str::new("endpoint_initialized.handshake.protocol\0"),
-        units: Units::None,
+        name: Str::new("stream_read_blocked.processing_duration.conn\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 111usize,
-        name: Str::new("endpoint_initialized.tcp\0"),
+        name: Str::new("stream_read_errored\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 112usize,
-        name: Str::new("endpoint_initialized.udp\0"),
-        units: Units::None,
+        name: Str::new("stream_read_errored.latency\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 113usize,
-        name: Str::new("path_secret_map_initialized\0"),
-        units: Units::None,
+        name: Str::new("stream_read_errored.capacity\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 114usize,
-        name: Str::new("path_secret_map_initialized.capacity\0"),
-        units: Units::None,
+        name: Str::new("stream_read_errored.processing_duration\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 115usize,
-        name: Str::new("path_secret_map_uninitialized\0"),
-        units: Units::None,
+        name: Str::new("stream_read_errored.processing_duration.conn\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 116usize,
-        name: Str::new("path_secret_map_uninitialized.capacity\0"),
+        name: Str::new("stream_read_shutdown\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 117usize,
-        name: Str::new("path_secret_map_uninitialized.entries\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: 118usize,
-        name: Str::new("path_secret_map_uninitialized.lifetime\0"),
+        name: Str::new("stream_read_shutdown.latency\0"),
         units: Units::Duration,
     }
     .build(),
     info::Builder {
+        id: 118usize,
+        name: Str::new("stream_read_shutdown.background\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: 119usize,
-        name: Str::new("path_secret_map_background_handshake_requested\0"),
+        name: Str::new("stream_read_socket_flushed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 120usize,
-        name: Str::new("path_secret_map_background_handshake_requested.peer_address.protocol\0"),
+        name: Str::new("stream_read_socket_flushed.conn\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 121usize,
-        name: Str::new("path_secret_map_entry_inserted\0"),
-        units: Units::None,
+        name: Str::new("stream_read_socket_flushed.capacity\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 122usize,
-        name: Str::new("path_secret_map_entry_inserted.peer_address.protocol\0"),
-        units: Units::None,
+        name: Str::new("stream_read_socket_flushed.committed.total\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 123usize,
-        name: Str::new("path_secret_map_entry_ready\0"),
-        units: Units::None,
+        name: Str::new("stream_read_socket_flushed.committed\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 124usize,
-        name: Str::new("path_secret_map_entry_ready.peer_address.protocol\0"),
-        units: Units::None,
+        name: Str::new("stream_read_socket_flushed.committed.conn\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 125usize,
-        name: Str::new("path_secret_map_entry_replaced\0"),
+        name: Str::new("stream_read_socket_blocked\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 126usize,
-        name: Str::new("path_secret_map_entry_replaced.peer_address.protocol\0"),
+        name: Str::new("stream_read_socket_blocked.conn\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 127usize,
-        name: Str::new("unknown_path_secret_packet_sent\0"),
-        units: Units::None,
+        name: Str::new("stream_read_socket_blocked.capacity\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 128usize,
-        name: Str::new("unknown_path_secret_packet_sent.peer_address.protocol\0"),
+        name: Str::new("stream_read_socket_errored\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 129usize,
-        name: Str::new("unknown_path_secret_packet_received\0"),
-        units: Units::None,
+        name: Str::new("stream_read_socket_errored.capacity\0"),
+        units: Units::Bytes,
     }
     .build(),
     info::Builder {
         id: 130usize,
-        name: Str::new("unknown_path_secret_packet_received.peer_address.protocol\0"),
+        name: Str::new("connection_closed\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 131usize,
-        name: Str::new("unknown_path_secret_packet_accepted\0"),
+        name: Str::new("endpoint_initialized\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 132usize,
-        name: Str::new("unknown_path_secret_packet_accepted.peer_address.protocol\0"),
+        name: Str::new("endpoint_initialized.acceptor.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 133usize,
-        name: Str::new("unknown_path_secret_packet_rejected\0"),
+        name: Str::new("endpoint_initialized.handshake.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 134usize,
-        name: Str::new("unknown_path_secret_packet_rejected.peer_address.protocol\0"),
+        name: Str::new("endpoint_initialized.tcp\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 135usize,
-        name: Str::new("unknown_path_secret_packet_dropped\0"),
+        name: Str::new("endpoint_initialized.udp\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 136usize,
-        name: Str::new("unknown_path_secret_packet_dropped.peer_address.protocol\0"),
+        name: Str::new("path_secret_map_initialized\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 137usize,
-        name: Str::new("key_accepted\0"),
+        name: Str::new("path_secret_map_initialized.capacity\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 138usize,
-        name: Str::new("key_accepted.gap\0"),
+        name: Str::new("path_secret_map_uninitialized\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 139usize,
-        name: Str::new("key_accepted.forward_shift\0"),
+        name: Str::new("path_secret_map_uninitialized.capacity\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 140usize,
-        name: Str::new("replay_definitely_detected\0"),
+        name: Str::new("path_secret_map_uninitialized.entries\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 141usize,
-        name: Str::new("replay_potentially_detected\0"),
-        units: Units::None,
+        name: Str::new("path_secret_map_uninitialized.lifetime\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
         id: 142usize,
-        name: Str::new("replay_potentially_detected.gap\0"),
+        name: Str::new("path_secret_map_background_handshake_requested\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 143usize,
-        name: Str::new("replay_detected_packet_sent\0"),
+        name: Str::new("path_secret_map_background_handshake_requested.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 144usize,
-        name: Str::new("replay_detected_packet_sent.peer_address.protocol\0"),
+        name: Str::new("path_secret_map_entry_inserted\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 145usize,
-        name: Str::new("replay_detected_packet_received\0"),
+        name: Str::new("path_secret_map_entry_inserted.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 146usize,
-        name: Str::new("replay_detected_packet_received.peer_address.protocol\0"),
+        name: Str::new("path_secret_map_entry_ready\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 147usize,
-        name: Str::new("replay_detected_packet_accepted\0"),
+        name: Str::new("path_secret_map_entry_ready.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 148usize,
-        name: Str::new("replay_detected_packet_accepted.peer_address.protocol\0"),
+        name: Str::new("path_secret_map_entry_replaced\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 149usize,
-        name: Str::new("replay_detected_packet_rejected\0"),
+        name: Str::new("path_secret_map_entry_replaced.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 150usize,
-        name: Str::new("replay_detected_packet_rejected.peer_address.protocol\0"),
+        name: Str::new("unknown_path_secret_packet_sent\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 151usize,
-        name: Str::new("replay_detected_packet_dropped\0"),
+        name: Str::new("unknown_path_secret_packet_sent.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 152usize,
-        name: Str::new("replay_detected_packet_dropped.peer_address.protocol\0"),
+        name: Str::new("unknown_path_secret_packet_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 153usize,
-        name: Str::new("stale_key_packet_sent\0"),
+        name: Str::new("unknown_path_secret_packet_received.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 154usize,
-        name: Str::new("stale_key_packet_sent.peer_address.protocol\0"),
+        name: Str::new("unknown_path_secret_packet_accepted\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 155usize,
-        name: Str::new("stale_key_packet_received\0"),
+        name: Str::new("unknown_path_secret_packet_accepted.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 156usize,
-        name: Str::new("stale_key_packet_received.peer_address.protocol\0"),
+        name: Str::new("unknown_path_secret_packet_rejected\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 157usize,
-        name: Str::new("stale_key_packet_accepted\0"),
+        name: Str::new("unknown_path_secret_packet_rejected.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 158usize,
-        name: Str::new("stale_key_packet_accepted.peer_address.protocol\0"),
+        name: Str::new("unknown_path_secret_packet_dropped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 159usize,
-        name: Str::new("stale_key_packet_rejected\0"),
+        name: Str::new("unknown_path_secret_packet_dropped.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 160usize,
-        name: Str::new("stale_key_packet_rejected.peer_address.protocol\0"),
+        name: Str::new("key_accepted\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 161usize,
-        name: Str::new("stale_key_packet_dropped\0"),
+        name: Str::new("key_accepted.gap\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 162usize,
-        name: Str::new("stale_key_packet_dropped.peer_address.protocol\0"),
+        name: Str::new("key_accepted.forward_shift\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 163usize,
-        name: Str::new("path_secret_map_address_cache_accessed\0"),
+        name: Str::new("replay_definitely_detected\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 164usize,
-        name: Str::new("path_secret_map_address_cache_accessed.peer_address.protocol\0"),
+        name: Str::new("replay_potentially_detected\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 165usize,
-        name: Str::new("path_secret_map_address_cache_accessed.hit\0"),
+        name: Str::new("replay_potentially_detected.gap\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 166usize,
-        name: Str::new("path_secret_map_id_cache_accessed\0"),
+        name: Str::new("replay_detected_packet_sent\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 167usize,
-        name: Str::new("path_secret_map_id_cache_accessed.hit\0"),
+        name: Str::new("replay_detected_packet_sent.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 168usize,
-        name: Str::new("path_secret_map_cleaner_cycled\0"),
+        name: Str::new("replay_detected_packet_received\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 169usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.id\0"),
+        name: Str::new("replay_detected_packet_received.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 170usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.id.retired\0"),
+        name: Str::new("replay_detected_packet_accepted\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 171usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.id.utilization\0"),
-        units: Units::Percent,
+        name: Str::new("replay_detected_packet_accepted.peer_address.protocol\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
         id: 172usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.id.utilization.initial\0"),
-        units: Units::Percent,
+        name: Str::new("replay_detected_packet_rejected\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
         id: 173usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.address\0"),
+        name: Str::new("replay_detected_packet_rejected.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 174usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.address.retired\0"),
+        name: Str::new("replay_detected_packet_dropped\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 175usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.address.utilization\0"),
-        units: Units::Percent,
+        name: Str::new("replay_detected_packet_dropped.peer_address.protocol\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
         id: 176usize,
-        name: Str::new("path_secret_map_cleaner_cycled.entries.address.utilization.initial\0"),
-        units: Units::Percent,
+        name: Str::new("stale_key_packet_sent\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
         id: 177usize,
-        name: Str::new("path_secret_map_cleaner_cycled.handshake_requests\0"),
+        name: Str::new("stale_key_packet_sent.peer_address.protocol\0"),
         units: Units::None,
     }
     .build(),
     info::Builder {
         id: 178usize,
+        name: Str::new("stale_key_packet_received\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 179usize,
+        name: Str::new("stale_key_packet_received.peer_address.protocol\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 180usize,
+        name: Str::new("stale_key_packet_accepted\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 181usize,
+        name: Str::new("stale_key_packet_accepted.peer_address.protocol\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 182usize,
+        name: Str::new("stale_key_packet_rejected\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 183usize,
+        name: Str::new("stale_key_packet_rejected.peer_address.protocol\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 184usize,
+        name: Str::new("stale_key_packet_dropped\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 185usize,
+        name: Str::new("stale_key_packet_dropped.peer_address.protocol\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 186usize,
+        name: Str::new("path_secret_map_address_cache_accessed\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 187usize,
+        name: Str::new("path_secret_map_address_cache_accessed.peer_address.protocol\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 188usize,
+        name: Str::new("path_secret_map_address_cache_accessed.hit\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 189usize,
+        name: Str::new("path_secret_map_id_cache_accessed\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 190usize,
+        name: Str::new("path_secret_map_id_cache_accessed.hit\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 191usize,
+        name: Str::new("path_secret_map_cleaner_cycled\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 192usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 193usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.retired\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 194usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.utilization\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
+        id: 195usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.id.utilization.initial\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
+        id: 196usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 197usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address.retired\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 198usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address.utilization\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
+        id: 199usize,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.address.utilization.initial\0"),
+        units: Units::Percent,
+    }
+    .build(),
+    info::Builder {
+        id: 200usize,
+        name: Str::new("path_secret_map_cleaner_cycled.handshake_requests\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: 201usize,
         name: Str::new("path_secret_map_cleaner_cycled.handshake_requests.retired\0"),
         units: Units::None,
     }
     .build(),
 ];
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct ConnectionContext {
     start_time: crate::event::Timestamp,
+    ctr_12: AtomicU64,
+    ctr_15: AtomicU64,
+    ctr_17: AtomicU64,
+    ctr_18: AtomicU64,
+    ctr_21: AtomicU64,
+    ctr_23: AtomicU64,
+    ctr_24: AtomicU64,
+    ctr_27: AtomicU64,
+    ctr_30: AtomicU64,
+    ctr_32: AtomicU64,
+    ctr_35: AtomicU64,
+    ctr_36: AtomicU64,
+    ctr_39: AtomicU64,
+    ctr_42: AtomicU64,
+    ctr_44: AtomicU64,
+    ctr_45: AtomicU64,
+    ctr_48: AtomicU64,
+    ctr_51: AtomicU64,
+    ctr_54: AtomicU64,
+    ctr_55: AtomicU64,
+    ctr_58: AtomicU64,
+    ctr_59: AtomicU64,
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 67usize]>,
+    counters: Box<[R::Counter; 68usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 12usize]>,
     #[allow(dead_code)]
@@ -1103,7 +1264,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     nominal_counter_offsets: Box<[usize; 26usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 57usize]>,
+    measures: Box<[R::Measure; 79usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
@@ -1130,11 +1291,11 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(67usize);
+        let mut counters = Vec::with_capacity(68usize);
         let mut bool_counters = Vec::with_capacity(12usize);
         let mut nominal_counters = Vec::with_capacity(26usize);
         let mut nominal_counter_offsets = Vec::with_capacity(26usize);
-        let mut measures = Vec::with_capacity(57usize);
+        let mut measures = Vec::with_capacity(79usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(17usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
@@ -1158,66 +1319,67 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[42usize]));
         counters.push(registry.register_counter(&INFO[45usize]));
         counters.push(registry.register_counter(&INFO[47usize]));
-        counters.push(registry.register_counter(&INFO[50usize]));
-        counters.push(registry.register_counter(&INFO[53usize]));
+        counters.push(registry.register_counter(&INFO[51usize]));
         counters.push(registry.register_counter(&INFO[56usize]));
-        counters.push(registry.register_counter(&INFO[59usize]));
-        counters.push(registry.register_counter(&INFO[63usize]));
-        counters.push(registry.register_counter(&INFO[67usize]));
+        counters.push(registry.register_counter(&INFO[60usize]));
+        counters.push(registry.register_counter(&INFO[65usize]));
         counters.push(registry.register_counter(&INFO[71usize]));
-        counters.push(registry.register_counter(&INFO[73usize]));
-        counters.push(registry.register_counter(&INFO[75usize]));
-        counters.push(registry.register_counter(&INFO[77usize]));
-        counters.push(registry.register_counter(&INFO[79usize]));
-        counters.push(registry.register_counter(&INFO[82usize]));
-        counters.push(registry.register_counter(&INFO[85usize]));
+        counters.push(registry.register_counter(&INFO[76usize]));
+        counters.push(registry.register_counter(&INFO[80usize]));
+        counters.push(registry.register_counter(&INFO[83usize]));
+        counters.push(registry.register_counter(&INFO[86usize]));
         counters.push(registry.register_counter(&INFO[89usize]));
-        counters.push(registry.register_counter(&INFO[93usize]));
-        counters.push(registry.register_counter(&INFO[97usize]));
+        counters.push(registry.register_counter(&INFO[91usize]));
+        counters.push(registry.register_counter(&INFO[95usize]));
         counters.push(registry.register_counter(&INFO[100usize]));
-        counters.push(registry.register_counter(&INFO[102usize]));
-        counters.push(registry.register_counter(&INFO[104usize]));
         counters.push(registry.register_counter(&INFO[106usize]));
-        counters.push(registry.register_counter(&INFO[108usize]));
-        counters.push(registry.register_counter(&INFO[113usize]));
-        counters.push(registry.register_counter(&INFO[115usize]));
+        counters.push(registry.register_counter(&INFO[111usize]));
+        counters.push(registry.register_counter(&INFO[116usize]));
         counters.push(registry.register_counter(&INFO[119usize]));
-        counters.push(registry.register_counter(&INFO[121usize]));
-        counters.push(registry.register_counter(&INFO[123usize]));
+        counters.push(registry.register_counter(&INFO[122usize]));
         counters.push(registry.register_counter(&INFO[125usize]));
-        counters.push(registry.register_counter(&INFO[127usize]));
-        counters.push(registry.register_counter(&INFO[129usize]));
+        counters.push(registry.register_counter(&INFO[128usize]));
+        counters.push(registry.register_counter(&INFO[130usize]));
         counters.push(registry.register_counter(&INFO[131usize]));
-        counters.push(registry.register_counter(&INFO[133usize]));
-        counters.push(registry.register_counter(&INFO[135usize]));
-        counters.push(registry.register_counter(&INFO[137usize]));
-        counters.push(registry.register_counter(&INFO[140usize]));
-        counters.push(registry.register_counter(&INFO[141usize]));
-        counters.push(registry.register_counter(&INFO[143usize]));
-        counters.push(registry.register_counter(&INFO[145usize]));
-        counters.push(registry.register_counter(&INFO[147usize]));
-        counters.push(registry.register_counter(&INFO[149usize]));
-        counters.push(registry.register_counter(&INFO[151usize]));
-        counters.push(registry.register_counter(&INFO[153usize]));
-        counters.push(registry.register_counter(&INFO[155usize]));
-        counters.push(registry.register_counter(&INFO[157usize]));
-        counters.push(registry.register_counter(&INFO[159usize]));
-        counters.push(registry.register_counter(&INFO[161usize]));
+        counters.push(registry.register_counter(&INFO[136usize]));
+        counters.push(registry.register_counter(&INFO[138usize]));
+        counters.push(registry.register_counter(&INFO[142usize]));
+        counters.push(registry.register_counter(&INFO[144usize]));
+        counters.push(registry.register_counter(&INFO[146usize]));
+        counters.push(registry.register_counter(&INFO[148usize]));
+        counters.push(registry.register_counter(&INFO[150usize]));
+        counters.push(registry.register_counter(&INFO[152usize]));
+        counters.push(registry.register_counter(&INFO[154usize]));
+        counters.push(registry.register_counter(&INFO[156usize]));
+        counters.push(registry.register_counter(&INFO[158usize]));
+        counters.push(registry.register_counter(&INFO[160usize]));
         counters.push(registry.register_counter(&INFO[163usize]));
+        counters.push(registry.register_counter(&INFO[164usize]));
         counters.push(registry.register_counter(&INFO[166usize]));
         counters.push(registry.register_counter(&INFO[168usize]));
+        counters.push(registry.register_counter(&INFO[170usize]));
+        counters.push(registry.register_counter(&INFO[172usize]));
+        counters.push(registry.register_counter(&INFO[174usize]));
+        counters.push(registry.register_counter(&INFO[176usize]));
+        counters.push(registry.register_counter(&INFO[178usize]));
+        counters.push(registry.register_counter(&INFO[180usize]));
+        counters.push(registry.register_counter(&INFO[182usize]));
+        counters.push(registry.register_counter(&INFO[184usize]));
+        counters.push(registry.register_counter(&INFO[186usize]));
+        counters.push(registry.register_counter(&INFO[189usize]));
+        counters.push(registry.register_counter(&INFO[191usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[19usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[20usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[34usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[35usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[36usize]));
         bool_counters.push(registry.register_bool_counter(&INFO[37usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[70usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[99usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[111usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[112usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[165usize]));
-        bool_counters.push(registry.register_bool_counter(&INFO[167usize]));
+        bool_counters.push(registry.register_bool_counter(&INFO[79usize]));
+        bool_counters.push(registry.register_bool_counter(&INFO[118usize]));
+        bool_counters.push(registry.register_bool_counter(&INFO[134usize]));
+        bool_counters.push(registry.register_bool_counter(&INFO[135usize]));
+        bool_counters.push(registry.register_bool_counter(&INFO[188usize]));
+        bool_counters.push(registry.register_bool_counter(&INFO[190usize]));
         {
             #[allow(unused_imports)]
             use api::*;
@@ -1270,94 +1432,6 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[109usize], variant));
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
-                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[110usize], variant));
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
-                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[120usize], variant));
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
-                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[122usize], variant));
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
-                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[124usize], variant));
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
-                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[126usize], variant));
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
-                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[128usize], variant));
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
-                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[130usize], variant));
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
-                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
-                    nominal_counters
                         .push(registry.register_nominal_counter(&INFO[132usize], variant));
                     count += 1;
                 }
@@ -1369,7 +1443,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[134usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[133usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1380,7 +1454,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[136usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[143usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1391,7 +1465,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[144usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[145usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1402,7 +1476,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[146usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[147usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1413,7 +1487,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[148usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[149usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1424,7 +1498,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[150usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[151usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1435,7 +1509,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[152usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[153usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1446,7 +1520,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[154usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[155usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1457,7 +1531,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[156usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[157usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1468,7 +1542,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[158usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[159usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1479,7 +1553,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[160usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[167usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1490,7 +1564,7 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[162usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[169usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1501,7 +1575,95 @@ impl<R: Registry> Subscriber<R> {
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
-                        .push(registry.register_nominal_counter(&INFO[164usize], variant));
+                        .push(registry.register_nominal_counter(&INFO[171usize], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
+                    nominal_counters
+                        .push(registry.register_nominal_counter(&INFO[173usize], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
+                    nominal_counters
+                        .push(registry.register_nominal_counter(&INFO[175usize], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
+                    nominal_counters
+                        .push(registry.register_nominal_counter(&INFO[177usize], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
+                    nominal_counters
+                        .push(registry.register_nominal_counter(&INFO[179usize], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
+                    nominal_counters
+                        .push(registry.register_nominal_counter(&INFO[181usize], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
+                    nominal_counters
+                        .push(registry.register_nominal_counter(&INFO[183usize], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
+                    nominal_counters
+                        .push(registry.register_nominal_counter(&INFO[185usize], variant));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
+                    nominal_counters
+                        .push(registry.register_nominal_counter(&INFO[187usize], variant));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -1521,50 +1683,72 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[31usize]));
         measures.push(registry.register_measure(&INFO[33usize]));
         measures.push(registry.register_measure(&INFO[49usize]));
-        measures.push(registry.register_measure(&INFO[51usize]));
+        measures.push(registry.register_measure(&INFO[50usize]));
         measures.push(registry.register_measure(&INFO[52usize]));
+        measures.push(registry.register_measure(&INFO[53usize]));
+        measures.push(registry.register_measure(&INFO[54usize]));
         measures.push(registry.register_measure(&INFO[55usize]));
-        measures.push(registry.register_measure(&INFO[57usize]));
         measures.push(registry.register_measure(&INFO[58usize]));
+        measures.push(registry.register_measure(&INFO[59usize]));
         measures.push(registry.register_measure(&INFO[61usize]));
         measures.push(registry.register_measure(&INFO[62usize]));
-        measures.push(registry.register_measure(&INFO[65usize]));
-        measures.push(registry.register_measure(&INFO[66usize]));
+        measures.push(registry.register_measure(&INFO[63usize]));
+        measures.push(registry.register_measure(&INFO[64usize]));
+        measures.push(registry.register_measure(&INFO[67usize]));
+        measures.push(registry.register_measure(&INFO[68usize]));
         measures.push(registry.register_measure(&INFO[69usize]));
-        measures.push(registry.register_measure(&INFO[72usize]));
+        measures.push(registry.register_measure(&INFO[70usize]));
+        measures.push(registry.register_measure(&INFO[73usize]));
         measures.push(registry.register_measure(&INFO[74usize]));
-        measures.push(registry.register_measure(&INFO[76usize]));
+        measures.push(registry.register_measure(&INFO[75usize]));
         measures.push(registry.register_measure(&INFO[78usize]));
         measures.push(registry.register_measure(&INFO[81usize]));
-        measures.push(registry.register_measure(&INFO[83usize]));
+        measures.push(registry.register_measure(&INFO[82usize]));
         measures.push(registry.register_measure(&INFO[84usize]));
+        measures.push(registry.register_measure(&INFO[85usize]));
         measures.push(registry.register_measure(&INFO[87usize]));
         measures.push(registry.register_measure(&INFO[88usize]));
-        measures.push(registry.register_measure(&INFO[91usize]));
-        measures.push(registry.register_measure(&INFO[92usize]));
-        measures.push(registry.register_measure(&INFO[95usize]));
+        measures.push(registry.register_measure(&INFO[90usize]));
+        measures.push(registry.register_measure(&INFO[93usize]));
+        measures.push(registry.register_measure(&INFO[94usize]));
         measures.push(registry.register_measure(&INFO[96usize]));
-        measures.push(registry.register_measure(&INFO[101usize]));
+        measures.push(registry.register_measure(&INFO[97usize]));
+        measures.push(registry.register_measure(&INFO[98usize]));
+        measures.push(registry.register_measure(&INFO[99usize]));
+        measures.push(registry.register_measure(&INFO[102usize]));
         measures.push(registry.register_measure(&INFO[103usize]));
+        measures.push(registry.register_measure(&INFO[104usize]));
         measures.push(registry.register_measure(&INFO[105usize]));
-        measures.push(registry.register_measure(&INFO[107usize]));
+        measures.push(registry.register_measure(&INFO[108usize]));
+        measures.push(registry.register_measure(&INFO[109usize]));
+        measures.push(registry.register_measure(&INFO[110usize]));
+        measures.push(registry.register_measure(&INFO[113usize]));
         measures.push(registry.register_measure(&INFO[114usize]));
-        measures.push(registry.register_measure(&INFO[116usize]));
-        measures.push(registry.register_measure(&INFO[117usize]));
-        measures.push(registry.register_measure(&INFO[118usize]));
-        measures.push(registry.register_measure(&INFO[138usize]));
+        measures.push(registry.register_measure(&INFO[115usize]));
+        measures.push(registry.register_measure(&INFO[120usize]));
+        measures.push(registry.register_measure(&INFO[121usize]));
+        measures.push(registry.register_measure(&INFO[123usize]));
+        measures.push(registry.register_measure(&INFO[124usize]));
+        measures.push(registry.register_measure(&INFO[126usize]));
+        measures.push(registry.register_measure(&INFO[127usize]));
+        measures.push(registry.register_measure(&INFO[129usize]));
+        measures.push(registry.register_measure(&INFO[137usize]));
         measures.push(registry.register_measure(&INFO[139usize]));
-        measures.push(registry.register_measure(&INFO[142usize]));
-        measures.push(registry.register_measure(&INFO[169usize]));
-        measures.push(registry.register_measure(&INFO[170usize]));
-        measures.push(registry.register_measure(&INFO[171usize]));
-        measures.push(registry.register_measure(&INFO[172usize]));
-        measures.push(registry.register_measure(&INFO[173usize]));
-        measures.push(registry.register_measure(&INFO[174usize]));
-        measures.push(registry.register_measure(&INFO[175usize]));
-        measures.push(registry.register_measure(&INFO[176usize]));
-        measures.push(registry.register_measure(&INFO[177usize]));
-        measures.push(registry.register_measure(&INFO[178usize]));
+        measures.push(registry.register_measure(&INFO[140usize]));
+        measures.push(registry.register_measure(&INFO[141usize]));
+        measures.push(registry.register_measure(&INFO[161usize]));
+        measures.push(registry.register_measure(&INFO[162usize]));
+        measures.push(registry.register_measure(&INFO[165usize]));
+        measures.push(registry.register_measure(&INFO[192usize]));
+        measures.push(registry.register_measure(&INFO[193usize]));
+        measures.push(registry.register_measure(&INFO[194usize]));
+        measures.push(registry.register_measure(&INFO[195usize]));
+        measures.push(registry.register_measure(&INFO[196usize]));
+        measures.push(registry.register_measure(&INFO[197usize]));
+        measures.push(registry.register_measure(&INFO[198usize]));
+        measures.push(registry.register_measure(&INFO[199usize]));
+        measures.push(registry.register_measure(&INFO[200usize]));
+        measures.push(registry.register_measure(&INFO[201usize]));
         timers.push(registry.register_timer(&INFO[5usize]));
         timers.push(registry.register_timer(&INFO[15usize]));
         timers.push(registry.register_timer(&INFO[21usize]));
@@ -1573,15 +1757,15 @@ impl<R: Registry> Subscriber<R> {
         timers.push(registry.register_timer(&INFO[43usize]));
         timers.push(registry.register_timer(&INFO[46usize]));
         timers.push(registry.register_timer(&INFO[48usize]));
-        timers.push(registry.register_timer(&INFO[54usize]));
-        timers.push(registry.register_timer(&INFO[60usize]));
-        timers.push(registry.register_timer(&INFO[64usize]));
-        timers.push(registry.register_timer(&INFO[68usize]));
-        timers.push(registry.register_timer(&INFO[80usize]));
-        timers.push(registry.register_timer(&INFO[86usize]));
-        timers.push(registry.register_timer(&INFO[90usize]));
-        timers.push(registry.register_timer(&INFO[94usize]));
-        timers.push(registry.register_timer(&INFO[98usize]));
+        timers.push(registry.register_timer(&INFO[57usize]));
+        timers.push(registry.register_timer(&INFO[66usize]));
+        timers.push(registry.register_timer(&INFO[72usize]));
+        timers.push(registry.register_timer(&INFO[77usize]));
+        timers.push(registry.register_timer(&INFO[92usize]));
+        timers.push(registry.register_timer(&INFO[101usize]));
+        timers.push(registry.register_timer(&INFO[107usize]));
+        timers.push(registry.register_timer(&INFO[112usize]));
+        timers.push(registry.register_timer(&INFO[117usize]));
         {
             #[allow(unused_imports)]
             use api::*;
@@ -1635,54 +1819,55 @@ impl<R: Registry> Subscriber<R> {
                 16usize => (&INFO[42usize], entry),
                 17usize => (&INFO[45usize], entry),
                 18usize => (&INFO[47usize], entry),
-                19usize => (&INFO[50usize], entry),
-                20usize => (&INFO[53usize], entry),
-                21usize => (&INFO[56usize], entry),
-                22usize => (&INFO[59usize], entry),
-                23usize => (&INFO[63usize], entry),
-                24usize => (&INFO[67usize], entry),
-                25usize => (&INFO[71usize], entry),
-                26usize => (&INFO[73usize], entry),
-                27usize => (&INFO[75usize], entry),
-                28usize => (&INFO[77usize], entry),
-                29usize => (&INFO[79usize], entry),
-                30usize => (&INFO[82usize], entry),
-                31usize => (&INFO[85usize], entry),
-                32usize => (&INFO[89usize], entry),
-                33usize => (&INFO[93usize], entry),
-                34usize => (&INFO[97usize], entry),
-                35usize => (&INFO[100usize], entry),
-                36usize => (&INFO[102usize], entry),
-                37usize => (&INFO[104usize], entry),
-                38usize => (&INFO[106usize], entry),
-                39usize => (&INFO[108usize], entry),
-                40usize => (&INFO[113usize], entry),
-                41usize => (&INFO[115usize], entry),
-                42usize => (&INFO[119usize], entry),
-                43usize => (&INFO[121usize], entry),
-                44usize => (&INFO[123usize], entry),
-                45usize => (&INFO[125usize], entry),
-                46usize => (&INFO[127usize], entry),
-                47usize => (&INFO[129usize], entry),
-                48usize => (&INFO[131usize], entry),
-                49usize => (&INFO[133usize], entry),
-                50usize => (&INFO[135usize], entry),
-                51usize => (&INFO[137usize], entry),
-                52usize => (&INFO[140usize], entry),
-                53usize => (&INFO[141usize], entry),
-                54usize => (&INFO[143usize], entry),
-                55usize => (&INFO[145usize], entry),
-                56usize => (&INFO[147usize], entry),
-                57usize => (&INFO[149usize], entry),
-                58usize => (&INFO[151usize], entry),
-                59usize => (&INFO[153usize], entry),
-                60usize => (&INFO[155usize], entry),
-                61usize => (&INFO[157usize], entry),
-                62usize => (&INFO[159usize], entry),
-                63usize => (&INFO[161usize], entry),
-                64usize => (&INFO[163usize], entry),
-                65usize => (&INFO[166usize], entry),
-                66usize => (&INFO[168usize], entry),
+                19usize => (&INFO[51usize], entry),
+                20usize => (&INFO[56usize], entry),
+                21usize => (&INFO[60usize], entry),
+                22usize => (&INFO[65usize], entry),
+                23usize => (&INFO[71usize], entry),
+                24usize => (&INFO[76usize], entry),
+                25usize => (&INFO[80usize], entry),
+                26usize => (&INFO[83usize], entry),
+                27usize => (&INFO[86usize], entry),
+                28usize => (&INFO[89usize], entry),
+                29usize => (&INFO[91usize], entry),
+                30usize => (&INFO[95usize], entry),
+                31usize => (&INFO[100usize], entry),
+                32usize => (&INFO[106usize], entry),
+                33usize => (&INFO[111usize], entry),
+                34usize => (&INFO[116usize], entry),
+                35usize => (&INFO[119usize], entry),
+                36usize => (&INFO[122usize], entry),
+                37usize => (&INFO[125usize], entry),
+                38usize => (&INFO[128usize], entry),
+                39usize => (&INFO[130usize], entry),
+                40usize => (&INFO[131usize], entry),
+                41usize => (&INFO[136usize], entry),
+                42usize => (&INFO[138usize], entry),
+                43usize => (&INFO[142usize], entry),
+                44usize => (&INFO[144usize], entry),
+                45usize => (&INFO[146usize], entry),
+                46usize => (&INFO[148usize], entry),
+                47usize => (&INFO[150usize], entry),
+                48usize => (&INFO[152usize], entry),
+                49usize => (&INFO[154usize], entry),
+                50usize => (&INFO[156usize], entry),
+                51usize => (&INFO[158usize], entry),
+                52usize => (&INFO[160usize], entry),
+                53usize => (&INFO[163usize], entry),
+                54usize => (&INFO[164usize], entry),
+                55usize => (&INFO[166usize], entry),
+                56usize => (&INFO[168usize], entry),
+                57usize => (&INFO[170usize], entry),
+                58usize => (&INFO[172usize], entry),
+                59usize => (&INFO[174usize], entry),
+                60usize => (&INFO[176usize], entry),
+                61usize => (&INFO[178usize], entry),
+                62usize => (&INFO[180usize], entry),
+                63usize => (&INFO[182usize], entry),
+                64usize => (&INFO[184usize], entry),
+                65usize => (&INFO[186usize], entry),
+                66usize => (&INFO[189usize], entry),
+                67usize => (&INFO[191usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -1706,12 +1891,12 @@ impl<R: Registry> Subscriber<R> {
                 3usize => (&INFO[35usize], entry),
                 4usize => (&INFO[36usize], entry),
                 5usize => (&INFO[37usize], entry),
-                6usize => (&INFO[70usize], entry),
-                7usize => (&INFO[99usize], entry),
-                8usize => (&INFO[111usize], entry),
-                9usize => (&INFO[112usize], entry),
-                10usize => (&INFO[165usize], entry),
-                11usize => (&INFO[167usize], entry),
+                6usize => (&INFO[79usize], entry),
+                7usize => (&INFO[118usize], entry),
+                8usize => (&INFO[134usize], entry),
+                9usize => (&INFO[135usize], entry),
+                10usize => (&INFO[188usize], entry),
+                11usize => (&INFO[190usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -1760,133 +1945,133 @@ impl<R: Registry> Subscriber<R> {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[109usize], entries, variants)
+                    (&INFO[132usize], entries, variants)
                 }
                 5usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[110usize], entries, variants)
+                    (&INFO[133usize], entries, variants)
                 }
                 6usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[120usize], entries, variants)
+                    (&INFO[143usize], entries, variants)
                 }
                 7usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[122usize], entries, variants)
+                    (&INFO[145usize], entries, variants)
                 }
                 8usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[124usize], entries, variants)
+                    (&INFO[147usize], entries, variants)
                 }
                 9usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[126usize], entries, variants)
+                    (&INFO[149usize], entries, variants)
                 }
                 10usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[128usize], entries, variants)
+                    (&INFO[151usize], entries, variants)
                 }
                 11usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[130usize], entries, variants)
+                    (&INFO[153usize], entries, variants)
                 }
                 12usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[132usize], entries, variants)
+                    (&INFO[155usize], entries, variants)
                 }
                 13usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[134usize], entries, variants)
+                    (&INFO[157usize], entries, variants)
                 }
                 14usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[136usize], entries, variants)
+                    (&INFO[159usize], entries, variants)
                 }
                 15usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[144usize], entries, variants)
+                    (&INFO[167usize], entries, variants)
                 }
                 16usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[146usize], entries, variants)
+                    (&INFO[169usize], entries, variants)
                 }
                 17usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[148usize], entries, variants)
+                    (&INFO[171usize], entries, variants)
                 }
                 18usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[150usize], entries, variants)
+                    (&INFO[173usize], entries, variants)
                 }
                 19usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[152usize], entries, variants)
+                    (&INFO[175usize], entries, variants)
                 }
                 20usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[154usize], entries, variants)
+                    (&INFO[177usize], entries, variants)
                 }
                 21usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[156usize], entries, variants)
+                    (&INFO[179usize], entries, variants)
                 }
                 22usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[158usize], entries, variants)
+                    (&INFO[181usize], entries, variants)
                 }
                 23usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[160usize], entries, variants)
+                    (&INFO[183usize], entries, variants)
                 }
                 24usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[162usize], entries, variants)
+                    (&INFO[185usize], entries, variants)
                 }
                 25usize => {
                     let offset = *entry;
                     let variants = <SocketAddress as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
-                    (&INFO[164usize], entries, variants)
+                    (&INFO[187usize], entries, variants)
                 }
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
@@ -1919,50 +2104,72 @@ impl<R: Registry> Subscriber<R> {
                 10usize => (&INFO[31usize], entry),
                 11usize => (&INFO[33usize], entry),
                 12usize => (&INFO[49usize], entry),
-                13usize => (&INFO[51usize], entry),
+                13usize => (&INFO[50usize], entry),
                 14usize => (&INFO[52usize], entry),
-                15usize => (&INFO[55usize], entry),
-                16usize => (&INFO[57usize], entry),
-                17usize => (&INFO[58usize], entry),
-                18usize => (&INFO[61usize], entry),
-                19usize => (&INFO[62usize], entry),
-                20usize => (&INFO[65usize], entry),
-                21usize => (&INFO[66usize], entry),
-                22usize => (&INFO[69usize], entry),
-                23usize => (&INFO[72usize], entry),
-                24usize => (&INFO[74usize], entry),
-                25usize => (&INFO[76usize], entry),
-                26usize => (&INFO[78usize], entry),
-                27usize => (&INFO[81usize], entry),
-                28usize => (&INFO[83usize], entry),
-                29usize => (&INFO[84usize], entry),
-                30usize => (&INFO[87usize], entry),
-                31usize => (&INFO[88usize], entry),
-                32usize => (&INFO[91usize], entry),
-                33usize => (&INFO[92usize], entry),
-                34usize => (&INFO[95usize], entry),
-                35usize => (&INFO[96usize], entry),
-                36usize => (&INFO[101usize], entry),
-                37usize => (&INFO[103usize], entry),
-                38usize => (&INFO[105usize], entry),
-                39usize => (&INFO[107usize], entry),
-                40usize => (&INFO[114usize], entry),
-                41usize => (&INFO[116usize], entry),
-                42usize => (&INFO[117usize], entry),
-                43usize => (&INFO[118usize], entry),
-                44usize => (&INFO[138usize], entry),
-                45usize => (&INFO[139usize], entry),
-                46usize => (&INFO[142usize], entry),
-                47usize => (&INFO[169usize], entry),
-                48usize => (&INFO[170usize], entry),
-                49usize => (&INFO[171usize], entry),
-                50usize => (&INFO[172usize], entry),
-                51usize => (&INFO[173usize], entry),
-                52usize => (&INFO[174usize], entry),
-                53usize => (&INFO[175usize], entry),
-                54usize => (&INFO[176usize], entry),
-                55usize => (&INFO[177usize], entry),
-                56usize => (&INFO[178usize], entry),
+                15usize => (&INFO[53usize], entry),
+                16usize => (&INFO[54usize], entry),
+                17usize => (&INFO[55usize], entry),
+                18usize => (&INFO[58usize], entry),
+                19usize => (&INFO[59usize], entry),
+                20usize => (&INFO[61usize], entry),
+                21usize => (&INFO[62usize], entry),
+                22usize => (&INFO[63usize], entry),
+                23usize => (&INFO[64usize], entry),
+                24usize => (&INFO[67usize], entry),
+                25usize => (&INFO[68usize], entry),
+                26usize => (&INFO[69usize], entry),
+                27usize => (&INFO[70usize], entry),
+                28usize => (&INFO[73usize], entry),
+                29usize => (&INFO[74usize], entry),
+                30usize => (&INFO[75usize], entry),
+                31usize => (&INFO[78usize], entry),
+                32usize => (&INFO[81usize], entry),
+                33usize => (&INFO[82usize], entry),
+                34usize => (&INFO[84usize], entry),
+                35usize => (&INFO[85usize], entry),
+                36usize => (&INFO[87usize], entry),
+                37usize => (&INFO[88usize], entry),
+                38usize => (&INFO[90usize], entry),
+                39usize => (&INFO[93usize], entry),
+                40usize => (&INFO[94usize], entry),
+                41usize => (&INFO[96usize], entry),
+                42usize => (&INFO[97usize], entry),
+                43usize => (&INFO[98usize], entry),
+                44usize => (&INFO[99usize], entry),
+                45usize => (&INFO[102usize], entry),
+                46usize => (&INFO[103usize], entry),
+                47usize => (&INFO[104usize], entry),
+                48usize => (&INFO[105usize], entry),
+                49usize => (&INFO[108usize], entry),
+                50usize => (&INFO[109usize], entry),
+                51usize => (&INFO[110usize], entry),
+                52usize => (&INFO[113usize], entry),
+                53usize => (&INFO[114usize], entry),
+                54usize => (&INFO[115usize], entry),
+                55usize => (&INFO[120usize], entry),
+                56usize => (&INFO[121usize], entry),
+                57usize => (&INFO[123usize], entry),
+                58usize => (&INFO[124usize], entry),
+                59usize => (&INFO[126usize], entry),
+                60usize => (&INFO[127usize], entry),
+                61usize => (&INFO[129usize], entry),
+                62usize => (&INFO[137usize], entry),
+                63usize => (&INFO[139usize], entry),
+                64usize => (&INFO[140usize], entry),
+                65usize => (&INFO[141usize], entry),
+                66usize => (&INFO[161usize], entry),
+                67usize => (&INFO[162usize], entry),
+                68usize => (&INFO[165usize], entry),
+                69usize => (&INFO[192usize], entry),
+                70usize => (&INFO[193usize], entry),
+                71usize => (&INFO[194usize], entry),
+                72usize => (&INFO[195usize], entry),
+                73usize => (&INFO[196usize], entry),
+                74usize => (&INFO[197usize], entry),
+                75usize => (&INFO[198usize], entry),
+                76usize => (&INFO[199usize], entry),
+                77usize => (&INFO[200usize], entry),
+                78usize => (&INFO[201usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -2000,15 +2207,15 @@ impl<R: Registry> Subscriber<R> {
                 5usize => (&INFO[43usize], entry),
                 6usize => (&INFO[46usize], entry),
                 7usize => (&INFO[48usize], entry),
-                8usize => (&INFO[54usize], entry),
-                9usize => (&INFO[60usize], entry),
-                10usize => (&INFO[64usize], entry),
-                11usize => (&INFO[68usize], entry),
-                12usize => (&INFO[80usize], entry),
-                13usize => (&INFO[86usize], entry),
-                14usize => (&INFO[90usize], entry),
-                15usize => (&INFO[94usize], entry),
-                16usize => (&INFO[98usize], entry),
+                8usize => (&INFO[57usize], entry),
+                9usize => (&INFO[66usize], entry),
+                10usize => (&INFO[72usize], entry),
+                11usize => (&INFO[77usize], entry),
+                12usize => (&INFO[92usize], entry),
+                13usize => (&INFO[101usize], entry),
+                14usize => (&INFO[107usize], entry),
+                15usize => (&INFO[112usize], entry),
+                16usize => (&INFO[117usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -2043,6 +2250,28 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) -> Self::ConnectionContext {
         Self::ConnectionContext {
             start_time: meta.timestamp,
+            ctr_12: AtomicU64::new(0),
+            ctr_15: AtomicU64::new(0),
+            ctr_17: AtomicU64::new(0),
+            ctr_18: AtomicU64::new(0),
+            ctr_21: AtomicU64::new(0),
+            ctr_23: AtomicU64::new(0),
+            ctr_24: AtomicU64::new(0),
+            ctr_27: AtomicU64::new(0),
+            ctr_30: AtomicU64::new(0),
+            ctr_32: AtomicU64::new(0),
+            ctr_35: AtomicU64::new(0),
+            ctr_36: AtomicU64::new(0),
+            ctr_39: AtomicU64::new(0),
+            ctr_42: AtomicU64::new(0),
+            ctr_44: AtomicU64::new(0),
+            ctr_45: AtomicU64::new(0),
+            ctr_48: AtomicU64::new(0),
+            ctr_51: AtomicU64::new(0),
+            ctr_54: AtomicU64::new(0),
+            ctr_55: AtomicU64::new(0),
+            ctr_58: AtomicU64::new(0),
+            ctr_59: AtomicU64::new(0),
         }
     }
     #[inline]
@@ -2289,10 +2518,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             7usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(49usize, 12usize, event.provided_len);
-        self.count(50usize, 19usize, event.committed_len);
-        self.measure(51usize, 13usize, event.committed_len);
-        self.measure(52usize, 14usize, event.processing_duration);
+        context.ctr_12.fetch_add(1, Ordering::Relaxed);
+        self.measure(50usize, 13usize, event.provided_len);
+        self.count(51usize, 19usize, event.committed_len);
+        self.measure(52usize, 14usize, event.committed_len);
+        context
+            .ctr_15
+            .fetch_add(event.committed_len.as_u64(), Ordering::Relaxed);
+        self.measure(54usize, 16usize, event.processing_duration);
+        context
+            .ctr_17
+            .fetch_add(event.processing_duration.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2306,16 +2542,23 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(53usize, 20usize, 1usize);
+        self.count(56usize, 20usize, 1usize);
         self.time(
-            54usize,
+            57usize,
             8usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(55usize, 15usize, event.provided_len);
-        self.count(56usize, 21usize, event.committed_len);
-        self.measure(57usize, 16usize, event.committed_len);
-        self.measure(58usize, 17usize, event.processing_duration);
+        context.ctr_18.fetch_add(1, Ordering::Relaxed);
+        self.measure(59usize, 19usize, event.provided_len);
+        self.count(60usize, 21usize, event.committed_len);
+        self.measure(61usize, 20usize, event.committed_len);
+        context
+            .ctr_21
+            .fetch_add(event.committed_len.as_u64(), Ordering::Relaxed);
+        self.measure(63usize, 22usize, event.processing_duration);
+        context
+            .ctr_23
+            .fetch_add(event.processing_duration.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2329,14 +2572,18 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(59usize, 22usize, 1usize);
+        self.count(65usize, 22usize, 1usize);
         self.time(
-            60usize,
+            66usize,
             9usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(61usize, 18usize, event.provided_len);
-        self.measure(62usize, 19usize, event.processing_duration);
+        context.ctr_24.fetch_add(1, Ordering::Relaxed);
+        self.measure(68usize, 25usize, event.provided_len);
+        self.measure(69usize, 26usize, event.processing_duration);
+        context
+            .ctr_27
+            .fetch_add(event.processing_duration.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2350,14 +2597,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(63usize, 23usize, 1usize);
+        self.count(71usize, 23usize, 1usize);
         self.time(
-            64usize,
+            72usize,
             10usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(65usize, 20usize, event.provided_len);
-        self.measure(66usize, 21usize, event.processing_duration);
+        self.measure(73usize, 28usize, event.provided_len);
+        self.measure(74usize, 29usize, event.processing_duration);
+        context
+            .ctr_30
+            .fetch_add(event.processing_duration.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2371,14 +2621,14 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(67usize, 24usize, 1usize);
+        self.count(76usize, 24usize, 1usize);
         self.time(
-            68usize,
+            77usize,
             11usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(69usize, 22usize, event.buffer_len);
-        self.count_bool(70usize, 6usize, event.background);
+        self.measure(78usize, 31usize, event.buffer_len);
+        self.count_bool(79usize, 6usize, event.background);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2392,10 +2642,14 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(71usize, 25usize, 1usize);
-        self.measure(72usize, 23usize, event.provided_len);
-        self.count(73usize, 26usize, event.committed_len);
-        self.measure(74usize, 24usize, event.committed_len);
+        self.count(80usize, 25usize, 1usize);
+        context.ctr_32.fetch_add(1, Ordering::Relaxed);
+        self.measure(82usize, 33usize, event.provided_len);
+        self.count(83usize, 26usize, event.committed_len);
+        self.measure(84usize, 34usize, event.committed_len);
+        context
+            .ctr_35
+            .fetch_add(event.committed_len.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2409,8 +2663,9 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(75usize, 27usize, 1usize);
-        self.measure(76usize, 25usize, event.provided_len);
+        self.count(86usize, 27usize, 1usize);
+        context.ctr_36.fetch_add(1, Ordering::Relaxed);
+        self.measure(88usize, 37usize, event.provided_len);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2424,8 +2679,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(77usize, 28usize, 1usize);
-        self.measure(78usize, 26usize, event.provided_len);
+        self.count(89usize, 28usize, 1usize);
+        self.measure(90usize, 38usize, event.provided_len);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2439,16 +2694,23 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(79usize, 29usize, 1usize);
+        self.count(91usize, 29usize, 1usize);
         self.time(
-            80usize,
+            92usize,
             12usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(81usize, 27usize, event.capacity);
-        self.count(82usize, 30usize, event.committed_len);
-        self.measure(83usize, 28usize, event.committed_len);
-        self.measure(84usize, 29usize, event.processing_duration);
+        context.ctr_39.fetch_add(1, Ordering::Relaxed);
+        self.measure(94usize, 40usize, event.capacity);
+        self.count(95usize, 30usize, event.committed_len);
+        self.measure(96usize, 41usize, event.committed_len);
+        context
+            .ctr_42
+            .fetch_add(event.committed_len.as_u64(), Ordering::Relaxed);
+        self.measure(98usize, 43usize, event.processing_duration);
+        context
+            .ctr_44
+            .fetch_add(event.processing_duration.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2462,14 +2724,18 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(85usize, 31usize, 1usize);
+        self.count(100usize, 31usize, 1usize);
         self.time(
-            86usize,
+            101usize,
             13usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(87usize, 30usize, event.capacity);
-        self.measure(88usize, 31usize, event.processing_duration);
+        context.ctr_45.fetch_add(1, Ordering::Relaxed);
+        self.measure(103usize, 46usize, event.capacity);
+        self.measure(104usize, 47usize, event.processing_duration);
+        context
+            .ctr_48
+            .fetch_add(event.processing_duration.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2483,14 +2749,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(89usize, 32usize, 1usize);
+        self.count(106usize, 32usize, 1usize);
         self.time(
-            90usize,
+            107usize,
             14usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(91usize, 32usize, event.capacity);
-        self.measure(92usize, 33usize, event.processing_duration);
+        self.measure(108usize, 49usize, event.capacity);
+        self.measure(109usize, 50usize, event.processing_duration);
+        context
+            .ctr_51
+            .fetch_add(event.processing_duration.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2504,14 +2773,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(93usize, 33usize, 1usize);
+        self.count(111usize, 33usize, 1usize);
         self.time(
-            94usize,
+            112usize,
             15usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.measure(95usize, 34usize, event.capacity);
-        self.measure(96usize, 35usize, event.processing_duration);
+        self.measure(113usize, 52usize, event.capacity);
+        self.measure(114usize, 53usize, event.processing_duration);
+        context
+            .ctr_54
+            .fetch_add(event.processing_duration.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2525,13 +2797,13 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(97usize, 34usize, 1usize);
+        self.count(116usize, 34usize, 1usize);
         self.time(
-            98usize,
+            117usize,
             16usize,
             meta.timestamp.saturating_duration_since(context.start_time),
         );
-        self.count_bool(99usize, 7usize, event.background);
+        self.count_bool(118usize, 7usize, event.background);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2545,10 +2817,14 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(100usize, 35usize, 1usize);
-        self.measure(101usize, 36usize, event.capacity);
-        self.count(102usize, 36usize, event.committed_len);
-        self.measure(103usize, 37usize, event.committed_len);
+        self.count(119usize, 35usize, 1usize);
+        context.ctr_55.fetch_add(1, Ordering::Relaxed);
+        self.measure(121usize, 56usize, event.capacity);
+        self.count(122usize, 36usize, event.committed_len);
+        self.measure(123usize, 57usize, event.committed_len);
+        context
+            .ctr_58
+            .fetch_add(event.committed_len.as_u64(), Ordering::Relaxed);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2562,8 +2838,9 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(104usize, 37usize, 1usize);
-        self.measure(105usize, 38usize, event.capacity);
+        self.count(125usize, 37usize, 1usize);
+        context.ctr_59.fetch_add(1, Ordering::Relaxed);
+        self.measure(127usize, 60usize, event.capacity);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2577,8 +2854,76 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(106usize, 38usize, 1usize);
-        self.measure(107usize, 39usize, event.capacity);
+        self.count(128usize, 38usize, 1usize);
+        self.measure(129usize, 61usize, event.capacity);
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_connection_closed(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::ConnectionClosed,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(130usize, 39usize, 1usize);
+        self.measure(49usize, 12usize, context.ctr_12.load(Ordering::Relaxed));
+        self.measure(53usize, 15usize, context.ctr_15.load(Ordering::Relaxed));
+        self.measure(
+            55usize,
+            17usize,
+            core::time::Duration::from_micros(context.ctr_17.load(Ordering::Relaxed)),
+        );
+        self.measure(58usize, 18usize, context.ctr_18.load(Ordering::Relaxed));
+        self.measure(62usize, 21usize, context.ctr_21.load(Ordering::Relaxed));
+        self.measure(
+            64usize,
+            23usize,
+            core::time::Duration::from_micros(context.ctr_23.load(Ordering::Relaxed)),
+        );
+        self.measure(67usize, 24usize, context.ctr_24.load(Ordering::Relaxed));
+        self.measure(
+            70usize,
+            27usize,
+            core::time::Duration::from_micros(context.ctr_27.load(Ordering::Relaxed)),
+        );
+        self.measure(
+            75usize,
+            30usize,
+            core::time::Duration::from_micros(context.ctr_30.load(Ordering::Relaxed)),
+        );
+        self.measure(81usize, 32usize, context.ctr_32.load(Ordering::Relaxed));
+        self.measure(85usize, 35usize, context.ctr_35.load(Ordering::Relaxed));
+        self.measure(87usize, 36usize, context.ctr_36.load(Ordering::Relaxed));
+        self.measure(93usize, 39usize, context.ctr_39.load(Ordering::Relaxed));
+        self.measure(97usize, 42usize, context.ctr_42.load(Ordering::Relaxed));
+        self.measure(
+            99usize,
+            44usize,
+            core::time::Duration::from_micros(context.ctr_44.load(Ordering::Relaxed)),
+        );
+        self.measure(102usize, 45usize, context.ctr_45.load(Ordering::Relaxed));
+        self.measure(
+            105usize,
+            48usize,
+            core::time::Duration::from_micros(context.ctr_48.load(Ordering::Relaxed)),
+        );
+        self.measure(
+            110usize,
+            51usize,
+            core::time::Duration::from_micros(context.ctr_51.load(Ordering::Relaxed)),
+        );
+        self.measure(
+            115usize,
+            54usize,
+            core::time::Duration::from_micros(context.ctr_54.load(Ordering::Relaxed)),
+        );
+        self.measure(120usize, 55usize, context.ctr_55.load(Ordering::Relaxed));
+        self.measure(124usize, 58usize, context.ctr_58.load(Ordering::Relaxed));
+        self.measure(126usize, 59usize, context.ctr_59.load(Ordering::Relaxed));
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -2587,11 +2932,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     fn on_endpoint_initialized(&self, meta: &api::EndpointMeta, event: &api::EndpointInitialized) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(108usize, 39usize, 1usize);
-        self.count_nominal(109usize, 4usize, &event.acceptor_addr);
-        self.count_nominal(110usize, 5usize, &event.handshake_addr);
-        self.count_bool(111usize, 8usize, event.tcp);
-        self.count_bool(112usize, 9usize, event.udp);
+        self.count(131usize, 40usize, 1usize);
+        self.count_nominal(132usize, 4usize, &event.acceptor_addr);
+        self.count_nominal(133usize, 5usize, &event.handshake_addr);
+        self.count_bool(134usize, 8usize, event.tcp);
+        self.count_bool(135usize, 9usize, event.udp);
         let _ = event;
         let _ = meta;
     }
@@ -2603,8 +2948,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(113usize, 40usize, 1usize);
-        self.measure(114usize, 40usize, event.capacity);
+        self.count(136usize, 41usize, 1usize);
+        self.measure(137usize, 62usize, event.capacity);
         let _ = event;
         let _ = meta;
     }
@@ -2616,10 +2961,10 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(115usize, 41usize, 1usize);
-        self.measure(116usize, 41usize, event.capacity);
-        self.measure(117usize, 42usize, event.entries);
-        self.measure(118usize, 43usize, event.lifetime);
+        self.count(138usize, 42usize, 1usize);
+        self.measure(139usize, 63usize, event.capacity);
+        self.measure(140usize, 64usize, event.entries);
+        self.measure(141usize, 65usize, event.lifetime);
         let _ = event;
         let _ = meta;
     }
@@ -2631,8 +2976,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(119usize, 42usize, 1usize);
-        self.count_nominal(120usize, 6usize, &event.peer_address);
+        self.count(142usize, 43usize, 1usize);
+        self.count_nominal(143usize, 6usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2644,8 +2989,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(121usize, 43usize, 1usize);
-        self.count_nominal(122usize, 7usize, &event.peer_address);
+        self.count(144usize, 44usize, 1usize);
+        self.count_nominal(145usize, 7usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2657,8 +3002,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(123usize, 44usize, 1usize);
-        self.count_nominal(124usize, 8usize, &event.peer_address);
+        self.count(146usize, 45usize, 1usize);
+        self.count_nominal(147usize, 8usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2670,8 +3015,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(125usize, 45usize, 1usize);
-        self.count_nominal(126usize, 9usize, &event.peer_address);
+        self.count(148usize, 46usize, 1usize);
+        self.count_nominal(149usize, 9usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2683,8 +3028,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(127usize, 46usize, 1usize);
-        self.count_nominal(128usize, 10usize, &event.peer_address);
+        self.count(150usize, 47usize, 1usize);
+        self.count_nominal(151usize, 10usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2696,8 +3041,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(129usize, 47usize, 1usize);
-        self.count_nominal(130usize, 11usize, &event.peer_address);
+        self.count(152usize, 48usize, 1usize);
+        self.count_nominal(153usize, 11usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2709,8 +3054,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(131usize, 48usize, 1usize);
-        self.count_nominal(132usize, 12usize, &event.peer_address);
+        self.count(154usize, 49usize, 1usize);
+        self.count_nominal(155usize, 12usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2722,8 +3067,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(133usize, 49usize, 1usize);
-        self.count_nominal(134usize, 13usize, &event.peer_address);
+        self.count(156usize, 50usize, 1usize);
+        self.count_nominal(157usize, 13usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2735,8 +3080,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(135usize, 50usize, 1usize);
-        self.count_nominal(136usize, 14usize, &event.peer_address);
+        self.count(158usize, 51usize, 1usize);
+        self.count_nominal(159usize, 14usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2744,9 +3089,9 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     fn on_key_accepted(&self, meta: &api::EndpointMeta, event: &api::KeyAccepted) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(137usize, 51usize, 1usize);
-        self.measure(138usize, 44usize, event.gap);
-        self.measure(139usize, 45usize, event.forward_shift);
+        self.count(160usize, 52usize, 1usize);
+        self.measure(161usize, 66usize, event.gap);
+        self.measure(162usize, 67usize, event.forward_shift);
         let _ = event;
         let _ = meta;
     }
@@ -2758,7 +3103,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(140usize, 52usize, 1usize);
+        self.count(163usize, 53usize, 1usize);
         let _ = event;
         let _ = meta;
     }
@@ -2770,8 +3115,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(141usize, 53usize, 1usize);
-        self.measure(142usize, 46usize, event.gap);
+        self.count(164usize, 54usize, 1usize);
+        self.measure(165usize, 68usize, event.gap);
         let _ = event;
         let _ = meta;
     }
@@ -2783,8 +3128,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(143usize, 54usize, 1usize);
-        self.count_nominal(144usize, 15usize, &event.peer_address);
+        self.count(166usize, 55usize, 1usize);
+        self.count_nominal(167usize, 15usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2796,8 +3141,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(145usize, 55usize, 1usize);
-        self.count_nominal(146usize, 16usize, &event.peer_address);
+        self.count(168usize, 56usize, 1usize);
+        self.count_nominal(169usize, 16usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2809,8 +3154,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(147usize, 56usize, 1usize);
-        self.count_nominal(148usize, 17usize, &event.peer_address);
+        self.count(170usize, 57usize, 1usize);
+        self.count_nominal(171usize, 17usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2822,8 +3167,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(149usize, 57usize, 1usize);
-        self.count_nominal(150usize, 18usize, &event.peer_address);
+        self.count(172usize, 58usize, 1usize);
+        self.count_nominal(173usize, 18usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2835,8 +3180,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(151usize, 58usize, 1usize);
-        self.count_nominal(152usize, 19usize, &event.peer_address);
+        self.count(174usize, 59usize, 1usize);
+        self.count_nominal(175usize, 19usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2844,8 +3189,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     fn on_stale_key_packet_sent(&self, meta: &api::EndpointMeta, event: &api::StaleKeyPacketSent) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(153usize, 59usize, 1usize);
-        self.count_nominal(154usize, 20usize, &event.peer_address);
+        self.count(176usize, 60usize, 1usize);
+        self.count_nominal(177usize, 20usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2857,8 +3202,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(155usize, 60usize, 1usize);
-        self.count_nominal(156usize, 21usize, &event.peer_address);
+        self.count(178usize, 61usize, 1usize);
+        self.count_nominal(179usize, 21usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2870,8 +3215,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(157usize, 61usize, 1usize);
-        self.count_nominal(158usize, 22usize, &event.peer_address);
+        self.count(180usize, 62usize, 1usize);
+        self.count_nominal(181usize, 22usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2883,8 +3228,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(159usize, 62usize, 1usize);
-        self.count_nominal(160usize, 23usize, &event.peer_address);
+        self.count(182usize, 63usize, 1usize);
+        self.count_nominal(183usize, 23usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2896,8 +3241,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(161usize, 63usize, 1usize);
-        self.count_nominal(162usize, 24usize, &event.peer_address);
+        self.count(184usize, 64usize, 1usize);
+        self.count_nominal(185usize, 24usize, &event.peer_address);
         let _ = event;
         let _ = meta;
     }
@@ -2909,9 +3254,9 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(163usize, 64usize, 1usize);
-        self.count_nominal(164usize, 25usize, &event.peer_address);
-        self.count_bool(165usize, 10usize, event.hit);
+        self.count(186usize, 65usize, 1usize);
+        self.count_nominal(187usize, 25usize, &event.peer_address);
+        self.count_bool(188usize, 10usize, event.hit);
         let _ = event;
         let _ = meta;
     }
@@ -2923,8 +3268,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(166usize, 65usize, 1usize);
-        self.count_bool(167usize, 11usize, event.hit);
+        self.count(189usize, 66usize, 1usize);
+        self.count_bool(190usize, 11usize, event.hit);
         let _ = event;
         let _ = meta;
     }
@@ -2936,17 +3281,17 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) {
         #[allow(unused_imports)]
         use api::*;
-        self.count(168usize, 66usize, 1usize);
-        self.measure(169usize, 47usize, event.id_entries);
-        self.measure(170usize, 48usize, event.id_entries_retired);
-        self.measure(171usize, 49usize, event.id_entries_utilization);
-        self.measure(172usize, 50usize, event.id_entries_initial_utilization);
-        self.measure(173usize, 51usize, event.address_entries);
-        self.measure(174usize, 52usize, event.address_entries_retired);
-        self.measure(175usize, 53usize, event.address_entries_utilization);
-        self.measure(176usize, 54usize, event.address_entries_initial_utilization);
-        self.measure(177usize, 55usize, event.handshake_requests);
-        self.measure(178usize, 56usize, event.handshake_requests_retired);
+        self.count(191usize, 67usize, 1usize);
+        self.measure(192usize, 69usize, event.id_entries);
+        self.measure(193usize, 70usize, event.id_entries_retired);
+        self.measure(194usize, 71usize, event.id_entries_utilization);
+        self.measure(195usize, 72usize, event.id_entries_initial_utilization);
+        self.measure(196usize, 73usize, event.address_entries);
+        self.measure(197usize, 74usize, event.address_entries_retired);
+        self.measure(198usize, 75usize, event.address_entries_utilization);
+        self.measure(199usize, 76usize, event.address_entries_initial_utilization);
+        self.measure(200usize, 77usize, event.handshake_requests);
+        self.measure(201usize, 78usize, event.handshake_requests_retired);
         let _ = event;
         let _ = meta;
     }

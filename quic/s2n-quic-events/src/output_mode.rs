@@ -30,14 +30,14 @@ impl OutputMode {
 
     pub fn counter_type(&self) -> TokenStream {
         match self {
-            OutputMode::Ref => quote!(AtomicU32),
-            OutputMode::Mut => quote!(u32),
+            OutputMode::Ref => quote!(AtomicU64),
+            OutputMode::Mut => quote!(u64),
         }
     }
 
     pub fn counter_init(&self) -> TokenStream {
         match self {
-            OutputMode::Ref => quote!(AtomicU32::new(0)),
+            OutputMode::Ref => quote!(AtomicU64::new(0)),
             OutputMode::Mut => quote!(0),
         }
     }
@@ -46,6 +46,13 @@ impl OutputMode {
         match self {
             OutputMode::Ref => quote!(.fetch_add(1, Ordering::Relaxed)),
             OutputMode::Mut => quote!(+= 1),
+        }
+    }
+
+    pub fn counter_increment_by(&self, value: TokenStream) -> TokenStream {
+        match self {
+            OutputMode::Ref => quote!(.fetch_add(#value, Ordering::Relaxed)),
+            OutputMode::Mut => quote!(+= #value),
         }
     }
 
@@ -66,7 +73,7 @@ impl OutputMode {
     pub fn imports(&self) -> TokenStream {
         match self {
             OutputMode::Ref => quote!(
-                use core::sync::atomic::{AtomicU32, Ordering};
+                use core::sync::atomic::{AtomicU64, Ordering};
             ),
             OutputMode::Mut => quote!(),
         }

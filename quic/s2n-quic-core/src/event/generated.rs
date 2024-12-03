@@ -2167,23 +2167,6 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    #[doc = " Connection closed"]
-    pub struct ConnectionClosed {
-        pub error: crate::connection::Error,
-    }
-    #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for ConnectionClosed {
-        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-            let mut fmt = fmt.debug_struct("ConnectionClosed");
-            fmt.field("error", &self.error);
-            fmt.finish()
-        }
-    }
-    impl Event for ConnectionClosed {
-        const NAME: &'static str = "connectivity:connection_closed";
-    }
-    #[derive(Clone, Debug)]
-    #[non_exhaustive]
     #[doc = " Duplicate packet received"]
     pub struct DuplicatePacket<'a> {
         pub packet_header: PacketHeader,
@@ -2597,6 +2580,23 @@ pub mod api {
     }
     impl Event for DcStateChanged {
         const NAME: &'static str = "transport:dc_state_changed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Connection closed"]
+    pub struct ConnectionClosed {
+        pub error: crate::connection::Error,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for ConnectionClosed {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionClosed");
+            fmt.field("error", &self.error);
+            fmt.finish()
+        }
+    }
+    impl Event for ConnectionClosed {
+        const NAME: &'static str = "connectivity:connection_closed";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -3495,7 +3495,7 @@ pub mod tracing {
             let api::ApplicationProtocolInformation {
                 chosen_application_protocol,
             } = event;
-            tracing :: event ! (target : "application_protocol_information" , parent : id , tracing :: Level :: DEBUG , chosen_application_protocol = tracing :: field :: debug (chosen_application_protocol));
+            tracing :: event ! (target : "application_protocol_information" , parent : id , tracing :: Level :: DEBUG , { chosen_application_protocol = tracing :: field :: debug (chosen_application_protocol) });
         }
         #[inline]
         fn on_server_name_information(
@@ -3506,7 +3506,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::ServerNameInformation { chosen_server_name } = event;
-            tracing :: event ! (target : "server_name_information" , parent : id , tracing :: Level :: DEBUG , chosen_server_name = tracing :: field :: debug (chosen_server_name));
+            tracing :: event ! (target : "server_name_information" , parent : id , tracing :: Level :: DEBUG , { chosen_server_name = tracing :: field :: debug (chosen_server_name) });
         }
         #[inline]
         fn on_packet_skipped(
@@ -3521,7 +3521,7 @@ pub mod tracing {
                 space,
                 reason,
             } = event;
-            tracing :: event ! (target : "packet_skipped" , parent : id , tracing :: Level :: DEBUG , number = tracing :: field :: debug (number) , space = tracing :: field :: debug (space) , reason = tracing :: field :: debug (reason));
+            tracing :: event ! (target : "packet_skipped" , parent : id , tracing :: Level :: DEBUG , { number = tracing :: field :: debug (number) , space = tracing :: field :: debug (space) , reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_packet_sent(
@@ -3535,7 +3535,7 @@ pub mod tracing {
                 packet_header,
                 packet_len,
             } = event;
-            tracing :: event ! (target : "packet_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , packet_len = tracing :: field :: debug (packet_len));
+            tracing :: event ! (target : "packet_sent" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , packet_len = tracing :: field :: debug (packet_len) });
         }
         #[inline]
         fn on_packet_received(
@@ -3546,7 +3546,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::PacketReceived { packet_header } = event;
-            tracing :: event ! (target : "packet_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+            tracing :: event ! (target : "packet_received" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) });
         }
         #[inline]
         fn on_active_path_updated(
@@ -3557,7 +3557,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::ActivePathUpdated { previous, active } = event;
-            tracing :: event ! (target : "active_path_updated" , parent : id , tracing :: Level :: DEBUG , previous = tracing :: field :: debug (previous) , active = tracing :: field :: debug (active));
+            tracing :: event ! (target : "active_path_updated" , parent : id , tracing :: Level :: DEBUG , { previous = tracing :: field :: debug (previous) , active = tracing :: field :: debug (active) });
         }
         #[inline]
         fn on_path_created(
@@ -3568,7 +3568,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::PathCreated { active, new } = event;
-            tracing :: event ! (target : "path_created" , parent : id , tracing :: Level :: DEBUG , active = tracing :: field :: debug (active) , new = tracing :: field :: debug (new));
+            tracing :: event ! (target : "path_created" , parent : id , tracing :: Level :: DEBUG , { active = tracing :: field :: debug (active) , new = tracing :: field :: debug (new) });
         }
         #[inline]
         fn on_frame_sent(
@@ -3583,7 +3583,7 @@ pub mod tracing {
                 path_id,
                 frame,
             } = event;
-            tracing :: event ! (target : "frame_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path_id = tracing :: field :: debug (path_id) , frame = tracing :: field :: debug (frame));
+            tracing :: event ! (target : "frame_sent" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , path_id = tracing :: field :: debug (path_id) , frame = tracing :: field :: debug (frame) });
         }
         #[inline]
         fn on_frame_received(
@@ -3598,7 +3598,7 @@ pub mod tracing {
                 path,
                 frame,
             } = event;
-            tracing :: event ! (target : "frame_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , frame = tracing :: field :: debug (frame));
+            tracing :: event ! (target : "frame_received" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , frame = tracing :: field :: debug (frame) });
         }
         #[inline]
         fn on_packet_lost(
@@ -3614,7 +3614,7 @@ pub mod tracing {
                 bytes_lost,
                 is_mtu_probe,
             } = event;
-            tracing :: event ! (target : "packet_lost" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , bytes_lost = tracing :: field :: debug (bytes_lost) , is_mtu_probe = tracing :: field :: debug (is_mtu_probe));
+            tracing :: event ! (target : "packet_lost" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , bytes_lost = tracing :: field :: debug (bytes_lost) , is_mtu_probe = tracing :: field :: debug (is_mtu_probe) });
         }
         #[inline]
         fn on_recovery_metrics(
@@ -3636,7 +3636,7 @@ pub mod tracing {
                 bytes_in_flight,
                 congestion_limited,
             } = event;
-            tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight) , congestion_limited = tracing :: field :: debug (congestion_limited));
+            tracing :: event ! (target : "recovery_metrics" , parent : id , tracing :: Level :: DEBUG , { path = tracing :: field :: debug (path) , min_rtt = tracing :: field :: debug (min_rtt) , smoothed_rtt = tracing :: field :: debug (smoothed_rtt) , latest_rtt = tracing :: field :: debug (latest_rtt) , rtt_variance = tracing :: field :: debug (rtt_variance) , max_ack_delay = tracing :: field :: debug (max_ack_delay) , pto_count = tracing :: field :: debug (pto_count) , congestion_window = tracing :: field :: debug (congestion_window) , bytes_in_flight = tracing :: field :: debug (bytes_in_flight) , congestion_limited = tracing :: field :: debug (congestion_limited) });
         }
         #[inline]
         fn on_congestion(
@@ -3647,7 +3647,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::Congestion { path, source } = event;
-            tracing :: event ! (target : "congestion" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , source = tracing :: field :: debug (source));
+            tracing :: event ! (target : "congestion" , parent : id , tracing :: Level :: DEBUG , { path = tracing :: field :: debug (path) , source = tracing :: field :: debug (source) });
         }
         #[inline]
         #[allow(deprecated)]
@@ -3659,7 +3659,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::AckProcessed { action, path } = event;
-            tracing :: event ! (target : "ack_processed" , parent : id , tracing :: Level :: DEBUG , action = tracing :: field :: debug (action) , path = tracing :: field :: debug (path));
+            tracing :: event ! (target : "ack_processed" , parent : id , tracing :: Level :: DEBUG , { action = tracing :: field :: debug (action) , path = tracing :: field :: debug (path) });
         }
         #[inline]
         fn on_rx_ack_range_dropped(
@@ -3675,7 +3675,7 @@ pub mod tracing {
                 capacity,
                 stored_range,
             } = event;
-            tracing :: event ! (target : "rx_ack_range_dropped" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , packet_number_range = tracing :: field :: debug (packet_number_range) , capacity = tracing :: field :: debug (capacity) , stored_range = tracing :: field :: debug (stored_range));
+            tracing :: event ! (target : "rx_ack_range_dropped" , parent : id , tracing :: Level :: DEBUG , { path = tracing :: field :: debug (path) , packet_number_range = tracing :: field :: debug (packet_number_range) , capacity = tracing :: field :: debug (capacity) , stored_range = tracing :: field :: debug (stored_range) });
         }
         #[inline]
         fn on_ack_range_received(
@@ -3690,7 +3690,7 @@ pub mod tracing {
                 path,
                 ack_range,
             } = event;
-            tracing :: event ! (target : "ack_range_received" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , ack_range = tracing :: field :: debug (ack_range));
+            tracing :: event ! (target : "ack_range_received" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , ack_range = tracing :: field :: debug (ack_range) });
         }
         #[inline]
         fn on_ack_range_sent(
@@ -3705,7 +3705,7 @@ pub mod tracing {
                 path_id,
                 ack_range,
             } = event;
-            tracing :: event ! (target : "ack_range_sent" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path_id = tracing :: field :: debug (path_id) , ack_range = tracing :: field :: debug (ack_range));
+            tracing :: event ! (target : "ack_range_sent" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , path_id = tracing :: field :: debug (path_id) , ack_range = tracing :: field :: debug (ack_range) });
         }
         #[inline]
         fn on_packet_dropped(
@@ -3716,7 +3716,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::PacketDropped { reason } = event;
-            tracing :: event ! (target : "packet_dropped" , parent : id , tracing :: Level :: DEBUG , reason = tracing :: field :: debug (reason));
+            tracing :: event ! (target : "packet_dropped" , parent : id , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_key_update(
@@ -3730,7 +3730,7 @@ pub mod tracing {
                 key_type,
                 cipher_suite,
             } = event;
-            tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , key_type = tracing :: field :: debug (key_type) , cipher_suite = tracing :: field :: debug (cipher_suite));
+            tracing :: event ! (target : "key_update" , parent : id , tracing :: Level :: DEBUG , { key_type = tracing :: field :: debug (key_type) , cipher_suite = tracing :: field :: debug (cipher_suite) });
         }
         #[inline]
         fn on_key_space_discarded(
@@ -3741,7 +3741,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::KeySpaceDiscarded { space } = event;
-            tracing :: event ! (target : "key_space_discarded" , parent : id , tracing :: Level :: DEBUG , space = tracing :: field :: debug (space));
+            tracing :: event ! (target : "key_space_discarded" , parent : id , tracing :: Level :: DEBUG , { space = tracing :: field :: debug (space) });
         }
         #[inline]
         fn on_connection_started(
@@ -3752,18 +3752,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::ConnectionStarted { path } = event;
-            tracing :: event ! (target : "connection_started" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path));
-        }
-        #[inline]
-        fn on_connection_closed(
-            &mut self,
-            context: &mut Self::ConnectionContext,
-            _meta: &api::ConnectionMeta,
-            event: &api::ConnectionClosed,
-        ) {
-            let id = context.id();
-            let api::ConnectionClosed { error } = event;
-            tracing :: event ! (target : "connection_closed" , parent : id , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
+            tracing :: event ! (target : "connection_started" , parent : id , tracing :: Level :: DEBUG , { path = tracing :: field :: debug (path) });
         }
         #[inline]
         fn on_duplicate_packet(
@@ -3778,7 +3767,7 @@ pub mod tracing {
                 path,
                 error,
             } = event;
-            tracing :: event ! (target : "duplicate_packet" , parent : id , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , error = tracing :: field :: debug (error));
+            tracing :: event ! (target : "duplicate_packet" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , error = tracing :: field :: debug (error) });
         }
         #[inline]
         fn on_transport_parameters_received(
@@ -3791,7 +3780,7 @@ pub mod tracing {
             let api::TransportParametersReceived {
                 transport_parameters,
             } = event;
-            tracing :: event ! (target : "transport_parameters_received" , parent : id , tracing :: Level :: DEBUG , transport_parameters = tracing :: field :: debug (transport_parameters));
+            tracing :: event ! (target : "transport_parameters_received" , parent : id , tracing :: Level :: DEBUG , { transport_parameters = tracing :: field :: debug (transport_parameters) });
         }
         #[inline]
         fn on_datagram_sent(
@@ -3802,7 +3791,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::DatagramSent { len, gso_offset } = event;
-            tracing :: event ! (target : "datagram_sent" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
+            tracing :: event ! (target : "datagram_sent" , parent : id , tracing :: Level :: DEBUG , { len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset) });
         }
         #[inline]
         fn on_datagram_received(
@@ -3813,7 +3802,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::DatagramReceived { len } = event;
-            tracing :: event ! (target : "datagram_received" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+            tracing :: event ! (target : "datagram_received" , parent : id , tracing :: Level :: DEBUG , { len = tracing :: field :: debug (len) });
         }
         #[inline]
         fn on_datagram_dropped(
@@ -3824,7 +3813,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::DatagramDropped { len, reason } = event;
-            tracing :: event ! (target : "datagram_dropped" , parent : id , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
+            tracing :: event ! (target : "datagram_dropped" , parent : id , tracing :: Level :: DEBUG , { len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_connection_id_updated(
@@ -3840,7 +3829,7 @@ pub mod tracing {
                 previous,
                 current,
             } = event;
-            tracing :: event ! (target : "connection_id_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , cid_consumer = tracing :: field :: debug (cid_consumer) , previous = tracing :: field :: debug (previous) , current = tracing :: field :: debug (current));
+            tracing :: event ! (target : "connection_id_updated" , parent : id , tracing :: Level :: DEBUG , { path_id = tracing :: field :: debug (path_id) , cid_consumer = tracing :: field :: debug (cid_consumer) , previous = tracing :: field :: debug (previous) , current = tracing :: field :: debug (current) });
         }
         #[inline]
         fn on_ecn_state_changed(
@@ -3851,7 +3840,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::EcnStateChanged { path, state } = event;
-            tracing :: event ! (target : "ecn_state_changed" , parent : id , tracing :: Level :: DEBUG , path = tracing :: field :: debug (path) , state = tracing :: field :: debug (state));
+            tracing :: event ! (target : "ecn_state_changed" , parent : id , tracing :: Level :: DEBUG , { path = tracing :: field :: debug (path) , state = tracing :: field :: debug (state) });
         }
         #[inline]
         fn on_connection_migration_denied(
@@ -3862,7 +3851,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::ConnectionMigrationDenied { reason } = event;
-            tracing :: event ! (target : "connection_migration_denied" , parent : id , tracing :: Level :: DEBUG , reason = tracing :: field :: debug (reason));
+            tracing :: event ! (target : "connection_migration_denied" , parent : id , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_handshake_status_updated(
@@ -3873,7 +3862,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::HandshakeStatusUpdated { status } = event;
-            tracing :: event ! (target : "handshake_status_updated" , parent : id , tracing :: Level :: DEBUG , status = tracing :: field :: debug (status));
+            tracing :: event ! (target : "handshake_status_updated" , parent : id , tracing :: Level :: DEBUG , { status = tracing :: field :: debug (status) });
         }
         #[inline]
         fn on_tls_exporter_ready(
@@ -3884,7 +3873,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::TlsExporterReady { session } = event;
-            tracing :: event ! (target : "tls_exporter_ready" , parent : id , tracing :: Level :: DEBUG , session = tracing :: field :: debug (session));
+            tracing :: event ! (target : "tls_exporter_ready" , parent : id , tracing :: Level :: DEBUG , { session = tracing :: field :: debug (session) });
         }
         #[inline]
         fn on_path_challenge_updated(
@@ -3899,7 +3888,7 @@ pub mod tracing {
                 path,
                 challenge_data,
             } = event;
-            tracing :: event ! (target : "path_challenge_updated" , parent : id , tracing :: Level :: DEBUG , path_challenge_status = tracing :: field :: debug (path_challenge_status) , path = tracing :: field :: debug (path) , challenge_data = tracing :: field :: debug (challenge_data));
+            tracing :: event ! (target : "path_challenge_updated" , parent : id , tracing :: Level :: DEBUG , { path_challenge_status = tracing :: field :: debug (path_challenge_status) , path = tracing :: field :: debug (path) , challenge_data = tracing :: field :: debug (challenge_data) });
         }
         #[inline]
         fn on_tls_client_hello(
@@ -3910,7 +3899,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::TlsClientHello { payload } = event;
-            tracing :: event ! (target : "tls_client_hello" , parent : id , tracing :: Level :: DEBUG , payload = tracing :: field :: debug (payload));
+            tracing :: event ! (target : "tls_client_hello" , parent : id , tracing :: Level :: DEBUG , { payload = tracing :: field :: debug (payload) });
         }
         #[inline]
         fn on_tls_server_hello(
@@ -3921,7 +3910,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::TlsServerHello { payload } = event;
-            tracing :: event ! (target : "tls_server_hello" , parent : id , tracing :: Level :: DEBUG , payload = tracing :: field :: debug (payload));
+            tracing :: event ! (target : "tls_server_hello" , parent : id , tracing :: Level :: DEBUG , { payload = tracing :: field :: debug (payload) });
         }
         #[inline]
         fn on_rx_stream_progress(
@@ -3932,7 +3921,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::RxStreamProgress { bytes } = event;
-            tracing :: event ! (target : "rx_stream_progress" , parent : id , tracing :: Level :: DEBUG , bytes = tracing :: field :: debug (bytes));
+            tracing :: event ! (target : "rx_stream_progress" , parent : id , tracing :: Level :: DEBUG , { bytes = tracing :: field :: debug (bytes) });
         }
         #[inline]
         fn on_tx_stream_progress(
@@ -3943,7 +3932,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::TxStreamProgress { bytes } = event;
-            tracing :: event ! (target : "tx_stream_progress" , parent : id , tracing :: Level :: DEBUG , bytes = tracing :: field :: debug (bytes));
+            tracing :: event ! (target : "tx_stream_progress" , parent : id , tracing :: Level :: DEBUG , { bytes = tracing :: field :: debug (bytes) });
         }
         #[inline]
         fn on_keep_alive_timer_expired(
@@ -3954,7 +3943,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::KeepAliveTimerExpired { timeout } = event;
-            tracing :: event ! (target : "keep_alive_timer_expired" , parent : id , tracing :: Level :: DEBUG , timeout = tracing :: field :: debug (timeout));
+            tracing :: event ! (target : "keep_alive_timer_expired" , parent : id , tracing :: Level :: DEBUG , { timeout = tracing :: field :: debug (timeout) });
         }
         #[inline]
         fn on_mtu_updated(
@@ -3970,7 +3959,7 @@ pub mod tracing {
                 cause,
                 search_complete,
             } = event;
-            tracing :: event ! (target : "mtu_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , mtu = tracing :: field :: debug (mtu) , cause = tracing :: field :: debug (cause) , search_complete = tracing :: field :: debug (search_complete));
+            tracing :: event ! (target : "mtu_updated" , parent : id , tracing :: Level :: DEBUG , { path_id = tracing :: field :: debug (path_id) , mtu = tracing :: field :: debug (mtu) , cause = tracing :: field :: debug (cause) , search_complete = tracing :: field :: debug (search_complete) });
         }
         #[inline]
         fn on_slow_start_exited(
@@ -3985,7 +3974,7 @@ pub mod tracing {
                 cause,
                 congestion_window,
             } = event;
-            tracing :: event ! (target : "slow_start_exited" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , cause = tracing :: field :: debug (cause) , congestion_window = tracing :: field :: debug (congestion_window));
+            tracing :: event ! (target : "slow_start_exited" , parent : id , tracing :: Level :: DEBUG , { path_id = tracing :: field :: debug (path_id) , cause = tracing :: field :: debug (cause) , congestion_window = tracing :: field :: debug (congestion_window) });
         }
         #[inline]
         fn on_delivery_rate_sampled(
@@ -3999,7 +3988,7 @@ pub mod tracing {
                 path_id,
                 rate_sample,
             } = event;
-            tracing :: event ! (target : "delivery_rate_sampled" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , rate_sample = tracing :: field :: debug (rate_sample));
+            tracing :: event ! (target : "delivery_rate_sampled" , parent : id , tracing :: Level :: DEBUG , { path_id = tracing :: field :: debug (path_id) , rate_sample = tracing :: field :: debug (rate_sample) });
         }
         #[inline]
         fn on_pacing_rate_updated(
@@ -4015,7 +4004,7 @@ pub mod tracing {
                 burst_size,
                 pacing_gain,
             } = event;
-            tracing :: event ! (target : "pacing_rate_updated" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , bytes_per_second = tracing :: field :: debug (bytes_per_second) , burst_size = tracing :: field :: debug (burst_size) , pacing_gain = tracing :: field :: debug (pacing_gain));
+            tracing :: event ! (target : "pacing_rate_updated" , parent : id , tracing :: Level :: DEBUG , { path_id = tracing :: field :: debug (path_id) , bytes_per_second = tracing :: field :: debug (bytes_per_second) , burst_size = tracing :: field :: debug (burst_size) , pacing_gain = tracing :: field :: debug (pacing_gain) });
         }
         #[inline]
         fn on_bbr_state_changed(
@@ -4026,7 +4015,7 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::BbrStateChanged { path_id, state } = event;
-            tracing :: event ! (target : "bbr_state_changed" , parent : id , tracing :: Level :: DEBUG , path_id = tracing :: field :: debug (path_id) , state = tracing :: field :: debug (state));
+            tracing :: event ! (target : "bbr_state_changed" , parent : id , tracing :: Level :: DEBUG , { path_id = tracing :: field :: debug (path_id) , state = tracing :: field :: debug (state) });
         }
         #[inline]
         fn on_dc_state_changed(
@@ -4037,7 +4026,18 @@ pub mod tracing {
         ) {
             let id = context.id();
             let api::DcStateChanged { state } = event;
-            tracing :: event ! (target : "dc_state_changed" , parent : id , tracing :: Level :: DEBUG , state = tracing :: field :: debug (state));
+            tracing :: event ! (target : "dc_state_changed" , parent : id , tracing :: Level :: DEBUG , { state = tracing :: field :: debug (state) });
+        }
+        #[inline]
+        fn on_connection_closed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
+        ) {
+            let id = context.id();
+            let api::ConnectionClosed { error } = event;
+            tracing :: event ! (target : "connection_closed" , parent : id , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) });
         }
         #[inline]
         fn on_version_information(
@@ -4051,7 +4051,7 @@ pub mod tracing {
                 client_versions,
                 chosen_version,
             } = event;
-            tracing :: event ! (target : "version_information" , parent : parent , tracing :: Level :: DEBUG , server_versions = tracing :: field :: debug (server_versions) , client_versions = tracing :: field :: debug (client_versions) , chosen_version = tracing :: field :: debug (chosen_version));
+            tracing :: event ! (target : "version_information" , parent : parent , tracing :: Level :: DEBUG , { server_versions = tracing :: field :: debug (server_versions) , client_versions = tracing :: field :: debug (client_versions) , chosen_version = tracing :: field :: debug (chosen_version) });
         }
         #[inline]
         fn on_endpoint_packet_sent(
@@ -4061,7 +4061,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::EndpointPacketSent { packet_header } = event;
-            tracing :: event ! (target : "endpoint_packet_sent" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+            tracing :: event ! (target : "endpoint_packet_sent" , parent : parent , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) });
         }
         #[inline]
         fn on_endpoint_packet_received(
@@ -4071,7 +4071,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::EndpointPacketReceived { packet_header } = event;
-            tracing :: event ! (target : "endpoint_packet_received" , parent : parent , tracing :: Level :: DEBUG , packet_header = tracing :: field :: debug (packet_header));
+            tracing :: event ! (target : "endpoint_packet_received" , parent : parent , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) });
         }
         #[inline]
         fn on_endpoint_datagram_sent(
@@ -4081,7 +4081,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::EndpointDatagramSent { len, gso_offset } = event;
-            tracing :: event ! (target : "endpoint_datagram_sent" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset));
+            tracing :: event ! (target : "endpoint_datagram_sent" , parent : parent , tracing :: Level :: DEBUG , { len = tracing :: field :: debug (len) , gso_offset = tracing :: field :: debug (gso_offset) });
         }
         #[inline]
         fn on_endpoint_datagram_received(
@@ -4091,7 +4091,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::EndpointDatagramReceived { len } = event;
-            tracing :: event ! (target : "endpoint_datagram_received" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len));
+            tracing :: event ! (target : "endpoint_datagram_received" , parent : parent , tracing :: Level :: DEBUG , { len = tracing :: field :: debug (len) });
         }
         #[inline]
         fn on_endpoint_datagram_dropped(
@@ -4101,7 +4101,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::EndpointDatagramDropped { len, reason } = event;
-            tracing :: event ! (target : "endpoint_datagram_dropped" , parent : parent , tracing :: Level :: DEBUG , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason));
+            tracing :: event ! (target : "endpoint_datagram_dropped" , parent : parent , tracing :: Level :: DEBUG , { len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_endpoint_connection_attempt_failed(
@@ -4111,7 +4111,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::EndpointConnectionAttemptFailed { error } = event;
-            tracing :: event ! (target : "endpoint_connection_attempt_failed" , parent : parent , tracing :: Level :: DEBUG , error = tracing :: field :: debug (error));
+            tracing :: event ! (target : "endpoint_connection_attempt_failed" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) });
         }
         #[inline]
         fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
@@ -4123,13 +4123,13 @@ pub mod tracing {
                 total_errors,
                 dropped_errors,
             } = event;
-            tracing :: event ! (target : "platform_tx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count) , syscalls = tracing :: field :: debug (syscalls) , blocked_syscalls = tracing :: field :: debug (blocked_syscalls) , total_errors = tracing :: field :: debug (total_errors) , dropped_errors = tracing :: field :: debug (dropped_errors));
+            tracing :: event ! (target : "platform_tx" , parent : parent , tracing :: Level :: DEBUG , { count = tracing :: field :: debug (count) , syscalls = tracing :: field :: debug (syscalls) , blocked_syscalls = tracing :: field :: debug (blocked_syscalls) , total_errors = tracing :: field :: debug (total_errors) , dropped_errors = tracing :: field :: debug (dropped_errors) });
         }
         #[inline]
         fn on_platform_tx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTxError) {
             let parent = self.parent(meta);
             let api::PlatformTxError { errno } = event;
-            tracing :: event ! (target : "platform_tx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
+            tracing :: event ! (target : "platform_tx_error" , parent : parent , tracing :: Level :: DEBUG , { errno = tracing :: field :: debug (errno) });
         }
         #[inline]
         fn on_platform_rx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRx) {
@@ -4141,13 +4141,13 @@ pub mod tracing {
                 total_errors,
                 dropped_errors,
             } = event;
-            tracing :: event ! (target : "platform_rx" , parent : parent , tracing :: Level :: DEBUG , count = tracing :: field :: debug (count) , syscalls = tracing :: field :: debug (syscalls) , blocked_syscalls = tracing :: field :: debug (blocked_syscalls) , total_errors = tracing :: field :: debug (total_errors) , dropped_errors = tracing :: field :: debug (dropped_errors));
+            tracing :: event ! (target : "platform_rx" , parent : parent , tracing :: Level :: DEBUG , { count = tracing :: field :: debug (count) , syscalls = tracing :: field :: debug (syscalls) , blocked_syscalls = tracing :: field :: debug (blocked_syscalls) , total_errors = tracing :: field :: debug (total_errors) , dropped_errors = tracing :: field :: debug (dropped_errors) });
         }
         #[inline]
         fn on_platform_rx_error(&mut self, meta: &api::EndpointMeta, event: &api::PlatformRxError) {
             let parent = self.parent(meta);
             let api::PlatformRxError { errno } = event;
-            tracing :: event ! (target : "platform_rx_error" , parent : parent , tracing :: Level :: DEBUG , errno = tracing :: field :: debug (errno));
+            tracing :: event ! (target : "platform_rx_error" , parent : parent , tracing :: Level :: DEBUG , { errno = tracing :: field :: debug (errno) });
         }
         #[inline]
         fn on_platform_feature_configured(
@@ -4157,7 +4157,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::PlatformFeatureConfigured { configuration } = event;
-            tracing :: event ! (target : "platform_feature_configured" , parent : parent , tracing :: Level :: DEBUG , configuration = tracing :: field :: debug (configuration));
+            tracing :: event ! (target : "platform_feature_configured" , parent : parent , tracing :: Level :: DEBUG , { configuration = tracing :: field :: debug (configuration) });
         }
         #[inline]
         fn on_platform_event_loop_wakeup(
@@ -4172,7 +4172,7 @@ pub mod tracing {
                 tx_ready,
                 application_wakeup,
             } = event;
-            tracing :: event ! (target : "platform_event_loop_wakeup" , parent : parent , tracing :: Level :: DEBUG , timeout_expired = tracing :: field :: debug (timeout_expired) , rx_ready = tracing :: field :: debug (rx_ready) , tx_ready = tracing :: field :: debug (tx_ready) , application_wakeup = tracing :: field :: debug (application_wakeup));
+            tracing :: event ! (target : "platform_event_loop_wakeup" , parent : parent , tracing :: Level :: DEBUG , { timeout_expired = tracing :: field :: debug (timeout_expired) , rx_ready = tracing :: field :: debug (rx_ready) , tx_ready = tracing :: field :: debug (tx_ready) , application_wakeup = tracing :: field :: debug (application_wakeup) });
         }
         #[inline]
         fn on_platform_event_loop_sleep(
@@ -4185,7 +4185,7 @@ pub mod tracing {
                 timeout,
                 processing_duration,
             } = event;
-            tracing :: event ! (target : "platform_event_loop_sleep" , parent : parent , tracing :: Level :: DEBUG , timeout = tracing :: field :: debug (timeout) , processing_duration = tracing :: field :: debug (processing_duration));
+            tracing :: event ! (target : "platform_event_loop_sleep" , parent : parent , tracing :: Level :: DEBUG , { timeout = tracing :: field :: debug (timeout) , processing_duration = tracing :: field :: debug (processing_duration) });
         }
         #[inline]
         fn on_platform_event_loop_started(
@@ -4195,7 +4195,7 @@ pub mod tracing {
         ) {
             let parent = self.parent(meta);
             let api::PlatformEventLoopStarted { local_address } = event;
-            tracing :: event ! (target : "platform_event_loop_started" , parent : parent , tracing :: Level :: DEBUG , local_address = tracing :: field :: debug (local_address));
+            tracing :: event ! (target : "platform_event_loop_started" , parent : parent , tracing :: Level :: DEBUG , { local_address = tracing :: field :: debug (local_address) });
         }
     }
 }
@@ -5720,20 +5720,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[doc = " Connection closed"]
-    pub struct ConnectionClosed {
-        pub error: crate::connection::Error,
-    }
-    impl IntoEvent<api::ConnectionClosed> for ConnectionClosed {
-        #[inline]
-        fn into_event(self) -> api::ConnectionClosed {
-            let ConnectionClosed { error } = self;
-            api::ConnectionClosed {
-                error: error.into_event(),
-            }
-        }
-    }
-    #[derive(Clone, Debug)]
     #[doc = " Duplicate packet received"]
     pub struct DuplicatePacket<'a> {
         pub packet_header: PacketHeader,
@@ -6112,6 +6098,20 @@ pub mod builder {
             let DcStateChanged { state } = self;
             api::DcStateChanged {
                 state: state.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Connection closed"]
+    pub struct ConnectionClosed {
+        pub error: crate::connection::Error,
+    }
+    impl IntoEvent<api::ConnectionClosed> for ConnectionClosed {
+        #[inline]
+        fn into_event(self) -> api::ConnectionClosed {
+            let ConnectionClosed { error } = self;
+            api::ConnectionClosed {
+                error: error.into_event(),
             }
         }
     }
@@ -6833,18 +6833,6 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `ConnectionClosed` event is triggered"]
-        #[inline]
-        fn on_connection_closed(
-            &mut self,
-            context: &mut Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            event: &api::ConnectionClosed,
-        ) {
-            let _ = context;
-            let _ = meta;
-            let _ = event;
-        }
         #[doc = "Called when the `DuplicatePacket` event is triggered"]
         #[inline]
         fn on_duplicate_packet(
@@ -7104,6 +7092,18 @@ mod traits {
             context: &mut Self::ConnectionContext,
             meta: &api::ConnectionMeta,
             event: &api::DcStateChanged,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `ConnectionClosed` event is triggered"]
+        #[inline]
+        fn on_connection_closed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
         ) {
             let _ = context;
             let _ = meta;
@@ -7543,16 +7543,6 @@ mod traits {
             (self.1).on_connection_started(&mut context.1, meta, event);
         }
         #[inline]
-        fn on_connection_closed(
-            &mut self,
-            context: &mut Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            event: &api::ConnectionClosed,
-        ) {
-            (self.0).on_connection_closed(&mut context.0, meta, event);
-            (self.1).on_connection_closed(&mut context.1, meta, event);
-        }
-        #[inline]
         fn on_duplicate_packet(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -7771,6 +7761,16 @@ mod traits {
         ) {
             (self.0).on_dc_state_changed(&mut context.0, meta, event);
             (self.1).on_dc_state_changed(&mut context.1, meta, event);
+        }
+        #[inline]
+        fn on_connection_closed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
+        ) {
+            (self.0).on_connection_closed(&mut context.0, meta, event);
+            (self.1).on_connection_closed(&mut context.1, meta, event);
         }
         #[inline]
         fn on_version_information(
@@ -8143,8 +8143,6 @@ mod traits {
         fn on_key_space_discarded(&mut self, event: builder::KeySpaceDiscarded);
         #[doc = "Publishes a `ConnectionStarted` event to the publisher's subscriber"]
         fn on_connection_started(&mut self, event: builder::ConnectionStarted);
-        #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
-        fn on_connection_closed(&mut self, event: builder::ConnectionClosed);
         #[doc = "Publishes a `DuplicatePacket` event to the publisher's subscriber"]
         fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket);
         #[doc = "Publishes a `TransportParametersReceived` event to the publisher's subscriber"]
@@ -8189,6 +8187,8 @@ mod traits {
         fn on_bbr_state_changed(&mut self, event: builder::BbrStateChanged);
         #[doc = "Publishes a `DcStateChanged` event to the publisher's subscriber"]
         fn on_dc_state_changed(&mut self, event: builder::DcStateChanged);
+        #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
+        fn on_connection_closed(&mut self, event: builder::ConnectionClosed);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
         #[doc = r" Returns the [`Subject`] for the current publisher"]
@@ -8410,15 +8410,6 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
-        fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
-            let event = event.into_event();
-            self.subscriber
-                .on_connection_closed(self.context, &self.meta, &event);
-            self.subscriber
-                .on_connection_event(self.context, &self.meta, &event);
-            self.subscriber.on_event(&self.meta, &event);
-        }
-        #[inline]
         fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket) {
             let event = event.into_event();
             self.subscriber
@@ -8620,6 +8611,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
+            let event = event.into_event();
+            self.subscriber
+                .on_connection_closed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn quic_version(&self) -> u32 {
             self.quic_version
         }
@@ -8638,21 +8638,21 @@ pub mod testing {
         pub struct Subscriber {
             location: Option<Location>,
             output: Vec<String>,
-            pub version_information: u32,
-            pub endpoint_packet_sent: u32,
-            pub endpoint_packet_received: u32,
-            pub endpoint_datagram_sent: u32,
-            pub endpoint_datagram_received: u32,
-            pub endpoint_datagram_dropped: u32,
-            pub endpoint_connection_attempt_failed: u32,
-            pub platform_tx: u32,
-            pub platform_tx_error: u32,
-            pub platform_rx: u32,
-            pub platform_rx_error: u32,
-            pub platform_feature_configured: u32,
-            pub platform_event_loop_wakeup: u32,
-            pub platform_event_loop_sleep: u32,
-            pub platform_event_loop_started: u32,
+            pub version_information: u64,
+            pub endpoint_packet_sent: u64,
+            pub endpoint_packet_received: u64,
+            pub endpoint_datagram_sent: u64,
+            pub endpoint_datagram_received: u64,
+            pub endpoint_datagram_dropped: u64,
+            pub endpoint_connection_attempt_failed: u64,
+            pub platform_tx: u64,
+            pub platform_tx_error: u64,
+            pub platform_rx: u64,
+            pub platform_rx_error: u64,
+            pub platform_feature_configured: u64,
+            pub platform_event_loop_wakeup: u64,
+            pub platform_event_loop_sleep: u64,
+            pub platform_event_loop_started: u64,
         }
         impl Drop for Subscriber {
             fn drop(&mut self) {
@@ -8873,64 +8873,64 @@ pub mod testing {
     pub struct Subscriber {
         location: Option<Location>,
         output: Vec<String>,
-        pub application_protocol_information: u32,
-        pub server_name_information: u32,
-        pub packet_skipped: u32,
-        pub packet_sent: u32,
-        pub packet_received: u32,
-        pub active_path_updated: u32,
-        pub path_created: u32,
-        pub frame_sent: u32,
-        pub frame_received: u32,
-        pub packet_lost: u32,
-        pub recovery_metrics: u32,
-        pub congestion: u32,
-        pub ack_processed: u32,
-        pub rx_ack_range_dropped: u32,
-        pub ack_range_received: u32,
-        pub ack_range_sent: u32,
-        pub packet_dropped: u32,
-        pub key_update: u32,
-        pub key_space_discarded: u32,
-        pub connection_started: u32,
-        pub connection_closed: u32,
-        pub duplicate_packet: u32,
-        pub transport_parameters_received: u32,
-        pub datagram_sent: u32,
-        pub datagram_received: u32,
-        pub datagram_dropped: u32,
-        pub connection_id_updated: u32,
-        pub ecn_state_changed: u32,
-        pub connection_migration_denied: u32,
-        pub handshake_status_updated: u32,
-        pub tls_exporter_ready: u32,
-        pub path_challenge_updated: u32,
-        pub tls_client_hello: u32,
-        pub tls_server_hello: u32,
-        pub rx_stream_progress: u32,
-        pub tx_stream_progress: u32,
-        pub keep_alive_timer_expired: u32,
-        pub mtu_updated: u32,
-        pub slow_start_exited: u32,
-        pub delivery_rate_sampled: u32,
-        pub pacing_rate_updated: u32,
-        pub bbr_state_changed: u32,
-        pub dc_state_changed: u32,
-        pub version_information: u32,
-        pub endpoint_packet_sent: u32,
-        pub endpoint_packet_received: u32,
-        pub endpoint_datagram_sent: u32,
-        pub endpoint_datagram_received: u32,
-        pub endpoint_datagram_dropped: u32,
-        pub endpoint_connection_attempt_failed: u32,
-        pub platform_tx: u32,
-        pub platform_tx_error: u32,
-        pub platform_rx: u32,
-        pub platform_rx_error: u32,
-        pub platform_feature_configured: u32,
-        pub platform_event_loop_wakeup: u32,
-        pub platform_event_loop_sleep: u32,
-        pub platform_event_loop_started: u32,
+        pub application_protocol_information: u64,
+        pub server_name_information: u64,
+        pub packet_skipped: u64,
+        pub packet_sent: u64,
+        pub packet_received: u64,
+        pub active_path_updated: u64,
+        pub path_created: u64,
+        pub frame_sent: u64,
+        pub frame_received: u64,
+        pub packet_lost: u64,
+        pub recovery_metrics: u64,
+        pub congestion: u64,
+        pub ack_processed: u64,
+        pub rx_ack_range_dropped: u64,
+        pub ack_range_received: u64,
+        pub ack_range_sent: u64,
+        pub packet_dropped: u64,
+        pub key_update: u64,
+        pub key_space_discarded: u64,
+        pub connection_started: u64,
+        pub duplicate_packet: u64,
+        pub transport_parameters_received: u64,
+        pub datagram_sent: u64,
+        pub datagram_received: u64,
+        pub datagram_dropped: u64,
+        pub connection_id_updated: u64,
+        pub ecn_state_changed: u64,
+        pub connection_migration_denied: u64,
+        pub handshake_status_updated: u64,
+        pub tls_exporter_ready: u64,
+        pub path_challenge_updated: u64,
+        pub tls_client_hello: u64,
+        pub tls_server_hello: u64,
+        pub rx_stream_progress: u64,
+        pub tx_stream_progress: u64,
+        pub keep_alive_timer_expired: u64,
+        pub mtu_updated: u64,
+        pub slow_start_exited: u64,
+        pub delivery_rate_sampled: u64,
+        pub pacing_rate_updated: u64,
+        pub bbr_state_changed: u64,
+        pub dc_state_changed: u64,
+        pub connection_closed: u64,
+        pub version_information: u64,
+        pub endpoint_packet_sent: u64,
+        pub endpoint_packet_received: u64,
+        pub endpoint_datagram_sent: u64,
+        pub endpoint_datagram_received: u64,
+        pub endpoint_datagram_dropped: u64,
+        pub endpoint_connection_attempt_failed: u64,
+        pub platform_tx: u64,
+        pub platform_tx_error: u64,
+        pub platform_rx: u64,
+        pub platform_rx_error: u64,
+        pub platform_feature_configured: u64,
+        pub platform_event_loop_wakeup: u64,
+        pub platform_event_loop_sleep: u64,
+        pub platform_event_loop_started: u64,
     }
     impl Drop for Subscriber {
         fn drop(&mut self) {
@@ -8982,7 +8982,6 @@ pub mod testing {
                 key_update: 0,
                 key_space_discarded: 0,
                 connection_started: 0,
-                connection_closed: 0,
                 duplicate_packet: 0,
                 transport_parameters_received: 0,
                 datagram_sent: 0,
@@ -9005,6 +9004,7 @@ pub mod testing {
                 pacing_rate_updated: 0,
                 bbr_state_changed: 0,
                 dc_state_changed: 0,
+                connection_closed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -9305,20 +9305,6 @@ pub mod testing {
             event: &api::ConnectionStarted,
         ) {
             self.connection_started += 1;
-            if self.location.is_some() {
-                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
-                let event = crate::event::snapshot::Fmt::to_snapshot(event);
-                let out = format!("{meta:?} {event:?}");
-                self.output.push(out);
-            }
-        }
-        fn on_connection_closed(
-            &mut self,
-            _context: &mut Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            event: &api::ConnectionClosed,
-        ) {
-            self.connection_closed += 1;
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -9634,6 +9620,20 @@ pub mod testing {
                 self.output.push(out);
             }
         }
+        fn on_connection_closed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionClosed,
+        ) {
+            self.connection_closed += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
         fn on_version_information(
             &mut self,
             meta: &api::EndpointMeta,
@@ -9788,64 +9788,64 @@ pub mod testing {
     pub struct Publisher {
         location: Option<Location>,
         output: Vec<String>,
-        pub application_protocol_information: u32,
-        pub server_name_information: u32,
-        pub packet_skipped: u32,
-        pub packet_sent: u32,
-        pub packet_received: u32,
-        pub active_path_updated: u32,
-        pub path_created: u32,
-        pub frame_sent: u32,
-        pub frame_received: u32,
-        pub packet_lost: u32,
-        pub recovery_metrics: u32,
-        pub congestion: u32,
-        pub ack_processed: u32,
-        pub rx_ack_range_dropped: u32,
-        pub ack_range_received: u32,
-        pub ack_range_sent: u32,
-        pub packet_dropped: u32,
-        pub key_update: u32,
-        pub key_space_discarded: u32,
-        pub connection_started: u32,
-        pub connection_closed: u32,
-        pub duplicate_packet: u32,
-        pub transport_parameters_received: u32,
-        pub datagram_sent: u32,
-        pub datagram_received: u32,
-        pub datagram_dropped: u32,
-        pub connection_id_updated: u32,
-        pub ecn_state_changed: u32,
-        pub connection_migration_denied: u32,
-        pub handshake_status_updated: u32,
-        pub tls_exporter_ready: u32,
-        pub path_challenge_updated: u32,
-        pub tls_client_hello: u32,
-        pub tls_server_hello: u32,
-        pub rx_stream_progress: u32,
-        pub tx_stream_progress: u32,
-        pub keep_alive_timer_expired: u32,
-        pub mtu_updated: u32,
-        pub slow_start_exited: u32,
-        pub delivery_rate_sampled: u32,
-        pub pacing_rate_updated: u32,
-        pub bbr_state_changed: u32,
-        pub dc_state_changed: u32,
-        pub version_information: u32,
-        pub endpoint_packet_sent: u32,
-        pub endpoint_packet_received: u32,
-        pub endpoint_datagram_sent: u32,
-        pub endpoint_datagram_received: u32,
-        pub endpoint_datagram_dropped: u32,
-        pub endpoint_connection_attempt_failed: u32,
-        pub platform_tx: u32,
-        pub platform_tx_error: u32,
-        pub platform_rx: u32,
-        pub platform_rx_error: u32,
-        pub platform_feature_configured: u32,
-        pub platform_event_loop_wakeup: u32,
-        pub platform_event_loop_sleep: u32,
-        pub platform_event_loop_started: u32,
+        pub application_protocol_information: u64,
+        pub server_name_information: u64,
+        pub packet_skipped: u64,
+        pub packet_sent: u64,
+        pub packet_received: u64,
+        pub active_path_updated: u64,
+        pub path_created: u64,
+        pub frame_sent: u64,
+        pub frame_received: u64,
+        pub packet_lost: u64,
+        pub recovery_metrics: u64,
+        pub congestion: u64,
+        pub ack_processed: u64,
+        pub rx_ack_range_dropped: u64,
+        pub ack_range_received: u64,
+        pub ack_range_sent: u64,
+        pub packet_dropped: u64,
+        pub key_update: u64,
+        pub key_space_discarded: u64,
+        pub connection_started: u64,
+        pub duplicate_packet: u64,
+        pub transport_parameters_received: u64,
+        pub datagram_sent: u64,
+        pub datagram_received: u64,
+        pub datagram_dropped: u64,
+        pub connection_id_updated: u64,
+        pub ecn_state_changed: u64,
+        pub connection_migration_denied: u64,
+        pub handshake_status_updated: u64,
+        pub tls_exporter_ready: u64,
+        pub path_challenge_updated: u64,
+        pub tls_client_hello: u64,
+        pub tls_server_hello: u64,
+        pub rx_stream_progress: u64,
+        pub tx_stream_progress: u64,
+        pub keep_alive_timer_expired: u64,
+        pub mtu_updated: u64,
+        pub slow_start_exited: u64,
+        pub delivery_rate_sampled: u64,
+        pub pacing_rate_updated: u64,
+        pub bbr_state_changed: u64,
+        pub dc_state_changed: u64,
+        pub connection_closed: u64,
+        pub version_information: u64,
+        pub endpoint_packet_sent: u64,
+        pub endpoint_packet_received: u64,
+        pub endpoint_datagram_sent: u64,
+        pub endpoint_datagram_received: u64,
+        pub endpoint_datagram_dropped: u64,
+        pub endpoint_connection_attempt_failed: u64,
+        pub platform_tx: u64,
+        pub platform_tx_error: u64,
+        pub platform_rx: u64,
+        pub platform_rx_error: u64,
+        pub platform_feature_configured: u64,
+        pub platform_event_loop_wakeup: u64,
+        pub platform_event_loop_sleep: u64,
+        pub platform_event_loop_started: u64,
     }
     impl Publisher {
         #[doc = r" Creates a publisher with snapshot assertions enabled"]
@@ -9887,7 +9887,6 @@ pub mod testing {
                 key_update: 0,
                 key_space_discarded: 0,
                 connection_started: 0,
-                connection_closed: 0,
                 duplicate_packet: 0,
                 transport_parameters_received: 0,
                 datagram_sent: 0,
@@ -9910,6 +9909,7 @@ pub mod testing {
                 pacing_rate_updated: 0,
                 bbr_state_changed: 0,
                 dc_state_changed: 0,
+                connection_closed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
                 endpoint_packet_received: 0,
@@ -10226,15 +10226,6 @@ pub mod testing {
                 self.output.push(out);
             }
         }
-        fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
-            self.connection_closed += 1;
-            let event = event.into_event();
-            if self.location.is_some() {
-                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
-                let out = format!("{event:?}");
-                self.output.push(out);
-            }
-        }
         fn on_duplicate_packet(&mut self, event: builder::DuplicatePacket) {
             self.duplicate_packet += 1;
             let event = event.into_event();
@@ -10429,6 +10420,15 @@ pub mod testing {
         }
         fn on_dc_state_changed(&mut self, event: builder::DcStateChanged) {
             self.dc_state_changed += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
+            self.connection_closed += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
