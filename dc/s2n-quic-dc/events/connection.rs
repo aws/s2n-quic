@@ -47,7 +47,7 @@ pub struct StreamWriteFinFlushed {
 
 #[event("stream:write_blocked")]
 #[checkpoint("latency")]
-#[measure_counter("conn.stream.write.blocked")]
+#[measure_counter("conn")]
 pub struct StreamWriteBlocked {
     /// The number of bytes that the application tried to write
     #[measure("provided", Bytes)]
@@ -112,7 +112,7 @@ pub struct StreamWriteSocketFlushed {
 }
 
 #[event("stream:write_socket_blocked")]
-#[measure_counter("conn.stream.write.socket.blocked")]
+#[measure_counter("conn")]
 pub struct StreamWriteSocketBlocked {
     /// The number of bytes that the stream tried to write to the socket
     #[measure("provided", Bytes)]

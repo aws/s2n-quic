@@ -537,7 +537,7 @@ mod measure {
                 62usize => Self(stream_write_fin_flushed__committed__conn),
                 63usize => Self(stream_write_fin_flushed__processing_duration),
                 64usize => Self(stream_write_fin_flushed__processing_duration__conn),
-                67usize => Self(stream_write_blocked__conn__stream__write__blocked),
+                67usize => Self(stream_write_blocked__conn),
                 68usize => Self(stream_write_blocked__provided),
                 69usize => Self(stream_write_blocked__processing_duration),
                 70usize => Self(stream_write_blocked__processing_duration__conn),
@@ -549,7 +549,7 @@ mod measure {
                 82usize => Self(stream_write_socket_flushed__provided),
                 84usize => Self(stream_write_socket_flushed__committed),
                 85usize => Self(stream_write_socket_flushed__committed__conn),
-                87usize => Self(stream_write_socket_blocked__conn__stream__write__socket__blocked),
+                87usize => Self(stream_write_socket_blocked__conn),
                 88usize => Self(stream_write_socket_blocked__provided),
                 90usize => Self(stream_write_socket_errored__provided),
                 93usize => Self(stream_read_flushed__conn),
@@ -653,8 +653,8 @@ mod measure {
             fn stream_write_fin_flushed__processing_duration(value: u64);
             # [link_name = s2n_quic_dc__event__measure__stream_write_fin_flushed__processing_duration__conn]
             fn stream_write_fin_flushed__processing_duration__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_blocked__conn__stream__write__blocked]
-            fn stream_write_blocked__conn__stream__write__blocked(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_write_blocked__conn]
+            fn stream_write_blocked__conn(value: u64);
             # [link_name = s2n_quic_dc__event__measure__stream_write_blocked__provided]
             fn stream_write_blocked__provided(value: u64);
             # [link_name = s2n_quic_dc__event__measure__stream_write_blocked__processing_duration]
@@ -677,8 +677,8 @@ mod measure {
             fn stream_write_socket_flushed__committed(value: u64);
             # [link_name = s2n_quic_dc__event__measure__stream_write_socket_flushed__committed__conn]
             fn stream_write_socket_flushed__committed__conn(value: u64);
-            # [link_name = s2n_quic_dc__event__measure__stream_write_socket_blocked__conn__stream__write__socket__blocked]
-            fn stream_write_socket_blocked__conn__stream__write__socket__blocked(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_write_socket_blocked__conn]
+            fn stream_write_socket_blocked__conn(value: u64);
             # [link_name = s2n_quic_dc__event__measure__stream_write_socket_blocked__provided]
             fn stream_write_socket_blocked__provided(value: u64);
             # [link_name = s2n_quic_dc__event__measure__stream_write_socket_errored__provided]
