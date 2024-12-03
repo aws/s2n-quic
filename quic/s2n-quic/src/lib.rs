@@ -105,9 +105,9 @@
 
 // Tag docs with the required platform and features.
 // https://doc.rust-lang.org/rustdoc/unstable-features.html
-#![cfg_attr(s2n_docsrs, feature(doc_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(
-    s2n_docsrs,
+    docsrs,
     feature(doc_auto_cfg),
     feature(doc_cfg_hide),
     doc(cfg_hide(doc))

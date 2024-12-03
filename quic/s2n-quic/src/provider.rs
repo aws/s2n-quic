@@ -26,7 +26,7 @@ pub(crate) mod sync;
 
 cfg_if!(
     if #[cfg(any(test, feature = "unstable-provider-connection-close-formatter"))] {
-        #[cfg_attr(s2n_docsrs, doc(cfg(feature = "unstable-provider-connection-close-formatter")))]
+        #[cfg_attr(docsrs, doc(cfg(feature = "unstable-provider-connection-close-formatter")))]
         pub mod connection_close_formatter;
     } else {
         #[allow(dead_code)]
@@ -36,7 +36,7 @@ cfg_if!(
 
 cfg_if!(
     if #[cfg(any(test, feature = "unstable-provider-packet-interceptor"))] {
-        #[cfg_attr(s2n_docsrs, doc(cfg(feature = "unstable-provider-packet-interceptor")))]
+        #[cfg_attr(docsrs, doc(cfg(feature = "unstable-provider-packet-interceptor")))]
         pub mod packet_interceptor;
     } else {
         #[allow(dead_code)]
@@ -46,7 +46,7 @@ cfg_if!(
 
 cfg_if!(
     if #[cfg(any(test, feature = "unstable-provider-random"))] {
-        #[cfg_attr(s2n_docsrs, doc(cfg(feature = "unstable-provider-random")))]
+        #[cfg_attr(docsrs, doc(cfg(feature = "unstable-provider-random")))]
         pub mod random;
     } else {
         #[allow(dead_code)]
@@ -56,7 +56,7 @@ cfg_if!(
 
 cfg_if!(
     if #[cfg(any(test, feature = "unstable-provider-datagram"))] {
-        #[cfg_attr(s2n_docsrs, doc(cfg(feature = "unstable-provider-datagram")))]
+        #[cfg_attr(docsrs, doc(cfg(feature = "unstable-provider-datagram")))]
         pub mod datagram;
     } else {
         #[allow(dead_code)]
@@ -66,7 +66,7 @@ cfg_if!(
 
 cfg_if!(
     if #[cfg(any(test, feature = "unstable-provider-dc"))] {
-        #[cfg_attr(s2n_docsrs, doc(cfg(feature = "unstable-provider-dc")))]
+        #[cfg_attr(docsrs, doc(cfg(feature = "unstable-provider-dc")))]
         pub mod dc;
     } else {
         #[allow(dead_code)]

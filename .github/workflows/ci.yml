@@ -161,7 +161,7 @@ jobs:
       - name: Run cargo doc
         run: cargo +nightly doc --all-features --no-deps --workspace --exclude s2n-quic-qns
         env:
-          RUSTDOCFLAGS: --cfg s2n_docsrs
+          RUSTDOCFLAGS: --cfg docsrs
 
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
