@@ -133,7 +133,7 @@ where
     b: &'a mut B,
 }
 
-impl<'a, R, A, B> super::Queue for Queue<'a, R, A, B>
+impl<R, A, B> super::Queue for Queue<'_, R, A, B>
 where
     R: Router,
     A: super::Queue<Handle = R::Handle>,

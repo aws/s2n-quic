@@ -242,7 +242,7 @@ impl<'a> Writer<'a> {
     }
 }
 
-impl<'a> super::Writer for Writer<'a> {
+impl super::Writer for Writer<'_> {
     fn current_time(&self) -> Timestamp {
         self.current_time
     }

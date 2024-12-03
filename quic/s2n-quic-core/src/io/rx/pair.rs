@@ -111,7 +111,7 @@ where
     b: &'a mut B,
 }
 
-impl<'a, A, B> super::Queue for Queue<'a, A, B>
+impl<A, B> super::Queue for Queue<'_, A, B>
 where
     A: super::Queue,
     B: super::Queue<Handle = A::Handle>,

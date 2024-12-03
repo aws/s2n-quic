@@ -495,7 +495,7 @@ impl<'a, V> RemoveIter<'a, V> {
     }
 }
 
-impl<'a, V> Iterator for RemoveIter<'a, V> {
+impl<V> Iterator for RemoveIter<'_, V> {
     type Item = (PacketNumber, V);
 
     #[inline]
@@ -518,7 +518,7 @@ impl<'a, V> Iterator for RemoveIter<'a, V> {
     }
 }
 
-impl<'a, V> Drop for RemoveIter<'a, V> {
+impl<V> Drop for RemoveIter<'_, V> {
     fn drop(&mut self) {
         // make sure the iterator is drained, otherwise the entries might dangle
         while self.next().is_some() {}

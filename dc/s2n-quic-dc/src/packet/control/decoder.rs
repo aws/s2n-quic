@@ -58,7 +58,7 @@ pub struct Packet<'a> {
     auth_tag: &'a mut [u8],
 }
 
-impl<'a> Packet<'a> {
+impl Packet<'_> {
     #[inline]
     pub fn tag(&self) -> Tag {
         self.tag

@@ -26,7 +26,7 @@ impl<'a, S: Storage + ?Sized> Tracked<'a, S> {
     }
 }
 
-impl<'a, S: Storage + ?Sized> Storage for Tracked<'a, S> {
+impl<S: Storage + ?Sized> Storage for Tracked<'_, S> {
     const SPECIALIZES_BYTES: bool = S::SPECIALIZES_BYTES;
     const SPECIALIZES_BYTES_MUT: bool = S::SPECIALIZES_BYTES_MUT;
 

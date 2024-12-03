@@ -498,7 +498,7 @@ impl From<transport::Error> for Error {
     }
 }
 
-impl<'a> From<ConnectionClose<'a>> for Error {
+impl From<ConnectionClose<'_>> for Error {
     #[track_caller]
     fn from(error: ConnectionClose) -> Self {
         if let Some(frame_type) = error.frame_type {

@@ -27,7 +27,7 @@ impl<'a> Packet<'a> {
     }
 
     #[inline]
-    pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<Packet> {
+    pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<'a, Self> {
         let header_len = decoder::header_len::<UnknownPathSecret>(buffer.peek())?;
         let ((header, value, crypto_tag), buffer) = decoder::header(buffer, header_len)?;
         let packet = Self {

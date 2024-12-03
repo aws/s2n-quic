@@ -64,9 +64,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub dc: &'a mut Config::DcEndpoint,
 }
 
-impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
-    SessionContext<'a, Config, Pub>
-{
+impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'_, Config, Pub> {
     // This is called by the client
     fn on_server_params(
         &mut self,
@@ -322,9 +320,9 @@ impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
     }
 }
 
-impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher>
+impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
     tls::Context<<Config::TLSEndpoint as tls::Endpoint>::Session>
-    for SessionContext<'a, Config, Pub>
+    for SessionContext<'_, Config, Pub>
 {
     fn on_handshake_keys(
         &mut self,

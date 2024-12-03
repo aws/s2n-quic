@@ -175,7 +175,7 @@ impl<'a> EncryptedZeroRtt<'a> {
     }
 }
 
-impl<'a> CleartextZeroRtt<'a> {
+impl CleartextZeroRtt<'_> {
     #[inline]
     pub fn destination_connection_id(&self) -> &[u8] {
         self.destination_connection_id

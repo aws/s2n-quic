@@ -1128,13 +1128,12 @@ struct AckInterceptContext<
 }
 
 impl<
-        'a,
         Config: endpoint::Config,
         Pub: event::ConnectionPublisher,
         Space: PacketSpace<Config>,
         OnProcessedFrame: FnMut(&Ack<&ack::Ranges>),
     > s2n_quic_core::packet::interceptor::Ack
-    for AckInterceptContext<'a, Config, Pub, Space, OnProcessedFrame>
+    for AckInterceptContext<'_, Config, Pub, Space, OnProcessedFrame>
 {
     fn space(&self) -> PacketNumberSpace {
         self.packet_number.space()

@@ -409,7 +409,7 @@ pub mod testing {
         event::{builder::SocketAddress, IntoEvent},
     };
 
-    impl<'a> event::builder::Path<'a> {
+    impl event::builder::Path<'_> {
         pub fn test() -> Self {
             Self {
                 local_addr: SocketAddress::IpV4 {

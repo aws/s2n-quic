@@ -40,7 +40,7 @@ pub enum Packet<'a> {
     UnknownPathSecret(secret_control::unknown_path_secret::Packet<'a>),
 }
 
-impl<'a> Packet<'a> {
+impl Packet<'_> {
     #[inline]
     pub fn kind(&self) -> Kind {
         match self {
@@ -61,7 +61,7 @@ impl<'a> s2n_codec::DecoderParameterizedValueMut<'a> for Packet<'a> {
     fn decode_parameterized_mut(
         tag_len: Self::Parameter,
         decoder: DecoderBufferMut<'a>,
-    ) -> s2n_codec::DecoderBufferMutResult<Self> {
+    ) -> s2n_codec::DecoderBufferMutResult<'a, Self> {
         match decoder.peek().decode().map(|(tag, _)| tag)? {
             Tag::Control(_) => {
                 let (packet, decoder) = control::decoder::Packet::decode(decoder, (), tag_len)?;

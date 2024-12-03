@@ -39,7 +39,7 @@ pub struct NewToken<'a> {
     pub token: &'a [u8],
 }
 
-impl<'a> NewToken<'a> {
+impl NewToken<'_> {
     pub const fn tag(&self) -> u8 {
         new_token_tag!()
     }
@@ -64,7 +64,7 @@ decoder_parameterized_value!(
     }
 );
 
-impl<'a> EncoderValue for NewToken<'a> {
+impl EncoderValue for NewToken<'_> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
         buffer.encode_with_len_prefix::<VarInt, _>(&self.token);

@@ -133,7 +133,7 @@ pub enum Packet<'a> {
 
 impl<'a> Packet<'a> {
     #[inline]
-    pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<Self> {
+    pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<'a, Self> {
         let tag = buffer.peek_byte(0)?;
 
         Ok(match tag {

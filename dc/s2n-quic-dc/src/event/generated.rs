@@ -5,6 +5,7 @@
 // This file was generated with the `s2n-quic-events` crate and any required
 // changes should be made there.
 
+#![allow(clippy::needless_lifetimes)]
 use super::*;
 pub(crate) mod metrics;
 pub mod api {

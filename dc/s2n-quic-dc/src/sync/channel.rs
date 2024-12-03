@@ -285,7 +285,7 @@ pin_project! {
     }
 }
 
-impl<'a, T> EventListenerFuture for RecvInner<'a, T> {
+impl<T> EventListenerFuture for RecvInner<'_, T> {
     type Output = Result<T, Closed>;
 
     /// Run this future with the given `Strategy`.

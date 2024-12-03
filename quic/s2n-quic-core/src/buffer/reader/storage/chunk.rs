@@ -15,14 +15,14 @@ pub enum Chunk<'a> {
     BytesMut(BytesMut),
 }
 
-impl<'a> Default for Chunk<'a> {
+impl Default for Chunk<'_> {
     #[inline]
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl<'a> Chunk<'a> {
+impl Chunk<'_> {
     #[inline]
     pub fn empty() -> Self {
         Self::Slice(&[])
@@ -36,21 +36,21 @@ impl<'a> From<&'a [u8]> for Chunk<'a> {
     }
 }
 
-impl<'a> From<Bytes> for Chunk<'a> {
+impl From<Bytes> for Chunk<'_> {
     #[inline]
     fn from(chunk: Bytes) -> Self {
         Self::Bytes(chunk)
     }
 }
 
-impl<'a> From<BytesMut> for Chunk<'a> {
+impl From<BytesMut> for Chunk<'_> {
     #[inline]
     fn from(chunk: BytesMut) -> Self {
         Self::BytesMut(chunk)
     }
 }
 
-impl<'a> core::ops::Deref for Chunk<'a> {
+impl core::ops::Deref for Chunk<'_> {
     type Target = [u8];
 
     #[inline]
@@ -63,14 +63,14 @@ impl<'a> core::ops::Deref for Chunk<'a> {
     }
 }
 
-impl<'a> AsRef<[u8]> for Chunk<'a> {
+impl AsRef<[u8]> for Chunk<'_> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self
     }
 }
 
-impl<'a> Storage for Chunk<'a> {
+impl Storage for Chunk<'_> {
     type Error = core::convert::Infallible;
 
     #[inline]

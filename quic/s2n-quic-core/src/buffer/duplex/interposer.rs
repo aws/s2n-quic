@@ -43,7 +43,7 @@ where
 }
 
 /// Delegates to the inner Duplex
-impl<'a, S, D> reader::Storage for Interposer<'a, S, D>
+impl<S, D> reader::Storage for Interposer<'_, S, D>
 where
     S: writer::Storage + ?Sized,
     D: duplex::Skip<Error = Infallible> + ?Sized,
@@ -86,7 +86,7 @@ where
 }
 
 /// Delegates to the inner Duplex
-impl<'a, C, D> Reader for Interposer<'a, C, D>
+impl<C, D> Reader for Interposer<'_, C, D>
 where
     C: writer::Storage + ?Sized,
     D: duplex::Skip<Error = Infallible> + ?Sized,
@@ -112,7 +112,7 @@ where
     }
 }
 
-impl<'a, C, D> Writer for Interposer<'a, C, D>
+impl<C, D> Writer for Interposer<'_, C, D>
 where
     C: writer::Storage + ?Sized,
     D: duplex::Skip<Error = Infallible> + ?Sized,

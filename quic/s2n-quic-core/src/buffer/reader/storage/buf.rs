@@ -40,7 +40,7 @@ where
     }
 }
 
-impl<'a, B> Storage for Buf<'a, B>
+impl<B> Storage for Buf<'_, B>
 where
     B: bytes::Buf,
 {
@@ -136,7 +136,7 @@ where
     }
 }
 
-impl<'a, B> Drop for Buf<'a, B>
+impl<B> Drop for Buf<'_, B>
 where
     B: bytes::Buf,
 {

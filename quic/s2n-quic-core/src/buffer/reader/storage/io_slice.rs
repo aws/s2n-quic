@@ -150,7 +150,7 @@ where
     }
 }
 
-impl<'a, T> bytes::Buf for IoSlice<'a, T>
+impl<T> bytes::Buf for IoSlice<'_, T>
 where
     T: core::ops::Deref<Target = [u8]>,
 {
@@ -200,7 +200,7 @@ where
     }
 }
 
-impl<'a, T> Storage for IoSlice<'a, T>
+impl<T> Storage for IoSlice<'_, T>
 where
     T: core::ops::Deref<Target = [u8]>,
 {

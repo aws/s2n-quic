@@ -82,7 +82,7 @@ pub enum IpAddressRef<'a> {
     IPv6(&'a IpV6Address),
 }
 
-impl<'a> IpAddressRef<'a> {
+impl IpAddressRef<'_> {
     pub fn to_owned(self) -> IpAddress {
         match self {
             Self::IPv4(addr) => IpAddress::Ipv4(*addr),
@@ -215,7 +215,7 @@ pub enum SocketAddressRef<'a> {
     IpV6(&'a SocketAddressV6),
 }
 
-impl<'a> SocketAddressRef<'a> {
+impl SocketAddressRef<'_> {
     pub fn to_owned(self) -> SocketAddress {
         match self {
             Self::IpV4(addr) => SocketAddress::IpV4(*addr),
@@ -253,7 +253,7 @@ mod std_conversion {
         }
     }
 
-    impl<'a> net::ToSocketAddrs for SocketAddressRef<'a> {
+    impl net::ToSocketAddrs for SocketAddressRef<'_> {
         type Iter = std::iter::Once<net::SocketAddr>;
 
         fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {

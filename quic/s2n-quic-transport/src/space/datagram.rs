@@ -102,7 +102,7 @@ struct Packet<'a, C: WriteContext> {
     max_datagram_payload: u64,
 }
 
-impl<'a, C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'a, C> {
+impl<C: WriteContext> s2n_quic_core::datagram::Packet for Packet<'_, C> {
     /// Returns the remaining space in the packet
     fn remaining_capacity(&self) -> usize {
         let space = self.context.remaining_capacity();

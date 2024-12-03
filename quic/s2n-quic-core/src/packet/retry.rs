@@ -299,7 +299,7 @@ impl<'a> Retry<'a> {
     }
 }
 
-impl<'a> EncoderValue for Retry<'a> {
+impl EncoderValue for Retry<'_> {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         let tag: u8 = self.tag;
         tag.encode(encoder);
@@ -315,7 +315,7 @@ impl<'a> EncoderValue for Retry<'a> {
     }
 }
 
-impl<'a> EncoderValue for PseudoRetry<'a> {
+impl EncoderValue for PseudoRetry<'_> {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.original_destination_connection_id
             .encode_with_len_prefix::<DestinationConnectionIdLen, E>(encoder);

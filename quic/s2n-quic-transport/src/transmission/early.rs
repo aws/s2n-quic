@@ -17,7 +17,7 @@ pub struct Payload<'a, Config: endpoint::Config> {
 /// performance, anyway, since you end up paying for encryption/decryption.
 const MIN_SIZE: usize = 16;
 
-impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
+impl<Config: endpoint::Config> super::Payload for Payload<'_, Config> {
     fn size_hint(&self, range: RangeInclusive<usize>) -> usize {
         (*range.start()).max(MIN_SIZE)
     }
@@ -48,7 +48,7 @@ impl<'a, Config: endpoint::Config> super::Payload for Payload<'a, Config> {
     }
 }
 
-impl<'a, Config: endpoint::Config> transmission::interest::Provider for Payload<'a, Config> {
+impl<Config: endpoint::Config> transmission::interest::Provider for Payload<'_, Config> {
     fn transmission_interest<Q: transmission::interest::Query>(
         &self,
         query: &mut Q,

@@ -16,7 +16,7 @@ macro_rules! impl_packet {
 
         impl<'a> Packet<'a> {
             #[inline]
-            pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<Packet> {
+            pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<'a, Self> {
                 let header_len = decoder::header_len::<$name>(buffer.peek())?;
                 let ((header, value, crypto_tag), buffer) = decoder::header(buffer, header_len)?;
                 let packet = Self {
@@ -62,7 +62,10 @@ where
 }
 
 #[inline]
-pub fn header<'a, T>(buffer: DecoderBufferMut<'a>, header_len: usize) -> Rm<'a, (&[u8], T, &[u8])>
+pub fn header<'a, T>(
+    buffer: DecoderBufferMut<'a>,
+    header_len: usize,
+) -> Rm<'a, (&'a [u8], T, &'a [u8])>
 where
     T: DecoderValue<'a>,
 {

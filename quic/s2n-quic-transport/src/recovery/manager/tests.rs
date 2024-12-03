@@ -3642,7 +3642,7 @@ impl<'a, Config: endpoint::Config> MockContext<'a, Config> {
     }
 }
 
-impl<'a, Config: endpoint::Config> recovery::Context<Config> for MockContext<'a, Config> {
+impl<Config: endpoint::Config> recovery::Context<Config> for MockContext<'_, Config> {
     const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {

@@ -87,7 +87,7 @@ impl fmt::Debug for Error {
     }
 }
 
-impl<'a> From<Error> for ConnectionClose<'a> {
+impl From<Error> for ConnectionClose<'_> {
     fn from(error: Error) -> Self {
         ConnectionClose {
             error_code: error.code.0,

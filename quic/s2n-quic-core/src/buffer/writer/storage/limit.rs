@@ -24,7 +24,7 @@ impl<'a, S: Storage + ?Sized> Limit<'a, S> {
     }
 }
 
-impl<'a, S: Storage + ?Sized> Storage for Limit<'a, S> {
+impl<S: Storage + ?Sized> Storage for Limit<'_, S> {
     const SPECIALIZES_BYTES: bool = S::SPECIALIZES_BYTES;
     const SPECIALIZES_BYTES_MUT: bool = S::SPECIALIZES_BYTES_MUT;
 

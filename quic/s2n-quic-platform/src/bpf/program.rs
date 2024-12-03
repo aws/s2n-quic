@@ -44,7 +44,7 @@ impl<'a, D: Dialect> Program<'a, D> {
     }
 }
 
-impl<'a, D: Dialect> fmt::Debug for Program<'a, D> {
+impl<D: Dialect> fmt::Debug for Program<'_, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Program")
             .field("instructions", &self.instructions)
@@ -52,7 +52,7 @@ impl<'a, D: Dialect> fmt::Debug for Program<'a, D> {
     }
 }
 
-impl<'a, D: Dialect> fmt::Display for Program<'a, D> {
+impl<D: Dialect> fmt::Display for Program<'_, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for inst in self.instructions {
             writeln!(f, "{inst}")?;

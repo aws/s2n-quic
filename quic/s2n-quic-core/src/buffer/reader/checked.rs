@@ -80,7 +80,7 @@ where
 }
 
 #[cfg(debug_assertions)]
-impl<'a, R> Storage for Checked<'a, R>
+impl<R> Storage for Checked<'_, R>
 where
     R: Reader + ?Sized,
 {
@@ -149,7 +149,7 @@ where
     }
 }
 
-impl<'a, R> Reader for Checked<'a, R>
+impl<R> Reader for Checked<'_, R>
 where
     R: Reader + ?Sized,
 {

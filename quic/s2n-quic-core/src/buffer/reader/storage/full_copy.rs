@@ -17,7 +17,7 @@ impl<'a, S: Storage + ?Sized> FullCopy<'a, S> {
     }
 }
 
-impl<'a, S: Storage + ?Sized> Storage for FullCopy<'a, S> {
+impl<S: Storage + ?Sized> Storage for FullCopy<'_, S> {
     type Error = S::Error;
 
     #[inline]

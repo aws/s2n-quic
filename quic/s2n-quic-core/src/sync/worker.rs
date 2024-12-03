@@ -130,7 +130,7 @@ impl Default for State {
 
 struct Acquire<'a>(&'a mut Receiver);
 
-impl<'a> Future for Acquire<'a> {
+impl Future for Acquire<'_> {
     type Output = Option<usize>;
 
     #[inline]

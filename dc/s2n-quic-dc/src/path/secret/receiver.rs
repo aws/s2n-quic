@@ -90,7 +90,7 @@ struct SharedSlotGuard<'a> {
     key_id: u64,
 }
 
-impl<'a> SharedSlotGuard<'a> {
+impl SharedSlotGuard<'_> {
     fn write_id(&mut self, id: Id) {
         // Store the new ID.
         // SAFETY: We hold the lock since we are in the guard.
@@ -109,7 +109,7 @@ impl<'a> SharedSlotGuard<'a> {
     }
 }
 
-impl<'a> Drop for SharedSlotGuard<'a> {
+impl Drop for SharedSlotGuard<'_> {
     fn drop(&mut self) {
         self.slot.key_id.store(self.key_id, Ordering::Release);
     }

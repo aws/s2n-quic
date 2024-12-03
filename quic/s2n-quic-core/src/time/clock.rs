@@ -72,7 +72,7 @@ impl<'a, C: Clock + ?Sized> Cached<'a, C> {
     }
 }
 
-impl<'a, C: Clock + ?Sized> Clock for Cached<'a, C> {
+impl<C: Clock + ?Sized> Clock for Cached<'_, C> {
     #[inline]
     fn get_time(&self) -> Timestamp {
         if let Some(time) = self.cached_value.get() {

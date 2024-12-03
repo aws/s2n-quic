@@ -15,7 +15,7 @@ pub struct ProtectedPayload<'a> {
     pub(crate) buffer: DecoderBufferMut<'a>,
 }
 
-impl<'a> core::fmt::Debug for ProtectedPayload<'a> {
+impl core::fmt::Debug for ProtectedPayload<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         // Since the protected payload is not very helpful for debugging purposes,
         // we just print the length of the protected payload as long as we are not in
@@ -78,7 +78,7 @@ pub struct EncryptedPayload<'a> {
     pub(crate) buffer: DecoderBufferMut<'a>,
 }
 
-impl<'a> core::fmt::Debug for EncryptedPayload<'a> {
+impl core::fmt::Debug for EncryptedPayload<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         // Since the protected payload is not very helpful for debugging purposes,
         // we just print the length of the protected payload as long as we are not in

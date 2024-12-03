@@ -198,14 +198,14 @@ pub(crate) struct LongPayloadEncoder<Payload> {
     pub payload: Payload,
 }
 
-impl<'a, Payload: EncoderValue> EncoderValue for LongPayloadEncoder<&'a Payload> {
+impl<Payload: EncoderValue> EncoderValue for LongPayloadEncoder<&Payload> {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.packet_number.encode(encoder);
         self.payload.encode(encoder);
     }
 }
 
-impl<'a, Payload: EncoderValue> EncoderValue for LongPayloadEncoder<&'a mut Payload> {
+impl<Payload: EncoderValue> EncoderValue for LongPayloadEncoder<&mut Payload> {
     fn encode<E: Encoder>(&self, encoder: &mut E) {
         self.packet_number.encode(encoder);
         self.payload.encode(encoder);
