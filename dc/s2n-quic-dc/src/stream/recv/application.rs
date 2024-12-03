@@ -3,7 +3,8 @@
 
 use crate::{
     clock::Timer,
-    event, msg,
+    event::{self, ConnectionPublisher as _},
+    msg,
     stream::{recv, runtime, shared::ArcShared, socket},
 };
 use core::{
@@ -17,7 +18,7 @@ use s2n_quic_core::{
     ensure, ready,
     stream::state,
     task::waker,
-    time::{clock::Timer as _, timer::Provider as _},
+    time::{clock::Timer as _, timer::Provider as _, Timestamp},
 };
 use std::{io, net::SocketAddr};
 
@@ -143,7 +144,10 @@ where
     where
         S: buffer::writer::Storage,
     {
-        waker::debug_assert_contract(cx, |cx| {
+        let start_time = self.0.shared.clock.get_time();
+        let capacity = out_buf.remaining_capacity();
+
+        let result = waker::debug_assert_contract(cx, |cx| {
             let mut out_buf = out_buf.track_write();
             let res = self.0.poll_read_into(cx, &mut out_buf);
 
@@ -161,7 +165,11 @@ where
             res?;
 
             Ok(out_buf.written_len()).into()
-        })
+        });
+
+        self.0.publish_read_events(capacity, start_time, &result);
+
+        result
     }
 }
 
@@ -249,7 +257,12 @@ where
 
             let before_len = reader.recv_buffer.payload_len();
 
-            let recv = reader.poll_fill_recv_buffer(cx, self.sockets.read_application());
+            let recv = reader.poll_fill_recv_buffer(
+                cx,
+                self.sockets.read_application(),
+                &self.shared.clock,
+                &self.shared.subscriber,
+            );
 
             match Self::handle_socket_result(cx, &mut reader.receiver, &mut self.timer, recv) {
                 Poll::Ready(res) => res?,
@@ -308,10 +321,24 @@ where
 
     #[inline]
     fn shutdown(mut self: Box<Self>) {
+        // If the application never read from the stream try to do so now
+        if let LocalState::Ready = self.local_state {
+            let mut storage = buffer::writer::storage::Empty;
+            let waker = s2n_quic_core::task::waker::noop();
+            let mut cx = core::task::Context::from_waker(&waker);
+            let _ = self.poll_read_into(&mut cx, &mut storage.track_write());
+        }
+
+        let background = matches!(self.local_state, LocalState::Ready);
+
+        self.shared
+            .publisher()
+            .on_stream_read_shutdown(event::builder::StreamReadShutdown { background });
+
         // If we haven't exited the `Ready` state then spawn a task to do it for the application
         //
         // This is important for processing any secret control packets that the server sends us
-        if let LocalState::Ready = self.local_state {
+        if background {
             tracing::debug!("spawning task to read server's response");
             let runtime = self.runtime.clone();
             let handle = Shutdown(self);
@@ -327,6 +354,55 @@ where
         let is_panicking = std::thread::panicking();
 
         self.shared.receiver.shutdown(is_panicking);
+    }
+
+    #[inline(always)]
+    fn publish_read_events(
+        &self,
+        capacity: usize,
+        start_time: Timestamp,
+        result: &Poll<io::Result<usize>>,
+    ) {
+        let end_time = self.shared.clock.get_time();
+        let processing_duration = end_time.saturating_duration_since(start_time);
+
+        match result {
+            Poll::Ready(Ok(0)) if capacity > 0 => {
+                self.shared.common.publisher().on_stream_read_fin_flushed(
+                    event::builder::StreamReadFinFlushed {
+                        capacity,
+                        processing_duration,
+                    },
+                );
+            }
+            Poll::Ready(Ok(len)) => {
+                self.shared.common.publisher().on_stream_read_flushed(
+                    event::builder::StreamReadFlushed {
+                        capacity,
+                        committed_len: *len,
+                        processing_duration,
+                    },
+                );
+            }
+            Poll::Ready(Err(error)) => {
+                let errno = error.raw_os_error();
+                self.shared.common.publisher().on_stream_read_errored(
+                    event::builder::StreamReadErrored {
+                        capacity,
+                        processing_duration,
+                        errno,
+                    },
+                );
+            }
+            Poll::Pending => {
+                self.shared.common.publisher().on_stream_read_blocked(
+                    event::builder::StreamReadBlocked {
+                        capacity,
+                        processing_duration,
+                    },
+                );
+            }
+        };
     }
 }
 

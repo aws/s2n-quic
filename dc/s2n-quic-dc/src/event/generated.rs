@@ -616,43 +616,351 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct ApplicationWrite {
+    pub struct StreamWriteFlushed {
         #[doc = " The number of bytes that the application tried to write"]
-        pub total_len: usize,
+        pub provided_len: usize,
         #[doc = " The amount that was written"]
-        pub write_len: usize,
+        pub committed_len: usize,
+        #[doc = " The amount of time it took to process the write request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and encryption overhead"]
+        pub processing_duration: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for ApplicationWrite {
+    impl crate::event::snapshot::Fmt for StreamWriteFlushed {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-            let mut fmt = fmt.debug_struct("ApplicationWrite");
-            fmt.field("total_len", &self.total_len);
-            fmt.field("write_len", &self.write_len);
+            let mut fmt = fmt.debug_struct("StreamWriteFlushed");
+            fmt.field("provided_len", &self.provided_len);
+            fmt.field("committed_len", &self.committed_len);
+            fmt.field("processing_duration", &self.processing_duration);
             fmt.finish()
         }
     }
-    impl Event for ApplicationWrite {
-        const NAME: &'static str = "application:write";
+    impl Event for StreamWriteFlushed {
+        const NAME: &'static str = "stream:write_flushed";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub struct ApplicationRead {
-        #[doc = " The number of bytes that the application tried to read"]
-        pub capacity: usize,
-        #[doc = " The amount that was read"]
-        pub read_len: usize,
+    pub struct StreamWriteFinFlushed {
+        #[doc = " The number of bytes that the application tried to write"]
+        pub provided_len: usize,
+        #[doc = " The amount that was written"]
+        pub committed_len: usize,
+        #[doc = " The amount of time it took to process the write request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and encryption overhead"]
+        pub processing_duration: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for ApplicationRead {
+    impl crate::event::snapshot::Fmt for StreamWriteFinFlushed {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-            let mut fmt = fmt.debug_struct("ApplicationRead");
-            fmt.field("capacity", &self.capacity);
-            fmt.field("read_len", &self.read_len);
+            let mut fmt = fmt.debug_struct("StreamWriteFinFlushed");
+            fmt.field("provided_len", &self.provided_len);
+            fmt.field("committed_len", &self.committed_len);
+            fmt.field("processing_duration", &self.processing_duration);
             fmt.finish()
         }
     }
-    impl Event for ApplicationRead {
-        const NAME: &'static str = "application:read";
+    impl Event for StreamWriteFinFlushed {
+        const NAME: &'static str = "stream:write_fin_flushed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamWriteBlocked {
+        #[doc = " The number of bytes that the application tried to write"]
+        pub provided_len: usize,
+        #[doc = " Indicates that the write was the final offset of the stream"]
+        pub is_fin: bool,
+        #[doc = " The amount of time it took to process the write request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and encryption overhead"]
+        pub processing_duration: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamWriteBlocked {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamWriteBlocked");
+            fmt.field("provided_len", &self.provided_len);
+            fmt.field("is_fin", &self.is_fin);
+            fmt.field("processing_duration", &self.processing_duration);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamWriteBlocked {
+        const NAME: &'static str = "stream:write_blocked";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamWriteErrored {
+        #[doc = " The number of bytes that the application tried to write"]
+        pub provided_len: usize,
+        #[doc = " Indicates that the write was the final offset of the stream"]
+        pub is_fin: bool,
+        #[doc = " The amount of time it took to process the write request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and encryption overhead"]
+        pub processing_duration: core::time::Duration,
+        #[doc = " The system `errno` from the returned error"]
+        pub errno: Option<i32>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamWriteErrored {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamWriteErrored");
+            fmt.field("provided_len", &self.provided_len);
+            fmt.field("is_fin", &self.is_fin);
+            fmt.field("processing_duration", &self.processing_duration);
+            fmt.field("errno", &self.errno);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamWriteErrored {
+        const NAME: &'static str = "stream:write_errored";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamWriteShutdown {
+        #[doc = " The number of bytes in the send buffer at the time of shutdown"]
+        pub buffer_len: usize,
+        #[doc = " If the stream required a background task to drive the stream shutdown"]
+        pub background: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamWriteShutdown {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamWriteShutdown");
+            fmt.field("buffer_len", &self.buffer_len);
+            fmt.field("background", &self.background);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamWriteShutdown {
+        const NAME: &'static str = "stream:write_shutdown";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamWriteSocketFlushed {
+        #[doc = " The number of bytes that the stream tried to write to the socket"]
+        pub provided_len: usize,
+        #[doc = " The amount that was written"]
+        pub committed_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamWriteSocketFlushed {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamWriteSocketFlushed");
+            fmt.field("provided_len", &self.provided_len);
+            fmt.field("committed_len", &self.committed_len);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamWriteSocketFlushed {
+        const NAME: &'static str = "stream:write_socket_flushed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamWriteSocketBlocked {
+        #[doc = " The number of bytes that the stream tried to write to the socket"]
+        pub provided_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamWriteSocketBlocked {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamWriteSocketBlocked");
+            fmt.field("provided_len", &self.provided_len);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamWriteSocketBlocked {
+        const NAME: &'static str = "stream:write_socket_blocked";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamWriteSocketErrored {
+        #[doc = " The number of bytes that the stream tried to write to the socket"]
+        pub provided_len: usize,
+        #[doc = " The system `errno` from the returned error"]
+        pub errno: Option<i32>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamWriteSocketErrored {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamWriteSocketErrored");
+            fmt.field("provided_len", &self.provided_len);
+            fmt.field("errno", &self.errno);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamWriteSocketErrored {
+        const NAME: &'static str = "stream:write_socket_errored";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReadFlushed {
+        #[doc = " The number of bytes that the application tried to read"]
+        pub capacity: usize,
+        #[doc = " The amount that was read into the provided buffer"]
+        pub committed_len: usize,
+        #[doc = " The amount of time it took to process the read request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and decryption overhead"]
+        pub processing_duration: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadFlushed {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadFlushed");
+            fmt.field("capacity", &self.capacity);
+            fmt.field("committed_len", &self.committed_len);
+            fmt.field("processing_duration", &self.processing_duration);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadFlushed {
+        const NAME: &'static str = "stream:read_flushed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReadFinFlushed {
+        #[doc = " The number of bytes that the application tried to read"]
+        pub capacity: usize,
+        #[doc = " The amount of time it took to process the read request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and decryption overhead"]
+        pub processing_duration: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadFinFlushed {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadFinFlushed");
+            fmt.field("capacity", &self.capacity);
+            fmt.field("processing_duration", &self.processing_duration);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadFinFlushed {
+        const NAME: &'static str = "stream:read_fin_flushed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReadBlocked {
+        #[doc = " The number of bytes that the application tried to read"]
+        pub capacity: usize,
+        #[doc = " The amount of time it took to process the read request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and decryption overhead"]
+        pub processing_duration: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadBlocked {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadBlocked");
+            fmt.field("capacity", &self.capacity);
+            fmt.field("processing_duration", &self.processing_duration);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadBlocked {
+        const NAME: &'static str = "stream:read_blocked";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReadErrored {
+        #[doc = " The number of bytes that the application tried to read"]
+        pub capacity: usize,
+        #[doc = " The amount of time it took to process the read request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and decryption overhead"]
+        pub processing_duration: core::time::Duration,
+        #[doc = " The system `errno` from the returned error"]
+        pub errno: Option<i32>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadErrored {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadErrored");
+            fmt.field("capacity", &self.capacity);
+            fmt.field("processing_duration", &self.processing_duration);
+            fmt.field("errno", &self.errno);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadErrored {
+        const NAME: &'static str = "stream:read_errored";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReadShutdown {
+        #[doc = " If the stream required a background task to drive the stream shutdown"]
+        pub background: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadShutdown {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadShutdown");
+            fmt.field("background", &self.background);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadShutdown {
+        const NAME: &'static str = "stream:read_shutdown";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReadSocketFlushed {
+        #[doc = " The number of bytes that the stream tried to read from the socket"]
+        pub capacity: usize,
+        #[doc = " The amount that was read into the provided buffer"]
+        pub committed_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadSocketFlushed {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadSocketFlushed");
+            fmt.field("capacity", &self.capacity);
+            fmt.field("committed_len", &self.committed_len);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadSocketFlushed {
+        const NAME: &'static str = "stream:read_socket_flushed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReadSocketBlocked {
+        #[doc = " The number of bytes that the stream tried to read from the socket"]
+        pub capacity: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadSocketBlocked {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadSocketBlocked");
+            fmt.field("capacity", &self.capacity);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadSocketBlocked {
+        const NAME: &'static str = "stream:read_socket_blocked";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReadSocketErrored {
+        #[doc = " The number of bytes that the stream tried to read from the socket"]
+        pub capacity: usize,
+        #[doc = " The system `errno` from the returned error"]
+        pub errno: Option<i32>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadSocketErrored {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadSocketErrored");
+            fmt.field("capacity", &self.capacity);
+            fmt.field("errno", &self.errno);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadSocketErrored {
+        const NAME: &'static str = "stream:read_socket_errored";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -1542,29 +1850,223 @@ pub mod tracing {
             tracing :: event ! (target : "acceptor_stream_dequeued" , parent : parent , tracing :: Level :: DEBUG , remote_address = tracing :: field :: debug (remote_address) , credential_id = tracing :: field :: debug (credential_id) , stream_id = tracing :: field :: debug (stream_id) , sojourn_time = tracing :: field :: debug (sojourn_time));
         }
         #[inline]
-        fn on_application_write(
+        fn on_stream_write_flushed(
             &self,
             context: &Self::ConnectionContext,
             _meta: &api::ConnectionMeta,
-            event: &api::ApplicationWrite,
+            event: &api::StreamWriteFlushed,
         ) {
             let id = context.id();
-            let api::ApplicationWrite {
-                total_len,
-                write_len,
+            let api::StreamWriteFlushed {
+                provided_len,
+                committed_len,
+                processing_duration,
             } = event;
-            tracing :: event ! (target : "application_write" , parent : id , tracing :: Level :: DEBUG , total_len = tracing :: field :: debug (total_len) , write_len = tracing :: field :: debug (write_len));
+            tracing :: event ! (target : "stream_write_flushed" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , committed_len = tracing :: field :: debug (committed_len) , processing_duration = tracing :: field :: debug (processing_duration));
         }
         #[inline]
-        fn on_application_read(
+        fn on_stream_write_fin_flushed(
             &self,
             context: &Self::ConnectionContext,
             _meta: &api::ConnectionMeta,
-            event: &api::ApplicationRead,
+            event: &api::StreamWriteFinFlushed,
         ) {
             let id = context.id();
-            let api::ApplicationRead { capacity, read_len } = event;
-            tracing :: event ! (target : "application_read" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , read_len = tracing :: field :: debug (read_len));
+            let api::StreamWriteFinFlushed {
+                provided_len,
+                committed_len,
+                processing_duration,
+            } = event;
+            tracing :: event ! (target : "stream_write_fin_flushed" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , committed_len = tracing :: field :: debug (committed_len) , processing_duration = tracing :: field :: debug (processing_duration));
+        }
+        #[inline]
+        fn on_stream_write_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamWriteBlocked,
+        ) {
+            let id = context.id();
+            let api::StreamWriteBlocked {
+                provided_len,
+                is_fin,
+                processing_duration,
+            } = event;
+            tracing :: event ! (target : "stream_write_blocked" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , is_fin = tracing :: field :: debug (is_fin) , processing_duration = tracing :: field :: debug (processing_duration));
+        }
+        #[inline]
+        fn on_stream_write_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamWriteErrored,
+        ) {
+            let id = context.id();
+            let api::StreamWriteErrored {
+                provided_len,
+                is_fin,
+                processing_duration,
+                errno,
+            } = event;
+            tracing :: event ! (target : "stream_write_errored" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , is_fin = tracing :: field :: debug (is_fin) , processing_duration = tracing :: field :: debug (processing_duration) , errno = tracing :: field :: debug (errno));
+        }
+        #[inline]
+        fn on_stream_write_shutdown(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamWriteShutdown,
+        ) {
+            let id = context.id();
+            let api::StreamWriteShutdown {
+                buffer_len,
+                background,
+            } = event;
+            tracing :: event ! (target : "stream_write_shutdown" , parent : id , tracing :: Level :: DEBUG , buffer_len = tracing :: field :: debug (buffer_len) , background = tracing :: field :: debug (background));
+        }
+        #[inline]
+        fn on_stream_write_socket_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketFlushed,
+        ) {
+            let id = context.id();
+            let api::StreamWriteSocketFlushed {
+                provided_len,
+                committed_len,
+            } = event;
+            tracing :: event ! (target : "stream_write_socket_flushed" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , committed_len = tracing :: field :: debug (committed_len));
+        }
+        #[inline]
+        fn on_stream_write_socket_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketBlocked,
+        ) {
+            let id = context.id();
+            let api::StreamWriteSocketBlocked { provided_len } = event;
+            tracing :: event ! (target : "stream_write_socket_blocked" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len));
+        }
+        #[inline]
+        fn on_stream_write_socket_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketErrored,
+        ) {
+            let id = context.id();
+            let api::StreamWriteSocketErrored {
+                provided_len,
+                errno,
+            } = event;
+            tracing :: event ! (target : "stream_write_socket_errored" , parent : id , tracing :: Level :: DEBUG , provided_len = tracing :: field :: debug (provided_len) , errno = tracing :: field :: debug (errno));
+        }
+        #[inline]
+        fn on_stream_read_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadFlushed,
+        ) {
+            let id = context.id();
+            let api::StreamReadFlushed {
+                capacity,
+                committed_len,
+                processing_duration,
+            } = event;
+            tracing :: event ! (target : "stream_read_flushed" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , committed_len = tracing :: field :: debug (committed_len) , processing_duration = tracing :: field :: debug (processing_duration));
+        }
+        #[inline]
+        fn on_stream_read_fin_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadFinFlushed,
+        ) {
+            let id = context.id();
+            let api::StreamReadFinFlushed {
+                capacity,
+                processing_duration,
+            } = event;
+            tracing :: event ! (target : "stream_read_fin_flushed" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration));
+        }
+        #[inline]
+        fn on_stream_read_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadBlocked,
+        ) {
+            let id = context.id();
+            let api::StreamReadBlocked {
+                capacity,
+                processing_duration,
+            } = event;
+            tracing :: event ! (target : "stream_read_blocked" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration));
+        }
+        #[inline]
+        fn on_stream_read_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadErrored,
+        ) {
+            let id = context.id();
+            let api::StreamReadErrored {
+                capacity,
+                processing_duration,
+                errno,
+            } = event;
+            tracing :: event ! (target : "stream_read_errored" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration) , errno = tracing :: field :: debug (errno));
+        }
+        #[inline]
+        fn on_stream_read_shutdown(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadShutdown,
+        ) {
+            let id = context.id();
+            let api::StreamReadShutdown { background } = event;
+            tracing :: event ! (target : "stream_read_shutdown" , parent : id , tracing :: Level :: DEBUG , background = tracing :: field :: debug (background));
+        }
+        #[inline]
+        fn on_stream_read_socket_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketFlushed,
+        ) {
+            let id = context.id();
+            let api::StreamReadSocketFlushed {
+                capacity,
+                committed_len,
+            } = event;
+            tracing :: event ! (target : "stream_read_socket_flushed" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , committed_len = tracing :: field :: debug (committed_len));
+        }
+        #[inline]
+        fn on_stream_read_socket_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketBlocked,
+        ) {
+            let id = context.id();
+            let api::StreamReadSocketBlocked { capacity } = event;
+            tracing :: event ! (target : "stream_read_socket_blocked" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity));
+        }
+        #[inline]
+        fn on_stream_read_socket_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketErrored,
+        ) {
+            let id = context.id();
+            let api::StreamReadSocketErrored { capacity, errno } = event;
+            tracing :: event ! (target : "stream_read_socket_errored" , parent : id , tracing :: Level :: DEBUG , capacity = tracing :: field :: debug (capacity) , errno = tracing :: field :: debug (errno));
         }
         #[inline]
         fn on_endpoint_initialized(
@@ -2497,39 +2999,345 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub struct ApplicationWrite {
+    pub struct StreamWriteFlushed {
         #[doc = " The number of bytes that the application tried to write"]
-        pub total_len: usize,
+        pub provided_len: usize,
         #[doc = " The amount that was written"]
-        pub write_len: usize,
+        pub committed_len: usize,
+        #[doc = " The amount of time it took to process the write request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and encryption overhead"]
+        pub processing_duration: core::time::Duration,
     }
-    impl IntoEvent<api::ApplicationWrite> for ApplicationWrite {
+    impl IntoEvent<api::StreamWriteFlushed> for StreamWriteFlushed {
         #[inline]
-        fn into_event(self) -> api::ApplicationWrite {
-            let ApplicationWrite {
-                total_len,
-                write_len,
+        fn into_event(self) -> api::StreamWriteFlushed {
+            let StreamWriteFlushed {
+                provided_len,
+                committed_len,
+                processing_duration,
             } = self;
-            api::ApplicationWrite {
-                total_len: total_len.into_event(),
-                write_len: write_len.into_event(),
+            api::StreamWriteFlushed {
+                provided_len: provided_len.into_event(),
+                committed_len: committed_len.into_event(),
+                processing_duration: processing_duration.into_event(),
             }
         }
     }
     #[derive(Clone, Debug)]
-    pub struct ApplicationRead {
+    pub struct StreamWriteFinFlushed {
+        #[doc = " The number of bytes that the application tried to write"]
+        pub provided_len: usize,
+        #[doc = " The amount that was written"]
+        pub committed_len: usize,
+        #[doc = " The amount of time it took to process the write request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and encryption overhead"]
+        pub processing_duration: core::time::Duration,
+    }
+    impl IntoEvent<api::StreamWriteFinFlushed> for StreamWriteFinFlushed {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteFinFlushed {
+            let StreamWriteFinFlushed {
+                provided_len,
+                committed_len,
+                processing_duration,
+            } = self;
+            api::StreamWriteFinFlushed {
+                provided_len: provided_len.into_event(),
+                committed_len: committed_len.into_event(),
+                processing_duration: processing_duration.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamWriteBlocked {
+        #[doc = " The number of bytes that the application tried to write"]
+        pub provided_len: usize,
+        #[doc = " Indicates that the write was the final offset of the stream"]
+        pub is_fin: bool,
+        #[doc = " The amount of time it took to process the write request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and encryption overhead"]
+        pub processing_duration: core::time::Duration,
+    }
+    impl IntoEvent<api::StreamWriteBlocked> for StreamWriteBlocked {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteBlocked {
+            let StreamWriteBlocked {
+                provided_len,
+                is_fin,
+                processing_duration,
+            } = self;
+            api::StreamWriteBlocked {
+                provided_len: provided_len.into_event(),
+                is_fin: is_fin.into_event(),
+                processing_duration: processing_duration.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamWriteErrored {
+        #[doc = " The number of bytes that the application tried to write"]
+        pub provided_len: usize,
+        #[doc = " Indicates that the write was the final offset of the stream"]
+        pub is_fin: bool,
+        #[doc = " The amount of time it took to process the write request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and encryption overhead"]
+        pub processing_duration: core::time::Duration,
+        #[doc = " The system `errno` from the returned error"]
+        pub errno: Option<i32>,
+    }
+    impl IntoEvent<api::StreamWriteErrored> for StreamWriteErrored {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteErrored {
+            let StreamWriteErrored {
+                provided_len,
+                is_fin,
+                processing_duration,
+                errno,
+            } = self;
+            api::StreamWriteErrored {
+                provided_len: provided_len.into_event(),
+                is_fin: is_fin.into_event(),
+                processing_duration: processing_duration.into_event(),
+                errno: errno.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamWriteShutdown {
+        #[doc = " The number of bytes in the send buffer at the time of shutdown"]
+        pub buffer_len: usize,
+        #[doc = " If the stream required a background task to drive the stream shutdown"]
+        pub background: bool,
+    }
+    impl IntoEvent<api::StreamWriteShutdown> for StreamWriteShutdown {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteShutdown {
+            let StreamWriteShutdown {
+                buffer_len,
+                background,
+            } = self;
+            api::StreamWriteShutdown {
+                buffer_len: buffer_len.into_event(),
+                background: background.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamWriteSocketFlushed {
+        #[doc = " The number of bytes that the stream tried to write to the socket"]
+        pub provided_len: usize,
+        #[doc = " The amount that was written"]
+        pub committed_len: usize,
+    }
+    impl IntoEvent<api::StreamWriteSocketFlushed> for StreamWriteSocketFlushed {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteSocketFlushed {
+            let StreamWriteSocketFlushed {
+                provided_len,
+                committed_len,
+            } = self;
+            api::StreamWriteSocketFlushed {
+                provided_len: provided_len.into_event(),
+                committed_len: committed_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamWriteSocketBlocked {
+        #[doc = " The number of bytes that the stream tried to write to the socket"]
+        pub provided_len: usize,
+    }
+    impl IntoEvent<api::StreamWriteSocketBlocked> for StreamWriteSocketBlocked {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteSocketBlocked {
+            let StreamWriteSocketBlocked { provided_len } = self;
+            api::StreamWriteSocketBlocked {
+                provided_len: provided_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamWriteSocketErrored {
+        #[doc = " The number of bytes that the stream tried to write to the socket"]
+        pub provided_len: usize,
+        #[doc = " The system `errno` from the returned error"]
+        pub errno: Option<i32>,
+    }
+    impl IntoEvent<api::StreamWriteSocketErrored> for StreamWriteSocketErrored {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteSocketErrored {
+            let StreamWriteSocketErrored {
+                provided_len,
+                errno,
+            } = self;
+            api::StreamWriteSocketErrored {
+                provided_len: provided_len.into_event(),
+                errno: errno.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReadFlushed {
         #[doc = " The number of bytes that the application tried to read"]
         pub capacity: usize,
-        #[doc = " The amount that was read"]
-        pub read_len: usize,
+        #[doc = " The amount that was read into the provided buffer"]
+        pub committed_len: usize,
+        #[doc = " The amount of time it took to process the read request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and decryption overhead"]
+        pub processing_duration: core::time::Duration,
     }
-    impl IntoEvent<api::ApplicationRead> for ApplicationRead {
+    impl IntoEvent<api::StreamReadFlushed> for StreamReadFlushed {
         #[inline]
-        fn into_event(self) -> api::ApplicationRead {
-            let ApplicationRead { capacity, read_len } = self;
-            api::ApplicationRead {
+        fn into_event(self) -> api::StreamReadFlushed {
+            let StreamReadFlushed {
+                capacity,
+                committed_len,
+                processing_duration,
+            } = self;
+            api::StreamReadFlushed {
                 capacity: capacity.into_event(),
-                read_len: read_len.into_event(),
+                committed_len: committed_len.into_event(),
+                processing_duration: processing_duration.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReadFinFlushed {
+        #[doc = " The number of bytes that the application tried to read"]
+        pub capacity: usize,
+        #[doc = " The amount of time it took to process the read request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and decryption overhead"]
+        pub processing_duration: core::time::Duration,
+    }
+    impl IntoEvent<api::StreamReadFinFlushed> for StreamReadFinFlushed {
+        #[inline]
+        fn into_event(self) -> api::StreamReadFinFlushed {
+            let StreamReadFinFlushed {
+                capacity,
+                processing_duration,
+            } = self;
+            api::StreamReadFinFlushed {
+                capacity: capacity.into_event(),
+                processing_duration: processing_duration.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReadBlocked {
+        #[doc = " The number of bytes that the application tried to read"]
+        pub capacity: usize,
+        #[doc = " The amount of time it took to process the read request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and decryption overhead"]
+        pub processing_duration: core::time::Duration,
+    }
+    impl IntoEvent<api::StreamReadBlocked> for StreamReadBlocked {
+        #[inline]
+        fn into_event(self) -> api::StreamReadBlocked {
+            let StreamReadBlocked {
+                capacity,
+                processing_duration,
+            } = self;
+            api::StreamReadBlocked {
+                capacity: capacity.into_event(),
+                processing_duration: processing_duration.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReadErrored {
+        #[doc = " The number of bytes that the application tried to read"]
+        pub capacity: usize,
+        #[doc = " The amount of time it took to process the read request"]
+        #[doc = ""]
+        #[doc = " Note that this includes both any syscall and decryption overhead"]
+        pub processing_duration: core::time::Duration,
+        #[doc = " The system `errno` from the returned error"]
+        pub errno: Option<i32>,
+    }
+    impl IntoEvent<api::StreamReadErrored> for StreamReadErrored {
+        #[inline]
+        fn into_event(self) -> api::StreamReadErrored {
+            let StreamReadErrored {
+                capacity,
+                processing_duration,
+                errno,
+            } = self;
+            api::StreamReadErrored {
+                capacity: capacity.into_event(),
+                processing_duration: processing_duration.into_event(),
+                errno: errno.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReadShutdown {
+        #[doc = " If the stream required a background task to drive the stream shutdown"]
+        pub background: bool,
+    }
+    impl IntoEvent<api::StreamReadShutdown> for StreamReadShutdown {
+        #[inline]
+        fn into_event(self) -> api::StreamReadShutdown {
+            let StreamReadShutdown { background } = self;
+            api::StreamReadShutdown {
+                background: background.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReadSocketFlushed {
+        #[doc = " The number of bytes that the stream tried to read from the socket"]
+        pub capacity: usize,
+        #[doc = " The amount that was read into the provided buffer"]
+        pub committed_len: usize,
+    }
+    impl IntoEvent<api::StreamReadSocketFlushed> for StreamReadSocketFlushed {
+        #[inline]
+        fn into_event(self) -> api::StreamReadSocketFlushed {
+            let StreamReadSocketFlushed {
+                capacity,
+                committed_len,
+            } = self;
+            api::StreamReadSocketFlushed {
+                capacity: capacity.into_event(),
+                committed_len: committed_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReadSocketBlocked {
+        #[doc = " The number of bytes that the stream tried to read from the socket"]
+        pub capacity: usize,
+    }
+    impl IntoEvent<api::StreamReadSocketBlocked> for StreamReadSocketBlocked {
+        #[inline]
+        fn into_event(self) -> api::StreamReadSocketBlocked {
+            let StreamReadSocketBlocked { capacity } = self;
+            api::StreamReadSocketBlocked {
+                capacity: capacity.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReadSocketErrored {
+        #[doc = " The number of bytes that the stream tried to read from the socket"]
+        pub capacity: usize,
+        #[doc = " The system `errno` from the returned error"]
+        pub errno: Option<i32>,
+    }
+    impl IntoEvent<api::StreamReadSocketErrored> for StreamReadSocketErrored {
+        #[inline]
+        fn into_event(self) -> api::StreamReadSocketErrored {
+            let StreamReadSocketErrored { capacity, errno } = self;
+            api::StreamReadSocketErrored {
+                capacity: capacity.into_event(),
+                errno: errno.into_event(),
             }
         }
     }
@@ -3370,25 +4178,193 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `ApplicationWrite` event is triggered"]
+        #[doc = "Called when the `StreamWriteFlushed` event is triggered"]
         #[inline]
-        fn on_application_write(
+        fn on_stream_write_flushed(
             &self,
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::ApplicationWrite,
+            event: &api::StreamWriteFlushed,
         ) {
             let _ = context;
             let _ = meta;
             let _ = event;
         }
-        #[doc = "Called when the `ApplicationRead` event is triggered"]
+        #[doc = "Called when the `StreamWriteFinFlushed` event is triggered"]
         #[inline]
-        fn on_application_read(
+        fn on_stream_write_fin_flushed(
             &self,
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::ApplicationRead,
+            event: &api::StreamWriteFinFlushed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamWriteBlocked` event is triggered"]
+        #[inline]
+        fn on_stream_write_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteBlocked,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamWriteErrored` event is triggered"]
+        #[inline]
+        fn on_stream_write_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteErrored,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamWriteShutdown` event is triggered"]
+        #[inline]
+        fn on_stream_write_shutdown(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteShutdown,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamWriteSocketFlushed` event is triggered"]
+        #[inline]
+        fn on_stream_write_socket_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketFlushed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamWriteSocketBlocked` event is triggered"]
+        #[inline]
+        fn on_stream_write_socket_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketBlocked,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamWriteSocketErrored` event is triggered"]
+        #[inline]
+        fn on_stream_write_socket_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketErrored,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReadFlushed` event is triggered"]
+        #[inline]
+        fn on_stream_read_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadFlushed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReadFinFlushed` event is triggered"]
+        #[inline]
+        fn on_stream_read_fin_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadFinFlushed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReadBlocked` event is triggered"]
+        #[inline]
+        fn on_stream_read_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadBlocked,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReadErrored` event is triggered"]
+        #[inline]
+        fn on_stream_read_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadErrored,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReadShutdown` event is triggered"]
+        #[inline]
+        fn on_stream_read_shutdown(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadShutdown,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReadSocketFlushed` event is triggered"]
+        #[inline]
+        fn on_stream_read_socket_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketFlushed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReadSocketBlocked` event is triggered"]
+        #[inline]
+        fn on_stream_read_socket_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketBlocked,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReadSocketErrored` event is triggered"]
+        #[inline]
+        fn on_stream_read_socket_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketErrored,
         ) {
             let _ = context;
             let _ = meta;
@@ -3854,22 +4830,156 @@ mod traits {
             self.as_ref().on_acceptor_stream_dequeued(meta, event);
         }
         #[inline]
-        fn on_application_write(
+        fn on_stream_write_flushed(
             &self,
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::ApplicationWrite,
+            event: &api::StreamWriteFlushed,
         ) {
-            self.as_ref().on_application_write(context, meta, event);
+            self.as_ref().on_stream_write_flushed(context, meta, event);
         }
         #[inline]
-        fn on_application_read(
+        fn on_stream_write_fin_flushed(
             &self,
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::ApplicationRead,
+            event: &api::StreamWriteFinFlushed,
         ) {
-            self.as_ref().on_application_read(context, meta, event);
+            self.as_ref()
+                .on_stream_write_fin_flushed(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteBlocked,
+        ) {
+            self.as_ref().on_stream_write_blocked(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteErrored,
+        ) {
+            self.as_ref().on_stream_write_errored(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_shutdown(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteShutdown,
+        ) {
+            self.as_ref().on_stream_write_shutdown(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_socket_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketFlushed,
+        ) {
+            self.as_ref()
+                .on_stream_write_socket_flushed(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_socket_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketBlocked,
+        ) {
+            self.as_ref()
+                .on_stream_write_socket_blocked(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_socket_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketErrored,
+        ) {
+            self.as_ref()
+                .on_stream_write_socket_errored(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadFlushed,
+        ) {
+            self.as_ref().on_stream_read_flushed(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_fin_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadFinFlushed,
+        ) {
+            self.as_ref()
+                .on_stream_read_fin_flushed(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadBlocked,
+        ) {
+            self.as_ref().on_stream_read_blocked(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadErrored,
+        ) {
+            self.as_ref().on_stream_read_errored(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_shutdown(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadShutdown,
+        ) {
+            self.as_ref().on_stream_read_shutdown(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_socket_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketFlushed,
+        ) {
+            self.as_ref()
+                .on_stream_read_socket_flushed(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_socket_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketBlocked,
+        ) {
+            self.as_ref()
+                .on_stream_read_socket_blocked(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_socket_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketErrored,
+        ) {
+            self.as_ref()
+                .on_stream_read_socket_errored(context, meta, event);
         }
         #[inline]
         fn on_endpoint_initialized(
@@ -4298,24 +5408,164 @@ mod traits {
             (self.1).on_acceptor_stream_dequeued(meta, event);
         }
         #[inline]
-        fn on_application_write(
+        fn on_stream_write_flushed(
             &self,
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::ApplicationWrite,
+            event: &api::StreamWriteFlushed,
         ) {
-            (self.0).on_application_write(&context.0, meta, event);
-            (self.1).on_application_write(&context.1, meta, event);
+            (self.0).on_stream_write_flushed(&context.0, meta, event);
+            (self.1).on_stream_write_flushed(&context.1, meta, event);
         }
         #[inline]
-        fn on_application_read(
+        fn on_stream_write_fin_flushed(
             &self,
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::ApplicationRead,
+            event: &api::StreamWriteFinFlushed,
         ) {
-            (self.0).on_application_read(&context.0, meta, event);
-            (self.1).on_application_read(&context.1, meta, event);
+            (self.0).on_stream_write_fin_flushed(&context.0, meta, event);
+            (self.1).on_stream_write_fin_flushed(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteBlocked,
+        ) {
+            (self.0).on_stream_write_blocked(&context.0, meta, event);
+            (self.1).on_stream_write_blocked(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteErrored,
+        ) {
+            (self.0).on_stream_write_errored(&context.0, meta, event);
+            (self.1).on_stream_write_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_shutdown(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteShutdown,
+        ) {
+            (self.0).on_stream_write_shutdown(&context.0, meta, event);
+            (self.1).on_stream_write_shutdown(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_socket_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketFlushed,
+        ) {
+            (self.0).on_stream_write_socket_flushed(&context.0, meta, event);
+            (self.1).on_stream_write_socket_flushed(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_socket_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketBlocked,
+        ) {
+            (self.0).on_stream_write_socket_blocked(&context.0, meta, event);
+            (self.1).on_stream_write_socket_blocked(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_write_socket_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketErrored,
+        ) {
+            (self.0).on_stream_write_socket_errored(&context.0, meta, event);
+            (self.1).on_stream_write_socket_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadFlushed,
+        ) {
+            (self.0).on_stream_read_flushed(&context.0, meta, event);
+            (self.1).on_stream_read_flushed(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_fin_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadFinFlushed,
+        ) {
+            (self.0).on_stream_read_fin_flushed(&context.0, meta, event);
+            (self.1).on_stream_read_fin_flushed(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadBlocked,
+        ) {
+            (self.0).on_stream_read_blocked(&context.0, meta, event);
+            (self.1).on_stream_read_blocked(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadErrored,
+        ) {
+            (self.0).on_stream_read_errored(&context.0, meta, event);
+            (self.1).on_stream_read_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_shutdown(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadShutdown,
+        ) {
+            (self.0).on_stream_read_shutdown(&context.0, meta, event);
+            (self.1).on_stream_read_shutdown(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_socket_flushed(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketFlushed,
+        ) {
+            (self.0).on_stream_read_socket_flushed(&context.0, meta, event);
+            (self.1).on_stream_read_socket_flushed(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_socket_blocked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketBlocked,
+        ) {
+            (self.0).on_stream_read_socket_blocked(&context.0, meta, event);
+            (self.1).on_stream_read_socket_blocked(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_socket_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketErrored,
+        ) {
+            (self.0).on_stream_read_socket_errored(&context.0, meta, event);
+            (self.1).on_stream_read_socket_errored(&context.1, meta, event);
         }
         #[inline]
         fn on_endpoint_initialized(
@@ -5090,10 +6340,38 @@ mod traits {
         }
     }
     pub trait ConnectionPublisher {
-        #[doc = "Publishes a `ApplicationWrite` event to the publisher's subscriber"]
-        fn on_application_write(&self, event: builder::ApplicationWrite);
-        #[doc = "Publishes a `ApplicationRead` event to the publisher's subscriber"]
-        fn on_application_read(&self, event: builder::ApplicationRead);
+        #[doc = "Publishes a `StreamWriteFlushed` event to the publisher's subscriber"]
+        fn on_stream_write_flushed(&self, event: builder::StreamWriteFlushed);
+        #[doc = "Publishes a `StreamWriteFinFlushed` event to the publisher's subscriber"]
+        fn on_stream_write_fin_flushed(&self, event: builder::StreamWriteFinFlushed);
+        #[doc = "Publishes a `StreamWriteBlocked` event to the publisher's subscriber"]
+        fn on_stream_write_blocked(&self, event: builder::StreamWriteBlocked);
+        #[doc = "Publishes a `StreamWriteErrored` event to the publisher's subscriber"]
+        fn on_stream_write_errored(&self, event: builder::StreamWriteErrored);
+        #[doc = "Publishes a `StreamWriteShutdown` event to the publisher's subscriber"]
+        fn on_stream_write_shutdown(&self, event: builder::StreamWriteShutdown);
+        #[doc = "Publishes a `StreamWriteSocketFlushed` event to the publisher's subscriber"]
+        fn on_stream_write_socket_flushed(&self, event: builder::StreamWriteSocketFlushed);
+        #[doc = "Publishes a `StreamWriteSocketBlocked` event to the publisher's subscriber"]
+        fn on_stream_write_socket_blocked(&self, event: builder::StreamWriteSocketBlocked);
+        #[doc = "Publishes a `StreamWriteSocketErrored` event to the publisher's subscriber"]
+        fn on_stream_write_socket_errored(&self, event: builder::StreamWriteSocketErrored);
+        #[doc = "Publishes a `StreamReadFlushed` event to the publisher's subscriber"]
+        fn on_stream_read_flushed(&self, event: builder::StreamReadFlushed);
+        #[doc = "Publishes a `StreamReadFinFlushed` event to the publisher's subscriber"]
+        fn on_stream_read_fin_flushed(&self, event: builder::StreamReadFinFlushed);
+        #[doc = "Publishes a `StreamReadBlocked` event to the publisher's subscriber"]
+        fn on_stream_read_blocked(&self, event: builder::StreamReadBlocked);
+        #[doc = "Publishes a `StreamReadErrored` event to the publisher's subscriber"]
+        fn on_stream_read_errored(&self, event: builder::StreamReadErrored);
+        #[doc = "Publishes a `StreamReadShutdown` event to the publisher's subscriber"]
+        fn on_stream_read_shutdown(&self, event: builder::StreamReadShutdown);
+        #[doc = "Publishes a `StreamReadSocketFlushed` event to the publisher's subscriber"]
+        fn on_stream_read_socket_flushed(&self, event: builder::StreamReadSocketFlushed);
+        #[doc = "Publishes a `StreamReadSocketBlocked` event to the publisher's subscriber"]
+        fn on_stream_read_socket_blocked(&self, event: builder::StreamReadSocketBlocked);
+        #[doc = "Publishes a `StreamReadSocketErrored` event to the publisher's subscriber"]
+        fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
         fn quic_version(&self) -> u32;
         #[doc = r" Returns the [`Subject`] for the current publisher"]
@@ -5131,19 +6409,145 @@ mod traits {
     }
     impl<'a, Sub: Subscriber> ConnectionPublisher for ConnectionPublisherSubscriber<'a, Sub> {
         #[inline]
-        fn on_application_write(&self, event: builder::ApplicationWrite) {
+        fn on_stream_write_flushed(&self, event: builder::StreamWriteFlushed) {
             let event = event.into_event();
             self.subscriber
-                .on_application_write(self.context, &self.meta, &event);
+                .on_stream_write_flushed(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
-        fn on_application_read(&self, event: builder::ApplicationRead) {
+        fn on_stream_write_fin_flushed(&self, event: builder::StreamWriteFinFlushed) {
             let event = event.into_event();
             self.subscriber
-                .on_application_read(self.context, &self.meta, &event);
+                .on_stream_write_fin_flushed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_write_blocked(&self, event: builder::StreamWriteBlocked) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_write_blocked(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_write_errored(&self, event: builder::StreamWriteErrored) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_write_errored(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_write_shutdown(&self, event: builder::StreamWriteShutdown) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_write_shutdown(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_write_socket_flushed(&self, event: builder::StreamWriteSocketFlushed) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_write_socket_flushed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_write_socket_blocked(&self, event: builder::StreamWriteSocketBlocked) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_write_socket_blocked(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_write_socket_errored(&self, event: builder::StreamWriteSocketErrored) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_write_socket_errored(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_flushed(&self, event: builder::StreamReadFlushed) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_flushed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_fin_flushed(&self, event: builder::StreamReadFinFlushed) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_fin_flushed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_blocked(&self, event: builder::StreamReadBlocked) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_blocked(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_errored(&self, event: builder::StreamReadErrored) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_errored(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_shutdown(&self, event: builder::StreamReadShutdown) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_shutdown(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_socket_flushed(&self, event: builder::StreamReadSocketFlushed) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_socket_flushed(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_socket_blocked(&self, event: builder::StreamReadSocketBlocked) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_socket_blocked(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_socket_errored(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -5867,8 +7271,22 @@ pub mod testing {
         pub acceptor_udp_io_error: AtomicU32,
         pub acceptor_stream_pruned: AtomicU32,
         pub acceptor_stream_dequeued: AtomicU32,
-        pub application_write: AtomicU32,
-        pub application_read: AtomicU32,
+        pub stream_write_flushed: AtomicU32,
+        pub stream_write_fin_flushed: AtomicU32,
+        pub stream_write_blocked: AtomicU32,
+        pub stream_write_errored: AtomicU32,
+        pub stream_write_shutdown: AtomicU32,
+        pub stream_write_socket_flushed: AtomicU32,
+        pub stream_write_socket_blocked: AtomicU32,
+        pub stream_write_socket_errored: AtomicU32,
+        pub stream_read_flushed: AtomicU32,
+        pub stream_read_fin_flushed: AtomicU32,
+        pub stream_read_blocked: AtomicU32,
+        pub stream_read_errored: AtomicU32,
+        pub stream_read_shutdown: AtomicU32,
+        pub stream_read_socket_flushed: AtomicU32,
+        pub stream_read_socket_blocked: AtomicU32,
+        pub stream_read_socket_errored: AtomicU32,
         pub endpoint_initialized: AtomicU32,
         pub path_secret_map_initialized: AtomicU32,
         pub path_secret_map_uninitialized: AtomicU32,
@@ -5946,8 +7364,22 @@ pub mod testing {
                 acceptor_udp_io_error: AtomicU32::new(0),
                 acceptor_stream_pruned: AtomicU32::new(0),
                 acceptor_stream_dequeued: AtomicU32::new(0),
-                application_write: AtomicU32::new(0),
-                application_read: AtomicU32::new(0),
+                stream_write_flushed: AtomicU32::new(0),
+                stream_write_fin_flushed: AtomicU32::new(0),
+                stream_write_blocked: AtomicU32::new(0),
+                stream_write_errored: AtomicU32::new(0),
+                stream_write_shutdown: AtomicU32::new(0),
+                stream_write_socket_flushed: AtomicU32::new(0),
+                stream_write_socket_blocked: AtomicU32::new(0),
+                stream_write_socket_errored: AtomicU32::new(0),
+                stream_read_flushed: AtomicU32::new(0),
+                stream_read_fin_flushed: AtomicU32::new(0),
+                stream_read_blocked: AtomicU32::new(0),
+                stream_read_errored: AtomicU32::new(0),
+                stream_read_shutdown: AtomicU32::new(0),
+                stream_read_socket_flushed: AtomicU32::new(0),
+                stream_read_socket_blocked: AtomicU32::new(0),
+                stream_read_socket_errored: AtomicU32::new(0),
                 endpoint_initialized: AtomicU32::new(0),
                 path_secret_map_initialized: AtomicU32::new(0),
                 path_secret_map_uninitialized: AtomicU32::new(0),
@@ -6198,13 +7630,13 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
-        fn on_application_write(
+        fn on_stream_write_flushed(
             &self,
             _context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::ApplicationWrite,
+            event: &api::StreamWriteFlushed,
         ) {
-            self.application_write.fetch_add(1, Ordering::Relaxed);
+            self.stream_write_flushed.fetch_add(1, Ordering::Relaxed);
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -6212,13 +7644,216 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
-        fn on_application_read(
+        fn on_stream_write_fin_flushed(
             &self,
             _context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
-            event: &api::ApplicationRead,
+            event: &api::StreamWriteFinFlushed,
         ) {
-            self.application_read.fetch_add(1, Ordering::Relaxed);
+            self.stream_write_fin_flushed
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_blocked(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteBlocked,
+        ) {
+            self.stream_write_blocked.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_errored(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteErrored,
+        ) {
+            self.stream_write_errored.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_shutdown(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteShutdown,
+        ) {
+            self.stream_write_shutdown.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_socket_flushed(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketFlushed,
+        ) {
+            self.stream_write_socket_flushed
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_socket_blocked(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketBlocked,
+        ) {
+            self.stream_write_socket_blocked
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_socket_errored(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteSocketErrored,
+        ) {
+            self.stream_write_socket_errored
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_flushed(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadFlushed,
+        ) {
+            self.stream_read_flushed.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_fin_flushed(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadFinFlushed,
+        ) {
+            self.stream_read_fin_flushed.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_blocked(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadBlocked,
+        ) {
+            self.stream_read_blocked.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_errored(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadErrored,
+        ) {
+            self.stream_read_errored.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_shutdown(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadShutdown,
+        ) {
+            self.stream_read_shutdown.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_socket_flushed(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketFlushed,
+        ) {
+            self.stream_read_socket_flushed
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_socket_blocked(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketBlocked,
+        ) {
+            self.stream_read_socket_blocked
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_socket_errored(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadSocketErrored,
+        ) {
+            self.stream_read_socket_errored
+                .fetch_add(1, Ordering::Relaxed);
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -6578,8 +8213,22 @@ pub mod testing {
         pub acceptor_udp_io_error: AtomicU32,
         pub acceptor_stream_pruned: AtomicU32,
         pub acceptor_stream_dequeued: AtomicU32,
-        pub application_write: AtomicU32,
-        pub application_read: AtomicU32,
+        pub stream_write_flushed: AtomicU32,
+        pub stream_write_fin_flushed: AtomicU32,
+        pub stream_write_blocked: AtomicU32,
+        pub stream_write_errored: AtomicU32,
+        pub stream_write_shutdown: AtomicU32,
+        pub stream_write_socket_flushed: AtomicU32,
+        pub stream_write_socket_blocked: AtomicU32,
+        pub stream_write_socket_errored: AtomicU32,
+        pub stream_read_flushed: AtomicU32,
+        pub stream_read_fin_flushed: AtomicU32,
+        pub stream_read_blocked: AtomicU32,
+        pub stream_read_errored: AtomicU32,
+        pub stream_read_shutdown: AtomicU32,
+        pub stream_read_socket_flushed: AtomicU32,
+        pub stream_read_socket_blocked: AtomicU32,
+        pub stream_read_socket_errored: AtomicU32,
         pub endpoint_initialized: AtomicU32,
         pub path_secret_map_initialized: AtomicU32,
         pub path_secret_map_uninitialized: AtomicU32,
@@ -6647,8 +8296,22 @@ pub mod testing {
                 acceptor_udp_io_error: AtomicU32::new(0),
                 acceptor_stream_pruned: AtomicU32::new(0),
                 acceptor_stream_dequeued: AtomicU32::new(0),
-                application_write: AtomicU32::new(0),
-                application_read: AtomicU32::new(0),
+                stream_write_flushed: AtomicU32::new(0),
+                stream_write_fin_flushed: AtomicU32::new(0),
+                stream_write_blocked: AtomicU32::new(0),
+                stream_write_errored: AtomicU32::new(0),
+                stream_write_shutdown: AtomicU32::new(0),
+                stream_write_socket_flushed: AtomicU32::new(0),
+                stream_write_socket_blocked: AtomicU32::new(0),
+                stream_write_socket_errored: AtomicU32::new(0),
+                stream_read_flushed: AtomicU32::new(0),
+                stream_read_fin_flushed: AtomicU32::new(0),
+                stream_read_blocked: AtomicU32::new(0),
+                stream_read_errored: AtomicU32::new(0),
+                stream_read_shutdown: AtomicU32::new(0),
+                stream_read_socket_flushed: AtomicU32::new(0),
+                stream_read_socket_blocked: AtomicU32::new(0),
+                stream_read_socket_errored: AtomicU32::new(0),
                 endpoint_initialized: AtomicU32::new(0),
                 path_secret_map_initialized: AtomicU32::new(0),
                 path_secret_map_uninitialized: AtomicU32::new(0),
@@ -7073,8 +8736,8 @@ pub mod testing {
         }
     }
     impl super::ConnectionPublisher for Publisher {
-        fn on_application_write(&self, event: builder::ApplicationWrite) {
-            self.application_write.fetch_add(1, Ordering::Relaxed);
+        fn on_stream_write_flushed(&self, event: builder::StreamWriteFlushed) {
+            self.stream_write_flushed.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
@@ -7082,8 +8745,141 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
-        fn on_application_read(&self, event: builder::ApplicationRead) {
-            self.application_read.fetch_add(1, Ordering::Relaxed);
+        fn on_stream_write_fin_flushed(&self, event: builder::StreamWriteFinFlushed) {
+            self.stream_write_fin_flushed
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_blocked(&self, event: builder::StreamWriteBlocked) {
+            self.stream_write_blocked.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_errored(&self, event: builder::StreamWriteErrored) {
+            self.stream_write_errored.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_shutdown(&self, event: builder::StreamWriteShutdown) {
+            self.stream_write_shutdown.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_socket_flushed(&self, event: builder::StreamWriteSocketFlushed) {
+            self.stream_write_socket_flushed
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_socket_blocked(&self, event: builder::StreamWriteSocketBlocked) {
+            self.stream_write_socket_blocked
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_write_socket_errored(&self, event: builder::StreamWriteSocketErrored) {
+            self.stream_write_socket_errored
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_flushed(&self, event: builder::StreamReadFlushed) {
+            self.stream_read_flushed.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_fin_flushed(&self, event: builder::StreamReadFinFlushed) {
+            self.stream_read_fin_flushed.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_blocked(&self, event: builder::StreamReadBlocked) {
+            self.stream_read_blocked.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_errored(&self, event: builder::StreamReadErrored) {
+            self.stream_read_errored.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_shutdown(&self, event: builder::StreamReadShutdown) {
+            self.stream_read_shutdown.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_socket_flushed(&self, event: builder::StreamReadSocketFlushed) {
+            self.stream_read_socket_flushed
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_socket_blocked(&self, event: builder::StreamReadSocketBlocked) {
+            self.stream_read_socket_blocked
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored) {
+            self.stream_read_socket_errored
+                .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
