@@ -62,6 +62,9 @@ where
     // Race TCP handshake with the TLS handshake
     let (socket, peer) = tokio::try_join!(TcpStream::connect(acceptor_addr), handshake,)?;
 
+    // Make sure TCP_NODELAY is set
+    let _ = socket.set_nodelay(true);
+
     let stream = endpoint::open_stream(env, peer, env::TcpRegistered(socket), subscriber, None)?;
 
     // build the stream inside the application context
