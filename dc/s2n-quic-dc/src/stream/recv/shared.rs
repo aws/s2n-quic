@@ -3,12 +3,14 @@
 
 use crate::{
     allocator::Allocator,
-    clock, event, msg,
+    clock,
+    event::{self, ConnectionPublisher},
+    msg,
     packet::{stream, Packet},
     stream::{
         recv,
         server::handshake,
-        shared::{ArcShared, Half},
+        shared::{self, ArcShared, Half},
         socket::{self, Socket},
         TransportFeatures,
     },
@@ -311,10 +313,21 @@ impl Inner {
     }
 
     #[inline]
-    pub fn poll_fill_recv_buffer<S>(&mut self, cx: &mut Context, socket: &S) -> Poll<io::Result<()>>
+    pub fn poll_fill_recv_buffer<S, C, Sub>(
+        &mut self,
+        cx: &mut Context,
+        socket: &S,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
+    ) -> Poll<io::Result<()>>
     where
         S: ?Sized + Socket,
+        C: ?Sized + Clock,
+        Sub: event::Subscriber,
     {
+        // cache the timestamps to avoid fetching too many
+        let clock = &s2n_quic_core::time::clock::Cached::new(clock);
+
         loop {
             if let Some(chan) = self.handshake.as_mut() {
                 match chan.poll_recv(cx) {
@@ -336,10 +349,54 @@ impl Inner {
                 }
             }
 
-            ready!(socket.poll_recv_buffer(cx, &mut self.recv_buffer))?;
+            ready!(self.poll_fill_recv_buffer_once(cx, socket, clock, subscriber))?;
 
             return Ok(()).into();
         }
+    }
+
+    #[inline(always)]
+    fn poll_fill_recv_buffer_once<S, C, Sub>(
+        &mut self,
+        cx: &mut Context,
+        socket: &S,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
+    ) -> Poll<io::Result<usize>>
+    where
+        S: ?Sized + Socket,
+        C: ?Sized + Clock,
+        Sub: event::Subscriber,
+    {
+        let capacity = self.recv_buffer.remaining_capacity();
+
+        let result = socket.poll_recv_buffer(cx, &mut self.recv_buffer);
+
+        let now = clock.get_time();
+
+        match &result {
+            Poll::Ready(Ok(len)) => {
+                subscriber.publisher(now).on_stream_read_socket_flushed(
+                    event::builder::StreamReadSocketFlushed {
+                        capacity,
+                        committed_len: *len,
+                    },
+                );
+            }
+            Poll::Ready(Err(error)) => {
+                let errno = error.raw_os_error();
+                subscriber.publisher(now).on_stream_read_socket_errored(
+                    event::builder::StreamReadSocketErrored { capacity, errno },
+                );
+            }
+            Poll::Pending => {
+                subscriber.publisher(now).on_stream_read_socket_blocked(
+                    event::builder::StreamReadSocketBlocked { capacity },
+                );
+            }
+        };
+
+        result
     }
 
     #[inline]

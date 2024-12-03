@@ -168,8 +168,7 @@ where
     /// The last time we received a packet from the peer
     pub last_peer_activity: AtomicU64,
     pub closed_halves: AtomicU8,
-    pub subscriber: Sub,
-    pub subscriber_ctx: Sub::ConnectionContext,
+    pub subscriber: Subscriber<Sub>,
     pub clock: Clock,
 }
 
@@ -192,7 +191,47 @@ where
         );
         Ok(())
     }
+}
 
+impl<Sub, Clock> Common<Sub, Clock>
+where
+    Sub: event::Subscriber,
+    Clock: ?Sized + s2n_quic_core::time::Clock,
+{
+    #[inline]
+    pub fn publisher(&self) -> event::ConnectionPublisherSubscriber<Sub> {
+        self.publisher_with_timestamp(self.clock.get_time())
+    }
+
+    #[inline]
+    pub fn publisher_with_timestamp(
+        &self,
+        timestamp: Timestamp,
+    ) -> event::ConnectionPublisherSubscriber<Sub> {
+        self.subscriber.publisher(timestamp)
+    }
+
+    #[inline]
+    pub fn endpoint_publisher(
+        &self,
+        timestamp: Timestamp,
+    ) -> event::EndpointPublisherSubscriber<Sub> {
+        self.subscriber.endpoint_publisher(timestamp)
+    }
+}
+
+pub struct Subscriber<Sub>
+where
+    Sub: event::Subscriber,
+{
+    pub subscriber: Sub,
+    pub context: Sub::ConnectionContext,
+}
+
+impl<Sub> Subscriber<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     pub fn publisher(&self, timestamp: Timestamp) -> event::ConnectionPublisherSubscriber<Sub> {
         event::ConnectionPublisherSubscriber::new(
@@ -202,7 +241,7 @@ where
             },
             0,
             &self.subscriber,
-            &self.subscriber_ctx,
+            &self.context,
         )
     }
 

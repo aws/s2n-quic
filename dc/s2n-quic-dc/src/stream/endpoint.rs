@@ -247,8 +247,10 @@ where
             last_peer_activity: Default::default(),
             fixed,
             closed_halves: 0u8.into(),
-            subscriber,
-            subscriber_ctx,
+            subscriber: shared::Subscriber {
+                subscriber,
+                context: subscriber_ctx,
+            },
         }
     };
 

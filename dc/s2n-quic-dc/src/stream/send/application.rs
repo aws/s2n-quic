@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    clock, event, msg,
+    clock,
+    event::{self, ConnectionPublisher},
+    msg,
     stream::{
         pacer, runtime,
         send::{flow, queue},
@@ -16,7 +18,7 @@ use core::{
     sync::atomic::Ordering,
     task::{Context, Poll},
 };
-use s2n_quic_core::{buffer, ensure, ready, task::waker};
+use s2n_quic_core::{buffer, ensure, ready, task::waker, time::Timestamp};
 use std::{io, net::SocketAddr};
 use tracing::trace;
 
@@ -90,7 +92,10 @@ where
     where
         S: buffer::reader::storage::Infallible,
     {
-        waker::debug_assert_contract(cx, |cx| {
+        let start_time = self.0.shared.clock.get_time();
+        let provided_len = buf.buffered_len();
+
+        let res = waker::debug_assert_contract(cx, |cx| {
             // if we've already shut down the stream then return early
             if !self.0.open {
                 ensure!(
@@ -111,7 +116,12 @@ where
             }
 
             res.into()
-        })
+        });
+
+        self.0
+            .publish_write_events(provided_len, is_fin, start_time, &res);
+
+        res
     }
 
     /// Shutdown the stream for writing.
@@ -243,6 +253,8 @@ where
             &msg::addr::Addr::new(self.shared.write_remote_addr()),
             &self.shared.sender.segment_alloc,
             &self.shared.gso,
+            &self.shared.clock,
+            &self.shared.subscriber,
         ))?;
 
         Ok(len).into()
@@ -283,16 +295,34 @@ where
             self.sockets.write_application().send_finish()?;
         }
 
+        let buffer_len = queue.accepted_len();
+
         // pass things to the worker if we need to gracefully shut down
         if !self.sockets.write_application().features().is_stream() {
+            self.shared
+                .publisher()
+                .on_stream_write_shutdown(event::builder::StreamWriteShutdown {
+                    background: false,
+                    buffer_len,
+                });
+
             let is_panicking = matches!(ty, ShutdownType::Drop { is_panicking: true });
             self.shared.sender.shutdown(queue, is_panicking);
             return Ok(());
         }
 
+        let background = !queue.is_empty();
+
+        self.shared
+            .publisher()
+            .on_stream_write_shutdown(event::builder::StreamWriteShutdown {
+                background,
+                buffer_len,
+            });
+
         // if we're using TCP and we get blocked from writing a final offset then spawn a task
         // to do it for us
-        if !queue.is_empty() {
+        if background {
             let shared = self.shared.clone();
             let sockets = self.sockets.clone();
             self.runtime.spawn_send_shutdown(Shutdown {
@@ -304,6 +334,59 @@ where
         }
 
         Ok(())
+    }
+
+    #[inline(always)]
+    fn publish_write_events(
+        &self,
+        provided_len: usize,
+        is_fin: bool,
+        start_time: Timestamp,
+        result: &Poll<io::Result<usize>>,
+    ) {
+        let end_time = self.shared.clock.get_time();
+        let processing_duration = end_time.saturating_duration_since(start_time);
+
+        match result {
+            Poll::Ready(Ok(len)) if is_fin => {
+                self.shared.common.publisher().on_stream_write_fin_flushed(
+                    event::builder::StreamWriteFinFlushed {
+                        provided_len,
+                        committed_len: *len,
+                        processing_duration,
+                    },
+                );
+            }
+            Poll::Ready(Ok(len)) => {
+                self.shared.common.publisher().on_stream_write_flushed(
+                    event::builder::StreamWriteFlushed {
+                        provided_len,
+                        committed_len: *len,
+                        processing_duration,
+                    },
+                );
+            }
+            Poll::Ready(Err(error)) => {
+                let errno = error.raw_os_error();
+                self.shared.common.publisher().on_stream_write_errored(
+                    event::builder::StreamWriteErrored {
+                        provided_len,
+                        is_fin,
+                        processing_duration,
+                        errno,
+                    },
+                );
+            }
+            Poll::Pending => {
+                self.shared.common.publisher().on_stream_write_blocked(
+                    event::builder::StreamWriteBlocked {
+                        provided_len,
+                        is_fin,
+                        processing_duration,
+                    },
+                );
+            }
+        };
     }
 }
 
@@ -403,6 +486,8 @@ where
             &msg::addr::Addr::new(shared.write_remote_addr()),
             &shared.sender.segment_alloc,
             &shared.gso,
+            &shared.clock,
+            &shared.subscriber,
         ));
 
         // If the application is explicitly shutting down then do the same. Otherwise let

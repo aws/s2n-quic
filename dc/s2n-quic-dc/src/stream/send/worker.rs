@@ -402,6 +402,8 @@ where
                         &addr::Addr::new(self.shared.write_remote_addr()),
                         &self.shared.sender.segment_alloc,
                         &self.shared.gso,
+                        &self.shared.clock,
+                        &self.shared.subscriber,
                     ));
 
                     // make sure we have the current view from the application
