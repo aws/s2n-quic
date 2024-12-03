@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use bolero::check;
+use bolero::{check, gen};
 use core::mem::zeroed;
 use s2n_quic_core::inet::{SocketAddress, Unspecified};
 

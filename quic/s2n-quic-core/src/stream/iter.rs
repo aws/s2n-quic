@@ -3,7 +3,7 @@
 
 use super::StreamId;
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 /// An Iterator over Stream Ids of a particular type.
 #[derive(Debug, Clone, Copy)]

@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 /// Contains all of the available packet spaces for QUIC packets
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

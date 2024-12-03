@@ -14,7 +14,7 @@ s2n-quic-core = { path = "../../quic/s2n-quic-core" }
 s2n-quic-dc = { path = "../s2n-quic-dc" }
 
 [dev-dependencies]
-bolero = "0.11"
+bolero = "0.12"
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing", "generator"] }
 s2n-quic-dc = { path = "../s2n-quic-dc", features = ["testing"] }
 

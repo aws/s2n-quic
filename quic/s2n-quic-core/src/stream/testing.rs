@@ -7,7 +7,7 @@ use crate::buffer::{reader, writer};
 use bytes::Bytes;
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 static DATA: Bytes = {
     const INNER: [u8; DATA_LEN] = {

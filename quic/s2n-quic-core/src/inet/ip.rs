@@ -9,7 +9,7 @@ use crate::inet::{
 use core::fmt;
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 /// An IP address, either IPv4 or IPv6.
 ///
