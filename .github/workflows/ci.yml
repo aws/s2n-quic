@@ -150,17 +150,18 @@ jobs:
         with:
           submodules: true
 
-      - name: Install rust toolchain
-        id: toolchain
+      # nightly docrs features are used
+      - name: Install rust nightly toolchain
+        id: nightly-toolchain
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup override set stable
-
+          rustup toolchain install nightly --profile minimal
 
       - uses: camshaft/rust-cache@v1
 
       - name: Run cargo doc
-        run: cargo doc --all-features --no-deps --workspace --exclude s2n-quic-qns
+        run: cargo +nightly doc --all-features --no-deps --workspace --exclude s2n-quic-qns
+        env:
+          RUSTDOCFLAGS: --cfg docsrs
 
       - uses: aws-actions/configure-aws-credentials@v4.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
