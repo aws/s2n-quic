@@ -289,7 +289,7 @@ where
 }
 
 /// A socket that should be reregistered with the application runtime
-pub struct TcpReregistered(pub TcpStream);
+pub struct TcpReregistered(pub TcpStream, pub SocketAddress);
 
 impl<Sub> super::Peer<Environment<Sub>> for TcpReregistered
 where
@@ -308,7 +308,7 @@ where
 
     #[inline]
     fn setup(self, _env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
-        let remote_addr = self.0.peer_addr()?.into();
+        let remote_addr = self.1;
         let source_control_port = self.0.local_addr()?.port();
         let application = Box::new(self.0.into_std()?);
         Ok(super::SocketSet {
