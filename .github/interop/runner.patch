@@ -174,10 +174,21 @@ index 4564681..3a28eec 100755
 -    sys.exit(main())
 +    main()
 diff --git a/testcases.py b/testcases.py
-index fc69e11..6791f6c 100644
+index fc69e11..7dafb07 100644
 --- a/testcases.py
 +++ b/testcases.py
-@@ -1239,10 +1239,14 @@ class TestCasePortRebinding(TestCaseTransfer):
+@@ -98,6 +98,10 @@ class TestCase(abc.ABC):
+         """The name of testcase presented to the endpoint Docker images"""
+         return self.name()
+
++    @staticmethod
++    def test_type() -> str:
++        return "TEST"
++
+     @staticmethod
+     def scenario() -> str:
+         """Scenario for the ns3 simulator"""
+@@ -1239,10 +1243,14 @@ class TestCasePortRebinding(TestCaseTransfer):
          ]
          return self._files
 
@@ -193,7 +204,7 @@ index fc69e11..6791f6c 100644
 
      def check(self) -> TestResult:
          super().check()
-@@ -1265,56 +1269,26 @@ class TestCasePortRebinding(TestCaseTransfer):
+@@ -1265,56 +1273,26 @@ class TestCasePortRebinding(TestCaseTransfer):
              logging.info("Server saw only a single client port in use; test broken?")
              return TestResult.FAILED
 
@@ -258,7 +269,7 @@ index fc69e11..6791f6c 100644
                  if hasattr(p["quic"], "path_response.data")
              )
          )
-@@ -1332,6 +1306,10 @@ class TestCaseAddressRebinding(TestCasePortRebinding):
+@@ -1332,6 +1310,10 @@ class TestCaseAddressRebinding(TestCasePortRebinding):
      def name():
          return "rebind-addr"
 
@@ -269,16 +280,16 @@ index fc69e11..6791f6c 100644
      @staticmethod
      def abbreviation():
          return "BA"
-@@ -1615,7 +1593,7 @@ class MeasurementGoodput(Measurement):
+@@ -1615,7 +1597,7 @@ class MeasurementGoodput(Measurement):
 
      @staticmethod
      def repetitions() -> int:
 -        return 5
 +        return 1
- 
+
      def get_paths(self):
          self._files = [self._generate_random_file(self.FILESIZE)]
-@@ -1687,7 +1665,7 @@ TESTCASES = [
+@@ -1687,7 +1669,7 @@ TESTCASES = [
      TestCaseMultiplexing,
      TestCaseRetry,
      TestCaseResumption,
@@ -287,7 +298,7 @@ index fc69e11..6791f6c 100644
      TestCaseHTTP3,
      TestCaseBlackhole,
      TestCaseKeyUpdate,
-@@ -1698,12 +1676,11 @@ TESTCASES = [
+@@ -1698,12 +1680,11 @@ TESTCASES = [
      TestCaseHandshakeCorruption,
      TestCaseTransferCorruption,
      TestCaseIPv6,
