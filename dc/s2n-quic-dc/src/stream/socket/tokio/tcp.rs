@@ -138,7 +138,7 @@ impl Socket for TcpStream {
 
     #[inline]
     fn send_finish(&self) -> io::Result<()> {
-        // AsyncWrite::poll_shutdown requires a `&mut self` so we just use libc directly
-        tcp::shutdown(self)
+        // Since we authenticate socket closures, no need to also shutdown the TCP layer
+        Ok(())
     }
 }

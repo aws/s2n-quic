@@ -60,12 +60,3 @@ where
         unsafe { libc::sendmsg(fd, &msg, flags) }
     } as _)
 }
-
-#[inline]
-pub fn shutdown<T>(fd: &T) -> io::Result<()>
-where
-    T: AsRawFd,
-{
-    libc_call(|| unsafe { libc::shutdown(fd.as_raw_fd(), libc::SHUT_WR) as _ })?;
-    Ok(())
-}
