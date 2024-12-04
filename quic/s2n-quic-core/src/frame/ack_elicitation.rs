@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 use core::ops::{BitOr, BitOrAssign};
 
 //= https://www.rfc-editor.org/rfc/rfc9002#section-2

@@ -11,7 +11,7 @@ use core::time::Duration;
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1
 //# Each connection possesses a set of connection identifiers, or

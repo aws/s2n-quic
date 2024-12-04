@@ -443,7 +443,7 @@ const ACK_RANGE_DECODING_ERROR: DecoderError =
 //#
 //# ECN counts are maintained separately for each packet number space.
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]

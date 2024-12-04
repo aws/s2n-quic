@@ -8,7 +8,7 @@ use crate::{
 use core::fmt;
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 pub mod ecn;
 pub mod migration;

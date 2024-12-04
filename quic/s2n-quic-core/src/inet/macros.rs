@@ -10,7 +10,7 @@ macro_rules! define_inet_type {
     }) => {
         #[allow(unused_imports)]
         #[cfg(any(test, feature = "generator"))]
-        use bolero_generator::*;
+        use bolero_generator::prelude::*;
 
         #[derive(Clone, Copy, Default, Eq, PartialEq, PartialOrd, Ord, zerocopy::FromZeroes, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
         #[cfg_attr(any(test, feature = "generator"), derive(bolero_generator::TypeGenerator))]
