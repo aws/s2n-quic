@@ -174,13 +174,13 @@ index 4564681..3a28eec 100755
 -    sys.exit(main())
 +    main()
 diff --git a/testcases.py b/testcases.py
-index df0fac5..91f0261 100644
+index fc69e11..6791f6c 100644
 --- a/testcases.py
 +++ b/testcases.py
-@@ -97,6 +97,10 @@ class TestCase(abc.ABC):
-         """The name of testcase presented to the endpoint Docker images"""
-         return self.name()
- 
+@@ -1239,10 +1239,14 @@ class TestCasePortRebinding(TestCaseTransfer):
+         ]
+         return self._files
+
 +    @staticmethod
 +    def test_type() -> str:
 +        return "TEST"
@@ -188,19 +188,15 @@ index df0fac5..91f0261 100644
      @staticmethod
      def scenario() -> str:
          """Scenario for the ns3 simulator"""
-@@ -1207,7 +1211,7 @@ class TestCasePortRebinding(TestCaseTransfer):
-     @staticmethod
-     def scenario() -> str:
-         """Scenario for the ns3 simulator"""
 -        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=1s --rebind-freq=5s"
 +        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=2s --rebind-freq=5s"
- 
+
      def check(self) -> TestResult:
-         if not self._keylog_file():
-@@ -1229,56 +1233,26 @@ class TestCasePortRebinding(TestCaseTransfer):
+         super().check()
+@@ -1265,56 +1269,26 @@ class TestCasePortRebinding(TestCaseTransfer):
              logging.info("Server saw only a single client port in use; test broken?")
              return TestResult.FAILED
- 
+
 -        last = None
 -        num_migrations = 0
 -        for p in tr_server:
@@ -233,7 +229,7 @@ index df0fac5..91f0261 100644
 +        tr_server2client = self._client_trace()._get_packets(
 +            self._client_trace()._get_direction_filter(Direction.FROM_SERVER) + " quic"
          )
- 
+
          challenges = list(
              set(
                  getattr(p["quic"], "path_challenge.data")
@@ -253,7 +249,7 @@ index df0fac5..91f0261 100644
 +        tr_client2server = self._client_trace()._get_packets(
 +            self._client_trace()._get_direction_filter(Direction.FROM_CLIENT) + " quic"
 +        )
- 
+
          responses = list(
              set(
                  getattr(p["quic"], "path_response.data")
@@ -262,10 +258,10 @@ index df0fac5..91f0261 100644
                  if hasattr(p["quic"], "path_response.data")
              )
          )
-@@ -1296,6 +1270,10 @@ class TestCaseAddressRebinding(TestCasePortRebinding):
+@@ -1332,6 +1306,10 @@ class TestCaseAddressRebinding(TestCasePortRebinding):
      def name():
          return "rebind-addr"
- 
+
 +    @staticmethod
 +    def test_type() -> str:
 +        return "MEASUREMENT"
@@ -273,8 +269,8 @@ index df0fac5..91f0261 100644
      @staticmethod
      def abbreviation():
          return "BA"
-@@ -1575,7 +1553,7 @@ class MeasurementGoodput(Measurement):
- 
+@@ -1615,7 +1593,7 @@ class MeasurementGoodput(Measurement):
+
      @staticmethod
      def repetitions() -> int:
 -        return 5
@@ -282,7 +278,7 @@ index df0fac5..91f0261 100644
  
      def get_paths(self):
          self._files = [self._generate_random_file(self.FILESIZE)]
-@@ -1646,7 +1624,7 @@ TESTCASES = [
+@@ -1687,7 +1665,7 @@ TESTCASES = [
      TestCaseMultiplexing,
      TestCaseRetry,
      TestCaseResumption,
@@ -291,7 +287,7 @@ index df0fac5..91f0261 100644
      TestCaseHTTP3,
      TestCaseBlackhole,
      TestCaseKeyUpdate,
-@@ -1657,12 +1635,11 @@ TESTCASES = [
+@@ -1698,12 +1676,11 @@ TESTCASES = [
      TestCaseHandshakeCorruption,
      TestCaseTransferCorruption,
      TestCaseIPv6,
