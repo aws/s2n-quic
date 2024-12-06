@@ -225,6 +225,8 @@ impl FreshQueue {
             remaining -= 1;
 
             if remaining == 0 {
+                // if we're yielding then we need to wake ourselves up again
+                cx.waker().wake_by_ref();
                 break;
             }
         }
@@ -444,6 +446,7 @@ where
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
     subscriber: Sub,
+    local_port: u16,
 }
 
 impl<Sub> WorkerContext<Sub>
@@ -458,6 +461,7 @@ where
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
             subscriber: acceptor.subscriber.clone(),
+            local_port: acceptor.socket.local_addr().unwrap().port(),
         }
     }
 }
@@ -691,7 +695,11 @@ impl WorkerState {
             let stream_builder = match endpoint::accept_stream(
                 now,
                 &context.env,
-                env::TcpReregistered(socket, remote_address),
+                env::TcpReregistered {
+                    socket,
+                    peer_addr: remote_address,
+                    local_port: context.local_port,
+                },
                 &initial_packet,
                 None,
                 Some(recv_buffer),
@@ -702,7 +710,7 @@ impl WorkerState {
             ) {
                 Ok(stream) => stream,
                 Err(error) => {
-                    if let Some(env::TcpReregistered(socket, remote_address)) = error.peer {
+                    if let Some(env::TcpReregistered { socket, .. }) = error.peer {
                         if !error.secret_control.is_empty() {
                             // if we need to send an error then update the state and loop back
                             // around
