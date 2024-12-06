@@ -65,7 +65,18 @@ where
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
 
-    let stream = endpoint::open_stream(env, peer, env::TcpRegistered(socket), subscriber, None)?;
+    let local_port = socket.local_addr()?.port();
+    let stream = endpoint::open_stream(
+        env,
+        peer,
+        env::TcpRegistered {
+            socket,
+            peer_addr: acceptor_addr.into(),
+            local_port,
+        },
+        subscriber,
+        None,
+    )?;
 
     // build the stream inside the application context
     let mut stream = stream.connect()?;
@@ -85,14 +96,26 @@ where
 #[inline]
 pub async fn connect_tcp_with<Sub>(
     peer: secret::map::Peer,
-    stream: TcpStream,
+    socket: TcpStream,
     env: &Environment<Sub>,
     subscriber: Sub,
 ) -> io::Result<Stream<Sub>>
 where
     Sub: event::Subscriber,
 {
-    let stream = endpoint::open_stream(env, peer, env::TcpRegistered(stream), subscriber, None)?;
+    let local_port = socket.local_addr()?.port();
+    let peer_addr = socket.peer_addr()?.into();
+    let stream = endpoint::open_stream(
+        env,
+        peer,
+        env::TcpRegistered {
+            socket,
+            peer_addr,
+            local_port,
+        },
+        subscriber,
+        None,
+    )?;
 
     // build the stream inside the application context
     let mut stream = stream.connect()?;
