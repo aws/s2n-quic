@@ -64,6 +64,7 @@ where
 
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
+    let _ = socket.set_linger(Some(core::time::Duration::ZERO));
 
     let local_port = socket.local_addr()?.port();
     let stream = endpoint::open_stream(
