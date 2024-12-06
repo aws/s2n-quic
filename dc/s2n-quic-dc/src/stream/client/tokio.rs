@@ -65,13 +65,21 @@ where
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
 
+    // if the acceptor_ip isn't known, then ask the socket to resolve it for us
+    let peer_addr = if acceptor_addr.ip().is_unspecified() {
+        socket.peer_addr()?
+    } else {
+        acceptor_addr
+    }
+    .into();
     let local_port = socket.local_addr()?.port();
+
     let stream = endpoint::open_stream(
         env,
         peer,
         env::TcpRegistered {
             socket,
-            peer_addr: acceptor_addr.into(),
+            peer_addr,
             local_port,
         },
         subscriber,
