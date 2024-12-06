@@ -117,7 +117,7 @@ impl<D: Driver> Channel<D> {
 
     /// Iterates over all of the acquired entries in the ring and calls `on_packet`
     #[inline]
-    fn for_each<F: FnMut(RxTxDescriptor)>(&mut self, mut on_packet: F) {
+    pub fn for_each<F: FnMut(RxTxDescriptor)>(&mut self, mut on_packet: F) {
         // one last effort to acquire any packets
         let len = self.rx.acquire(1);
         let len = self.fill.acquire(len);
