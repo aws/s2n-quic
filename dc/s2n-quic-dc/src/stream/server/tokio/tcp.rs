@@ -502,6 +502,7 @@ where
     {
         // Make sure TCP_NODELAY is set
         let _ = stream.set_nodelay(true);
+        let _ = stream.set_linger(Some(Duration::ZERO));
 
         let meta = event::api::ConnectionMeta {
             id: 0, // TODO use an actual connection ID
