@@ -64,6 +64,7 @@ where
 
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
+    let _ = socket.set_linger(Some(core::time::Duration::ZERO));
 
     // if the acceptor_ip isn't known, then ask the socket to resolve it for us
     let peer_addr = if acceptor_addr.ip().is_unspecified() {
