@@ -271,6 +271,31 @@ jobs:
         run: |
           ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
+  asan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install rust toolchain
+        id: toolchain
+        run: |
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --component rust-src
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: Run Unit Tests under ASAN
+        env:
+          RUSTDOCFLAGS: -Zsanitizer=address
+          RUSTFLAGS: -Zsanitizer=address
+        run: |
+          cargo test \
+            -Zbuild-std \
+            --workspace \ 
+            --target x86_64-unknown-linux-gnu
+
   fips:
     runs-on: ubuntu-latest
     steps:
