@@ -293,8 +293,8 @@ jobs:
         run: |
           cargo test \
             -Zbuild-std \
-            --workspace \ 
-            --target x86_64-unknown-linux-gnu
+            --target x86_64-unknown-linux-gnu \
+            --workspace
 
   fips:
     runs-on: ubuntu-latest
