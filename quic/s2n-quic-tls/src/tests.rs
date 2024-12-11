@@ -433,7 +433,7 @@ fn s2n_client_with_client_auth_s2n_server_does_not_trust_client_certificate() {
     // application level host verification check on the cert.
     assert!(test_result.is_err());
     let e = test_result.unwrap_err();
-    assert_eq!(e.description().unwrap(), "HANDSHAKE_FAILURE");
+    assert_eq!(e.description().unwrap(), "CERTIFICATE_UNKNOWN");
 }
 
 #[test]
@@ -448,7 +448,7 @@ fn s2n_client_with_client_auth_s2n_server_does_not_trust_issuer() {
     // by a CA that is not in the server trust store, even though the host name is validated.
     assert!(test_result.is_err());
     let e = test_result.unwrap_err();
-    assert_eq!(e.description().unwrap(), "HANDSHAKE_FAILURE");
+    assert_eq!(e.description().unwrap(), "CERTIFICATE_UNKNOWN");
 }
 
 #[test]
@@ -462,7 +462,7 @@ fn s2n_client_with_custom_hostname_auth_rejects_server_name() {
     // The handshake should fail because the hostname ("localhost") is not validated
     assert!(test_result.is_err());
     let e = test_result.unwrap_err();
-    assert_eq!(e.description().unwrap(), "HANDSHAKE_FAILURE");
+    assert_eq!(e.description().unwrap(), "CERTIFICATE_UNKNOWN");
 }
 
 #[test]
