@@ -37,7 +37,10 @@ fn pair(
     accept_flavor: accept::Flavor,
 ) -> (stream::testing::Client, stream::testing::Server) {
     let client = stream::testing::Client::default();
-    let server = stream::testing::Server::new(protocol, accept_flavor);
+    let server = stream::testing::Server::builder()
+        .protocol(protocol)
+        .accept_flavor(accept_flavor)
+        .build();
     client.handshake_with(&server).unwrap();
     (client, server)
 }

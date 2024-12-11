@@ -31,7 +31,6 @@ where
 {
     inner: Inner<W>,
     waker_set: waker::Set,
-    root_waker: Option<Waker>,
 }
 
 /// Split the tasks from the waker set to avoid ownership issues
@@ -120,11 +119,7 @@ where
             sojourn_time: RttEstimator::new(Duration::from_secs(30)),
         };
 
-        Self {
-            inner,
-            waker_set,
-            root_waker: None,
-        }
+        Self { inner, waker_set }
     }
 
     #[inline]
@@ -149,19 +144,8 @@ where
 
     /// Must be called before polling any workers
     #[inline]
-    pub fn update_task_context(&mut self, cx: &mut task::Context) {
-        let new_waker = cx.waker();
-
-        let root_task_requires_update = if let Some(waker) = self.root_waker.as_ref() {
-            !waker.will_wake(new_waker)
-        } else {
-            true
-        };
-
-        if root_task_requires_update {
-            self.waker_set.update_root(new_waker);
-            self.root_waker = Some(new_waker.clone());
-        }
+    pub fn poll_start(&mut self, cx: &mut task::Context) {
+        self.waker_set.poll_start(cx);
     }
 
     #[inline]
@@ -221,8 +205,15 @@ where
         Pub: EndpointPublisher,
         C: Clock,
     {
+        let ready = self.waker_set.drain();
+
+        // no need to actually poll any workers if none are active
+        if self.inner.by_sojourn_time.is_empty() {
+            return ControlFlow::Continue(());
+        }
+
         // poll any workers that are ready
-        for idx in self.waker_set.drain() {
+        for idx in ready {
             if self.inner.poll_worker(idx, cx, publisher, clock).is_break() {
                 return ControlFlow::Break(());
             }

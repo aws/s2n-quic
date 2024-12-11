@@ -79,7 +79,7 @@ where
         let mut context = worker::Context::new(&self);
 
         poll_fn(move |cx| {
-            workers.update_task_context(cx);
+            workers.poll_start(cx);
 
             let now = self.env.clock().get_time();
             let publisher = publisher(&self.subscriber, &now);

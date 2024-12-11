@@ -28,6 +28,8 @@ pub mod socket;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+#[cfg(test)]
+mod tests;
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
