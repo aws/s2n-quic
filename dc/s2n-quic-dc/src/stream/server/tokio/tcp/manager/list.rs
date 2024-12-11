@@ -151,7 +151,7 @@ impl List {
 
     #[inline]
     #[cfg_attr(not(debug_assertions), allow(dead_code))]
-    pub fn iter<'a, L>(&'a self, entries: &'a [L]) -> impl Iterator<Item = usize> + '_
+    pub fn iter<'a, L>(&'a self, entries: &'a [L]) -> impl Iterator<Item = usize> + 'a
     where
         L: AsRef<Link>,
     {
