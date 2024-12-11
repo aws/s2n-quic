@@ -873,6 +873,7 @@ jobs:
           lfs: true
 
       - name: Install rust toolchain
+        working-directory: dc/wireshark
         run: |
           rustup toolchain install stable --profile minimal --component clippy,rustfmt
           rustup override set stable
