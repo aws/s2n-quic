@@ -271,6 +271,44 @@ jobs:
         run: |
           ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
+  asan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install rust toolchain
+        id: toolchain
+        run: |
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --component rust-src
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+
+      - uses: camshaft/rust-cache@v1
+
+      # asan expects a binary at /usr/bin/llvm-symbolizer but GHA runners include
+      # multiple versioned binaries, like /usr/bin/llvm-symbolizer-13. This step
+      # finds the latest symbolizer and use it as the "base" llvm-symbolizer binary.
+      #
+      # llvm-symbolizer is necessary to get nice stack traces from asan errors. 
+      # Otherwise the stack trace just contains a hex address like "0x55bc6a28a9b6"
+      - name: set llvm symbolizer
+        run: |
+          sudo ln -s $(find /usr/bin/ -maxdepth 1 -name "llvm-symbolizer-*" | sort -V | tail -n 1) /usr/bin/llvm-symbolizer
+
+      - name: Run Unit Tests under ASAN
+        env:
+          RUSTDOCFLAGS: -Zsanitizer=address
+          RUSTFLAGS: -Zsanitizer=address
+          # We got a few globals that aren't cleaned up. Need to 
+          # determine if we should reenable this in the future.
+          ASAN_OPTIONS: detect_leaks=false
+        run: |
+          cargo test \
+            -Zbuild-std \
+            --target x86_64-unknown-linux-gnu \
+            --workspace
+
   fips:
     runs-on: ubuntu-latest
     steps:
