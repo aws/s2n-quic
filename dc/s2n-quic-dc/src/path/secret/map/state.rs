@@ -8,7 +8,7 @@ use crate::{
     event::{self, EndpointPublisher as _, IntoEvent as _},
     fixed_map::{self, ReadGuard},
     packet::{secret_control as control, Packet},
-    path::secret::{receiver, HandshakeKind},
+    path::secret::receiver,
 };
 use s2n_quic_core::{
     inet::SocketAddress,
@@ -355,8 +355,12 @@ where
         self.peers.clear();
     }
 
-    fn contains(&self, peer: SocketAddr) -> bool {
-        self.peers.contains_key(&peer) && !self.requested_handshakes.pin().contains(&peer)
+    fn contains(&self, peer: &SocketAddr) -> bool {
+        self.peers.contains_key(peer)
+    }
+
+    fn needs_handshake(&self, peer: &SocketAddr) -> bool {
+        self.requested_handshakes.pin().contains(peer)
     }
 
     fn on_new_path_secrets(&self, entry: Arc<Entry>) {
@@ -408,29 +412,21 @@ where
             });
     }
 
-    fn get_by_addr_tracked(
-        &self,
-        peer: &SocketAddr,
-        handshake: HandshakeKind,
-    ) -> Option<ReadGuard<Arc<Entry>>> {
-        let result = self.peers.get_by_key(peer)?;
+    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
+        self.peers.get_by_key(peer)
+    }
 
-        // If this is trying to use a cached handshake but we've got a request to do a handshake, then
-        // force the application to do a new handshake. This is consistent with the `contains` method.
-        if matches!(handshake, HandshakeKind::Cached)
-            && self.requested_handshakes.pin().contains(peer)
-        {
-            return None;
-        }
+    fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
+        let result = self.peers.get_by_key(peer);
 
         self.subscriber().on_path_secret_map_address_cache_accessed(
             event::builder::PathSecretMapAddressCacheAccessed {
                 peer_address: SocketAddress::from(*peer).into_event(),
-                hit: matches!(handshake, HandshakeKind::Cached),
+                hit: result.is_some(),
             },
         );
 
-        Some(result)
+        result
     }
 
     fn get_by_id_untracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>> {
