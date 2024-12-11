@@ -35,6 +35,8 @@ openssl = { version = "0.10" }
 openssl-sys = { version = "0.9", features = ["vendored"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-rustls = { path = "../s2n-quic-rustls" }
+# tests depend on alert behavior from >=0.3.8
+s2n-tls = { version = "0.3.8", features = ["quic"] }
 
 # we don't use openssl-sys directly; it's just here to pin and vendor in dev
 [package.metadata.cargo-udeps.ignore]
