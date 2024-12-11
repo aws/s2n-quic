@@ -45,14 +45,8 @@ impl List {
         self.len == 0
     }
 
-    /// # Safety
-    ///
-    /// Callers must ensure:
-    ///
-    /// * `entries` is only managed by [`List`]
-    /// * `idx` is less than `usize::MAX`
     #[inline]
-    pub unsafe fn pop<L>(&mut self, entries: &mut [L]) -> Option<usize>
+    pub fn pop<L>(&mut self, entries: &mut [L]) -> Option<usize>
     where
         L: AsMut<Link>,
     {
@@ -61,14 +55,14 @@ impl List {
         }
 
         let idx = self.head;
-        let link = entries.get_unchecked_mut(idx).as_mut();
+        let link = entries[idx].as_mut();
         self.head = link.next;
         link.reset();
 
         if self.head == usize::MAX {
             self.tail = usize::MAX;
         } else {
-            entries.get_unchecked_mut(self.head).as_mut().prev = usize::MAX;
+            entries[self.head].as_mut().prev = usize::MAX;
         }
 
         self.set_linked_status(idx, false);
@@ -85,62 +79,51 @@ impl List {
         }
     }
 
-    /// # Safety
-    ///
-    /// Callers must ensure:
-    ///
-    /// * `entries` is only managed by [`List`]
-    /// * `idx` is in bounds of `entries`
-    /// * `idx` is less than `usize::MAX`
     #[inline]
-    pub unsafe fn push<L>(&mut self, entries: &mut [L], idx: usize)
+    pub fn push<L>(&mut self, entries: &mut [L], idx: usize)
     where
         L: AsMut<Link>,
     {
+        debug_assert!(idx < usize::MAX);
+
         let tail = self.tail;
         if tail != usize::MAX {
-            entries.get_unchecked_mut(tail).as_mut().next = idx;
+            entries[tail].as_mut().next = idx;
         } else {
             debug_assert!(self.is_empty());
             self.head = idx;
         }
         self.tail = idx;
 
-        let link = entries.get_unchecked_mut(idx).as_mut();
+        let link = entries[idx].as_mut();
         link.prev = tail;
         link.next = usize::MAX;
 
         self.set_linked_status(idx, true);
     }
 
-    /// # Safety
-    ///
-    /// Callers must ensure:
-    ///
-    /// * `entries` is only managed by [`List`]
-    /// * `idx` is in bounds of `entries`
-    /// * `idx` must be less that `usize::MAX`
     #[inline]
-    pub unsafe fn remove<L>(&mut self, entries: &mut [L], idx: usize)
+    pub fn remove<L>(&mut self, entries: &mut [L], idx: usize)
     where
         L: AsMut<Link>,
     {
         debug_assert!(!self.is_empty());
+        debug_assert!(idx < usize::MAX);
 
-        let link = entries.get_unchecked_mut(idx).as_mut();
+        let link = entries[idx].as_mut();
         let next = link.next;
         let prev = link.prev;
         link.reset();
 
         if prev != usize::MAX {
-            entries.get_unchecked_mut(prev).as_mut().next = next;
+            entries[prev].as_mut().next = next;
         } else {
             debug_assert!(self.head == idx);
             self.head = next;
         }
 
         if next != usize::MAX {
-            entries.get_unchecked_mut(next).as_mut().prev = prev;
+            entries[next].as_mut().prev = prev;
         } else {
             debug_assert!(self.tail == idx);
             self.tail = prev;
@@ -254,7 +237,7 @@ mod tests {
     impl CheckedList {
         #[inline]
         fn pop(&mut self, entries: &mut [Link]) -> Option<usize> {
-            let v = unsafe { self.list.pop(entries) };
+            let v = self.list.pop(entries);
             assert_eq!(v, self.oracle.pop_front());
             self.invariants(entries);
             v
@@ -262,14 +245,14 @@ mod tests {
 
         #[inline]
         fn push(&mut self, entries: &mut [Link], v: usize) {
-            unsafe { self.list.push(entries, v) };
+            self.list.push(entries, v);
             self.oracle.push_back(v);
             self.invariants(entries);
         }
 
         #[inline]
         fn remove(&mut self, entries: &mut [Link], v: usize) {
-            unsafe { self.list.remove(entries, v) };
+            self.list.remove(entries, v);
             let idx = self.oracle.iter().position(|&x| x == v).unwrap();
             self.oracle.remove(idx);
             self.invariants(entries);

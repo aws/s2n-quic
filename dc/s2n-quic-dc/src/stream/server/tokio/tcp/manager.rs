@@ -107,10 +107,7 @@ where
         let capacity = workers.len();
         let mut free = List::default();
         for idx in 0..capacity {
-            unsafe {
-                // SAFETY: idx is in bounds
-                free.push(&mut workers, idx);
-            }
+            free.push(&mut workers, idx);
         }
 
         let by_sojourn_time = List::default();
@@ -203,12 +200,9 @@ where
             clock,
         );
 
-        unsafe {
-            // SAFETY: the idx is in bounds
-            self.inner
-                .by_sojourn_time
-                .push(&mut self.inner.workers, idx);
-        }
+        self.inner
+            .by_sojourn_time
+            .push(&mut self.inner.workers, idx);
 
         // kick off the initial poll to register wakers with the socket
         self.inner.poll_worker(idx, cx, publisher, clock);
@@ -296,11 +290,8 @@ where
         }
 
         // the worker is all done so indicate we have another free slot
-        unsafe {
-            // SAFETY: list entries are managed by the list impl; idx is in bounds
-            self.by_sojourn_time.remove(&mut self.workers, idx);
-            self.free.push(&mut self.workers, idx);
-        }
+        self.by_sojourn_time.remove(&mut self.workers, idx);
+        self.free.push(&mut self.workers, idx);
 
         cf
     }
@@ -311,10 +302,7 @@ where
         C: Clock,
     {
         // if we have a free worker then use that
-        if let Some(idx) = unsafe {
-            // SAFETY: free list manages `workers` linked status
-            self.free.pop(&mut self.workers)
-        } {
+        if let Some(idx) = self.free.pop(&mut self.workers) {
             trace!(op = %"next_worker", free = idx);
             return Some(idx);
         }
@@ -325,10 +313,7 @@ where
         // if the worker's sojourn time exceeds the maximum, then reclaim it
         if sojourn >= self.max_sojourn_time() {
             trace!(op = %"next_worker", injected = idx, ?sojourn);
-            return unsafe {
-                // SAFETY: by_sojourn_time list manages `workers` linked status
-                self.by_sojourn_time.pop(&mut self.workers)
-            };
+            return self.by_sojourn_time.pop(&mut self.workers);
         }
 
         trace!(op = %"next_worker", ?sojourn, max_sojourn_time = ?self.max_sojourn_time());
