@@ -3,7 +3,8 @@
 
 use core::fmt;
 
-const SLOT_SIZE: usize = core::mem::size_of::<usize>();
+const SLOT_BYTES: usize = core::mem::size_of::<usize>();
+const SLOT_BITS: usize = SLOT_BYTES * 8;
 
 #[derive(Clone, Default)]
 pub struct BitSet {
@@ -74,8 +75,8 @@ impl BitSet {
 
     #[inline(always)]
     fn index_mask(id: usize) -> (usize, usize) {
-        let index = id / SLOT_SIZE;
-        let mask = 1 << (id % SLOT_SIZE);
+        let index = id / SLOT_BYTES;
+        let mask = 1 << (id % SLOT_BYTES);
         (index, mask)
     }
 }
@@ -84,6 +85,17 @@ struct Iter<S: Slots> {
     slots: S,
     index: usize,
     shift: usize,
+}
+
+impl<S: Slots> Iter<S> {
+    #[inline]
+    fn next_index(&mut self, is_occupied: bool) {
+        if is_occupied {
+            self.slots.on_next(self.index);
+        }
+        self.index += 1;
+        self.shift = 0;
+    }
 }
 
 impl<S: Slots> Iterator for Iter<S> {
@@ -96,23 +108,31 @@ impl<S: Slots> Iterator for Iter<S> {
 
             // if the slot is empty then keep going
             if slot == 0 {
-                self.index += 1;
+                self.next_index(false);
                 continue;
             }
 
-            while self.shift < SLOT_SIZE {
-                let shift = self.shift;
-                let id = self.index * SLOT_SIZE + shift;
-                let mask = 1 << shift;
-                self.shift += 1;
-                if slot & mask != 0 {
-                    return Some(id);
-                }
+            // get the number of 0s before the next 1
+            let trailing = (slot >> self.shift).trailing_zeros() as usize;
+
+            // no more 1s so go to the next slot
+            if trailing == SLOT_BITS {
+                self.next_index(true);
+                continue;
             }
 
-            self.slots.on_next(self.index);
-            self.index += 1;
-            self.shift = 0;
+            let shift = self.shift + trailing;
+            let id = self.index * SLOT_BYTES + shift;
+            let next_shift = shift + 1;
+
+            // check if the next shift overflows into the next index
+            if next_shift == SLOT_BITS {
+                self.next_index(true);
+            } else {
+                self.shift = next_shift;
+            }
+
+            return Some(id);
         }
     }
 }
