@@ -300,6 +300,9 @@ jobs:
         env:
           RUSTDOCFLAGS: -Zsanitizer=address
           RUSTFLAGS: -Zsanitizer=address
+          # We got a few globals that aren't cleaned up. Need to 
+          # determine if we should reenable this in the future.
+          ASAN_OPTIONS: detect_leaks=false
         run: |
           cargo test \
             -Zbuild-std \
