@@ -4,7 +4,7 @@
 use super::{server::tokio::stats, socket::Protocol};
 use crate::{
     event,
-    path::secret::{self, HandshakeKind},
+    path::secret,
     stream::{
         application::Stream,
         client::tokio as client,
@@ -40,7 +40,7 @@ impl Client {
     ) -> io::Result<secret::map::Peer> {
         let server = server.as_ref();
         let peer = server.local_addr;
-        if let Some(peer) = self.map.get_tracked(peer, HandshakeKind::Cached) {
+        if let Some(peer) = self.map.get_tracked(peer) {
             return Ok(peer);
         }
 
@@ -48,11 +48,10 @@ impl Client {
         self.map
             .test_insert_pair(local_addr, &server.map, server.local_addr);
 
-        self.map
-            .get_tracked(peer, HandshakeKind::Fresh)
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::AddrNotAvailable, "path secret not available")
-            })
+        // cache hit already tracked above
+        self.map.get_untracked(peer).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::AddrNotAvailable, "path secret not available")
+        })
     }
 
     pub async fn connect_to<S: AsRef<ServerHandle>>(

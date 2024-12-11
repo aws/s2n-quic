@@ -6,7 +6,7 @@ use crate::{
     credentials::{Credentials, Id},
     fixed_map::ReadGuard,
     packet::{secret_control as control, Packet, WireVersion},
-    path::secret::{receiver, stateless_reset, HandshakeKind},
+    path::secret::{receiver, stateless_reset},
 };
 use core::time::Duration;
 use s2n_codec::EncoderBuffer;
@@ -21,17 +21,17 @@ pub trait Store: 'static + Send + Sync {
 
     fn drop_state(&self);
 
-    fn contains(&self, peer: SocketAddr) -> bool;
-
     fn on_new_path_secrets(&self, entry: Arc<Entry>);
 
     fn on_handshake_complete(&self, entry: Arc<Entry>);
 
-    fn get_by_addr_tracked(
-        &self,
-        peer: &SocketAddr,
-        handshake: HandshakeKind,
-    ) -> Option<ReadGuard<Arc<Entry>>>;
+    fn contains(&self, peer: &SocketAddr) -> bool;
+
+    fn needs_handshake(&self, peer: &SocketAddr) -> bool;
+
+    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
+
+    fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
 
     fn get_by_id_untracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
 

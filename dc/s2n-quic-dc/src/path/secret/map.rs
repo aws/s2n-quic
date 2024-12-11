@@ -5,7 +5,7 @@ use crate::{
     credentials::{Credentials, Id},
     event,
     packet::{secret_control as control, Packet},
-    path::secret::{open, seal, stateless_reset, HandshakeKind},
+    path::secret::{open, seal, stateless_reset},
     stream::TransportFeatures,
 };
 use s2n_quic_core::{dc, time};
@@ -86,16 +86,34 @@ impl Map {
         self.store.drop_state();
     }
 
-    pub fn contains(&self, peer: SocketAddr) -> bool {
+    pub fn contains(&self, peer: &SocketAddr) -> bool {
         self.store.contains(peer)
+    }
+
+    /// Check whether we would like to (re-)handshake with this peer.
+    ///
+    /// Note that this is distinct from `contains`, we may already have *some* credentials for a
+    /// peer but still be interested in handshaking (e.g., due to periodic refresh of the
+    /// credentials).
+    pub fn needs_handshake(&self, peer: &SocketAddr) -> bool {
+        self.store.needs_handshake(peer)
     }
 
     /// Gets the [`Peer`] entry for the given address
     ///
     /// NOTE: This function is used to track cache hit ratios so it
     ///       should only be used for connection attempts.
-    pub fn get_tracked(&self, peer: SocketAddr, handshake: HandshakeKind) -> Option<Peer> {
-        let entry = self.store.get_by_addr_tracked(&peer, handshake)?;
+    pub fn get_tracked(&self, peer: SocketAddr) -> Option<Peer> {
+        let entry = self.store.get_by_addr_tracked(&peer)?;
+        Some(Peer::new(&entry, self))
+    }
+
+    /// Gets the [`Peer`] entry for the given address
+    ///
+    /// NOTE: This function is used to track cache hit ratios so it
+    ///       should only be used for connection attempts.
+    pub fn get_untracked(&self, peer: SocketAddr) -> Option<Peer> {
+        let entry = self.store.get_by_addr_untracked(&peer)?;
         Some(Peer::new(&entry, self))
     }
 
