@@ -19,7 +19,7 @@ env:
   # This should be updated when updating wesleyrosenblum/quic-network-simulator
   NETWORK_SIMULATOR_REF: sha256:e102cb0e4b9457f510faf4ca888b4f7f6211aa109b68bfaaa1aa639059fcfc96
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
-  WIRESHARK_VERSION: 3.7.1
+  WIRESHARK_VERSION: 4.4.2
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
 
@@ -163,10 +163,14 @@ jobs:
 
       - name: Install tshark
         run: |
-          wget --no-verbose https://dnglbrstg7yg.cloudfront.net/tshark/v$WIRESHARK_VERSION/tshark
-          chmod +x tshark
-          sudo mv tshark /usr/bin
-          /usr/bin/tshark -v
+          function install() {
+            wget --no-verbose $CDN/tshark/v$WIRESHARK_VERSION/$1
+            chmod +x $1
+            sudo mv $1 /usr/bin/$1
+            /usr/bin/$1 -v
+          }
+          install tshark
+          install editcap
 
       - name: Install dependencies
         working-directory: quic-interop-runner
