@@ -7,9 +7,9 @@ use crate::{
     path::secret,
     stream::{
         application::Stream,
-        client::tokio as client,
+        client::tokio as stream_client,
         environment::{tokio as env, Environment as _},
-        server::tokio::{self as server, accept},
+        server::{tokio as stream_server, tokio::accept},
     },
 };
 use std::{io, net::SocketAddr};
@@ -34,7 +34,7 @@ impl Default for Client {
 }
 
 impl Client {
-    pub fn handshake_with<S: AsRef<ServerHandle>>(
+    pub fn handshake_with<S: AsRef<server::Handle>>(
         &self,
         server: &S,
     ) -> io::Result<secret::map::Peer> {
@@ -54,7 +54,7 @@ impl Client {
         })
     }
 
-    pub async fn connect_to<S: AsRef<ServerHandle>>(
+    pub async fn connect_to<S: AsRef<server::Handle>>(
         &self,
         server: &S,
     ) -> io::Result<Stream<Subscriber>> {
@@ -65,33 +65,35 @@ impl Client {
 
         match server.protocol {
             Protocol::Tcp => {
-                client::connect_tcp(handshake, server.local_addr, &self.env, subscriber).await
+                stream_client::connect_tcp(handshake, server.local_addr, &self.env, subscriber)
+                    .await
             }
             Protocol::Udp => {
-                client::connect_udp(handshake, server.local_addr, &self.env, subscriber).await
+                stream_client::connect_udp(handshake, server.local_addr, &self.env, subscriber)
+                    .await
             }
             Protocol::Other(name) => {
                 todo!("protocol {name:?} not implemented")
             }
         }
     }
-}
 
-#[derive(Clone)]
-pub struct ServerHandle {
-    map: secret::Map,
-    protocol: Protocol,
-    local_addr: SocketAddr,
-}
+    pub async fn connect_tcp_with<S: AsRef<server::Handle>>(
+        &self,
+        server: &S,
+        stream: tokio::net::TcpStream,
+    ) -> io::Result<Stream<Subscriber>> {
+        let server = server.as_ref();
+        let handshake = async { self.handshake_with(server) }.await?;
 
-impl AsRef<ServerHandle> for ServerHandle {
-    fn as_ref(&self) -> &ServerHandle {
-        self
+        let subscriber = Subscriber::default();
+
+        stream_client::connect_tcp_with(handshake, stream, &self.env, subscriber).await
     }
 }
 
 pub struct Server {
-    handle: ServerHandle,
+    handle: server::Handle,
     receiver: accept::Receiver<Subscriber>,
     stats: stats::Sender,
     #[allow(dead_code)]
@@ -100,125 +102,34 @@ pub struct Server {
 
 impl Default for Server {
     fn default() -> Self {
-        Self::new_udp(accept::Flavor::Fifo)
+        Self::tcp().build()
     }
 }
 
-impl AsRef<ServerHandle> for Server {
-    fn as_ref(&self) -> &ServerHandle {
+impl AsRef<server::Handle> for Server {
+    fn as_ref(&self) -> &server::Handle {
         &self.handle
     }
 }
 
 impl Server {
-    pub fn new_tcp(accept_flavor: accept::Flavor) -> Self {
-        Self::new(Protocol::Tcp, accept_flavor)
+    pub fn builder() -> server::Builder {
+        server::Builder::default()
     }
 
-    pub fn new_udp(accept_flavor: accept::Flavor) -> Self {
-        Self::new(Protocol::Udp, accept_flavor)
+    pub fn tcp() -> server::Builder {
+        Self::builder().tcp()
     }
 
-    pub fn new(protocol: Protocol, accept_flavor: accept::Flavor) -> Self {
-        if s2n_quic_platform::io::testing::is_in_env() {
-            todo!()
-        } else {
-            Self::new_tokio(protocol, accept_flavor)
-        }
+    pub fn udp() -> server::Builder {
+        Self::builder().udp()
     }
 
-    fn new_tokio(protocol: Protocol, accept_flavor: accept::Flavor) -> Self {
-        let _span = tracing::info_span!("server").entered();
-        let map = secret::map::testing::new(16);
-        let (sender, receiver) = accept::channel(16);
-
-        let options = crate::socket::Options::new("127.0.0.1:0".parse().unwrap());
-
-        let env = env::Builder::default().build().unwrap();
-
-        let subscriber = event::tracing::Subscriber::default();
-        let (drop_handle_sender, drop_handle_receiver) = drop_handle::new();
-
-        let local_addr = match protocol {
-            Protocol::Tcp => {
-                let socket = options.build_tcp_listener().unwrap();
-                let local_addr = socket.local_addr().unwrap();
-                let socket = tokio::net::TcpListener::from_std(socket).unwrap();
-
-                let acceptor = server::tcp::Acceptor::new(
-                    0,
-                    socket,
-                    &sender,
-                    &env,
-                    &map,
-                    16,
-                    accept_flavor,
-                    subscriber,
-                );
-                let acceptor = drop_handle_receiver.wrap(acceptor.run());
-                let acceptor = acceptor.instrument(tracing::info_span!("tcp"));
-                tokio::task::spawn(acceptor);
-
-                local_addr
-            }
-            Protocol::Udp => {
-                let socket = options.build_udp().unwrap();
-                let local_addr = socket.local_addr().unwrap();
-
-                let socket = tokio::io::unix::AsyncFd::new(socket).unwrap();
-
-                let acceptor = server::udp::Acceptor::new(
-                    0,
-                    socket,
-                    &sender,
-                    &env,
-                    &map,
-                    accept_flavor,
-                    subscriber,
-                );
-                let acceptor = drop_handle_receiver.wrap(acceptor.run());
-                let acceptor = acceptor.instrument(tracing::info_span!("udp"));
-                tokio::task::spawn(acceptor);
-
-                local_addr
-            }
-            Protocol::Other(name) => {
-                todo!("protocol {name:?} not implemented")
-            }
-        };
-
-        let (stats_sender, stats_worker, stats) = stats::channel();
-
-        {
-            let task = stats_worker.run(env.clock().clone());
-            let task = task.instrument(tracing::info_span!("stats"));
-            let task = drop_handle_receiver.wrap(task);
-            tokio::task::spawn(task);
-        }
-
-        if matches!(accept_flavor, accept::Flavor::Lifo) {
-            let channel = receiver.downgrade();
-            let task = accept::Pruner::default().run(env, channel, stats);
-            let task = task.instrument(tracing::info_span!("pruner"));
-            let task = drop_handle_receiver.wrap(task);
-            tokio::task::spawn(task);
-        }
-
-        let handle = ServerHandle {
-            map,
-            protocol,
-            local_addr,
-        };
-
-        Self {
-            handle,
-            receiver,
-            stats: stats_sender,
-            drop_handle: drop_handle_sender,
-        }
+    pub fn local_addr(&self) -> SocketAddr {
+        self.as_ref().local_addr
     }
 
-    pub fn handle(&self) -> ServerHandle {
+    pub fn handle(&self) -> server::Handle {
         self.handle.clone()
     }
 
@@ -255,4 +166,164 @@ mod drop_handle {
     }
 
     pub struct Sender(#[allow(dead_code)] watch::Sender<()>);
+}
+
+pub mod server {
+    use super::*;
+
+    #[derive(Clone)]
+    pub struct Handle {
+        pub(super) map: secret::Map,
+        pub(super) protocol: Protocol,
+        pub(super) local_addr: SocketAddr,
+    }
+
+    impl AsRef<Handle> for Handle {
+        fn as_ref(&self) -> &Handle {
+            self
+        }
+    }
+
+    pub struct Builder {
+        backlog: usize,
+        flavor: accept::Flavor,
+        protocol: Protocol,
+        map_capacity: usize,
+    }
+
+    impl Default for Builder {
+        fn default() -> Self {
+            Self {
+                backlog: 16,
+                flavor: accept::Flavor::default(),
+                protocol: Protocol::Tcp,
+                map_capacity: 16,
+            }
+        }
+    }
+
+    impl Builder {
+        pub fn build(self) -> Server {
+            if s2n_quic_platform::io::testing::is_in_env() {
+                todo!()
+            } else {
+                self.build_tokio()
+            }
+        }
+
+        pub fn tcp(mut self) -> Self {
+            self.protocol = Protocol::Tcp;
+            self
+        }
+
+        pub fn udp(mut self) -> Self {
+            self.protocol = Protocol::Udp;
+            self
+        }
+
+        pub fn protocol(mut self, protocol: Protocol) -> Self {
+            self.protocol = protocol;
+            self
+        }
+
+        pub fn backlog(mut self, backlog: usize) -> Self {
+            self.backlog = backlog;
+            self
+        }
+
+        pub fn map_capacity(mut self, map_capacity: usize) -> Self {
+            self.map_capacity = map_capacity;
+            self
+        }
+
+        pub fn accept_flavor(mut self, flavor: accept::Flavor) -> Self {
+            self.flavor = flavor;
+            self
+        }
+
+        fn build_tokio(self) -> super::Server {
+            let Self {
+                backlog,
+                flavor,
+                protocol,
+                map_capacity,
+            } = self;
+
+            let _span = tracing::info_span!("server").entered();
+            let map = secret::map::testing::new(map_capacity);
+            let (sender, receiver) = accept::channel(backlog);
+
+            let options = crate::socket::Options::new("127.0.0.1:0".parse().unwrap());
+
+            let env = env::Builder::default().build().unwrap();
+
+            let subscriber = event::tracing::Subscriber::default();
+            let (drop_handle_sender, drop_handle_receiver) = drop_handle::new();
+
+            let local_addr = match protocol {
+                Protocol::Tcp => {
+                    let socket = options.build_tcp_listener().unwrap();
+                    let local_addr = socket.local_addr().unwrap();
+                    let socket = tokio::net::TcpListener::from_std(socket).unwrap();
+
+                    let acceptor = stream_server::tcp::Acceptor::new(
+                        0, socket, &sender, &env, &map, backlog, flavor, subscriber,
+                    );
+                    let acceptor = drop_handle_receiver.wrap(acceptor.run());
+                    let acceptor = acceptor.instrument(tracing::info_span!("tcp"));
+                    tokio::task::spawn(acceptor);
+
+                    local_addr
+                }
+                Protocol::Udp => {
+                    let socket = options.build_udp().unwrap();
+                    let local_addr = socket.local_addr().unwrap();
+
+                    let socket = tokio::io::unix::AsyncFd::new(socket).unwrap();
+
+                    let acceptor = stream_server::udp::Acceptor::new(
+                        0, socket, &sender, &env, &map, flavor, subscriber,
+                    );
+                    let acceptor = drop_handle_receiver.wrap(acceptor.run());
+                    let acceptor = acceptor.instrument(tracing::info_span!("udp"));
+                    tokio::task::spawn(acceptor);
+
+                    local_addr
+                }
+                Protocol::Other(name) => {
+                    todo!("protocol {name:?} not implemented")
+                }
+            };
+
+            let (stats_sender, stats_worker, stats) = stats::channel();
+
+            {
+                let task = stats_worker.run(env.clock().clone());
+                let task = task.instrument(tracing::info_span!("stats"));
+                let task = drop_handle_receiver.wrap(task);
+                tokio::task::spawn(task);
+            }
+
+            if matches!(flavor, accept::Flavor::Lifo) {
+                let channel = receiver.downgrade();
+                let task = accept::Pruner::default().run(env, channel, stats);
+                let task = task.instrument(tracing::info_span!("pruner"));
+                let task = drop_handle_receiver.wrap(task);
+                tokio::task::spawn(task);
+            }
+
+            let handle = server::Handle {
+                map,
+                protocol,
+                local_addr,
+            };
+
+            super::Server {
+                handle,
+                receiver,
+                stats: stats_sender,
+                drop_handle: drop_handle_sender,
+            }
+        }
+    }
 }

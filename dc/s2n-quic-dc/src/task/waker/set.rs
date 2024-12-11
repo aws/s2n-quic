@@ -4,7 +4,7 @@
 use super::worker;
 use std::{
     sync::{Arc, Mutex},
-    task::{Wake, Waker},
+    task::{self, Wake, Waker},
 };
 
 mod bitset;
@@ -14,12 +14,25 @@ use bitset::BitSet;
 pub struct Set {
     state: Arc<State>,
     ready: BitSet,
+    local_root: Option<Waker>,
 }
 
 impl Set {
-    /// Updates the root waker
-    pub fn update_root(&self, waker: &Waker) {
-        self.state.root.update(waker);
+    /// Called at the beginning of the `poll` function for the owner of [`Set`]
+    #[inline]
+    pub fn poll_start(&mut self, cx: &task::Context) {
+        let new_waker = cx.waker();
+
+        let root_task_requires_update = if let Some(waker) = self.local_root.as_ref() {
+            !waker.will_wake(new_waker)
+        } else {
+            true
+        };
+
+        if root_task_requires_update {
+            self.state.root.update(new_waker);
+            self.local_root = Some(new_waker.clone());
+        }
     }
 
     /// Registers a waker with the given ID
@@ -32,6 +45,7 @@ impl Set {
     }
 
     /// Returns all of the IDs that are woken
+    #[inline]
     pub fn drain(&mut self) -> impl Iterator<Item = usize> + '_ {
         core::mem::swap(&mut self.ready, &mut self.state.ready.lock().unwrap());
         self.ready.drain()
@@ -58,7 +72,8 @@ impl Wake for Slot {
             ready.insert_unchecked(self.id)
         }
         drop(ready);
-        self.state.root.wake();
+        // use `wake_forced` instead of `wake` since we don't use the sleeping status from `worker::Waker``
+        self.state.root.wake_forced();
     }
 }
 
