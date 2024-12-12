@@ -106,7 +106,7 @@ where
         let capacity = workers.len();
         let mut free = List::default();
         for idx in 0..capacity {
-            free.push(&mut workers, idx);
+            free.push_back(&mut workers, idx);
         }
 
         let by_sojourn_time = List::default();
@@ -186,7 +186,7 @@ where
 
         self.inner
             .by_sojourn_time
-            .push(&mut self.inner.workers, idx);
+            .push_back(&mut self.inner.workers, idx);
 
         // kick off the initial poll to register wakers with the socket
         self.inner.poll_worker(idx, cx, publisher, clock);
@@ -282,7 +282,8 @@ where
 
         // the worker is all done so indicate we have another free slot
         self.by_sojourn_time.remove(&mut self.workers, idx);
-        self.free.push(&mut self.workers, idx);
+        // use `push_front` instead to avoid cache churn
+        self.free.push_front(&mut self.workers, idx);
 
         cf
     }
@@ -293,7 +294,7 @@ where
         C: Clock,
     {
         // if we have a free worker then use that
-        if let Some(idx) = self.free.pop(&mut self.workers) {
+        if let Some(idx) = self.free.pop_front(&mut self.workers) {
             trace!(op = %"next_worker", free = idx);
             return Some(idx);
         }
@@ -304,7 +305,7 @@ where
         // if the worker's sojourn time exceeds the maximum, then reclaim it
         if sojourn >= self.max_sojourn_time() {
             trace!(op = %"next_worker", injected = idx, ?sojourn);
-            return self.by_sojourn_time.pop(&mut self.workers);
+            return self.by_sojourn_time.pop_front(&mut self.workers);
         }
 
         trace!(op = %"next_worker", ?sojourn, max_sojourn_time = ?self.max_sojourn_time());
@@ -317,18 +318,13 @@ where
 
     #[cfg(debug_assertions)]
     fn invariants(&self) {
-        for idx in 0..self.workers.len() {
-            assert!(
-                self.free
-                    .iter(&self.workers)
-                    .chain(self.by_sojourn_time.iter(&self.workers))
-                    .filter(|v| *v == idx)
-                    .count()
-                    == 1,
-                "worker {idx} should be linked at all times\n{:?}",
-                self.workers[idx].link,
-            );
-        }
+        let mut linked_workers = self
+            .free
+            .iter(&self.workers)
+            .chain(self.by_sojourn_time.iter(&self.workers))
+            .collect::<Vec<_>>();
+        linked_workers.sort();
+        assert!((0..self.workers.len()).eq(linked_workers.iter().copied()));
 
         let mut expected_free_len = 0usize;
         for idx in self.free.iter(&self.workers) {

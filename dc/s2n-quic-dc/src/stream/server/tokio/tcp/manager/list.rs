@@ -46,7 +46,7 @@ impl List {
     }
 
     #[inline]
-    pub fn pop<L>(&mut self, entries: &mut [L]) -> Option<usize>
+    pub fn pop_front<L>(&mut self, entries: &mut [L]) -> Option<usize>
     where
         L: AsMut<Link>,
     {
@@ -80,7 +80,30 @@ impl List {
     }
 
     #[inline]
-    pub fn push<L>(&mut self, entries: &mut [L], idx: usize)
+    pub fn push_front<L>(&mut self, entries: &mut [L], idx: usize)
+    where
+        L: AsMut<Link>,
+    {
+        debug_assert!(idx < usize::MAX);
+
+        let head = self.head;
+        if head != usize::MAX {
+            entries[head].as_mut().prev = idx;
+        } else {
+            debug_assert!(self.is_empty());
+            self.tail = idx;
+        }
+        self.head = idx;
+
+        let link = entries[idx].as_mut();
+        link.prev = usize::MAX;
+        link.next = head;
+
+        self.set_linked_status(idx, true);
+    }
+
+    #[inline]
+    pub fn push_back<L>(&mut self, entries: &mut [L], idx: usize)
     where
         L: AsMut<Link>,
     {
@@ -237,15 +260,31 @@ mod tests {
     impl CheckedList {
         #[inline]
         fn pop(&mut self, entries: &mut [Link]) -> Option<usize> {
-            let v = self.list.pop(entries);
+            let v = self.list.pop_front(entries);
             assert_eq!(v, self.oracle.pop_front());
             self.invariants(entries);
             v
         }
 
         #[inline]
-        fn push(&mut self, entries: &mut [Link], v: usize) {
-            self.list.push(entries, v);
+        fn push(&mut self, entries: &mut [Link], v: usize, front: bool) {
+            if front {
+                self.push_front(entries, v);
+            } else {
+                self.push_back(entries, v);
+            }
+        }
+
+        #[inline]
+        fn push_front(&mut self, entries: &mut [Link], v: usize) {
+            self.list.push_front(entries, v);
+            self.oracle.push_front(v);
+            self.invariants(entries);
+        }
+
+        #[inline]
+        fn push_back(&mut self, entries: &mut [Link], v: usize) {
+            self.list.push_back(entries, v);
             self.oracle.push_back(v);
             self.invariants(entries);
         }
@@ -279,7 +318,7 @@ mod tests {
             let locations = (0..LEN).map(|_| Location::A).collect();
 
             for idx in 0..LEN {
-                a.push(&mut entries, idx);
+                a.push_back(&mut entries, idx);
             }
 
             Self {
@@ -293,34 +332,34 @@ mod tests {
 
     impl Harness {
         #[inline]
-        fn transfer(&mut self, idx: usize) {
+        fn transfer(&mut self, idx: usize, front: bool) {
             let location = &mut self.locations[idx];
             match location {
                 Location::A => {
                     self.a.remove(&mut self.entries, idx);
-                    self.b.push(&mut self.entries, idx);
+                    self.b.push(&mut self.entries, idx, front);
                     *location = Location::B;
                 }
                 Location::B => {
                     self.b.remove(&mut self.entries, idx);
-                    self.a.push(&mut self.entries, idx);
+                    self.a.push(&mut self.entries, idx, front);
                     *location = Location::A;
                 }
             }
         }
 
         #[inline]
-        fn pop_a(&mut self) {
+        fn pop_a(&mut self, front: bool) {
             if let Some(v) = self.a.pop(&mut self.entries) {
-                self.b.push(&mut self.entries, v);
+                self.b.push(&mut self.entries, v, front);
                 self.locations[v] = Location::B;
             }
         }
 
         #[inline]
-        fn pop_b(&mut self) {
+        fn pop_b(&mut self, front: bool) {
             if let Some(v) = self.b.pop(&mut self.entries) {
-                self.a.push(&mut self.entries, v);
+                self.a.push(&mut self.entries, v, front);
                 self.locations[v] = Location::A;
             }
         }
@@ -328,9 +367,17 @@ mod tests {
 
     #[derive(Clone, Copy, Debug, TypeGenerator)]
     enum Op {
-        Transfer(#[generator(0..LEN)] usize),
-        PopA,
-        PopB,
+        Transfer {
+            #[generator(0..LEN)]
+            idx: usize,
+            front: bool,
+        },
+        PopA {
+            front: bool,
+        },
+        PopB {
+            front: bool,
+        },
     }
 
     #[test]
@@ -338,10 +385,10 @@ mod tests {
         check!().with_type::<Vec<Op>>().for_each(|ops| {
             let mut harness = Harness::default();
             for op in ops {
-                match op {
-                    Op::Transfer(idx) => harness.transfer(*idx),
-                    Op::PopA => harness.pop_a(),
-                    Op::PopB => harness.pop_b(),
+                match *op {
+                    Op::Transfer { idx, front } => harness.transfer(idx, front),
+                    Op::PopA { front } => harness.pop_a(front),
+                    Op::PopB { front } => harness.pop_b(front),
                 }
             }
         })
