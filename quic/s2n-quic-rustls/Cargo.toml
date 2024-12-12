@@ -18,10 +18,10 @@ bytes = { version = "1", default-features = false }
 # By [default](https://docs.rs/crate/rustls/latest/features) rustls includes the `tls12` feature.
 rustls = { version = "0.23", default-features = false, features=["std", "aws-lc-rs", "logging"] }
 rustls-pemfile = "2"
-s2n-codec = { version = "=0.51.0", path = "../../common/s2n-codec", default-features = false, features = ["alloc"] }
-s2n-quic-core = { version = "=0.51.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
-s2n-quic-crypto = { version = "=0.51.0", path = "../s2n-quic-crypto", default-features = false }
+s2n-codec = { workspace = true, default-features = false, features = ["alloc"] }
+s2n-quic-core = { workspace = true, default-features = false, features = ["alloc"] }
+s2n-quic-crypto = { workspace = true, default-features = false }
 
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }
-s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
+s2n-quic-core = { workspace = true, features = ["testing"] }

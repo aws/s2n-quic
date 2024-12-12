@@ -8,6 +8,3 @@ publish = false
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 rand = "0.8"
-
-[workspace]
-members = ["."]

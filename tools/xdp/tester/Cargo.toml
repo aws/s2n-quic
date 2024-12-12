@@ -1,5 +1,5 @@
 [package]
-name = "tester"
+name = "xdp-tester"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -11,5 +11,5 @@ clap = { version = "4.1", features = ["derive"] }
 anyhow = "1.0.68"
 env_logger = "0.11"
 log = "0.4"
-s2n-quic-xdp = { path = "../s2n-quic-xdp" }
+s2n-quic-xdp = { workspace = true }
 tokio = { version = "1.24", features = ["macros", "rt", "rt-multi-thread", "net", "signal"] }

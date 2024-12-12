@@ -1,5 +1,5 @@
 [package]
-name = "xtask"
+name = "xdp-xtask"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,6 +8,5 @@ anyhow = "1"
 bindgen = "0.70"
 clap = { version = "4.1", features = ["derive"] }
 elf = "0.7"
-env_logger = "0.11"
 rbpf = "0.2"
 similar = "2"
