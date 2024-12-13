@@ -24,10 +24,10 @@ fips = ["s2n-quic-tls?/fips"]
 # order to support the `?` syntax, we declare s2n-quic-tls as an optional dependency.
 # `s2n-quic-tls` only gets enabled based on the target.
 [dependencies]
-s2n-quic-tls = { version = "=0.51.0", path = "../s2n-quic-tls", optional = true }
+s2n-quic-tls = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
-s2n-quic-tls = { version = "=0.51.0", path = "../s2n-quic-tls" }
+s2n-quic-tls = { workspace = true }
 
 [target.'cfg(not(unix))'.dependencies]
-s2n-quic-rustls = { version = "=0.51.0", path = "../s2n-quic-rustls" }
+s2n-quic-rustls = { workspace = true }

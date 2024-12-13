@@ -20,11 +20,11 @@ testing = []
 aws-lc-rs = { version = "1.9", features = ["prebuilt-nasm"] }
 cfg-if = "1"
 lazy_static = "1"
-s2n-codec = { version = "=0.51.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.51.0", path = "../s2n-quic-core", default-features = false }
+s2n-codec = { workspace = true }
+s2n-quic-core = { workspace = true }
 zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 [dev-dependencies]
 hex-literal = "0.4"
 insta = { version = "1", features = ["json"] }
-s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
+s2n-quic-core = { workspace = true, features = ["testing"] }

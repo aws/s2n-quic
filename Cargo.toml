@@ -3,6 +3,11 @@ members = [
     "common/s2n-*",
     "quic/s2n-*",
     "dc/s2n-*",
+    "tools/memory-report",
+    "tools/udp-attack",
+    "tools/xdp/s2n-quic-xdp",
+    "tools/xdp/tester",
+    "tools/xdp/xtask",
 ]
 default-members = [
     "common/s2n-*",
@@ -18,6 +23,18 @@ exclude = [
 [workspace.dependencies]
 bolero = "0.12"
 bolero-generator = { version = "0.12", default-features = false }
+s2n-codec = { version = "=0.51.0", path = "./common/s2n-codec", default-features = false }
+s2n-quic-core = { version = "=0.51.0", path = "./quic/s2n-quic-core", default-features = false }
+s2n-quic-crypto = { version = "=0.51.0", path = "./quic/s2n-quic-crypto", default-features = false }
+s2n-quic-h3 = { version = "=0.1.0", path = "./quic/s2n-quic-h3", default-features = false }
+s2n-quic-platform = { version = "=0.51.0", path = "./quic/s2n-quic-platform", default-features = false }
+s2n-quic-qns = { version = "=0.51.0", path = "./quic/s2n-quic-qns", default-features = false }
+s2n-quic-rustls = { version = "=0.51.0", path = "./quic/s2n-quic-rustls", default-features = false }
+s2n-quic-tls = { version = "=0.51.0", path = "./quic/s2n-quic-tls", default-features = false }
+s2n-quic-tls-default = { version = "=0.51.0", path = "./quic/s2n-quic-tls-default", default-features = false }
+s2n-quic-transport = { version = "=0.51.0", path = "./quic/s2n-quic-transport", default-features = false }
+s2n-quic-xdp = { version = "=0.51.0", path = "./tools/xdp/s2n-quic-xdp", default-features = false }
+s2n-quic = { version = "=1.51.0", path = "./quic/s2n-quic", default-features = false }
 
 [profile.release-debug]
 inherits = "dev"

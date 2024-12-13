@@ -19,9 +19,9 @@ unstable_private_key = []
 bytes = { version = "1", default-features = false }
 errno = "0.3"
 libc = "0.2"
-s2n-codec = { version = "=0.51.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.51.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
-s2n-quic-crypto = { version = "=0.51.0", path = "../s2n-quic-crypto", default-features = false }
+s2n-codec = { workspace = true }
+s2n-quic-core = { workspace = true, features = ["alloc"] }
+s2n-quic-crypto = { workspace = true, default-features = false }
 s2n-tls = { version = "0.3", features = ["quic"] }
 
 [dev-dependencies]
@@ -33,8 +33,8 @@ openssl = { version = "0.10" }
 # NOTE: The version of the `openssl-sys` crate is not the same as OpenSSL itself.
 #       Versions 1.0.1 - 3.0.0 are automatically discovered.
 openssl-sys = { version = "0.9", features = ["vendored"] }
-s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
-s2n-quic-rustls = { path = "../s2n-quic-rustls" }
+s2n-quic-core = { workspace = true, features = ["testing"] }
+s2n-quic-rustls = { workspace = true }
 # tests depend on alert behavior from >=0.3.8
 s2n-tls = { version = "0.3.8", features = ["quic"] }
 

@@ -1,3 +1,6 @@
 [build]
 rustflags=['--cfg', 's2n_internal_dev']
 rustdocflags=['--cfg', 's2n_internal_dev']
+
+[alias]
+xdp-xtask = "run --package xdp-xtask --"
