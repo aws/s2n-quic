@@ -21,7 +21,7 @@ xdp = ["s2n-quic-xdp"]
 
 [dependencies]
 bach = { version = "0.0.6", optional = true }
-bolero-generator = { version = "0.12", optional = true }
+bolero-generator = { version = "0.12", default-features = false, optional = true }
 cfg-if = "1"
 futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 lazy_static = { version = "1", optional = true }

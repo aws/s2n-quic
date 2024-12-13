@@ -20,7 +20,7 @@ arrayvec = "0.7"
 atomic-waker = "1"
 aws-lc-rs = "1"
 bitflags = "2"
-bolero-generator = { version = "0.12", optional = true }
+bolero-generator = { version = "0.12", default-features = false, optional = true }
 bytes = "1"
 crossbeam-channel = "0.5"
 crossbeam-epoch = "0.9"
