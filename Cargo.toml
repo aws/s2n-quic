@@ -15,10 +15,6 @@ exclude = [
     "tools",
 ]
 
-[workspace.dependencies]
-bolero = "0.12"
-bolero-generator = { version = "0.12", default-features = false }
-
 [profile.release-debug]
 inherits = "dev"
 opt-level = 3
