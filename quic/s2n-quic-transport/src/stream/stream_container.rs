@@ -8,8 +8,8 @@
 #![allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
 
 use crate::{
-    stream,
-    stream::{stream_impl::StreamTrait, stream_interests::StreamInterests},
+    connection,
+    stream::{self, stream_impl::StreamTrait, stream_interests::StreamInterests},
     transmission,
 };
 use alloc::rc::Rc;
@@ -145,10 +145,17 @@ struct InterestLists<S> {
     /// stream flow control window to increase
     waiting_for_stream_flow_control_credits:
         LinkedList<WaitingForStreamFlowControlCreditsAdapter<S>>,
+    transmission_counter: u8,
+    transmission_limit: u8,
+}
+
+struct Outcome {
+    done: bool,
+    push_back_remaining: bool,
 }
 
 impl<S: StreamTrait> InterestLists<S> {
-    fn new() -> Self {
+    fn new(connection_limits: &connection::Limits) -> Self {
         Self {
             done_streams: LinkedList::new(DoneStreamsAdapter::new()),
             waiting_for_frame_delivery: LinkedList::new(WaitingForFrameDeliveryAdapter::new()),
@@ -160,6 +167,8 @@ impl<S: StreamTrait> InterestLists<S> {
             waiting_for_stream_flow_control_credits: LinkedList::new(
                 WaitingForStreamFlowControlCreditsAdapter::new(),
             ),
+            transmission_counter: 0,
+            transmission_limit: connection_limits.stream_burst_size(),
         }
     }
 
@@ -169,19 +178,68 @@ impl<S: StreamTrait> InterestLists<S> {
         node: &Rc<StreamNode<S>>,
         interests: StreamInterests,
         result: StreamContainerIterationResult,
-    ) -> bool {
+    ) -> Outcome {
         // Note that all comparisons start by checking whether the stream is
         // already part of the given list. This is required in order for the
         // following operation to be safe. Inserting an element in a list while
         // it is already part of a (different) list can panic. Trying to remove
         // an element from a list while it is not actually part of the list
         // is undefined.
+        let mut outcome = Outcome {
+            done: false,
+            push_back_remaining: true,
+        };
+
+        macro_rules! sync_trans_interests {
+            ($interest:expr, $link_name:ident, $list_name:ident) => {
+                if $interest != node.$link_name.is_linked() {
+                    if $interest {
+                        if matches!(result, StreamContainerIterationResult::UseStreamCredit) {
+                            self.$list_name.push_back(node.clone());
+                            self.transmission_counter += 1;
+                        } else if matches!(result, StreamContainerIterationResult::Continue) {
+                            self.$list_name.push_back(node.clone());
+                        } else if matches!(
+                            result,
+                            StreamContainerIterationResult::BreakAndInsertAtBack
+                        ) && !(self.transmission_counter < self.transmission_limit)
+                        {
+                            // In this case the node at the front of the list has no more sending
+                            // credits. Therefore we push the current node to the front of the list
+                            // and push the remaining nodes behind the current node, which effectively
+                            // moves the front node to the back of the list.
+                            self.$list_name.push_front(node.clone());
+                            self.transmission_counter = 0;
+                            outcome.push_back_remaining = false;
+                        } else {
+                            // In this case the node at the front of the list still has sending credits.
+                            // Therefore we want to preserve the order of the list by pushing each
+                            // node back.
+                            self.$list_name.push_back(node.clone());
+                            outcome.push_back_remaining = true;
+                        }
+                    } else {
+                        // Safety: We know that the node is only ever part of this list.
+                        // While elements are in temporary lists, they always get unlinked
+                        // from those temporary lists while their interest is updated.
+                        let mut cursor = unsafe {
+                            self.$list_name
+                                .cursor_mut_from_ptr(node.deref() as *const StreamNode<S>)
+                        };
+                        cursor.remove();
+                    }
+                }
+                debug_assert_eq!($interest, node.$link_name.is_linked());
+            };
+        }
 
         macro_rules! sync_interests {
             ($interest:expr, $link_name:ident, $list_name:ident) => {
                 if $interest != node.$link_name.is_linked() {
                     if $interest {
-                        if matches!(result, StreamContainerIterationResult::Continue) {
+                        if matches!(result, StreamContainerIterationResult::Continue)
+                            || matches!(result, StreamContainerIterationResult::UseStreamCredit)
+                        {
                             self.$list_name.push_back(node.clone());
                         } else {
                             self.$list_name.push_front(node.clone());
@@ -206,7 +264,7 @@ impl<S: StreamTrait> InterestLists<S> {
             waiting_for_frame_delivery_link,
             waiting_for_frame_delivery
         );
-        sync_interests!(
+        sync_trans_interests!(
             matches!(interests.transmission, transmission::Interest::NewData),
             waiting_for_transmission_link,
             waiting_for_transmission
@@ -233,10 +291,11 @@ impl<S: StreamTrait> InterestLists<S> {
             } else {
                 panic!("Done streams should never report not done later");
             }
-            true
+            outcome.done = true;
         } else {
-            false
+            outcome.done = false;
         }
+        outcome
     }
 }
 
@@ -308,34 +367,43 @@ macro_rules! iterate_interruptible {
 
             // Update the interests after the interaction
             let interests = mut_stream.get_stream_interests();
-            $sel.interest_lists
+            let outcome = $sel
+                .interest_lists
                 .update_interests(&stream, interests, result);
 
             match result {
                 StreamContainerIterationResult::BreakAndInsertAtBack => {
-                    $sel.interest_lists
-                        .$list_name
-                        .front_mut()
-                        .splice_after(extracted_list);
-                    break;
+                    if outcome.push_back_remaining {
+                        $sel.interest_lists
+                            .$list_name
+                            .back_mut()
+                            .splice_after(extracted_list);
+                        break;
+                    } else {
+                        $sel.interest_lists
+                            .$list_name
+                            .front_mut()
+                            .splice_after(extracted_list);
+                        break;
+                    }
                 }
-                StreamContainerIterationResult::Continue => {}
+                _ => {}
             }
-        }
 
-        if !$sel.interest_lists.done_streams.is_empty() {
-            $sel.finalize_done_streams($controller);
+            if !$sel.interest_lists.done_streams.is_empty() {
+                $sel.finalize_done_streams($controller);
+            }
         }
     };
 }
 
 impl<S: StreamTrait> StreamContainer<S> {
     /// Creates a new `StreamContainer`
-    pub fn new() -> Self {
+    pub fn new(connection_limits: &connection::Limits) -> Self {
         Self {
             stream_map: RBTree::new(StreamTreeAdapter::new()),
             nr_active_streams: 0,
-            interest_lists: InterestLists::new(),
+            interest_lists: InterestLists::new(connection_limits),
         }
     }
 
@@ -414,11 +482,12 @@ impl<S: StreamTrait> StreamContainer<S> {
 
         // Update the interest lists after the interactions and then remove
         // all finalized streams
-        if self.interest_lists.update_interests(
+        let outcome = self.interest_lists.update_interests(
             &node_ptr,
             interests,
             StreamContainerIterationResult::Continue,
-        ) {
+        );
+        if outcome.done {
             self.finalize_done_streams(controller);
         }
 
@@ -659,6 +728,7 @@ impl<S: StreamTrait> transmission::interest::Provider for StreamContainer<S> {
 pub enum StreamContainerIterationResult {
     /// Continue iteration over the list
     Continue,
+    UseStreamCredit,
     /// Aborts the iteration over a list and add the remaining items at the
     /// back of the list
     BreakAndInsertAtBack,
