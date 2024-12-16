@@ -47,10 +47,18 @@ where
     Sub: event::Subscriber,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Writer")
-            .field("peer_addr", &self.peer_addr().unwrap())
-            .field("local_addr", &self.local_addr().unwrap())
-            .finish()
+        let mut s = f.debug_struct("Writer");
+
+        for (name, addr) in [
+            ("peer_addr", self.peer_addr()),
+            ("local_addr", self.local_addr()),
+        ] {
+            if let Ok(addr) = addr {
+                s.field(name, &addr);
+            }
+        }
+
+        s.finish()
     }
 }
 

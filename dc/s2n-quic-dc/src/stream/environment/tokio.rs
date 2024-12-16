@@ -255,7 +255,11 @@ where
 }
 
 /// A socket that is already registered with the application runtime
-pub struct TcpRegistered(pub TcpStream);
+pub struct TcpRegistered {
+    pub socket: TcpStream,
+    pub peer_addr: SocketAddress,
+    pub local_port: u16,
+}
 
 impl<Sub> super::Peer<Environment<Sub>> for TcpRegistered
 where
@@ -274,9 +278,9 @@ where
 
     #[inline]
     fn setup(self, _env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
-        let remote_addr = self.0.peer_addr()?.into();
-        let source_control_port = self.0.local_addr()?.port();
-        let application = Box::new(self.0);
+        let remote_addr = self.peer_addr;
+        let source_control_port = self.local_port;
+        let application = Box::new(self.socket);
         Ok(super::SocketSet {
             application,
             read_worker: None,
@@ -289,7 +293,11 @@ where
 }
 
 /// A socket that should be reregistered with the application runtime
-pub struct TcpReregistered(pub TcpStream);
+pub struct TcpReregistered {
+    pub socket: TcpStream,
+    pub peer_addr: SocketAddress,
+    pub local_port: u16,
+}
 
 impl<Sub> super::Peer<Environment<Sub>> for TcpReregistered
 where
@@ -308,9 +316,9 @@ where
 
     #[inline]
     fn setup(self, _env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
-        let remote_addr = self.0.peer_addr()?.into();
-        let source_control_port = self.0.local_addr()?.port();
-        let application = Box::new(self.0.into_std()?);
+        let source_control_port = self.local_port;
+        let remote_addr = self.peer_addr;
+        let application = Box::new(self.socket.into_std()?);
         Ok(super::SocketSet {
             application,
             read_worker: None,

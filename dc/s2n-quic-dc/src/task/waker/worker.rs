@@ -49,6 +49,11 @@ impl Waker {
         // we only need to `wake_by_ref` if the worker is sleeping
         ensure!(matches!(status, Status::Sleeping));
 
+        self.wake_forced();
+    }
+
+    #[inline]
+    pub fn wake_forced(&self) {
         let guard = crossbeam_epoch::pin();
         let waker = self.waker.load(Ordering::Acquire, &guard);
         let Some(waker) = (unsafe { waker.as_ref() }) else {

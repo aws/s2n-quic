@@ -2,7 +2,7 @@
 
 set -xeuo pipefail
 
-VERSION="4.2.5"
+VERSION="4.4.2"
 BRANCH="wireshark-$VERSION"
 PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}"
 
@@ -79,10 +79,13 @@ OPTIONS=(
 
 mkdir -p src/wireshark_sys/
 
+RUST_TARGET=$(rustup show | awk 'NF' | awk 'END{print $2}')
+
 # This list is filtered to roughly what our current usage requires.
 # It's possible there's a better way to do this -- some of the Wireshark
 # headers end up pulling in C++ so we do need some filtering.
 bindgen \
+  --rust-target $RUST_TARGET \
   --raw-line '// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.' \
   --raw-line '// SPDX-License-Identifier: Apache-2.0' \
   ${OPTIONS[@]} \
@@ -91,6 +94,7 @@ bindgen \
   -- ${INCLUDES[@]}
 
 bindgen \
+  --rust-target $RUST_TARGET \
   --raw-line '// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.' \
   --raw-line '// SPDX-License-Identifier: Apache-2.0' \
   ${OPTIONS[@]} \

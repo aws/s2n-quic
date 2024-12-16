@@ -9,7 +9,7 @@ use tracing::Instrument as _;
 
 fn pair(protocol: Protocol) -> (testing::Client, testing::Server) {
     let client = testing::Client::default();
-    let server = testing::Server::new(protocol, Default::default());
+    let server = testing::Server::builder().protocol(protocol).build();
     (client, server)
 }
 

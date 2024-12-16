@@ -1,14 +1,21 @@
 #/usr/bin/env bash
 
-VERSION=${1:-"v0.1.8"}
+VERSION=${1:-"v0.1.11"}
 PORT=${2:4433}
 
 BIN="target/tools/h3spec-${VERSION}"
 
+TARGET="h3spec-linux-x86_64"
+
+# check if we're on macos
+if [ "$(uname)" == "Darwin" ]; then
+  TARGET="h3spec-mac-arm64"
+fi
+
 if [ ! -f $BIN ]; then
   mkdir -p target/tools
   curl -L -o $BIN \
-    https://github.com/kazu-yamamoto/h3spec/releases/download/$VERSION/h3spec-linux-x86_64
+    https://github.com/kazu-yamamoto/h3spec/releases/download/$VERSION/$TARGET
   chmod +x $BIN
 fi
 
@@ -17,7 +24,8 @@ fi
 #      https://github.com/aws/s2n-quic/issues/858
 #      https://github.com/aws/s2n-quic/issues/859
 
-ARGS=""
+# we just use test certs for `s2n-quic-qns` so skip cert validation
+ARGS="--no-validate"
 
 # h3spec appends the KeyUpdate message to the end of the valid Handshake data.
 # s2n-quic considers the handshake "done" before it receives the bad message,
