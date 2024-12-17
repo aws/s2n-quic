@@ -3306,7 +3306,7 @@ fn stream_batching_test() {
         manager
             .with_asserted_stream(*stream_id, |stream: &mut stream::StreamImpl| {
                 let data_to_send = bytes::Bytes::copy_from_slice(&array);
-                stream.poll_request(&mut ops::Request::default().send(&mut [data_to_send]), None)
+                stream.poll_request(ops::Request::default().send(&mut [data_to_send]), None)
             })
             .unwrap();
     }
