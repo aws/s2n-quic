@@ -8,11 +8,14 @@
 //! extent possible) reducing the likelihood.
 
 use core::{
+    fmt::Debug,
     hash::Hash,
     sync::atomic::{AtomicU8, Ordering},
 };
-use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockUpgradableReadGuard};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockUpgradableReadGuard};
 use std::{collections::hash_map::RandomState, hash::BuildHasher};
+
+pub use parking_lot::MappedRwLockReadGuard as ReadGuard;
 
 pub struct Map<K, V, S = RandomState> {
     slots: Box<[Slot<K, V>]>,
@@ -21,7 +24,7 @@ pub struct Map<K, V, S = RandomState> {
 
 impl<K, V, S> Map<K, V, S>
 where
-    K: Hash + Eq,
+    K: Hash + Eq + Debug,
     S: BuildHasher,
 {
     pub fn with_capacity(entries: usize, hasher: S) -> Self {
@@ -44,7 +47,7 @@ where
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn count(&self) -> usize {
         self.slots.iter().map(|s| s.len()).sum()
     }
 
@@ -93,7 +96,7 @@ where
         self.get_by_key(key).is_some()
     }
 
-    pub fn get_by_key(&self, key: &K) -> Option<MappedRwLockReadGuard<'_, V>> {
+    pub fn get_by_key(&self, key: &K) -> Option<ReadGuard<'_, V>> {
         self.slot_by_hash(key).get_by_key(key)
     }
 }
@@ -108,7 +111,7 @@ struct Slot<K, V> {
 
 impl<K, V> Slot<K, V>
 where
-    K: Hash + Eq,
+    K: Hash + Eq + Debug,
 {
     fn new() -> Self {
         Slot {
@@ -139,11 +142,15 @@ where
         // If `new_key` isn't already in this slot, replace one of the existing entries with the
         // new key. For now we rotate through based on `next_write`.
         let replacement = self.next_write.fetch_add(1, Ordering::Relaxed) as usize % SLOT_CAPACITY;
+        tracing::trace!(
+            "evicting {:?} - bucket overflow",
+            values[replacement].as_mut().unwrap().0
+        );
         values[replacement] = Some((new_key, new_value));
         None
     }
 
-    fn get_by_key(&self, needle: &K) -> Option<MappedRwLockReadGuard<'_, V>> {
+    fn get_by_key(&self, needle: &K) -> Option<ReadGuard<'_, V>> {
         // Scan each value and check if our requested needle is present.
         let values = self.values.read();
         for (value_idx, value) in values.iter().enumerate() {

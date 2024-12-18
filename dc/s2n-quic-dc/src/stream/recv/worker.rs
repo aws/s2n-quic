@@ -4,7 +4,7 @@
 use crate::{
     allocator::Allocator,
     clock::Timer,
-    msg,
+    event, msg,
     stream::{shared::ArcShared, socket::Socket},
 };
 use core::task::{Context, Poll};
@@ -55,8 +55,12 @@ pub(crate) enum ErrorCode {
     Application = 1,
 }
 
-pub struct Worker<S: Socket> {
-    shared: ArcShared,
+pub struct Worker<S, Sub>
+where
+    S: Socket,
+    Sub: event::Subscriber,
+{
+    shared: ArcShared<Sub>,
     last_observed_epoch: u64,
     send_buffer: msg::send::Message,
     state: waiting::State,
@@ -65,9 +69,13 @@ pub struct Worker<S: Socket> {
     socket: S,
 }
 
-impl<S: Socket> Worker<S> {
+impl<S, Sub> Worker<S, Sub>
+where
+    S: Socket,
+    Sub: event::Subscriber,
+{
     #[inline]
-    pub fn new(socket: S, shared: ArcShared, endpoint: endpoint::Type) -> Self {
+    pub fn new(socket: S, shared: ArcShared<Sub>, endpoint: endpoint::Type) -> Self {
         let send_buffer = msg::send::Message::new(shared.read_remote_addr(), shared.gso.clone());
         let timer = Timer::new_with_timeout(&shared.clock, INITIAL_TIMEOUT);
 
@@ -296,7 +304,12 @@ impl<S: Socket> Worker<S> {
                 );
             }
 
-            let res = recv.poll_fill_recv_buffer(cx, &self.socket);
+            let res = recv.poll_fill_recv_buffer(
+                cx,
+                &self.socket,
+                &self.shared.clock,
+                &self.shared.subscriber,
+            );
 
             match res {
                 Poll::Pending => break,

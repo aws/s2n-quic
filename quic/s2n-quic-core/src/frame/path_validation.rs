@@ -4,7 +4,7 @@
 use core::ops::{BitOr, BitOrAssign};
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 /// Describes if a frame is probing
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

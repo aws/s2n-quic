@@ -86,7 +86,7 @@ impl<'a, const L: usize> Encoder<'a, L> {
     }
 }
 
-impl<'a, const L: usize> Deref for Encoder<'a, L> {
+impl<const L: usize> Deref for Encoder<'_, L> {
     type Target = [u8];
 
     #[inline]
@@ -95,14 +95,14 @@ impl<'a, const L: usize> Deref for Encoder<'a, L> {
     }
 }
 
-impl<'a, const L: usize> DerefMut for Encoder<'a, L> {
+impl<const L: usize> DerefMut for Encoder<'_, L> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [u8] {
         &mut self.storage[..self.cursor]
     }
 }
 
-impl<'a, const L: usize> super::Encoder for Encoder<'a, L> {
+impl<const L: usize> super::Encoder for Encoder<'_, L> {
     #[inline]
     fn encode_cmsg<T: Copy>(
         &mut self,

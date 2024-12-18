@@ -18,7 +18,7 @@ use core::{
 };
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 const PACKET_SPACE_BITLEN: usize = 2;
 const PACKET_SPACE_SHIFT: usize = (size_of::<PacketNumber>() * 8) - PACKET_SPACE_BITLEN;

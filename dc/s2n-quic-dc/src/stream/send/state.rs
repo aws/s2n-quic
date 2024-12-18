@@ -118,7 +118,7 @@ pub struct PeerActivity {
 impl State {
     #[inline]
     pub fn new(stream_id: stream::Id, params: &ApplicationParams) -> Self {
-        let max_datagram_size = params.max_datagram_size;
+        let max_datagram_size = params.max_datagram_size();
         let initial_max_data = params.remote_max_data;
         let local_max_data = params.local_send_max_data;
 

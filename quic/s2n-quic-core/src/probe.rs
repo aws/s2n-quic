@@ -67,16 +67,13 @@ pub use probe::probe as __usdt_emit__;
 macro_rules! __usdt_impl__ {
     ($provider:ident, $name:ident $(, $arg:ident)* $(,)?) => {{
         // define a function with inline(never) to consolidate probes to this single location
-        let probe = {
-            #[inline(never)]
-            || {
-                $(
-                    let $arg = $crate::probe::Arg::into_usdt($arg);
-                )*
-                $crate::probe::__usdt_emit__!($provider, $name, $($arg),*);
-            }
-        };
-        probe();
+        #[inline(never)]
+        fn probe($($arg: isize),*) {
+            $crate::probe::__usdt_emit__!($provider, $name, $($arg),*);
+        }
+        probe($(
+            $crate::probe::Arg::into_usdt($arg),
+        )*);
     }}
 }
 
@@ -150,6 +147,13 @@ impl Arg for crate::varint::VarInt {
     #[inline]
     fn into_usdt(self) -> isize {
         self.as_u64().into_usdt()
+    }
+}
+
+impl Arg for &core::ffi::CStr {
+    #[inline]
+    fn into_usdt(self) -> isize {
+        self.as_ptr() as _
     }
 }
 

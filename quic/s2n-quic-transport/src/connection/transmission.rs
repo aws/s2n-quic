@@ -32,7 +32,7 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub packet_interceptor: &'a mut Config::PacketInterceptor,
 }
 
-impl<'a, 'sub, Config: endpoint::Config> ConnectionTransmissionContext<'a, 'sub, Config> {
+impl<Config: endpoint::Config> ConnectionTransmissionContext<'_, '_, Config> {
     pub fn path(&self) -> &Path<Config> {
         &self.path_manager[self.path_id]
     }
@@ -47,7 +47,7 @@ pub struct ConnectionTransmission<'a, 'sub, Config: endpoint::Config> {
     pub space_manager: &'a mut PacketSpaceManager<Config>,
 }
 
-impl<'a, 'sub, Config: endpoint::Config> tx::Message for ConnectionTransmission<'a, 'sub, Config> {
+impl<Config: endpoint::Config> tx::Message for ConnectionTransmission<'_, '_, Config> {
     type Handle = Config::PathHandle;
 
     #[inline]

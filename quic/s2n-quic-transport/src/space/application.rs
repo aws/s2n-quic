@@ -57,8 +57,6 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     /// TODO: Spin me
     pub spin_bit: SpinBit,
     pub crypto_stream: CryptoStream,
-    /// The crypto suite for application data
-    /// TODO: What about ZeroRtt?
     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
     //# For this reason, endpoints MUST be able to retain two sets of packet
     //# protection keys for receiving packets: the current and the next.
@@ -66,6 +64,8 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.1
     //# An endpoint MUST NOT initiate a key update prior to having confirmed
     //# the handshake (Section 4.1.2).
+    /// The crypto suite for application data
+    /// TODO: What about ZeroRtt?
     key_set: KeySet<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttKey>,
     header_key: <<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::OneRttHeaderKey,
 
@@ -719,7 +719,7 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
     dc_manager: &'a mut dc::Manager<Config>,
 }
 
-impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'a, Config> {
+impl<Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'_, Config> {
     const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
@@ -810,6 +810,10 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
             self.stream_manager
                 .on_rtt_update(&self.path_manager.active_path().rtt_estimator, now)
         }
+    }
+
+    fn on_mtu_update(&mut self, max_datagram_size: u16) {
+        self.dc_manager.on_mtu_updated(max_datagram_size)
     }
 }
 

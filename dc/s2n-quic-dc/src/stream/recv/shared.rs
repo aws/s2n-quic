@@ -3,12 +3,14 @@
 
 use crate::{
     allocator::Allocator,
-    clock, msg,
+    clock,
+    event::{self, ConnectionPublisher},
+    msg,
     packet::{stream, Packet},
     stream::{
         recv,
         server::handshake,
-        shared::{ArcShared, Half},
+        shared::{self, ArcShared, Half},
         socket::{self, Socket},
         TransportFeatures,
     },
@@ -121,13 +123,16 @@ impl State {
     }
 
     #[inline]
-    pub fn application_guard<'a>(
+    pub fn application_guard<'a, Sub>(
         &'a self,
         ack_mode: AckMode,
         send_buffer: &'a mut msg::send::Message,
-        shared: &'a ArcShared,
+        shared: &'a ArcShared<Sub>,
         sockets: &'a dyn socket::Application,
-    ) -> io::Result<AppGuard<'a>> {
+    ) -> io::Result<AppGuard<'a, Sub>>
+    where
+        Sub: event::Subscriber,
+    {
         // increment the epoch at which we acquired the guard
         self.application_epoch.fetch_add(1, Ordering::AcqRel);
 
@@ -168,16 +173,22 @@ impl State {
     }
 }
 
-pub struct AppGuard<'a> {
+pub struct AppGuard<'a, Sub>
+where
+    Sub: event::Subscriber,
+{
     inner: ManuallyDrop<MutexGuard<'a, Inner>>,
     ack_mode: AckMode,
     send_buffer: &'a mut msg::send::Message,
-    shared: &'a ArcShared,
+    shared: &'a ArcShared<Sub>,
     sockets: &'a dyn socket::Application,
     initial_state: state::Receiver,
 }
 
-impl<'a> AppGuard<'a> {
+impl<Sub> AppGuard<'_, Sub>
+where
+    Sub: event::Subscriber,
+{
     /// Returns `true` if the read worker should be woken
     #[inline]
     fn send_ack(&mut self) -> bool {
@@ -214,7 +225,10 @@ impl<'a> AppGuard<'a> {
     }
 }
 
-impl<'a> ops::Deref for AppGuard<'a> {
+impl<Sub> ops::Deref for AppGuard<'_, Sub>
+where
+    Sub: event::Subscriber,
+{
     type Target = Inner;
 
     #[inline]
@@ -223,14 +237,20 @@ impl<'a> ops::Deref for AppGuard<'a> {
     }
 }
 
-impl<'a> ops::DerefMut for AppGuard<'a> {
+impl<Sub> ops::DerefMut for AppGuard<'_, Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
 }
 
-impl<'a> Drop for AppGuard<'a> {
+impl<Sub> Drop for AppGuard<'_, Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn drop(&mut self) {
         let wake_worker_for_ack = self.send_ack();
@@ -266,11 +286,13 @@ pub struct Inner {
 
 impl Inner {
     #[inline]
-    pub fn fill_transmit_queue(
+    pub fn fill_transmit_queue<Sub>(
         &mut self,
-        shared: &ArcShared,
+        shared: &ArcShared<Sub>,
         send_buffer: &mut msg::send::Message,
-    ) {
+    ) where
+        Sub: event::Subscriber,
+    {
         let source_control_port = shared.source_control_port();
 
         self.receiver.on_transmit(
@@ -291,10 +313,21 @@ impl Inner {
     }
 
     #[inline]
-    pub fn poll_fill_recv_buffer<S>(&mut self, cx: &mut Context, socket: &S) -> Poll<io::Result<()>>
+    pub fn poll_fill_recv_buffer<S, C, Sub>(
+        &mut self,
+        cx: &mut Context,
+        socket: &S,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
+    ) -> Poll<io::Result<()>>
     where
         S: ?Sized + Socket,
+        C: ?Sized + Clock,
+        Sub: event::Subscriber,
     {
+        // cache the timestamps to avoid fetching too many
+        let clock = &s2n_quic_core::time::clock::Cached::new(clock);
+
         loop {
             if let Some(chan) = self.handshake.as_mut() {
                 match chan.poll_recv(cx) {
@@ -316,19 +349,66 @@ impl Inner {
                 }
             }
 
-            ready!(socket.poll_recv_buffer(cx, &mut self.recv_buffer))?;
+            ready!(self.poll_fill_recv_buffer_once(cx, socket, clock, subscriber))?;
 
             return Ok(()).into();
         }
     }
 
+    #[inline(always)]
+    fn poll_fill_recv_buffer_once<S, C, Sub>(
+        &mut self,
+        cx: &mut Context,
+        socket: &S,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
+    ) -> Poll<io::Result<usize>>
+    where
+        S: ?Sized + Socket,
+        C: ?Sized + Clock,
+        Sub: event::Subscriber,
+    {
+        let capacity = self.recv_buffer.remaining_capacity();
+
+        let result = socket.poll_recv_buffer(cx, &mut self.recv_buffer);
+
+        let now = clock.get_time();
+
+        match &result {
+            Poll::Ready(Ok(len)) => {
+                subscriber.publisher(now).on_stream_read_socket_flushed(
+                    event::builder::StreamReadSocketFlushed {
+                        capacity,
+                        committed_len: *len,
+                    },
+                );
+            }
+            Poll::Ready(Err(error)) => {
+                let errno = error.raw_os_error();
+                subscriber.publisher(now).on_stream_read_socket_errored(
+                    event::builder::StreamReadSocketErrored { capacity, errno },
+                );
+            }
+            Poll::Pending => {
+                subscriber.publisher(now).on_stream_read_socket_blocked(
+                    event::builder::StreamReadSocketBlocked { capacity },
+                );
+            }
+        };
+
+        result
+    }
+
     #[inline]
-    pub fn process_recv_buffer(
+    pub fn process_recv_buffer<Sub>(
         &mut self,
         out_buf: &mut impl buffer::writer::Storage,
-        shared: &ArcShared,
+        shared: &ArcShared<Sub>,
         features: TransportFeatures,
-    ) -> bool {
+    ) -> bool
+    where
+        Sub: event::Subscriber,
+    {
         let clock = clock::Cached::new(&shared.clock);
         let clock = &clock;
 
@@ -360,13 +440,16 @@ impl Inner {
     }
 
     #[inline]
-    fn dispatch_buffer_stream<C: Clock + ?Sized>(
+    fn dispatch_buffer_stream<Sub, C>(
         &mut self,
         out_buf: &mut impl buffer::writer::Storage,
-        shared: &ArcShared,
+        shared: &ArcShared<Sub>,
         clock: &C,
         features: TransportFeatures,
-    ) {
+    ) where
+        Sub: event::Subscriber,
+        C: Clock + ?Sized,
+    {
         let msg = &mut self.recv_buffer;
         let remote_addr = msg.remote_address();
         let ecn = msg.ecn();
@@ -492,7 +575,10 @@ impl Inner {
                 }
                 other => {
                     let kind = other.kind();
-                    shared.crypto.map().handle_unexpected_packet(other);
+                    shared
+                        .crypto
+                        .map()
+                        .handle_unexpected_packet(other, &shared.read_remote_addr().into());
 
                     // if we get a packet we don't expect then it's fatal for streams
                     msg.clear();
@@ -513,13 +599,16 @@ impl Inner {
     }
 
     #[inline]
-    fn dispatch_buffer_datagram<C: Clock + ?Sized>(
+    fn dispatch_buffer_datagram<Sub, C>(
         &mut self,
         out_buf: &mut impl buffer::writer::Storage,
-        shared: &ArcShared,
+        shared: &ArcShared<Sub>,
         clock: &C,
         features: TransportFeatures,
-    ) {
+    ) where
+        Sub: event::Subscriber,
+        C: Clock + ?Sized,
+    {
         let msg = &mut self.recv_buffer;
         let remote_addr = msg.remote_address();
         let ecn = msg.ecn();
@@ -586,7 +675,10 @@ impl Inner {
                         });
                     }
                     other => {
-                        shared.crypto.map().handle_unexpected_packet(&other);
+                        shared
+                            .crypto
+                            .map()
+                            .handle_unexpected_packet(&other, &shared.read_remote_addr().into());
 
                         // TODO if the packet was authentic then close the receiver with an error
                     }

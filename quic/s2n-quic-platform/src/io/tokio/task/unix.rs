@@ -4,7 +4,7 @@
 use crate::{
     features::Gso,
     socket::{
-        ring,
+        ring, stats,
         task::{rx, tx},
     },
     syscall::{SocketType, UnixMessage},
@@ -18,12 +18,13 @@ pub async fn rx<S: Into<std::net::UdpSocket>, M: UnixMessage + Unpin>(
     socket: S,
     producer: ring::Producer<M>,
     cooldown: Cooldown,
+    stats: stats::Sender,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = AsyncFd::new(socket).unwrap();
-    let result = rx::Receiver::new(producer, socket, cooldown).await;
+    let result = rx::Receiver::new(producer, socket, cooldown, stats).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -36,12 +37,13 @@ pub async fn tx<S: Into<std::net::UdpSocket>, M: UnixMessage + Unpin>(
     consumer: ring::Consumer<M>,
     gso: Gso,
     cooldown: Cooldown,
+    stats: stats::Sender,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = AsyncFd::new(socket).unwrap();
-    let result = tx::Sender::new(consumer, socket, gso, cooldown).await;
+    let result = tx::Sender::new(consumer, socket, gso, cooldown, stats).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -58,6 +60,7 @@ impl<S: AsRawFd, M: UnixMessage> tx::Socket<M> for AsyncFd<S> {
         cx: &mut Context,
         entries: &mut [M],
         events: &mut tx::Events,
+        stats: &stats::Sender,
     ) -> io::Result<()> {
         // Call the syscall for the socket
         //
@@ -65,7 +68,7 @@ impl<S: AsRawFd, M: UnixMessage> tx::Socket<M> for AsyncFd<S> {
         //       assume the socket is ready in the general case and then fall back to querying
         //       socket readiness if it's not. This can avoid some things like having to construct
         //       a `std::io::Error` with `WouldBlock` and dereferencing the registration.
-        M::send(self.get_ref().as_raw_fd(), entries, events);
+        M::send(self.get_ref().as_raw_fd(), entries, events, stats);
 
         // yield back if we weren't blocked
         if !events.is_blocked() {
@@ -107,6 +110,7 @@ impl<S: AsRawFd, M: UnixMessage> rx::Socket<M> for AsyncFd<S> {
         cx: &mut Context,
         entries: &mut [M],
         events: &mut rx::Events,
+        stats: &stats::Sender,
     ) -> io::Result<()> {
         // Call the syscall for the socket
         //
@@ -119,6 +123,7 @@ impl<S: AsRawFd, M: UnixMessage> rx::Socket<M> for AsyncFd<S> {
             SocketType::NonBlocking,
             entries,
             events,
+            stats,
         );
 
         // yield back if we weren't blocked

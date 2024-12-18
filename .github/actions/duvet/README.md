@@ -16,11 +16,19 @@ Path to the output report generated in `report-script`. Defaults to `report.html
 
 ### `aws-access-key-id: ''`
 
-An AWS access key. The corresponding user must have S3 write permissions.
+Deprecated.  This was previously used to authenticate with long lived IAM credentials. See [Configuring OpenID Connect](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-cloud-providers)
 
 ### `aws-secret-access-key: ''`
 
-The AWS secret key.
+Deprecated.  This was previously used to authenticate with long lived IAM credentials. See [Configuring OpenID Connect](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-cloud-providers)
+
+### `role-to-assume: ''`
+
+For Open ID Connect, the role attached to the IdP, in the form of an ARN. Intended for use with [AWS](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+
+### `role-session-name: ''`
+
+For Open ID Connect, an arbitrary session name. Intended for use with [AWS](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
 
 ### `aws-s3-bucket-name: ''`
 
@@ -52,8 +60,8 @@ jobs:
         with:
           s2n-quic-dir: ./s2n-quic
           report-script: compliance/generate_report.sh
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::123456789:role/GitHubOIDCRole
+          role-session-name: GithubActionSession
           aws-s3-bucket-name: s2n-tls-ci-artifacts
           aws-s3-region: us-west-2
           cdn: https://d3fqnyekunr9xg.cloudfront.net

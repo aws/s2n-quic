@@ -129,8 +129,8 @@ pub struct Transmission<'a, Config: endpoint::Config, Pub: event::ConnectionPubl
     publisher: &'a mut Pub,
 }
 
-impl<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
-    for Transmission<'a, Config, Pub>
+impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> tx::Message
+    for Transmission<'_, Config, Pub>
 {
     type Handle = Config::PathHandle;
 

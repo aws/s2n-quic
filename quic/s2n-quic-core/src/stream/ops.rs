@@ -276,7 +276,7 @@ pub mod rx {
         pub detached: bool,
     }
 
-    impl<'a> Default for Request<'a> {
+    impl Default for Request<'_> {
         fn default() -> Self {
             Self {
                 chunks: None,

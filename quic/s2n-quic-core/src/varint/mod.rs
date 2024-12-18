@@ -5,7 +5,7 @@ use core::{fmt, ops::Deref};
 use s2n_codec::{decoder_value, Encoder, EncoderValue};
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 use crate::event::IntoEvent;
 
@@ -45,7 +45,7 @@ pub struct VarInt(#[cfg_attr(any(feature = "generator", test), generator(Self::G
 
 #[cfg(any(feature = "generator", test))]
 impl bolero_generator::bounded::BoundedValue for VarInt {
-    fn gen_bounded<D: Driver>(
+    fn gen_bounded<D: bolero_generator::Driver>(
         driver: &mut D,
         min: core::ops::Bound<&Self>,
         max: core::ops::Bound<&Self>,

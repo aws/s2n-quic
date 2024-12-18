@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    event::{self, ConnectionPublisher},
     msg::{addr, segment},
     stream::{
         send::{
@@ -9,12 +10,15 @@ use crate::{
             buffer,
             state::Transmission,
         },
+        shared,
         socket::Socket,
     },
 };
 use bytes::buf::UninitSlice;
 use core::task::{Context, Poll};
-use s2n_quic_core::{assume, buffer::reader, ensure, inet::ExplicitCongestionNotification, ready};
+use s2n_quic_core::{
+    assume, buffer::reader, ensure, inet::ExplicitCongestionNotification, ready, time::Clock,
+};
 use s2n_quic_platform::features::Gso;
 use std::{collections::VecDeque, io};
 
@@ -40,7 +44,7 @@ pub struct Message<'a> {
     segment_alloc: &'a buffer::Allocator,
 }
 
-impl<'a> application::state::Message for Message<'a> {
+impl application::state::Message for Message<'_> {
     #[inline]
     fn max_segments(&self) -> usize {
         self.max_segments
@@ -154,7 +158,7 @@ impl Queue {
     }
 
     #[inline]
-    pub fn poll_flush<S>(
+    pub fn poll_flush<S, C, Sub>(
         &mut self,
         cx: &mut Context,
         limit: usize,
@@ -162,11 +166,24 @@ impl Queue {
         addr: &addr::Addr,
         segment_alloc: &buffer::Allocator,
         gso: &Gso,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
     ) -> Poll<Result<usize, io::Error>>
     where
         S: ?Sized + Socket,
+        C: ?Sized + Clock,
+        Sub: event::Subscriber,
     {
-        ready!(self.poll_flush_segments(cx, socket, addr, segment_alloc, gso))?;
+        ready!(self.poll_flush_segments(
+            cx,
+            socket,
+            addr,
+            segment_alloc,
+            gso,
+            // cache the timestamps to avoid fetching too many
+            &s2n_quic_core::time::clock::Cached::new(clock),
+            subscriber
+        ))?;
 
         // Consume accepted credits
         let accepted = limit.min(self.accepted_len);
@@ -175,16 +192,20 @@ impl Queue {
     }
 
     #[inline]
-    fn poll_flush_segments<S>(
+    fn poll_flush_segments<S, C, Sub>(
         &mut self,
         cx: &mut Context,
         socket: &S,
         addr: &addr::Addr,
         segment_alloc: &buffer::Allocator,
         gso: &Gso,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
     ) -> Poll<Result<(), io::Error>>
     where
         S: ?Sized + Socket,
+        C: ?Sized + Clock,
+        Sub: event::Subscriber,
     {
         ensure!(!self.segments.is_empty(), Poll::Ready(Ok(())));
 
@@ -198,44 +219,85 @@ impl Queue {
         };
 
         if socket.features().is_stream() {
-            self.poll_flush_segments_stream(cx, socket, addr, segment_alloc)
+            self.poll_flush_segments_stream(cx, socket, addr, segment_alloc, clock, subscriber)
         } else {
-            self.poll_flush_segments_datagram(cx, socket, addr, segment_alloc, gso)
+            self.poll_flush_segments_datagram(
+                cx,
+                socket,
+                addr,
+                segment_alloc,
+                gso,
+                clock,
+                subscriber,
+            )
         }
     }
 
     #[inline]
-    fn poll_flush_segments_stream<S>(
+    fn poll_flush_segments_stream<S, C, Sub>(
         &mut self,
         cx: &mut Context,
         socket: &S,
         addr: &addr::Addr,
         segment_alloc: &buffer::Allocator,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
     ) -> Poll<Result<(), io::Error>>
     where
         S: ?Sized + Socket,
+        C: ?Sized + Clock,
+        Sub: event::Subscriber,
     {
         while !self.segments.is_empty() {
-            let segments = segment::Batch::new(self.segments.iter().map(|v| (v.ecn, v.as_slice())));
+            let mut provided_len = 0;
+            let segments = segment::Batch::new(self.segments.iter().map(|v| {
+                let slice = v.as_slice();
+                provided_len += slice.len();
+                (v.ecn, v.as_slice())
+            }));
 
             let ecn = segments.ecn();
-            let res = ready!(socket.poll_send(cx, addr, ecn, &segments));
+
+            let result = socket.poll_send(cx, addr, ecn, &segments);
+
+            let now = clock.get_time();
 
             drop(segments);
 
-            match res {
-                Ok(written_len) => {
+            match result {
+                Poll::Ready(Ok(written_len)) => {
+                    subscriber.publisher(now).on_stream_write_socket_flushed(
+                        event::builder::StreamWriteSocketFlushed {
+                            provided_len,
+                            committed_len: written_len,
+                        },
+                    );
+
                     self.consume_segments(written_len, segment_alloc);
 
                     // keep trying to drain the buffer
                     continue;
                 }
-                Err(err) => {
+                Poll::Ready(Err(err)) => {
+                    subscriber.publisher(now).on_stream_write_socket_errored(
+                        event::builder::StreamWriteSocketErrored {
+                            provided_len,
+                            errno: err.raw_os_error(),
+                        },
+                    );
+
                     // the socket encountered an error so clear everything out since we're shutting
                     // down
                     self.segments.clear();
                     self.accepted_len = 0;
                     return Err(err).into();
+                }
+                Poll::Pending => {
+                    subscriber.publisher(now).on_stream_write_socket_blocked(
+                        event::builder::StreamWriteSocketBlocked { provided_len },
+                    );
+
+                    return Poll::Pending;
                 }
             }
         }
@@ -277,37 +339,71 @@ impl Queue {
     }
 
     #[inline]
-    fn poll_flush_segments_datagram<S>(
+    fn poll_flush_segments_datagram<S, C, Sub>(
         &mut self,
         cx: &mut Context,
         socket: &S,
         addr: &addr::Addr,
         segment_alloc: &buffer::Allocator,
         gso: &Gso,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
     ) -> Poll<Result<(), io::Error>>
     where
         S: ?Sized + Socket,
+        C: ?Sized + Clock,
+        Sub: event::Subscriber,
     {
         let mut max_segments = gso.max_segments();
 
         while !self.segments.is_empty() {
+            let mut provided_len = 0;
+
             // construct all of the segments we're going to send in this batch
             let segments = segment::Batch::new(
                 self.segments
                     .iter()
-                    .map(|v| (v.ecn, v.as_slice()))
+                    .map(|v| {
+                        let slice = v.as_slice();
+                        provided_len += slice.len();
+                        (v.ecn, slice)
+                    })
                     .take(max_segments),
             );
 
             let ecn = segments.ecn();
-            let res = match ready!(socket.poll_send(cx, addr, ecn, &segments)) {
-                Ok(_) => Ok(()),
-                Err(error) => {
-                    if gso.handle_socket_error(&error).is_some() {
+
+            let result = socket.poll_send(cx, addr, ecn, &segments);
+
+            let now = clock.get_time();
+
+            match &result {
+                Poll::Ready(Ok(_len)) => {
+                    subscriber.publisher(now).on_stream_write_socket_flushed(
+                        event::builder::StreamWriteSocketFlushed {
+                            provided_len,
+                            // if the syscall went through, then we wrote the whole thing
+                            committed_len: provided_len,
+                        },
+                    );
+                }
+                Poll::Ready(Err(error)) => {
+                    subscriber.publisher(now).on_stream_write_socket_errored(
+                        event::builder::StreamWriteSocketErrored {
+                            provided_len,
+                            errno: error.raw_os_error(),
+                        },
+                    );
+
+                    if gso.handle_socket_error(error).is_some() {
                         // update the max_segments value if it was changed due to the error
                         max_segments = 1;
                     }
-                    Err(error)
+                }
+                Poll::Pending => {
+                    subscriber.publisher(now).on_stream_write_socket_blocked(
+                        event::builder::StreamWriteSocketBlocked { provided_len },
+                    );
                 }
             };
 
@@ -319,7 +415,7 @@ impl Queue {
                 segment_alloc.free(segment.buffer);
             }
 
-            res?;
+            ready!(result)?;
         }
 
         Ok(()).into()

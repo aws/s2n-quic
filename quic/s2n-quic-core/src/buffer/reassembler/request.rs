@@ -14,7 +14,7 @@ pub struct Request<'a> {
     is_fin: bool,
 }
 
-impl<'a> fmt::Debug for Request<'a> {
+impl fmt::Debug for Request<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Request")
             .field("offset", &self.offset)
@@ -38,7 +38,7 @@ impl<'a> Request<'a> {
     }
 }
 
-impl<'a> Reader for Request<'a> {
+impl Reader for Request<'_> {
     #[inline]
     fn current_offset(&self) -> VarInt {
         unsafe { VarInt::new_unchecked(self.offset) }
@@ -54,7 +54,7 @@ impl<'a> Reader for Request<'a> {
     }
 }
 
-impl<'a> reader::Storage for Request<'a> {
+impl reader::Storage for Request<'_> {
     type Error = core::convert::Infallible;
 
     #[inline]

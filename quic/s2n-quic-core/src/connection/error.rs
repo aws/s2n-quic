@@ -498,7 +498,7 @@ impl From<transport::Error> for Error {
     }
 }
 
-impl<'a> From<ConnectionClose<'a>> for Error {
+impl From<ConnectionClose<'_>> for Error {
     #[track_caller]
     fn from(error: ConnectionClose) -> Self {
         if let Some(frame_type) = error.frame_type {
@@ -579,4 +579,109 @@ impl From<packet_protection::Error> for ProcessingError {
     fn from(_: packet_protection::Error) -> Self {
         Self::DecryptError
     }
+}
+
+mod metrics {
+    use super::{transport, Error};
+    use crate::event::metrics::aggregate::{
+        info::{Str, Variant},
+        AsVariant,
+    };
+
+    macro_rules! impl_variants {
+        ($($name:ident => $name_str:literal),* $(,)?) => {
+            impl AsVariant for Error {
+                const VARIANTS: &'static [Variant] = &{
+                    const fn count(_id: &str) -> usize {
+                        1
+                    }
+
+                    const VARIANTS: usize = 0 $( + count($name_str))*;
+
+                    const TRANSPORT: &'static [Variant] = transport::error::Code::VARIANTS;
+
+                    let mut array = [
+                        Variant { name: Str::new("\0"), id: 0 };
+                        VARIANTS + TRANSPORT.len()
+                    ];
+
+                    let mut id = 0;
+
+                    $(
+                        array[id] = Variant {
+                            name: Str::new(concat!($name_str, "\0")),
+                            id,
+                        };
+                        id += 1;
+                    )*
+
+                    let mut transport_idx = 0;
+                    while transport_idx < TRANSPORT.len() {
+                        let variant = TRANSPORT[transport_idx];
+                        array[id] = Variant {
+                            name: variant.name,
+                            id,
+                        };
+                        id += 1;
+                        transport_idx += 1;
+                    }
+
+                    array
+                };
+
+                #[inline]
+                fn variant_idx(&self) -> usize {
+                    let mut idx = 0;
+
+                    $(
+                        if matches!(self, Error::$name { .. }) {
+                            return idx;
+                        }
+                        idx += 1;
+                    )*
+
+                    if let Error::Transport { code, ..} = self {
+                        code.variant_idx() + idx
+                    } else {
+                        panic!()
+                    }
+                }
+            }
+
+            #[allow(dead_code)]
+            fn exhaustive_test(error: &Error) {
+                match error {
+                    $(
+                        Error::$name { .. } => {},
+                    )*
+                    Error::Transport { .. } => {},
+                }
+            }
+
+            #[test]
+            #[cfg_attr(miri, ignore)]
+            fn variants_test() {
+                insta::assert_debug_snapshot!(Error::VARIANTS);
+
+                let mut seen = std::collections::HashSet::new();
+                for variant in Error::VARIANTS {
+                    assert!(seen.insert(variant.id));
+                }
+            }
+        };
+    }
+
+    impl_variants!(
+        Closed => "CLOSED",
+        Application => "APPLICATION",
+        StatelessReset => "STATELESS_RESET",
+        IdleTimerExpired => "IDLE_TIMER_EXPIRED",
+        NoValidPath => "NO_VALID_PATH",
+        StreamIdExhausted => "STREAM_ID_EXHAUSTED",
+        MaxHandshakeDurationExceeded => "MAX_HANDSHAKE_DURATION_EXCEEDED",
+        ImmediateClose => "IMMEDIATE_CLOSE",
+        EndpointClosing => "ENDPOINT_CLOSING",
+        InvalidConfiguration => "INVALID_CONFIGURATION",
+        Unspecified => "UNSPECIFIED",
+    );
 }

@@ -4,9 +4,9 @@
 use anyhow::Context;
 use aya::{
     programs::{Xdp, XdpFlags},
-    Bpf,
+    Ebpf,
 };
-use aya_log::BpfLogger;
+use aya_log::EbpfLogger;
 use clap::Parser;
 use log::{info, warn};
 use tokio::signal;
@@ -40,10 +40,10 @@ async fn main() -> Result<(), anyhow::Error> {
         s2n_quic_xdp::bpf::DEFAULT_PROGRAM
     };
 
-    let mut bpf = Bpf::load(bpf)?;
+    let mut bpf = Ebpf::load(bpf)?;
 
     if opt.trace {
-        if let Err(e) = BpfLogger::init(&mut bpf) {
+        if let Err(e) = EbpfLogger::init(&mut bpf) {
             warn!("failed to initialize eBPF logger: {}", e);
         }
     }

@@ -98,7 +98,7 @@ impl<T> Drop for Receiver<T> {
 
 pub struct RecvSlice<'a, T>(&'a mut State<T>, Cursor);
 
-impl<'a, T> RecvSlice<'a, T> {
+impl<T> RecvSlice<'_, T> {
     #[inline]
     pub fn peek(&mut self) -> (&mut [T], &mut [T]) {
         let _ = self.0.acquire_filled();
@@ -180,7 +180,7 @@ impl<'a, T> RecvSlice<'a, T> {
     }
 }
 
-impl<'a, T> Drop for RecvSlice<'a, T> {
+impl<T> Drop for RecvSlice<'_, T> {
     #[inline]
     fn drop(&mut self) {
         self.0.persist_head(self.1);
@@ -191,7 +191,7 @@ struct Acquire<'a, T> {
     receiver: &'a mut Receiver<T>,
 }
 
-impl<'a, T> Future for Acquire<'a, T> {
+impl<T> Future for Acquire<'_, T> {
     type Output = Result<()>;
 
     #[inline]

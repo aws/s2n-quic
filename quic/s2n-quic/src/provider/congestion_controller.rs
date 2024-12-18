@@ -14,6 +14,7 @@ pub trait Provider {
 
 cfg_if! {
     if #[cfg(feature = "unstable-congestion-controller")] {
+        #[cfg_attr(docsrs, doc(cfg(feature = "unstable-congestion-controller")))]
         // Export the types needed to implement the CongestionController trait
         pub use s2n_quic_core::{
             random::Generator as RandomGenerator,

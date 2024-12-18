@@ -1,5 +1,0 @@
----
-source: quic/s2n-quic-core/src/recovery/bbr/pacing.rs
-expression: ""
----
-PacingRateUpdated { path_id: 0, bytes_per_second: 1237501, burst_size: 12000, pacing_gain: 1.25 }

@@ -15,7 +15,11 @@ use s2n_quic_core::{
     crypto::tls,
     dc::testing::MockDcEndpoint,
     event::{
-        api::{DatagramDropReason, DcState, EndpointDatagramDropped, EndpointMeta, Subject},
+        api::{
+            ConnectionMeta, DatagramDropReason, DcState, EndpointDatagramDropped, EndpointMeta,
+            MtuUpdated, Subject,
+        },
+        metrics::aggregate,
         Timestamp,
     },
     frame::ConnectionClose,
@@ -296,6 +300,7 @@ fn dc_possible_secret_control_packet(
     Ok(())
 }
 
+#[track_caller]
 fn self_test<S: ServerProviders, C: ClientProviders>(
     server: server::Builder<S>,
     client: client::Builder<C>,
@@ -313,9 +318,19 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
     let client_events = client_subscriber.clone();
 
     test(model, |handle| {
+        let metrics = aggregate::testing::Registry::snapshot();
+
+        let server_event = (
+            (
+                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                metrics.subscriber("server"),
+            ),
+            (tracing_events(), server_subscriber),
+        );
+
         let mut server = server
             .with_io(handle.builder().build()?)?
-            .with_event((dc::ConfirmComplete, (tracing_events(), server_subscriber)))?
+            .with_event(server_event)?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -335,14 +350,23 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                         }
                     } else {
                         assert!(result.is_ok());
+                        assert!(dc::MtuConfirmComplete::wait_ready(&mut conn).await.is_ok());
                     }
                 }
             }
         });
 
+        let client_event = (
+            (
+                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                metrics.subscriber("client"),
+            ),
+            (tracing_events(), client_subscriber),
+        );
+
         let client = client
             .with_io(handle.builder().build().unwrap())?
-            .with_event((dc::ConfirmComplete, (tracing_events(), client_subscriber)))?
+            .with_event(client_event)?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -373,9 +397,10 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                             .unwrap()
                             .clone();
                         assert_dc_complete(&client_events);
-                        // wait briefly so the ack for the `DC_STATELESS_RESET_TOKENS` frame from the server is sent
-                        // before the client closes the connection. This is only necessary to confirm the `dc::State`
-                        // on the server moves to `DcState::Complete`
+
+                        assert!(dc::MtuConfirmComplete::wait_ready(&mut conn).await.is_ok());
+
+                        // wait briefly for MTU probing to complete on the server
                         delay(Duration::from_millis(100)).await;
                     }
                 }
@@ -435,6 +460,12 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
             .duration_since_start()
     );
 
+    let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
+    let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
+
+    assert_mtu_probing_completed(&client_mtu_events);
+    assert_mtu_probing_completed(&server_mtu_events);
+
     Ok((client_events, server_events))
 }
 
@@ -450,6 +481,14 @@ fn assert_dc_complete(events: &[DcStateChangedEvent]) {
 
     assert!(matches!(events[1].state, DcState::PathSecretsReady { .. }));
     assert!(matches!(events[2].state, DcState::Complete { .. }));
+}
+
+fn assert_mtu_probing_completed(events: &[MtuUpdatedEvent]) {
+    assert!(!events.is_empty());
+    let last_event = events.last().unwrap();
+    assert!(last_event.search_complete);
+    // 1472 = default MaxMtu (1500) - headers
+    assert_eq!(1472, last_event.mtu);
 }
 
 fn convert_io_result(io_result: std::io::Result<()>) -> Option<connection::Error> {
@@ -468,9 +507,16 @@ struct DcStateChangedEvent {
     state: DcState,
 }
 
+#[derive(Clone)]
+struct MtuUpdatedEvent {
+    mtu: u16,
+    search_complete: bool,
+}
+
 #[derive(Clone, Default)]
 struct DcRecorder {
     pub dc_state_changed_events: Arc<Mutex<Vec<DcStateChangedEvent>>>,
+    pub mtu_updated_events: Arc<Mutex<Vec<MtuUpdatedEvent>>>,
     pub endpoint_datagram_dropped_events: Arc<Mutex<Vec<EndpointDatagramDropped>>>,
 }
 impl DcRecorder {
@@ -507,6 +553,22 @@ impl events::Subscriber for DcRecorder {
             });
         };
         let mut buffer = context.dc_state_changed_events.lock().unwrap();
+        store(event, &mut buffer);
+    }
+
+    fn on_mtu_updated(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &ConnectionMeta,
+        event: &MtuUpdated,
+    ) {
+        let store = |event: &events::MtuUpdated, storage: &mut Vec<MtuUpdatedEvent>| {
+            storage.push(MtuUpdatedEvent {
+                mtu: event.mtu,
+                search_complete: event.search_complete,
+            });
+        };
+        let mut buffer = context.mtu_updated_events.lock().unwrap();
         store(event, &mut buffer);
     }
 

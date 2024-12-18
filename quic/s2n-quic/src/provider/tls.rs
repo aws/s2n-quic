@@ -22,6 +22,7 @@ impl_provider_utils!();
 
 cfg_if! {
     if #[cfg(feature = "provider-tls-default")] {
+        #[cfg_attr(docsrs, doc(cfg(feature = "provider-tls-default")))]
         pub mod default {
             //! Provides the recommended implementation of TLS using platform detection
             pub use super::default_tls::*;
@@ -238,6 +239,7 @@ mod default_tls {
     // TODO stub out default that fails with error when started
 }
 
+#[cfg_attr(docsrs, doc(cfg(feature = "provider-tls-rustls")))]
 #[cfg(feature = "s2n-quic-rustls")]
 pub mod rustls {
     //! Provides the [rustls](https://docs.rs/rustls/) implementation of TLS
@@ -273,6 +275,7 @@ pub mod rustls {
     }
 }
 
+#[cfg_attr(docsrs, doc(cfg(feature = "provider-tls-s2n")))]
 #[cfg(feature = "s2n-quic-tls")]
 pub mod s2n_tls {
     //! Provides the [s2n-tls](https://github.com/aws/s2n-tls) implementation of TLS

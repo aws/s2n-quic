@@ -103,7 +103,7 @@ where
 
 struct Visitor<T>(PhantomData<T>);
 
-impl<'de, T> serde::de::Visitor<'de> for Visitor<T>
+impl<T> serde::de::Visitor<'_> for Visitor<T>
 where
     T: Copy + FromStr,
     <T as FromStr>::Err: core::fmt::Display,

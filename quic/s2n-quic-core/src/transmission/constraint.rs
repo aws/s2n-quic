@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(feature = "generator")]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 #[cfg(test)]
 use bolero::generator::*;

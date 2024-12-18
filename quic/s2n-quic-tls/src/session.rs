@@ -107,6 +107,16 @@ impl tls::TlsSession for Session {
     fn cipher_suite(&self) -> CipherSuite {
         self.state.cipher_suite()
     }
+
+    fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, tls::ChainError> {
+        self.connection
+            .peer_cert_chain()
+            .map_err(|_| tls::ChainError::failure())?
+            .iter()
+            .map(|v| Ok(v?.der()?.to_vec()))
+            .collect::<Result<Vec<Vec<u8>>, s2n_tls::error::Error>>()
+            .map_err(|_| tls::ChainError::failure())
+    }
 }
 
 impl tls::Session for Session {
@@ -151,6 +161,7 @@ impl tls::Session for Session {
                 .alert()
                 .map(tls::Error::new)
                 .unwrap_or(tls::Error::HANDSHAKE_FAILURE)
+                .with_reason(e.message())
                 .into())),
             Poll::Pending => Poll::Pending,
         }

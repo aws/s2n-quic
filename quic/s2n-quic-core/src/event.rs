@@ -2,11 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{connection, endpoint};
-use core::{ops::RangeInclusive, time::Duration};
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+use core::{fmt, ops::RangeInclusive, time::Duration};
 
 mod generated;
 pub mod metrics;
 pub use generated::*;
+
+#[cfg(any(test, feature = "testing"))]
+#[doc(hidden)]
+pub mod snapshot;
 
 /// All event types which can be emitted from this library.
 pub trait Event: core::fmt::Debug {
@@ -83,8 +89,20 @@ impl<T> IntoEvent<RangeInclusive<T>> for RangeInclusive<T> {
     }
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Copy)]
 pub struct Timestamp(crate::time::Timestamp);
+
+impl fmt::Debug for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl fmt::Display for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl Timestamp {
     /// The duration since the start of the s2n-quic process.
@@ -129,6 +147,13 @@ impl IntoEvent<Timestamp> for crate::time::Timestamp {
     }
 }
 
+impl IntoEvent<Timestamp> for Timestamp {
+    #[inline]
+    fn into_event(self) -> Timestamp {
+        self
+    }
+}
+
 #[derive(Clone)]
 pub struct TlsSession<'a> {
     session: &'a dyn crate::crypto::tls::TlsSession,
@@ -149,6 +174,13 @@ impl<'a> TlsSession<'a> {
         self.session.tls_exporter(label, context, output)
     }
 
+    // Currently intended only for unstable usage
+    #[doc(hidden)]
+    #[cfg(feature = "alloc")]
+    pub fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, crate::crypto::tls::ChainError> {
+        self.session.peer_cert_chain_der()
+    }
+
     pub fn cipher_suite(&self) -> crate::event::api::CipherSuite {
         self.session.cipher_suite().into_event()
     }
@@ -164,5 +196,55 @@ impl<'a> crate::event::IntoEvent<TlsSession<'a>> for TlsSession<'a> {
 impl core::fmt::Debug for TlsSession<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TlsSession").finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "std")]
+impl<'a> IntoEvent<&'a std::io::Error> for &'a std::io::Error {
+    #[inline]
+    fn into_event(self) -> &'a std::io::Error {
+        self
+    }
+}
+
+/// Provides metadata related to an event
+pub trait Meta: core::fmt::Debug {
+    /// Returns whether the local endpoint is a Client or Server
+    fn endpoint_type(&self) -> &api::EndpointType;
+
+    /// A context from which the event is being emitted
+    ///
+    /// An event can occur in the context of an Endpoint or Connection
+    fn subject(&self) -> api::Subject;
+
+    /// The time the event occurred
+    fn timestamp(&self) -> &Timestamp;
+}
+
+impl Meta for api::ConnectionMeta {
+    fn endpoint_type(&self) -> &api::EndpointType {
+        &self.endpoint_type
+    }
+
+    fn subject(&self) -> api::Subject {
+        api::Subject::Connection { id: self.id }
+    }
+
+    fn timestamp(&self) -> &Timestamp {
+        &self.timestamp
+    }
+}
+
+impl Meta for api::EndpointMeta {
+    fn endpoint_type(&self) -> &api::EndpointType {
+        &self.endpoint_type
+    }
+
+    fn subject(&self) -> api::Subject {
+        api::Subject::Endpoint {}
+    }
+
+    fn timestamp(&self) -> &Timestamp {
+        &self.timestamp
     }
 }

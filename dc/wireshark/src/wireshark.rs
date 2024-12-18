@@ -168,7 +168,7 @@ mod wireshark_sys_impl {
                     buffer.tvb,
                     parsed.offset as _,
                     parsed.len as _,
-                    parsed.value as u32,
+                    parsed.value as _,
                 )
             }
         }
@@ -186,7 +186,7 @@ mod wireshark_sys_impl {
                     buffer.tvb,
                     parsed.offset as _,
                     parsed.len as _,
-                    parsed.value.into() as u32,
+                    parsed.value.into() as _,
                 )
             }
         }
@@ -237,8 +237,8 @@ mod wireshark_sys_impl {
             parsed: Parsed<Duration>,
         ) -> Self::AddedItem {
             let time = wireshark_sys::nstime_t {
-                secs: parsed.value.as_secs() as i64,
-                nsecs: parsed.value.subsec_nanos() as i32,
+                secs: parsed.value.as_secs() as _,
+                nsecs: parsed.value.subsec_nanos() as _,
             };
             unsafe {
                 wireshark_sys::proto_tree_add_time(

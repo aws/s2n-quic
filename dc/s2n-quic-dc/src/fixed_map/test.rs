@@ -38,5 +38,5 @@ fn capacity_size() {
     for idx in 0..500_000 {
         map.insert(idx, ());
     }
-    assert!(map.len() >= 400_000, "{}", map.len());
+    assert!(map.count() >= 400_000, "{}", map.count());
 }

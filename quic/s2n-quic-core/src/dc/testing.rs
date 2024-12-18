@@ -10,7 +10,7 @@ use crate::{
 };
 use core::{num::NonZeroU32, time::Duration};
 use std::sync::{
-    atomic::{AtomicU8, Ordering},
+    atomic::{AtomicU16, AtomicU8, Ordering},
     Arc,
 };
 
@@ -34,16 +34,22 @@ impl MockDcEndpoint {
 pub struct MockDcPath {
     pub on_path_secrets_ready_count: u8,
     pub on_peer_stateless_reset_tokens_count: u8,
+    pub on_dc_handshake_complete: u8,
     pub stateless_reset_tokens: Vec<stateless_reset::Token>,
     pub peer_stateless_reset_tokens: Vec<stateless_reset::Token>,
+    pub mtu: u16,
 }
 
 impl dc::Endpoint for MockDcEndpoint {
     type Path = MockDcPath;
 
-    fn new_path(&mut self, _connection_info: &ConnectionInfo) -> Option<Self::Path> {
+    fn new_path(&mut self, connection_info: &ConnectionInfo) -> Option<Self::Path> {
         Some(MockDcPath {
             stateless_reset_tokens: self.stateless_reset_tokens.clone(),
+            mtu: connection_info
+                .application_params
+                .max_datagram_size
+                .load(Ordering::Relaxed),
             ..Default::default()
         })
     }
@@ -64,6 +70,7 @@ impl dc::Path for MockDcPath {
         &mut self,
         _session: &impl TlsSession,
     ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
+        debug_assert_eq!(0, self.on_path_secrets_ready_count);
         self.on_path_secrets_ready_count += 1;
         Ok(self.stateless_reset_tokens.clone())
     }
@@ -72,14 +79,25 @@ impl dc::Path for MockDcPath {
         &mut self,
         stateless_reset_tokens: impl Iterator<Item = &'a stateless_reset::Token>,
     ) {
+        debug_assert_eq!(0, self.on_peer_stateless_reset_tokens_count);
         self.on_peer_stateless_reset_tokens_count += 1;
         self.peer_stateless_reset_tokens
             .extend(stateless_reset_tokens);
     }
+
+    fn on_dc_handshake_complete(&mut self) {
+        debug_assert_eq!(0, self.on_dc_handshake_complete);
+        self.on_dc_handshake_complete += 1;
+    }
+
+    fn on_mtu_updated(&mut self, mtu: u16) {
+        self.mtu = mtu
+    }
 }
 
+#[allow(clippy::declare_interior_mutable_const)]
 pub const TEST_APPLICATION_PARAMS: ApplicationParams = ApplicationParams {
-    max_datagram_size: 1472,
+    max_datagram_size: AtomicU16::new(1472),
     remote_max_data: VarInt::from_u32(1u32 << 25),
     local_send_max_data: VarInt::from_u32(1u32 << 25),
     local_recv_max_data: VarInt::from_u32(1u32 << 25),

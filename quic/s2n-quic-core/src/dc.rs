@@ -11,7 +11,11 @@ use crate::{
     transport::parameters::{DcSupportedVersions, InitialFlowControlLimits},
     varint::VarInt,
 };
-use core::{num::NonZeroU32, time::Duration};
+use core::{
+    num::NonZeroU32,
+    sync::atomic::{AtomicU16, Ordering},
+    time::Duration,
+};
 
 mod disabled;
 mod traits;
@@ -91,15 +95,27 @@ impl<'a> DatagramInfo<'a> {
 }
 
 /// Various settings relevant to the dc path
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub struct ApplicationParams {
-    pub max_datagram_size: u16,
+    pub max_datagram_size: AtomicU16,
     pub remote_max_data: VarInt,
     pub local_send_max_data: VarInt,
     pub local_recv_max_data: VarInt,
     // Actually a Duration, stored as milliseconds to shrink this struct
     pub max_idle_timeout: Option<NonZeroU32>,
+}
+
+impl Clone for ApplicationParams {
+    fn clone(&self) -> Self {
+        Self {
+            max_datagram_size: AtomicU16::new(self.max_datagram_size.load(Ordering::Relaxed)),
+            remote_max_data: self.remote_max_data,
+            local_send_max_data: self.local_send_max_data,
+            local_recv_max_data: self.local_recv_max_data,
+            max_idle_timeout: self.max_idle_timeout,
+        }
+    }
 }
 
 impl ApplicationParams {
@@ -109,7 +125,7 @@ impl ApplicationParams {
         limits: &Limits,
     ) -> Self {
         Self {
-            max_datagram_size,
+            max_datagram_size: AtomicU16::new(max_datagram_size),
             remote_max_data: peer_flow_control_limits.max_data,
             local_send_max_data: limits.initial_stream_limits().max_data_bidi_local,
             local_recv_max_data: limits.initial_stream_limits().max_data_bidi_remote,
@@ -123,5 +139,58 @@ impl ApplicationParams {
 
     pub fn max_idle_timeout(&self) -> Option<Duration> {
         Some(Duration::from_millis(self.max_idle_timeout?.get() as u64))
+    }
+
+    pub fn max_datagram_size(&self) -> u16 {
+        self.max_datagram_size.load(Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        connection::Limits, dc::ApplicationParams, transport::parameters::InitialFlowControlLimits,
+        varint::VarInt,
+    };
+    use std::{sync::atomic::Ordering, time::Duration};
+
+    #[test]
+    fn clone() {
+        let initial_flow_control_limits = InitialFlowControlLimits {
+            max_data: VarInt::from_u32(2222),
+            ..Default::default()
+        };
+
+        let limits = Limits {
+            bidirectional_local_data_window: 1234.try_into().unwrap(),
+            bidirectional_remote_data_window: 6789.try_into().unwrap(),
+            max_idle_timeout: Duration::from_millis(999).try_into().unwrap(),
+            ..Default::default()
+        };
+
+        let params = ApplicationParams::new(9000, &initial_flow_control_limits, &limits);
+
+        assert_eq!(9000, params.max_datagram_size.load(Ordering::Relaxed));
+        assert_eq!(limits.max_idle_timeout(), params.max_idle_timeout());
+        assert_eq!(1234, params.local_send_max_data.as_u64());
+        assert_eq!(6789, params.local_recv_max_data.as_u64());
+        assert_eq!(2222, params.remote_max_data.as_u64());
+
+        let cloned_params = params.clone();
+
+        assert_eq!(
+            params.max_datagram_size.load(Ordering::Relaxed),
+            cloned_params.max_datagram_size.load(Ordering::Relaxed)
+        );
+        assert_eq!(params.max_idle_timeout, cloned_params.max_idle_timeout);
+        assert_eq!(
+            params.local_send_max_data,
+            cloned_params.local_send_max_data
+        );
+        assert_eq!(
+            params.local_recv_max_data,
+            cloned_params.local_recv_max_data
+        );
+        assert_eq!(params.remote_max_data, cloned_params.remote_max_data);
     }
 }

@@ -103,6 +103,16 @@
 //! [s2n-tls]: https://github.com/aws/s2n-tls
 //! [rustls]: https://github.com/rustls/rustls
 
+// Tag docs with the required platform and features.
+// https://doc.rust-lang.org/rustdoc/unstable-features.html
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(
+    docsrs,
+    feature(doc_auto_cfg),
+    feature(doc_cfg_hide),
+    doc(cfg_hide(doc))
+)]
+
 #[macro_use]
 pub mod provider;
 

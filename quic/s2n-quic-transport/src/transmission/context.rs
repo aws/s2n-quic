@@ -28,7 +28,7 @@ pub struct Context<'a, 'b, 'sub, Config: endpoint::Config> {
     >,
 }
 
-impl<'a, 'b, 'sub, Config: endpoint::Config> Context<'a, 'b, 'sub, Config> {
+impl<Config: endpoint::Config> Context<'_, '_, '_, Config> {
     #[inline]
     fn check_frame_constraint<Frame: FrameTrait>(&self, frame: &Frame) {
         // only apply checks with debug_assertions enabled
@@ -61,7 +61,7 @@ impl<'a, 'b, 'sub, Config: endpoint::Config> Context<'a, 'b, 'sub, Config> {
     }
 }
 
-impl<'a, 'b, 'sub, Config: endpoint::Config> WriteContext for Context<'a, 'b, 'sub, Config> {
+impl<Config: endpoint::Config> WriteContext for Context<'_, '_, '_, Config> {
     fn current_time(&self) -> Timestamp {
         self.timestamp
     }
@@ -199,7 +199,7 @@ impl<'a, C: WriteContext> RetransmissionContext<'a, C> {
     }
 }
 
-impl<'a, C: WriteContext> WriteContext for RetransmissionContext<'a, C> {
+impl<C: WriteContext> WriteContext for RetransmissionContext<'_, C> {
     #[inline]
     fn current_time(&self) -> Timestamp {
         self.context.current_time()

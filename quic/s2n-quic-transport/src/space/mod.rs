@@ -948,7 +948,9 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                     .map_err(on_error)?;
 
                     // skip processing any other frames and return an error
-                    return Err(frame.into());
+
+                    // use `from` instead of `into` so the location is correctly captured
+                    return Err(connection::Error::from(frame));
                 }
                 Frame::Stream(frame) => {
                     let on_error = on_frame_processed!(frame);
@@ -1126,13 +1128,12 @@ struct AckInterceptContext<
 }
 
 impl<
-        'a,
         Config: endpoint::Config,
         Pub: event::ConnectionPublisher,
         Space: PacketSpace<Config>,
         OnProcessedFrame: FnMut(&Ack<&ack::Ranges>),
     > s2n_quic_core::packet::interceptor::Ack
-    for AckInterceptContext<'a, Config, Pub, Space, OnProcessedFrame>
+    for AckInterceptContext<'_, Config, Pub, Space, OnProcessedFrame>
 {
     fn space(&self) -> PacketNumberSpace {
         self.packet_number.space()

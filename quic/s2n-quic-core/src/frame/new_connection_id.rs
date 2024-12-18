@@ -66,7 +66,7 @@ pub struct NewConnectionId<'a> {
     pub stateless_reset_token: &'a [u8; STATELESS_RESET_TOKEN_LEN],
 }
 
-impl<'a> NewConnectionId<'a> {
+impl NewConnectionId<'_> {
     pub const fn tag(&self) -> u8 {
         new_connection_id_tag!()
     }
@@ -123,7 +123,7 @@ decoder_parameterized_value!(
     }
 );
 
-impl<'a> EncoderValue for NewConnectionId<'a> {
+impl EncoderValue for NewConnectionId<'_> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
         buffer.encode(&self.sequence_number);

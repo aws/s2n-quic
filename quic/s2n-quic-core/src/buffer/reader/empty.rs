@@ -20,7 +20,7 @@ impl<'a, R: Reader + ?Sized> Empty<'a, R> {
     }
 }
 
-impl<'a, R: Reader + ?Sized> Storage for Empty<'a, R> {
+impl<R: Reader + ?Sized> Storage for Empty<'_, R> {
     type Error = core::convert::Infallible;
 
     #[inline(always)]
@@ -42,7 +42,7 @@ impl<'a, R: Reader + ?Sized> Storage for Empty<'a, R> {
     }
 }
 
-impl<'a, R: Reader + ?Sized> Reader for Empty<'a, R> {
+impl<R: Reader + ?Sized> Reader for Empty<'_, R> {
     #[inline]
     fn current_offset(&self) -> VarInt {
         self.0.current_offset()

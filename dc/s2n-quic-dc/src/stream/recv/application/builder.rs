@@ -3,7 +3,7 @@
 
 use crate::{
     clock::Timer,
-    msg,
+    event, msg,
     stream::{
         recv::application::{Inner, LocalState, Reader},
         runtime,
@@ -14,21 +14,24 @@ use crate::{
 use core::mem::ManuallyDrop;
 use s2n_quic_core::endpoint;
 
-pub struct Builder {
+pub struct Builder<Sub> {
     endpoint: endpoint::Type,
-    runtime: runtime::ArcHandle,
+    runtime: runtime::ArcHandle<Sub>,
 }
 
-impl Builder {
+impl<Sub> Builder<Sub> {
     #[inline]
-    pub fn new(endpoint: endpoint::Type, runtime: runtime::ArcHandle) -> Self {
+    pub fn new(endpoint: endpoint::Type, runtime: runtime::ArcHandle<Sub>) -> Self {
         Self { endpoint, runtime }
     }
 }
 
-impl Builder {
+impl<Sub> Builder<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
-    pub fn build(self, shared: ArcShared, sockets: socket::ArcApplication) -> Reader {
+    pub fn build(self, shared: ArcShared<Sub>, sockets: socket::ArcApplication) -> Reader<Sub> {
         let Self { endpoint, runtime } = self;
 
         let remote_addr = shared.read_remote_addr();

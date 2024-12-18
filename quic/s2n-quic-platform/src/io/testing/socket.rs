@@ -8,7 +8,7 @@ use super::{
 use crate::{
     features::Gso,
     socket::{
-        ring, task,
+        ring, stats, task,
         task::{rx, tx},
     },
     syscall::SocketEvents,
@@ -21,8 +21,12 @@ use s2n_quic_core::{
 use std::{fmt, io, sync::Arc};
 
 /// A task to receive on a socket
-pub async fn rx(socket: Socket, producer: ring::Producer<Message>) -> io::Result<()> {
-    let result = task::Receiver::new(producer, socket, Default::default()).await;
+pub async fn rx(
+    socket: Socket,
+    producer: ring::Producer<Message>,
+    stats: stats::Sender,
+) -> io::Result<()> {
+    let result = task::Receiver::new(producer, socket, Default::default(), stats).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -31,8 +35,13 @@ pub async fn rx(socket: Socket, producer: ring::Producer<Message>) -> io::Result
 }
 
 /// A task to send on a socket
-pub async fn tx(socket: Socket, consumer: ring::Consumer<Message>, gso: Gso) -> io::Result<()> {
-    let result = task::Sender::new(consumer, socket, gso, Default::default()).await;
+pub async fn tx(
+    socket: Socket,
+    consumer: ring::Consumer<Message>,
+    gso: Gso,
+    stats: stats::Sender,
+) -> io::Result<()> {
+    let result = task::Sender::new(consumer, socket, gso, Default::default(), stats).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -169,6 +178,7 @@ impl Socket {
         &self,
         max_mtu: MaxMtu,
         queue_recv_buffer_size: Option<u32>,
+        stats: stats::Sender,
     ) -> impl s2n_quic_core::io::rx::Rx<PathHandle = Handle> {
         let payload_len = {
             let max_mtu: u16 = max_mtu.into();
@@ -190,7 +200,7 @@ impl Socket {
         consumers.push(consumer);
 
         // spawn a task that actually reads from the socket into the ring buffer
-        super::spawn(super::socket::rx(self.clone(), producer));
+        super::spawn(super::socket::rx(self.clone(), producer, stats));
 
         // construct the RX side for the endpoint event loop
         let max_mtu = MaxMtu::try_from(payload_len as u16).unwrap();
@@ -203,6 +213,7 @@ impl Socket {
         &self,
         max_mtu: MaxMtu,
         queue_send_buffer_size: Option<u32>,
+        stats: stats::Sender,
     ) -> impl s2n_quic_core::io::tx::Tx<PathHandle = Handle> {
         let gso = crate::features::Gso::default();
         gso.disable();
@@ -229,7 +240,12 @@ impl Socket {
         producers.push(producer);
 
         // spawn a task that actually flushes the ring buffer to the socket
-        super::spawn(super::socket::tx(self.clone(), consumer, gso.clone()));
+        super::spawn(super::socket::tx(
+            self.clone(),
+            consumer,
+            gso.clone(),
+            stats,
+        ));
 
         // construct the TX side for the endpoint event loop
         crate::socket::io::tx::Tx::new(producers, gso, max_mtu)
@@ -256,11 +272,22 @@ impl tx::Socket<Message> for Socket {
         _cx: &mut Context,
         entries: &mut [Message],
         events: &mut tx::Events,
+        stats: &stats::Sender,
     ) -> io::Result<()> {
-        self.0.buffers.tx_host(self.0.host, |queue| {
-            let count = queue.send(entries);
+        let mut count = 0;
+
+        let res = self.0.buffers.tx_host(self.0.host, |queue| {
+            count = queue.send(entries);
             events.on_complete(count);
-        })
+        });
+
+        if count > 0 {
+            stats.send().on_operation_result(&res, |_| count);
+        } else {
+            stats.send().on_operation_pending();
+        }
+
+        res
     }
 }
 
@@ -273,14 +300,25 @@ impl rx::Socket<Message> for Socket {
         cx: &mut Context,
         entries: &mut [Message],
         events: &mut rx::Events,
+        stats: &stats::Sender,
     ) -> io::Result<()> {
-        self.0.buffers.rx_host(self.0.host, |queue| {
-            let count = queue.recv(cx, entries);
+        let mut count = 0;
+
+        let res = self.0.buffers.rx_host(self.0.host, |queue| {
+            count = queue.recv(cx, entries);
             if count > 0 {
                 events.on_complete(count);
             } else {
                 events.blocked()
             }
-        })
+        });
+
+        if count > 0 {
+            stats.recv().on_operation_result(&res, |_| count);
+        } else {
+            stats.recv().on_operation_pending();
+        }
+
+        res
     }
 }

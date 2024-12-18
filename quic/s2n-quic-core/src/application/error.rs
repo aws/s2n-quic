@@ -79,7 +79,7 @@ impl From<Error> for u64 {
     }
 }
 
-impl<'a> From<Error> for ConnectionClose<'a> {
+impl From<Error> for ConnectionClose<'_> {
     fn from(error: Error) -> Self {
         ConnectionClose {
             error_code: error.0,

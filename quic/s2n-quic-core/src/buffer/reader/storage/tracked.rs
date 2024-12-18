@@ -26,7 +26,7 @@ impl<'a, S: Storage + ?Sized> Tracked<'a, S> {
     }
 }
 
-impl<'a, S: Storage + ?Sized> Storage for Tracked<'a, S> {
+impl<S: Storage + ?Sized> Storage for Tracked<'_, S> {
     type Error = S::Error;
 
     #[inline]
@@ -65,7 +65,7 @@ impl<'a, S: Storage + ?Sized> Storage for Tracked<'a, S> {
     }
 }
 
-impl<'a, S: Reader + ?Sized> Reader for Tracked<'a, S> {
+impl<S: Reader + ?Sized> Reader for Tracked<'_, S> {
     #[inline]
     fn current_offset(&self) -> crate::varint::VarInt {
         self.storage.current_offset()

@@ -1,54 +1,138 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::{
-    recv::application::{self as recv, Reader},
-    send::application::{self as send, Writer},
-    shared::ArcShared,
-    socket,
+use crate::{
+    event::{self, EndpointPublisher as _},
+    stream::{
+        recv::application::{self as recv, Reader},
+        send::application::{self as send, Writer},
+        shared::ArcShared,
+        socket,
+    },
 };
-use core::fmt;
-use s2n_quic_core::buffer;
+use core::{fmt, time::Duration};
+use s2n_quic_core::{buffer, time::Timestamp};
 use std::{io, net::SocketAddr};
 
-pub struct Builder {
-    pub read: recv::Builder,
-    pub write: send::Builder,
-    pub shared: ArcShared,
+pub struct Builder<Sub: event::Subscriber> {
+    pub read: recv::Builder<Sub>,
+    pub write: send::Builder<Sub>,
+    pub shared: ArcShared<Sub>,
     pub sockets: Box<dyn socket::application::Builder>,
+    pub queue_time: Timestamp,
 }
 
-impl Builder {
+impl<Sub> Builder<Sub>
+where
+    Sub: event::Subscriber,
+{
+    /// Builds the stream and emits an event indicating that the stream was built
     #[inline]
-    pub fn build(self) -> io::Result<Stream> {
+    pub(crate) fn accept(self) -> io::Result<(Stream<Sub>, Duration)> {
+        let sojourn_time = {
+            let remote_address = self.shared.read_remote_addr();
+            let remote_address = &remote_address;
+            let credential_id = &*self.shared.credentials().id;
+            let stream_id = self.shared.application().stream_id.into_varint().as_u64();
+            let now = self.shared.common.clock.get_time();
+            let sojourn_time = now.saturating_duration_since(self.queue_time);
+
+            self.shared
+                .endpoint_publisher(now)
+                .on_acceptor_stream_dequeued(event::builder::AcceptorStreamDequeued {
+                    remote_address,
+                    credential_id,
+                    stream_id,
+                    sojourn_time,
+                });
+
+            // TODO emit event
+
+            sojourn_time
+        };
+
+        self.build().map(|stream| (stream, sojourn_time))
+    }
+
+    #[inline]
+    pub(crate) fn connect(self) -> io::Result<Stream<Sub>> {
+        self.build()
+    }
+
+    #[inline]
+    pub(crate) fn build(self) -> io::Result<Stream<Sub>> {
         let Self {
             read,
             write,
             shared,
             sockets,
+            queue_time: _,
         } = self;
+
+        // TODO emit event
+
         let sockets = sockets.build()?;
         let read = read.build(shared.clone(), sockets.clone());
         let write = write.build(shared, sockets);
         Ok(Stream { read, write })
     }
-}
 
-pub struct Stream {
-    read: Reader,
-    write: Writer,
-}
+    /// Emits an event indicating that the stream was pruned
+    #[inline]
+    pub(crate) fn prune(self, reason: event::builder::AcceptorStreamPruneReason) {
+        let now = self.shared.clock.get_time();
+        let remote_address = self.shared.read_remote_addr();
+        let remote_address = &remote_address;
+        let credential_id = &*self.shared.credentials().id;
+        let stream_id = self.shared.application().stream_id.into_varint().as_u64();
+        let sojourn_time = now.saturating_duration_since(self.queue_time);
 
-impl fmt::Debug for Stream {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Stream")
-            .field("peer_addr", &self.peer_addr().unwrap())
-            .field("local_addr", &self.local_addr().unwrap())
-            .finish()
+        self.shared
+            .endpoint_publisher(now)
+            .on_acceptor_stream_pruned(event::builder::AcceptorStreamPruned {
+                remote_address,
+                credential_id,
+                stream_id,
+                sojourn_time,
+                reason,
+            });
+
+        // TODO emit event
     }
 }
 
-impl Stream {
+pub struct Stream<Sub>
+where
+    Sub: event::Subscriber,
+{
+    read: Reader<Sub>,
+    write: Writer<Sub>,
+}
+
+impl<Sub> fmt::Debug for Stream<Sub>
+where
+    Sub: event::Subscriber,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut s = f.debug_struct("Stream");
+
+        for (name, addr) in [
+            ("peer_addr", self.peer_addr()),
+            ("local_addr", self.local_addr()),
+        ] {
+            if let Ok(addr) = addr {
+                s.field(name, &addr);
+            }
+        }
+
+        s.finish()
+    }
+}
+
+impl<Sub> Stream<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.read.peer_addr()
@@ -81,26 +165,29 @@ impl Stream {
     }
 
     #[inline]
-    pub fn split(&mut self) -> (&mut Reader, &mut Writer) {
+    pub fn split(&mut self) -> (&mut Reader<Sub>, &mut Writer<Sub>) {
         (&mut self.read, &mut self.write)
     }
 
     #[inline]
-    pub fn into_split(self) -> (Reader, Writer) {
+    pub fn into_split(self) -> (Reader<Sub>, Writer<Sub>) {
         (self.read, self.write)
     }
 }
 
 #[cfg(feature = "tokio")]
 mod tokio_impl {
-    use super::Stream;
+    use super::{event, Stream};
     use core::{
         pin::Pin,
         task::{Context, Poll},
     };
     use tokio::io::{self, AsyncRead, AsyncWrite, ReadBuf};
 
-    impl AsyncRead for Stream {
+    impl<Sub> AsyncRead for Stream<Sub>
+    where
+        Sub: event::Subscriber,
+    {
         #[inline]
         fn poll_read(
             mut self: Pin<&mut Self>,
@@ -111,7 +198,10 @@ mod tokio_impl {
         }
     }
 
-    impl AsyncWrite for Stream {
+    impl<Sub> AsyncWrite for Stream<Sub>
+    where
+        Sub: event::Subscriber,
+    {
         #[inline]
         fn poll_write(
             mut self: Pin<&mut Self>,

@@ -44,7 +44,7 @@ where
     }
 }
 
-impl<'a, R, E> Storage for Fallible<'a, R, E>
+impl<R, E> Storage for Fallible<'_, R, E>
 where
     R: ?Sized + Storage<Error = Infallible>,
     E: 'static + Clone,
@@ -92,7 +92,7 @@ where
     }
 }
 
-impl<'a, R, E> Reader for Fallible<'a, R, E>
+impl<R, E> Reader for Fallible<'_, R, E>
 where
     R: ?Sized + Reader<Error = Infallible>,
     E: 'static + Clone,

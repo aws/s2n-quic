@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::event::metrics::aggregate;
 use core::fmt;
 use s2n_codec::DecoderError;
 
@@ -79,11 +80,67 @@ macro_rules! alert_descriptions {
             )*
         }
 
+        impl aggregate::AsVariant for Error {
+            const VARIANTS: &'static [aggregate::info::Variant] = &{
+                use aggregate::info::{Variant, Str};
+
+                const fn count(_v: u64) -> usize {
+                    1
+                }
+
+                const LEN: usize = 1 $(+ count($value))*;
+                let mut array = [Variant { name: Str::new("\0"), id: 0 }; LEN];
+
+                let mut id = 0;
+
+                $(
+                    array[id] = Variant {
+                        name: Str::new(concat!("TLS_", stringify!($name), "\0")),
+                        id,
+                    };
+                    id += 1;
+                )*
+
+                array[id] = aggregate::info::Variant {
+                    name: aggregate::info::Str::new("TLS_UNKNOWN_ERROR\0"),
+                    id,
+                };
+
+                array
+            };
+
+            #[inline]
+            fn variant_idx(&self) -> usize {
+                let mut idx = 0;
+
+                $(
+                    if self.code == $value {
+                        return idx;
+                    }
+                    idx += 1;
+                )*
+
+                idx
+            }
+        }
+
         #[test]
         fn description_test() {
             $(
                 assert_eq!(&Error::$name.to_string(), stringify!($name));
             )*
+        }
+
+        #[test]
+        #[cfg_attr(miri, ignore)]
+        fn variants_test() {
+            use aggregate::AsVariant;
+            insta::assert_debug_snapshot!(Error::VARIANTS);
+
+            let mut seen = std::collections::HashSet::new();
+            for variant in Error::VARIANTS {
+                assert!(seen.insert(variant.id));
+            }
         }
     };
 }

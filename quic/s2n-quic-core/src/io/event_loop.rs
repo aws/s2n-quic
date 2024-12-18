@@ -3,7 +3,8 @@
 
 use crate::{
     endpoint::Endpoint,
-    event::{self, EndpointPublisher},
+    event::{self, EndpointPublisher, IntoEvent as _},
+    inet::SocketAddress,
     io::{rx::Rx, tx::Tx},
     task::cooldown::Cooldown,
     time::clock::{ClockWithTimer, Timer},
@@ -13,29 +14,36 @@ use core::pin::Pin;
 pub mod select;
 use select::Select;
 
-pub struct EventLoop<E, C, R, T> {
+pub trait Stats {
+    fn publish<P: event::EndpointPublisher>(&mut self, publisher: &mut P);
+}
+
+pub struct EventLoop<E, C, R, T, S> {
     pub endpoint: E,
     pub clock: C,
     pub rx: R,
     pub tx: T,
     pub cooldown: Cooldown,
+    pub stats: S,
 }
 
-impl<E, C, R, T> EventLoop<E, C, R, T>
+impl<E, C, R, T, S> EventLoop<E, C, R, T, S>
 where
     E: Endpoint,
     C: ClockWithTimer,
     R: Rx<PathHandle = E::PathHandle>,
     T: Tx<PathHandle = E::PathHandle>,
+    S: Stats,
 {
     /// Starts running the endpoint event loop in an async task
-    pub async fn start(self) {
+    pub async fn start(self, local_addr: SocketAddress) {
         let Self {
             mut endpoint,
             clock,
             mut rx,
             mut tx,
             mut cooldown,
+            mut stats,
         } = self;
 
         /// Creates a event publisher with the endpoint's subscriber
@@ -53,6 +61,12 @@ where
                 )
             }};
         }
+
+        publisher!(clock.get_time()).on_platform_event_loop_started(
+            event::builder::PlatformEventLoopStarted {
+                local_address: local_addr.into_event(),
+            },
+        );
 
         let mut timer = clock.timer();
 
@@ -97,14 +111,18 @@ where
 
             // notify the application that we woke up and why
             let wakeup_timestamp = clock.get_time();
-            publisher!(wakeup_timestamp).on_platform_event_loop_wakeup(
-                event::builder::PlatformEventLoopWakeup {
+            {
+                let mut publisher = publisher!(wakeup_timestamp);
+
+                publisher.on_platform_event_loop_wakeup(event::builder::PlatformEventLoopWakeup {
                     timeout_expired,
                     rx_ready: rx_result.is_some(),
                     tx_ready: tx_result.is_some(),
                     application_wakeup,
-                },
-            );
+                });
+
+                stats.publish(&mut publisher);
+            }
 
             match rx_result {
                 Some(Ok(())) => {

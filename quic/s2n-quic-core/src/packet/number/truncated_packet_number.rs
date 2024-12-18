@@ -10,7 +10,7 @@ use crate::packet::number::{
 use s2n_codec::{u24, DecoderBuffer, DecoderBufferResult, DecoderValue, Encoder, EncoderValue};
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 /// A truncated packet number, which is derived from the largest acknowledged packet number
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

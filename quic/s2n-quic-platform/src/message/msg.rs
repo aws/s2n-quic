@@ -28,9 +28,6 @@ pub use ext::Ext;
 pub use handle::Handle;
 pub use libc::msghdr as Message;
 
-#[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
-
 impl MessageTrait for msghdr {
     type Handle = Handle;
 

@@ -680,7 +680,7 @@ pub mod testing {
         }
     }
 
-    impl<'a> Random for RandomSlice<'a> {
+    impl Random for RandomSlice<'_> {
         #[inline]
         fn fill(&mut self, bytes: &mut [u8]) {
             for byte in bytes.iter_mut() {

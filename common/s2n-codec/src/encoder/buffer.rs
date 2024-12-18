@@ -70,7 +70,7 @@ impl<'a> EncoderBuffer<'a> {
     }
 }
 
-impl<'a> Encoder for EncoderBuffer<'a> {
+impl Encoder for EncoderBuffer<'_> {
     #[inline]
     fn write_sized<F: FnOnce(&mut [u8])>(&mut self, len: usize, write: F) {
         self.assert_capacity(len);

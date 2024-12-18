@@ -720,7 +720,7 @@ pub struct Drain<'a> {
     inner: &'a mut Reassembler,
 }
 
-impl<'a> Iterator for Drain<'a> {
+impl Iterator for Drain<'_> {
     type Item = BytesMut;
 
     #[inline]

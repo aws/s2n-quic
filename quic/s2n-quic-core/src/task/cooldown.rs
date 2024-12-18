@@ -110,7 +110,7 @@ pin_project!(
     }
 );
 
-impl<'a, F> Future for Wrapped<'a, F>
+impl<F> Future for Wrapped<'_, F>
 where
     F: Future,
 {

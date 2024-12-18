@@ -4,7 +4,10 @@
 use super::*;
 use s2n_codec::encoder::scatter;
 use s2n_quic_core::{
-    event::api::{PacketHeader, Subject},
+    event::{
+        api::{PacketHeader, Subject},
+        metrics::aggregate,
+    },
     packet::interceptor::{Interceptor, Packet},
 };
 
@@ -20,11 +23,17 @@ fn handshake_pto_timer_is_armed() {
     let packet_sent_events = packet_sent_subscriber.events();
 
     test(model, |handle| {
+        let metrics = if cfg!(windows) {
+            aggregate::testing::Registry::no_snapshot()
+        } else {
+            aggregate::testing::Registry::snapshot()
+        };
+
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_packet_interceptor(DropHandshakeTx)?
-            .with_event(tracing_events())?
+            .with_event((tracing_events(), metrics.subscriber("server")))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -38,7 +47,10 @@ fn handshake_pto_timer_is_armed() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(((tracing_events(), pto_subscriber), packet_sent_subscriber))?
+            .with_event((
+                (tracing_events(), pto_subscriber),
+                (packet_sent_subscriber, metrics.subscriber("client")),
+            ))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

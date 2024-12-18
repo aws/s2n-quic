@@ -3,8 +3,8 @@
 
 use crate::{
     clock::{Clock, Timer},
-    msg,
-    msg::addr,
+    event,
+    msg::{self, addr},
     packet::Packet,
     stream::{
         pacer,
@@ -60,8 +60,14 @@ mod waiting {
     }
 }
 
-pub struct Worker<S: Socket, R: random::Generator, C: Clock> {
-    shared: Arc<shared::Shared<C>>,
+pub struct Worker<S, R, Sub, C>
+where
+    S: Socket,
+    R: random::Generator,
+    Sub: event::Subscriber,
+    C: Clock,
+{
+    shared: Arc<shared::Shared<Sub, C>>,
     sender: State,
     recv_buffer: msg::recv::Message,
     random: R,
@@ -87,7 +93,11 @@ struct Snapshot {
 
 impl Snapshot {
     #[inline]
-    fn apply<C: Clock>(&self, initial: &Self, shared: &shared::Shared<C>) {
+    fn apply<Sub, C>(&self, initial: &Self, shared: &shared::Shared<Sub, C>)
+    where
+        Sub: event::Subscriber,
+        C: Clock,
+    {
         if initial.flow_offset < self.flow_offset {
             shared.sender.flow.release(self.flow_offset);
         } else if initial.has_pending_retransmissions && !self.has_pending_retransmissions {
@@ -125,17 +135,18 @@ impl Snapshot {
     }
 }
 
-impl<S, R, C> Worker<S, R, C>
+impl<S, R, Sub, C> Worker<S, R, Sub, C>
 where
     S: Socket,
     R: random::Generator,
+    Sub: event::Subscriber,
     C: Clock,
 {
     #[inline]
     pub fn new(
         socket: S,
         random: R,
-        shared: Arc<shared::Shared<C>>,
+        shared: Arc<shared::Shared<Sub, C>>,
         mut sender: State,
         endpoint: endpoint::Type,
     ) -> Self {
@@ -335,7 +346,11 @@ where
                             any_valid_packets = true;
                         }
                     }
-                    other => self.shared.crypto.map().handle_unexpected_packet(&other),
+                    other => self
+                        .shared
+                        .crypto
+                        .map()
+                        .handle_unexpected_packet(&other, &self.shared.write_remote_addr().into()),
                 }
             }
         }
@@ -387,6 +402,8 @@ where
                         &addr::Addr::new(self.shared.write_remote_addr()),
                         &self.shared.sender.segment_alloc,
                         &self.shared.gso,
+                        &self.shared.clock,
+                        &self.shared.subscriber,
                     ));
 
                     // make sure we have the current view from the application

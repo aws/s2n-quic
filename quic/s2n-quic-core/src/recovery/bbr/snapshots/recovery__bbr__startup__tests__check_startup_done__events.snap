@@ -1,0 +1,6 @@
+---
+source: quic/s2n-quic-core/src/event/snapshot.rs
+input_file: quic/s2n-quic-core/src/recovery/bbr/startup.rs
+---
+SlowStartExited { path_id: 0, cause: Other, congestion_window: 12000 }
+BbrStateChanged { path_id: 0, state: Drain }

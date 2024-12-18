@@ -3,6 +3,7 @@
 
 use crate::{
     clock::Timer,
+    event::{self, ConnectionPublisher as _},
     msg,
     stream::{recv, runtime, shared::ArcShared, socket},
 };
@@ -17,7 +18,7 @@ use s2n_quic_core::{
     ensure, ready,
     stream::state,
     task::waker,
-    time::{clock::Timer as _, timer::Provider as _},
+    time::{clock::Timer as _, timer::Provider as _, Timestamp},
 };
 use std::{io, net::SocketAddr};
 
@@ -38,25 +39,39 @@ pub enum ReadMode {
     Drain,
 }
 
-pub struct Reader(ManuallyDrop<Box<Inner>>);
+pub struct Reader<Sub: event::Subscriber>(ManuallyDrop<Box<Inner<Sub>>>);
 
-pub(crate) struct Inner {
-    shared: ArcShared,
+pub(crate) struct Inner<Sub>
+where
+    Sub: event::Subscriber,
+{
+    shared: ArcShared<Sub>,
     sockets: socket::ArcApplication,
     send_buffer: msg::send::Message,
     read_mode: ReadMode,
     ack_mode: AckMode,
     timer: Option<Timer>,
     local_state: LocalState,
-    runtime: runtime::ArcHandle,
+    runtime: runtime::ArcHandle<Sub>,
 }
 
-impl fmt::Debug for Reader {
+impl<Sub> fmt::Debug for Reader<Sub>
+where
+    Sub: event::Subscriber,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Reader")
-            .field("peer_addr", &self.peer_addr().unwrap())
-            .field("local_addr", &self.local_addr().unwrap())
-            .finish()
+        let mut s = f.debug_struct("Reader");
+
+        for (name, addr) in [
+            ("peer_addr", self.peer_addr()),
+            ("local_addr", self.local_addr()),
+        ] {
+            if let Ok(addr) = addr {
+                s.field(name, &addr);
+            }
+        }
+
+        s.finish()
     }
 }
 
@@ -86,7 +101,10 @@ impl LocalState {
     }
 
     #[inline]
-    fn transition(&mut self, target: Self, shared: &ArcShared) {
+    fn transition<Sub>(&mut self, target: Self, shared: &ArcShared<Sub>)
+    where
+        Sub: event::Subscriber,
+    {
         ensure!(matches!(self, Self::Ready | Self::Reading));
         *self = target;
 
@@ -97,7 +115,10 @@ impl LocalState {
     }
 }
 
-impl Reader {
+impl<Sub> Reader<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.shared.common.ensure_open()?;
@@ -131,7 +152,10 @@ impl Reader {
     where
         S: buffer::writer::Storage,
     {
-        waker::debug_assert_contract(cx, |cx| {
+        let start_time = self.0.shared.clock.get_time();
+        let capacity = out_buf.remaining_capacity();
+
+        let result = waker::debug_assert_contract(cx, |cx| {
             let mut out_buf = out_buf.track_write();
             let res = self.0.poll_read_into(cx, &mut out_buf);
 
@@ -149,11 +173,18 @@ impl Reader {
             res?;
 
             Ok(out_buf.written_len()).into()
-        })
+        });
+
+        self.0.publish_read_events(capacity, start_time, &result);
+
+        result
     }
 }
 
-impl Inner {
+impl<Sub> Inner<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline(always)]
     fn poll_read_into<S>(
         &mut self,
@@ -234,7 +265,12 @@ impl Inner {
 
             let before_len = reader.recv_buffer.payload_len();
 
-            let recv = reader.poll_fill_recv_buffer(cx, self.sockets.read_application());
+            let recv = reader.poll_fill_recv_buffer(
+                cx,
+                self.sockets.read_application(),
+                &self.shared.clock,
+                &self.shared.subscriber,
+            );
 
             match Self::handle_socket_result(cx, &mut reader.receiver, &mut self.timer, recv) {
                 Poll::Ready(res) => res?,
@@ -293,10 +329,24 @@ impl Inner {
 
     #[inline]
     fn shutdown(mut self: Box<Self>) {
+        // If the application never read from the stream try to do so now
+        if let LocalState::Ready = self.local_state {
+            let mut storage = buffer::writer::storage::Empty;
+            let waker = s2n_quic_core::task::waker::noop();
+            let mut cx = core::task::Context::from_waker(&waker);
+            let _ = self.poll_read_into(&mut cx, &mut storage.track_write());
+        }
+
+        let background = matches!(self.local_state, LocalState::Ready);
+
+        self.shared
+            .publisher()
+            .on_stream_read_shutdown(event::builder::StreamReadShutdown { background });
+
         // If we haven't exited the `Ready` state then spawn a task to do it for the application
         //
         // This is important for processing any secret control packets that the server sends us
-        if let LocalState::Ready = self.local_state {
+        if background {
             tracing::debug!("spawning task to read server's response");
             let runtime = self.runtime.clone();
             let handle = Shutdown(self);
@@ -313,10 +363,62 @@ impl Inner {
 
         self.shared.receiver.shutdown(is_panicking);
     }
+
+    #[inline(always)]
+    fn publish_read_events(
+        &self,
+        capacity: usize,
+        start_time: Timestamp,
+        result: &Poll<io::Result<usize>>,
+    ) {
+        let end_time = self.shared.clock.get_time();
+        let processing_duration = end_time.saturating_duration_since(start_time);
+
+        match result {
+            Poll::Ready(Ok(0)) if capacity > 0 => {
+                self.shared.common.publisher().on_stream_read_fin_flushed(
+                    event::builder::StreamReadFinFlushed {
+                        capacity,
+                        processing_duration,
+                    },
+                );
+            }
+            Poll::Ready(Ok(len)) => {
+                self.shared.common.publisher().on_stream_read_flushed(
+                    event::builder::StreamReadFlushed {
+                        capacity,
+                        committed_len: *len,
+                        processing_duration,
+                    },
+                );
+            }
+            Poll::Ready(Err(error)) => {
+                let errno = error.raw_os_error();
+                self.shared.common.publisher().on_stream_read_errored(
+                    event::builder::StreamReadErrored {
+                        capacity,
+                        processing_duration,
+                        errno,
+                    },
+                );
+            }
+            Poll::Pending => {
+                self.shared.common.publisher().on_stream_read_blocked(
+                    event::builder::StreamReadBlocked {
+                        capacity,
+                        processing_duration,
+                    },
+                );
+            }
+        };
+    }
 }
 
 #[cfg(feature = "tokio")]
-impl tokio::io::AsyncRead for Reader {
+impl<Sub> tokio::io::AsyncRead for Reader<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -329,7 +431,10 @@ impl tokio::io::AsyncRead for Reader {
     }
 }
 
-impl Drop for Reader {
+impl<Sub> Drop for Reader<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn drop(&mut self) {
         let inner = unsafe {
@@ -340,9 +445,12 @@ impl Drop for Reader {
     }
 }
 
-pub struct Shutdown(Box<Inner>);
+pub struct Shutdown<Sub: event::Subscriber>(Box<Inner<Sub>>);
 
-impl core::future::Future for Shutdown {
+impl<Sub> core::future::Future for Shutdown<Sub>
+where
+    Sub: event::Subscriber,
+{
     type Output = ();
 
     #[inline]
@@ -358,7 +466,10 @@ mod tests {
     use super::*;
 
     #[allow(dead_code)]
-    fn shutdown_traits_test(shutdown: &Shutdown) {
+    fn shutdown_traits_test<Sub>(shutdown: &Shutdown<Sub>)
+    where
+        Sub: event::Subscriber,
+    {
         use crate::testing::*;
 
         assert_send(shutdown);

@@ -16,7 +16,7 @@ pub trait DecoderValue<'a>: Sized {
 }
 
 pub trait DecoderValueMut<'a>: Sized {
-    fn decode_mut(bytes: DecoderBufferMut<'a>) -> DecoderBufferMutResult<Self>;
+    fn decode_mut(bytes: DecoderBufferMut<'a>) -> DecoderBufferMutResult<'a, Self>;
 }
 
 #[macro_export]

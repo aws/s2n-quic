@@ -1,6 +1,0 @@
----
-source: quic/s2n-quic-core/src/recovery/bbr/drain.rs
-expression: ""
----
-BbrStateChanged { path_id: 0, state: Drain }
-BbrStateChanged { path_id: 0, state: ProbeBwDown }

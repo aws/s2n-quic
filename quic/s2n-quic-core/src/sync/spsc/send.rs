@@ -83,7 +83,7 @@ impl<T> Drop for Sender<T> {
 
 pub struct SendSlice<'a, T>(&'a mut State<T>, Cursor);
 
-impl<'a, T> SendSlice<'a, T> {
+impl<T> SendSlice<'_, T> {
     #[inline]
     pub fn push(&mut self, value: T) -> Result<(), PushError<T>> {
         if self.0.cursor.is_full() && !self.0.acquire_capacity()? {
@@ -143,7 +143,7 @@ impl<'a, T> SendSlice<'a, T> {
     }
 }
 
-impl<'a, T> Drop for SendSlice<'a, T> {
+impl<T> Drop for SendSlice<'_, T> {
     #[inline]
     fn drop(&mut self) {
         self.0.persist_tail(self.1);
@@ -154,7 +154,7 @@ struct Acquire<'a, T> {
     sender: &'a mut Sender<T>,
 }
 
-impl<'a, T> Future for Acquire<'a, T> {
+impl<T> Future for Acquire<'_, T> {
     type Output = Result<()>;
 
     #[inline]

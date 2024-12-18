@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::io::tokio::Clock;
+use crate::{io::tokio::Clock, socket::stats};
 use s2n_quic_core::{
     endpoint::Endpoint, inet::SocketAddress, io::event_loop::EventLoop, path::mtu,
 };
@@ -20,6 +20,7 @@ pub mod encoder {
 
 // export socket types and helpers
 pub mod socket {
+    pub use crate::socket::stats;
     pub use s2n_quic_xdp::socket::*;
 
     /// Binds a UDP socket to a particular interface and socket address
@@ -39,10 +40,12 @@ pub mod socket {
 }
 
 pub mod tx {
+    use crate::socket::stats;
     pub use s2n_quic_core::io::tx::*;
 
     pub fn channel(
         socket: ::std::net::UdpSocket,
+        stats: stats::Sender,
     ) -> (
         impl Tx<PathHandle = crate::message::default::Handle>,
         impl core::future::Future<Output = ::std::io::Result<()>>,
@@ -77,7 +80,7 @@ pub mod tx {
 
         // spawn a task that actually flushes the ring buffer to the socket
         let cooldown = s2n_quic_core::task::cooldown::Cooldown::default();
-        let task = crate::io::tokio::task::tx(socket, consumer, gso.clone(), cooldown);
+        let task = crate::io::tokio::task::tx(socket, consumer, gso.clone(), cooldown, stats);
 
         // construct the TX side for the endpoint event loop
         let io = crate::socket::io::tx::Tx::new(producers, gso, max_mtu);
@@ -117,6 +120,7 @@ pub struct Provider<Rx, Tx> {
     rx: Rx,
     tx: Tx,
     mtu_config_builder: mtu::Builder,
+    stats: stats::Receiver,
     handle: Option<tokio::runtime::Handle>,
 }
 
@@ -141,6 +145,7 @@ where
             rx,
             mtu_config_builder,
             handle,
+            stats,
         } = self;
 
         let mtu_config = mtu_config_builder
@@ -160,15 +165,18 @@ where
             rx,
             tx,
             cooldown: crate::io::tokio::cooldown("ENDPOINT"),
+            stats,
         };
+
+        let local_addr = SocketAddress::default();
 
         // spawn the event loop on to the tokio handle
         let task = if let Some(handle) = handle {
-            handle.spawn(event_loop.start())
+            handle.spawn(event_loop.start(local_addr))
         } else {
-            tokio::spawn(event_loop.start())
+            tokio::spawn(event_loop.start(local_addr))
         };
 
-        Ok((task, SocketAddress::default()))
+        Ok((task, local_addr))
     }
 }

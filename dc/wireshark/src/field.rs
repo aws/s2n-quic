@@ -14,7 +14,9 @@ pub unsafe extern "C" fn proto_register() {
 
 #[derive(Debug)]
 pub struct Registration {
+    #[allow(dead_code)]
     pub protocol: i32,
+    #[allow(dead_code)]
     pub all_subtree: i32,
     pub tag_subtree: i32,
     pub control_data_subtree: i32,

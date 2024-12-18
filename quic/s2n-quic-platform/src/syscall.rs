@@ -4,6 +4,7 @@
 // some platforms contain empty implementations so disable any warnings from those
 #![allow(unused_variables, unused_macros, unused_mut, clippy::let_and_return)]
 
+use crate::socket::stats;
 use core::ops::ControlFlow;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::io;
@@ -50,12 +51,18 @@ pub trait SocketEvents {
 
 #[cfg(unix)]
 pub trait UnixMessage: crate::message::Message {
-    fn send<E: SocketEvents>(fd: std::os::unix::io::RawFd, entries: &mut [Self], events: &mut E);
+    fn send<E: SocketEvents>(
+        fd: std::os::unix::io::RawFd,
+        entries: &mut [Self],
+        events: &mut E,
+        stats: &stats::Sender,
+    );
     fn recv<E: SocketEvents>(
         fd: std::os::unix::io::RawFd,
         ty: SocketType,
         entries: &mut [Self],
         events: &mut E,
+        stats: &stats::Sender,
     );
 }
 

@@ -14,8 +14,8 @@ trace = ["s2n-quic-core/branch-tracing", "s2n-quic-core/probe-tracing", "s2n-qui
 xdp = ["s2n-quic/unstable-provider-io-xdp", "aya", "aya-log"]
 
 [dependencies]
-aya = { version = "0.12", optional = true }
-aya-log = { version = "0.2", optional = true }
+aya = { version = "0.13", optional = true }
+aya-log = { version = "0.2.1", optional = true }
 bytes = { version = "1", default-features = false }
 cfg-if = "1"
 futures = "0.3"

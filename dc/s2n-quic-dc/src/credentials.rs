@@ -16,18 +16,7 @@ pub use s2n_quic_core::varint::VarInt as KeyId;
 pub mod testing;
 
 #[derive(
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    Hash,
-    AsBytes,
-    FromBytes,
-    FromZeroes,
-    Unaligned,
-    PartialOrd,
-    Ord,
+    Clone, Copy, Default, PartialEq, Eq, AsBytes, FromBytes, FromZeroes, Unaligned, PartialOrd, Ord,
 )]
 #[cfg_attr(
     any(test, feature = "testing"),
@@ -35,6 +24,15 @@ pub mod testing;
 )]
 #[repr(C)]
 pub struct Id([u8; 16]);
+
+impl std::hash::Hash for Id {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // The ID has very high quality entropy already, so write just one half of it to keep hash
+        // costs as low as possible. For the main use of the Hash impl in the fixed-size ID map
+        // this translates to just directly using these bytes for the indexing.
+        state.write_u64(u64::from_ne_bytes(self.0[..8].try_into().unwrap()));
+    }
+}
 
 impl fmt::Debug for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

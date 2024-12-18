@@ -207,7 +207,7 @@ impl From<transport::Error> for StreamError {
     }
 }
 
-impl<'a> From<ConnectionClose<'a>> for StreamError {
+impl From<ConnectionClose<'_>> for StreamError {
     #[track_caller]
     fn from(error: ConnectionClose) -> Self {
         let error: connection::Error = error.into();

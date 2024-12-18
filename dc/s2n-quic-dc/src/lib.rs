@@ -8,6 +8,7 @@ pub mod control;
 pub mod credentials;
 pub mod crypto;
 pub mod datagram;
+pub mod event;
 mod fixed_map;
 pub mod msg;
 pub mod packet;
@@ -17,6 +18,7 @@ pub mod random;
 pub mod recovery;
 pub mod socket;
 pub mod stream;
+pub mod sync;
 pub mod task;
 
 #[cfg(any(test, feature = "testing"))]

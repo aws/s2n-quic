@@ -1,0 +1,27 @@
+---
+source: quic/s2n-quic-core/src/event/snapshot.rs
+input_file: quic/s2n-quic/src/tests/platform_events.rs
+---
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopStarted { local_address: 1.0.0.1:49153 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: false, tx_ready: true, application_wakeup: false }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformRx { count: 0, syscalls: 1, blocked_syscalls: 1, total_errors: 0, dropped_errors: 0 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopSleep { timeout: None, processing_duration: 1µs }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: false, tx_ready: false, application_wakeup: true }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopSleep { timeout: Some(999ms), processing_duration: 1µs }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.100000) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: true, tx_ready: false, application_wakeup: false }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.100000) } PlatformTx { count: 1, syscalls: 1, blocked_syscalls: 0, total_errors: 0, dropped_errors: 0 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.100000) } PlatformRx { count: 1, syscalls: 2, blocked_syscalls: 1, total_errors: 0, dropped_errors: 0 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.100000) } PlatformEventLoopSleep { timeout: Some(299.995ms), processing_duration: 1µs }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.100000) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: false, tx_ready: false, application_wakeup: true }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.100000) } PlatformTx { count: 1, syscalls: 1, blocked_syscalls: 0, total_errors: 0, dropped_errors: 0 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.100000) } PlatformEventLoopSleep { timeout: Some(299.995ms), processing_duration: 1µs }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: true, tx_ready: false, application_wakeup: false }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformTx { count: 1, syscalls: 1, blocked_syscalls: 0, total_errors: 0, dropped_errors: 0 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformRx { count: 3, syscalls: 2, blocked_syscalls: 1, total_errors: 0, dropped_errors: 0 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformEventLoopSleep { timeout: Some(274.995ms), processing_duration: 1µs }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: false, tx_ready: false, application_wakeup: true }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformTx { count: 2, syscalls: 1, blocked_syscalls: 0, total_errors: 0, dropped_errors: 0 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformEventLoopSleep { timeout: Some(274.995ms), processing_duration: 1µs }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: true, tx_ready: false, application_wakeup: false }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformTx { count: 0, syscalls: 1, blocked_syscalls: 1, total_errors: 0, dropped_errors: 0 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformRx { count: 0, syscalls: 1, blocked_syscalls: 1, total_errors: 0, dropped_errors: 0 }

@@ -12,3 +12,4 @@ Cargo.lock
 dhat-heap.json
 flamegraph.svg
 perf.data*
+*.snap.new

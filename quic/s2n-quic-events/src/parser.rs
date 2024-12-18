@@ -2,27 +2,38 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{Output, Result};
-use heck::ToSnakeCase;
+use heck::{ToShoutySnakeCase, ToSnakeCase};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
+use std::path::PathBuf;
 use syn::{
     parse::{Parse, ParseStream},
-    Meta,
+    Meta, Token,
 };
+
+pub fn parse(contents: &str, path: PathBuf) -> Result<File> {
+    let file = syn::parse_str(contents)?;
+    let common = File::parse(file, path);
+    Ok(common)
+}
 
 #[derive(Debug, Default)]
 pub struct File {
     pub structs: Vec<Struct>,
     pub enums: Vec<Enum>,
     pub extra: TokenStream,
+    pub path: PathBuf,
 }
 
 impl File {
-    fn parse(file: syn::File) -> Self {
+    fn parse(file: syn::File, path: PathBuf) -> Self {
         assert!(file.attrs.is_empty());
         assert!(file.shebang.is_none());
 
-        let mut out = File::default();
+        let mut out = File {
+            path,
+            ..Default::default()
+        };
         for item in file.items {
             match item {
                 syn::Item::Enum(v) => out.enums.push(Enum::parse(v)),
@@ -47,10 +58,10 @@ impl File {
 
 #[derive(Debug)]
 pub struct Struct {
-    attrs: ContainerAttrs,
-    ident: syn::Ident,
-    generics: syn::Generics,
-    fields: Vec<Field>,
+    pub attrs: ContainerAttrs,
+    pub ident: syn::Ident,
+    pub generics: syn::Generics,
+    pub fields: Vec<Field>,
 }
 
 impl Struct {
@@ -65,6 +76,26 @@ impl Struct {
         }
     }
 
+    pub fn ident_str(&self) -> String {
+        self.ident.to_string()
+    }
+
+    pub fn ident_snake(&self) -> String {
+        self.ident_str().to_snake_case()
+    }
+
+    pub fn function_name(&self) -> String {
+        format!("on_{}", self.ident_snake())
+    }
+
+    pub fn function(&self) -> Ident {
+        Ident::new(&self.function_name(), Span::call_site())
+    }
+
+    pub fn counter(&self) -> Ident {
+        Ident::new(&self.ident_snake(), Span::call_site())
+    }
+
     fn to_tokens(&self, output: &mut Output) {
         let Self {
             attrs,
@@ -72,6 +103,7 @@ impl Struct {
             generics,
             fields,
         } = self;
+        let ident_str = ident.to_string();
 
         let derive_attrs = &attrs.derive_attrs;
         let builder_derive_attrs = &attrs.builder_derive_attrs;
@@ -83,6 +115,7 @@ impl Struct {
         let builder_fields = fields.iter().map(Field::builder);
         let builder_field_impls = fields.iter().map(Field::builder_impl);
         let api_fields = fields.iter().map(Field::api);
+        let snapshot_fields = fields.iter().map(Field::snapshot);
 
         if attrs.builder_derive {
             output.builders.extend(quote!(
@@ -128,6 +161,16 @@ impl Struct {
             pub struct #ident #generics {
                 #(#api_fields)*
             }
+
+            #[cfg(any(test, feature = "testing"))]
+            #allow_deprecated
+            impl #generics crate::event::snapshot::Fmt for #ident #generics {
+                fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+                    let mut fmt = fmt.debug_struct(#ident_str);
+                    #(#snapshot_fields)*
+                    fmt.finish()
+                }
+            }
         ));
 
         if let Some(event_name) = attrs.event_name.as_ref() {
@@ -138,11 +181,10 @@ impl Struct {
                 }
             ));
 
-            let ident_str = ident.to_string();
-            let snake = ident_str.to_snake_case();
-            let function = format!("on_{snake}");
-            let counter = Ident::new(&snake, Span::call_site());
-            let function = Ident::new(&function, Span::call_site());
+            let ident_str = self.ident_str();
+            let snake = self.ident_snake();
+            let counter = self.counter();
+            let function = self.function();
 
             let subscriber_doc = format!("Called when the `{ident_str}` event is triggered");
             let publisher_doc =
@@ -150,7 +192,6 @@ impl Struct {
 
             let counter_type = output.mode.counter_type();
             let counter_init = output.mode.counter_init();
-            let counter_load = output.mode.counter_load();
 
             // add a counter for testing structs
             output.testing_fields.extend(quote!(
@@ -171,7 +212,7 @@ impl Struct {
                         #[inline]
                         #deprecated
                         #allow_deprecated
-                        fn #function(&#receiver self, meta: &EndpointMeta, event: &#ident) {
+                        fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
                             let _ = meta;
                             let _ = event;
                         }
@@ -180,26 +221,29 @@ impl Struct {
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&#receiver self, meta: &EndpointMeta, event: &#ident) {
+                        fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
                             (self.0).#function(meta, event);
                             (self.1).#function(meta, event);
                         }
                     ));
 
+                    if output.mode.is_ref() {
+                        output.ref_subscriber.extend(quote!(
+                            #[inline]
+                            #allow_deprecated
+                            fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
+                                self.as_ref().#function(meta, event);
+                            }
+                        ));
+                    }
+
                     output.tracing_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
                         fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
-                            let parent = match meta.endpoint_type {
-                                api::EndpointType::Client {} => {
-                                    self.client.id()
-                                }
-                                api::EndpointType::Server {} => {
-                                    self.server.id()
-                                }
-                            };
+                            let parent = self.parent(meta);
                             let api::#ident { #(#destructure_fields),* } = event;
-                            tracing::event!(target: #snake, parent: parent, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
+                            tracing::event!(target: #snake, parent: parent, tracing::Level::DEBUG, { #(#destructure_fields = tracing::field::debug(#destructure_fields)),* });
                         }
                     ));
 
@@ -218,12 +262,28 @@ impl Struct {
                         }
                     ));
 
-                    output.subscriber_testing.extend(quote!(
-                        #allow_deprecated
-                        fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
-                            self.#counter #counter_increment;
-                            self.output #lock.push(format!("{meta:?} {event:?}"));
-                        }
+                    for subscriber in [
+                        &mut output.endpoint_subscriber_testing,
+                        &mut output.subscriber_testing,
+                    ] {
+                        subscriber.extend(quote!(
+                            #allow_deprecated
+                            fn #function(&#receiver self, meta: &api::EndpointMeta, event: &api::#ident) {
+                                self.#counter #counter_increment;
+                                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                                let out = format!("{meta:?} {event:?}");
+                                self.output #lock.push(out);
+                            }
+                        ));
+                    }
+
+                    // add a counter for testing structs
+                    output.endpoint_testing_fields.extend(quote!(
+                        pub #counter: #counter_type,
+                    ));
+                    output.endpoint_testing_fields_init.extend(quote!(
+                        #counter: #counter_init,
                     ));
 
                     output.endpoint_publisher_testing.extend(quote!(
@@ -231,7 +291,9 @@ impl Struct {
                         fn #function(&#receiver self, event: builder::#ident) {
                             self.#counter #counter_increment;
                             let event = event.into_event();
-                            self.output #lock.push(format!("{event:?}"));
+                            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                            let out = format!("{event:?}");
+                            self.output #lock.push(out);
                         }
                     ));
                 }
@@ -241,7 +303,12 @@ impl Struct {
                         #[inline]
                         #deprecated
                         #allow_deprecated
-                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
+                        fn #function(
+                            &#receiver self,
+                            context: &#receiver Self::ConnectionContext,
+                            meta: &api::ConnectionMeta,
+                            event: &api::#ident
+                        ) {
                             let _ = context;
                             let _ = meta;
                             let _ = event;
@@ -251,19 +318,44 @@ impl Struct {
                     output.tuple_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &ConnectionMeta, event: &#ident) {
+                        fn #function(
+                            &#receiver self,
+                            context: &#receiver Self::ConnectionContext,
+                            meta: &api::ConnectionMeta,
+                            event: &api::#ident
+                        ) {
                             (self.0).#function(&#receiver context.0, meta, event);
                             (self.1).#function(&#receiver context.1, meta, event);
                         }
                     ));
 
+                    if output.mode.is_ref() {
+                        output.ref_subscriber.extend(quote!(
+                            #[inline]
+                            #allow_deprecated
+                            fn #function(
+                                &#receiver self,
+                                context: &#receiver Self::ConnectionContext,
+                                meta: &api::ConnectionMeta,
+                                event: &api::#ident
+                            ) {
+                                self.as_ref().#function(context, meta, event);
+                            }
+                        ));
+                    }
+
                     output.tracing_subscriber.extend(quote!(
                         #[inline]
                         #allow_deprecated
-                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, _meta: &api::ConnectionMeta, event: &api::#ident) {
+                        fn #function(
+                            &#receiver self,
+                            context: &#receiver Self::ConnectionContext,
+                            _meta: &api::ConnectionMeta,
+                            event: &api::#ident
+                        ) {
                             let id = context.id();
                             let api::#ident { #(#destructure_fields),* } = event;
-                            tracing::event!(target: #snake, parent: id, tracing::Level::DEBUG, #(#destructure_fields = tracing::field::debug(#destructure_fields)),*);
+                            tracing::event!(target: #snake, parent: id, tracing::Level::DEBUG, { #(#destructure_fields = tracing::field::debug(#destructure_fields)),* });
                         }
                     ));
 
@@ -283,33 +375,20 @@ impl Struct {
                         }
                     ));
 
-                    // Metrics is only connection-level events
-                    output.metrics_fields.extend(quote!(
-                        #counter: #counter_type,
-                    ));
-                    output.metrics_fields_init.extend(quote!(
-                        #counter: #counter_init,
-                    ));
-
-                    output.metrics_record.extend(quote!(
-                        self.recorder.increment_counter(#snake, self.#counter #counter_load as _);
-                    ));
-
-                    output.subscriber_metrics.extend(quote!(
-                        #[inline]
-                        #allow_deprecated
-                        fn #function(&#receiver self, context: &#receiver Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
-                            context.#counter #counter_increment;
-                            self.subscriber.#function(&mut context.recorder, meta, event);
-                        }
-                    ));
-
                     output.subscriber_testing.extend(quote!(
                         #allow_deprecated
-                        fn #function(&#receiver self, _context: &#receiver Self::ConnectionContext, meta: &api::ConnectionMeta, event: &api::#ident) {
+                        fn #function(
+                            &#receiver self,
+                            _context: &#receiver Self::ConnectionContext,
+                            meta: &api::ConnectionMeta,
+                            event: &api::#ident
+                        ) {
                             self.#counter #counter_increment;
                             if self.location.is_some() {
-                                self.output #lock.push(format!("{meta:?} {event:?}"));
+                                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                                let out = format!("{meta:?} {event:?}");
+                                self.output #lock.push(out);
                             }
                         }
                     ));
@@ -320,7 +399,9 @@ impl Struct {
                             self.#counter #counter_increment;
                             let event = event.into_event();
                             if self.location.is_some() {
-                                self.output #lock.push(format!("{event:?}"));
+                                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                                let out = format!("{event:?}");
+                                self.output #lock.push(out);
                             }
                         }
                     ));
@@ -332,10 +413,10 @@ impl Struct {
 
 #[derive(Debug)]
 pub struct Enum {
-    attrs: ContainerAttrs,
-    ident: syn::Ident,
-    generics: syn::Generics,
-    variants: Vec<Variant>,
+    pub attrs: ContainerAttrs,
+    pub ident: syn::Ident,
+    pub generics: syn::Generics,
+    pub variants: Vec<Variant>,
 }
 
 impl Enum {
@@ -406,6 +487,25 @@ impl Enum {
             output.api.extend(quote!(#[non_exhaustive]));
         }
 
+        let mut variant_defs = quote!();
+        let mut variant_matches = quote!();
+
+        for (idx, variant) in variants.iter().enumerate() {
+            let ident = &variant.ident;
+            let name = ident.to_string();
+            let mut name = name.to_shouty_snake_case();
+            name.push('\0');
+
+            variant_defs.extend(quote!(aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new(#name),
+                id: #idx,
+            }.build(),));
+
+            variant_matches.extend(quote!(
+                Self::#ident { .. } => #idx,
+            ));
+        }
+
         output.api.extend(quote!(
             #derive_attrs
             #extra_attrs
@@ -413,22 +513,36 @@ impl Enum {
             pub enum #ident #generics {
                 #(#api_fields)*
             }
+
+            #allow_deprecated
+            impl #generics aggregate::AsVariant for #ident #generics {
+                const VARIANTS: &'static [aggregate::info::Variant] = &[#variant_defs];
+
+                #[inline]
+                fn variant_idx(&self) -> usize {
+                    match self {
+                        #variant_matches
+                    }
+                }
+            }
         ));
     }
 }
 
 #[derive(Debug)]
-struct ContainerAttrs {
-    event_name: Option<syn::LitStr>,
-    deprecated: TokenStream,
-    allow_deprecated: TokenStream,
-    subject: Subject,
-    exhaustive: bool,
-    derive: bool,
-    derive_attrs: TokenStream,
-    builder_derive: bool,
-    builder_derive_attrs: TokenStream,
-    extra: TokenStream,
+pub struct ContainerAttrs {
+    pub event_name: Option<syn::LitStr>,
+    pub deprecated: TokenStream,
+    pub allow_deprecated: TokenStream,
+    pub subject: Subject,
+    pub exhaustive: bool,
+    pub derive: bool,
+    pub derive_attrs: TokenStream,
+    pub builder_derive: bool,
+    pub builder_derive_attrs: TokenStream,
+    pub checkpoint: Vec<Checkpoint>,
+    pub measure_counter: Vec<Metric>,
+    pub extra: TokenStream,
 }
 
 impl ContainerAttrs {
@@ -446,6 +560,8 @@ impl ContainerAttrs {
             derive_attrs: quote!(),
             builder_derive: false,
             builder_derive_attrs: quote!(),
+            checkpoint: vec![],
+            measure_counter: vec![],
             extra: quote!(),
         };
 
@@ -471,19 +587,39 @@ impl ContainerAttrs {
                 if let Meta::List(list) = attr.parse_args().unwrap() {
                     list.to_tokens(&mut v.builder_derive_attrs);
                 }
+            } else if path.is_ident("checkpoint") {
+                v.checkpoint.push(attr.parse_args().unwrap());
+            } else if path.is_ident("measure_counter") {
+                v.measure_counter.push(attr.parse_args().unwrap());
             } else {
                 attr.to_tokens(&mut v.extra)
             }
+        }
+
+        if !(v.checkpoint.is_empty() && v.measure_counter.is_empty()) {
+            assert_eq!(v.subject, Subject::Connection);
         }
 
         v
     }
 }
 
-#[derive(Debug)]
-enum Subject {
+#[derive(Debug, PartialEq, Eq)]
+pub enum Subject {
     Connection,
     Endpoint,
+}
+
+impl Subject {
+    #[allow(dead_code)]
+    pub fn is_connection(&self) -> bool {
+        matches!(self, Self::Connection)
+    }
+
+    #[allow(dead_code)]
+    pub fn is_endpoint(&self) -> bool {
+        matches!(self, Self::Endpoint)
+    }
 }
 
 impl Parse for Subject {
@@ -501,10 +637,10 @@ impl Parse for Subject {
 }
 
 #[derive(Debug)]
-struct Field {
-    attrs: FieldAttrs,
-    ident: Option<syn::Ident>,
-    ty: syn::Type,
+pub struct Field {
+    pub attrs: FieldAttrs,
+    pub ident: Option<syn::Ident>,
+    pub ty: syn::Type,
 }
 
 impl Field {
@@ -571,6 +707,17 @@ impl Field {
         }
     }
 
+    fn snapshot(&self) -> TokenStream {
+        let Self { attrs, ident, .. } = self;
+        let ident = ident.as_ref().expect("all events should have field names");
+        let ident_str = ident.to_string();
+        if let Some(expr) = attrs.snapshot.as_ref() {
+            quote!(fmt.field(#ident_str, &#expr);)
+        } else {
+            quote!(fmt.field(#ident_str, &self.#ident);)
+        }
+    }
+
     fn builder_impl(&self) -> TokenStream {
         let Self { ident, .. } = self;
         quote!(#ident: #ident.into_event(),)
@@ -585,26 +732,57 @@ impl Field {
     }
 }
 
-#[derive(Debug)]
-struct FieldAttrs {
-    builder: Option<syn::Type>,
-    extra: TokenStream,
+#[derive(Debug, Default)]
+pub struct FieldAttrs {
+    pub builder: Option<syn::Type>,
+    pub snapshot: Option<syn::Expr>,
+    pub counter: Vec<Metric>,
+    pub measure_counter: Vec<Metric>,
+    pub bool_counter: Vec<MetricNoUnit>,
+    pub nominal_counter: Vec<Metric>,
+    pub nominal_checkpoint: Vec<MetricNoUnit>,
+    pub measure: Vec<Metric>,
+    pub gauge: Vec<Metric>,
+    pub timer: Vec<MetricNoUnit>,
+    pub extra: TokenStream,
 }
 
 impl FieldAttrs {
     fn parse(attrs: Vec<syn::Attribute>) -> Self {
-        let mut v = Self {
-            // The event can override the builder with a specific type
-            builder: None,
-            extra: quote!(),
-        };
+        let mut v = Self::default();
 
         for attr in attrs {
-            if attr.path().is_ident("builder") {
-                v.builder = Some(attr.parse_args().unwrap());
-            } else {
-                attr.to_tokens(&mut v.extra)
+            macro_rules! field {
+                ($name:ident) => {
+                    if attr.path().is_ident(stringify!($name)) {
+                        v.$name = Some(attr.parse_args().unwrap_or_else(|err| {
+                            panic!("{err} in {:?}", attr.into_token_stream().to_string())
+                        }));
+                        continue;
+                    }
+                };
+                ($name:ident[]) => {
+                    if attr.path().is_ident(stringify!($name)) {
+                        v.$name.push(attr.parse_args().unwrap_or_else(|err| {
+                            panic!("{err} in {:?}", attr.into_token_stream().to_string())
+                        }));
+                        continue;
+                    }
+                };
             }
+
+            field!(builder);
+            field!(snapshot);
+            field!(counter[]);
+            field!(measure_counter[]);
+            field!(bool_counter[]);
+            field!(nominal_counter[]);
+            field!(nominal_checkpoint[]);
+            field!(measure[]);
+            field!(gauge[]);
+            field!(timer[]);
+
+            attr.to_tokens(&mut v.extra);
         }
 
         v
@@ -612,10 +790,10 @@ impl FieldAttrs {
 }
 
 #[derive(Debug)]
-struct Variant {
-    ident: syn::Ident,
-    attrs: Vec<syn::Attribute>,
-    fields: Vec<Field>,
+pub struct Variant {
+    pub ident: syn::Ident,
+    pub attrs: Vec<syn::Attribute>,
+    pub fields: Vec<Field>,
 }
 
 impl Variant {
@@ -668,8 +846,57 @@ impl Variant {
     }
 }
 
-pub fn parse(contents: &str) -> Result<File> {
-    let file = syn::parse_str(contents)?;
-    let common = File::parse(file);
-    Ok(common)
+#[derive(Debug)]
+pub struct Metric {
+    pub name: syn::LitStr,
+    pub unit: Option<syn::Ident>,
+}
+
+impl syn::parse::Parse for Metric {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name = input.parse()?;
+        let unit = if input.peek(Token![,]) {
+            let _: Token![,] = input.parse()?;
+            let unit = input.parse()?;
+            Some(unit)
+        } else {
+            None
+        };
+        let _: syn::parse::Nothing = input.parse()?;
+        Ok(Self { name, unit })
+    }
+}
+
+#[derive(Debug)]
+pub struct MetricNoUnit {
+    pub name: syn::LitStr,
+}
+
+impl syn::parse::Parse for MetricNoUnit {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name = input.parse()?;
+        let _: syn::parse::Nothing = input.parse()?;
+        Ok(Self { name })
+    }
+}
+
+#[derive(Debug)]
+pub struct Checkpoint {
+    pub name: syn::LitStr,
+    pub condition: Option<syn::ExprClosure>,
+}
+
+impl syn::parse::Parse for Checkpoint {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name = input.parse()?;
+        let condition = if input.peek(Token![,]) {
+            let _: Token![,] = input.parse()?;
+            let v = input.parse()?;
+            Some(v)
+        } else {
+            None
+        };
+        let _: syn::parse::Nothing = input.parse()?;
+        Ok(Self { name, condition })
+    }
 }

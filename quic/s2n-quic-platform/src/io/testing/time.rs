@@ -24,7 +24,7 @@ pub fn delay_until(deadline: Timestamp) -> Timer {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Clock(());
+pub struct Clock(());
 
 impl clock::Clock for Clock {
     fn get_time(&self) -> Timestamp {

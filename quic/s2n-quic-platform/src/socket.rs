@@ -4,4 +4,5 @@
 pub mod io;
 pub mod options;
 pub mod ring;
+pub mod stats;
 pub mod task;

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    clock, msg,
+    clock,
+    event::{self, ConnectionPublisher},
+    msg,
     stream::{
         pacer, runtime,
         send::{flow, queue},
@@ -16,7 +18,7 @@ use core::{
     sync::atomic::Ordering,
     task::{Context, Poll},
 };
-use s2n_quic_core::{buffer, ensure, ready, task::waker};
+use s2n_quic_core::{buffer, ensure, ready, task::waker, time::Timestamp};
 use std::{io, net::SocketAddr};
 use tracing::trace;
 
@@ -26,27 +28,44 @@ pub mod transmission;
 
 pub use builder::Builder;
 
-pub struct Writer(Box<Inner>);
+pub struct Writer<Sub: event::Subscriber>(Box<Inner<Sub>>);
 
-struct Inner {
-    shared: ArcShared,
+struct Inner<Sub>
+where
+    Sub: event::Subscriber,
+{
+    shared: ArcShared<Sub>,
     sockets: socket::ArcApplication,
     queue: queue::Queue,
     pacer: pacer::Naive,
     open: bool,
-    runtime: runtime::ArcHandle,
+    runtime: runtime::ArcHandle<Sub>,
 }
 
-impl fmt::Debug for Writer {
+impl<Sub> fmt::Debug for Writer<Sub>
+where
+    Sub: event::Subscriber,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Writer")
-            .field("peer_addr", &self.peer_addr().unwrap())
-            .field("local_addr", &self.local_addr().unwrap())
-            .finish()
+        let mut s = f.debug_struct("Writer");
+
+        for (name, addr) in [
+            ("peer_addr", self.peer_addr()),
+            ("local_addr", self.local_addr()),
+        ] {
+            if let Ok(addr) = addr {
+                s.field(name, &addr);
+            }
+        }
+
+        s.finish()
     }
 }
 
-impl Writer {
+impl<Sub> Writer<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.shared.common.ensure_open()?;
@@ -81,7 +100,10 @@ impl Writer {
     where
         S: buffer::reader::storage::Infallible,
     {
-        waker::debug_assert_contract(cx, |cx| {
+        let start_time = self.0.shared.clock.get_time();
+        let provided_len = buf.buffered_len();
+
+        let res = waker::debug_assert_contract(cx, |cx| {
             // if we've already shut down the stream then return early
             if !self.0.open {
                 ensure!(
@@ -102,7 +124,12 @@ impl Writer {
             }
 
             res.into()
-        })
+        });
+
+        self.0
+            .publish_write_events(provided_len, is_fin, start_time, &res);
+
+        res
     }
 
     /// Shutdown the stream for writing.
@@ -111,7 +138,10 @@ impl Writer {
     }
 }
 
-impl Inner {
+impl<Sub> Inner<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline(always)]
     fn poll_write_from<S>(
         &mut self,
@@ -231,6 +261,8 @@ impl Inner {
             &msg::addr::Addr::new(self.shared.write_remote_addr()),
             &self.shared.sender.segment_alloc,
             &self.shared.gso,
+            &self.shared.clock,
+            &self.shared.subscriber,
         ))?;
 
         Ok(len).into()
@@ -271,16 +303,34 @@ impl Inner {
             self.sockets.write_application().send_finish()?;
         }
 
+        let buffer_len = queue.accepted_len();
+
         // pass things to the worker if we need to gracefully shut down
         if !self.sockets.write_application().features().is_stream() {
+            self.shared
+                .publisher()
+                .on_stream_write_shutdown(event::builder::StreamWriteShutdown {
+                    background: false,
+                    buffer_len,
+                });
+
             let is_panicking = matches!(ty, ShutdownType::Drop { is_panicking: true });
             self.shared.sender.shutdown(queue, is_panicking);
             return Ok(());
         }
 
+        let background = !queue.is_empty();
+
+        self.shared
+            .publisher()
+            .on_stream_write_shutdown(event::builder::StreamWriteShutdown {
+                background,
+                buffer_len,
+            });
+
         // if we're using TCP and we get blocked from writing a final offset then spawn a task
         // to do it for us
-        if !queue.is_empty() {
+        if background {
             let shared = self.shared.clone();
             let sockets = self.sockets.clone();
             self.runtime.spawn_send_shutdown(Shutdown {
@@ -293,10 +343,66 @@ impl Inner {
 
         Ok(())
     }
+
+    #[inline(always)]
+    fn publish_write_events(
+        &self,
+        provided_len: usize,
+        is_fin: bool,
+        start_time: Timestamp,
+        result: &Poll<io::Result<usize>>,
+    ) {
+        let end_time = self.shared.clock.get_time();
+        let processing_duration = end_time.saturating_duration_since(start_time);
+
+        match result {
+            Poll::Ready(Ok(len)) if is_fin => {
+                self.shared.common.publisher().on_stream_write_fin_flushed(
+                    event::builder::StreamWriteFinFlushed {
+                        provided_len,
+                        committed_len: *len,
+                        processing_duration,
+                    },
+                );
+            }
+            Poll::Ready(Ok(len)) => {
+                self.shared.common.publisher().on_stream_write_flushed(
+                    event::builder::StreamWriteFlushed {
+                        provided_len,
+                        committed_len: *len,
+                        processing_duration,
+                    },
+                );
+            }
+            Poll::Ready(Err(error)) => {
+                let errno = error.raw_os_error();
+                self.shared.common.publisher().on_stream_write_errored(
+                    event::builder::StreamWriteErrored {
+                        provided_len,
+                        is_fin,
+                        processing_duration,
+                        errno,
+                    },
+                );
+            }
+            Poll::Pending => {
+                self.shared.common.publisher().on_stream_write_blocked(
+                    event::builder::StreamWriteBlocked {
+                        provided_len,
+                        is_fin,
+                        processing_duration,
+                    },
+                );
+            }
+        };
+    }
 }
 
 #[cfg(feature = "tokio")]
-impl tokio::io::AsyncWrite for Writer {
+impl<Sub> tokio::io::AsyncWrite for Writer<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn poll_write(
         mut self: Pin<&mut Self>,
@@ -337,7 +443,10 @@ impl tokio::io::AsyncWrite for Writer {
     }
 }
 
-impl Drop for Writer {
+impl<Sub> Drop for Writer<Sub>
+where
+    Sub: event::Subscriber,
+{
     #[inline]
     fn drop(&mut self) {
         let _ = self.0.shutdown(ShutdownType::Drop {
@@ -352,14 +461,20 @@ enum ShutdownType {
     Drop { is_panicking: bool },
 }
 
-pub struct Shutdown {
+pub struct Shutdown<Sub>
+where
+    Sub: event::Subscriber,
+{
     queue: queue::Queue,
-    shared: ArcShared,
+    shared: ArcShared<Sub>,
     sockets: socket::ArcApplication,
     ty: ShutdownType,
 }
 
-impl core::future::Future for Shutdown {
+impl<Sub> core::future::Future for Shutdown<Sub>
+where
+    Sub: event::Subscriber,
+{
     type Output = ();
 
     #[inline]
@@ -379,6 +494,8 @@ impl core::future::Future for Shutdown {
             &msg::addr::Addr::new(shared.write_remote_addr()),
             &shared.sender.segment_alloc,
             &shared.gso,
+            &shared.clock,
+            &shared.subscriber,
         ));
 
         // If the application is explicitly shutting down then do the same. Otherwise let
@@ -396,7 +513,10 @@ mod tests {
     use super::*;
 
     #[allow(dead_code)]
-    fn shutdown_traits_test(shutdown: &Shutdown) {
+    fn shutdown_traits_test<Sub>(shutdown: &Shutdown<Sub>)
+    where
+        Sub: event::Subscriber,
+    {
         use crate::testing::*;
 
         assert_send(shutdown);

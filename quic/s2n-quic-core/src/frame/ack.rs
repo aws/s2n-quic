@@ -227,14 +227,14 @@ impl<'a> AckRanges for AckRangesDecoder<'a> {
     }
 }
 
-impl<'a> PartialEq for AckRangesDecoder<'a> {
+impl PartialEq for AckRangesDecoder<'_> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.ack_ranges().eq(other.ack_ranges())
     }
 }
 
-impl<'a> core::fmt::Debug for AckRangesDecoder<'a> {
+impl core::fmt::Debug for AckRangesDecoder<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         core::fmt::Debug::fmt(&self.ack_ranges(), f)
     }
@@ -282,7 +282,7 @@ impl<'a> core::fmt::Debug for AckRangesDecoder<'a> {
 
 decoder_parameterized_value!(
     impl<'a> AckRangesDecoder<'a> {
-        fn decode(largest_acknowledged: VarInt, buffer: Buffer) -> Result<AckRangesDecoder> {
+        fn decode(largest_acknowledged: VarInt, buffer: Buffer) -> Result<AckRangesDecoder<'a>> {
             let (mut ack_range_count, buffer) = buffer.decode::<VarInt>()?;
 
             // add one to the total, which includes the first ack range
@@ -362,7 +362,7 @@ pub struct AckRangesIter<'a> {
     range_buffer: DecoderBuffer<'a>,
 }
 
-impl<'a> Iterator for AckRangesIter<'a> {
+impl Iterator for AckRangesIter<'_> {
     type Item = RangeInclusive<VarInt>;
 
     #[inline]
@@ -397,9 +397,9 @@ impl<'a> Iterator for AckRangesIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for AckRangesIter<'a> {}
+impl ExactSizeIterator for AckRangesIter<'_> {}
 
-impl<'a> core::fmt::Debug for AckRangesIter<'a> {
+impl core::fmt::Debug for AckRangesIter<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_list().entries(*self).finish()
     }
@@ -443,7 +443,7 @@ const ACK_RANGE_DECODING_ERROR: DecoderError =
 //#
 //# ECN counts are maintained separately for each packet number space.
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]

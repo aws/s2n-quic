@@ -553,7 +553,7 @@ struct RecoveryContext<'a, Config: endpoint::Config> {
     path_manager: &'a mut path::Manager<Config>,
 }
 
-impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'a, Config> {
+impl<Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'_, Config> {
     const ENDPOINT_TYPE: endpoint::Type = Config::ENDPOINT_TYPE;
 
     fn is_handshake_confirmed(&self) -> bool {
@@ -624,6 +624,8 @@ impl<'a, Config: endpoint::Config> recovery::Context<Config> for RecoveryContext
     }
 
     fn on_rtt_update(&mut self, _now: Timestamp) {}
+
+    fn on_mtu_update(&mut self, _mtu: u16) {}
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2

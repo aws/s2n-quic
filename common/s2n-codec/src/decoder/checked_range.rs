@@ -12,13 +12,12 @@ pub struct CheckedRange {
     original_ptr: *const u8,
 }
 
-#[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
-
 #[cfg(test)]
 impl bolero::TypeGenerator for CheckedRange {
     fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
-        let start = gen::<usize>().generate(driver)?;
+        use bolero::ValueGenerator;
+
+        let start = bolero::gen::<usize>().generate(driver)?;
         let end = (start..).generate(driver)?;
         Some(CheckedRange::new(start, end, core::ptr::null()))
     }

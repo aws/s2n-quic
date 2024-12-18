@@ -522,7 +522,7 @@ pub struct Request<'state, 'chunks> {
     request: ops::Request<'chunks>,
 }
 
-impl<'state, 'chunks> Request<'state, 'chunks> {
+impl<'chunks> Request<'_, 'chunks> {
     tx_request_apis!();
     rx_request_apis!();
 
@@ -566,7 +566,7 @@ impl<'state, 'chunks> Request<'state, 'chunks> {
     }
 }
 
-impl<'state, 'chunks> Future for Request<'state, 'chunks> {
+impl Future for Request<'_, '_> {
     type Output = Result<ops::Response, StreamError>;
 
     fn poll(
@@ -582,7 +582,7 @@ pub struct TxRequest<'state, 'chunks> {
     request: ops::Request<'chunks>,
 }
 
-impl<'state, 'chunks> TxRequest<'state, 'chunks> {
+impl<'chunks> TxRequest<'_, 'chunks> {
     tx_request_apis!();
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::tx::Response, StreamError> {
@@ -607,7 +607,7 @@ impl<'state, 'chunks> TxRequest<'state, 'chunks> {
     }
 }
 
-impl<'state, 'chunks> Future for TxRequest<'state, 'chunks> {
+impl Future for TxRequest<'_, '_> {
     type Output = Result<ops::tx::Response, StreamError>;
 
     fn poll(
@@ -623,7 +623,7 @@ pub struct RxRequest<'state, 'chunks> {
     request: ops::Request<'chunks>,
 }
 
-impl<'state, 'chunks> RxRequest<'state, 'chunks> {
+impl<'chunks> RxRequest<'_, 'chunks> {
     rx_request_apis!();
 
     pub fn poll(&mut self, context: Option<&Context>) -> Result<ops::rx::Response, StreamError> {
@@ -648,7 +648,7 @@ impl<'state, 'chunks> RxRequest<'state, 'chunks> {
     }
 }
 
-impl<'state, 'chunks> Future for RxRequest<'state, 'chunks> {
+impl Future for RxRequest<'_, '_> {
     type Output = Result<ops::rx::Response, StreamError>;
 
     fn poll(

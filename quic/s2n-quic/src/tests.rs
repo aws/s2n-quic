@@ -35,6 +35,7 @@ mod handshake_cid_rotation;
 mod interceptor;
 mod mtu;
 mod no_tls;
+mod platform_events;
 mod pto;
 mod self_test;
 mod skip_packets;
@@ -44,6 +45,8 @@ mod skip_packets;
 // The rustls tls provider is used on windows and has different
 // build options than s2n-tls. We should build the rustls provider with
 // mTLS enabled and remove the `cfg(target_os("windows"))`.
+#[cfg(not(target_os = "windows"))]
+mod chain;
 #[cfg(not(target_os = "windows"))]
 mod client_handshake_confirm;
 #[cfg(not(target_os = "windows"))]

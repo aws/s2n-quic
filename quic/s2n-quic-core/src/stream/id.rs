@@ -5,7 +5,7 @@
 
 use crate::{endpoint, stream::StreamType, varint::VarInt};
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 /// The ID of a stream.
 ///

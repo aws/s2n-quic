@@ -71,12 +71,12 @@ pub struct PathPublisher<'a, Pub: event::ConnectionPublisher> {
 
 impl<'a, Pub: event::ConnectionPublisher> PathPublisher<'a, Pub> {
     /// Constructs a new `Publisher` around the given `event::ConnectionPublisher` and `path_id`
-    pub fn new(publisher: &'a mut Pub, path_id: path::Id) -> PathPublisher<Pub> {
+    pub fn new(publisher: &'a mut Pub, path_id: path::Id) -> PathPublisher<'a, Pub> {
         Self { publisher, path_id }
     }
 }
 
-impl<'a, Pub: event::ConnectionPublisher> Publisher for PathPublisher<'a, Pub> {
+impl<Pub: event::ConnectionPublisher> Publisher for PathPublisher<'_, Pub> {
     #[inline]
     fn on_slow_start_exited(&mut self, cause: SlowStartExitCause, congestion_window: u32) {
         self.publisher

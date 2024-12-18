@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(any(test, feature = "generator"))]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 //= https://www.rfc-editor.org/rfc/rfc3168#section-5
 //# This document specifies that the Internet provide a congestion

@@ -9,7 +9,7 @@ use core::{
 pub use zerocopy::*;
 
 #[cfg(feature = "generator")]
-use bolero_generator::*;
+use bolero_generator::prelude::*;
 
 /// Define a codec implementation for a zerocopy value that implements
 /// `FromBytes`, `AsBytes`, and `Unaligned`.
@@ -21,7 +21,7 @@ macro_rules! zerocopy_value_codec {
             $name: $crate::zerocopy::FromBytes,
         {
             #[inline]
-            fn decode(buffer: $crate::DecoderBuffer<'a>) -> $crate::DecoderBufferResult<Self> {
+            fn decode(buffer: $crate::DecoderBuffer<'a>) -> $crate::DecoderBufferResult<'a, Self> {
                 let (value, buffer) = <&'a $name as $crate::DecoderValue>::decode(buffer)?;
                 Ok((*value, buffer))
             }
@@ -32,7 +32,7 @@ macro_rules! zerocopy_value_codec {
             $name: $crate::zerocopy::FromBytes,
         {
             #[inline]
-            fn decode(buffer: $crate::DecoderBuffer<'a>) -> $crate::DecoderBufferResult<Self> {
+            fn decode(buffer: $crate::DecoderBuffer<'a>) -> $crate::DecoderBufferResult<'a, Self> {
                 let (value, buffer) = buffer.decode_slice(core::mem::size_of::<$name>())?;
                 let value = value.into_less_safe_slice();
                 let value = unsafe {
@@ -50,7 +50,7 @@ macro_rules! zerocopy_value_codec {
             #[inline]
             fn decode_mut(
                 buffer: $crate::DecoderBufferMut<'a>,
-            ) -> $crate::DecoderBufferMutResult<Self> {
+            ) -> $crate::DecoderBufferMutResult<'a, Self> {
                 let (value, buffer) = <&'a $name as $crate::DecoderValueMut>::decode_mut(buffer)?;
                 Ok((*value, buffer))
             }
@@ -293,7 +293,7 @@ macro_rules! zerocopy_network_integer {
 
         #[cfg(feature = "generator")]
         impl TypeGenerator for $name {
-            fn generate<D: Driver>(driver: &mut D) -> Option<Self> {
+            fn generate<D: bolero_generator::Driver>(driver: &mut D) -> Option<Self> {
                 Some(Self::new(driver.gen()?))
             }
         }

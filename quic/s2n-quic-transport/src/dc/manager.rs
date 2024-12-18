@@ -160,6 +160,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         if Config::ENDPOINT_TYPE.is_server() {
             self.stateless_reset_token_sync.send();
         } else {
+            self.path.on_dc_handshake_complete();
             publisher.on_dc_state_changed(DcStateChanged {
                 state: DcState::Complete,
             });
@@ -176,6 +177,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         ensure!(self.state.on_stateless_reset_tokens_acked().is_ok());
 
         debug_assert!(Config::ENDPOINT_TYPE.is_server());
+        self.path.on_dc_handshake_complete();
         publisher.on_dc_state_changed(DcStateChanged {
             state: DcState::Complete,
         });
@@ -184,6 +186,11 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Called when a range of packets has been lost
     pub fn on_packet_loss<A: ack::Set>(&mut self, ack_set: &A) {
         self.stateless_reset_token_sync.on_packet_loss(ack_set);
+    }
+
+    /// Called when the MTU of the path has changed
+    pub fn on_mtu_updated(&mut self, max_datagram_size: u16) {
+        self.path.on_mtu_updated(max_datagram_size)
     }
 
     #[cfg(any(test, feature = "testing"))]
