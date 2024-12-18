@@ -593,7 +593,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
                     connection_limits.stream_limits(),
                     min_rtt,
                 ),
-                streams: StreamContainer::new(),
+                streams: StreamContainer::new(connection_limits),
                 next_stream_ids: StreamIdSet::initial(),
                 local_endpoint_type,
                 initial_local_limits,
@@ -873,7 +873,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
                     if transmit_result.is_err() {
                         StreamContainerIterationResult::BreakAndInsertAtBack
                     } else {
-                        StreamContainerIterationResult::Continue
+                        StreamContainerIterationResult::UseStreamCredit
                     }
                 },
             );
