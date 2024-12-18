@@ -194,29 +194,38 @@ impl<S: StreamTrait> InterestLists<S> {
             ($interest:expr, $link_name:ident, $list_name:ident) => {
                 if $interest != node.$link_name.is_linked() {
                     if $interest {
-                        if matches!(result, StreamContainerIterationResult::UseStreamCredit) {
+                        let stream_credits = self.transmission_counter < self.transmission_limit;
+                        if matches!(result, StreamContainerIterationResult::UseStreamCredit)
+                        {
                             self.$list_name.push_back(node.clone());
-                            self.transmission_counter += 1;
-                        } else if matches!(result, StreamContainerIterationResult::Continue) {
-                            self.$list_name.push_back(node.clone());
+                            if stream_credits {
+                                self.transmission_counter += 1;
+                            } else {
+                                self.transmission_counter = 0;
+                            }
                         } else if matches!(
                             result,
                             StreamContainerIterationResult::BreakAndInsertAtBack
-                        ) && !(self.transmission_counter < self.transmission_limit)
-                        {
-                            // In this case the node at the front of the list has no more sending
-                            // credits. Therefore we push the current node to the front of the list
-                            // and push the remaining nodes behind the current node, which effectively
-                            // moves the front node to the back of the list.
-                            self.$list_name.push_front(node.clone());
-                            self.transmission_counter = 0;
-                            outcome.push_back_remaining = false;
-                        } else {
-                            // In this case the node at the front of the list still has sending credits.
-                            // Therefore we want to preserve the order of the list by pushing each
-                            // node back.
+                        ){
+                            if stream_credits {
+                                // In this case the node at the front of the list still has sending credits.
+                                // Therefore we want to preserve the order of the list by pushing each
+                                // node back.
+                                self.$list_name.push_back(node.clone());
+                                outcome.push_back_remaining = true;
+                            } else {
+                                // In this case the node at the front of the list has no more sending
+                                // credits. Therefore we push the current node to the front of the list
+                                // and push the remaining nodes behind the current node, which effectively
+                                // moves the front node to the back of the list.
+                                self.$list_name.push_front(node.clone());
+                                self.transmission_counter = 0;
+                                outcome.push_back_remaining = false;
+                            }
+                        } else if matches!(result, StreamContainerIterationResult::Continue) {
+                            // In this case we are simply iterating through the list and don't
+                            // need to increment credits
                             self.$list_name.push_back(node.clone());
-                            outcome.push_back_remaining = true;
                         }
                     } else {
                         // Safety: We know that the node is only ever part of this list.
