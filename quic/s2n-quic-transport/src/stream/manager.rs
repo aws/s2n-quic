@@ -593,7 +593,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
                     connection_limits.stream_limits(),
                     min_rtt,
                 ),
-                streams: StreamContainer::new(),
+                streams: StreamContainer::new(connection_limits),
                 next_stream_ids: StreamIdSet::initial(),
                 local_endpoint_type,
                 initial_local_limits,
@@ -866,7 +866,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
         }
 
         if context.transmission_constraint().can_transmit() {
-            self.inner.streams.iterate_transmission_list(
+            self.inner.streams.send_on_transmission_list(
                 &mut self.inner.stream_controller,
                 |stream: &mut S| {
                     transmit_result = stream.on_transmit(context);

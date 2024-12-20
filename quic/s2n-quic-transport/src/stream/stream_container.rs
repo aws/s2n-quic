@@ -8,8 +8,8 @@
 #![allow(unknown_lints, clippy::non_send_fields_in_send_ty)]
 
 use crate::{
-    stream,
-    stream::{stream_impl::StreamTrait, stream_interests::StreamInterests},
+    connection,
+    stream::{self, stream_impl::StreamTrait, stream_interests::StreamInterests},
     transmission,
 };
 use alloc::rc::Rc;
@@ -145,10 +145,12 @@ struct InterestLists<S> {
     /// stream flow control window to increase
     waiting_for_stream_flow_control_credits:
         LinkedList<WaitingForStreamFlowControlCreditsAdapter<S>>,
+    counter: u8,
+    limit: u8,
 }
 
 impl<S: StreamTrait> InterestLists<S> {
-    fn new() -> Self {
+    fn new(connection_limits: &connection::Limits) -> Self {
         Self {
             done_streams: LinkedList::new(DoneStreamsAdapter::new()),
             waiting_for_frame_delivery: LinkedList::new(WaitingForFrameDeliveryAdapter::new()),
@@ -160,6 +162,8 @@ impl<S: StreamTrait> InterestLists<S> {
             waiting_for_stream_flow_control_credits: LinkedList::new(
                 WaitingForStreamFlowControlCreditsAdapter::new(),
             ),
+            counter: 0,
+            limit: connection_limits.stream_burst_size(),
         }
     }
 
@@ -168,7 +172,7 @@ impl<S: StreamTrait> InterestLists<S> {
         &mut self,
         node: &Rc<StreamNode<S>>,
         interests: StreamInterests,
-        result: StreamContainerIterationResult,
+        _result: StreamContainerIterationResult,
     ) -> bool {
         // Note that all comparisons start by checking whether the stream is
         // already part of the given list. This is required in order for the
@@ -181,11 +185,7 @@ impl<S: StreamTrait> InterestLists<S> {
             ($interest:expr, $link_name:ident, $list_name:ident) => {
                 if $interest != node.$link_name.is_linked() {
                     if $interest {
-                        if matches!(result, StreamContainerIterationResult::Continue) {
-                            self.$list_name.push_back(node.clone());
-                        } else {
-                            self.$list_name.push_front(node.clone());
-                        }
+                        self.$list_name.push_back(node.clone());
                     } else {
                         // Safety: We know that the node is only ever part of this list.
                         // While elements are in temporary lists, they always get unlinked
@@ -331,11 +331,11 @@ macro_rules! iterate_interruptible {
 
 impl<S: StreamTrait> StreamContainer<S> {
     /// Creates a new `StreamContainer`
-    pub fn new() -> Self {
+    pub fn new(connection_limits: &connection::Limits) -> Self {
         Self {
             stream_map: RBTree::new(StreamTreeAdapter::new()),
             nr_active_streams: 0,
-            interest_lists: InterestLists::new(),
+            interest_lists: InterestLists::new(connection_limits),
         }
     }
 
@@ -537,11 +537,7 @@ impl<S: StreamTrait> StreamContainer<S> {
         );
     }
 
-    /// Iterates over all `Stream`s which are waiting for transmission,
-    /// and executes the given function on each `Stream`
-    ///
-    /// The `stream::Controller` will be notified of streams that have been
-    /// closed to allow for further streams to be opened.
+    #[cfg(test)]
     pub fn iterate_transmission_list<F>(&mut self, controller: &mut stream::Controller, mut func: F)
     where
         F: FnMut(&mut S) -> StreamContainerIterationResult,
@@ -553,6 +549,68 @@ impl<S: StreamTrait> StreamContainer<S> {
             controller,
             func
         );
+    }
+
+    /// Iterates over all `Stream`s which are waiting for transmission,
+    /// and executes the given function on each `Stream`
+    ///
+    /// The `stream::Controller` will be notified of streams that have been
+    /// closed to allow for further streams to be opened.
+    pub fn send_on_transmission_list<F>(&mut self, controller: &mut stream::Controller, mut func: F)
+    where
+        F: FnMut(&mut S) -> StreamContainerIterationResult,
+    {
+        // Head node gets pushed to the back of the list if it has run out of sending credits
+        if self.interest_lists.counter >= self.interest_lists.limit {
+            if let Some(node) = self.interest_lists.waiting_for_transmission.pop_front() {
+                self.interest_lists.waiting_for_transmission.push_back(node);
+                self.interest_lists.counter = 0;
+            }
+        }
+
+        let mut extracted_list = self.interest_lists.waiting_for_transmission.take();
+        let mut cursor = extracted_list.front_mut();
+
+        let mut head_node = true;
+        while let Some(stream) = cursor.remove() {
+            // Note that while we iterate over the intrusive lists here
+            // `stream` is part of no list anymore, since it also got dropped
+            // from list that is described by the `cursor`.
+            debug_assert!(!stream.waiting_for_transmission_link.is_linked());
+            let mut mut_stream = stream.inner.borrow_mut();
+            let result = func(&mut *mut_stream);
+
+            // Update the interests after the interaction
+            let interests = mut_stream.get_stream_interests();
+            self.interest_lists
+                .update_interests(&stream, interests, result);
+
+            if head_node {
+                if matches!(result, StreamContainerIterationResult::Continue) {
+                    self.interest_lists.counter += 1;
+                }
+
+                if !matches!(interests.transmission, transmission::Interest::NewData) {
+                    self.interest_lists.counter = 0;
+                }
+                head_node = false;
+            }
+
+            match result {
+                StreamContainerIterationResult::BreakAndInsertAtBack => {
+                    self.interest_lists
+                        .waiting_for_transmission
+                        .back_mut()
+                        .splice_after(extracted_list);
+                    break;
+                }
+                StreamContainerIterationResult::Continue => {}
+            }
+        }
+
+        if !self.interest_lists.done_streams.is_empty() {
+            self.finalize_done_streams(controller);
+        }
     }
 
     /// Iterates over all `Stream`s which are waiting for retransmission,
