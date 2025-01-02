@@ -254,6 +254,13 @@ where
         let mut cf = ControlFlow::Continue(());
 
         let entry = &mut self.workers[idx];
+
+        // Only poll the worker if it's active. We can end up here if we've pruned a worker right before
+        // the tokio runtime notifies us the stream is ready.
+        if !entry.worker.is_active() {
+            return cf;
+        }
+
         let mut task_cx = task::Context::from_waker(&entry.waker);
         let Poll::Ready(res) = entry.worker.poll(&mut task_cx, cx, publisher, clock) else {
             debug_assert!(entry.worker.is_active());
