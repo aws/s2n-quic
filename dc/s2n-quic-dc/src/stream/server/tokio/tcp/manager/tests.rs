@@ -171,9 +171,8 @@ impl Harness {
         let Entry { worker, waker, .. } = &mut self.manager.inner.workers[idx];
         let is_active = worker.is_active();
 
-        if is_active {
-            waker.wake_by_ref();
-        }
+        // wake the worker even if it's not active so we can test more paths
+        waker.wake_by_ref();
 
         is_active
     }
