@@ -168,12 +168,7 @@ impl<S: StreamTrait> InterestLists<S> {
     }
 
     /// Update all interest lists based on latest interest reported by a Node
-    fn update_interests(
-        &mut self,
-        node: &Rc<StreamNode<S>>,
-        interests: StreamInterests,
-        _result: StreamContainerIterationResult,
-    ) -> bool {
+    fn update_interests(&mut self, node: &Rc<StreamNode<S>>, interests: StreamInterests) -> bool {
         // Note that all comparisons start by checking whether the stream is
         // already part of the given list. This is required in order for the
         // following operation to be safe. Inserting an element in a list while
@@ -280,11 +275,7 @@ macro_rules! iterate_uninterruptible {
                 mut_stream.get_stream_interests()
             };
 
-            $sel.interest_lists.update_interests(
-                &stream,
-                interests,
-                StreamContainerIterationResult::Continue,
-            );
+            $sel.interest_lists.update_interests(&stream, interests);
         }
 
         if !$sel.interest_lists.done_streams.is_empty() {
@@ -308,8 +299,7 @@ macro_rules! iterate_interruptible {
 
             // Update the interests after the interaction
             let interests = mut_stream.get_stream_interests();
-            $sel.interest_lists
-                .update_interests(&stream, interests, result);
+            $sel.interest_lists.update_interests(&stream, interests);
 
             match result {
                 StreamContainerIterationResult::BreakAndInsertAtBack => {
@@ -347,11 +337,7 @@ impl<S: StreamTrait> StreamContainer<S> {
 
         let new_stream = Rc::new(StreamNode::new(stream));
 
-        self.interest_lists.update_interests(
-            &new_stream,
-            interests,
-            StreamContainerIterationResult::Continue,
-        );
+        self.interest_lists.update_interests(&new_stream, interests);
 
         self.stream_map.insert(new_stream);
         self.nr_active_streams += 1;
@@ -414,11 +400,7 @@ impl<S: StreamTrait> StreamContainer<S> {
 
         // Update the interest lists after the interactions and then remove
         // all finalized streams
-        if self.interest_lists.update_interests(
-            &node_ptr,
-            interests,
-            StreamContainerIterationResult::Continue,
-        ) {
+        if self.interest_lists.update_interests(&node_ptr, interests) {
             self.finalize_done_streams(controller);
         }
 
@@ -582,8 +564,7 @@ impl<S: StreamTrait> StreamContainer<S> {
 
             // Update the interests after the interaction
             let interests = mut_stream.get_stream_interests();
-            self.interest_lists
-                .update_interests(&stream, interests, result);
+            self.interest_lists.update_interests(&stream, interests);
 
             if head_node {
                 if matches!(result, StreamContainerIterationResult::Continue) {
@@ -659,11 +640,8 @@ impl<S: StreamTrait> StreamContainer<S> {
             // Safety: The stream reference is obtained from the RBTree, which
             // stores it's nodes as `Rc`
             let stream_node_rc = unsafe { stream_node_rc_from_ref(stream) };
-            self.interest_lists.update_interests(
-                &stream_node_rc,
-                interests,
-                StreamContainerIterationResult::Continue,
-            );
+            self.interest_lists
+                .update_interests(&stream_node_rc, interests);
         }
 
         if !self.interest_lists.done_streams.is_empty() {
