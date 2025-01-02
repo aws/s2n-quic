@@ -96,9 +96,11 @@ impl Cleaner {
         let utilization = |count: usize| (count as f32 / state.secrets_capacity() as f32) * 100.0;
 
         let mut id_entries_initial = 0usize;
-        let mut address_entries_initial = 0usize;
         let mut id_entries_retired = 0usize;
+        let mut id_entries_active = 0usize;
+        let mut address_entries_initial = 0usize;
         let mut address_entries_retired = 0usize;
+        let mut address_entries_active = 0usize;
 
         // For non-retired entries, if it's time for them to handshake again, request a
         // handshake to happen. This handshake will currently happen on the next request for this
@@ -122,6 +124,10 @@ impl Cleaner {
                 id_entries_retired += 1;
             }
 
+            if entry.take_accessed_id() {
+                id_entries_active += 1;
+            }
+
             retained
         });
 
@@ -135,6 +141,10 @@ impl Cleaner {
 
             if !retained {
                 address_entries_retired += 1;
+            }
+
+            if entry.take_accessed_addr() {
+                address_entries_active += 1;
             }
 
             retained
@@ -169,9 +179,13 @@ impl Cleaner {
             event::builder::PathSecretMapCleanerCycled {
                 id_entries,
                 id_entries_retired,
+                id_entries_active,
+                id_entries_active_utilization: utilization(id_entries_active),
                 id_entries_utilization: utilization(id_entries),
                 id_entries_initial_utilization: utilization(id_entries_initial),
                 address_entries,
+                address_entries_active,
+                address_entries_active_utilization: utilization(address_entries_active),
                 address_entries_utilization: utilization(address_entries),
                 address_entries_initial_utilization: utilization(address_entries_initial),
                 address_entries_retired,

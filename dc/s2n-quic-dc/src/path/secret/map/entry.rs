@@ -21,7 +21,10 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, varint::VarInt};
 use std::{
     net::SocketAddr,
-    sync::{atomic::Ordering, Arc},
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -38,6 +41,9 @@ pub(super) struct Entry {
     sender: sender::State,
     receiver: receiver::State,
     parameters: dc::ApplicationParams,
+    // we store this as a u8 to allow the cleaner to separately "take" accessed for id and addr
+    // maps while not having two writes and wasting an extra byte of space.
+    accessed: AtomicU8,
 }
 
 impl SizeOf for Entry {
@@ -51,6 +57,7 @@ impl SizeOf for Entry {
             sender,
             receiver,
             parameters,
+            accessed,
         } = self;
         creation_time.size()
             + rehandshake_delta_secs.size()
@@ -60,8 +67,11 @@ impl SizeOf for Entry {
             + sender.size()
             + receiver.size()
             + parameters.size()
+            + accessed.size()
     }
 }
+
+impl SizeOf for AtomicU8 {}
 
 impl Entry {
     pub fn new(
@@ -90,6 +100,7 @@ impl Entry {
             sender,
             receiver,
             parameters,
+            accessed: AtomicU8::new(0),
         }
     }
 
@@ -121,6 +132,22 @@ impl Entry {
 
     pub fn id(&self) -> &credentials::Id {
         self.secret.id()
+    }
+
+    pub fn set_accessed_id(&self) {
+        self.accessed.fetch_or(0b10, Ordering::Relaxed);
+    }
+
+    pub fn set_accessed_addr(&self) {
+        self.accessed.fetch_or(0b01, Ordering::Relaxed);
+    }
+
+    pub fn take_accessed_id(&self) -> bool {
+        self.accessed.fetch_and(!0b10, Ordering::Relaxed) & 0b10 != 0
+    }
+
+    pub fn take_accessed_addr(&self) -> bool {
+        self.accessed.fetch_and(!0b01, Ordering::Relaxed) & 0b01 != 0
     }
 
     pub fn retire(&self, at_epoch: u64) {
@@ -220,6 +247,10 @@ impl Entry {
 
     pub fn rehandshake_time(&self) -> Instant {
         self.creation_time + Duration::from_secs(u64::from(self.rehandshake_delta_secs))
+    }
+
+    pub fn age(&self) -> Duration {
+        self.creation_time.elapsed()
     }
 
     pub fn receiver(&self) -> &receiver::State {

@@ -12,7 +12,7 @@ use core::{
     hash::Hash,
     sync::atomic::{AtomicU8, Ordering},
 };
-use parking_lot::{RwLock, RwLockReadGuard, RwLockUpgradableReadGuard};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockUpgradableReadGuard, RwLockWriteGuard};
 use std::{collections::hash_map::RandomState, hash::BuildHasher};
 
 pub use parking_lot::MappedRwLockReadGuard as ReadGuard;
@@ -87,9 +87,19 @@ where
         &self.slots[slot_idx]
     }
 
-    /// Returns Some(v) if overwriting a previous value for the same key.
-    pub fn insert(&self, key: K, value: V) -> Option<V> {
+    /// Returns in .0 = Some(v) if overwriting a previous value for the same key.
+    /// Returns in .1 = Some(k, v) if we evicted some other entry.
+    #[must_use]
+    pub fn insert(&self, key: K, value: V) -> (Option<V>, Option<(K, V)>) {
         self.slot_by_hash(&key).put(key, value)
+    }
+
+    /// This inserts the provided kv only if key is not currently in the map.
+    ///
+    /// Returns the evicted entry, if any.
+    #[must_use]
+    pub fn insert_new_key(&self, key: K, value: V) -> Option<(K, V)> {
+        self.slot_by_hash(&key).insert_new_key(key, value)
     }
 
     pub fn contains_key(&self, key: &K) -> bool {
@@ -124,8 +134,9 @@ where
         *self.values.write() = std::array::from_fn(|_| None);
     }
 
-    /// Returns Some(v) if overwriting a previous value for the same key.
-    fn put(&self, new_key: K, new_value: V) -> Option<V> {
+    /// Returns in .0 = Some(v) if overwriting a previous value for the same key.
+    /// Returns in .1 = Some(k, v) if we evicted some other entry.
+    fn put(&self, new_key: K, new_value: V) -> (Option<V>, Option<(K, V)>) {
         let values = self.values.upgradable_read();
         for (value_idx, value) in values.iter().enumerate() {
             // overwrite if same key or if no key/value pair yet
@@ -133,21 +144,60 @@ where
                 let mut values = RwLockUpgradableReadGuard::upgrade(values);
                 let old = values[value_idx].take().map(|v| v.1);
                 values[value_idx] = Some((new_key, new_value));
-                return old;
+                return (old, None);
             }
         }
 
-        let mut values = RwLockUpgradableReadGuard::upgrade(values);
+        (
+            None,
+            self.insert_replacing(
+                RwLockUpgradableReadGuard::upgrade(values),
+                new_key,
+                new_value,
+            ),
+        )
+    }
 
+    fn insert_new_key(&self, new_key: K, new_value: V) -> Option<(K, V)> {
+        let entries = self.values.upgradable_read();
+        for (idx, entry) in entries.iter().enumerate() {
+            // write only if no key/value pair yet
+            if entry.is_none() {
+                let mut entries = RwLockUpgradableReadGuard::upgrade(entries);
+                entries[idx] = Some((new_key, new_value));
+                return None;
+            }
+
+            if let Some(entry) = &entry {
+                if entry.0 == new_key {
+                    return None;
+                }
+            }
+        }
+
+        // if we didn't find ourselves, then we can upgrade and insert.
+        self.insert_replacing(
+            RwLockUpgradableReadGuard::upgrade(entries),
+            new_key,
+            new_value,
+        )
+    }
+
+    // Insert evicting an existing entry for a different key.
+    fn insert_replacing(
+        &self,
+        mut entries: RwLockWriteGuard<'_, [Option<(K, V)>; SLOT_CAPACITY]>,
+        new_key: K,
+        new_value: V,
+    ) -> Option<(K, V)> {
         // If `new_key` isn't already in this slot, replace one of the existing entries with the
         // new key. For now we rotate through based on `next_write`.
         let replacement = self.next_write.fetch_add(1, Ordering::Relaxed) as usize % SLOT_CAPACITY;
         tracing::trace!(
             "evicting {:?} - bucket overflow",
-            values[replacement].as_mut().unwrap().0
+            entries[replacement].as_mut().unwrap().0
         );
-        values[replacement] = Some((new_key, new_value));
-        None
+        std::mem::replace(&mut entries[replacement], Some((new_key, new_value)))
     }
 
     fn get_by_key(&self, needle: &K) -> Option<ReadGuard<'_, V>> {

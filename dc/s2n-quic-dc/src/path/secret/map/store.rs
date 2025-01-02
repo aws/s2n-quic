@@ -35,7 +35,7 @@ pub trait Store: 'static + Send + Sync {
 
     fn get_by_id_untracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
 
-    fn get_by_id_tracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
+    fn get_by_id_tracked(&self, id: &Id) -> Option<Arc<Entry>>;
 
     fn handle_unexpected_packet(&self, packet: &Packet, peer: &SocketAddr);
 
