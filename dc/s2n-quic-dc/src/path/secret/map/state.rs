@@ -17,7 +17,7 @@ use s2n_quic_core::{
 use std::{
     hash::{BuildHasherDefault, Hasher},
     net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
+    sync::{Arc, Mutex, Weak},
     time::Duration,
 };
 
@@ -76,7 +76,7 @@ where
 
     // This socket is used *only* for sending secret control packets.
     // FIXME: This will get replaced with sending on a handshake socket associated with the map.
-    pub(super) control_socket: std::net::UdpSocket,
+    pub(super) control_socket: Arc<std::net::UdpSocket>,
 
     pub(super) receiver_shared: Arc<receiver::Shared>,
 
@@ -88,6 +88,10 @@ where
 
     subscriber: S,
 }
+
+// Share control sockets -- we only send on these so it doesn't really matter if there's only one
+// per process.
+static CONTROL_SOCKET: Mutex<Weak<std::net::UdpSocket>> = Mutex::new(Weak::new());
 
 impl<C, S> State<C, S>
 where
@@ -107,8 +111,18 @@ where
         // from that socket as well. Not exactly clear on how to achieve that yet though (both
         // ownership wise since the map doesn't have direct access to handshakes and in terms
         // of implementation).
-        let control_socket = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
-        control_socket.set_nonblocking(true).unwrap();
+        let control_socket = {
+            let mut guard = CONTROL_SOCKET.lock().unwrap();
+            if let Some(socket) = guard.upgrade() {
+                socket
+            } else {
+                let control_socket = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+                control_socket.set_nonblocking(true).unwrap();
+                let control_socket = Arc::new(control_socket);
+                *guard = Arc::downgrade(&control_socket);
+                control_socket
+            }
+        };
 
         let init_time = clock.get_time();
 
