@@ -145,8 +145,8 @@ struct InterestLists<S> {
     /// stream flow control window to increase
     waiting_for_stream_flow_control_credits:
         LinkedList<WaitingForStreamFlowControlCreditsAdapter<S>>,
-    counter: u8,
-    limit: u8,
+    transmission_counter: u8,
+    transmission_limit: u8,
 }
 
 impl<S: StreamTrait> InterestLists<S> {
@@ -162,8 +162,8 @@ impl<S: StreamTrait> InterestLists<S> {
             waiting_for_stream_flow_control_credits: LinkedList::new(
                 WaitingForStreamFlowControlCreditsAdapter::new(),
             ),
-            counter: 0,
-            limit: connection_limits.stream_burst_size(),
+            transmission_counter: 0,
+            transmission_limit: connection_limits.stream_batch_size(),
         }
     }
 
@@ -543,10 +543,10 @@ impl<S: StreamTrait> StreamContainer<S> {
         F: FnMut(&mut S) -> StreamContainerIterationResult,
     {
         // Head node gets pushed to the back of the list if it has run out of sending credits
-        if self.interest_lists.counter >= self.interest_lists.limit {
+        if self.interest_lists.transmission_counter >= self.interest_lists.transmission_limit {
             if let Some(node) = self.interest_lists.waiting_for_transmission.pop_front() {
                 self.interest_lists.waiting_for_transmission.push_back(node);
-                self.interest_lists.counter = 0;
+                self.interest_lists.transmission_counter = 0;
             }
         }
 
@@ -568,11 +568,11 @@ impl<S: StreamTrait> StreamContainer<S> {
 
             if head_node {
                 if matches!(result, StreamContainerIterationResult::Continue) {
-                    self.interest_lists.counter += 1;
+                    self.interest_lists.transmission_counter += 1;
                 }
 
                 if !matches!(interests.transmission, transmission::Interest::NewData) {
-                    self.interest_lists.counter = 0;
+                    self.interest_lists.transmission_counter = 0;
                 }
                 head_node = false;
             }

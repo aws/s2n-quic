@@ -35,7 +35,7 @@ const MAX_KEEP_ALIVE_PERIOD_DEFAULT: Duration = Duration::from_secs(30);
 //# received.
 pub const ANTI_AMPLIFICATION_MULTIPLIER: u8 = 3;
 
-pub const DEFAULT_STREAM_BURST_SIZE: u8 = 1;
+pub const DEFAULT_STREAM_BATCH_SIZE: u8 = 1;
 
 #[non_exhaustive]
 #[derive(Debug)]
@@ -76,7 +76,7 @@ pub struct Limits {
     pub(crate) initial_round_trip_time: Duration,
     pub(crate) migration_support: MigrationSupport,
     pub(crate) anti_amplification_multiplier: u8,
-    pub(crate) stream_burst_size: u8,
+    pub(crate) stream_batch_size: u8,
 }
 
 impl Default for Limits {
@@ -123,7 +123,7 @@ impl Limits {
             initial_round_trip_time: recovery::DEFAULT_INITIAL_RTT,
             migration_support: MigrationSupport::RECOMMENDED,
             anti_amplification_multiplier: ANTI_AMPLIFICATION_MULTIPLIER,
-            stream_burst_size: DEFAULT_STREAM_BURST_SIZE,
+            stream_batch_size: DEFAULT_STREAM_BATCH_SIZE,
         }
     }
 
@@ -226,7 +226,7 @@ impl Limits {
         max_active_connection_ids,
         u64
     );
-    setter!(with_stream_burst_size, stream_burst_size, u8);
+    setter!(with_stream_batch_size, stream_batch_size, u8);
     setter!(with_ack_elicitation_interval, ack_elicitation_interval, u8);
     setter!(with_max_ack_ranges, ack_ranges_limit, u8);
     setter!(
@@ -392,8 +392,8 @@ impl Limits {
 
     #[doc(hidden)]
     #[inline]
-    pub fn stream_burst_size(&self) -> u8 {
-        self.stream_burst_size
+    pub fn stream_batch_size(&self) -> u8 {
+        self.stream_batch_size
     }
 }
 
