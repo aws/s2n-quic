@@ -79,6 +79,8 @@ impl Cleaner {
                     break;
                 }
                 state.cleaner().clean(&state, EVICTION_CYCLES);
+                // pause the rest of the time to run once a minute, not twice a minute
+                std::thread::park_timeout(Duration::from_secs(60 - pause));
             })
             .unwrap();
         *self.thread.lock().unwrap() = Some(handle);
