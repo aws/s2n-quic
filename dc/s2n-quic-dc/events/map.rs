@@ -68,6 +68,36 @@ struct PathSecretMapEntryReplaced<'a> {
     previous_credential_id: &'a [u8],
 }
 
+#[event("path_secret_map:id_entry_evicted")]
+#[subject(endpoint)]
+/// Emitted when an entry is evicted due to running out of space
+struct PathSecretMapIdEntryEvicted<'a> {
+    #[nominal_counter("peer_address.protocol")]
+    peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a [u8],
+
+    /// Time since insertion of this entry
+    #[measure("age", Duration)]
+    age: core::time::Duration,
+}
+
+#[event("path_secret_map:addr_entry_evicted")]
+#[subject(endpoint)]
+/// Emitted when an entry is evicted due to running out of space
+struct PathSecretMapAddressEntryEvicted<'a> {
+    #[nominal_counter("peer_address.protocol")]
+    peer_address: SocketAddress<'a>,
+
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a [u8],
+
+    /// Time since insertion of this entry
+    #[measure("age", Duration)]
+    age: core::time::Duration,
+}
+
 #[event("path_secret_map:unknown_path_secret_packet_sent")]
 #[subject(endpoint)]
 /// Emitted when an UnknownPathSecret packet was sent
@@ -295,6 +325,19 @@ struct PathSecretMapAddressCacheAccessed<'a> {
     hit: bool,
 }
 
+#[event("path_secret_map:address_cache_accessed_entry")]
+#[subject(endpoint)]
+/// Emitted when the cache is accessed by peer address successfully
+///
+/// Provides more information about the accessed entry.
+struct PathSecretMapAddressCacheAccessedHit<'a> {
+    #[nominal_counter("peer_address.protocol")]
+    peer_address: SocketAddress<'a>,
+
+    #[measure("age", Duration)]
+    age: core::time::Duration,
+}
+
 #[event("path_secret_map:id_cache_accessed")]
 #[subject(endpoint)]
 /// Emitted when the cache is accessed by path secret ID
@@ -306,6 +349,19 @@ struct PathSecretMapIdCacheAccessed<'a> {
 
     #[bool_counter("hit")]
     hit: bool,
+}
+
+#[event("path_secret_map:id_cache_accessed_entry")]
+#[subject(endpoint)]
+/// Emitted when the cache is accessed by path secret ID successfully
+///
+/// Provides more information about the accessed entry.
+struct PathSecretMapIdCacheAccessedHit<'a> {
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a [u8],
+
+    #[measure("age", Duration)]
+    age: core::time::Duration,
 }
 
 #[event("path_secret_map:cleaner_cycled")]
@@ -322,6 +378,14 @@ struct PathSecretMapCleanerCycled {
     #[measure("entries.id.retired")]
     id_entries_retired: usize,
 
+    /// Count of entries accessed since the last cycle
+    #[measure("entries.id.active")]
+    id_entries_active: usize,
+
+    /// The utilization percentage of the active number of entries after the cycle
+    #[measure("entries.id.active.utilization", Percent)]
+    id_entries_active_utilization: f32,
+
     /// The utilization percentage of the available number of entries after the cycle
     #[measure("entries.id.utilization", Percent)]
     id_entries_utilization: f32,
@@ -333,6 +397,14 @@ struct PathSecretMapCleanerCycled {
     /// The number of SocketAddress entries left after the cleaning cycle
     #[measure("entries.address")]
     address_entries: usize,
+
+    /// Count of entries accessed since the last cycle
+    #[measure("entries.address.active")]
+    address_entries_active: usize,
+
+    /// The utilization percentage of the active number of entries after the cycle
+    #[measure("entries.address.active.utilization", Percent)]
+    address_entries_active_utilization: f32,
 
     /// The number of SocketAddress entries that were retired in the cycle
     #[measure("entries.address.retired")]

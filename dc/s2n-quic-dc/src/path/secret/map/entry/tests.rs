@@ -15,7 +15,7 @@ fn entry_size() {
     if should_check {
         assert_eq!(
             Entry::fake((std::net::Ipv4Addr::LOCALHOST, 0).into(), None).size(),
-            238
+            239
         );
     }
 }

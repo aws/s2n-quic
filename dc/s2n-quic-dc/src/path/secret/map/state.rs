@@ -370,9 +370,20 @@ where
         // On insert clear our interest in a handshake.
         self.requested_handshakes.pin().remove(peer);
 
-        if self.ids.insert(id, entry.clone()).is_some() {
+        let (same, other) = self.ids.insert(id, entry.clone());
+        if same.is_some() {
             // FIXME: Make insertion fallible and fail handshakes instead?
             panic!("inserting a path secret ID twice");
+        }
+
+        if let Some(evicted) = other {
+            self.subscriber().on_path_secret_map_id_entry_evicted(
+                event::builder::PathSecretMapIdEntryEvicted {
+                    peer_address: SocketAddress::from(*evicted.1.peer()).into_event(),
+                    credential_id: evicted.1.id().into_event(),
+                    age: evicted.1.age(),
+                },
+            );
         }
 
         self.subscriber().on_path_secret_map_entry_inserted(
@@ -387,7 +398,8 @@ where
         let id = *entry.id();
         let peer = *entry.peer();
 
-        if let Some(prev) = self.peers.insert(peer, entry) {
+        let (same, other) = self.peers.insert(peer, entry);
+        if let Some(prev) = same {
             // This shouldn't happen due to the panic in on_new_path_secrets, but just
             // in case something went wrong with the secret map we double check here.
             // FIXME: Make insertion fallible and fail handshakes instead?
@@ -401,6 +413,16 @@ where
                     peer_address: SocketAddress::from(peer).into_event(),
                     new_credential_id: id.into_event(),
                     previous_credential_id: prev_id.into_event(),
+                },
+            );
+        }
+
+        if let Some(evicted) = other {
+            self.subscriber().on_path_secret_map_address_entry_evicted(
+                event::builder::PathSecretMapAddressEntryEvicted {
+                    peer_address: SocketAddress::from(*evicted.1.peer()).into_event(),
+                    credential_id: evicted.1.id().into_event(),
+                    age: evicted.1.age(),
                 },
             );
         }
@@ -426,6 +448,17 @@ where
             },
         );
 
+        if let Some(entry) = &result {
+            entry.set_accessed_addr();
+            self.subscriber()
+                .on_path_secret_map_address_cache_accessed_hit(
+                    event::builder::PathSecretMapAddressCacheAccessedHit {
+                        peer_address: SocketAddress::from(*peer).into_event(),
+                        age: entry.age(),
+                    },
+                );
+        }
+
         result
     }
 
@@ -433,8 +466,9 @@ where
         self.ids.get_by_key(id)
     }
 
-    fn get_by_id_tracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>> {
-        let result = self.ids.get_by_key(id);
+    fn get_by_id_tracked(&self, id: &Id) -> Option<Arc<Entry>> {
+        // clone here to avoid holding the lock while we insert into `peers`.
+        let result = self.ids.get_by_key(id).map(|v| Arc::clone(&v));
 
         self.subscriber().on_path_secret_map_id_cache_accessed(
             event::builder::PathSecretMapIdCacheAccessed {
@@ -442,6 +476,33 @@ where
                 hit: result.is_some(),
             },
         );
+
+        if let Some(entry) = &result {
+            entry.set_accessed_id();
+            self.subscriber().on_path_secret_map_id_cache_accessed_hit(
+                event::builder::PathSecretMapIdCacheAccessedHit {
+                    credential_id: id.into_event(),
+                    age: entry.age(),
+                },
+            );
+        }
+
+        // Re-populate the peer cache with this entry if not already present.
+        //
+        // This ensures that a subsequent lookup by the address will likely succeed, refilling any
+        // previous evictions in the peer map. We skip insertion if there's already a peer entry
+        // since that might be a *newer* peer entry that should continue to stick around.
+        if let Some(entry) = &result {
+            if let Some(evicted) = self.peers.insert_new_key(*entry.peer(), entry.clone()) {
+                self.subscriber().on_path_secret_map_address_entry_evicted(
+                    event::builder::PathSecretMapAddressEntryEvicted {
+                        peer_address: SocketAddress::from(*evicted.1.peer()).into_event(),
+                        credential_id: evicted.1.id().into_event(),
+                        age: evicted.1.age(),
+                    },
+                );
+            }
+        }
 
         result
     }
