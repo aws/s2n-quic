@@ -849,7 +849,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
                 transmission::context::RetransmissionContext::new(context);
 
             // Prioritize retransmitting lost data
-            self.inner.streams.iterate_retransmission_list(
+            self.inner.streams.send_on_retransmission_list(
                 &mut self.inner.stream_controller,
                 |stream: &mut S| {
                     transmit_result = stream.on_transmit(&mut retransmission_context);
