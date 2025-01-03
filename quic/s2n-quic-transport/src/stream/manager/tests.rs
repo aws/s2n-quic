@@ -2531,6 +2531,11 @@ fn on_transmit_queries_streams_for_data() {
     );
 
     assert_eq!(
+        [stream_1, stream_2, stream_3, stream_4],
+        *manager.streams_waiting_for_transmission()
+    );
+
+    assert_eq!(
         Err(OnTransmitError::CouldNotWriteFrame),
         manager.on_transmit(&mut write_context)
     );
@@ -3246,6 +3251,87 @@ fn stream_transmission_fairness_test() {
             assert_eq!(streams, manager.streams_waiting_for_transmission());
 
             streams.rotate_left(1);
+        }
+    }
+}
+
+#[test]
+fn stream_batching_test() {
+    for batch_size in 1..=10 {
+        dbg!(batch_size);
+        let limits = ConnectionLimits::default()
+            .with_stream_batch_size(batch_size)
+            .unwrap();
+
+        let mut manager = AbstractStreamManager::<stream::StreamImpl>::new(
+            &limits,
+            endpoint::Type::Server,
+            create_default_initial_flow_control_limits(),
+            create_default_initial_flow_control_limits(),
+            DEFAULT_INITIAL_RTT,
+        );
+
+        // Create some open Streams
+        let mut stream_ids: VecDeque<StreamId> = (0..4)
+            .map(|_| {
+                let (accept_waker, _accept_wake_counter) = new_count_waker();
+                let (_wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
+                let mut token = connection::OpenToken::new();
+
+                let result = match manager.poll_open_local_stream(
+                    StreamType::Bidirectional,
+                    &mut token,
+                    &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                    &Context::from_waker(&accept_waker),
+                ) {
+                    Poll::Ready(res) => res,
+                    Poll::Pending => Err(connection::Error::unspecified()),
+                };
+                result.unwrap()
+            })
+            .collect();
+
+        // Create a context that can only fit packets of size 50
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let max_packet_size = 50;
+        frame_buffer.set_max_packet_size(Some(max_packet_size));
+        let mut write_context = MockWriteContext::new(
+            time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Server,
+        );
+
+        const DATA_SIZE: usize = 2000;
+        let array: [u8; DATA_SIZE] = [1; DATA_SIZE];
+
+        // Set up each stream to have much more data to send than can fit in our test packet
+        for stream_id in &stream_ids {
+            manager
+                .with_asserted_stream(*stream_id, |stream: &mut stream::StreamImpl| {
+                    let data_to_send = bytes::Bytes::copy_from_slice(&array);
+                    stream.poll_request(ops::Request::default().send(&mut [data_to_send]), None)
+                })
+                .unwrap();
+        }
+        // make sure the order matches creation order
+        assert_eq!(stream_ids, manager.streams_waiting_for_transmission());
+
+        // Send 40 packets. Each stream gets to be the first to fill up a packet "batch_size" times.
+        // Then the stream gets sent to the back of the transmission list.
+        for idx in 1..=40 {
+            dbg!(idx);
+            let _ = manager.on_transmit(&mut write_context);
+
+            assert_eq!(stream_ids, manager.streams_waiting_for_transmission());
+
+            write_context.frame_buffer.flush();
+
+            if idx % batch_size == 0 {
+                // The first stream gets sent to the back of the transmission list once we have sent "batch_size" packets
+                stream_ids.rotate_left(1);
+            }
         }
     }
 }

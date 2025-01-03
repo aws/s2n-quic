@@ -254,7 +254,7 @@ pub trait PacketEncoder<K: CryptoKey, H: HeaderKey, Payload: PacketPayloadEncode
             return Err(PacketEncodingError::EmptyPayload(buffer));
         }
 
-        // Ideally we would check that the `paylod_len >= minimum_payload_len`. However, the packet
+        // Ideally we would check that the `payload_len >= minimum_payload_len`. However, the packet
         // interceptor may rewrite the packet into something smaller. Instead of preventing that
         // here, we will rely on the `crate::transmission::Transmission` logic to ensure the
         // padding is initially written to ensure the minimum is met before interception is applied.
