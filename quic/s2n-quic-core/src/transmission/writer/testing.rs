@@ -259,10 +259,10 @@ impl super::Writer for Writer<'_> {
         self.frame_buffer.remaining_capacity()
     }
 
-    fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    fn write_frame<'a, Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>,
     {
         match self.transmission_constraint() {
             transmission::Constraint::AmplificationLimited => {
@@ -277,19 +277,19 @@ impl super::Writer for Writer<'_> {
         self.frame_buffer.write_frame(frame)
     }
 
-    fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
+    fn write_fitted_frame<'a, Frame>(&mut self, frame: &Frame) -> PacketNumber
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>,
     {
         self.write_frame(frame)
             .expect("frame should fit in current buffer")
     }
 
-    fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    fn write_frame_forced<'a, Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>,
     {
         self.frame_buffer.write_frame(frame)
     }

@@ -66,12 +66,12 @@ struct PathCreated<'a> {
 // This diverges a bit from the qlog spec, which prefers to log data as part of the
 // packet events.
 /// Frame was sent
-struct FrameSent {
+struct FrameSent<'a> {
     #[nominal_counter("packet")]
     packet_header: PacketHeader,
     path_id: u64,
     #[nominal_counter("frame")]
-    frame: Frame,
+    frame: Frame<'a>,
 }
 
 #[event("transport:frame_received")]
@@ -84,7 +84,7 @@ struct FrameReceived<'a> {
     packet_header: PacketHeader,
     path: Path<'a>,
     #[nominal_counter("frame")]
-    frame: Frame,
+    frame: Frame<'a>,
 }
 
 #[event("recovery:packet_lost")]

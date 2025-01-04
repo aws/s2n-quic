@@ -7,10 +7,10 @@ use s2n_quic_core::event::api::{Frame, FrameSent};
 
 // Configure the server and client with the given `rotate_handshake_connection_id` setting
 // and complete a handshake
-fn rotate_handshake_test(
+fn rotate_handshake_test<'a>(
     server_rotate_handshake_connection_id: bool,
     client_rotate_handshake_connection_id: bool,
-) -> (Vec<events::FrameSent>, Vec<events::FrameSent>) {
+) -> (Vec<events::FrameSent<'a>>, Vec<events::FrameSent<'a>>) {
     let model = Model::default();
 
     let server_subscriber = recorder::FrameSent::new();
