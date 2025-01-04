@@ -331,7 +331,7 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub enum Frame {
+    pub enum Frame<'a> {
         #[non_exhaustive]
         Padding {},
         #[non_exhaustive]
@@ -395,7 +395,11 @@ pub mod api {
         #[non_exhaustive]
         PathResponse {},
         #[non_exhaustive]
-        ConnectionClose {},
+        ConnectionClose {
+            error_code: u64,
+            frame_type: Option<u64>,
+            reason: Option<&'a [u8]>,
+        },
         #[non_exhaustive]
         HandshakeDone {},
         #[non_exhaustive]
@@ -403,7 +407,7 @@ pub mod api {
         #[non_exhaustive]
         DcStatelessResetTokens {},
     }
-    impl aggregate::AsVariant for Frame {
+    impl<'a> aggregate::AsVariant for Frame<'a> {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
             aggregate::info::variant::Builder {
                 name: aggregate::info::Str::new("PADDING\0"),
@@ -1882,13 +1886,13 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Frame was sent"]
-    pub struct FrameSent {
+    pub struct FrameSent<'a> {
         pub packet_header: PacketHeader,
         pub path_id: u64,
-        pub frame: Frame,
+        pub frame: Frame<'a>,
     }
     #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for FrameSent {
+    impl<'a> crate::event::snapshot::Fmt for FrameSent<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("FrameSent");
             fmt.field("packet_header", &self.packet_header);
@@ -1897,7 +1901,7 @@ pub mod api {
             fmt.finish()
         }
     }
-    impl Event for FrameSent {
+    impl<'a> Event for FrameSent<'a> {
         const NAME: &'static str = "transport:frame_sent";
     }
     #[derive(Clone, Debug)]
@@ -1906,7 +1910,7 @@ pub mod api {
     pub struct FrameReceived<'a> {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
-        pub frame: Frame,
+        pub frame: Frame<'a>,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for FrameReceived<'a> {
@@ -3167,23 +3171,23 @@ pub mod api {
             }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::Padding {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::Padding {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::Padding {}
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::Ping {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::Ping {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::Ping {}
         }
     }
-    impl<AckRanges: crate::frame::ack::AckRanges> IntoEvent<builder::Frame>
+    impl<'a, AckRanges: crate::frame::ack::AckRanges> IntoEvent<builder::Frame<'a>>
         for &crate::frame::Ack<AckRanges>
     {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::Ack {
                 ecn_counts: self.ecn_counts.map(|val| val.into_event()),
                 largest_acknowledged: self.largest_acknowledged().into_event(),
@@ -3191,9 +3195,9 @@ pub mod api {
             }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::ResetStream {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::ResetStream {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::ResetStream {
                 id: self.stream_id.as_u64(),
                 error_code: self.application_error_code.as_u64(),
@@ -3201,32 +3205,32 @@ pub mod api {
             }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::StopSending {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::StopSending {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::StopSending {
                 id: self.stream_id.as_u64(),
                 error_code: self.application_error_code.as_u64(),
             }
         }
     }
-    impl<'a> IntoEvent<builder::Frame> for &crate::frame::NewToken<'a> {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::NewToken<'a> {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::NewToken {}
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::MaxData {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::MaxData {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::MaxData {
                 value: self.maximum_data.as_u64(),
             }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::MaxStreamData {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::MaxStreamData {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::MaxStreamData {
                 id: self.stream_id.as_u64(),
                 stream_type: crate::stream::StreamId::from_varint(self.stream_id)
@@ -3236,86 +3240,90 @@ pub mod api {
             }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::MaxStreams {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::MaxStreams {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::MaxStreams {
                 stream_type: self.stream_type.into_event(),
                 value: self.maximum_streams.as_u64(),
             }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::DataBlocked {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::DataBlocked {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::DataBlocked {
                 data_limit: self.data_limit.as_u64(),
             }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::StreamDataBlocked {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::StreamDataBlocked {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::StreamDataBlocked {
                 stream_id: self.stream_id.as_u64(),
                 stream_data_limit: self.stream_data_limit.as_u64(),
             }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::StreamsBlocked {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::StreamsBlocked {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::StreamsBlocked {
                 stream_type: self.stream_type.into_event(),
                 stream_limit: self.stream_limit.as_u64(),
             }
         }
     }
-    impl<'a> IntoEvent<builder::Frame> for &crate::frame::NewConnectionId<'a> {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::NewConnectionId<'a> {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::NewConnectionId {
                 sequence_number: self.sequence_number.as_u64(),
                 retire_prior_to: self.retire_prior_to.as_u64(),
             }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::RetireConnectionId {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::RetireConnectionId {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::RetireConnectionId {}
         }
     }
-    impl<'a> IntoEvent<builder::Frame> for &crate::frame::PathChallenge<'a> {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::PathChallenge<'a> {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::PathChallenge {}
         }
     }
-    impl<'a> IntoEvent<builder::Frame> for &crate::frame::PathResponse<'a> {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::PathResponse<'a> {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::PathResponse {}
         }
     }
-    impl<'a> IntoEvent<builder::Frame> for &crate::frame::ConnectionClose<'a> {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::ConnectionClose<'a> {
         #[inline]
-        fn into_event(self) -> builder::Frame {
-            builder::Frame::ConnectionClose {}
+        fn into_event(self) -> builder::Frame<'a> {
+            builder::Frame::ConnectionClose {
+                error_code: self.error_code.as_u64(),
+                frame_type: self.frame_type.map(|frame_type| frame_type.as_u64()),
+                reason: self.reason,
+            }
         }
     }
-    impl IntoEvent<builder::Frame> for &crate::frame::HandshakeDone {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::HandshakeDone {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::HandshakeDone {}
         }
     }
-    impl<Data> IntoEvent<builder::Frame> for &crate::frame::Stream<Data>
+    impl<'a, Data> IntoEvent<builder::Frame<'a>> for &crate::frame::Stream<Data>
     where
         Data: s2n_codec::EncoderValue,
     {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::Stream {
                 id: self.stream_id.as_u64(),
                 offset: self.offset.as_u64(),
@@ -3324,32 +3332,32 @@ pub mod api {
             }
         }
     }
-    impl<Data> IntoEvent<builder::Frame> for &crate::frame::Crypto<Data>
+    impl<'a, Data> IntoEvent<builder::Frame<'a>> for &crate::frame::Crypto<Data>
     where
         Data: s2n_codec::EncoderValue,
     {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::Crypto {
                 offset: self.offset.as_u64(),
                 len: self.data.encoding_size() as _,
             }
         }
     }
-    impl<Data> IntoEvent<builder::Frame> for &crate::frame::Datagram<Data>
+    impl<'a, Data> IntoEvent<builder::Frame<'a>> for &crate::frame::Datagram<Data>
     where
         Data: s2n_codec::EncoderValue,
     {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::Datagram {
                 len: self.data.encoding_size() as _,
             }
         }
     }
-    impl<'a> IntoEvent<builder::Frame> for &crate::frame::DcStatelessResetTokens<'a> {
+    impl<'a> IntoEvent<builder::Frame<'a>> for &crate::frame::DcStatelessResetTokens<'a> {
         #[inline]
-        fn into_event(self) -> builder::Frame {
+        fn into_event(self) -> builder::Frame<'a> {
             builder::Frame::DcStatelessResetTokens {}
         }
     }
@@ -4528,7 +4536,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum Frame {
+    pub enum Frame<'a> {
         Padding,
         Ping,
         Ack {
@@ -4586,16 +4594,20 @@ pub mod builder {
         RetireConnectionId,
         PathChallenge,
         PathResponse,
-        ConnectionClose,
+        ConnectionClose {
+            error_code: u64,
+            frame_type: Option<u64>,
+            reason: Option<&'a [u8]>,
+        },
         HandshakeDone,
         Datagram {
             len: u16,
         },
         DcStatelessResetTokens,
     }
-    impl IntoEvent<api::Frame> for Frame {
+    impl<'a> IntoEvent<api::Frame<'a>> for Frame<'a> {
         #[inline]
-        fn into_event(self) -> api::Frame {
+        fn into_event(self) -> api::Frame<'a> {
             use api::Frame::*;
             match self {
                 Self::Padding => Padding {},
@@ -4681,7 +4693,15 @@ pub mod builder {
                 Self::RetireConnectionId => RetireConnectionId {},
                 Self::PathChallenge => PathChallenge {},
                 Self::PathResponse => PathResponse {},
-                Self::ConnectionClose => ConnectionClose {},
+                Self::ConnectionClose {
+                    error_code,
+                    frame_type,
+                    reason,
+                } => ConnectionClose {
+                    error_code: error_code.into_event(),
+                    frame_type: frame_type.into_event(),
+                    reason: reason.into_event(),
+                },
                 Self::HandshakeDone => HandshakeDone {},
                 Self::Datagram { len } => Datagram {
                     len: len.into_event(),
@@ -5437,14 +5457,14 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[doc = " Frame was sent"]
-    pub struct FrameSent {
+    pub struct FrameSent<'a> {
         pub packet_header: PacketHeader,
         pub path_id: u64,
-        pub frame: Frame,
+        pub frame: Frame<'a>,
     }
-    impl IntoEvent<api::FrameSent> for FrameSent {
+    impl<'a> IntoEvent<api::FrameSent<'a>> for FrameSent<'a> {
         #[inline]
-        fn into_event(self) -> api::FrameSent {
+        fn into_event(self) -> api::FrameSent<'a> {
             let FrameSent {
                 packet_header,
                 path_id,
@@ -5462,7 +5482,7 @@ pub mod builder {
     pub struct FrameReceived<'a> {
         pub packet_header: PacketHeader,
         pub path: Path<'a>,
-        pub frame: Frame,
+        pub frame: Frame<'a>,
     }
     impl<'a> IntoEvent<api::FrameReceived<'a>> for FrameReceived<'a> {
         #[inline]

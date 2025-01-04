@@ -104,20 +104,20 @@ impl<Config: endpoint::Config> WriteContext for Context<'_, '_, '_, Config> {
     }
 
     #[inline]
-    fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    fn write_frame<'a, Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>,
     {
         self.check_frame_constraint(frame);
         self.write_frame_forced(frame)
     }
 
     #[inline]
-    fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
+    fn write_fitted_frame<'a, Frame>(&mut self, frame: &Frame) -> PacketNumber
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>,
     {
         self.check_frame_constraint(frame);
         debug_assert!(frame.encoding_size() <= self.buffer.remaining_capacity());
@@ -137,10 +137,10 @@ impl<Config: endpoint::Config> WriteContext for Context<'_, '_, '_, Config> {
         self.packet_number
     }
 
-    fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    fn write_frame_forced<'a, Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>,
     {
         if frame.encoding_size() > self.buffer.remaining_capacity() {
             return None;
@@ -234,27 +234,27 @@ impl<C: WriteContext> WriteContext for RetransmissionContext<'_, C> {
     }
 
     #[inline]
-    fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    fn write_frame<'a, Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>,
     {
         self.context.write_frame(frame)
     }
 
     #[inline]
-    fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
+    fn write_fitted_frame<'a, Frame>(&mut self, frame: &Frame) -> PacketNumber
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>,
     {
         self.context.write_fitted_frame(frame)
     }
 
-    fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    fn write_frame_forced<'a, Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>,
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>,
     {
         self.context.write_frame_forced(frame)
     }

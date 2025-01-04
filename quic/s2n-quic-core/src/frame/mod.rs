@@ -54,13 +54,13 @@ macro_rules! frames {
             )*
         }
 
-        impl<'a, $ack, $data> event::IntoEvent<event::builder::Frame> for &Frame<'a, $ack, $data>
+        impl<'a, $ack, $data> event::IntoEvent<event::builder::Frame<'a>> for &Frame<'a, $ack, $data>
         where
             $ack: crate::frame::ack::AckRanges,
             $data: EncoderValue,
         {
             #[inline]
-            fn into_event(self) -> event::builder::Frame {
+            fn into_event(self) -> event::builder::Frame<'a> {
                 match self {
                     $(
                         Frame::$ty(inner) => inner.into_event(),

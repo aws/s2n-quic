@@ -56,7 +56,6 @@ macro_rules! event_recorder {
     };
 }
 
-event_recorder!(FrameSent, FrameSent, on_frame_sent);
 event_recorder!(PacketSent, PacketSent, on_packet_sent);
 event_recorder!(MtuUpdated, MtuUpdated, on_mtu_updated);
 event_recorder!(
@@ -165,3 +164,43 @@ event_recorder!(
         storage.push(addr);
     }
 );
+
+#[derive(Clone, Default)]
+pub struct FrameSent<'a> {
+    pub events: Arc<Mutex<Vec<events::FrameSent<'a>>>>,
+}
+#[allow(dead_code)]
+impl<'a> FrameSent<'a> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn events(&self) -> Arc<Mutex<Vec<events::FrameSent<'a>>>> {
+        self.events.clone()
+    }
+
+    pub fn any<F: FnMut(&events::FrameSent<'a>) -> bool>(&self, f: F) -> bool {
+        let events = self.events.lock().unwrap();
+        events.iter().any(f)
+    }
+}
+impl events::Subscriber for FrameSent<'static> {
+    type ConnectionContext = FrameSent<'static>;
+
+    fn create_connection_context(
+        &mut self,
+        _meta: &events::ConnectionMeta,
+        _info: &events::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+        self.clone()
+    }
+
+    fn on_frame_sent(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::FrameSent,
+    ) {
+        self.events.lock().unwrap().push(event.clone());
+    }
+}

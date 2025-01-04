@@ -44,27 +44,27 @@ pub trait Writer {
     ///
     /// If this was successful the number of the packet
     /// that will be used to send the frame will be returned.
-    fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    fn write_frame<'a, Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>;
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>;
 
     /// Writes a pre-fitted frame.
     ///
     /// Callers should ensure the frame fits within the outgoing buffer when using this function.
     /// The context should panic if otherwise.
-    fn write_fitted_frame<Frame>(&mut self, frame: &Frame) -> PacketNumber
+    fn write_fitted_frame<'a, Frame>(&mut self, frame: &Frame) -> PacketNumber
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>;
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>;
 
     /// Attempt to write a frame, bypassing congestion controller constraint checks.
     /// If this was successful the number of the packet that will be used to send
     /// the frame will be returned.
-    fn write_frame_forced<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
+    fn write_frame_forced<'a, Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
     where
         Frame: EncoderValue + FrameTrait,
-        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame>;
+        for<'frame> &'frame Frame: IntoEvent<event::builder::Frame<'a>>;
 
     /// Returns the ack elicitation of the current packet
     fn ack_elicitation(&self) -> AckElicitation;
