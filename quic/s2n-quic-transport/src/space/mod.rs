@@ -697,11 +697,13 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
         publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
-    fn handle_connection_close_frame(
+    fn handle_connection_close_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: ConnectionClose,
-        timestamp: Timestamp,
+        path_id: path::Id,
         path: &mut Path<Config>,
+        packet_number: PacketNumber,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
     fn handle_handshake_done_frame<Pub: event::ConnectionPublisher>(
@@ -942,8 +944,10 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                     let on_error = on_frame_processed!(frame);
                     self.handle_connection_close_frame(
                         frame,
-                        datagram.timestamp,
+                        path_id,
                         &mut path_manager[path_id],
+                        packet_number,
+                        publisher,
                     )
                     .map_err(on_error)?;
 

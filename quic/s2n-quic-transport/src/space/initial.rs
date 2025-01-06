@@ -707,12 +707,25 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         )
     }
 
-    fn handle_connection_close_frame(
+    fn handle_connection_close_frame<Pub: event::ConnectionPublisher>(
         &mut self,
         frame: ConnectionClose,
-        _timestamp: Timestamp,
-        _path: &mut Path<Config>,
+        path_id: path::Id,
+        path: &mut Path<Config>,
+        packet_number: PacketNumber,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
+        publisher.on_connection_close_frame_received(
+            event::builder::ConnectionCloseFrameReceived {
+                packet_header: event::builder::PacketHeader::new(
+                    packet_number,
+                    publisher.quic_version(),
+                ),
+                path: path_event!(path, path_id),
+                frame: frame.into_event(),
+            },
+        );
+
         //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.2
         //# CONNECTION_CLOSE frames of type 0x1c are also
         //# permitted.
