@@ -610,9 +610,11 @@ impl<'a> IntoEvent<builder::ConnectionCloseFrame<'a>> for &crate::frame::Connect
 #[cfg(feature = "alloc")]
 impl<'a> core::fmt::Debug for ConnectionCloseFrame<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "error_code: {}, ", self.error_code)?;
-        write!(f, "frame_type: {:?}, ", self.frame_type)?;
-        write!(f, "reason: {:?}", self.reason_lossy_utf8())
+        f.debug_struct("ConnectionCloseFrame")
+            .field("error_code", &self.error_code)
+            .field("frame_type", &self.frame_type)
+            .field("reason", &self.reason_lossy_utf8())
+            .finish()
     }
 }
 
