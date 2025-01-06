@@ -588,6 +588,7 @@ struct ConnectionCloseFrame<'a> {
     reason: Option<&'a [u8]>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> ConnectionCloseFrame<'a> {
     /// Converts the reason to a UTF-8 `str`, including invalid characters
     pub fn reason_lossy_utf8(&self) -> Option<alloc::borrow::Cow<'a, str>> {
@@ -606,6 +607,7 @@ impl<'a> IntoEvent<builder::ConnectionCloseFrame<'a>> for &crate::frame::Connect
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> core::fmt::Debug for ConnectionCloseFrame<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "error_code: {}, ", self.error_code)?;
