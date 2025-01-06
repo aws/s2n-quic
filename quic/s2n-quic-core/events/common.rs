@@ -582,7 +582,6 @@ impl<'a> IntoEvent<builder::Frame> for &crate::frame::DcStatelessResetTokens<'a>
 }
 
 #[derive(Clone)]
-#[cfg_attr(not(feature = "alloc"), derive(Debug))]
 struct ConnectionCloseFrame<'a> {
     error_code: u64,
     frame_type: Option<u64>,
@@ -616,6 +615,13 @@ impl<'a> core::fmt::Debug for ConnectionCloseFrame<'a> {
             .field("frame_type", &self.frame_type)
             .field("reason", &self.reason_lossy_utf8())
             .finish()
+    }
+}
+
+#[cfg(not(feature = "alloc"))]
+impl<'a> core::fmt::Debug for ConnectionCloseFrame<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 

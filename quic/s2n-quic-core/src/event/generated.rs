@@ -204,7 +204,6 @@ pub mod api {
     }
     #[non_exhaustive]
     #[derive(Clone)]
-    #[cfg_attr(not(feature = "alloc"), derive(Debug))]
     pub struct ConnectionCloseFrame<'a> {
         pub error_code: u64,
         pub frame_type: Option<u64>,
@@ -3422,6 +3421,12 @@ pub mod api {
                 .finish()
         }
     }
+    #[cfg(not(feature = "alloc"))]
+    impl<'a> core::fmt::Debug for ConnectionCloseFrame<'a> {
+        fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+            write!(f, "{:?}", self)
+        }
+    }
     impl IntoEvent<builder::StreamType> for &crate::stream::StreamType {
         #[inline]
         fn into_event(self) -> builder::StreamType {
@@ -4495,7 +4500,6 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    #[cfg_attr(not(feature = "alloc"), derive(Debug))]
     pub struct ConnectionCloseFrame<'a> {
         pub error_code: u64,
         pub frame_type: Option<u64>,
