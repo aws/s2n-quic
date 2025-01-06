@@ -582,6 +582,7 @@ impl<'a> IntoEvent<builder::Frame> for &crate::frame::DcStatelessResetTokens<'a>
 }
 
 #[derive(Clone)]
+#[cfg_attr(not(feature = "alloc"), derive(Debug))]
 struct ConnectionCloseFrame<'a> {
     error_code: u64,
     frame_type: Option<u64>,

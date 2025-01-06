@@ -204,6 +204,7 @@ pub mod api {
     }
     #[non_exhaustive]
     #[derive(Clone)]
+    #[cfg_attr(not(feature = "alloc"), derive(Debug))]
     pub struct ConnectionCloseFrame<'a> {
         pub error_code: u64,
         pub frame_type: Option<u64>,
@@ -4494,6 +4495,7 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[cfg_attr(not(feature = "alloc"), derive(Debug))]
     pub struct ConnectionCloseFrame<'a> {
         pub error_code: u64,
         pub frame_type: Option<u64>,
