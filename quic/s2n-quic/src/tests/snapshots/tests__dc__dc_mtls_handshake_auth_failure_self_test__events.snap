@@ -1,7 +1,6 @@
 ---
 source: quic/s2n-quic-core/src/event/snapshot.rs
 input_file: quic/s2n-quic/src/tests/dc.rs
-snapshot_kind: text
 ---
 === client ===
 count#platform_event_loop_started=1
@@ -232,6 +231,8 @@ count#packet_received.kind|HANDSHAKE=1
 count#frame_received=1
 count#frame_received.packet|HANDSHAKE=1
 count#frame_received.frame|CONNECTION_CLOSE=1
+count#connection_close_frame_received=1
+count#connection_close_frame_received.packet|HANDSHAKE=1
 count#connection_closed=1
 timer#connection_closed.latency=199.999ms
 count#connection_closed.error|TLS_HANDSHAKE_FAILURE=1
@@ -253,6 +254,8 @@ count#packet_received.kind|ONE_RTT=1
 count#frame_received=1
 count#frame_received.packet|ONE_RTT=1
 count#frame_received.frame|CONNECTION_CLOSE=1
+count#connection_close_frame_received=1
+count#connection_close_frame_received.packet|ONE_RTT=1
 count#platform_event_loop_sleep=1
 timer#platform_event_loop_sleep.processing_duration=1µs
 count#platform_event_loop_wakeup=1

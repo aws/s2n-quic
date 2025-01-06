@@ -35,6 +35,7 @@ pub struct Context<R: Recorder> {
     path_created: u64,
     frame_sent: u64,
     frame_received: u64,
+    connection_close_frame_received: u64,
     packet_lost: u64,
     recovery_metrics: u64,
     congestion: u64,
@@ -91,6 +92,7 @@ where
             path_created: 0,
             frame_sent: 0,
             frame_received: 0,
+            connection_close_frame_received: 0,
             packet_lost: 0,
             recovery_metrics: 0,
             congestion: 0,
@@ -225,6 +227,17 @@ where
         context.frame_received += 1;
         self.subscriber
             .on_frame_received(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_connection_close_frame_received(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::ConnectionCloseFrameReceived,
+    ) {
+        context.connection_close_frame_received += 1;
+        self.subscriber
+            .on_connection_close_frame_received(&mut context.recorder, meta, event);
     }
     #[inline]
     fn on_packet_lost(
@@ -624,6 +637,10 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("frame_sent", self.frame_sent as _);
         self.recorder
             .increment_counter("frame_received", self.frame_received as _);
+        self.recorder.increment_counter(
+            "connection_close_frame_received",
+            self.connection_close_frame_received as _,
+        );
         self.recorder
             .increment_counter("packet_lost", self.packet_lost as _);
         self.recorder

@@ -581,6 +581,23 @@ impl<'a> IntoEvent<builder::Frame> for &crate::frame::DcStatelessResetTokens<'a>
     }
 }
 
+struct ConnectionCloseFrame<'a> {
+    error_code: u64,
+    frame_type: Option<u64>,
+    reason: Option<&'a [u8]>,
+}
+
+impl<'a> IntoEvent<builder::ConnectionCloseFrame<'a>> for &crate::frame::ConnectionClose<'a> {
+    #[inline]
+    fn into_event(self) -> builder::ConnectionCloseFrame<'a> {
+        builder::ConnectionCloseFrame {
+            error_code: self.error_code.as_u64(),
+            frame_type: self.frame_type.into_event(),
+            reason: self.reason.into_event(),
+        }
+    }
+}
+
 enum StreamType {
     Bidirectional,
     Unidirectional,

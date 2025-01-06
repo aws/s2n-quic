@@ -87,6 +87,18 @@ struct FrameReceived<'a> {
     frame: Frame,
 }
 
+/// A `CONNECTION_CLOSE` frame was received
+///
+/// This event includes additional details from the frame, particularly the
+/// reason (if provided) the peer closed the connection
+#[event("transport:connection_close_frame_received")]
+struct ConnectionCloseFrameReceived<'a> {
+    #[nominal_counter("packet")]
+    packet_header: PacketHeader,
+    path: Path<'a>,
+    frame: ConnectionCloseFrame<'a>,
+}
+
 #[event("recovery:packet_lost")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.4.5
 /// Packet was lost

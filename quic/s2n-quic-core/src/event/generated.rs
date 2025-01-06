@@ -204,6 +204,23 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct ConnectionCloseFrame<'a> {
+        pub error_code: u64,
+        pub frame_type: Option<u64>,
+        pub reason: Option<&'a [u8]>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for ConnectionCloseFrame<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionCloseFrame");
+            fmt.field("error_code", &self.error_code);
+            fmt.field("frame_type", &self.frame_type);
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct MtuConfig {
         pub initial_mtu: u16,
         pub base_mtu: u16,
@@ -1923,6 +1940,30 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " A `CONNECTION_CLOSE` frame was received"]
+    #[doc = ""]
+    #[doc = " This event includes additional details from the frame, particularly the"]
+    #[doc = " reason (if provided) the peer closed the connection"]
+    pub struct ConnectionCloseFrameReceived<'a> {
+        pub packet_header: PacketHeader,
+        pub path: Path<'a>,
+        pub frame: ConnectionCloseFrame<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for ConnectionCloseFrameReceived<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("ConnectionCloseFrameReceived");
+            fmt.field("packet_header", &self.packet_header);
+            fmt.field("path", &self.path);
+            fmt.field("frame", &self.frame);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for ConnectionCloseFrameReceived<'a> {
+        const NAME: &'static str = "transport:connection_close_frame_received";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Packet was lost"]
     pub struct PacketLost<'a> {
         pub packet_header: PacketHeader,
@@ -3353,6 +3394,16 @@ pub mod api {
             builder::Frame::DcStatelessResetTokens {}
         }
     }
+    impl<'a> IntoEvent<builder::ConnectionCloseFrame<'a>> for &crate::frame::ConnectionClose<'a> {
+        #[inline]
+        fn into_event(self) -> builder::ConnectionCloseFrame<'a> {
+            builder::ConnectionCloseFrame {
+                error_code: self.error_code.as_u64(),
+                frame_type: self.frame_type.into_event(),
+                reason: self.reason.into_event(),
+            }
+        }
+    }
     impl IntoEvent<builder::StreamType> for &crate::stream::StreamType {
         #[inline]
         fn into_event(self) -> builder::StreamType {
@@ -3599,6 +3650,21 @@ pub mod tracing {
                 frame,
             } = event;
             tracing :: event ! (target : "frame_received" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , frame = tracing :: field :: debug (frame) });
+        }
+        #[inline]
+        fn on_connection_close_frame_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::ConnectionCloseFrameReceived,
+        ) {
+            let id = context.id();
+            let api::ConnectionCloseFrameReceived {
+                packet_header,
+                path,
+                frame,
+            } = event;
+            tracing :: event ! (target : "connection_close_frame_received" , parent : id , tracing :: Level :: DEBUG , { packet_header = tracing :: field :: debug (packet_header) , path = tracing :: field :: debug (path) , frame = tracing :: field :: debug (frame) });
         }
         #[inline]
         fn on_packet_lost(
@@ -4407,6 +4473,27 @@ pub mod builder {
                 ect_0_count: ect_0_count.into_event(),
                 ect_1_count: ect_1_count.into_event(),
                 ce_count: ce_count.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct ConnectionCloseFrame<'a> {
+        pub error_code: u64,
+        pub frame_type: Option<u64>,
+        pub reason: Option<&'a [u8]>,
+    }
+    impl<'a> IntoEvent<api::ConnectionCloseFrame<'a>> for ConnectionCloseFrame<'a> {
+        #[inline]
+        fn into_event(self) -> api::ConnectionCloseFrame<'a> {
+            let ConnectionCloseFrame {
+                error_code,
+                frame_type,
+                reason,
+            } = self;
+            api::ConnectionCloseFrame {
+                error_code: error_code.into_event(),
+                frame_type: frame_type.into_event(),
+                reason: reason.into_event(),
             }
         }
     }
@@ -5473,6 +5560,31 @@ pub mod builder {
                 frame,
             } = self;
             api::FrameReceived {
+                packet_header: packet_header.into_event(),
+                path: path.into_event(),
+                frame: frame.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " A `CONNECTION_CLOSE` frame was received"]
+    #[doc = ""]
+    #[doc = " This event includes additional details from the frame, particularly the"]
+    #[doc = " reason (if provided) the peer closed the connection"]
+    pub struct ConnectionCloseFrameReceived<'a> {
+        pub packet_header: PacketHeader,
+        pub path: Path<'a>,
+        pub frame: ConnectionCloseFrame<'a>,
+    }
+    impl<'a> IntoEvent<api::ConnectionCloseFrameReceived<'a>> for ConnectionCloseFrameReceived<'a> {
+        #[inline]
+        fn into_event(self) -> api::ConnectionCloseFrameReceived<'a> {
+            let ConnectionCloseFrameReceived {
+                packet_header,
+                path,
+                frame,
+            } = self;
+            api::ConnectionCloseFrameReceived {
                 packet_header: packet_header.into_event(),
                 path: path.into_event(),
                 frame: frame.into_event(),
@@ -6699,6 +6811,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `ConnectionCloseFrameReceived` event is triggered"]
+        #[inline]
+        fn on_connection_close_frame_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionCloseFrameReceived,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PacketLost` event is triggered"]
         #[inline]
         fn on_packet_lost(
@@ -7432,6 +7556,16 @@ mod traits {
             (self.1).on_frame_received(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_connection_close_frame_received(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionCloseFrameReceived,
+        ) {
+            (self.0).on_connection_close_frame_received(&mut context.0, meta, event);
+            (self.1).on_connection_close_frame_received(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_packet_lost(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -8121,6 +8255,11 @@ mod traits {
         fn on_frame_sent(&mut self, event: builder::FrameSent);
         #[doc = "Publishes a `FrameReceived` event to the publisher's subscriber"]
         fn on_frame_received(&mut self, event: builder::FrameReceived);
+        #[doc = "Publishes a `ConnectionCloseFrameReceived` event to the publisher's subscriber"]
+        fn on_connection_close_frame_received(
+            &mut self,
+            event: builder::ConnectionCloseFrameReceived,
+        );
         #[doc = "Publishes a `PacketLost` event to the publisher's subscriber"]
         fn on_packet_lost(&mut self, event: builder::PacketLost);
         #[doc = "Publishes a `RecoveryMetrics` event to the publisher's subscriber"]
@@ -8305,6 +8444,18 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_frame_received(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_connection_close_frame_received(
+            &mut self,
+            event: builder::ConnectionCloseFrameReceived,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_connection_close_frame_received(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -8882,6 +9033,7 @@ pub mod testing {
         pub path_created: u64,
         pub frame_sent: u64,
         pub frame_received: u64,
+        pub connection_close_frame_received: u64,
         pub packet_lost: u64,
         pub recovery_metrics: u64,
         pub congestion: u64,
@@ -8971,6 +9123,7 @@ pub mod testing {
                 path_created: 0,
                 frame_sent: 0,
                 frame_received: 0,
+                connection_close_frame_received: 0,
                 packet_lost: 0,
                 recovery_metrics: 0,
                 congestion: 0,
@@ -9150,6 +9303,20 @@ pub mod testing {
             event: &api::FrameReceived,
         ) {
             self.frame_received += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_connection_close_frame_received(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::ConnectionCloseFrameReceived,
+        ) {
+            self.connection_close_frame_received += 1;
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -9797,6 +9964,7 @@ pub mod testing {
         pub path_created: u64,
         pub frame_sent: u64,
         pub frame_received: u64,
+        pub connection_close_frame_received: u64,
         pub packet_lost: u64,
         pub recovery_metrics: u64,
         pub congestion: u64,
@@ -9876,6 +10044,7 @@ pub mod testing {
                 path_created: 0,
                 frame_sent: 0,
                 frame_received: 0,
+                connection_close_frame_received: 0,
                 packet_lost: 0,
                 recovery_metrics: 0,
                 congestion: 0,
@@ -10119,6 +10288,18 @@ pub mod testing {
         }
         fn on_frame_received(&mut self, event: builder::FrameReceived) {
             self.frame_received += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_connection_close_frame_received(
+            &mut self,
+            event: builder::ConnectionCloseFrameReceived,
+        ) {
+            self.connection_close_frame_received += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
