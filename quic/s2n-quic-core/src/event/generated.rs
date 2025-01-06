@@ -3398,7 +3398,8 @@ pub mod api {
     impl<'a> ConnectionCloseFrame<'a> {
         #[doc = " Converts the reason to a UTF-8 `str`, including invalid characters"]
         pub fn reason_lossy_utf8(&self) -> Option<alloc::borrow::Cow<'a, str>> {
-            self.reason.map(|reason| String::from_utf8_lossy(reason))
+            self.reason
+                .map(|reason| alloc::string::String::from_utf8_lossy(reason))
         }
     }
     impl<'a> IntoEvent<builder::ConnectionCloseFrame<'a>> for &crate::frame::ConnectionClose<'a> {
