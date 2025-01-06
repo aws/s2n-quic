@@ -581,10 +581,18 @@ impl<'a> IntoEvent<builder::Frame> for &crate::frame::DcStatelessResetTokens<'a>
     }
 }
 
+#[derive(Clone)]
 struct ConnectionCloseFrame<'a> {
     error_code: u64,
     frame_type: Option<u64>,
     reason: Option<&'a [u8]>,
+}
+
+impl<'a> ConnectionCloseFrame<'a> {
+    /// Converts the reason to a UTF-8 `str`, including invalid characters
+    pub fn reason_lossy_utf8(&self) -> Option<alloc::borrow::Cow<'a, str>> {
+        self.reason.map(|reason| String::from_utf8_lossy(reason))
+    }
 }
 
 impl<'a> IntoEvent<builder::ConnectionCloseFrame<'a>> for &crate::frame::ConnectionClose<'a> {
@@ -595,6 +603,14 @@ impl<'a> IntoEvent<builder::ConnectionCloseFrame<'a>> for &crate::frame::Connect
             frame_type: self.frame_type.into_event(),
             reason: self.reason.into_event(),
         }
+    }
+}
+
+impl<'a> core::fmt::Debug for ConnectionCloseFrame<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "error_code: {}, ", self.error_code)?;
+        write!(f, "frame_type: {:?}, ", self.frame_type)?;
+        write!(f, "reason: {:?}", self.reason_lossy_utf8())
     }
 }
 
