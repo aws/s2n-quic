@@ -165,3 +165,28 @@ event_recorder!(
         storage.push(addr);
     }
 );
+
+use s2n_quic_core::event::api::DatagramDropReason;
+pub struct DatagramDroppedEvent {
+    pub remote_addr: SocketAddr,
+    pub reason: DatagramDropReason,
+}
+
+impl<'a> From<&events::DatagramDropped<'a>> for DatagramDroppedEvent {
+    fn from(value: &events::DatagramDropped<'a>) -> Self {
+        DatagramDroppedEvent {
+            remote_addr: value.remote_addr.to_string().parse().unwrap(),
+            reason: value.reason.clone(),
+        }
+    }
+}
+
+event_recorder!(
+    DatagramDropped,
+    DatagramDropped,
+    on_datagram_dropped,
+    DatagramDroppedEvent,
+    |event: &events::DatagramDropped, storage: &mut Vec<DatagramDroppedEvent>| {
+        storage.push(event.into());
+    }
+);

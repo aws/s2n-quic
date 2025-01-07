@@ -2289,20 +2289,28 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Datagram dropped by a connection"]
-    pub struct DatagramDropped {
+    pub struct DatagramDropped<'a> {
+        pub local_addr: SocketAddress<'a>,
+        pub remote_addr: SocketAddress<'a>,
+        pub destination_cid: ConnectionId<'a>,
+        pub source_cid: Option<ConnectionId<'a>>,
         pub len: u16,
         pub reason: DatagramDropReason,
     }
     #[cfg(any(test, feature = "testing"))]
-    impl crate::event::snapshot::Fmt for DatagramDropped {
+    impl<'a> crate::event::snapshot::Fmt for DatagramDropped<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("DatagramDropped");
+            fmt.field("local_addr", &self.local_addr);
+            fmt.field("remote_addr", &self.remote_addr);
+            fmt.field("destination_cid", &self.destination_cid);
+            fmt.field("source_cid", &self.source_cid);
             fmt.field("len", &self.len);
             fmt.field("reason", &self.reason);
             fmt.finish()
         }
     }
-    impl Event for DatagramDropped {
+    impl<'a> Event for DatagramDropped<'a> {
         const NAME: &'static str = "transport:datagram_dropped";
     }
     #[derive(Clone, Debug)]
@@ -3902,8 +3910,15 @@ pub mod tracing {
             event: &api::DatagramDropped,
         ) {
             let id = context.id();
-            let api::DatagramDropped { len, reason } = event;
-            tracing :: event ! (target : "datagram_dropped" , parent : id , tracing :: Level :: DEBUG , { len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason) });
+            let api::DatagramDropped {
+                local_addr,
+                remote_addr,
+                destination_cid,
+                source_cid,
+                len,
+                reason,
+            } = event;
+            tracing :: event ! (target : "datagram_dropped" , parent : id , tracing :: Level :: DEBUG , { local_addr = tracing :: field :: debug (local_addr) , remote_addr = tracing :: field :: debug (remote_addr) , destination_cid = tracing :: field :: debug (destination_cid) , source_cid = tracing :: field :: debug (source_cid) , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_connection_id_updated(
@@ -5931,15 +5946,30 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[doc = " Datagram dropped by a connection"]
-    pub struct DatagramDropped {
+    pub struct DatagramDropped<'a> {
+        pub local_addr: SocketAddress<'a>,
+        pub remote_addr: SocketAddress<'a>,
+        pub destination_cid: ConnectionId<'a>,
+        pub source_cid: Option<ConnectionId<'a>>,
         pub len: u16,
         pub reason: DatagramDropReason,
     }
-    impl IntoEvent<api::DatagramDropped> for DatagramDropped {
+    impl<'a> IntoEvent<api::DatagramDropped<'a>> for DatagramDropped<'a> {
         #[inline]
-        fn into_event(self) -> api::DatagramDropped {
-            let DatagramDropped { len, reason } = self;
+        fn into_event(self) -> api::DatagramDropped<'a> {
+            let DatagramDropped {
+                local_addr,
+                remote_addr,
+                destination_cid,
+                source_cid,
+                len,
+                reason,
+            } = self;
             api::DatagramDropped {
+                local_addr: local_addr.into_event(),
+                remote_addr: remote_addr.into_event(),
+                destination_cid: destination_cid.into_event(),
+                source_cid: source_cid.into_event(),
                 len: len.into_event(),
                 reason: reason.into_event(),
             }
