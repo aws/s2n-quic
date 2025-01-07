@@ -146,6 +146,7 @@ struct InterestLists<S> {
     waiting_for_stream_flow_control_credits:
         LinkedList<WaitingForStreamFlowControlCreditsAdapter<S>>,
     transmission_counter: u8,
+    retransmission_counter: u8,
     transmission_limit: u8,
 }
 
@@ -163,6 +164,7 @@ impl<S: StreamTrait> InterestLists<S> {
                 WaitingForStreamFlowControlCreditsAdapter::new(),
             ),
             transmission_counter: 0,
+            retransmission_counter: 0,
             transmission_limit: connection_limits.stream_batch_size(),
         }
     }
@@ -320,12 +322,20 @@ macro_rules! iterate_interruptible {
 }
 
 macro_rules! send_on_transmission_list {
-    ($sel:ident, $list_name:tt, $link_name:ident, $controller:ident, $func:ident) => {
+    (
+        $sel:ident,
+        $list_name:ident,
+        $link_name:ident,
+        $controller:ident,
+        $func:ident,
+        $counter:ident,
+        $interest_type:pat,
+    ) => {
         // Head node gets pushed to the back of the list if it has run out of sending credits
-        if $sel.interest_lists.transmission_counter >= $sel.interest_lists.transmission_limit {
+        if $sel.interest_lists.$counter >= $sel.interest_lists.transmission_limit {
             if let Some(node) = $sel.interest_lists.$list_name.pop_front() {
                 $sel.interest_lists.$list_name.push_back(node);
-                $sel.interest_lists.transmission_counter = 0;
+                $sel.interest_lists.$counter = 0;
             }
         }
 
@@ -347,13 +357,11 @@ macro_rules! send_on_transmission_list {
 
             if head_node {
                 if matches!(result, StreamContainerIterationResult::Continue) {
-                    $sel.interest_lists.transmission_counter += 1;
+                    $sel.interest_lists.$counter += 1;
                 }
 
-                if !matches!(interests.transmission, transmission::Interest::NewData)
-                    && !matches!(interests.transmission, transmission::Interest::LostData)
-                {
-                    $sel.interest_lists.transmission_counter = 0;
+                if !matches!(interests.transmission, $interest_type) {
+                    $sel.interest_lists.$counter = 0;
                 }
                 head_node = false;
             }
@@ -604,7 +612,9 @@ impl<S: StreamTrait> StreamContainer<S> {
             waiting_for_transmission,
             waiting_for_transmission_link,
             controller,
-            func
+            func,
+            transmission_counter,
+            transmission::Interest::NewData,
         );
     }
 
@@ -642,7 +652,9 @@ impl<S: StreamTrait> StreamContainer<S> {
             waiting_for_retransmission,
             waiting_for_retransmission_link,
             controller,
-            func
+            func,
+            retransmission_counter,
+            transmission::Interest::LostData,
         );
     }
 
