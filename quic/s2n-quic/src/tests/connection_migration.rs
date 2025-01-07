@@ -4,7 +4,7 @@
 use super::*;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    event::api::Subject,
+    event::api::{DatagramDropReason, Subject},
     packet::interceptor::{Datagram, Interceptor},
 };
 
@@ -217,4 +217,72 @@ fn port_rebind_test() {
 #[test]
 fn ip_and_port_rebind_test() {
     run_test(|addr| rebind_ip(rebind_port(addr)));
+}
+
+// Changes the port of the second datagram received
+#[derive(Default)]
+struct RebindPortBeforeHandshakeConfirmed {
+    datagram_count: usize,
+    changed_port: bool,
+}
+
+const REBIND_PORT: u16 = 55555;
+impl Interceptor for RebindPortBeforeHandshakeConfirmed {
+    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
+        if self.datagram_count == 1 && !self.changed_port {
+            *port = REBIND_PORT;
+            self.changed_port = true;
+        }
+    }
+
+    fn intercept_rx_datagram<'a>(
+        &mut self,
+        _subject: &Subject,
+        _datagram: &Datagram,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        self.datagram_count += 1;
+        payload
+    }
+}
+
+/// Ensures that a datagram received from a client that changes
+/// its port before the handshake is confirmed is dropped.
+#[test]
+fn rebind_before_handshake_confirmed() {
+    let model = Model::default();
+    let subscriber = recorder::DatagramDropped::new();
+    let datagram_dropped_events = subscriber.events();
+
+    test(model, move |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event((tracing_events(), subscriber))?
+            .with_random(Random::with_seed(456))?
+            .with_packet_interceptor(RebindPortBeforeHandshakeConfirmed::default())?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let addr = start_server(server)?;
+        start_client(client, addr, Data::new(1000))?;
+        Ok(addr)
+    })
+    .unwrap();
+
+    let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
+
+    assert_eq!(1, datagram_dropped_events.len());
+    let event = datagram_dropped_events.first().unwrap();
+    assert!(matches!(
+        event.reason,
+        DatagramDropReason::ConnectionMigrationDuringHandshake { .. },
+    ));
+    assert_eq!(REBIND_PORT, event.remote_addr.port());
 }
