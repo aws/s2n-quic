@@ -577,7 +577,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                                 publisher.on_datagram_dropped(event::builder::DatagramDropped {
                                     local_addr: header.path.local_address().into_event(),
                                     remote_addr: header.path.remote_address().into_event(),
-                                    destination_cid: datagram.destination_connection_id.into_event(),
+                                    destination_cid: datagram
+                                        .destination_connection_id
+                                        .into_event(),
                                     source_cid: datagram
                                         .source_connection_id
                                         .as_ref()
