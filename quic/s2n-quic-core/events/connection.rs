@@ -272,7 +272,11 @@ struct DatagramReceived {
 #[event("transport:datagram_dropped")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.3.12
 /// Datagram dropped by a connection
-struct DatagramDropped {
+struct DatagramDropped<'a> {
+    local_addr: SocketAddress<'a>,
+    remote_addr: SocketAddress<'a>,
+    destination_cid: ConnectionId<'a>,
+    source_cid: Option<ConnectionId<'a>>,
     #[measure("bytes", Bytes)]
     #[counter("bytes.total", Bytes)]
     len: u16,
