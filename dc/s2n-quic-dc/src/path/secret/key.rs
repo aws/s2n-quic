@@ -3,13 +3,16 @@
 
 use super::{map, schedule};
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use s2n_quic_core::packet::KeyPhase;
+use s2n_quic_core::{packet::KeyPhase, time::Clock};
 
 pub mod seal {
     use super::*;
     use crate::crypto::{awslc, seal};
 
+    use crate::{event, stream::shared};
     pub use awslc::seal::control;
+    use s2n_quic_core::event::IntoEvent;
+    use crate::event::ConnectionPublisher;
 
     #[derive(Debug)]
     pub struct Application {
@@ -51,13 +54,23 @@ pub mod seal {
         }
 
         #[inline]
-        pub fn update(&mut self) {
+        pub fn update<C: Clock + ?Sized, Sub: event::Subscriber>(
+            &mut self,
+            clock: &C,
+            subscriber: &shared::Subscriber<Sub>,
+        ) {
             let (sealer, ku) = self.ku.next();
             self.sealer = sealer;
             self.ku = ku;
             self.encrypted_records = AtomicU64::new(0);
             self.key_phase = self.key_phase.next_phase();
             tracing::debug!(sealer_updated = ?self.key_phase);
+
+            subscriber
+                .publisher(clock.get_time())
+                .on_stream_write_key_updated(event::builder::StreamWriteKeyUpdated {
+                    key_phase: self.key_phase.into_event(),
+                })
         }
     }
 
@@ -134,7 +147,9 @@ pub mod open {
     use s2n_quic_core::ensure;
     use zeroize::Zeroize;
 
+    use crate::{event, event::ConnectionPublisher, stream::shared};
     pub use awslc::open::control;
+    use s2n_quic_core::event::IntoEvent;
 
     macro_rules! with_dedup {
         () => {
@@ -210,7 +225,11 @@ pub mod open {
         }
 
         #[inline]
-        pub fn update(&mut self) {
+        pub fn update<C: Clock + ?Sized, Sub: event::Subscriber>(
+            &mut self,
+            clock: &C,
+            subscriber: &shared::Subscriber<Sub>,
+        ) {
             let idx = match self.key_phase {
                 KeyPhase::Zero => 0,
                 KeyPhase::One => 1,
@@ -221,6 +240,12 @@ pub mod open {
             self.key_phase = self.key_phase.next_phase();
             self.needs_update.store(false, Ordering::Relaxed);
             tracing::debug!(opener_updated = ?self.key_phase);
+
+            subscriber
+                .publisher(clock.get_time())
+                .on_stream_read_key_updated(event::builder::StreamReadKeyUpdated {
+                    key_phase: self.key_phase.into_event(),
+                })
         }
     }
 

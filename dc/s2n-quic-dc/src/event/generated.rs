@@ -719,6 +719,22 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct StreamWriteKeyUpdated {
+        pub key_phase: u8,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamWriteKeyUpdated {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamWriteKeyUpdated");
+            fmt.field("key_phase", &self.key_phase);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamWriteKeyUpdated {
+        const NAME: &'static str = "stream:write_key_updated";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct StreamWriteShutdown {
         #[doc = " The number of bytes in the send buffer at the time of shutdown"]
         pub buffer_len: usize,
@@ -887,6 +903,22 @@ pub mod api {
     }
     impl Event for StreamReadErrored {
         const NAME: &'static str = "stream:read_errored";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReadKeyUpdated {
+        pub key_phase: u8,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadKeyUpdated {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadKeyUpdated");
+            fmt.field("key_phase", &self.key_phase);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadKeyUpdated {
+        const NAME: &'static str = "stream:read_key_updated";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2028,6 +2060,17 @@ pub mod tracing {
             tracing :: event ! (target : "stream_write_errored" , parent : id , tracing :: Level :: DEBUG , { provided_len = tracing :: field :: debug (provided_len) , is_fin = tracing :: field :: debug (is_fin) , processing_duration = tracing :: field :: debug (processing_duration) , errno = tracing :: field :: debug (errno) });
         }
         #[inline]
+        fn on_stream_write_key_updated(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamWriteKeyUpdated,
+        ) {
+            let id = context.id();
+            let api::StreamWriteKeyUpdated { key_phase } = event;
+            tracing :: event ! (target : "stream_write_key_updated" , parent : id , tracing :: Level :: DEBUG , { key_phase = tracing :: field :: debug (key_phase) });
+        }
+        #[inline]
         fn on_stream_write_shutdown(
             &self,
             context: &Self::ConnectionContext,
@@ -2137,6 +2180,17 @@ pub mod tracing {
                 errno,
             } = event;
             tracing :: event ! (target : "stream_read_errored" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , processing_duration = tracing :: field :: debug (processing_duration) , errno = tracing :: field :: debug (errno) });
+        }
+        #[inline]
+        fn on_stream_read_key_updated(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadKeyUpdated,
+        ) {
+            let id = context.id();
+            let api::StreamReadKeyUpdated { key_phase } = event;
+            tracing :: event ! (target : "stream_read_key_updated" , parent : id , tracing :: Level :: DEBUG , { key_phase = tracing :: field :: debug (key_phase) });
         }
         #[inline]
         fn on_stream_read_shutdown(
@@ -3287,6 +3341,19 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct StreamWriteKeyUpdated {
+        pub key_phase: u8,
+    }
+    impl IntoEvent<api::StreamWriteKeyUpdated> for StreamWriteKeyUpdated {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteKeyUpdated {
+            let StreamWriteKeyUpdated { key_phase } = self;
+            api::StreamWriteKeyUpdated {
+                key_phase: key_phase.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct StreamWriteShutdown {
         #[doc = " The number of bytes in the send buffer at the time of shutdown"]
         pub buffer_len: usize,
@@ -3453,6 +3520,19 @@ pub mod builder {
                 capacity: capacity.into_event(),
                 processing_duration: processing_duration.into_event(),
                 errno: errno.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReadKeyUpdated {
+        pub key_phase: u8,
+    }
+    impl IntoEvent<api::StreamReadKeyUpdated> for StreamReadKeyUpdated {
+        #[inline]
+        fn into_event(self) -> api::StreamReadKeyUpdated {
+            let StreamReadKeyUpdated { key_phase } = self;
+            api::StreamReadKeyUpdated {
+                key_phase: key_phase.into_event(),
             }
         }
     }
@@ -4519,6 +4599,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `StreamWriteKeyUpdated` event is triggered"]
+        #[inline]
+        fn on_stream_write_key_updated(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteKeyUpdated,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `StreamWriteShutdown` event is triggered"]
         #[inline]
         fn on_stream_write_shutdown(
@@ -4610,6 +4702,18 @@ mod traits {
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
             event: &api::StreamReadErrored,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReadKeyUpdated` event is triggered"]
+        #[inline]
+        fn on_stream_read_key_updated(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadKeyUpdated,
         ) {
             let _ = context;
             let _ = meta;
@@ -5212,6 +5316,16 @@ mod traits {
             self.as_ref().on_stream_write_errored(context, meta, event);
         }
         #[inline]
+        fn on_stream_write_key_updated(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteKeyUpdated,
+        ) {
+            self.as_ref()
+                .on_stream_write_key_updated(context, meta, event);
+        }
+        #[inline]
         fn on_stream_write_shutdown(
             &self,
             context: &Self::ConnectionContext,
@@ -5286,6 +5400,16 @@ mod traits {
             event: &api::StreamReadErrored,
         ) {
             self.as_ref().on_stream_read_errored(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_key_updated(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadKeyUpdated,
+        ) {
+            self.as_ref()
+                .on_stream_read_key_updated(context, meta, event);
         }
         #[inline]
         fn on_stream_read_shutdown(
@@ -5838,6 +5962,16 @@ mod traits {
             (self.1).on_stream_write_errored(&context.1, meta, event);
         }
         #[inline]
+        fn on_stream_write_key_updated(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteKeyUpdated,
+        ) {
+            (self.0).on_stream_write_key_updated(&context.0, meta, event);
+            (self.1).on_stream_write_key_updated(&context.1, meta, event);
+        }
+        #[inline]
         fn on_stream_write_shutdown(
             &self,
             context: &Self::ConnectionContext,
@@ -5916,6 +6050,16 @@ mod traits {
         ) {
             (self.0).on_stream_read_errored(&context.0, meta, event);
             (self.1).on_stream_read_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_key_updated(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadKeyUpdated,
+        ) {
+            (self.0).on_stream_read_key_updated(&context.0, meta, event);
+            (self.1).on_stream_read_key_updated(&context.1, meta, event);
         }
         #[inline]
         fn on_stream_read_shutdown(
@@ -6838,6 +6982,8 @@ mod traits {
         fn on_stream_write_blocked(&self, event: builder::StreamWriteBlocked);
         #[doc = "Publishes a `StreamWriteErrored` event to the publisher's subscriber"]
         fn on_stream_write_errored(&self, event: builder::StreamWriteErrored);
+        #[doc = "Publishes a `StreamWriteKeyUpdated` event to the publisher's subscriber"]
+        fn on_stream_write_key_updated(&self, event: builder::StreamWriteKeyUpdated);
         #[doc = "Publishes a `StreamWriteShutdown` event to the publisher's subscriber"]
         fn on_stream_write_shutdown(&self, event: builder::StreamWriteShutdown);
         #[doc = "Publishes a `StreamWriteSocketFlushed` event to the publisher's subscriber"]
@@ -6854,6 +7000,8 @@ mod traits {
         fn on_stream_read_blocked(&self, event: builder::StreamReadBlocked);
         #[doc = "Publishes a `StreamReadErrored` event to the publisher's subscriber"]
         fn on_stream_read_errored(&self, event: builder::StreamReadErrored);
+        #[doc = "Publishes a `StreamReadKeyUpdated` event to the publisher's subscriber"]
+        fn on_stream_read_key_updated(&self, event: builder::StreamReadKeyUpdated);
         #[doc = "Publishes a `StreamReadShutdown` event to the publisher's subscriber"]
         fn on_stream_read_shutdown(&self, event: builder::StreamReadShutdown);
         #[doc = "Publishes a `StreamReadSocketFlushed` event to the publisher's subscriber"]
@@ -6937,6 +7085,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_stream_write_key_updated(&self, event: builder::StreamWriteKeyUpdated) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_write_key_updated(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_stream_write_shutdown(&self, event: builder::StreamWriteShutdown) {
             let event = event.into_event();
             self.subscriber
@@ -7004,6 +7161,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_stream_read_errored(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_key_updated(&self, event: builder::StreamReadKeyUpdated) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_key_updated(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -7832,6 +7998,7 @@ pub mod testing {
         pub stream_write_fin_flushed: AtomicU64,
         pub stream_write_blocked: AtomicU64,
         pub stream_write_errored: AtomicU64,
+        pub stream_write_key_updated: AtomicU64,
         pub stream_write_shutdown: AtomicU64,
         pub stream_write_socket_flushed: AtomicU64,
         pub stream_write_socket_blocked: AtomicU64,
@@ -7840,6 +8007,7 @@ pub mod testing {
         pub stream_read_fin_flushed: AtomicU64,
         pub stream_read_blocked: AtomicU64,
         pub stream_read_errored: AtomicU64,
+        pub stream_read_key_updated: AtomicU64,
         pub stream_read_shutdown: AtomicU64,
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
@@ -7930,6 +8098,7 @@ pub mod testing {
                 stream_write_fin_flushed: AtomicU64::new(0),
                 stream_write_blocked: AtomicU64::new(0),
                 stream_write_errored: AtomicU64::new(0),
+                stream_write_key_updated: AtomicU64::new(0),
                 stream_write_shutdown: AtomicU64::new(0),
                 stream_write_socket_flushed: AtomicU64::new(0),
                 stream_write_socket_blocked: AtomicU64::new(0),
@@ -7938,6 +8107,7 @@ pub mod testing {
                 stream_read_fin_flushed: AtomicU64::new(0),
                 stream_read_blocked: AtomicU64::new(0),
                 stream_read_errored: AtomicU64::new(0),
+                stream_read_key_updated: AtomicU64::new(0),
                 stream_read_shutdown: AtomicU64::new(0),
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
@@ -8254,6 +8424,21 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_stream_write_key_updated(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteKeyUpdated,
+        ) {
+            self.stream_write_key_updated
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_stream_write_shutdown(
             &self,
             _context: &Self::ConnectionContext,
@@ -8362,6 +8547,20 @@ pub mod testing {
             event: &api::StreamReadErrored,
         ) {
             self.stream_read_errored.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_key_updated(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadKeyUpdated,
+        ) {
+            self.stream_read_key_updated.fetch_add(1, Ordering::Relaxed);
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -8846,6 +9045,7 @@ pub mod testing {
         pub stream_write_fin_flushed: AtomicU64,
         pub stream_write_blocked: AtomicU64,
         pub stream_write_errored: AtomicU64,
+        pub stream_write_key_updated: AtomicU64,
         pub stream_write_shutdown: AtomicU64,
         pub stream_write_socket_flushed: AtomicU64,
         pub stream_write_socket_blocked: AtomicU64,
@@ -8854,6 +9054,7 @@ pub mod testing {
         pub stream_read_fin_flushed: AtomicU64,
         pub stream_read_blocked: AtomicU64,
         pub stream_read_errored: AtomicU64,
+        pub stream_read_key_updated: AtomicU64,
         pub stream_read_shutdown: AtomicU64,
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
@@ -8934,6 +9135,7 @@ pub mod testing {
                 stream_write_fin_flushed: AtomicU64::new(0),
                 stream_write_blocked: AtomicU64::new(0),
                 stream_write_errored: AtomicU64::new(0),
+                stream_write_key_updated: AtomicU64::new(0),
                 stream_write_shutdown: AtomicU64::new(0),
                 stream_write_socket_flushed: AtomicU64::new(0),
                 stream_write_socket_blocked: AtomicU64::new(0),
@@ -8942,6 +9144,7 @@ pub mod testing {
                 stream_read_fin_flushed: AtomicU64::new(0),
                 stream_read_blocked: AtomicU64::new(0),
                 stream_read_errored: AtomicU64::new(0),
+                stream_read_key_updated: AtomicU64::new(0),
                 stream_read_shutdown: AtomicU64::new(0),
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
@@ -9453,6 +9656,16 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_stream_write_key_updated(&self, event: builder::StreamWriteKeyUpdated) {
+            self.stream_write_key_updated
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_stream_write_shutdown(&self, event: builder::StreamWriteShutdown) {
             self.stream_write_shutdown.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
@@ -9521,6 +9734,15 @@ pub mod testing {
         }
         fn on_stream_read_errored(&self, event: builder::StreamReadErrored) {
             self.stream_read_errored.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_key_updated(&self, event: builder::StreamReadKeyUpdated) {
+            self.stream_read_key_updated.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

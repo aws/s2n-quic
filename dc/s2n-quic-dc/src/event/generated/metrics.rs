@@ -30,6 +30,7 @@ pub struct Context<R: Recorder> {
     stream_write_fin_flushed: AtomicU64,
     stream_write_blocked: AtomicU64,
     stream_write_errored: AtomicU64,
+    stream_write_key_updated: AtomicU64,
     stream_write_shutdown: AtomicU64,
     stream_write_socket_flushed: AtomicU64,
     stream_write_socket_blocked: AtomicU64,
@@ -38,6 +39,7 @@ pub struct Context<R: Recorder> {
     stream_read_fin_flushed: AtomicU64,
     stream_read_blocked: AtomicU64,
     stream_read_errored: AtomicU64,
+    stream_read_key_updated: AtomicU64,
     stream_read_shutdown: AtomicU64,
     stream_read_socket_flushed: AtomicU64,
     stream_read_socket_blocked: AtomicU64,
@@ -60,6 +62,7 @@ where
             stream_write_fin_flushed: AtomicU64::new(0),
             stream_write_blocked: AtomicU64::new(0),
             stream_write_errored: AtomicU64::new(0),
+            stream_write_key_updated: AtomicU64::new(0),
             stream_write_shutdown: AtomicU64::new(0),
             stream_write_socket_flushed: AtomicU64::new(0),
             stream_write_socket_blocked: AtomicU64::new(0),
@@ -68,6 +71,7 @@ where
             stream_read_fin_flushed: AtomicU64::new(0),
             stream_read_blocked: AtomicU64::new(0),
             stream_read_errored: AtomicU64::new(0),
+            stream_read_key_updated: AtomicU64::new(0),
             stream_read_shutdown: AtomicU64::new(0),
             stream_read_socket_flushed: AtomicU64::new(0),
             stream_read_socket_blocked: AtomicU64::new(0),
@@ -120,6 +124,19 @@ where
         context.stream_write_errored.fetch_add(1, Ordering::Relaxed);
         self.subscriber
             .on_stream_write_errored(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_write_key_updated(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamWriteKeyUpdated,
+    ) {
+        context
+            .stream_write_key_updated
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_write_key_updated(&context.recorder, meta, event);
     }
     #[inline]
     fn on_stream_write_shutdown(
@@ -220,6 +237,19 @@ where
             .on_stream_read_errored(&context.recorder, meta, event);
     }
     #[inline]
+    fn on_stream_read_key_updated(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamReadKeyUpdated,
+    ) {
+        context
+            .stream_read_key_updated
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_read_key_updated(&context.recorder, meta, event);
+    }
+    #[inline]
     fn on_stream_read_shutdown(
         &self,
         context: &Self::ConnectionContext,
@@ -300,6 +330,10 @@ impl<R: Recorder> Drop for Context<R> {
             self.stream_write_errored.load(Ordering::Relaxed) as _,
         );
         self.recorder.increment_counter(
+            "stream_write_key_updated",
+            self.stream_write_key_updated.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
             "stream_write_shutdown",
             self.stream_write_shutdown.load(Ordering::Relaxed) as _,
         );
@@ -330,6 +364,10 @@ impl<R: Recorder> Drop for Context<R> {
         self.recorder.increment_counter(
             "stream_read_errored",
             self.stream_read_errored.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_read_key_updated",
+            self.stream_read_key_updated.load(Ordering::Relaxed) as _,
         );
         self.recorder.increment_counter(
             "stream_read_shutdown",

@@ -223,7 +223,7 @@ where
                     },
                     |sealer| {
                         if features.is_reliable() {
-                            sealer.update();
+                            sealer.update(&self.shared.clock, &self.shared.subscriber);
                         } else {
                             // TODO enqueue a full flush of any pending transmissions before
                             // updating the key.

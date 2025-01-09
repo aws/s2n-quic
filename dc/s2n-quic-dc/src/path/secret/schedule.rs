@@ -463,10 +463,13 @@ impl Updater {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::path::secret::{
-        map::Dedup, open::Application as Opener, seal::Application as Sealer,
+    use crate::{
+        event,
+        path::secret::{map::Dedup, open::Application as Opener, seal::Application as Sealer},
+        stream,
     };
     use bolero::*;
+    use s2n_quic_core::time::testing;
 
     #[derive(Clone, Copy, Debug, TypeGenerator)]
     struct Pair {
@@ -499,6 +502,11 @@ mod tests {
             };
             let mut client_app = Application::new(client.application_pair(self.key_id, client_i));
             let mut server_app = Application::new(server.application_pair(self.key_id, server_i));
+            let subscriber = stream::shared::Subscriber {
+                subscriber: event::testing::Subscriber::no_snapshot(),
+                context: (),
+            };
+            let clock = testing::Clock::default();
 
             for i in 0..8 {
                 client_app.send(&server_app).unwrap();
@@ -516,11 +524,11 @@ mod tests {
                     (&mut server_app, &mut client_app)
                 };
 
-                sender.sealer.update();
+                sender.sealer.update(&clock, &subscriber);
                 sender.send(receiver).unwrap();
 
                 assert!(receiver.opener.needs_update());
-                receiver.opener.update();
+                receiver.opener.update(&clock, &subscriber);
             }
         }
 
