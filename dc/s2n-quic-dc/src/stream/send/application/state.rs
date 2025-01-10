@@ -115,9 +115,9 @@ impl State {
 
                 let has_more_app_data = credits.initial_len > total_payload_len;
 
-                let included_fin = reader.final_offset().is_some_and(|fin| {
-                    stream_offset.as_u64() + payload_len as u64 == fin.as_u64()
-                });
+                let included_fin = reader
+                    .final_offset()
+                    .is_some_and(|fin| stream_offset.as_u64() + payload_len as u64 == fin.as_u64());
 
                 let time_sent = clock.get_time();
                 probes::on_transmit_stream(

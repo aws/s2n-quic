@@ -445,7 +445,6 @@ fn has_transmission<P: transmission::interest::Provider>(
     transmission_interest_provider: Option<&P>,
     transmission_constraint: transmission::Constraint,
 ) -> bool {
-    transmission_interest_provider.is_some_and(|provider| {
-        provider.can_transmit(transmission_constraint)
-    })
+    transmission_interest_provider
+        .is_some_and(|provider| provider.can_transmit(transmission_constraint))
 }
