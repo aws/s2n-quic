@@ -10,7 +10,7 @@ use bytes::Bytes;
 use bolero_generator::prelude::*;
 
 static DATA: Bytes = {
-    const INNER: [u8; DATA_LEN] = {
+    static INNER: [u8; DATA_LEN] = {
         let mut data = [0; DATA_LEN];
         let mut idx = 0;
         while idx < DATA_LEN {
