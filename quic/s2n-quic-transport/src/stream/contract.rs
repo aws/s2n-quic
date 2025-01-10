@@ -107,7 +107,7 @@ pub mod tx {
             }
 
             // resetting takes priority
-            if self.reset.is_some() || response.map_or(false, |res| res.is_reset()) {
+            if self.reset.is_some() || response.is_ok_and(|res| res.is_reset()) {
                 let response = response.expect("reset should never fail");
 
                 assert_eq!(

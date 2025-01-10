@@ -250,7 +250,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         let valid_initial_received = self.valid_initial_received();
 
         if let Some((id, path)) = self.path_mut(path_handle) {
-            let source_cid_changed = datagram.source_connection_id.map_or(false, |scid| {
+            let source_cid_changed = datagram.source_connection_id.is_some_and(|scid| {
                 scid != path.peer_connection_id && valid_initial_received
             });
 

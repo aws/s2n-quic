@@ -46,7 +46,7 @@ impl Calculator {
         //# potentially too few probes.
         ensure!(self
             .first_rtt_sample
-            .map_or(false, |ts| packet_info.time_sent >= ts));
+            .is_some_and(|ts| packet_info.time_sent >= ts));
 
         // Check that this lost packet was sent on the same path
         //

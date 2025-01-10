@@ -198,7 +198,7 @@ impl Packet<'_> {
                 let len = VarInt::try_from(self.payload.len()).ok()?;
                 offset.checked_sub(len)
             })
-            .map_or(false, |v| *v == 0)
+            .is_some_and(|v| *v == 0)
     }
 
     #[inline]

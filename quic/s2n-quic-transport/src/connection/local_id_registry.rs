@@ -116,7 +116,7 @@ impl LocalIdInfo {
     // Returns true if the connection ID should be moved to PendingRemoval
     fn is_retire_ready(&self, timestamp: Timestamp) -> bool {
         !self.is_retired()
-            && self.retirement_time.map_or(false, |retirement_time| {
+            && self.retirement_time.is_some_and(|retirement_time| {
                 retirement_time.has_elapsed(timestamp)
             })
     }
@@ -132,7 +132,7 @@ impl LocalIdInfo {
     // Returns true if the connection ID should no longer be used
     fn is_expired(&self, timestamp: Timestamp) -> bool {
         self.removal_time()
-            .map_or(false, |removal_time| removal_time.has_elapsed(timestamp))
+            .is_some_and(|removal_time| removal_time.has_elapsed(timestamp))
     }
 
     // The time this connection ID should be removed

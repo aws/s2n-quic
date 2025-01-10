@@ -199,7 +199,7 @@ impl Format {
         if self.keys[token.header.key_id() as usize]
             .duplicate_filter
             .as_ref()
-            .map_or(false, |f| f.contains(token))
+            .is_some_and(|f| f.contains(token))
         {
             return None;
         }

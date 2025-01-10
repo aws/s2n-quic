@@ -108,8 +108,7 @@ impl PeerIdInfo {
         sequence_number: u32,
     ) -> Result<bool, PeerIdRegistrationError> {
         let reset_token_is_equal = self
-            .stateless_reset_token
-            .map_or(false, |token| token == *stateless_reset_token);
+            .stateless_reset_token == Some(*stateless_reset_token);
         let sequence_number_is_equal = self.sequence_number == sequence_number;
 
         if self.id == *new_id {

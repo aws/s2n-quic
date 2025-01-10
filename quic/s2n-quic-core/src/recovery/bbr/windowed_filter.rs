@@ -84,7 +84,7 @@ impl<
 
     #[inline]
     fn window_expired(&self, now: TimeType) -> bool {
-        self.last_updated.map_or(false, |last_updated| {
+        self.last_updated.is_some_and(|last_updated| {
             now - last_updated >= self.window_length
         })
     }

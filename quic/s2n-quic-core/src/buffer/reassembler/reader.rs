@@ -40,7 +40,7 @@ impl Storage for Reassembler {
         );
 
         // if we have a final size and this slot overlaps it then return the entire thing
-        let chunk = if self.cursors.final_size().map_or(false, |final_size| {
+        let chunk = if self.cursors.final_size().is_some_and(|final_size| {
             final_size <= slot.end_allocated() && watermark >= slot.buffered_len()
         }) {
             slot.consume()
