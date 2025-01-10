@@ -9,10 +9,11 @@ pub mod seal {
     use super::*;
     use crate::crypto::{awslc, seal};
 
-    use crate::{event, stream::shared};
+    use crate::{event, event::ConnectionPublisher, stream::shared};
     pub use awslc::seal::control;
     use s2n_quic_core::event::IntoEvent;
-    use crate::event::ConnectionPublisher;
+
+    pub const TEST_MAX_RECORDS: u64 = 4096;
 
     #[derive(Debug)]
     pub struct Application {
@@ -45,7 +46,7 @@ pub mod seal {
 
             // in debug mode, rotate keys more often in order to surface any issues
             const MAX_RECORDS: u64 = if cfg!(debug_assertions) {
-                4096
+                TEST_MAX_RECORDS
             } else {
                 LIMIT - THRESHOLD
             };

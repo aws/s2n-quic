@@ -4,6 +4,7 @@
 use super::{server::tokio::stats, socket::Protocol};
 use crate::{
     event,
+    event::testing,
     path::secret,
     stream::{
         application::Stream,
@@ -12,14 +13,15 @@ use crate::{
         server::{tokio as stream_server, tokio::accept},
     },
 };
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, sync::Arc};
 use tracing::Instrument;
 
-type Subscriber = event::tracing::Subscriber;
+type Subscriber = (Arc<event::testing::Subscriber>, event::tracing::Subscriber);
 
 pub struct Client {
     map: secret::Map,
     env: env::Environment<Subscriber>,
+    subscriber: Arc<event::testing::Subscriber>,
 }
 
 impl Default for Client {
@@ -29,6 +31,7 @@ impl Default for Client {
         Self {
             map,
             env: Default::default(),
+            subscriber: Arc::new(event::testing::Subscriber::no_snapshot()),
         }
     }
 }
@@ -61,7 +64,7 @@ impl Client {
         let server = server.as_ref();
         let handshake = async { self.handshake_with(server) };
 
-        let subscriber = Subscriber::default();
+        let subscriber = (self.subscriber(), event::tracing::Subscriber::default());
 
         match server.protocol {
             Protocol::Tcp => {
@@ -86,9 +89,13 @@ impl Client {
         let server = server.as_ref();
         let handshake = async { self.handshake_with(server) }.await?;
 
-        let subscriber = Subscriber::default();
+        let subscriber = (self.subscriber(), event::tracing::Subscriber::default());
 
         stream_client::connect_tcp_with(handshake, stream, &self.env, subscriber).await
+    }
+
+    pub fn subscriber(&self) -> Arc<testing::Subscriber> {
+        self.subscriber.clone()
     }
 }
 
@@ -98,6 +105,7 @@ pub struct Server {
     stats: stats::Sender,
     #[allow(dead_code)]
     drop_handle: drop_handle::Sender,
+    subscriber: Arc<event::testing::Subscriber>,
 }
 
 impl Default for Server {
@@ -135,6 +143,10 @@ impl Server {
 
     pub async fn accept(&self) -> io::Result<(Stream<Subscriber>, SocketAddr)> {
         accept::accept(&self.receiver, &self.stats).await
+    }
+
+    pub fn subscriber(&self) -> Arc<testing::Subscriber> {
+        self.subscriber.clone()
     }
 }
 
@@ -189,6 +201,7 @@ pub mod server {
         flavor: accept::Flavor,
         protocol: Protocol,
         map_capacity: usize,
+        subscriber: event::testing::Subscriber,
     }
 
     impl Default for Builder {
@@ -198,6 +211,7 @@ pub mod server {
                 flavor: accept::Flavor::default(),
                 protocol: Protocol::Tcp,
                 map_capacity: 16,
+                subscriber: event::testing::Subscriber::no_snapshot(),
             }
         }
     }
@@ -241,12 +255,18 @@ pub mod server {
             self
         }
 
+        pub fn subscriber(mut self, subscriber: event::testing::Subscriber) -> Self {
+            self.subscriber = subscriber;
+            self
+        }
+
         fn build_tokio(self) -> super::Server {
             let Self {
                 backlog,
                 flavor,
                 protocol,
                 map_capacity,
+                subscriber,
             } = self;
 
             let _span = tracing::info_span!("server").entered();
@@ -257,7 +277,11 @@ pub mod server {
 
             let env = env::Builder::default().build().unwrap();
 
-            let subscriber = event::tracing::Subscriber::default();
+            let test_subscriber = Arc::new(subscriber);
+            let subscriber = (
+                test_subscriber.clone(),
+                event::tracing::Subscriber::default(),
+            );
             let (drop_handle_sender, drop_handle_receiver) = drop_handle::new();
 
             let local_addr = match protocol {
@@ -323,6 +347,7 @@ pub mod server {
                 receiver,
                 stats: stats_sender,
                 drop_handle: drop_handle_sender,
+                subscriber: test_subscriber,
             }
         }
     }
