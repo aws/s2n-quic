@@ -56,7 +56,9 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
                     async move {
                         let mut data = vec![0; 1 << 17];
                         loop {
-                            let len = stream.read(&mut data).await.unwrap();
+                            let Ok(len) = stream.read(&mut data).await else {
+                                break;
+                            };
                             if len == 0 {
                                 break;
                             }
