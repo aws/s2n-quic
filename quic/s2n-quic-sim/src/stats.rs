@@ -744,7 +744,7 @@ impl Filter {
     pub fn apply(&self, params: &Parameters, conn: &Connection, conns: &[Connection]) -> bool {
         self.query
             .apply(params, conn, conns)
-            .map_or(false, |actual| (self.op)(actual, self.value))
+            .is_some_and(|actual| (self.op)(actual, self.value))
     }
 }
 

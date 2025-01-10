@@ -584,7 +584,7 @@ impl SendStream {
             .flow_controller_mut()
             .on_packet_ack(ack_set);
 
-        let should_flush = self.write_waiter.as_ref().map_or(false, |w| w.1);
+        let should_flush = self.write_waiter.as_ref().is_some_and(|w| w.1);
         let mut should_wake = false;
         self.data_sender
             .flow_controller_mut()

@@ -297,7 +297,7 @@ impl State {
         //#   return Now() > BBR.cycle_stamp + interval
 
         self.cycle_start_timestamp
-            .map_or(false, |cycle_stamp| now > cycle_stamp + interval)
+            .is_some_and(|cycle_stamp| now > cycle_stamp + interval)
     }
 
     /// Bandwidth probing can cause loss. To help coexistence with loss-based

@@ -250,9 +250,9 @@ impl<Config: endpoint::Config> Manager<Config> {
         let valid_initial_received = self.valid_initial_received();
 
         if let Some((id, path)) = self.path_mut(path_handle) {
-            let source_cid_changed = datagram.source_connection_id.map_or(false, |scid| {
-                scid != path.peer_connection_id && valid_initial_received
-            });
+            let source_cid_changed = datagram
+                .source_connection_id
+                .is_some_and(|scid| scid != path.peer_connection_id && valid_initial_received);
 
             if source_cid_changed {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2

@@ -106,7 +106,7 @@ impl<
         };
         if connection_id
             .lifetime()
-            .map_or(false, |lifetime| !valid_lifetime(lifetime))
+            .is_some_and(|lifetime| !valid_lifetime(lifetime))
         {
             return Err(StartError::new(connection::id::Error::InvalidLifetime));
         };

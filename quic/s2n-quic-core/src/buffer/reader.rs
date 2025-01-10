@@ -31,7 +31,7 @@ pub trait Reader: Storage {
     /// Returns `true` if the reader has the final offset buffered
     #[inline]
     fn has_buffered_fin(&self) -> bool {
-        self.final_offset().map_or(false, |fin| {
+        self.final_offset().is_some_and(|fin| {
             let buffered_end = self
                 .current_offset()
                 .as_u64()
@@ -44,7 +44,7 @@ pub trait Reader: Storage {
     #[inline]
     fn is_consumed(&self) -> bool {
         self.final_offset()
-            .map_or(false, |fin| fin == self.current_offset())
+            .is_some_and(|fin| fin == self.current_offset())
     }
 
     /// Skips the data in the reader until `offset` is reached, or the reader storage is exhausted.

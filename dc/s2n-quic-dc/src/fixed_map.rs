@@ -204,7 +204,7 @@ where
         // Scan each value and check if our requested needle is present.
         let values = self.values.read();
         for (value_idx, value) in values.iter().enumerate() {
-            if value.as_ref().map_or(false, |(k, _)| *k == *needle) {
+            if value.as_ref().is_some_and(|(k, _)| *k == *needle) {
                 return Some(RwLockReadGuard::map(values, |values| {
                     &values[value_idx].as_ref().unwrap().1
                 }));

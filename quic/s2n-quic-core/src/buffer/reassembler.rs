@@ -127,14 +127,13 @@ impl Reassembler {
     #[inline]
     pub fn is_writing_complete(&self) -> bool {
         self.final_size()
-            .map_or(false, |len| self.total_received_len() == len)
+            .is_some_and(|len| self.total_received_len() == len)
     }
 
     /// Returns true if the buffer has completely been read and the final size is known
     #[inline]
     pub fn is_reading_complete(&self) -> bool {
-        self.final_size()
-            .map_or(false, |len| self.cursors.start_offset == len)
+        self.final_size() == Some(self.cursors.start_offset)
     }
 
     /// Returns the final size of the stream, if known

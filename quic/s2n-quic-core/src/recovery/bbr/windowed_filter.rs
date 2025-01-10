@@ -84,9 +84,8 @@ impl<
 
     #[inline]
     fn window_expired(&self, now: TimeType) -> bool {
-        self.last_updated.map_or(false, |last_updated| {
-            now - last_updated >= self.window_length
-        })
+        self.last_updated
+            .is_some_and(|last_updated| now - last_updated >= self.window_length)
     }
 }
 //= https://tools.ietf.org/id/draft-cardwell-iccrg-bbr-congestion-control-02#4.5.3.2
