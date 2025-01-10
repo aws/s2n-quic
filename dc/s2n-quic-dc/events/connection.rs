@@ -85,6 +85,11 @@ pub struct StreamWriteErrored {
     errno: Option<i32>,
 }
 
+#[event("stream:write_key_updated")]
+pub struct StreamWriteKeyUpdated {
+    key_phase: u8,
+}
+
 #[event("stream:write_shutdown")]
 #[checkpoint("latency")]
 pub struct StreamWriteShutdown {
@@ -198,6 +203,11 @@ pub struct StreamReadErrored {
 
     /// The system `errno` from the returned error
     errno: Option<i32>,
+}
+
+#[event("stream:read_key_updated")]
+pub struct StreamReadKeyUpdated {
+    key_phase: u8,
 }
 
 #[event("stream:read_shutdown")]

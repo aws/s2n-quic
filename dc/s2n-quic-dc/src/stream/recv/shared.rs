@@ -550,23 +550,27 @@ impl Inner {
                         }
                     }
 
-                    let _ = shared.crypto.open_with(|opener| {
-                        self.receiver.on_stream_packet(
-                            opener,
-                            control_opener,
-                            shared.credentials(),
-                            packet,
-                            ecn,
-                            clock,
-                            &mut out_buf,
-                        )?;
+                    let _ = shared.crypto.open_with(
+                        |opener| {
+                            self.receiver.on_stream_packet(
+                                opener,
+                                control_opener,
+                                shared.credentials(),
+                                packet,
+                                ecn,
+                                clock,
+                                &mut out_buf,
+                            )?;
 
-                        any_valid_packets = true;
-                        did_complete_handshake |=
-                            packet.next_expected_control_packet().as_u64() > 0;
+                            any_valid_packets = true;
+                            did_complete_handshake |=
+                                packet.next_expected_control_packet().as_u64() > 0;
 
-                        <Result<_, recv::Error>>::Ok(())
-                    });
+                            <Result<_, recv::Error>>::Ok(())
+                        },
+                        clock,
+                        &shared.subscriber,
+                    );
 
                     if self.receiver.check_error().is_err() {
                         msg.clear();
@@ -656,23 +660,27 @@ impl Inner {
                             continue
                         );
 
-                        let _ = shared.crypto.open_with(|opener| {
-                            self.receiver.on_stream_packet(
-                                opener,
-                                control_opener,
-                                shared.credentials(),
-                                &mut packet,
-                                ecn,
-                                clock,
-                                &mut out_buf,
-                            )?;
+                        let _ = shared.crypto.open_with(
+                            |opener| {
+                                self.receiver.on_stream_packet(
+                                    opener,
+                                    control_opener,
+                                    shared.credentials(),
+                                    &mut packet,
+                                    ecn,
+                                    clock,
+                                    &mut out_buf,
+                                )?;
 
-                            any_valid_packets = true;
-                            did_complete_handshake |=
-                                packet.next_expected_control_packet().as_u64() > 0;
+                                any_valid_packets = true;
+                                did_complete_handshake |=
+                                    packet.next_expected_control_packet().as_u64() > 0;
 
-                            <Result<_, recv::Error>>::Ok(())
-                        });
+                                <Result<_, recv::Error>>::Ok(())
+                            },
+                            clock,
+                            &shared.subscriber,
+                        );
                     }
                     other => {
                         shared

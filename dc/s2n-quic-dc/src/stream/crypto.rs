@@ -3,9 +3,12 @@
 
 use crate::{
     crypto::awslc::{open, seal},
+    event,
     path::secret::{open::Application as Opener, seal::Application as Sealer, Map},
+    stream::shared,
 };
 use core::fmt;
+use s2n_quic_core::time::Clock;
 use std::sync::Mutex;
 
 pub struct Crypto {
@@ -78,14 +81,19 @@ impl Crypto {
     }
 
     #[inline]
-    pub fn open_with<R>(&self, open: impl FnOnce(&Opener) -> R) -> R {
+    pub fn open_with<C: Clock + ?Sized, Sub: event::Subscriber, R>(
+        &self,
+        open: impl FnOnce(&Opener) -> R,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
+    ) -> R {
         let lock = &self.app_opener;
         let mut guard = lock.lock().unwrap();
         let result = open(&guard);
 
         // update the keys if needed
         if guard.needs_update() {
-            guard.update();
+            guard.update(clock, subscriber);
         }
 
         result

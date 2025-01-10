@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::Tag;
+use crate::event::IntoEvent;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
 //# Key Phase:  The next bit (0x04) of byte 0 indicates the key phase,
@@ -59,6 +60,15 @@ impl KeyPhase {
     #[inline]
     pub fn next_phase(self) -> Self {
         PHASES[(((self as u8) + 1) % 2) as usize]
+    }
+}
+
+impl IntoEvent<u8> for KeyPhase {
+    fn into_event(self) -> u8 {
+        match self {
+            KeyPhase::Zero => 0,
+            KeyPhase::One => 1,
+        }
     }
 }
 
