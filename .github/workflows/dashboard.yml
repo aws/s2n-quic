@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     # This should only run in one place.
-    if: contains(github.repository, 'aws/s2n-quic')
+    if: contains(github.repository, 'dougch/s2n-quic')
     runs-on: ubuntu-latest
     permissions:
       contents: write
