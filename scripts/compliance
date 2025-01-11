@@ -10,16 +10,6 @@ if ! command -v duvet &> /dev/null; then
     cargo install duvet
 fi
 
-duvet \
-  report \
-  --spec-pattern 'specs/**/*.toml' \
-  --source-pattern 'quic/**/*.rs' \
-  --workspace \
-  --exclude duvet \
-  --require-tests false \
-  --blob-link "https://github.com/aws/s2n-quic/blob/$BLOB" \
-  --issue-link 'https://github.com/aws/s2n-quic/issues' \
-  --no-cargo \
-  --html target/compliance/report.html
+duvet report
 
 echo "compliance report available in 'target/compliance/report.html'"

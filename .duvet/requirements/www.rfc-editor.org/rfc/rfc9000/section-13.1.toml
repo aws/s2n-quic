@@ -1,0 +1,35 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-13.1"
+
+# Packet Processing
+#
+#    A packet MUST NOT be acknowledged until packet protection has been
+#    successfully removed and all frames contained in the packet have been
+#    processed.  For STREAM frames, this means the data has been enqueued
+#    in preparation to be received by the application protocol, but it
+#    does not require that data be delivered and consumed.
+# 
+#    Once the packet has been fully processed, a receiver acknowledges
+#    receipt by sending one or more ACK frames containing the packet
+#    number of the received packet.
+# 
+#    An endpoint SHOULD treat receipt of an acknowledgment for a packet it
+#    did not send as a connection error of type PROTOCOL_VIOLATION, if it
+#    is able to detect the condition.  For further discussion of how this
+#    might be achieved, see Section 21.4.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A packet MUST NOT be acknowledged until packet protection has been
+successfully removed and all frames contained in the packet have been
+processed.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint SHOULD treat receipt of an acknowledgment for a packet it
+did not send as a connection error of type PROTOCOL_VIOLATION, if it
+is able to detect the condition.
+'''
+

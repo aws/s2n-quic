@@ -1,0 +1,36 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.20"
+
+# HANDSHAKE_DONE Frames
+#
+#    The server uses a HANDSHAKE_DONE frame (type=0x1e) to signal
+#    confirmation of the handshake to the client.
+# 
+#    HANDSHAKE_DONE frames are formatted as shown in Figure 44, which
+#    shows that HANDSHAKE_DONE frames have no content.
+# 
+#    HANDSHAKE_DONE Frame {
+#      Type (i) = 0x1e,
+#    }
+# 
+#                    Figure 44: HANDSHAKE_DONE Frame Format
+# 
+#    A HANDSHAKE_DONE frame can only be sent by the server.  Servers MUST
+#    NOT send a HANDSHAKE_DONE frame before completing the handshake.  A
+#    server MUST treat receipt of a HANDSHAKE_DONE frame as a connection
+#    error of type PROTOCOL_VIOLATION.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Servers MUST
+NOT send a HANDSHAKE_DONE frame before completing the handshake.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+server MUST treat receipt of a HANDSHAKE_DONE frame as a connection
+error of type PROTOCOL_VIOLATION.
+'''
+

@@ -1,0 +1,45 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-5.3.1"
+
+# Probing for a Larger PLPMTU
+#
+#    Implementations use a search algorithm across the search range to
+#    determine whether a larger PLPMTU can be supported across a network
+#    path.
+# 
+#    The method discovers the search range by confirming the minimum
+#    PLPMTU and then using the probe method to select a PROBED_SIZE less
+#    than or equal to MAX_PLPMTU.  MAX_PLPMTU is the minimum of the local
+#    MTU and EMTU_R (when this is learned from the remote endpoint).  The
+#    MAX_PLPMTU MAY be reduced by an application that sets a maximum to
+#    the size of datagrams it will send.
+# 
+#    The PROBE_COUNT is initialized to zero when the first probe with a
+#    size greater than or equal to PLPMTU is sent.  Each probe packet
+#    successfully sent to the remote peer is confirmed by acknowledgment
+#    at the PL (see Section 4.1).
+# 
+#    Each time a probe packet is sent to the destination, the PROBE_TIMER
+#    is started.  The timer is canceled when the PL receives
+#    acknowledgment that the probe packet has been successfully sent
+#    across the path (Section 4.1).  This confirms that the PROBED_SIZE is
+#    supported, and the PROBED_SIZE value is then assigned to the PLPMTU.
+#    The search algorithm can continue to send subsequent probe packets of
+#    an increasing size.
+# 
+#    If the timer expires before a probe packet is acknowledged, the probe
+#    has failed to confirm the PROBED_SIZE.  Each time the PROBE_TIMER
+#    expires, the PROBE_COUNT is incremented, the PROBE_TIMER is
+#    reinitialized, and a new probe of the same size or any other size
+#    (determined by the search algorithm) can be sent.  The maximum number
+#    of consecutive failed probes is configured (MAX_PROBES).  If the
+#    value of the PROBE_COUNT reaches MAX_PROBES, probing will stop, and
+#    the PL sender enters the SEARCH_COMPLETE state.
+
+[[spec]]
+level = "MAY"
+quote = '''
+The
+MAX_PLPMTU MAY be reduced by an application that sets a maximum to
+the size of datagrams it will send.
+'''
+

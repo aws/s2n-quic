@@ -1,0 +1,90 @@
+target = "https://www.rfc-editor.org/rfc/rfc8312#section-5.1"
+
+# Fairness to Standard TCP
+#
+#    In environments where Standard TCP is able to make reasonable use of
+#    the available bandwidth, CUBIC does not significantly change this
+#    state.
+# 
+#    Standard TCP performs well in the following two types of networks:
+# 
+#    1.  networks with a small bandwidth-delay product (BDP)
+# 
+#    2.  networks with a short RTTs, but not necessarily a small BDP
+# 
+#    CUBIC is designed to behave very similarly to Standard TCP in the
+#    above two types of networks.  The following two tables show the
+#    average window sizes of Standard TCP, HSTCP, and CUBIC.  The average
+#    window sizes of Standard TCP and HSTCP are from [RFC3649].  The
+#    average window size of CUBIC is calculated using Eq. 6 and the CUBIC
+#    TCP-friendly region for three different values of C.
+# 
+#    +--------+----------+-----------+------------+-----------+----------+
+#    |   Loss |  Average |   Average |      CUBIC |     CUBIC |    CUBIC |
+#    | Rate P |    TCP W |   HSTCP W |   (C=0.04) |   (C=0.4) |    (C=4) |
+#    +--------+----------+-----------+------------+-----------+----------+
+#    |  10^-2 |       12 |        12 |         12 |        12 |       12 |
+#    |  10^-3 |       38 |        38 |         38 |        38 |       59 |
+#    |  10^-4 |      120 |       263 |        120 |       187 |      333 |
+#    |  10^-5 |      379 |      1795 |        593 |      1054 |     1874 |
+#    |  10^-6 |     1200 |     12279 |       3332 |      5926 |    10538 |
+#    |  10^-7 |     3795 |     83981 |      18740 |     33325 |    59261 |
+#    |  10^-8 |    12000 |    574356 |     105383 |    187400 |   333250 |
+#    +--------+----------+-----------+------------+-----------+----------+
+# 
+#                                   Table 1
+# 
+#    Table 1 describes the response function of Standard TCP, HSTCP, and
+#    CUBIC in networks with RTT = 0.1 seconds.  The average window size is
+#    in MSS-sized segments.
+# 
+#    +--------+-----------+-----------+------------+-----------+---------+
+#    |   Loss |   Average |   Average |      CUBIC |     CUBIC |   CUBIC |
+#    | Rate P |     TCP W |   HSTCP W |   (C=0.04) |   (C=0.4) |   (C=4) |
+#    +--------+-----------+-----------+------------+-----------+---------+
+#    |  10^-2 |        12 |        12 |         12 |        12 |      12 |
+#    |  10^-3 |        38 |        38 |         38 |        38 |      38 |
+#    |  10^-4 |       120 |       263 |        120 |       120 |     120 |
+#    |  10^-5 |       379 |      1795 |        379 |       379 |     379 |
+#    |  10^-6 |      1200 |     12279 |       1200 |      1200 |    1874 |
+#    |  10^-7 |      3795 |     83981 |       3795 |      5926 |   10538 |
+#    |  10^-8 |     12000 |    574356 |      18740 |     33325 |   59261 |
+#    +--------+-----------+-----------+------------+-----------+---------+
+# 
+#                                   Table 2
+# 
+#    Table 2 describes the response function of Standard TCP, HSTCP, and
+#    CUBIC in networks with RTT = 0.01 seconds.  The average window size
+#    is in MSS-sized segments.
+# 
+#    Both tables show that CUBIC with any of these three C values is more
+#    friendly to TCP than HSTCP, especially in networks with a short RTT
+#    where TCP performs reasonably well.  For example, in a network with
+#    RTT = 0.01 seconds and p=10^-6, TCP has an average window of 1200
+#    packets.  If the packet size is 1500 bytes, then TCP can achieve an
+#    average rate of 1.44 Gbps.  In this case, CUBIC with C=0.04 or C=0.4
+#    achieves exactly the same rate as Standard TCP, whereas HSTCP is
+#    about ten times more aggressive than Standard TCP.
+# 
+#    We can see that C determines the aggressiveness of CUBIC in competing
+#    with other congestion control algorithms for bandwidth.  CUBIC is
+#    more friendly to Standard TCP, if the value of C is lower.  However,
+#    we do not recommend setting C to a very low value like 0.04, since
+#    CUBIC with a low C cannot efficiently use the bandwidth in long RTT
+#    and high-bandwidth networks.  Based on these observations and our
+#    experiments, we find C=0.4 gives a good balance between TCP-
+#    friendliness and aggressiveness of window increase.  Therefore, C
+#    SHOULD be set to 0.4.  With C set to 0.4, Eq. 6 is reduced to:
+# 
+#       AVG_W_cubic = 1.054 * (RTT^0.75) / (p^0.75) (Eq. 7)
+# 
+#    Eq. 7 is then used in the next subsection to show the scalability of
+#    CUBIC.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Therefore, C
+SHOULD be set to 0.4.
+'''
+

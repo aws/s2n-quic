@@ -1,0 +1,195 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-12.4"
+
+# Frames and Frame Types
+#
+#    The payload of QUIC packets, after removing packet protection,
+#    consists of a sequence of complete frames, as shown in Figure 11.
+#    Version Negotiation, Stateless Reset, and Retry packets do not
+#    contain frames.
+# 
+#    Packet Payload {
+#      Frame (8..) ...,
+#    }
+# 
+#                           Figure 11: QUIC Payload
+# 
+#    The payload of a packet that contains frames MUST contain at least
+#    one frame, and MAY contain multiple frames and multiple frame types.
+#    An endpoint MUST treat receipt of a packet containing no frames as a
+#    connection error of type PROTOCOL_VIOLATION.  Frames always fit
+#    within a single QUIC packet and cannot span multiple packets.
+# 
+#    Each frame begins with a Frame Type, indicating its type, followed by
+#    additional type-dependent fields:
+# 
+#    Frame {
+#      Frame Type (i),
+#      Type-Dependent Fields (..),
+#    }
+# 
+#                       Figure 12: Generic Frame Layout
+# 
+#    Table 3 lists and summarizes information about each frame type that
+#    is defined in this specification.  A description of this summary is
+#    included after the table.
+# 
+#     +============+======================+===============+======+======+
+#     | Type Value | Frame Type Name      | Definition    | Pkts | Spec |
+#     +============+======================+===============+======+======+
+#     | 0x00       | PADDING              | Section 19.1  | IH01 | NP   |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x01       | PING                 | Section 19.2  | IH01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x02-0x03  | ACK                  | Section 19.3  | IH_1 | NC   |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x04       | RESET_STREAM         | Section 19.4  | __01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x05       | STOP_SENDING         | Section 19.5  | __01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x06       | CRYPTO               | Section 19.6  | IH_1 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x07       | NEW_TOKEN            | Section 19.7  | ___1 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x08-0x0f  | STREAM               | Section 19.8  | __01 | F    |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x10       | MAX_DATA             | Section 19.9  | __01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x11       | MAX_STREAM_DATA      | Section 19.10 | __01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x12-0x13  | MAX_STREAMS          | Section 19.11 | __01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x14       | DATA_BLOCKED         | Section 19.12 | __01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x15       | STREAM_DATA_BLOCKED  | Section 19.13 | __01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x16-0x17  | STREAMS_BLOCKED      | Section 19.14 | __01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x18       | NEW_CONNECTION_ID    | Section 19.15 | __01 | P    |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x19       | RETIRE_CONNECTION_ID | Section 19.16 | __01 |      |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x1a       | PATH_CHALLENGE       | Section 19.17 | __01 | P    |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x1b       | PATH_RESPONSE        | Section 19.18 | ___1 | P    |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x1c-0x1d  | CONNECTION_CLOSE     | Section 19.19 | ih01 | N    |
+#     +------------+----------------------+---------------+------+------+
+#     | 0x1e       | HANDSHAKE_DONE       | Section 19.20 | ___1 |      |
+#     +------------+----------------------+---------------+------+------+
+# 
+#                             Table 3: Frame Types
+# 
+#    The format and semantics of each frame type are explained in more
+#    detail in Section 19.  The remainder of this section provides a
+#    summary of important and general information.
+# 
+#    The Frame Type in ACK, STREAM, MAX_STREAMS, STREAMS_BLOCKED, and
+#    CONNECTION_CLOSE frames is used to carry other frame-specific flags.
+#    For all other frames, the Frame Type field simply identifies the
+#    frame.
+# 
+#    The "Pkts" column in Table 3 lists the types of packets that each
+#    frame type could appear in, indicated by the following characters:
+# 
+#    I:   Initial (Section 17.2.2)
+# 
+#    H:   Handshake (Section 17.2.4)
+# 
+#    0:   0-RTT (Section 17.2.3)
+# 
+#    1:   1-RTT (Section 17.3.1)
+# 
+#    ih:  Only a CONNECTION_CLOSE frame of type 0x1c can appear in Initial
+#         or Handshake packets.
+# 
+#    For more details about these restrictions, see Section 12.5.  Note
+#    that all frames can appear in 1-RTT packets.  An endpoint MUST treat
+#    receipt of a frame in a packet type that is not permitted as a
+#    connection error of type PROTOCOL_VIOLATION.
+# 
+#    The "Spec" column in Table 3 summarizes any special rules governing
+#    the processing or generation of the frame type, as indicated by the
+#    following characters:
+# 
+#    N:   Packets containing only frames with this marking are not ack-
+#         eliciting; see Section 13.2.
+# 
+#    C:   Packets containing only frames with this marking do not count
+#         toward bytes in flight for congestion control purposes; see
+#         [QUIC-RECOVERY].
+# 
+#    P:   Packets containing only frames with this marking can be used to
+#         probe new network paths during connection migration; see
+#         Section 9.1.
+# 
+#    F:   The contents of frames with this marking are flow controlled;
+#         see Section 4.
+# 
+#    The "Pkts" and "Spec" columns in Table 3 do not form part of the IANA
+#    registry; see Section 22.4.
+# 
+#    An endpoint MUST treat the receipt of a frame of unknown type as a
+#    connection error of type FRAME_ENCODING_ERROR.
+# 
+#    All frames are idempotent in this version of QUIC.  That is, a valid
+#    frame does not cause undesirable side effects or errors when received
+#    more than once.
+# 
+#    The Frame Type field uses a variable-length integer encoding (see
+#    Section 16), with one exception.  To ensure simple and efficient
+#    implementations of frame parsing, a frame type MUST use the shortest
+#    possible encoding.  For frame types defined in this document, this
+#    means a single-byte encoding, even though it is possible to encode
+#    these values as a two-, four-, or eight-byte variable-length integer.
+#    For instance, though 0x4001 is a legitimate two-byte encoding for a
+#    variable-length integer with a value of 1, PING frames are always
+#    encoded as a single byte with the value 0x01.  This rule applies to
+#    all current and future QUIC frame types.  An endpoint MAY treat the
+#    receipt of a frame type that uses a longer encoding than necessary as
+#    a connection error of type PROTOCOL_VIOLATION.
+
+[[spec]]
+level = "MUST"
+quote = '''
+The payload of a packet that contains frames MUST contain at least
+one frame, and MAY contain multiple frames and multiple frame types.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST treat receipt of a packet containing no frames as a
+connection error of type PROTOCOL_VIOLATION.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST treat
+receipt of a frame in a packet type that is not permitted as a
+connection error of type PROTOCOL_VIOLATION.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST treat the receipt of a frame of unknown type as a
+connection error of type FRAME_ENCODING_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+To ensure simple and efficient
+implementations of frame parsing, a frame type MUST use the shortest
+possible encoding.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An endpoint MAY treat the
+receipt of a frame type that uses a longer encoding than necessary as
+a connection error of type PROTOCOL_VIOLATION.
+'''
+

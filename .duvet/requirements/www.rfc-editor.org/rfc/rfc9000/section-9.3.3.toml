@@ -1,0 +1,63 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-9.3.3"
+
+# Off-Path Packet Forwarding
+#
+#    An off-path attacker that can observe packets might forward copies of
+#    genuine packets to endpoints.  If the copied packet arrives before
+#    the genuine packet, this will appear as a NAT rebinding.  Any genuine
+#    packet will be discarded as a duplicate.  If the attacker is able to
+#    continue forwarding packets, it might be able to cause migration to a
+#    path via the attacker.  This places the attacker on-path, giving it
+#    the ability to observe or drop all subsequent packets.
+# 
+#    This style of attack relies on the attacker using a path that has
+#    approximately the same characteristics as the direct path between
+#    endpoints.  The attack is more reliable if relatively few packets are
+#    sent or if packet loss coincides with the attempted attack.
+# 
+#    A non-probing packet received on the original path that increases the
+#    maximum received packet number will cause the endpoint to move back
+#    to that path.  Eliciting packets on this path increases the
+#    likelihood that the attack is unsuccessful.  Therefore, mitigation of
+#    this attack relies on triggering the exchange of packets.
+# 
+#    In response to an apparent migration, endpoints MUST validate the
+#    previously active path using a PATH_CHALLENGE frame.  This induces
+#    the sending of new packets on that path.  If the path is no longer
+#    viable, the validation attempt will time out and fail; if the path is
+#    viable but no longer desired, the validation will succeed but only
+#    results in probing packets being sent on the path.
+# 
+#    An endpoint that receives a PATH_CHALLENGE on an active path SHOULD
+#    send a non-probing packet in response.  If the non-probing packet
+#    arrives before any copy made by an attacker, this results in the
+#    connection being migrated back to the original path.  Any subsequent
+#    migration to another path restarts this entire process.
+# 
+#    This defense is imperfect, but this is not considered a serious
+#    problem.  If the path via the attack is reliably faster than the
+#    original path despite multiple attempts to use that original path, it
+#    is not possible to distinguish between an attack and an improvement
+#    in routing.
+# 
+#    An endpoint could also use heuristics to improve detection of this
+#    style of attack.  For instance, NAT rebinding is improbable if
+#    packets were recently received on the old path; similarly, rebinding
+#    is rare on IPv6 paths.  Endpoints can also look for duplicated
+#    packets.  Conversely, a change in connection ID is more likely to
+#    indicate an intentional migration rather than an attack.
+
+[[spec]]
+level = "MUST"
+quote = '''
+In response to an apparent migration, endpoints MUST validate the
+previously active path using a PATH_CHALLENGE frame.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint that receives a PATH_CHALLENGE on an active path SHOULD
+send a non-probing packet in response.
+'''
+

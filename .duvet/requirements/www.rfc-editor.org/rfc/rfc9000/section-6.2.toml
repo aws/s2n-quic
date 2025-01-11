@@ -1,0 +1,48 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-6.2"
+
+# Handling Version Negotiation Packets
+#
+#    Version Negotiation packets are designed to allow for functionality
+#    to be defined in the future that allows QUIC to negotiate the version
+#    of QUIC to use for a connection.  Future Standards Track
+#    specifications might change how implementations that support multiple
+#    versions of QUIC react to Version Negotiation packets received in
+#    response to an attempt to establish a connection using this version.
+# 
+#    A client that supports only this version of QUIC MUST abandon the
+#    current connection attempt if it receives a Version Negotiation
+#    packet, with the following two exceptions.  A client MUST discard any
+#    Version Negotiation packet if it has received and successfully
+#    processed any other packet, including an earlier Version Negotiation
+#    packet.  A client MUST discard a Version Negotiation packet that
+#    lists the QUIC version selected by the client.
+# 
+#    How to perform version negotiation is left as future work defined by
+#    future Standards Track specifications.  In particular, that future
+#    work will ensure robustness against version downgrade attacks; see
+#    Section 21.12.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client that supports only this version of QUIC MUST abandon the
+current connection attempt if it receives a Version Negotiation
+packet, with the following two exceptions.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST discard any
+Version Negotiation packet if it has received and successfully
+processed any other packet, including an earlier Version Negotiation
+packet.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST discard a Version Negotiation packet that
+lists the QUIC version selected by the client.
+'''
+

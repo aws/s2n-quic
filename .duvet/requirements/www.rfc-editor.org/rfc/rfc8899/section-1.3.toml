@@ -1,0 +1,68 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-1.3"
+
+# Path MTU Discovery for Datagram Services
+#
+#    Section 5 of this document presents a set of algorithms for datagram
+#    protocols to discover the largest size of unfragmented datagram that
+#    can be sent over a network path.  The method relies upon features of
+#    the PL described in Section 3 and applies to transport protocols
+#    operating over IPv4 and IPv6.  It does not require cooperation from
+#    the lower layers, although it can utilize PTB messages when these
+#    received messages are made available to the PL.
+# 
+#    The message size guidelines in Section 3.2 of the UDP Usage
+#    Guidelines [BCP145] state that "an application SHOULD either use the
+#    Path MTU information provided by the IP layer or implement Path MTU
+#    Discovery (PMTUD)" but do not provide a mechanism for discovering the
+#    largest size of unfragmented datagram that can be used on a network
+#    path.  The present document updates RFC 8085 to specify this method
+#    in place of PLPMTUD [RFC4821] and provides a mechanism for sharing
+#    the discovered largest size as the MPS (see Section 4.4).
+# 
+#    Section 10.2 of [RFC4821] recommended a PLPMTUD probing method for
+#    the Stream Control Transport Protocol (SCTP).  SCTP utilizes probe
+#    packets consisting of a minimal-sized HEARTBEAT chunk bundled with a
+#    PAD chunk as defined in [RFC4820].  However, RFC 4821 did not provide
+#    a complete specification.  The present document replaces that
+#    description by providing a complete specification.
+# 
+#    The Datagram Congestion Control Protocol (DCCP) [RFC4340] requires
+#    implementations to support Classical PMTUD and states that a DCCP
+#    sender "MUST maintain the MPS allowed for each active DCCP session".
+#    It also defines the current congestion control MPS (CCMPS) supported
+#    by a network path.  This recommends use of PMTUD and suggests use of
+#    control packets (DCCP-Sync) as path probe packets because they do not
+#    risk application data loss.  The method defined in this specification
+#    can be used with DCCP.
+# 
+#    Section 4 and Section 5 define the protocol mechanisms and
+#    specification for Datagram Packetization Layer Path MTU Discovery
+#    (DPLPMTUD).
+# 
+#    Section 6 specifies the method for datagram transports and provides
+#    information to enable the implementation of PLPMTUD with other
+#    datagram transports and applications that use datagram transports.
+# 
+#    Section 6 also provides recommendations for SCTP endpoints, updating
+#    [RFC4960], [RFC6951], and [RFC8261] to use the method specified in
+#    this document instead of the method in [RFC4821].
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The message size guidelines in Section 3.2 of the UDP Usage
+Guidelines [BCP145] state that "an application SHOULD either use the
+Path MTU information provided by the IP layer or implement Path MTU
+Discovery (PMTUD)" but do not provide a mechanism for discovering the
+largest size of unfragmented datagram that can be used on a network
+path.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The Datagram Congestion Control Protocol (DCCP) [RFC4340] requires
+implementations to support Classical PMTUD and states that a DCCP
+sender "MUST maintain the MPS allowed for each active DCCP session".
+'''
+

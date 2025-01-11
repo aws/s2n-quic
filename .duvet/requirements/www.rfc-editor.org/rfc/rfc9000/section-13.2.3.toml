@@ -1,0 +1,103 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-13.2.3"
+
+# Managing ACK Ranges
+#
+#    When an ACK frame is sent, one or more ranges of acknowledged packets
+#    are included.  Including acknowledgments for older packets reduces
+#    the chance of spurious retransmissions caused by losing previously
+#    sent ACK frames, at the cost of larger ACK frames.
+# 
+#    ACK frames SHOULD always acknowledge the most recently received
+#    packets, and the more out of order the packets are, the more
+#    important it is to send an updated ACK frame quickly, to prevent the
+#    peer from declaring a packet as lost and spuriously retransmitting
+#    the frames it contains.  An ACK frame is expected to fit within a
+#    single QUIC packet.  If it does not, then older ranges (those with
+#    the smallest packet numbers) are omitted.
+# 
+#    A receiver limits the number of ACK Ranges (Section 19.3.1) it
+#    remembers and sends in ACK frames, both to limit the size of ACK
+#    frames and to avoid resource exhaustion.  After receiving
+#    acknowledgments for an ACK frame, the receiver SHOULD stop tracking
+#    those acknowledged ACK Ranges.  Senders can expect acknowledgments
+#    for most packets, but QUIC does not guarantee receipt of an
+#    acknowledgment for every packet that the receiver processes.
+# 
+#    It is possible that retaining many ACK Ranges could cause an ACK
+#    frame to become too large.  A receiver can discard unacknowledged ACK
+#    Ranges to limit ACK frame size, at the cost of increased
+#    retransmissions from the sender.  This is necessary if an ACK frame
+#    would be too large to fit in a packet.  Receivers MAY also limit ACK
+#    frame size further to preserve space for other frames or to limit the
+#    capacity that acknowledgments consume.
+# 
+#    A receiver MUST retain an ACK Range unless it can ensure that it will
+#    not subsequently accept packets with numbers in that range.
+#    Maintaining a minimum packet number that increases as ranges are
+#    discarded is one way to achieve this with minimal state.
+# 
+#    Receivers can discard all ACK Ranges, but they MUST retain the
+#    largest packet number that has been successfully processed, as that
+#    is used to recover packet numbers from subsequent packets; see
+#    Section 17.1.
+# 
+#    A receiver SHOULD include an ACK Range containing the largest
+#    received packet number in every ACK frame.  The Largest Acknowledged
+#    field is used in ECN validation at a sender, and including a lower
+#    value than what was included in a previous ACK frame could cause ECN
+#    to be unnecessarily disabled; see Section 13.4.2.
+# 
+#    Section 13.2.4 describes an exemplary approach for determining what
+#    packets to acknowledge in each ACK frame.  Though the goal of this
+#    algorithm is to generate an acknowledgment for every packet that is
+#    processed, it is still possible for acknowledgments to be lost.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+ACK frames SHOULD always acknowledge the most recently received
+packets, and the more out of order the packets are, the more
+important it is to send an updated ACK frame quickly, to prevent the
+peer from declaring a packet as lost and spuriously retransmitting
+the frames it contains.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+After receiving
+acknowledgments for an ACK frame, the receiver SHOULD stop tracking
+those acknowledged ACK Ranges.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Receivers MAY also limit ACK
+frame size further to preserve space for other frames or to limit the
+capacity that acknowledgments consume.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A receiver MUST retain an ACK Range unless it can ensure that it will
+not subsequently accept packets with numbers in that range.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Receivers can discard all ACK Ranges, but they MUST retain the
+largest packet number that has been successfully processed, as that
+is used to recover packet numbers from subsequent packets; see
+Section 17.1.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A receiver SHOULD include an ACK Range containing the largest
+received packet number in every ACK frame.
+'''
+

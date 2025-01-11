@@ -1,0 +1,37 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-22.2"
+
+# QUIC Versions Registry
+#
+#    IANA has added a registry for "QUIC Versions" under a "QUIC" heading.
+# 
+#    The "QUIC Versions" registry governs a 32-bit space; see Section 15.
+#    This registry follows the registration policy from Section 22.1.
+#    Permanent registrations in this registry are assigned using the
+#    Specification Required policy (Section 4.6 of [RFC8126]).
+# 
+#    The codepoint of 0x00000001 for the protocol is assigned with
+#    permanent status to the protocol defined in this document.  The
+#    codepoint of 0x00000000 is permanently reserved; the note for this
+#    codepoint indicates that this version is reserved for version
+#    negotiation.
+# 
+#    All codepoints that follow the pattern 0x?a?a?a?a are reserved, MUST
+#    NOT be assigned by IANA, and MUST NOT appear in the listing of
+#    assigned values.
+
+[[spec]]
+level = "MUST"
+quote = '''
+All codepoints that follow the pattern 0x?a?a?a?a are reserved, MUST
+NOT be assigned by IANA, and MUST NOT appear in the listing of
+assigned values.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+All codepoints that follow the pattern 0x?a?a?a?a are reserved, MUST
+NOT be assigned by IANA, and MUST NOT appear in the listing of
+assigned values.
+'''
+

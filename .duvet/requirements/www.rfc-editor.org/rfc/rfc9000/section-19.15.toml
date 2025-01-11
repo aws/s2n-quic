@@ -1,0 +1,157 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-19.15"
+
+# NEW_CONNECTION_ID Frames
+#
+#    An endpoint sends a NEW_CONNECTION_ID frame (type=0x18) to provide
+#    its peer with alternative connection IDs that can be used to break
+#    linkability when migrating connections; see Section 9.5.
+# 
+#    NEW_CONNECTION_ID frames are formatted as shown in Figure 39.
+# 
+#    NEW_CONNECTION_ID Frame {
+#      Type (i) = 0x18,
+#      Sequence Number (i),
+#      Retire Prior To (i),
+#      Length (8),
+#      Connection ID (8..160),
+#      Stateless Reset Token (128),
+#    }
+# 
+#                  Figure 39: NEW_CONNECTION_ID Frame Format
+# 
+#    NEW_CONNECTION_ID frames contain the following fields:
+# 
+#    Sequence Number:  The sequence number assigned to the connection ID
+#       by the sender, encoded as a variable-length integer; see
+#       Section 5.1.1.
+# 
+#    Retire Prior To:  A variable-length integer indicating which
+#       connection IDs should be retired; see Section 5.1.2.
+# 
+#    Length:  An 8-bit unsigned integer containing the length of the
+#       connection ID.  Values less than 1 and greater than 20 are invalid
+#       and MUST be treated as a connection error of type
+#       FRAME_ENCODING_ERROR.
+# 
+#    Connection ID:  A connection ID of the specified length.
+# 
+#    Stateless Reset Token:  A 128-bit value that will be used for a
+#       stateless reset when the associated connection ID is used; see
+#       Section 10.3.
+# 
+#    An endpoint MUST NOT send this frame if it currently requires that
+#    its peer send packets with a zero-length Destination Connection ID.
+#    Changing the length of a connection ID to or from zero length makes
+#    it difficult to identify when the value of the connection ID changed.
+#    An endpoint that is sending packets with a zero-length Destination
+#    Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a
+#    connection error of type PROTOCOL_VIOLATION.
+# 
+#    Transmission errors, timeouts, and retransmissions might cause the
+#    same NEW_CONNECTION_ID frame to be received multiple times.  Receipt
+#    of the same frame multiple times MUST NOT be treated as a connection
+#    error.  A receiver can use the sequence number supplied in the
+#    NEW_CONNECTION_ID frame to handle receiving the same
+#    NEW_CONNECTION_ID frame multiple times.
+# 
+#    If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+#    previously issued connection ID with a different Stateless Reset
+#    Token field value or a different Sequence Number field value, or if a
+#    sequence number is used for different connection IDs, the endpoint
+#    MAY treat that receipt as a connection error of type
+#    PROTOCOL_VIOLATION.
+# 
+#    The Retire Prior To field applies to connection IDs established
+#    during connection setup and the preferred_address transport
+#    parameter; see Section 5.1.2.  The value in the Retire Prior To field
+#    MUST be less than or equal to the value in the Sequence Number field.
+#    Receiving a value in the Retire Prior To field that is greater than
+#    that in the Sequence Number field MUST be treated as a connection
+#    error of type FRAME_ENCODING_ERROR.
+# 
+#    Once a sender indicates a Retire Prior To value, smaller values sent
+#    in subsequent NEW_CONNECTION_ID frames have no effect.  A receiver
+#    MUST ignore any Retire Prior To fields that do not increase the
+#    largest received Retire Prior To value.
+# 
+#    An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
+#    number smaller than the Retire Prior To field of a previously
+#    received NEW_CONNECTION_ID frame MUST send a corresponding
+#    RETIRE_CONNECTION_ID frame that retires the newly received connection
+#    ID, unless it has already done so for that sequence number.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Values less than 1 and greater than 20 are invalid
+and MUST be treated as a connection error of type
+FRAME_ENCODING_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST NOT send this frame if it currently requires that
+its peer send packets with a zero-length Destination Connection ID.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint that is sending packets with a zero-length Destination
+Connection ID MUST treat receipt of a NEW_CONNECTION_ID frame as a
+connection error of type PROTOCOL_VIOLATION.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Receipt
+of the same frame multiple times MUST NOT be treated as a connection
+error.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If an endpoint receives a NEW_CONNECTION_ID frame that repeats a
+previously issued connection ID with a different Stateless Reset
+Token field value or a different Sequence Number field value, or if a
+sequence number is used for different connection IDs, the endpoint
+MAY treat that receipt as a connection error of type
+PROTOCOL_VIOLATION.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The value in the Retire Prior To field
+MUST be less than or equal to the value in the Sequence Number field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Receiving a value in the Retire Prior To field that is greater than
+that in the Sequence Number field MUST be treated as a connection
+error of type FRAME_ENCODING_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A receiver
+MUST ignore any Retire Prior To fields that do not increase the
+largest received Retire Prior To value.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
+number smaller than the Retire Prior To field of a previously
+received NEW_CONNECTION_ID frame MUST send a corresponding
+RETIRE_CONNECTION_ID frame that retires the newly received connection
+ID, unless it has already done so for that sequence number.
+'''
+

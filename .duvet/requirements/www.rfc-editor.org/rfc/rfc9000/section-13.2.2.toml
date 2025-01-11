@@ -1,0 +1,45 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-13.2.2"
+
+# Acknowledgment Frequency
+#
+#    A receiver determines how frequently to send acknowledgments in
+#    response to ack-eliciting packets.  This determination involves a
+#    trade-off.
+# 
+#    Endpoints rely on timely acknowledgment to detect loss; see Section 6
+#    of [QUIC-RECOVERY].  Window-based congestion controllers, such as the
+#    one described in Section 7 of [QUIC-RECOVERY], rely on
+#    acknowledgments to manage their congestion window.  In both cases,
+#    delaying acknowledgments can adversely affect performance.
+# 
+#    On the other hand, reducing the frequency of packets that carry only
+#    acknowledgments reduces packet transmission and processing cost at
+#    both endpoints.  It can improve connection throughput on severely
+#    asymmetric links and reduce the volume of acknowledgment traffic
+#    using return path capacity; see Section 3 of [RFC3449].
+# 
+#    A receiver SHOULD send an ACK frame after receiving at least two ack-
+#    eliciting packets.  This recommendation is general in nature and
+#    consistent with recommendations for TCP endpoint behavior [RFC5681].
+#    Knowledge of network conditions, knowledge of the peer's congestion
+#    controller, or further research and experimentation might suggest
+#    alternative acknowledgment strategies with better performance
+#    characteristics.
+# 
+#    A receiver MAY process multiple available packets before determining
+#    whether to send an ACK frame in response.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A receiver SHOULD send an ACK frame after receiving at least two ack-
+eliciting packets.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A receiver MAY process multiple available packets before determining
+whether to send an ACK frame in response.
+'''
+

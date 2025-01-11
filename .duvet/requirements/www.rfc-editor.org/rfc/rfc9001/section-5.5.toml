@@ -1,0 +1,35 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-5.5"
+
+# Receiving Protected Packets
+#
+#    Once an endpoint successfully receives a packet with a given packet
+#    number, it MUST discard all packets in the same packet number space
+#    with higher packet numbers if they cannot be successfully unprotected
+#    with either the same key, or -- if there is a key update -- a
+#    subsequent packet protection key; see Section 6.  Similarly, a packet
+#    that appears to trigger a key update but cannot be unprotected
+#    successfully MUST be discarded.
+# 
+#    Failure to unprotect a packet does not necessarily indicate the
+#    existence of a protocol error in a peer or an attack.  The truncated
+#    packet number encoding used in QUIC can cause packet numbers to be
+#    decoded incorrectly if they are delayed significantly.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Once an endpoint successfully receives a packet with a given packet
+number, it MUST discard all packets in the same packet number space
+with higher packet numbers if they cannot be successfully unprotected
+with either the same key, or -- if there is a key update -- a
+subsequent packet protection key; see Section 6.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Similarly, a packet
+that appears to trigger a key update but cannot be unprotected
+successfully MUST be discarded.
+'''
+

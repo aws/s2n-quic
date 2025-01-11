@@ -1,0 +1,47 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-13.4.2.2"
+
+# ECN Validation Outcomes
+#
+#    If validation fails, then the endpoint MUST disable ECN.  It stops
+#    setting the ECT codepoint in IP packets that it sends, assuming that
+#    either the network path or the peer does not support ECN.
+# 
+#    Even if validation fails, an endpoint MAY revalidate ECN for the same
+#    path at any later time in the connection.  An endpoint could continue
+#    to periodically attempt validation.
+# 
+#    Upon successful validation, an endpoint MAY continue to set an ECT
+#    codepoint in subsequent packets it sends, with the expectation that
+#    the path is ECN capable.  Network routing and path elements can
+#    change mid-connection; an endpoint MUST disable ECN if validation
+#    later fails.
+
+[[spec]]
+level = "MUST"
+quote = '''
+If validation fails, then the endpoint MUST disable ECN.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Even if validation fails, an endpoint MAY revalidate ECN for the same
+path at any later time in the connection.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Upon successful validation, an endpoint MAY continue to set an ECT
+codepoint in subsequent packets it sends, with the expectation that
+the path is ECN capable.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Network routing and path elements can
+change mid-connection; an endpoint MUST disable ECN if validation
+later fails.
+'''
+

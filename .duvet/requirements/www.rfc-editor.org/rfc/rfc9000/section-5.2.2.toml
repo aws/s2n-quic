@@ -1,0 +1,100 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2"
+
+# Server Packet Handling
+#
+#    If a server receives a packet that indicates an unsupported version
+#    and if the packet is large enough to initiate a new connection for
+#    any supported version, the server SHOULD send a Version Negotiation
+#    packet as described in Section 6.1.  A server MAY limit the number of
+#    packets to which it responds with a Version Negotiation packet.
+#    Servers MUST drop smaller packets that specify unsupported versions.
+# 
+#    The first packet for an unsupported version can use different
+#    semantics and encodings for any version-specific field.  In
+#    particular, different packet protection keys might be used for
+#    different versions.  Servers that do not support a particular version
+#    are unlikely to be able to decrypt the payload of the packet or
+#    properly interpret the result.  Servers SHOULD respond with a Version
+#    Negotiation packet, provided that the datagram is sufficiently long.
+# 
+#    Packets with a supported version, or no Version field, are matched to
+#    a connection using the connection ID or -- for packets with zero-
+#    length connection IDs -- the local address and port.  These packets
+#    are processed using the selected connection; otherwise, the server
+#    continues as described below.
+# 
+#    If the packet is an Initial packet fully conforming with the
+#    specification, the server proceeds with the handshake (Section 7).
+#    This commits the server to the version that the client selected.
+# 
+#    If a server refuses to accept a new connection, it SHOULD send an
+#    Initial packet containing a CONNECTION_CLOSE frame with error code
+#    CONNECTION_REFUSED.
+# 
+#    If the packet is a 0-RTT packet, the server MAY buffer a limited
+#    number of these packets in anticipation of a late-arriving Initial
+#    packet.  Clients are not able to send Handshake packets prior to
+#    receiving a server response, so servers SHOULD ignore any such
+#    packets.
+# 
+#    Servers MUST drop incoming packets under all other circumstances.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If a server receives a packet that indicates an unsupported version
+and if the packet is large enough to initiate a new connection for
+any supported version, the server SHOULD send a Version Negotiation
+packet as described in Section 6.1.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY limit the number of
+packets to which it responds with a Version Negotiation packet.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Servers MUST drop smaller packets that specify unsupported versions.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Servers SHOULD respond with a Version
+Negotiation packet, provided that the datagram is sufficiently long.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If a server refuses to accept a new connection, it SHOULD send an
+Initial packet containing a CONNECTION_CLOSE frame with error code
+CONNECTION_REFUSED.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If the packet is a 0-RTT packet, the server MAY buffer a limited
+number of these packets in anticipation of a late-arriving Initial
+packet.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Clients are not able to send Handshake packets prior to
+receiving a server response, so servers SHOULD ignore any such
+packets.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Servers MUST drop incoming packets under all other circumstances.
+'''
+

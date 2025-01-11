@@ -1,0 +1,62 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-11.1"
+
+# Connection Errors
+#
+#    Errors that result in the connection being unusable, such as an
+#    obvious violation of protocol semantics or corruption of state that
+#    affects an entire connection, MUST be signaled using a
+#    CONNECTION_CLOSE frame (Section 19.19).
+# 
+#    Application-specific protocol errors are signaled using the
+#    CONNECTION_CLOSE frame with a frame type of 0x1d.  Errors that are
+#    specific to the transport, including all those described in this
+#    document, are carried in the CONNECTION_CLOSE frame with a frame type
+#    of 0x1c.
+# 
+#    A CONNECTION_CLOSE frame could be sent in a packet that is lost.  An
+#    endpoint SHOULD be prepared to retransmit a packet containing a
+#    CONNECTION_CLOSE frame if it receives more packets on a terminated
+#    connection.  Limiting the number of retransmissions and the time over
+#    which this final packet is sent limits the effort expended on
+#    terminated connections.
+# 
+#    An endpoint that chooses not to retransmit packets containing a
+#    CONNECTION_CLOSE frame risks a peer missing the first such packet.
+#    The only mechanism available to an endpoint that continues to receive
+#    data for a terminated connection is to attempt the stateless reset
+#    process (Section 10.3).
+# 
+#    As the AEAD for Initial packets does not provide strong
+#    authentication, an endpoint MAY discard an invalid Initial packet.
+#    Discarding an Initial packet is permitted even where this
+#    specification otherwise mandates a connection error.  An endpoint can
+#    only discard a packet if it does not process the frames in the packet
+#    or reverts the effects of any processing.  Discarding invalid Initial
+#    packets might be used to reduce exposure to denial of service; see
+#    Section 21.2.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Errors that result in the connection being unusable, such as an
+obvious violation of protocol semantics or corruption of state that
+affects an entire connection, MUST be signaled using a
+CONNECTION_CLOSE frame (Section 19.19).
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An
+endpoint SHOULD be prepared to retransmit a packet containing a
+CONNECTION_CLOSE frame if it receives more packets on a terminated
+connection.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+As the AEAD for Initial packets does not provide strong
+authentication, an endpoint MAY discard an invalid Initial packet.
+'''
+

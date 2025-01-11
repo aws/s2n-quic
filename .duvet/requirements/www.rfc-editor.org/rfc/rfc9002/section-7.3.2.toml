@@ -1,0 +1,57 @@
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-7.3.2"
+
+# Recovery
+#
+#    A NewReno sender enters a recovery period when it detects the loss of
+#    a packet or when the ECN-CE count reported by its peer increases.  A
+#    sender that is already in a recovery period stays in it and does not
+#    reenter it.
+# 
+#    On entering a recovery period, a sender MUST set the slow start
+#    threshold to half the value of the congestion window when loss is
+#    detected.  The congestion window MUST be set to the reduced value of
+#    the slow start threshold before exiting the recovery period.
+# 
+#    Implementations MAY reduce the congestion window immediately upon
+#    entering a recovery period or use other mechanisms, such as
+#    Proportional Rate Reduction [PRR], to reduce the congestion window
+#    more gradually.  If the congestion window is reduced immediately, a
+#    single packet can be sent prior to reduction.  This speeds up loss
+#    recovery if the data in the lost packet is retransmitted and is
+#    similar to TCP as described in Section 5 of [RFC6675].
+# 
+#    The recovery period aims to limit congestion window reduction to once
+#    per round trip.  Therefore, during a recovery period, the congestion
+#    window does not change in response to new losses or increases in the
+#    ECN-CE count.
+# 
+#    A recovery period ends and the sender enters congestion avoidance
+#    when a packet sent during the recovery period is acknowledged.  This
+#    is slightly different from TCP's definition of recovery, which ends
+#    when the lost segment that started recovery is acknowledged
+#    [RFC5681].
+
+[[spec]]
+level = "MUST"
+quote = '''
+On entering a recovery period, a sender MUST set the slow start
+threshold to half the value of the congestion window when loss is
+detected.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The congestion window MUST be set to the reduced value of
+the slow start threshold before exiting the recovery period.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Implementations MAY reduce the congestion window immediately upon
+entering a recovery period or use other mechanisms, such as
+Proportional Rate Reduction [PRR], to reduce the congestion window
+more gradually.
+'''
+

@@ -1,0 +1,84 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-4.1.4"
+
+# Encryption Level Changes
+#
+#    As keys at a given encryption level become available to TLS, TLS
+#    indicates to QUIC that reading or writing keys at that encryption
+#    level are available.
+# 
+#    The availability of new keys is always a result of providing inputs
+#    to TLS.  TLS only provides new keys after being initialized (by a
+#    client) or when provided with new handshake data.
+# 
+#    However, a TLS implementation could perform some of its processing
+#    asynchronously.  In particular, the process of validating a
+#    certificate can take some time.  While waiting for TLS processing to
+#    complete, an endpoint SHOULD buffer received packets if they might be
+#    processed using keys that are not yet available.  These packets can
+#    be processed once keys are provided by TLS.  An endpoint SHOULD
+#    continue to respond to packets that can be processed during this
+#    time.
+# 
+#    After processing inputs, TLS might produce handshake bytes, keys for
+#    new encryption levels, or both.
+# 
+#    TLS provides QUIC with three items as a new encryption level becomes
+#    available:
+# 
+#    *  A secret
+# 
+#    *  An Authenticated Encryption with Associated Data (AEAD) function
+# 
+#    *  A Key Derivation Function (KDF)
+# 
+#    These values are based on the values that TLS negotiates and are used
+#    by QUIC to generate packet and header protection keys; see Section 5
+#    and Section 5.4.
+# 
+#    If 0-RTT is possible, it is ready after the client sends a TLS
+#    ClientHello message or the server receives that message.  After
+#    providing a QUIC client with the first handshake bytes, the TLS stack
+#    might signal the change to 0-RTT keys.  On the server, after
+#    receiving handshake bytes that contain a ClientHello message, a TLS
+#    server might signal that 0-RTT keys are available.
+# 
+#    Although TLS only uses one encryption level at a time, QUIC may use
+#    more than one level.  For instance, after sending its Finished
+#    message (using a CRYPTO frame at the Handshake encryption level) an
+#    endpoint can send STREAM data (in 1-RTT encryption).  If the Finished
+#    message is lost, the endpoint uses the Handshake encryption level to
+#    retransmit the lost message.  Reordering or loss of packets can mean
+#    that QUIC will need to handle packets at multiple encryption levels.
+#    During the handshake, this means potentially handling packets at
+#    higher and lower encryption levels than the current encryption level
+#    used by TLS.
+# 
+#    In particular, server implementations need to be able to read packets
+#    at the Handshake encryption level at the same time as the 0-RTT
+#    encryption level.  A client could interleave ACK frames that are
+#    protected with Handshake keys with 0-RTT data, and the server needs
+#    to process those acknowledgments in order to detect lost Handshake
+#    packets.
+# 
+#    QUIC also needs access to keys that might not ordinarily be available
+#    to a TLS implementation.  For instance, a client might need to
+#    acknowledge Handshake packets before it is ready to send CRYPTO
+#    frames at that encryption level.  TLS therefore needs to provide keys
+#    to QUIC before it might produce them for its own use.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+While waiting for TLS processing to
+complete, an endpoint SHOULD buffer received packets if they might be
+processed using keys that are not yet available.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint SHOULD
+continue to respond to packets that can be processed during this
+time.
+'''
+

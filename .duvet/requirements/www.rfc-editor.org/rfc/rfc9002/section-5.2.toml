@@ -1,0 +1,73 @@
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-5.2"
+
+# Estimating min_rtt
+#
+#    min_rtt is the sender's estimate of the minimum RTT observed for a
+#    given network path over a period of time.  In this document, min_rtt
+#    is used by loss detection to reject implausibly small RTT samples.
+# 
+#    min_rtt MUST be set to the latest_rtt on the first RTT sample.
+#    min_rtt MUST be set to the lesser of min_rtt and latest_rtt
+#    (Section 5.1) on all other samples.
+# 
+#    An endpoint uses only locally observed times in computing the min_rtt
+#    and does not adjust for acknowledgment delays reported by the peer.
+#    Doing so allows the endpoint to set a lower bound for the
+#    smoothed_rtt based entirely on what it observes (see Section 5.3) and
+#    limits potential underestimation due to erroneously reported delays
+#    by the peer.
+# 
+#    The RTT for a network path may change over time.  If a path's actual
+#    RTT decreases, the min_rtt will adapt immediately on the first low
+#    sample.  If the path's actual RTT increases, however, the min_rtt
+#    will not adapt to it, allowing future RTT samples that are smaller
+#    than the new RTT to be included in smoothed_rtt.
+# 
+#    Endpoints SHOULD set the min_rtt to the newest RTT sample after
+#    persistent congestion is established.  This avoids repeatedly
+#    declaring persistent congestion when the RTT increases.  This also
+#    allows a connection to reset its estimate of min_rtt and smoothed_rtt
+#    after a disruptive network event; see Section 5.3.
+# 
+#    Endpoints MAY reestablish the min_rtt at other times in the
+#    connection, such as when traffic volume is low and an acknowledgment
+#    is received with a low acknowledgment delay.  Implementations SHOULD
+#    NOT refresh the min_rtt value too often since the actual minimum RTT
+#    of the path is not frequently observable.
+
+[[spec]]
+level = "MUST"
+quote = '''
+min_rtt MUST be set to the latest_rtt on the first RTT sample.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+min_rtt MUST be set to the lesser of min_rtt and latest_rtt
+(Section 5.1) on all other samples.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Endpoints SHOULD set the min_rtt to the newest RTT sample after
+persistent congestion is established.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Endpoints MAY reestablish the min_rtt at other times in the
+connection, such as when traffic volume is low and an acknowledgment
+is received with a low acknowledgment delay.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Implementations SHOULD
+NOT refresh the min_rtt value too often since the actual minimum RTT
+of the path is not frequently observable.
+'''
+

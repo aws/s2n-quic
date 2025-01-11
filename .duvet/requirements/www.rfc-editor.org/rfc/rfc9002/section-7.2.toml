@@ -1,0 +1,61 @@
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-7.2"
+
+# Initial and Minimum Congestion Window
+#
+#    QUIC begins every connection in slow start with the congestion window
+#    set to an initial value.  Endpoints SHOULD use an initial congestion
+#    window of ten times the maximum datagram size (max_datagram_size),
+#    while limiting the window to the larger of 14,720 bytes or twice the
+#    maximum datagram size.  This follows the analysis and recommendations
+#    in [RFC6928], increasing the byte limit to account for the smaller
+#    8-byte overhead of UDP compared to the 20-byte overhead for TCP.
+# 
+#    If the maximum datagram size changes during the connection, the
+#    initial congestion window SHOULD be recalculated with the new size.
+#    If the maximum datagram size is decreased in order to complete the
+#    handshake, the congestion window SHOULD be set to the new initial
+#    congestion window.
+# 
+#    Prior to validating the client's address, the server can be further
+#    limited by the anti-amplification limit as specified in Section 8.1
+#    of [QUIC-TRANSPORT].  Though the anti-amplification limit can prevent
+#    the congestion window from being fully utilized and therefore slow
+#    down the increase in congestion window, it does not directly affect
+#    the congestion window.
+# 
+#    The minimum congestion window is the smallest value the congestion
+#    window can attain in response to loss, an increase in the peer-
+#    reported ECN-CE count, or persistent congestion.  The RECOMMENDED
+#    value is 2 * max_datagram_size.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Endpoints SHOULD use an initial congestion
+window of ten times the maximum datagram size (max_datagram_size),
+while limiting the window to the larger of 14,720 bytes or twice the
+maximum datagram size.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If the maximum datagram size changes during the connection, the
+initial congestion window SHOULD be recalculated with the new size.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If the maximum datagram size is decreased in order to complete the
+handshake, the congestion window SHOULD be set to the new initial
+congestion window.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The RECOMMENDED
+value is 2 * max_datagram_size.
+'''
+

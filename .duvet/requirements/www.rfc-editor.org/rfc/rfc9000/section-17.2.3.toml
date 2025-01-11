@@ -1,0 +1,94 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.3"
+
+# 0-RTT
+#
+#    A 0-RTT packet uses long headers with a type value of 0x01, followed
+#    by the Length and Packet Number fields; see Section 17.2.  The first
+#    byte contains the Reserved and Packet Number Length bits; see
+#    Section 17.2.  A 0-RTT packet is used to carry "early" data from the
+#    client to the server as part of the first flight, prior to handshake
+#    completion.  As part of the TLS handshake, the server can accept or
+#    reject this early data.
+# 
+#    See Section 2.3 of [TLS13] for a discussion of 0-RTT data and its
+#    limitations.
+# 
+#    0-RTT Packet {
+#      Header Form (1) = 1,
+#      Fixed Bit (1) = 1,
+#      Long Packet Type (2) = 1,
+#      Reserved Bits (2),
+#      Packet Number Length (2),
+#      Version (32),
+#      Destination Connection ID Length (8),
+#      Destination Connection ID (0..160),
+#      Source Connection ID Length (8),
+#      Source Connection ID (0..160),
+#      Length (i),
+#      Packet Number (8..32),
+#      Packet Payload (8..),
+#    }
+# 
+#                           Figure 16: 0-RTT Packet
+# 
+#    Packet numbers for 0-RTT protected packets use the same space as
+#    1-RTT protected packets.
+# 
+#    After a client receives a Retry packet, 0-RTT packets are likely to
+#    have been lost or discarded by the server.  A client SHOULD attempt
+#    to resend data in 0-RTT packets after it sends a new Initial packet.
+#    New packet numbers MUST be used for any new packets that are sent; as
+#    described in Section 17.2.5.3, reusing packet numbers could
+#    compromise packet protection.
+# 
+#    A client only receives acknowledgments for its 0-RTT packets once the
+#    handshake is complete, as defined in Section 4.1.1 of [QUIC-TLS].
+# 
+#    A client MUST NOT send 0-RTT packets once it starts processing 1-RTT
+#    packets from the server.  This means that 0-RTT packets cannot
+#    contain any response to frames from 1-RTT packets.  For instance, a
+#    client cannot send an ACK frame in a 0-RTT packet, because that can
+#    only acknowledge a 1-RTT packet.  An acknowledgment for a 1-RTT
+#    packet MUST be carried in a 1-RTT packet.
+# 
+#    A server SHOULD treat a violation of remembered limits
+#    (Section 7.4.1) as a connection error of an appropriate type (for
+#    instance, a FLOW_CONTROL_ERROR for exceeding stream data limits).
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A client SHOULD attempt
+to resend data in 0-RTT packets after it sends a new Initial packet.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+New packet numbers MUST be used for any new packets that are sent; as
+described in Section 17.2.5.3, reusing packet numbers could
+compromise packet protection.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT send 0-RTT packets once it starts processing 1-RTT
+packets from the server.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An acknowledgment for a 1-RTT
+packet MUST be carried in a 1-RTT packet.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A server SHOULD treat a violation of remembered limits
+(Section 7.4.1) as a connection error of an appropriate type (for
+instance, a FLOW_CONTROL_ERROR for exceeding stream data limits).
+'''
+

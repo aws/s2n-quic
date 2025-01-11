@@ -1,0 +1,20 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-6.1.1"
+
+# Application Request
+#
+#    An application needs an application-layer protocol mechanism (such as
+#    a message acknowledgment method) that solicits a response from a
+#    destination endpoint.  The method SHOULD allow the sender to check
+#    the value returned in the response to provide additional protection
+#    from off-path insertion of data [BCP145].  Suitable methods include a
+#    parameter known only to the two endpoints, such as a session ID or
+#    initialized sequence number.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The method SHOULD allow the sender to check
+the value returned in the response to provide additional protection
+from off-path insertion of data [BCP145].
+'''
+
