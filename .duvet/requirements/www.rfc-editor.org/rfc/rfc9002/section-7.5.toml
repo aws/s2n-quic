@@ -1,0 +1,27 @@
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-7.5"
+
+# Probe Timeout
+#
+#    Probe packets MUST NOT be blocked by the congestion controller.  A
+#    sender MUST however count these packets as being additionally in
+#    flight, since these packets add network load without establishing
+#    packet loss.  Note that sending probe packets might cause the
+#    sender's bytes in flight to exceed the congestion window until an
+#    acknowledgment is received that establishes loss or delivery of
+#    packets.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Probe packets MUST NOT be blocked by the congestion controller.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+sender MUST however count these packets as being additionally in
+flight, since these packets add network load without establishing
+packet loss.
+'''
+

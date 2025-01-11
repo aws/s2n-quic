@@ -1,0 +1,66 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.4"
+
+# Handshake Packet
+#
+#    A Handshake packet uses long headers with a type value of 0x02,
+#    followed by the Length and Packet Number fields; see Section 17.2.
+#    The first byte contains the Reserved and Packet Number Length bits;
+#    see Section 17.2.  It is used to carry cryptographic handshake
+#    messages and acknowledgments from the server and client.
+# 
+#    Handshake Packet {
+#      Header Form (1) = 1,
+#      Fixed Bit (1) = 1,
+#      Long Packet Type (2) = 2,
+#      Reserved Bits (2),
+#      Packet Number Length (2),
+#      Version (32),
+#      Destination Connection ID Length (8),
+#      Destination Connection ID (0..160),
+#      Source Connection ID Length (8),
+#      Source Connection ID (0..160),
+#      Length (i),
+#      Packet Number (8..32),
+#      Packet Payload (8..),
+#    }
+# 
+#                    Figure 17: Handshake Protected Packet
+# 
+#    Once a client has received a Handshake packet from a server, it uses
+#    Handshake packets to send subsequent cryptographic handshake messages
+#    and acknowledgments to the server.
+# 
+#    The Destination Connection ID field in a Handshake packet contains a
+#    connection ID that is chosen by the recipient of the packet; the
+#    Source Connection ID includes the connection ID that the sender of
+#    the packet wishes to use; see Section 7.2.
+# 
+#    Handshake packets have their own packet number space, and thus the
+#    first Handshake packet sent by a server contains a packet number of
+#    0.
+# 
+#    The payload of this packet contains CRYPTO frames and could contain
+#    PING, PADDING, or ACK frames.  Handshake packets MAY contain
+#    CONNECTION_CLOSE frames of type 0x1c.  Endpoints MUST treat receipt
+#    of Handshake packets with other frames as a connection error of type
+#    PROTOCOL_VIOLATION.
+# 
+#    Like Initial packets (see Section 17.2.2.1), data in CRYPTO frames
+#    for Handshake packets is discarded -- and no longer retransmitted --
+#    when Handshake protection keys are discarded.
+
+[[spec]]
+level = "MAY"
+quote = '''
+Handshake packets MAY contain
+CONNECTION_CLOSE frames of type 0x1c.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints MUST treat receipt
+of Handshake packets with other frames as a connection error of type
+PROTOCOL_VIOLATION.
+'''
+
