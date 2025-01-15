@@ -21,6 +21,7 @@ use s2n_quic_core::{
     query::{Query, QueryMut},
     stream::{ops, StreamId, StreamType},
 };
+use std::any::Any;
 
 /// A dynamically dispatched connection API
 pub(crate) type ConnectionApi = Arc<dyn ConnectionApiProvider>;
@@ -57,6 +58,10 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
     fn server_name(&self) -> Result<Option<ServerName>, connection::Error>;
 
     fn application_protocol(&self) -> Result<Bytes, connection::Error>;
+
+    fn take_application_context(
+        &mut self,
+    ) -> Result<Option<Box<dyn Any + Send + Sync>>, connection::Error>;
 
     fn id(&self) -> u64;
 

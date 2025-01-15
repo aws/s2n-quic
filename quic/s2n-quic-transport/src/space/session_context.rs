@@ -41,6 +41,7 @@ use s2n_quic_core::{
         Error,
     },
 };
+use std::any::Any;
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,
@@ -62,6 +63,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub publisher: &'a mut Pub,
     pub datagram: &'a mut Config::DatagramEndpoint,
     pub dc: &'a mut Config::DcEndpoint,
+    pub application_context: &'a mut Option<Box<dyn Any + Send + Sync>>,
 }
 
 impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'_, Config, Pub> {
@@ -696,5 +698,8 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         }
 
         Ok(())
+    }
+    fn on_application_context(&mut self, context: Option<Box<dyn Any + Send + Sync>>) {
+        *self.application_context = context;
     }
 }

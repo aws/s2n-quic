@@ -16,6 +16,7 @@ use core::{
     ops::RangeInclusive,
     task::{Poll, Waker},
 };
+use std::any::Any;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application::ServerName,
@@ -63,6 +64,7 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     retry_cid: Option<Box<PeerId>>,
     initial: Option<Box<InitialSpace<Config>>>,
     handshake: Option<Box<HandshakeSpace<Config>>>,
+    pub application_context: Option<Box<dyn Any + Send + Sync>>,
     application: Option<Box<ApplicationSpace<Config>>>,
     zero_rtt_crypto:
         Option<Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>>,
@@ -124,6 +126,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 session,
                 initial_cid,
             }),
+            application_context: None,
             retry_cid: None,
             initial: Some(Box::new(InitialSpace::new(
                 initial_key,
@@ -258,6 +261,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake: &mut self.handshake,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
+                application_context: &mut self.application_context,
                 path_manager,
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
@@ -303,6 +307,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 retry_cid: self.retry_cid.as_deref(),
                 initial: &mut self.initial,
                 handshake: &mut self.handshake,
+                application_context: &mut self.application_context,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
                 path_manager,
