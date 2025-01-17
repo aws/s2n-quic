@@ -6,6 +6,7 @@
 
 - [Introduction]()
 - [Installation](user-guide/installation.md)
+- [Debugging](user-guide/debugging.md)
 
 # Developer Guide
 
