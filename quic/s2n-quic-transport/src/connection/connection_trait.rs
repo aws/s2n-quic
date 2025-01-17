@@ -36,6 +36,7 @@ use s2n_quic_core::{
     query,
     time::Timestamp,
 };
+use std::any::Any;
 
 /// A trait which represents an internally used `Connection`
 pub trait ConnectionTrait: 'static + Send + Sized {
@@ -505,6 +506,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             >,
             &path::Path<Self::Config>,
         );
+    fn take_application_context(&mut self) -> Option<Box<dyn Any + Send + Sync>>;
 }
 
 /// A lock that synchronizes connection state between the QUIC endpoint thread and application
