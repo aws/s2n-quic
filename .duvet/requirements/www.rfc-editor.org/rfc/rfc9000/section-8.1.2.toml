@@ -1,0 +1,71 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2"
+
+# Address Validation Using Retry Packets
+#
+#    Upon receiving the client's Initial packet, the server can request
+#    address validation by sending a Retry packet (Section 17.2.5)
+#    containing a token.  This token MUST be repeated by the client in all
+#    Initial packets it sends for that connection after it receives the
+#    Retry packet.
+# 
+#    In response to processing an Initial packet containing a token that
+#    was provided in a Retry packet, a server cannot send another Retry
+#    packet; it can only refuse the connection or permit it to proceed.
+# 
+#    As long as it is not possible for an attacker to generate a valid
+#    token for its own address (see Section 8.1.4) and the client is able
+#    to return that token, it proves to the server that it received the
+#    token.
+# 
+#    A server can also use a Retry packet to defer the state and
+#    processing costs of connection establishment.  Requiring the server
+#    to provide a different connection ID, along with the
+#    original_destination_connection_id transport parameter defined in
+#    Section 18.2, forces the server to demonstrate that it, or an entity
+#    it cooperates with, received the original Initial packet from the
+#    client.  Providing a different connection ID also grants a server
+#    some control over how subsequent packets are routed.  This can be
+#    used to direct connections to a different server instance.
+# 
+#    If a server receives a client Initial that contains an invalid Retry
+#    token but is otherwise valid, it knows the client will not accept
+#    another Retry token.  The server can discard such a packet and allow
+#    the client to time out to detect handshake failure, but that could
+#    impose a significant latency penalty on the client.  Instead, the
+#    server SHOULD immediately close (Section 10.2) the connection with an
+#    INVALID_TOKEN error.  Note that a server has not established any
+#    state for the connection at this point and so does not enter the
+#    closing period.
+# 
+#    A flow showing the use of a Retry packet is shown in Figure 9.
+# 
+#    Client                                                  Server
+# 
+#    Initial[0]: CRYPTO[CH] ->
+# 
+#                                                    <- Retry+Token
+# 
+#    Initial+Token[1]: CRYPTO[CH] ->
+# 
+#                                     Initial[0]: CRYPTO[SH] ACK[1]
+#                           Handshake[0]: CRYPTO[EE, CERT, CV, FIN]
+#                                     <- 1-RTT[0]: STREAM[1, "..."]
+# 
+#                    Figure 9: Example Handshake with Retry
+
+[[spec]]
+level = "MUST"
+quote = '''
+This token MUST be repeated by the client in all
+Initial packets it sends for that connection after it receives the
+Retry packet.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Instead, the
+server SHOULD immediately close (Section 10.2) the connection with an
+INVALID_TOKEN error.
+'''
+

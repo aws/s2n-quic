@@ -1,0 +1,89 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-22.3"
+
+# QUIC Transport Parameters Registry
+#
+#    IANA has added a registry for "QUIC Transport Parameters" under a
+#    "QUIC" heading.
+# 
+#    The "QUIC Transport Parameters" registry governs a 62-bit space.
+#    This registry follows the registration policy from Section 22.1.
+#    Permanent registrations in this registry are assigned using the
+#    Specification Required policy (Section 4.6 of [RFC8126]), except for
+#    values between 0x00 and 0x3f (in hexadecimal), inclusive, which are
+#    assigned using Standards Action or IESG Approval as defined in
+#    Sections 4.9 and 4.10 of [RFC8126].
+# 
+#    In addition to the fields listed in Section 22.1.1, permanent
+#    registrations in this registry MUST include the following field:
+# 
+#    Parameter Name:  A short mnemonic for the parameter.
+# 
+#    The initial contents of this registry are shown in Table 6.
+# 
+#       +=======+=====================================+===============+
+#       | Value | Parameter Name                      | Specification |
+#       +=======+=====================================+===============+
+#       | 0x00  | original_destination_connection_id  | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x01  | max_idle_timeout                    | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x02  | stateless_reset_token               | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x03  | max_udp_payload_size                | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x04  | initial_max_data                    | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x05  | initial_max_stream_data_bidi_local  | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x06  | initial_max_stream_data_bidi_remote | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x07  | initial_max_stream_data_uni         | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x08  | initial_max_streams_bidi            | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x09  | initial_max_streams_uni             | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x0a  | ack_delay_exponent                  | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x0b  | max_ack_delay                       | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x0c  | disable_active_migration            | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x0d  | preferred_address                   | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x0e  | active_connection_id_limit          | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x0f  | initial_source_connection_id        | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+#       | 0x10  | retry_source_connection_id          | Section 18.2  |
+#       +-------+-------------------------------------+---------------+
+# 
+#         Table 6: Initial QUIC Transport Parameters Registry Entries
+# 
+#    Each value of the form "31 * N + 27" for integer values of N (that
+#    is, 27, 58, 89, ...) are reserved; these values MUST NOT be assigned
+#    by IANA and MUST NOT appear in the listing of assigned values.
+
+[[spec]]
+level = "MUST"
+quote = '''
+In addition to the fields listed in Section 22.1.1, permanent
+registrations in this registry MUST include the following field:
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Each value of the form "31 * N + 27" for integer values of N (that
+is, 27, 58, 89, ...) are reserved; these values MUST NOT be assigned
+by IANA and MUST NOT appear in the listing of assigned values.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Each value of the form "31 * N + 27" for integer values of N (that
+is, 27, 58, 89, ...) are reserved; these values MUST NOT be assigned
+by IANA and MUST NOT appear in the listing of assigned values.
+'''
+

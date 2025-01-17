@@ -1,0 +1,33 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-8.4"
+
+# Prohibit TLS Middlebox Compatibility Mode
+#
+#    Appendix D.4 of [TLS13] describes an alteration to the TLS 1.3
+#    handshake as a workaround for bugs in some middleboxes.  The TLS 1.3
+#    middlebox compatibility mode involves setting the legacy_session_id
+#    field to a 32-byte value in the ClientHello and ServerHello, then
+#    sending a change_cipher_spec record.  Both field and record carry no
+#    semantic content and are ignored.
+# 
+#    This mode has no use in QUIC as it only applies to middleboxes that
+#    interfere with TLS over TCP.  QUIC also provides no means to carry a
+#    change_cipher_spec record.  A client MUST NOT request the use of the
+#    TLS 1.3 compatibility mode.  A server SHOULD treat the receipt of a
+#    TLS ClientHello with a non-empty legacy_session_id field as a
+#    connection error of type PROTOCOL_VIOLATION.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT request the use of the
+TLS 1.3 compatibility mode.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A server SHOULD treat the receipt of a
+TLS ClientHello with a non-empty legacy_session_id field as a
+connection error of type PROTOCOL_VIOLATION.
+'''
+

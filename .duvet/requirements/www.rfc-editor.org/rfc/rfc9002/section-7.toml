@@ -1,0 +1,62 @@
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-7"
+
+# Congestion Control
+#
+#    This document specifies a sender-side congestion controller for QUIC
+#    similar to TCP NewReno [RFC6582].
+# 
+#    The signals QUIC provides for congestion control are generic and are
+#    designed to support different sender-side algorithms.  A sender can
+#    unilaterally choose a different algorithm to use, such as CUBIC
+#    [RFC8312].
+# 
+#    If a sender uses a different controller than that specified in this
+#    document, the chosen controller MUST conform to the congestion
+#    control guidelines specified in Section 3.1 of [RFC8085].
+# 
+#    Similar to TCP, packets containing only ACK frames do not count
+#    toward bytes in flight and are not congestion controlled.  Unlike
+#    TCP, QUIC can detect the loss of these packets and MAY use that
+#    information to adjust the congestion controller or the rate of ACK-
+#    only packets being sent, but this document does not describe a
+#    mechanism for doing so.
+# 
+#    The congestion controller is per path, so packets sent on other paths
+#    do not alter the current path's congestion controller, as described
+#    in Section 9.4 of [QUIC-TRANSPORT].
+# 
+#    The algorithm in this document specifies and uses the controller's
+#    congestion window in bytes.
+# 
+#    An endpoint MUST NOT send a packet if it would cause bytes_in_flight
+#    (see Appendix B.2) to be larger than the congestion window, unless
+#    the packet is sent on a PTO timer expiration (see Section 6.2) or
+#    when entering recovery (see Section 7.3.2).
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a sender uses a different controller than that specified in this
+document, the chosen controller MUST conform to the congestion
+control guidelines specified in Section 3.1 of [RFC8085].
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Unlike
+TCP, QUIC can detect the loss of these packets and MAY use that
+information to adjust the congestion controller or the rate of ACK-
+only packets being sent, but this document does not describe a
+mechanism for doing so.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST NOT send a packet if it would cause bytes_in_flight
+(see Appendix B.2) to be larger than the congestion window, unless
+the packet is sent on a PTO timer expiration (see Section 6.2) or
+when entering recovery (see Section 7.3.2).
+'''
+
