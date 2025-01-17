@@ -1,0 +1,297 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Debugging - s2n-quic Guide</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">s2n-quic Guide</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/aws/s2n-quic" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/aws/s2n-quic/edit/main/docs/./user-guide/debugging.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="debugging-s2n-quic"><a class="header" href="#debugging-s2n-quic">Debugging s2n-quic</a></h1>
+<p>Before <a href="https://github.com/aws/s2n-quic/issues/new?template=s2n-quic-issue.md">opening an issue</a> regarding <code>s2n-quic</code>, you may be able to solve the issue on your own (or at least collect useful debugging information) by performing the actions contained within this section. Attaching the output from these actions to the issue increases our ability to address your issue in a timely manner.</p>
+<h2 id="tracing-logs"><a class="header" href="#tracing-logs">Tracing logs</a></h2>
+<p><code>s2n-quic</code> includes an Event framework that emits debugging information everytime a connection is started, a packet is received, a datagram is dropped, and <a href="https://docs.rs/s2n-quic/latest/s2n_quic/provider/event/trait.Subscriber.html#provided-methods">many other situations</a>. When the <code>provider-event-tracing</code> feature is enabled, the default behavior of <code>s2n-quic</code> is to emit these events via <a href="https://docs.rs/tracing">tracing</a>. Configuring a <code>tracing-subscriber</code> will allow for the events to be emitted to a log file or stdout. Follow these steps to emit a tracing log to stdout:</p>
+<h3 id="1-enable-the-provider-event-tracing-feature"><a class="header" href="#1-enable-the-provider-event-tracing-feature">1. Enable the <code>provider-event-tracing</code> feature</a></h3>
+<p>This feature is not enabled by default in <code>s2n-quic</code>, so specify it in your <code>Cargo.toml</code> in the <code>s2n-quic</code> dependency:</p>
+<pre><code class="language-toml">[dependencies]
+s2n-quic = { version = "1", features = ["provider-event-tracing"]}
+</code></pre>
+<h3 id="2-add-a-dependency-on-tracing-subscriber"><a class="header" href="#2-add-a-dependency-on-tracing-subscriber">2. Add a dependency on <code>tracing-subscriber</code></a></h3>
+<p><code>tracing-subscriber</code> is used for collecting the event data emitted by <code>s2n-quic</code> and outputting it to stdout. The <code>env-filter</code> feature is used for turning logging off and on based on the <code>RUST_LOG</code> environment variable.</p>
+<pre><code class="language-toml">[dependencies]
+s2n-quic = { version = "1", features = ["provider-event-tracing"]}
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+</code></pre>
+<h3 id="3-configure-and-initialize-a-global-tracing-subscriber"><a class="header" href="#3-configure-and-initialize-a-global-tracing-subscriber">3. Configure and initialize a global <code>tracing-subscriber</code></a></h3>
+<p>In your application code, prior to starting an <code>s2n-quic</code> server or client, include the following code to initialize a global <code>tracing-subscriber</code>.  This configuration allows for the <code>RUST_LOG</code> environment variable to determine the logging level.</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let format = tracing_subscriber::fmt::format()
+    .with_level(false) // don't include levels in formatted output
+    .with_timer(tracing_subscriber::fmt::time::uptime())
+    .with_ansi(false) 
+    .compact(); // Use a less verbose output format.
+
+tracing_subscriber::fmt()
+    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    .event_format(format)
+    .init();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="4-optional-specify-the--tracingsubscriber-event-provider-to-s2n-quic-server-or-client"><a class="header" href="#4-optional-specify-the--tracingsubscriber-event-provider-to-s2n-quic-server-or-client">4. [Optional] Specify the  <code>tracing::Subscriber</code> Event provider to <code>s2n-quic</code> server or client</a></h3>
+<p>When the <code>provider-event-tracing</code> feature is enabled, the default behavior of <code>s2n-quic</code> is to emit these events via <a href="https://docs.rs/tracing">tracing</a>. If your application already makes use of a custom event subscriber, you may need to explicitly specify the default <code>event::tracing::Subscriber</code> by composing it with your existing event subscriber (<code>MyCustomEventSubscriber</code> in this example):</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut server = Server::builder()
+   .with_tls((CERT_PEM, KEY_PEM))?
+   .with_io("127.0.0.1:4433")?
+   .with_event((
+       MyCustomEventSubscriber,
+       s2n_quic::provider::event::tracing::Subscriber::default(),
+    ))?
+   .start()?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="5-run-your-application-with-the-rust_log-environment-variable"><a class="header" href="#5-run-your-application-with-the-rust_log-environment-variable">5. Run your application with the <code>RUST_LOG</code> environment variable</a></h3>
+<p>Now that everything has been configured, you can set the <code>RUST_LOG</code> environment variable to <code>debug</code> to start emitting debugging information:</p>
+<pre><code class="language-bash"> $ RUST_LOG=debug cargo run --bin my_application
+ 0.032760542s s2n_quic:server: platform_feature_configured: configuration=Gso { max_segments: 1 }
+ 0.032954042s s2n_quic:server: platform_feature_configured: configuration=BaseMtu { mtu: 1228 }
+ 0.032964625s s2n_quic:server: platform_feature_configured: configuration=InitialMtu { mtu: 1228 }
+ 0.032971583s s2n_quic:server: platform_feature_configured: configuration=MaxMtu { mtu: 1228 }
+ 0.032978167s s2n_quic:server: platform_feature_configured: configuration=Gro { enabled: false }
+ 0.032987833s s2n_quic:server: platform_feature_configured: configuration=Ecn { enabled: true }
+ 0.033881250s s2n_quic:server: platform_event_loop_started: local_address=127.0.0.1:4433
+...
+</code></pre>
+<p>Capture this output and attach it to your issue to aid with debugging.</p>
+<h2 id="packet-capture"><a class="header" href="#packet-capture">Packet capture</a></h2>
+<p>A packet capture allows for inspecting the contents of every packet transmitted or received by <code>s2n-quic</code>. Along with tracing logs, this can be very helpful for diagnosing issues. Follow these steps to record a packet capture.</p>
+<h3 id="1-enable-key-logging-on-the-tls-provider"><a class="header" href="#1-enable-key-logging-on-the-tls-provider">1. Enable key logging on the TLS provider</a></h3>
+<p>Since QUIC is an encrypted transport protocol, the payload of each packet is not readable in a standard packet capture. <code>s2n-quic</code> supports exporting the TLS session keys used by each QUIC connection so that the packet capture may be decrypted. Both the <code>s2n-tls</code> and <code>rustls</code> TLS providers support key logging through their associated builders:</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let tls = s2n_quic::provider::tls::default::Serverhell::builder()
+    .with_certificate(CERT_PEM, KEY_PEM)?
+    .with_key_logging()?  // enables key logging
+    .build()?;
+
+let mut server = Server::builder()
+   .with_tls(tls)?
+   .with_io("127.0.0.1:4433")?
+   .start()?;
+<span class="boring">}</span></code></pre></pre>
+<h4 id="2-start-capturing-packets"><a class="header" href="#2-start-capturing-packets">2. Start capturing packets</a></h4>
+<p>Popular tools for capture packets include the command line tools <a href="https://www.tcpdump.org/">tcpdump</a> and <a href="https://www.wireshark.org/docs/man-pages/tshark.html">tshark</a>, as well as <a href="https://www.wireshark.org/">Wireshark</a>. Determine the network interface you are using for communicating with <code>s2n-quic</code> and provide it to the packet capture tool you prefer. The following example uses <code>tcpdump</code> to capture on the loopback interface and write the capture to a file:</p>
+<pre><code class="language-bash">$ sudo tcpdump -i lo0 -w /var/tmp/mycapture.pcap
+</code></pre>
+<h4 id="3-run-your-application-with-the-sslkeylogfile-environment-variable"><a class="header" href="#3-run-your-application-with-the-sslkeylogfile-environment-variable">3. Run your application with the <code>SSLKEYLOGFILE</code> environment variable</a></h4>
+<p>Set the <code>SSLKEYLOGFILE</code> environment variable to a file path to create a file containing the TLS session keys:</p>
+<pre><code class="language-bash">$ SSLKEYLOGFILE=/var/tmp/keys.log cargo run --bin my_application
+</code></pre>
+<h4 id="4-optional-embed-the-key-log-in-the-packet-capture-file"><a class="header" href="#4-optional-embed-the-key-log-in-the-packet-capture-file">4. [Optional] Embed the key log in the packet capture file</a></h4>
+<p>To simplify analysis of the packet capture, it can be helpful to embed the key log from the previous step into the packet capture file itself. <a href="https://www.wireshark.org/docs/man-pages/editcap.html">editcap</a> is a utility for editing packet captures and can perform this embedding:</p>
+<pre><code class="language-bash">$ editcap --inject-secrets tls,/var/tmp/keys.log /var/tmp/mycapture.pcap /var/tmp/capturewithkeys.pcapng
+</code></pre>
+<p>Attach <code>capturewithkeys.pcapng</code> to your issue to aid with debugging. If you skipped step 4, also attach <code>keys.log</code>.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../user-guide/installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../dev-guide.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../user-guide/installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../dev-guide.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

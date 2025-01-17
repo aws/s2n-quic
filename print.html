@@ -165,6 +165,91 @@
 <h2 id="license"><a class="header" href="#license">License</a></h2>
 <p><code>s2n-quic</code> source code and documentation is released under the <a href="https://aws.amazon.com/apache-2-0">Apache 2.0 License</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="debugging-s2n-quic"><a class="header" href="#debugging-s2n-quic">Debugging s2n-quic</a></h1>
+<p>Before <a href="https://github.com/aws/s2n-quic/issues/new?template=s2n-quic-issue.md">opening an issue</a> regarding <code>s2n-quic</code>, you may be able to solve the issue on your own (or at least collect useful debugging information) by performing the actions contained within this section. Attaching the output from these actions to the issue increases our ability to address your issue in a timely manner.</p>
+<h2 id="tracing-logs"><a class="header" href="#tracing-logs">Tracing logs</a></h2>
+<p><code>s2n-quic</code> includes an Event framework that emits debugging information everytime a connection is started, a packet is received, a datagram is dropped, and <a href="https://docs.rs/s2n-quic/latest/s2n_quic/provider/event/trait.Subscriber.html#provided-methods">many other situations</a>. When the <code>provider-event-tracing</code> feature is enabled, the default behavior of <code>s2n-quic</code> is to emit these events via <a href="https://docs.rs/tracing">tracing</a>. Configuring a <code>tracing-subscriber</code> will allow for the events to be emitted to a log file or stdout. Follow these steps to emit a tracing log to stdout:</p>
+<h3 id="1-enable-the-provider-event-tracing-feature"><a class="header" href="#1-enable-the-provider-event-tracing-feature">1. Enable the <code>provider-event-tracing</code> feature</a></h3>
+<p>This feature is not enabled by default in <code>s2n-quic</code>, so specify it in your <code>Cargo.toml</code> in the <code>s2n-quic</code> dependency:</p>
+<pre><code class="language-toml">[dependencies]
+s2n-quic = { version = "1", features = ["provider-event-tracing"]}
+</code></pre>
+<h3 id="2-add-a-dependency-on-tracing-subscriber"><a class="header" href="#2-add-a-dependency-on-tracing-subscriber">2. Add a dependency on <code>tracing-subscriber</code></a></h3>
+<p><code>tracing-subscriber</code> is used for collecting the event data emitted by <code>s2n-quic</code> and outputting it to stdout. The <code>env-filter</code> feature is used for turning logging off and on based on the <code>RUST_LOG</code> environment variable.</p>
+<pre><code class="language-toml">[dependencies]
+s2n-quic = { version = "1", features = ["provider-event-tracing"]}
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+</code></pre>
+<h3 id="3-configure-and-initialize-a-global-tracing-subscriber"><a class="header" href="#3-configure-and-initialize-a-global-tracing-subscriber">3. Configure and initialize a global <code>tracing-subscriber</code></a></h3>
+<p>In your application code, prior to starting an <code>s2n-quic</code> server or client, include the following code to initialize a global <code>tracing-subscriber</code>.  This configuration allows for the <code>RUST_LOG</code> environment variable to determine the logging level.</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let format = tracing_subscriber::fmt::format()
+    .with_level(false) // don't include levels in formatted output
+    .with_timer(tracing_subscriber::fmt::time::uptime())
+    .with_ansi(false) 
+    .compact(); // Use a less verbose output format.
+
+tracing_subscriber::fmt()
+    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    .event_format(format)
+    .init();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="4-optional-specify-the--tracingsubscriber-event-provider-to-s2n-quic-server-or-client"><a class="header" href="#4-optional-specify-the--tracingsubscriber-event-provider-to-s2n-quic-server-or-client">4. [Optional] Specify the  <code>tracing::Subscriber</code> Event provider to <code>s2n-quic</code> server or client</a></h3>
+<p>When the <code>provider-event-tracing</code> feature is enabled, the default behavior of <code>s2n-quic</code> is to emit these events via <a href="https://docs.rs/tracing">tracing</a>. If your application already makes use of a custom event subscriber, you may need to explicitly specify the default <code>event::tracing::Subscriber</code> by composing it with your existing event subscriber (<code>MyCustomEventSubscriber</code> in this example):</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut server = Server::builder()
+   .with_tls((CERT_PEM, KEY_PEM))?
+   .with_io("127.0.0.1:4433")?
+   .with_event((
+       MyCustomEventSubscriber,
+       s2n_quic::provider::event::tracing::Subscriber::default(),
+    ))?
+   .start()?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="5-run-your-application-with-the-rust_log-environment-variable"><a class="header" href="#5-run-your-application-with-the-rust_log-environment-variable">5. Run your application with the <code>RUST_LOG</code> environment variable</a></h3>
+<p>Now that everything has been configured, you can set the <code>RUST_LOG</code> environment variable to <code>debug</code> to start emitting debugging information:</p>
+<pre><code class="language-bash"> $ RUST_LOG=debug cargo run --bin my_application
+ 0.032760542s s2n_quic:server: platform_feature_configured: configuration=Gso { max_segments: 1 }
+ 0.032954042s s2n_quic:server: platform_feature_configured: configuration=BaseMtu { mtu: 1228 }
+ 0.032964625s s2n_quic:server: platform_feature_configured: configuration=InitialMtu { mtu: 1228 }
+ 0.032971583s s2n_quic:server: platform_feature_configured: configuration=MaxMtu { mtu: 1228 }
+ 0.032978167s s2n_quic:server: platform_feature_configured: configuration=Gro { enabled: false }
+ 0.032987833s s2n_quic:server: platform_feature_configured: configuration=Ecn { enabled: true }
+ 0.033881250s s2n_quic:server: platform_event_loop_started: local_address=127.0.0.1:4433
+...
+</code></pre>
+<p>Capture this output and attach it to your issue to aid with debugging.</p>
+<h2 id="packet-capture"><a class="header" href="#packet-capture">Packet capture</a></h2>
+<p>A packet capture allows for inspecting the contents of every packet transmitted or received by <code>s2n-quic</code>. Along with tracing logs, this can be very helpful for diagnosing issues. Follow these steps to record a packet capture.</p>
+<h3 id="1-enable-key-logging-on-the-tls-provider"><a class="header" href="#1-enable-key-logging-on-the-tls-provider">1. Enable key logging on the TLS provider</a></h3>
+<p>Since QUIC is an encrypted transport protocol, the payload of each packet is not readable in a standard packet capture. <code>s2n-quic</code> supports exporting the TLS session keys used by each QUIC connection so that the packet capture may be decrypted. Both the <code>s2n-tls</code> and <code>rustls</code> TLS providers support key logging through their associated builders:</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let tls = s2n_quic::provider::tls::default::Serverhell::builder()
+    .with_certificate(CERT_PEM, KEY_PEM)?
+    .with_key_logging()?  // enables key logging
+    .build()?;
+
+let mut server = Server::builder()
+   .with_tls(tls)?
+   .with_io("127.0.0.1:4433")?
+   .start()?;
+<span class="boring">}</span></code></pre></pre>
+<h4 id="2-start-capturing-packets"><a class="header" href="#2-start-capturing-packets">2. Start capturing packets</a></h4>
+<p>Popular tools for capture packets include the command line tools <a href="https://www.tcpdump.org/">tcpdump</a> and <a href="https://www.wireshark.org/docs/man-pages/tshark.html">tshark</a>, as well as <a href="https://www.wireshark.org/">Wireshark</a>. Determine the network interface you are using for communicating with <code>s2n-quic</code> and provide it to the packet capture tool you prefer. The following example uses <code>tcpdump</code> to capture on the loopback interface and write the capture to a file:</p>
+<pre><code class="language-bash">$ sudo tcpdump -i lo0 -w /var/tmp/mycapture.pcap
+</code></pre>
+<h4 id="3-run-your-application-with-the-sslkeylogfile-environment-variable"><a class="header" href="#3-run-your-application-with-the-sslkeylogfile-environment-variable">3. Run your application with the <code>SSLKEYLOGFILE</code> environment variable</a></h4>
+<p>Set the <code>SSLKEYLOGFILE</code> environment variable to a file path to create a file containing the TLS session keys:</p>
+<pre><code class="language-bash">$ SSLKEYLOGFILE=/var/tmp/keys.log cargo run --bin my_application
+</code></pre>
+<h4 id="4-optional-embed-the-key-log-in-the-packet-capture-file"><a class="header" href="#4-optional-embed-the-key-log-in-the-packet-capture-file">4. [Optional] Embed the key log in the packet capture file</a></h4>
+<p>To simplify analysis of the packet capture, it can be helpful to embed the key log from the previous step into the packet capture file itself. <a href="https://www.wireshark.org/docs/man-pages/editcap.html">editcap</a> is a utility for editing packet captures and can perform this embedding:</p>
+<pre><code class="language-bash">$ editcap --inject-secrets tls,/var/tmp/keys.log /var/tmp/mycapture.pcap /var/tmp/capturewithkeys.pcapng
+</code></pre>
+<p>Attach <code>capturewithkeys.pcapng</code> to your issue to aid with debugging. If you skipped step 4, also attach <code>keys.log</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="contributing-guidelines"><a class="header" href="#contributing-guidelines">Contributing Guidelines</a></h1>
 <p>Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
 documentation, we greatly value feedback and contributions from our community.</p>
