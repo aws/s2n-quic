@@ -14,7 +14,9 @@ AWS Security via our [vulnerability reporting page](http://aws.amazon.com/securi
 
 ### Problem:
 
-<!--A short description of what the problem is and why we need to fix it. Add reproduction steps if necessary.-->
+<!--A short description of what the problem is and why we need to fix it. Add reproduction steps if necessary.
+
+Include a trace log and packet capture (with embedded key log) if possible. See https://aws.github.io/s2n-quic/user-guide/debugging.html for instructions on how to capture these. -->
 
 ### Solution:
 
