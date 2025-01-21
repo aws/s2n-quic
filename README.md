@@ -9,7 +9,7 @@
 - thorough [compliance coverage tracking](https://github.com/aws/s2n-quic/blob/main/docs/dev-guide/ci.md#compliance) of normative language in relevant standards
 - and much more, including [CUBIC congestion controller](https://www.rfc-editor.org/rfc/rfc8312.html) support, [packet pacing](https://www.rfc-editor.org/rfc/rfc9002.html#name-pacing), [Generic Segmentation Offload](https://lwn.net/Articles/188489/) support, [Path MTU discovery](https://www.rfc-editor.org/rfc/rfc8899.html), and unique [connection identifiers](https://www.rfc-editor.org/rfc/rfc9000.html#name-connection-id) detached from the address
 
-See the [API documentation](https://docs.rs/s2n-quic) and [examples](https://github.com/aws/s2n-quic/tree/main/examples) to get started with `s2n-quic`.
+See the [API documentation](https://docs.rs/s2n-quic), [examples](https://github.com/aws/s2n-quic/tree/main/examples), and [s2n-quic Guide](https://aws.github.io/s2n-quic/index.html) to get started with `s2n-quic`.
 
 [![Crates.io][crates-badge]][crates-url]
 [![docs.rs][docs-badge]][docs-url]
