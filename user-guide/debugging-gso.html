@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Debugging - s2n-quic Guide</title>
+        <title>GSO and GRO - s2n-quic Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/aws/s2n-quic" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/aws/s2n-quic/edit/main/docs/./user-guide/debugging.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/aws/s2n-quic/edit/main/docs/./user-guide/debugging-gso.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,18 +158,30 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="debugging-s2n-quic"><a class="header" href="#debugging-s2n-quic">Debugging s2n-quic</a></h1>
-<p>Before <a href="https://github.com/aws/s2n-quic/issues/new?template=s2n-quic-issue.md">opening an issue</a> regarding <code>s2n-quic</code>, you may be able to solve the issue on your own (or at least collect useful debugging information) by performing the actions contained within this section. Attaching the <a href="debugging-tracelog.html">trace log</a> and <a href="debugging-pcap.html">packet capture</a> from these actions to the issue increases our ability to address your issue in a timely manner.</p>
+                        <h2 id="gso-and-gro"><a class="header" href="#gso-and-gro">GSO and GRO</a></h2>
+<p>Generic Segmentation Offload (GSO) and Generic Receive Offload (GRO) are network stack features that can improve the efficiency of transmitting and receiving packets. GSO/GRO are enabled by default in <code>s2n-quic</code> on operating systems that have good support for these features (namely Linux variants). <code>s2n-quic</code> will also automatically disable these features if the operating system emits a socket error indicating they are not supported.</p>
+<p>Some operating systems may silently fail when using GSO/GRO, leading to performance degradation. In these cases, <code>s2n-quic</code> will not automatically disable GSO/GRO. You can manually disable GSO/GRO on the IO provider to evaluate if that has a positive impact on performance:</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let io = s2n_quic::provider::io::Default::builder()
+    .with_gso(false)? // disable GSO
+    .with_gro(false)? // disable GRO
+    .build()?;
+
+let mut server = Server::builder()
+    .with_io(io)?
+    .start()?;
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../user-guide/installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../user-guide/debugging-pcap.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../user-guide/debugging-tracelog.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../dev-guide.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -179,11 +191,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../user-guide/installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../user-guide/debugging-pcap.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../user-guide/debugging-tracelog.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../dev-guide.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

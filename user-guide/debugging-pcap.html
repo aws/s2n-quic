@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Debugging - s2n-quic Guide</title>
+        <title>Packet Capture - s2n-quic Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/aws/s2n-quic" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/aws/s2n-quic/edit/main/docs/./user-guide/debugging.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/aws/s2n-quic/edit/main/docs/./user-guide/debugging-pcap.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,18 +158,45 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="debugging-s2n-quic"><a class="header" href="#debugging-s2n-quic">Debugging s2n-quic</a></h1>
-<p>Before <a href="https://github.com/aws/s2n-quic/issues/new?template=s2n-quic-issue.md">opening an issue</a> regarding <code>s2n-quic</code>, you may be able to solve the issue on your own (or at least collect useful debugging information) by performing the actions contained within this section. Attaching the <a href="debugging-tracelog.html">trace log</a> and <a href="debugging-pcap.html">packet capture</a> from these actions to the issue increases our ability to address your issue in a timely manner.</p>
+                        <h2 id="packet-capture"><a class="header" href="#packet-capture">Packet capture</a></h2>
+<p>A packet capture allows for inspecting the contents of every packet transmitted or received by <code>s2n-quic</code>. Along with tracing logs, this can be very helpful for diagnosing issues. Follow these steps to record a packet capture.</p>
+<h3 id="1-enable-key-logging-on-the-tls-provider"><a class="header" href="#1-enable-key-logging-on-the-tls-provider">1. Enable key logging on the TLS provider</a></h3>
+<p>Since QUIC is an encrypted transport protocol, the payload of each packet is not readable in a standard packet capture. <code>s2n-quic</code> supports exporting the TLS session keys used by each QUIC connection so that the packet capture may be decrypted. Both the <code>s2n-tls</code> and <code>rustls</code> TLS providers support key logging through their associated builders:</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let tls = s2n_quic::provider::tls::default::Serverhell::builder()
+    .with_certificate(CERT_PEM, KEY_PEM)?
+    .with_key_logging()?  // enables key logging
+    .build()?;
+
+let mut server = Server::builder()
+   .with_tls(tls)?
+   .with_io("127.0.0.1:4433")?
+   .start()?;
+<span class="boring">}</span></code></pre></pre>
+<h4 id="2-start-capturing-packets"><a class="header" href="#2-start-capturing-packets">2. Start capturing packets</a></h4>
+<p>Popular tools for capture packets include the command line tools <a href="https://www.tcpdump.org/">tcpdump</a> and <a href="https://www.wireshark.org/docs/man-pages/tshark.html">tshark</a>, as well as <a href="https://www.wireshark.org/">Wireshark</a>. Determine the network interface you are using for communicating with <code>s2n-quic</code> and provide it to the packet capture tool you prefer. The following example uses <code>tcpdump</code> to capture on the loopback interface and write the capture to a file:</p>
+<pre><code class="language-bash">$ sudo tcpdump -i lo0 -w /var/tmp/mycapture.pcap
+</code></pre>
+<h4 id="3-run-your-application-with-the-sslkeylogfile-environment-variable"><a class="header" href="#3-run-your-application-with-the-sslkeylogfile-environment-variable">3. Run your application with the <code>SSLKEYLOGFILE</code> environment variable</a></h4>
+<p>Set the <code>SSLKEYLOGFILE</code> environment variable to a file path to create a file containing the TLS session keys:</p>
+<pre><code class="language-bash">$ SSLKEYLOGFILE=/var/tmp/keys.log cargo run --bin my_application
+</code></pre>
+<h4 id="4-optional-embed-the-key-log-in-the-packet-capture-file"><a class="header" href="#4-optional-embed-the-key-log-in-the-packet-capture-file">4. [Optional] Embed the key log in the packet capture file</a></h4>
+<p>To simplify analysis of the packet capture, it can be helpful to embed the key log from the previous step into the packet capture file itself. <a href="https://www.wireshark.org/docs/man-pages/editcap.html">editcap</a> is a utility for editing packet captures and can perform this embedding:</p>
+<pre><code class="language-bash">$ editcap --inject-secrets tls,/var/tmp/keys.log /var/tmp/mycapture.pcap /var/tmp/capturewithkeys.pcapng
+</code></pre>
+<p>Attach <code>capturewithkeys.pcapng</code> to your issue to aid with debugging. If you skipped step 4, also attach <code>keys.log</code>.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../user-guide/installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../user-guide/debugging-tracelog.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../user-guide/debugging-tracelog.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../user-guide/debugging-gso.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -179,11 +206,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../user-guide/installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../user-guide/debugging-tracelog.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../user-guide/debugging-tracelog.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../user-guide/debugging-gso.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

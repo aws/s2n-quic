@@ -166,8 +166,8 @@
 <p><code>s2n-quic</code> source code and documentation is released under the <a href="https://aws.amazon.com/apache-2-0">Apache 2.0 License</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="debugging-s2n-quic"><a class="header" href="#debugging-s2n-quic">Debugging s2n-quic</a></h1>
-<p>Before <a href="https://github.com/aws/s2n-quic/issues/new?template=s2n-quic-issue.md">opening an issue</a> regarding <code>s2n-quic</code>, you may be able to solve the issue on your own (or at least collect useful debugging information) by performing the actions contained within this section. Attaching the output from these actions to the issue increases our ability to address your issue in a timely manner.</p>
-<h2 id="tracing-logs"><a class="header" href="#tracing-logs">Tracing logs</a></h2>
+<p>Before <a href="https://github.com/aws/s2n-quic/issues/new?template=s2n-quic-issue.md">opening an issue</a> regarding <code>s2n-quic</code>, you may be able to solve the issue on your own (or at least collect useful debugging information) by performing the actions contained within this section. Attaching the <a href="user-guide/debugging-tracelog.html">trace log</a> and <a href="user-guide/debugging-pcap.html">packet capture</a> from these actions to the issue increases our ability to address your issue in a timely manner.</p>
+<div style="break-before: page; page-break-before: always;"></div><h2 id="tracing-logs"><a class="header" href="#tracing-logs">Tracing logs</a></h2>
 <p><code>s2n-quic</code> includes an Event framework that emits debugging information everytime a connection is started, a packet is received, a datagram is dropped, and <a href="https://docs.rs/s2n-quic/latest/s2n_quic/provider/event/trait.Subscriber.html#provided-methods">many other situations</a>. When the <code>provider-event-tracing</code> feature is enabled, the default behavior of <code>s2n-quic</code> is to emit these events via <a href="https://docs.rs/tracing">tracing</a>. Configuring a <code>tracing-subscriber</code> will allow for the events to be emitted to a log file or stdout. Follow these steps to emit a tracing log to stdout:</p>
 <h3 id="1-enable-the-provider-event-tracing-feature"><a class="header" href="#1-enable-the-provider-event-tracing-feature">1. Enable the <code>provider-event-tracing</code> feature</a></h3>
 <p>This feature is not enabled by default in <code>s2n-quic</code>, so specify it in your <code>Cargo.toml</code> in the <code>s2n-quic</code> dependency:</p>
@@ -221,7 +221,7 @@ tracing_subscriber::fmt()
 ...
 </code></pre>
 <p>Capture this output and attach it to your issue to aid with debugging.</p>
-<h2 id="packet-capture"><a class="header" href="#packet-capture">Packet capture</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h2 id="packet-capture"><a class="header" href="#packet-capture">Packet capture</a></h2>
 <p>A packet capture allows for inspecting the contents of every packet transmitted or received by <code>s2n-quic</code>. Along with tracing logs, this can be very helpful for diagnosing issues. Follow these steps to record a packet capture.</p>
 <h3 id="1-enable-key-logging-on-the-tls-provider"><a class="header" href="#1-enable-key-logging-on-the-tls-provider">1. Enable key logging on the TLS provider</a></h3>
 <p>Since QUIC is an encrypted transport protocol, the payload of each packet is not readable in a standard packet capture. <code>s2n-quic</code> supports exporting the TLS session keys used by each QUIC connection so that the packet capture may be decrypted. Both the <code>s2n-tls</code> and <code>rustls</code> TLS providers support key logging through their associated builders:</p>
@@ -250,6 +250,20 @@ let mut server = Server::builder()
 <pre><code class="language-bash">$ editcap --inject-secrets tls,/var/tmp/keys.log /var/tmp/mycapture.pcap /var/tmp/capturewithkeys.pcapng
 </code></pre>
 <p>Attach <code>capturewithkeys.pcapng</code> to your issue to aid with debugging. If you skipped step 4, also attach <code>keys.log</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div><h2 id="gso-and-gro"><a class="header" href="#gso-and-gro">GSO and GRO</a></h2>
+<p>Generic Segmentation Offload (GSO) and Generic Receive Offload (GRO) are network stack features that can improve the efficiency of transmitting and receiving packets. GSO/GRO are enabled by default in <code>s2n-quic</code> on operating systems that have good support for these features (namely Linux variants). <code>s2n-quic</code> will also automatically disable these features if the operating system emits a socket error indicating they are not supported.</p>
+<p>Some operating systems may silently fail when using GSO/GRO, leading to performance degradation. In these cases, <code>s2n-quic</code> will not automatically disable GSO/GRO. You can manually disable GSO/GRO on the IO provider to evaluate if that has a positive impact on performance:</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let io = s2n_quic::provider::io::Default::builder()
+    .with_gso(false)? // disable GSO
+    .with_gro(false)? // disable GRO
+    .build()?;
+
+let mut server = Server::builder()
+    .with_io(io)?
+    .start()?;
+<span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="contributing-guidelines"><a class="header" href="#contributing-guidelines">Contributing Guidelines</a></h1>
 <p>Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
 documentation, we greatly value feedback and contributions from our community.</p>

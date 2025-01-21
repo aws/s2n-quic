@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Debugging - s2n-quic Guide</title>
+        <title>Tracing Logs - s2n-quic Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/aws/s2n-quic" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/aws/s2n-quic/edit/main/docs/./user-guide/debugging.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/aws/s2n-quic/edit/main/docs/./user-guide/debugging-tracelog.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,18 +158,70 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="debugging-s2n-quic"><a class="header" href="#debugging-s2n-quic">Debugging s2n-quic</a></h1>
-<p>Before <a href="https://github.com/aws/s2n-quic/issues/new?template=s2n-quic-issue.md">opening an issue</a> regarding <code>s2n-quic</code>, you may be able to solve the issue on your own (or at least collect useful debugging information) by performing the actions contained within this section. Attaching the <a href="debugging-tracelog.html">trace log</a> and <a href="debugging-pcap.html">packet capture</a> from these actions to the issue increases our ability to address your issue in a timely manner.</p>
+                        <h2 id="tracing-logs"><a class="header" href="#tracing-logs">Tracing logs</a></h2>
+<p><code>s2n-quic</code> includes an Event framework that emits debugging information everytime a connection is started, a packet is received, a datagram is dropped, and <a href="https://docs.rs/s2n-quic/latest/s2n_quic/provider/event/trait.Subscriber.html#provided-methods">many other situations</a>. When the <code>provider-event-tracing</code> feature is enabled, the default behavior of <code>s2n-quic</code> is to emit these events via <a href="https://docs.rs/tracing">tracing</a>. Configuring a <code>tracing-subscriber</code> will allow for the events to be emitted to a log file or stdout. Follow these steps to emit a tracing log to stdout:</p>
+<h3 id="1-enable-the-provider-event-tracing-feature"><a class="header" href="#1-enable-the-provider-event-tracing-feature">1. Enable the <code>provider-event-tracing</code> feature</a></h3>
+<p>This feature is not enabled by default in <code>s2n-quic</code>, so specify it in your <code>Cargo.toml</code> in the <code>s2n-quic</code> dependency:</p>
+<pre><code class="language-toml">[dependencies]
+s2n-quic = { version = "1", features = ["provider-event-tracing"]}
+</code></pre>
+<h3 id="2-add-a-dependency-on-tracing-subscriber"><a class="header" href="#2-add-a-dependency-on-tracing-subscriber">2. Add a dependency on <code>tracing-subscriber</code></a></h3>
+<p><code>tracing-subscriber</code> is used for collecting the event data emitted by <code>s2n-quic</code> and outputting it to stdout. The <code>env-filter</code> feature is used for turning logging off and on based on the <code>RUST_LOG</code> environment variable.</p>
+<pre><code class="language-toml">[dependencies]
+s2n-quic = { version = "1", features = ["provider-event-tracing"]}
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+</code></pre>
+<h3 id="3-configure-and-initialize-a-global-tracing-subscriber"><a class="header" href="#3-configure-and-initialize-a-global-tracing-subscriber">3. Configure and initialize a global <code>tracing-subscriber</code></a></h3>
+<p>In your application code, prior to starting an <code>s2n-quic</code> server or client, include the following code to initialize a global <code>tracing-subscriber</code>.  This configuration allows for the <code>RUST_LOG</code> environment variable to determine the logging level.</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let format = tracing_subscriber::fmt::format()
+    .with_level(false) // don't include levels in formatted output
+    .with_timer(tracing_subscriber::fmt::time::uptime())
+    .with_ansi(false) 
+    .compact(); // Use a less verbose output format.
+
+tracing_subscriber::fmt()
+    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    .event_format(format)
+    .init();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="4-optional-specify-the--tracingsubscriber-event-provider-to-s2n-quic-server-or-client"><a class="header" href="#4-optional-specify-the--tracingsubscriber-event-provider-to-s2n-quic-server-or-client">4. [Optional] Specify the  <code>tracing::Subscriber</code> Event provider to <code>s2n-quic</code> server or client</a></h3>
+<p>When the <code>provider-event-tracing</code> feature is enabled, the default behavior of <code>s2n-quic</code> is to emit these events via <a href="https://docs.rs/tracing">tracing</a>. If your application already makes use of a custom event subscriber, you may need to explicitly specify the default <code>event::tracing::Subscriber</code> by composing it with your existing event subscriber (<code>MyCustomEventSubscriber</code> in this example):</p>
+<pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut server = Server::builder()
+   .with_tls((CERT_PEM, KEY_PEM))?
+   .with_io("127.0.0.1:4433")?
+   .with_event((
+       MyCustomEventSubscriber,
+       s2n_quic::provider::event::tracing::Subscriber::default(),
+    ))?
+   .start()?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="5-run-your-application-with-the-rust_log-environment-variable"><a class="header" href="#5-run-your-application-with-the-rust_log-environment-variable">5. Run your application with the <code>RUST_LOG</code> environment variable</a></h3>
+<p>Now that everything has been configured, you can set the <code>RUST_LOG</code> environment variable to <code>debug</code> to start emitting debugging information:</p>
+<pre><code class="language-bash"> $ RUST_LOG=debug cargo run --bin my_application
+ 0.032760542s s2n_quic:server: platform_feature_configured: configuration=Gso { max_segments: 1 }
+ 0.032954042s s2n_quic:server: platform_feature_configured: configuration=BaseMtu { mtu: 1228 }
+ 0.032964625s s2n_quic:server: platform_feature_configured: configuration=InitialMtu { mtu: 1228 }
+ 0.032971583s s2n_quic:server: platform_feature_configured: configuration=MaxMtu { mtu: 1228 }
+ 0.032978167s s2n_quic:server: platform_feature_configured: configuration=Gro { enabled: false }
+ 0.032987833s s2n_quic:server: platform_feature_configured: configuration=Ecn { enabled: true }
+ 0.033881250s s2n_quic:server: platform_event_loop_started: local_address=127.0.0.1:4433
+...
+</code></pre>
+<p>Capture this output and attach it to your issue to aid with debugging.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../user-guide/installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../user-guide/debugging.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../user-guide/debugging-tracelog.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../user-guide/debugging-pcap.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -179,11 +231,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../user-guide/installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../user-guide/debugging.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../user-guide/debugging-tracelog.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../user-guide/debugging-pcap.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
