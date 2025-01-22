@@ -9,6 +9,7 @@ use crate::{
         endpoint,
         environment::tokio::{self as env, Environment},
         socket::Protocol,
+        TransportFeatures,
     },
 };
 use std::{io, net::SocketAddr};
@@ -29,12 +30,15 @@ where
     // ensure we have a secret for the peer
     let peer = handshake.await?;
 
+    let (crypto, parameters) = peer.pair(&TransportFeatures::UDP);
+
     let stream = endpoint::open_stream(
         env,
-        peer,
+        peer.map(),
+        crypto,
+        parameters,
         env::UdpUnbound(acceptor_addr.into()),
         subscriber,
-        None,
     )?;
 
     // build the stream inside the application context
@@ -60,7 +64,14 @@ where
     Sub: event::Subscriber,
 {
     // Race TCP handshake with the TLS handshake
-    let (socket, peer) = tokio::try_join!(TcpStream::connect(acceptor_addr), handshake,)?;
+    let handshake = async {
+        let peer = handshake.await?;
+        let (crypto, parameters) = peer.pair(&TransportFeatures::TCP);
+        Ok((peer, crypto, parameters))
+    };
+    // poll the crypto first so the server can read the first packet on accept in the happy path
+    let ((peer, crypto, parameters), socket) =
+        tokio::try_join!(handshake, TcpStream::connect(acceptor_addr))?;
 
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
@@ -77,14 +88,15 @@ where
 
     let stream = endpoint::open_stream(
         env,
-        peer,
+        peer.map(),
+        crypto,
+        parameters,
         env::TcpRegistered {
             socket,
             peer_addr,
             local_port,
         },
         subscriber,
-        None,
     )?;
 
     // build the stream inside the application context
@@ -114,16 +126,20 @@ where
 {
     let local_port = socket.local_addr()?.port();
     let peer_addr = socket.peer_addr()?.into();
+
+    let (crypto, parameters) = peer.pair(&TransportFeatures::TCP);
+
     let stream = endpoint::open_stream(
         env,
-        peer,
+        peer.map(),
+        crypto,
+        parameters,
         env::TcpRegistered {
             socket,
             peer_addr,
             local_port,
         },
         subscriber,
-        None,
     )?;
 
     // build the stream inside the application context
