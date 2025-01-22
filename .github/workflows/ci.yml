@@ -388,6 +388,7 @@ jobs:
           submodules: true
       - uses: ./.github/actions/duvet
         with:
+          duvet-version: 0.3.0
           report-script: ./scripts/compliance
           report-path: ./target/compliance/report.html
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
