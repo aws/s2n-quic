@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use crate::credentials::Id;
 use bolero::check;
 use rand::{seq::SliceRandom, Rng, SeedableRng};
 use std::collections::{binary_heap::PeekMut, BinaryHeap, HashSet};
@@ -90,61 +91,6 @@ fn check_ordered_u16() {
     });
 }
 
-#[test]
-fn shared() {
-    let subject = Shared::new();
-    let id1 = Id::from([0; 16]);
-    let mut id2 = Id::from([0; 16]);
-    // This is a part of the key ID not used for hashing.
-    id2[10] = 1;
-    let key1 = KeyId::new(0).unwrap();
-    let key2 = KeyId::new(1).unwrap();
-    subject.insert(&Credentials {
-        id: id1,
-        key_id: key1,
-    });
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id1,
-            key_id: key1,
-        }),
-        Ok(())
-    );
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id1,
-            key_id: key1,
-        }),
-        Err(Error::AlreadyExists)
-    );
-    subject.insert(&Credentials {
-        id: id2,
-        key_id: key1,
-    });
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id1,
-            key_id: key1,
-        }),
-        Err(Error::Unknown)
-    );
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id1,
-            key_id: key2,
-        }),
-        Err(Error::Unknown)
-    );
-    // Removal never taints an entry, so this is still fine.
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id2,
-            key_id: key1,
-        }),
-        Ok(())
-    );
-}
-
 // This test is not particularly interesting, it's mostly just the same as the random tests above
 // which insert ordered and unordered values. Mostly it tests that we continue to allow 129 IDs of
 // arbitrary reordering.
@@ -209,6 +155,9 @@ fn check_delayed_specific() {
 
 // delay represents the *minimum* delay a delayed entry sees. The maximum is up to SHARED_ENTRIES.
 fn check_delayed_inner(seed: u64, delay: u16) {
+    // FIXME: re-word
+    const SHARED_ENTRIES: usize = 65_000;
+
     // We expect that the shared map is always big enough to absorb our delay.
     // (This is statically true; u16::MAX < SHARED_ENTRIES).
     assert!((delay as usize) < SHARED_ENTRIES);
@@ -267,19 +216,22 @@ impl Model {
     fn insert(&mut self, op: u64) {
         let pid = Id::from([0; 16]);
         let id = KeyId::new(op).unwrap();
-        let expected = self.oracle.insert(op);
-        if expected {
+        let expected = match self.oracle.insert(op) {
+            true => Ok(()),
+            false => Err(Error::AlreadyExists),
+        };
+        if expected.is_ok() {
             self.insert_order.push(op);
         }
         let actual = self.subject.post_authentication(&Credentials {
             id: pid,
             key_id: id,
         });
-        if actual.is_ok() != expected {
+        if actual.is_ok() != expected.is_ok() {
             let mut oracle = self.oracle.iter().collect::<Vec<_>>();
             oracle.sort_unstable();
             panic!(
-                "Inserting {:?} failed, in oracle: {}, in subject: {:?}, inserted: {:?}",
+                "Inserting {:?} failed, in oracle: {:?}, in subject: {:?}, inserted: {:?}",
                 op, expected, actual, self.insert_order
             );
         }
@@ -287,66 +239,51 @@ impl Model {
 }
 
 #[test]
-fn shared_no_collisions() {
-    let mut seen = HashSet::new();
-    let shared = Shared::new();
-    for key_id in 0..SHARED_ENTRIES as u64 {
-        let index = shared.index(&Credentials {
-            id: Id::from([0; 16]),
-            key_id: KeyId::new(key_id).unwrap(),
-        });
-        assert!(seen.insert(index));
-    }
+fn check_manual_state() {
+    let state = State::without_shared();
+    let pid = Id::from([0; 16]);
+    let creds = |id: u64| Credentials {
+        id: pid,
+        key_id: KeyId::new(id).unwrap(),
+    };
+    state.post_authentication(&creds(0)).unwrap();
+    assert_eq!(state.snapshot().max_seen, 0);
+    assert_eq!(state.snapshot().bitset, 0);
+    assert_eq!(state.snapshot().list, vec![]);
 
-    // The next entry should collide, since we will wrap around.
-    let index = shared.index(&Credentials {
-        id: Id::from([0; 16]),
-        key_id: KeyId::new(SHARED_ENTRIES as u64 + 1).unwrap(),
-    });
-    assert!(!seen.insert(index));
-}
+    state.post_authentication(&creds(32)).unwrap();
+    assert_eq!(state.snapshot().max_seen, 32);
+    // bitset tracks 0..=31
+    assert_eq!(state.snapshot().bitset, 0x8000_0000);
+    assert_eq!(state.snapshot().list, vec![]);
 
-#[test]
-fn shared_id_pair_no_collisions() {
-    let shared = Shared::new();
+    state.post_authentication(&creds(33)).unwrap();
+    assert_eq!(state.snapshot().max_seen, 33);
+    // bitset tracks 1..=32
+    assert_eq!(state.snapshot().bitset, 0x0000_0001);
+    assert_eq!(state.snapshot().list, vec![]);
 
-    // Two random IDs. Exact constants shouldn't matter much, we're mainly aiming to test overall
-    // quality of our mapping from Id + KeyId.
-    let id1 = Id::from(u128::to_ne_bytes(0x25add729cce683cd0cda41d35436bdc6));
-    let id2 = Id::from(u128::to_ne_bytes(0x2862115d0691fe180f2aeb26af3c2e5e));
+    state.post_authentication(&creds(35)).unwrap();
+    assert_eq!(state.snapshot().max_seen, 35);
+    // bitset tracks 3..=34
+    assert_eq!(state.snapshot().bitset, 0x0000_0006);
+    assert_eq!(state.snapshot().list, vec![1, 2]);
 
-    for key_id in 0..SHARED_ENTRIES as u64 {
-        let index1 = shared.index(&Credentials {
-            id: id1,
-            key_id: KeyId::new(key_id).unwrap(),
-        });
-        let index2 = shared.index(&Credentials {
-            id: id2,
-            key_id: KeyId::new(key_id).unwrap(),
-        });
+    state.post_authentication(&creds(70)).unwrap();
+    assert_eq!(state.snapshot().max_seen, 70);
+    // bitset tracks 38..=69
+    assert_eq!(state.snapshot().bitset, 0x0000_0000);
+    assert_eq!(
+        state.snapshot().list,
+        (1..=37)
+            .filter(|v| ![32, 33, 35].contains(v))
+            .collect::<Vec<_>>()
+    );
 
-        // Our path secret IDs are sufficiently different that we expect that for any given index
-        // we map to a different slot. This test is not *really* saying much since it's highly
-        // dependent on the exact values of the path secret IDs, but it prevents simple bugs like
-        // ignoring the IDs entirely.
-        assert_ne!(index1, index2);
-    }
-}
-
-// Confirms that we start out without any entries present in the map.
-#[test]
-fn shared_no_entries() {
-    let shared = Shared::new();
-    // We have to check all slots to be sure. The index used for lookup is going to be shuffled due
-    // to the hashing in of the secret. We need to use an all-zero path secret ID since the entries
-    // in the map start out zero-initialized today.
-    for key_id in 0..SHARED_ENTRIES as u64 {
-        assert_eq!(
-            shared.remove(&Credentials {
-                id: Id::from([0; 16]),
-                key_id: KeyId::new(key_id).unwrap(),
-            }),
-            Err(Error::Unknown)
-        );
-    }
+    // zero has fallen out of tracking
+    assert_eq!(
+        state.post_authentication(&creds(0)).unwrap_err(),
+        // FIXME: this should be AlreadyExists as we have not evicted any unseen entries yet.
+        Error::Unknown
+    );
 }

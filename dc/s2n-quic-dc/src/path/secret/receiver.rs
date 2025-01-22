@@ -1,293 +1,202 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::credentials::{Credentials, Id, KeyId};
-use s2n_quic_core::packet::number::{
-    PacketNumber, PacketNumberSpace, SlidingWindow, SlidingWindowError,
-};
-use std::{
-    cell::UnsafeCell,
-    ptr::NonNull,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
-    },
-};
+use std::sync::{Arc, Mutex};
 
-const SHARED_ENTRIES: usize = 1 << 20;
-// Maximum page size on current machines (macOS aarch64 has 16kb pages)
-//
-// mmap is documented as failing if we don't request a page boundary. Currently our sizes work out
-// such that rounding is useless, but this is good future proofing.
-const MAX_PAGE: usize = 16_384;
-const SHARED_ALLOCATION: usize = {
-    let element = std::mem::size_of::<SharedSlot>();
-    let size = element * SHARED_ENTRIES;
-    // TODO use `next_multiple_of` once MSRV is >=1.73
-    (size + MAX_PAGE - 1) / MAX_PAGE * MAX_PAGE
-};
+use crate::credentials::{Credentials, KeyId};
 
 #[derive(Debug)]
 pub struct Shared {
-    secret: u64,
-    backing: NonNull<SharedSlot>,
+    // FIXME: Improve scalability by avoiding the global mutex.
+    // Most likely strategy is something like fixed-size which (in principle) allows per-entry
+    // Mutex's. Likely means dropping the slab dependency.
+    entries: Mutex<slab::Slab<InnerState>>,
 }
-
-unsafe impl Send for Shared {}
-unsafe impl Sync for Shared {}
-
-impl Drop for Shared {
-    fn drop(&mut self) {
-        unsafe {
-            if libc::munmap(self.backing.as_ptr().cast(), SHARED_ALLOCATION) != 0 {
-                // Avoid panicking in a destructor, just let the memory leak while logging. We
-                // expect this to be essentially a global singleton in most production cases so
-                // likely we're exiting the process anyway.
-                eprintln!(
-                    "Failed to unmap memory: {:?}",
-                    std::io::Error::last_os_error()
-                );
-            }
-        }
-    }
-}
-
-const fn assert_copy<T: Copy>() {}
-
-struct SharedSlot {
-    id: UnsafeCell<Id>,
-    key_id: AtomicU64,
-}
-
-impl SharedSlot {
-    fn try_lock(&self) -> Option<SharedSlotGuard<'_>> {
-        let current = self.key_id.load(Ordering::Relaxed);
-        if current & LOCK != 0 {
-            // If we are already locked, then give up.
-            // A concurrent thread updated this slot, any write we do would squash that thread's
-            // write. Doing so if that thread remove()d may make sense in the future but not right
-            // now.
-            return None;
-        }
-        let Ok(_) = self.key_id.compare_exchange(
-            current,
-            current | LOCK,
-            Ordering::Acquire,
-            Ordering::Relaxed,
-        ) else {
-            return None;
-        };
-
-        Some(SharedSlotGuard {
-            slot: self,
-            key_id: current,
-        })
-    }
-}
-
-struct SharedSlotGuard<'a> {
-    slot: &'a SharedSlot,
-    key_id: u64,
-}
-
-impl SharedSlotGuard<'_> {
-    fn write_id(&mut self, id: Id) {
-        // Store the new ID.
-        // SAFETY: We hold the lock since we are in the guard.
-        unsafe {
-            // Note: no destructor is run for the previously stored element, but Id is Copy.
-            // If we did want to run a destructor we'd have to ensure that we replaced a PRESENT
-            // entry.
-            assert_copy::<Id>();
-            std::ptr::write(self.slot.id.get(), id);
-        }
-    }
-
-    fn id(&self) -> Id {
-        // SAFETY: We hold the lock, so copying out the Id is safe.
-        unsafe { *self.slot.id.get() }
-    }
-}
-
-impl Drop for SharedSlotGuard<'_> {
-    fn drop(&mut self) {
-        self.slot.key_id.store(self.key_id, Ordering::Release);
-    }
-}
-
-const LOCK: u64 = 1 << 62;
-const PRESENT: u64 = 1 << 63;
 
 impl Shared {
     pub fn new() -> Arc<Shared> {
-        let mut secret = [0; 8];
-        aws_lc_rs::rand::fill(&mut secret).expect("random is available");
-        let shared = Shared {
-            secret: u64::from_ne_bytes(secret),
-            backing: unsafe {
-                // Note: We rely on the zero-initialization provided by the kernel. That ensures
-                // that an entry in the map is not LOCK'd to begin with and is not PRESENT as well.
-                let ptr = libc::mmap(
-                    std::ptr::null_mut(),
-                    SHARED_ALLOCATION,
-                    libc::PROT_READ | libc::PROT_WRITE,
-                    libc::MAP_ANONYMOUS | libc::MAP_PRIVATE,
-                    0,
-                    0,
-                );
-                // -1
-                if ptr as usize == usize::MAX {
-                    panic!(
-                        "Failed to allocate backing allocation for shared: {:?}",
-                        std::io::Error::last_os_error()
-                    );
-                }
-                NonNull::new(ptr).unwrap().cast()
-            },
-        };
-
-        // We need to modify the slot to which an all-zero path secert ID and key ID map. Otherwise
-        // we'd return Err(AlreadyExists) for that entry which isn't correct - it has not been
-        // inserted or removed, so it should be Err(Unknown).
-        //
-        // This is the only slot that needs modification. All other slots are never used for lookup
-        // of this set of credentials and so containing this set of credentials is fine.
-        let slot = shared.slot(&Credentials {
-            id: Id::from([0; 16]),
-            key_id: KeyId::new(0).unwrap(),
-        });
-        // The max key ID is never used by senders (checked on the sending side), while avoiding
-        // taking a full bit out of the range of key IDs. We also statically return Unknown for it
-        // on removal to avoid a non-local invariant.
-        slot.key_id.store(KeyId::MAX.as_u64(), Ordering::Relaxed);
-
-        Arc::new(shared)
+        Arc::new(Shared {
+            entries: Mutex::new(slab::Slab::new()),
+        })
     }
 
-    pub fn new_receiver(self: Arc<Shared>) -> State {
-        State::with_shared(self)
-    }
-
-    fn insert(&self, identity: &Credentials) {
-        let slot = self.slot(identity);
-        let Some(mut guard) = slot.try_lock() else {
-            return;
-        };
-        guard.write_id(identity.id);
-        guard.key_id = *identity.key_id | PRESENT;
-    }
-
-    fn remove(&self, identity: &Credentials) -> Result<(), Error> {
-        // See `new` for details.
-        if identity.key_id == KeyId::MAX.as_u64() {
-            return Err(Error::Unknown);
+    pub fn new_receiver(self: Arc<Self>) -> State {
+        let mut guard = self.entries.lock().unwrap();
+        let key = guard.insert(InnerState::new());
+        State {
+            shared: self.clone(),
+            entry: key,
         }
-
-        let slot = self.slot(identity);
-        let previous = slot.key_id.load(Ordering::Relaxed);
-        if previous & LOCK != 0 {
-            // If we are already locked, then give up.
-            // A concurrent thread updated this slot, any write we do would squash that thread's
-            // write. No concurrent thread could have inserted what we're looking for since
-            // both insert and remove for a single path secret ID run under a Mutex.
-            return Err(Error::Unknown);
-        }
-        if previous & (!PRESENT) != *identity.key_id {
-            // If the currently stored entry does not match our desired KeyId,
-            // then we don't know whether this key has been replayed or not.
-            return Err(Error::Unknown);
-        }
-
-        let Some(mut guard) = slot.try_lock() else {
-            // Don't try to win the race by spinning, let the other thread proceed.
-            return Err(Error::Unknown);
-        };
-
-        // Check if the path secret ID matches.
-        if guard.id() != identity.id {
-            return Err(Error::Unknown);
-        }
-
-        // Ok, at this point we know that the key ID and the path secret ID both match.
-
-        let ret = if guard.key_id & PRESENT != 0 {
-            Ok(())
-        } else {
-            Err(Error::AlreadyExists)
-        };
-
-        // Release the lock, removing the PRESENT bit (which may already be missing).
-        guard.key_id = *identity.key_id;
-
-        ret
     }
 
-    fn index(&self, identity: &Credentials) -> usize {
-        let hash = u64::from_ne_bytes(identity.id[..8].try_into().unwrap())
-            ^ *identity.key_id
-            ^ self.secret;
-        let index = hash & (SHARED_ENTRIES as u64 - 1);
-        index as usize
-    }
-
-    fn slot(&self, identity: &Credentials) -> &SharedSlot {
-        let index = self.index(identity);
-        // SAFETY: in-bounds -- the & above truncates such that we're always in the appropriate
-        // range that we allocated with mmap above.
-        //
-        // Casting to a reference is safe -- the Slot type has an UnsafeCell around all of the data
-        // (either inside the atomic or directly).
-        unsafe { self.backing.as_ptr().add(index).as_ref().unwrap_unchecked() }
+    fn remove(&self, entry: usize) {
+        let mut guard = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        guard.remove(entry);
     }
 }
 
 #[derive(Debug)]
 pub struct State {
-    // Minimum that we're potentially willing to accept.
-    // This is lazily updated and so may be out of date.
-    min_key_id: AtomicU64,
-
-    // This is the maximum ID we've seen so far. This is sent to peers for when we cannot determine
-    // if the packet sent is replayed as it falls outside our replay window. Peers use this
-    // information to resynchronize on the latest state.
-    max_seen_key_id: AtomicU64,
-
-    seen: Mutex<SlidingWindow>,
-
-    shared: Option<Arc<Shared>>,
+    // FIXME: Avoid storing Shared pointer inside every path secret entry.
+    // Instead thread the pointer through all the methods.
+    shared: Arc<Shared>,
+    // FIXME: shrink to u32 index?
+    entry: usize,
 }
 
-impl super::map::SizeOf for Mutex<SlidingWindow> {
-    fn size(&self) -> usize {
-        // If we don't need drop, it's very likely that this type is fully contained in size_of
-        // Self. This simplifies implementing this trait for e.g. std types.
-        //
-        // Mutex on macOS (at least) has a more expensive, pthread-based impl that allocates. But
-        // on Linux there's no extra allocation.
-        if cfg!(target_os = "linux") {
-            assert!(
-                !std::mem::needs_drop::<Self>(),
-                "{:?} requires custom SizeOf impl",
-                std::any::type_name::<Self>()
-            );
+impl Drop for State {
+    fn drop(&mut self) {
+        self.shared.remove(self.entry);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct InnerState {
+    max_seen: u64,
+    bitset: u32,
+    // FIXME: simple, later move into shared memory.
+    list: Vec<u64>,
+}
+
+impl InnerState {
+    fn new() -> Self {
+        Self {
+            max_seen: u64::MAX,
+            bitset: 0,
+            list: Vec::new(),
         }
-        std::mem::size_of::<Self>()
     }
 }
 
-impl super::map::SizeOf for State {
-    fn size(&self) -> usize {
-        let State {
-            min_key_id,
-            max_seen_key_id,
-            seen,
-            shared,
-        } = self;
-        // shared is shared across all State's (effectively) so we don't currently account for that
-        // allocation.
-        min_key_id.size() + max_seen_key_id.size() + seen.size() + std::mem::size_of_val(shared)
+impl State {
+    pub fn without_shared() -> State {
+        let mut entries = Mutex::new(slab::Slab::with_capacity(1));
+        entries.get_mut().unwrap().insert(InnerState::new());
+        State {
+            shared: Arc::new(Shared { entries }),
+            entry: 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn snapshot(&self) -> InnerState {
+        self.shared.entries.lock().unwrap()[self.entry].clone()
+    }
+
+    pub fn with_shared(shared: Arc<Shared>) -> State {
+        shared.new_receiver()
+    }
+
+    pub fn minimum_unseen_key_id(&self) -> KeyId {
+        // wrapping_add ensures that our sentinel u64::MAX is zero, which is accurate (i.e., if we
+        // have not seen any keys, then we have not seen the zeroth key either).
+        KeyId::new(
+            self.shared.entries.lock().unwrap()[self.entry]
+                .max_seen
+                .wrapping_add(1),
+        )
+        .unwrap()
+    }
+
+    pub fn pre_authentication(&self, _credentials: &Credentials) -> Result<(), Error> {
+        // always pass for now
+        Ok(())
+    }
+
+    pub fn post_authentication(&self, credentials: &Credentials) -> Result<(), Error> {
+        let entry = &mut self.shared.entries.lock().unwrap()[self.entry];
+
+        if entry.max_seen == u64::MAX {
+            // no need to touch the bitset, we've not seen any of the previous entries.
+            entry.max_seen = *credentials.key_id;
+
+            // Iterate over the unseen IDs that were > previous max seen, and
+            // will not *become* tracked now (i.e., don't fall into the new bitset).
+            //
+            // The bitset tracks (max_seen-32)..=(max_seen-1)
+            let end = entry.max_seen.saturating_sub(u32::BITS as u64);
+            // Push start up so we don't push more than 65k elements, which is our list limit.
+            // This avoids a too-long loop if we jump forward too much.
+            let start = end.saturating_sub(u16::MAX as u64);
+            for id in start..end {
+                entry.list.push(id);
+            }
+
+            Ok(())
+        } else if credentials.key_id > entry.max_seen {
+            let previous_max = entry.max_seen;
+            entry.max_seen = *credentials.key_id;
+            let delta = entry.max_seen - previous_max;
+
+            // This is the range that is going to get shifted out.
+            //
+            // Any bit not set means we haven't yet seen it, so we should add it to our list.
+            //
+            // If we shifted by 1, then the range we want is 31..=31 (1 bit, 1 << 31, top bit)
+            // If we shifted by 2, then the range we want is 30..=31 (2 bits)
+            // If we shifted by 30, then the range we want is 2..=31 (30 bits)
+            // If we shifted by 60, then the range we want is 0..=31 (all 32 bits)
+            for bit in (32u64.saturating_sub(delta)..=31).rev() {
+                // +1 since bit 0 is previous_max - 1
+                let Some(id) = previous_max.checked_sub(bit + 1) else {
+                    continue;
+                };
+                if entry.bitset & (1 << bit) == 0 {
+                    entry.list.push(id);
+                }
+            }
+
+            // Iterate over the unseen IDs that were > previous max seen, and
+            // will not *become* tracked now (i.e., don't fall into the new bitset).
+            //
+            // The bitset tracks (max_seen-32)..=(max_seen-1)
+            let end = entry.max_seen.saturating_sub(u32::BITS as u64);
+            // Push start up so we don't push more than 65k elements, which is our list limit.
+            // This avoids a too-long loop if we jump forward too much.
+            let start = (previous_max + 1).max(end.saturating_sub(u16::MAX as u64));
+            for id in start..end {
+                entry.list.push(id);
+            }
+
+            if delta <= u32::BITS as u64 {
+                // as u32 is safe since we checked we're less than 32.
+                let delta = delta as u32;
+
+                // Shift the no longer fitting bits out
+                // 0s mean we have *not* seen the entry, so shifting those in for the middle part
+                entry.bitset = entry.bitset.checked_shl(delta).unwrap_or(0);
+                // Set the bit corresponding to previously max-seen.
+                entry.bitset |= 1 << (delta - 1);
+            } else {
+                entry.bitset = 0;
+            }
+
+            // forward shift is always successful
+            Ok(())
+        } else if credentials.key_id == entry.max_seen {
+            Err(Error::AlreadyExists)
+        } else {
+            let delta = entry.max_seen - *credentials.key_id;
+            if delta <= u32::BITS as u64 {
+                // -1 for the transition from max seen to the bitset
+                if (entry.bitset & (1 << (delta - 1) as u32)) != 0 {
+                    Err(Error::AlreadyExists)
+                } else {
+                    entry.bitset |= 1 << (delta - 1) as u32;
+                    Ok(())
+                }
+            } else if let Ok(idx) = entry.list.binary_search(&*credentials.key_id) {
+                // FIXME: augment with bitset for fast removal
+                entry.list.remove(idx);
+                Ok(())
+            } else {
+                Err(Error::Unknown)
+            }
+        }
     }
 }
+
+impl super::map::SizeOf for State {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
@@ -298,74 +207,6 @@ pub enum Error {
     /// received.
     #[error("packet may have been seen before")]
     Unknown,
-}
-
-impl State {
-    pub fn without_shared() -> State {
-        State {
-            min_key_id: Default::default(),
-            max_seen_key_id: Default::default(),
-            seen: Default::default(),
-            shared: None,
-        }
-    }
-
-    pub fn with_shared(shared: Arc<Shared>) -> State {
-        State {
-            min_key_id: Default::default(),
-            max_seen_key_id: Default::default(),
-            seen: Default::default(),
-            shared: Some(shared),
-        }
-    }
-
-    pub fn pre_authentication(&self, identity: &Credentials) -> Result<(), Error> {
-        if self.min_key_id.load(Ordering::Relaxed) > *identity.key_id {
-            return Err(Error::Unknown);
-        }
-
-        Ok(())
-    }
-
-    pub fn minimum_unseen_key_id(&self) -> KeyId {
-        KeyId::try_from(self.max_seen_key_id.load(Ordering::Relaxed) + 1).unwrap()
-    }
-
-    /// Called after decryption has been performed
-    pub fn post_authentication(&self, identity: &Credentials) -> Result<(), Error> {
-        let key_id = identity.key_id;
-        self.max_seen_key_id.fetch_max(*key_id, Ordering::Relaxed);
-        let pn = PacketNumberSpace::Initial.new_packet_number(key_id);
-
-        // Note: intentionally retaining this lock across potential insertion into the shared map.
-        // This avoids the case where we have evicted an entry but cannot see it in the shared map
-        // yet from a concurrent thread. This should not be required for correctness but helps
-        // reasoning about the state of the world.
-        let mut seen = self.seen.lock().unwrap();
-        match seen.insert_with_evicted(pn) {
-            Ok(evicted) => {
-                if let Some(shared) = &self.shared {
-                    // FIXME: Consider bounding the number of evicted entries to insert or
-                    // otherwise optimizing? This can run for at most 128 entries today...
-                    for evicted in evicted {
-                        shared.insert(&Credentials {
-                            id: identity.id,
-                            key_id: PacketNumber::as_varint(evicted),
-                        });
-                    }
-                }
-                Ok(())
-            }
-            Err(SlidingWindowError::TooOld) => {
-                if let Some(shared) = &self.shared {
-                    shared.remove(identity)
-                } else {
-                    Err(Error::Unknown)
-                }
-            }
-            Err(SlidingWindowError::Duplicate) => Err(Error::AlreadyExists),
-        }
-    }
 }
 
 #[cfg(test)]
