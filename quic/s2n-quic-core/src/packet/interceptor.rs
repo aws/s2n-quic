@@ -5,6 +5,7 @@ use crate::{
     event::api::{SocketAddress, Subject},
     havoc,
     packet::number::{PacketNumber, PacketNumberSpace},
+    path::{LocalAddress, RemoteAddress},
     time::Timestamp,
     varint::VarInt,
 };
@@ -42,6 +43,18 @@ pub trait Interceptor: 'static + Send {
     fn intercept_rx_ack<A: Ack>(&mut self, subject: &Subject, ack: &mut A) {
         let _ = subject;
         let _ = ack;
+    }
+
+    #[inline(always)]
+    fn intercept_rx_local_address(&mut self, subject: &Subject, addr: &mut LocalAddress) {
+        let _ = subject;
+        let _ = addr;
+    }
+
+    #[inline(always)]
+    fn intercept_rx_remote_address(&mut self, subject: &Subject, addr: &mut RemoteAddress) {
+        let _ = subject;
+        let _ = addr;
     }
 
     #[inline(always)]
@@ -113,6 +126,18 @@ where
     fn intercept_rx_ack<A: Ack>(&mut self, subject: &Subject, ack: &mut A) {
         self.0.intercept_rx_ack(subject, ack);
         self.1.intercept_rx_ack(subject, ack);
+    }
+
+    #[inline(always)]
+    fn intercept_rx_local_address(&mut self, subject: &Subject, addr: &mut LocalAddress) {
+        self.0.intercept_rx_local_address(subject, addr);
+        self.1.intercept_rx_local_address(subject, addr);
+    }
+
+    #[inline(always)]
+    fn intercept_rx_remote_address(&mut self, subject: &Subject, addr: &mut RemoteAddress) {
+        self.0.intercept_rx_remote_address(subject, addr);
+        self.1.intercept_rx_remote_address(subject, addr);
     }
 
     #[inline(always)]
@@ -228,6 +253,20 @@ where
 }
 
 impl<T: Interceptor> Interceptor for Option<T> {
+    #[inline]
+    fn intercept_rx_local_address(&mut self, subject: &Subject, addr: &mut LocalAddress) {
+        if let Some(inner) = self.as_mut() {
+            inner.intercept_rx_local_address(subject, addr)
+        }
+    }
+
+    #[inline]
+    fn intercept_rx_remote_address(&mut self, subject: &Subject, addr: &mut RemoteAddress) {
+        if let Some(inner) = self.as_mut() {
+            inner.intercept_rx_remote_address(subject, addr)
+        }
+    }
+
     #[inline]
     fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
         if let Some(inner) = self.as_mut() {

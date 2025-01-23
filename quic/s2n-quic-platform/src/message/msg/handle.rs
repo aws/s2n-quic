@@ -54,8 +54,8 @@ impl path::Handle for Handle {
     }
 
     #[inline]
-    fn set_remote_port(&mut self, port: u16) {
-        self.remote_address.0.set_port(port);
+    fn set_remote_address(&mut self, addr: RemoteAddress) {
+        self.remote_address = addr;
     }
 
     #[inline]
@@ -64,15 +64,20 @@ impl path::Handle for Handle {
     }
 
     #[inline]
-    fn eq(&self, other: &Self) -> bool {
+    fn set_local_address(&mut self, addr: LocalAddress) {
+        self.local_address = addr;
+    }
+
+    #[inline]
+    fn unmapped_eq(&self, other: &Self) -> bool {
         let mut eq = true;
 
         // only compare local addresses if the OS returns them
         if features::pktinfo::IS_SUPPORTED {
-            eq &= self.local_address.eq(&other.local_address);
+            eq &= self.local_address.unmapped_eq(&other.local_address);
         }
 
-        eq && path::Handle::eq(&self.remote_address, &other.remote_address)
+        eq && self.remote_address.unmapped_eq(&other.remote_address)
     }
 
     #[inline]
@@ -90,5 +95,37 @@ impl path::Handle for Handle {
         if self.local_address.port() != other.local_address.port() {
             self.local_address = other.local_address;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::message::msg::Handle;
+    use s2n_quic_core::{
+        inet::{IpV4Address, IpV6Address, SocketAddressV4, SocketAddressV6},
+        path::{Handle as _, LocalAddress},
+    };
+
+    #[test]
+    //= https://www.rfc-editor.org/rfc/rfc5156#section-2.2
+    //= type=test
+    //# ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
+    fn to_ipv6_mapped_test() {
+        let handle_ipv6 = Handle {
+            remote_address: Default::default(),
+            local_address: LocalAddress::from(SocketAddressV6::new(
+                IpV6Address::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 1, 1, 1, 1]),
+                4440,
+            )),
+        };
+        let handle_ipv4 = Handle {
+            remote_address: Default::default(),
+            local_address: LocalAddress::from(SocketAddressV4::new(
+                IpV4Address::new([1, 1, 1, 1]),
+                4440,
+            )),
+        };
+
+        assert!(handle_ipv6.unmapped_eq(&handle_ipv4));
     }
 }

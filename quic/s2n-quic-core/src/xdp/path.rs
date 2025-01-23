@@ -97,8 +97,9 @@ impl Handle for Tuple {
     }
 
     #[inline]
-    fn set_remote_port(&mut self, port: u16) {
-        self.remote_address.port = port;
+    fn set_remote_address(&mut self, addr: path::RemoteAddress) {
+        self.remote_address.ip = addr.ip();
+        self.remote_address.port = addr.port();
     }
 
     #[inline]
@@ -107,7 +108,13 @@ impl Handle for Tuple {
     }
 
     #[inline]
-    fn eq(&self, other: &Self) -> bool {
+    fn set_local_address(&mut self, addr: path::LocalAddress) {
+        self.local_address.ip = addr.ip();
+        self.local_address.port = addr.port();
+    }
+
+    #[inline]
+    fn unmapped_eq(&self, other: &Self) -> bool {
         // TODO only compare everything if the other is all filled out
         PartialEq::eq(&self.local_address.unmap(), &other.local_address.unmap())
             && PartialEq::eq(&self.remote_address.unmap(), &other.remote_address.unmap())
