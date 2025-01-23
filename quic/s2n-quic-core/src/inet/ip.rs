@@ -35,6 +35,14 @@ impl IpAddress {
         }
     }
 
+    /// Returns `true` if the two addresses are equal from a network perspective.
+    ///
+    /// This will unmap IPv4-mapped addresses to IpV4 tagged enum values
+    #[inline]
+    pub fn unmapped_eq(&self, other: &Self) -> bool {
+        self.unmap() == other.unmap()
+    }
+
     /// Converts the IP address into IPv6 if it is IPv4, otherwise the address is unchanged
     #[inline]
     #[must_use]
@@ -166,6 +174,14 @@ impl SocketAddress {
             Self::IpV4(_) => self,
             Self::IpV6(addr) => addr.unmap(),
         }
+    }
+
+    /// Returns `true` if the two addresses are equal from a network perspective.
+    ///
+    /// This will unmap IPv4-mapped addresses to IpV4 tagged enum values
+    #[inline]
+    pub fn unmapped_eq(&self, other: &Self) -> bool {
+        self.unmap() == other.unmap()
     }
 }
 

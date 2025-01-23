@@ -167,6 +167,7 @@ event_recorder!(
 );
 
 use s2n_quic_core::event::api::DatagramDropReason;
+#[derive(Debug)]
 pub struct DatagramDroppedEvent {
     pub remote_addr: SocketAddr,
     pub reason: DatagramDropReason,

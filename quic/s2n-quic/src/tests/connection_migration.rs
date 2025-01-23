@@ -6,6 +6,7 @@ use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     event::api::{DatagramDropReason, Subject},
     packet::interceptor::{Datagram, Interceptor},
+    path::{LocalAddress, RemoteAddress},
 };
 
 fn run_test<F>(mut on_rebind: F)
@@ -136,9 +137,10 @@ struct RebindPortBeforeLastHandshakePacket {
 
 impl Interceptor for RebindPortBeforeLastHandshakePacket {
     // Change the port after the first Handshake packet is received
-    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
         if self.handshake_packet_count == 1 && !self.changed_port {
-            *port += 1;
+            let port = addr.port();
+            addr.set_port(port + 1);
             self.changed_port = true;
         }
     }
@@ -228,9 +230,9 @@ struct RebindPortBeforeHandshakeConfirmed {
 
 const REBIND_PORT: u16 = 55555;
 impl Interceptor for RebindPortBeforeHandshakeConfirmed {
-    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
         if self.datagram_count == 1 && !self.changed_port {
-            *port = REBIND_PORT;
+            addr.set_port(REBIND_PORT);
             self.changed_port = true;
         }
     }
@@ -285,4 +287,89 @@ fn rebind_before_handshake_confirmed() {
         DatagramDropReason::ConnectionMigrationDuringHandshake { .. },
     ));
     assert_eq!(REBIND_PORT, event.remote_addr.port());
+}
+
+// Changes the remote address to ipv4-mapped after the first packet
+#[derive(Default)]
+struct RebindMappedAddrBeforeHandshakeConfirmed {
+    local: bool,
+    remote: bool,
+    datagram_count: usize,
+}
+
+impl Interceptor for RebindMappedAddrBeforeHandshakeConfirmed {
+    fn intercept_rx_local_address(&mut self, _subject: &Subject, addr: &mut LocalAddress) {
+        if self.datagram_count > 0 && self.local {
+            *addr = (*addr).to_ipv6_mapped().into();
+        }
+    }
+
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
+        if self.datagram_count > 0 && self.remote {
+            *addr = (*addr).to_ipv6_mapped().into();
+        }
+    }
+
+    fn intercept_rx_datagram<'a>(
+        &mut self,
+        _subject: &Subject,
+        _datagram: &Datagram,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        self.datagram_count += 1;
+        payload
+    }
+}
+
+/// Ensures that a datagram received from a client that changes from ipv4 to ipv4-mapped
+/// is still accepted
+#[test]
+fn rebind_ipv4_mapped_before_handshake_confirmed() {
+    fn run_test(interceptor: RebindMappedAddrBeforeHandshakeConfirmed) {
+        let model = Model::default();
+        let subscriber = recorder::DatagramDropped::new();
+        let datagram_dropped_events = subscriber.events();
+
+        test(model, move |handle| {
+            let server = Server::builder()
+                .with_io(handle.builder().build()?)?
+                .with_tls(SERVER_CERTS)?
+                .with_event((tracing_events(), subscriber))?
+                .with_random(Random::with_seed(456))?
+                .with_packet_interceptor(interceptor)?
+                .start()?;
+
+            let client = Client::builder()
+                .with_io(handle.builder().build()?)?
+                .with_tls(certificates::CERT_PEM)?
+                .with_event(tracing_events())?
+                .with_random(Random::with_seed(456))?
+                .start()?;
+
+            let addr = start_server(server)?;
+            start_client(client, addr, Data::new(1000))?;
+            Ok(addr)
+        })
+        .unwrap();
+
+        let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
+        let datagram_dropped_events = &datagram_dropped_events[..];
+
+        assert!(
+            datagram_dropped_events.is_empty(),
+            "s2n-quic should not drop IPv4-mapped packets {datagram_dropped_events:?}"
+        );
+    }
+
+    // test all combinations
+    for local in [false, true] {
+        for remote in [false, true] {
+            let interceptor = RebindMappedAddrBeforeHandshakeConfirmed {
+                local,
+                remote,
+                ..Default::default()
+            };
+            run_test(interceptor);
+        }
+    }
 }

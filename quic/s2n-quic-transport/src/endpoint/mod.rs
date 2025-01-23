@@ -430,14 +430,21 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let buffer = {
             let subject = event::builder::Subject::Endpoint {}.into_event();
 
-            let mut port = header.path.remote_address().port();
-            endpoint_context
-                .packet_interceptor
-                .intercept_rx_remote_port(&subject, &mut port);
-            header.path.set_remote_port(port);
+            let mut remote_address = header.path.remote_address();
+            {
+                endpoint_context
+                    .packet_interceptor
+                    .intercept_rx_remote_address(&subject, &mut remote_address);
+                header.path.set_remote_address(remote_address);
+            }
 
-            let remote_address = header.path.remote_address();
-            let local_address = header.path.local_address();
+            let mut local_address = header.path.local_address();
+            {
+                endpoint_context
+                    .packet_interceptor
+                    .intercept_rx_local_address(&subject, &mut local_address);
+                header.path.set_local_address(local_address);
+            }
 
             let datagram = s2n_quic_core::packet::interceptor::Datagram {
                 remote_address: remote_address.into_event(),

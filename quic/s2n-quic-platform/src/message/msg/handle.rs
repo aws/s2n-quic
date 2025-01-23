@@ -5,7 +5,8 @@ use super::ext::Ext as _;
 use crate::{features, message::cmsg::Encoder};
 use libc::msghdr;
 use s2n_quic_core::{
-    inet::{AncillaryData, SocketAddressV4},
+    ensure,
+    inet::{AncillaryData, SocketAddressV4, Unspecified},
     path::{self, LocalAddress, RemoteAddress},
 };
 
@@ -54,8 +55,8 @@ impl path::Handle for Handle {
     }
 
     #[inline]
-    fn set_remote_port(&mut self, port: u16) {
-        self.remote_address.0.set_port(port);
+    fn set_remote_address(&mut self, addr: RemoteAddress) {
+        self.remote_address = addr;
     }
 
     #[inline]
@@ -64,15 +65,41 @@ impl path::Handle for Handle {
     }
 
     #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        let mut eq = true;
+    fn set_local_address(&mut self, addr: LocalAddress) {
+        self.local_address = addr;
+    }
+
+    #[inline]
+    fn unmapped_eq(&self, other: &Self) -> bool {
+        ensure!(
+            self.remote_address.unmapped_eq(&other.remote_address),
+            false
+        );
 
         // only compare local addresses if the OS returns them
-        if features::pktinfo::IS_SUPPORTED {
-            eq &= self.local_address.eq(&other.local_address);
+        ensure!(features::pktinfo::IS_SUPPORTED, true);
+
+        // Make sure to only compare the fields if they're both set
+        //
+        // This avoids cases where we don't have the full context for the local address and find it
+        // out with a later packet.
+        if !self.local_address.ip().is_unspecified() && !other.local_address.ip().is_unspecified() {
+            ensure!(
+                self.local_address
+                    .ip()
+                    .unmapped_eq(&other.local_address.ip()),
+                false
+            );
         }
 
-        eq && path::Handle::eq(&self.remote_address, &other.remote_address)
+        if self.local_address.port() > 0 && other.local_address.port() > 0 {
+            ensure!(
+                self.local_address.port() == other.local_address.port(),
+                false
+            );
+        }
+
+        true
     }
 
     #[inline]
@@ -89,6 +116,53 @@ impl path::Handle for Handle {
         // once we discover our path, or the port changes, update the address with the new information
         if self.local_address.port() != other.local_address.port() {
             self.local_address = other.local_address;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::message::msg::Handle;
+    use s2n_quic_core::{
+        inet::{IpAddress, IpV4Address},
+        path::{Handle as _, LocalAddress},
+    };
+
+    /// Checks that unmapped_eq is correct independent of argument ordering
+    fn reflexive_check(a: Handle, b: Handle) {
+        assert!(a.unmapped_eq(&b));
+        assert!(b.unmapped_eq(&a));
+    }
+
+    #[test]
+    fn unmapped_eq_test() {
+        // All of these values should be considered equivalent for local addresses
+        let ips: &[IpAddress] = &[
+            // if we have an unspecified IP address then don't consider it for equality
+            IpV4Address::new([0, 0, 0, 0]).into(),
+            // a regular IPv4 IP should match the IPv4-mapped into IPv6
+            IpV4Address::new([1, 1, 1, 1]).into(),
+            IpV4Address::new([1, 1, 1, 1]).to_ipv6_mapped().into(),
+        ];
+        let ports = [0u16, 4440];
+
+        for ip_a in ips {
+            for ip_b in ips {
+                for port_a in ports {
+                    for port_b in ports {
+                        reflexive_check(
+                            Handle {
+                                remote_address: Default::default(),
+                                local_address: LocalAddress::from(ip_a.with_port(port_a)),
+                            },
+                            Handle {
+                                remote_address: Default::default(),
+                                local_address: LocalAddress::from(ip_b.with_port(port_b)),
+                            },
+                        );
+                    }
+                }
+            }
         }
     }
 }
