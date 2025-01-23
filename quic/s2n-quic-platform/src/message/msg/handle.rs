@@ -5,7 +5,8 @@ use super::ext::Ext as _;
 use crate::{features, message::cmsg::Encoder};
 use libc::msghdr;
 use s2n_quic_core::{
-    inet::{AncillaryData, SocketAddressV4},
+    ensure,
+    inet::{AncillaryData, SocketAddressV4, Unspecified},
     path::{self, LocalAddress, RemoteAddress},
 };
 
@@ -70,14 +71,37 @@ impl path::Handle for Handle {
 
     #[inline]
     fn unmapped_eq(&self, other: &Self) -> bool {
-        let mut eq = true;
+        ensure!(
+            self.remote_address.unmapped_eq(&other.remote_address),
+            false
+        );
 
         // only compare local addresses if the OS returns them
-        if features::pktinfo::IS_SUPPORTED {
-            eq &= self.local_address.unmapped_eq(&other.local_address);
+        if !features::pktinfo::IS_SUPPORTED {
+            return true;
         }
 
-        eq && self.remote_address.unmapped_eq(&other.remote_address)
+        // Make sure to only compare the fields if they're both set
+        //
+        // This avoids cases where we don't have the full context for the local address and find it
+        // out with a later packet.
+        if !self.local_address.ip().is_unspecified() && !other.local_address.ip().is_unspecified() {
+            ensure!(
+                self.local_address
+                    .ip()
+                    .unmapped_eq(&other.local_address.ip()),
+                false
+            );
+        }
+
+        if self.local_address.port() > 0 && other.local_address.port() > 0 {
+            ensure!(
+                self.local_address.port() == other.local_address.port(),
+                false
+            );
+        }
+
+        true
     }
 
     #[inline]
@@ -102,30 +126,45 @@ impl path::Handle for Handle {
 mod tests {
     use crate::message::msg::Handle;
     use s2n_quic_core::{
-        inet::{IpV4Address, IpV6Address, SocketAddressV4, SocketAddressV6},
+        inet::{IpAddress, IpV4Address},
         path::{Handle as _, LocalAddress},
     };
 
-    #[test]
-    //= https://www.rfc-editor.org/rfc/rfc5156#section-2.2
-    //= type=test
-    //# ::FFFF:0:0/96 are the IPv4-mapped addresses [RFC4291].
-    fn to_ipv6_mapped_test() {
-        let handle_ipv6 = Handle {
-            remote_address: Default::default(),
-            local_address: LocalAddress::from(SocketAddressV6::new(
-                IpV6Address::new([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 1, 1, 1, 1]),
-                4440,
-            )),
-        };
-        let handle_ipv4 = Handle {
-            remote_address: Default::default(),
-            local_address: LocalAddress::from(SocketAddressV4::new(
-                IpV4Address::new([1, 1, 1, 1]),
-                4440,
-            )),
-        };
+    /// Checks that unmapped_eq is correct independent of argument ordering
+    fn reflexive_check(a: Handle, b: Handle) {
+        assert!(a.unmapped_eq(&b));
+        assert!(b.unmapped_eq(&a));
+    }
 
-        assert!(handle_ipv6.unmapped_eq(&handle_ipv4));
+    #[test]
+    fn unmapped_eq_test() {
+        // All of these values should be considered equivalent for local addresses
+        let ips: &[IpAddress] = &[
+            // if we have an unspecified IP address then don't consider it for equality
+            IpV4Address::new([0, 0, 0, 0]).into(),
+            // a regular IPv4 IP should match the IPv4-mapped into IPv6
+            IpV4Address::new([1, 1, 1, 1]).into(),
+            IpV4Address::new([1, 1, 1, 1]).to_ipv6_mapped().into(),
+        ];
+        let ports = [0u16, 4440];
+
+        for ip_a in ips {
+            for ip_b in ips {
+                for port_a in ports {
+                    for port_b in ports {
+                        reflexive_check(
+                            Handle {
+                                remote_address: Default::default(),
+                                local_address: LocalAddress::from(ip_a.with_port(port_a)),
+                            },
+                            Handle {
+                                remote_address: Default::default(),
+                                local_address: LocalAddress::from(ip_b.with_port(port_b)),
+                            },
+                        );
+                    }
+                }
+            }
+        }
     }
 }

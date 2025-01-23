@@ -104,7 +104,7 @@ macro_rules! impl_addr {
             /// This will unmap IPv4-mapped addresses to IpV4 tagged enum values
             #[inline]
             pub fn unmapped_eq(&self, other: &Self) -> bool {
-                self.0.unmap().eq(&other.0.unmap())
+                self.0.unmapped_eq(&other.0)
             }
         }
 
