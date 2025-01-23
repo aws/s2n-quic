@@ -7,8 +7,11 @@ use s2n_codec::encoder::scatter;
 use s2n_quic_core::{
     event::api::Subject,
     havoc::{self, Strategy as _, *},
-    packet,
-    packet::interceptor::{DecoderBufferMut, Havoc},
+    packet::{
+        self,
+        interceptor::{DecoderBufferMut, Havoc},
+    },
+    path::RemoteAddress,
 };
 use structopt::StructOpt;
 
@@ -113,10 +116,10 @@ impl Interceptor {
 
 impl packet::interceptor::Interceptor for Interceptor {
     #[inline]
-    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
+    fn intercept_rx_remote_address(&mut self, subject: &Subject, addr: &mut RemoteAddress) {
         if self.port {
             self.strategy_for(subject)
-                .intercept_rx_remote_port(subject, port)
+                .intercept_rx_remote_address(subject, addr)
         }
     }
 

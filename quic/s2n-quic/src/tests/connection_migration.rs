@@ -137,9 +137,10 @@ struct RebindPortBeforeLastHandshakePacket {
 
 impl Interceptor for RebindPortBeforeLastHandshakePacket {
     // Change the port after the first Handshake packet is received
-    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
         if self.handshake_packet_count == 1 && !self.changed_port {
-            *port += 1;
+            let port = addr.port();
+            addr.set_port(port + 1);
             self.changed_port = true;
         }
     }
@@ -229,9 +230,9 @@ struct RebindPortBeforeHandshakeConfirmed {
 
 const REBIND_PORT: u16 = 55555;
 impl Interceptor for RebindPortBeforeHandshakeConfirmed {
-    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
         if self.datagram_count == 1 && !self.changed_port {
-            *port = REBIND_PORT;
+            addr.set_port(REBIND_PORT);
             self.changed_port = true;
         }
     }

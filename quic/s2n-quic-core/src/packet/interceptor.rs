@@ -58,12 +58,6 @@ pub trait Interceptor: 'static + Send {
     }
 
     #[inline(always)]
-    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
-        let _ = subject;
-        let _ = port;
-    }
-
-    #[inline(always)]
     fn intercept_rx_datagram<'a>(
         &mut self,
         subject: &Subject,
@@ -141,12 +135,6 @@ where
     }
 
     #[inline(always)]
-    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
-        self.0.intercept_rx_remote_port(subject, port);
-        self.1.intercept_rx_remote_port(subject, port);
-    }
-
-    #[inline(always)]
     fn intercept_rx_datagram<'a>(
         &mut self,
         subject: &Subject,
@@ -213,8 +201,10 @@ where
     R: 'static + Send + havoc::Random,
 {
     #[inline]
-    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
-        *port = self.port.havoc_u16(&mut self.random, *port);
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
+        let port = addr.port();
+        let port = self.port.havoc_u16(&mut self.random, port);
+        addr.set_port(port);
     }
 
     #[inline]
@@ -264,13 +254,6 @@ impl<T: Interceptor> Interceptor for Option<T> {
     fn intercept_rx_remote_address(&mut self, subject: &Subject, addr: &mut RemoteAddress) {
         if let Some(inner) = self.as_mut() {
             inner.intercept_rx_remote_address(subject, addr)
-        }
-    }
-
-    #[inline]
-    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
-        if let Some(inner) = self.as_mut() {
-            inner.intercept_rx_remote_port(subject, port)
         }
     }
 

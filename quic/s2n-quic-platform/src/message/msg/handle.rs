@@ -77,9 +77,7 @@ impl path::Handle for Handle {
         );
 
         // only compare local addresses if the OS returns them
-        if !features::pktinfo::IS_SUPPORTED {
-            return true;
-        }
+        ensure!(features::pktinfo::IS_SUPPORTED, true);
 
         // Make sure to only compare the fields if they're both set
         //

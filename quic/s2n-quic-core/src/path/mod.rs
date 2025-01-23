@@ -65,7 +65,7 @@ pub trait Handle: 'static + Copy + Send + fmt::Debug {
     /// Returns the local address for the given handle
     fn local_address(&self) -> LocalAddress;
 
-    /// Returns the local address for the given handle
+    /// Updates the local address to the given value
     fn set_local_address(&mut self, addr: LocalAddress);
 
     /// Returns `true` if the two handles are equal from a network perspective

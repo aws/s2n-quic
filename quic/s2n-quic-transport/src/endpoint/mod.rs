@@ -435,14 +435,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 endpoint_context
                     .packet_interceptor
                     .intercept_rx_remote_address(&subject, &mut remote_address);
-
-                let mut port = remote_address.port();
-                endpoint_context
-                    .packet_interceptor
-                    .intercept_rx_remote_port(&subject, &mut port);
-
-                remote_address.set_port(port);
-
                 header.path.set_remote_address(remote_address);
             }
 
