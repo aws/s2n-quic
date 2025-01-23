@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic"
-version = "1.52.0"
+version = "1.52.1"
 description = "A Rust implementation of the IETF QUIC protocol"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -71,14 +71,14 @@ hash_hasher = { version = "2", optional = true }
 humansize = { version = "2", optional = true }
 rand = "0.8"
 rand_chacha = "0.3"
-s2n-codec = { version = "=0.52.0", path = "../../common/s2n-codec" }
-s2n-quic-core = { version = "=0.52.0", path = "../s2n-quic-core" }
-s2n-quic-crypto = { version = "=0.52.0", path = "../s2n-quic-crypto", optional = true }
-s2n-quic-platform = { version = "=0.52.0", path = "../s2n-quic-platform", features = ["tokio-runtime"] }
-s2n-quic-rustls = { version = "=0.52.0", path = "../s2n-quic-rustls", optional = true }
-s2n-quic-tls = { version = "=0.52.0", path = "../s2n-quic-tls", optional = true }
-s2n-quic-tls-default = { version = "=0.52.0", path = "../s2n-quic-tls-default", optional = true }
-s2n-quic-transport = { version = "=0.52.0", path = "../s2n-quic-transport" }
+s2n-codec = { version = "=0.52.1", path = "../../common/s2n-codec" }
+s2n-quic-core = { version = "=0.52.1", path = "../s2n-quic-core" }
+s2n-quic-crypto = { version = "=0.52.1", path = "../s2n-quic-crypto", optional = true }
+s2n-quic-platform = { version = "=0.52.1", path = "../s2n-quic-platform", features = ["tokio-runtime"] }
+s2n-quic-rustls = { version = "=0.52.1", path = "../s2n-quic-rustls", optional = true }
+s2n-quic-tls = { version = "=0.52.1", path = "../s2n-quic-tls", optional = true }
+s2n-quic-tls-default = { version = "=0.52.1", path = "../s2n-quic-tls-default", optional = true }
+s2n-quic-transport = { version = "=0.52.1", path = "../s2n-quic-transport" }
 tokio = { version = "1", default-features = false, features = ["sync"] }
 zerocopy = { version = "0.7", optional = true, features = ["derive"] }
 zeroize = { version = "1", optional = true, default-features = false }
