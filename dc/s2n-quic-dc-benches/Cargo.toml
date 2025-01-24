@@ -6,8 +6,11 @@ publish = false
 
 [dependencies]
 aws-lc-rs = "1"
+clap = { version = "4", features = ["derive"] }
 criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+mimalloc = { version = "0.1", default-features = false }
 s2n-codec = { path = "../../common/s2n-codec" }
+s2n-quic-core = { path = "../../quic/s2n-quic-core" }
 s2n-quic-dc = { path = "../s2n-quic-dc", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
 

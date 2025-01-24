@@ -6,6 +6,7 @@ pub mod application;
 mod error;
 mod packet;
 mod probes;
+pub mod router;
 pub mod shared;
 pub mod state;
 pub mod worker;
