@@ -336,10 +336,13 @@ impl<Config: endpoint::Config> Manager<Config> {
             self.active_path().local_connection_id != datagram.destination_connection_id;
 
         if active_migration {
-            ensure!(
-                limits.active_migration_enabled(),
-                Err(DatagramDropReason::RejectedConnectionMigration)
-            )
+            ensure!(limits.active_migration_enabled(), {
+                let reason = migration::DenyReason::ConnectionMigrationDisabled;
+                publisher.on_connection_migration_denied(reason.into_event());
+                Err(DatagramDropReason::RejectedConnectionMigration {
+                    reason: reason.into_event().reason,
+                })
+            })
         }
 
         // TODO set alpn if available
@@ -367,7 +370,9 @@ impl<Config: endpoint::Config> Manager<Config> {
             }
             migration::Outcome::Deny(reason) => {
                 publisher.on_connection_migration_denied(reason.into_event());
-                return Err(DatagramDropReason::RejectedConnectionMigration);
+                return Err(DatagramDropReason::RejectedConnectionMigration {
+                    reason: reason.into_event().reason,
+                });
             }
             _ => {
                 unimplemented!("unimplemented migration outcome");

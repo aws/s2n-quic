@@ -784,7 +784,7 @@ enum DatagramDropReason {
     /// The peer initiated a connection migration before the handshake was confirmed.
     ConnectionMigrationDuringHandshake,
     /// The attempted connection migration was rejected.
-    RejectedConnectionMigration,
+    RejectedConnectionMigration { reason: MigrationDenyReason },
     /// The maximum number of paths per connection was exceeded.
     PathLimitExceeded,
     /// The peer initiated a connection migration without supplying enough connection IDs to use.

@@ -878,7 +878,7 @@ pub mod api {
         ConnectionMigrationDuringHandshake {},
         #[non_exhaustive]
         #[doc = " The attempted connection migration was rejected."]
-        RejectedConnectionMigration {},
+        RejectedConnectionMigration { reason: MigrationDenyReason },
         #[non_exhaustive]
         #[doc = " The maximum number of paths per connection was exceeded."]
         PathLimitExceeded {},
@@ -4985,7 +4985,7 @@ pub mod builder {
         #[doc = " The peer initiated a connection migration before the handshake was confirmed."]
         ConnectionMigrationDuringHandshake,
         #[doc = " The attempted connection migration was rejected."]
-        RejectedConnectionMigration,
+        RejectedConnectionMigration { reason: MigrationDenyReason },
         #[doc = " The maximum number of paths per connection was exceeded."]
         PathLimitExceeded,
         #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
@@ -5010,7 +5010,9 @@ pub mod builder {
                 Self::RejectedConnectionAttempt => RejectedConnectionAttempt {},
                 Self::UnknownServerAddress => UnknownServerAddress {},
                 Self::ConnectionMigrationDuringHandshake => ConnectionMigrationDuringHandshake {},
-                Self::RejectedConnectionMigration => RejectedConnectionMigration {},
+                Self::RejectedConnectionMigration { reason } => RejectedConnectionMigration {
+                    reason: reason.into_event(),
+                },
                 Self::PathLimitExceeded => PathLimitExceeded {},
                 Self::InsufficientConnectionIds => InsufficientConnectionIds {},
             }
