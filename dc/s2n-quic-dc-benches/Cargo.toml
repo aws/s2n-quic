@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 aws-lc-rs = "1"
+clap = { version = "4", features = ["derive"] }
 criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-dc = { path = "../s2n-quic-dc", features = ["testing"] }
