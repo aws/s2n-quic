@@ -14,7 +14,7 @@ use crate::{
 use core::time::Duration;
 use s2n_quic_core::{
     connection::limits::ANTI_AMPLIFICATION_MULTIPLIER,
-    event::testing::Publisher,
+    event::{builder::MigrationDenyReason, testing::Publisher},
     inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     path::{migration, RemoteAddress},
     random::{self, Generator},
@@ -1043,7 +1043,9 @@ fn active_connection_migration_disabled() {
     // The active migration is rejected
     assert!(matches!(
         res,
-        Err(DatagramDropReason::RejectedConnectionMigration)
+        Err(DatagramDropReason::RejectedConnectionMigration {
+            reason: MigrationDenyReason::ConnectionMigrationDisabled { .. }
+        })
     ));
     assert_eq!(1, manager.paths.len());
 

@@ -4,7 +4,7 @@
 use super::*;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    event::api::{DatagramDropReason, Subject},
+    event::api::{DatagramDropReason, MigrationDenyReason, Subject},
     packet::interceptor::{Datagram, Interceptor},
     path::{LocalAddress, RemoteAddress},
 };
@@ -370,6 +370,80 @@ fn rebind_ipv4_mapped_before_handshake_confirmed() {
                 ..Default::default()
             };
             run_test(interceptor);
+        }
+    }
+}
+
+/// Rebinds to a port after a specified number of packets
+struct RebindToPort {
+    port: u16,
+    after: usize,
+}
+
+impl Interceptor for RebindToPort {
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
+        if self.after == 0 {
+            addr.set_port(self.port);
+        }
+    }
+
+    fn intercept_rx_datagram<'a>(
+        &mut self,
+        _subject: &Subject,
+        _datagram: &Datagram,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        self.after = self.after.saturating_sub(1);
+        payload
+    }
+}
+
+/// Ensures that a blocked port is not migrated to
+#[test]
+fn rebind_blocked_port() {
+    let model = Model::default();
+    let subscriber = recorder::DatagramDropped::new();
+    let datagram_dropped_events = subscriber.events();
+
+    test(model, move |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event((tracing_events(), subscriber))?
+            .with_random(Random::with_seed(456))?
+            .with_packet_interceptor(RebindToPort { port: 53, after: 2 })?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let addr = start_server(server)?;
+
+        primary::spawn(async move {
+            let mut connection = client
+                .connect(Connect::new(addr).with_server_name("localhost"))
+                .await
+                .unwrap();
+            let mut stream = connection.open_bidirectional_stream().await.unwrap();
+            let _ = stream.send(Bytes::from_static(b"hello")).await;
+            let _ = stream.finish();
+            let _ = stream.receive().await;
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
+
+    assert!(!datagram_dropped_events.is_empty());
+    for event in datagram_dropped_events.iter() {
+        if let DatagramDropReason::RejectedConnectionMigration { reason, .. } = &event.reason {
+            assert!(matches!(reason, MigrationDenyReason::BlockedPort { .. }));
         }
     }
 }
