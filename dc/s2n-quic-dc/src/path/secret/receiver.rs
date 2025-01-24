@@ -1,21 +1,34 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use self::allocator::Allocator;
+use crate::credentials::{Credentials, KeyId};
+use std::alloc::Layout;
 use std::sync::{Arc, Mutex};
 
-use crate::credentials::{Credentials, KeyId};
+mod allocator;
 
 #[derive(Debug)]
 pub struct Shared {
-    // FIXME: Improve scalability by avoiding the global mutex.
-    // Most likely strategy is something like fixed-size which (in principle) allows per-entry
-    // Mutex's. Likely means dropping the slab dependency.
+    alloc: Allocator,
     entries: Mutex<slab::Slab<InnerState>>,
 }
 
+unsafe impl Send for Shared {}
+unsafe impl Sync for Shared {}
+
 impl Shared {
+    pub fn without_region() -> Arc<Shared> {
+        Arc::new(Shared {
+            alloc: Allocator::with_capacity(0),
+            entries: Mutex::new(slab::Slab::new()),
+        })
+    }
+
     pub fn new() -> Arc<Shared> {
         Arc::new(Shared {
+            // ~20MB
+            alloc: Allocator::with_capacity(20 * 1024 * 1024),
             entries: Mutex::new(slab::Slab::new()),
         })
     }
@@ -29,9 +42,9 @@ impl Shared {
         }
     }
 
-    fn remove(&self, entry: usize) {
+    fn remove(&self, entry: usize) -> InnerState {
         let mut guard = self.entries.lock().unwrap_or_else(|e| e.into_inner());
-        guard.remove(entry);
+        guard.remove(entry)
     }
 }
 
@@ -46,15 +59,43 @@ pub struct State {
 
 impl Drop for State {
     fn drop(&mut self) {
-        self.shared.remove(self.entry);
+        let entry = self.shared.remove(self.entry);
+        if let Some(handle) = entry.shared {
+            // SAFETY: Entry is being dropped, so this is called at most once.
+            unsafe { self.shared.alloc.deallocate(handle as usize) };
+        }
     }
 }
 
+// KeyIDs move through two filters:
+//
+// * `max_seen` + bitset absorbs traffic with minimal reordering. Conceptually they are a single
+//   33-bit bitset ending at (inclusively) `max_seen`. 1-bits indicate seen entries. This is
+//   currently expected to be enough to absorb the vast majority (>99.99%) of traffic seen in
+//   practice. This space is always available to every Path Secret.
+// * If we don't see a key ID (i.e., we shift out a zero bit from the bitset) we insert into a list
+//   or bitset within the Shared state. This list tracks *only* unseen entries, so we expect it to
+//   generally be short. Currently the list can track entries within a region 2**16 wide. Note that
+//   this region is independent of `max_seen` and so only needs to potentially be changed if we
+//   evict a zero bit (which happens pretty rarely), and even then only if we still haven't caught
+//   a packet that's 2**16 old. See more details on `SortedListHeader` and `BitsetHeader`.
 #[derive(Clone, Debug)]
 pub struct InnerState {
     max_seen: u64,
+
+    // Any key ID > to this is either AlreadyExists or Ok.
+    // Note that == is Unknown, since += 1 is *not* a safe operation.
+    //
+    // This is updated when we evict from the list/bitset (i.e., drop a still-Ok value).
+    minimum_evicted: u64,
+
+    // Directly stored bitset.
     bitset: u32,
-    // FIXME: simple, later move into shared memory.
+
+    // Index into the shared allocator's entry array, if any.
+    shared: Option<u32>,
+
+    // FIXME: Move into shared allocation.
     list: Vec<u64>,
 }
 
@@ -62,20 +103,34 @@ impl InnerState {
     fn new() -> Self {
         Self {
             max_seen: u64::MAX,
+            minimum_evicted: u64::MAX,
             bitset: 0,
-            list: Vec::new(),
+            shared: None,
+
+            list: vec![],
         }
+    }
+
+    // Iterate over the unseen IDs that were > previous max seen, and
+    // will not *become* tracked now (i.e., don't fall into the new bitset).
+    //
+    // The bitset tracks (max_seen-32)..=(max_seen-1)
+    fn skipped_bitset(&self, previous_max: Option<u64>) -> std::ops::Range<u64> {
+        let end = self.max_seen.saturating_sub(u32::BITS as u64);
+        // Push start up so we don't push more than 65k elements, which is our list limit.
+        // This avoids a too-long loop if we jump forward too much.
+        let start = match previous_max {
+            Some(previous_max) => (previous_max + 1).max(end.saturating_sub(u16::MAX as u64)),
+            None => end.saturating_sub(u16::MAX as u64),
+        };
+        start..end
     }
 }
 
 impl State {
     pub fn without_shared() -> State {
-        let mut entries = Mutex::new(slab::Slab::with_capacity(1));
-        entries.get_mut().unwrap().insert(InnerState::new());
-        State {
-            shared: Arc::new(Shared { entries }),
-            entry: 0,
-        }
+        let shared = Shared::without_region();
+        shared.new_receiver()
     }
 
     #[cfg(test)]
@@ -110,15 +165,7 @@ impl State {
             // no need to touch the bitset, we've not seen any of the previous entries.
             entry.max_seen = *credentials.key_id;
 
-            // Iterate over the unseen IDs that were > previous max seen, and
-            // will not *become* tracked now (i.e., don't fall into the new bitset).
-            //
-            // The bitset tracks (max_seen-32)..=(max_seen-1)
-            let end = entry.max_seen.saturating_sub(u32::BITS as u64);
-            // Push start up so we don't push more than 65k elements, which is our list limit.
-            // This avoids a too-long loop if we jump forward too much.
-            let start = end.saturating_sub(u16::MAX as u64);
-            for id in start..end {
+            for id in entry.skipped_bitset(None) {
                 entry.list.push(id);
             }
 
@@ -146,15 +193,7 @@ impl State {
                 }
             }
 
-            // Iterate over the unseen IDs that were > previous max seen, and
-            // will not *become* tracked now (i.e., don't fall into the new bitset).
-            //
-            // The bitset tracks (max_seen-32)..=(max_seen-1)
-            let end = entry.max_seen.saturating_sub(u32::BITS as u64);
-            // Push start up so we don't push more than 65k elements, which is our list limit.
-            // This avoids a too-long loop if we jump forward too much.
-            let start = (previous_max + 1).max(end.saturating_sub(u16::MAX as u64));
-            for id in start..end {
+            for id in entry.skipped_bitset(Some(previous_max)) {
                 entry.list.push(id);
             }
 
@@ -189,6 +228,8 @@ impl State {
                 // FIXME: augment with bitset for fast removal
                 entry.list.remove(idx);
                 Ok(())
+            } else if *credentials.key_id > entry.minimum_evicted {
+                Err(Error::AlreadyExists)
             } else {
                 Err(Error::Unknown)
             }
