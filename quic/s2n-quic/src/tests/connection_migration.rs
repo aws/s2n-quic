@@ -447,3 +447,66 @@ fn rebind_blocked_port() {
         }
     }
 }
+
+// Changes the local address after N packets
+#[derive(Default)]
+struct RebindAddrAfter {
+    count: usize,
+}
+
+impl Interceptor for RebindAddrAfter {
+    fn intercept_rx_local_address(&mut self, _subject: &Subject, addr: &mut LocalAddress) {
+        if self.count == 0 {
+            addr.0 = rebind_port(rebind_ip(addr.0.into())).into();
+        }
+    }
+
+    fn intercept_rx_datagram<'a>(
+        &mut self,
+        _subject: &Subject,
+        _datagram: &Datagram,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        self.count = self.count.saturating_sub(1);
+        payload
+    }
+}
+
+/// Ensures that a datagram received from a client on a different server IP/port is still
+/// accepted.
+#[test]
+fn rebind_server_addr_before_handshake_confirmed() {
+    let model = Model::default();
+    let subscriber = recorder::DatagramDropped::new();
+    let datagram_dropped_events = subscriber.events();
+
+    test(model, move |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event((tracing_events(), subscriber))?
+            .with_random(Random::with_seed(456))?
+            .with_packet_interceptor(RebindAddrAfter { count: 1 })?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let addr = start_server(server)?;
+        start_client(client, addr, Data::new(1000))?;
+        Ok(addr)
+    })
+    .unwrap();
+
+    let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
+    let datagram_dropped_events = &datagram_dropped_events[..];
+
+    assert!(
+        datagram_dropped_events.is_empty(),
+        "s2n-quic should not drop packets with different server addrs {datagram_dropped_events:?}"
+    );
+}

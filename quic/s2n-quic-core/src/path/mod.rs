@@ -3,7 +3,9 @@
 
 use crate::{
     event,
-    inet::{IpV4Address, IpV6Address, SocketAddress, SocketAddressV4, SocketAddressV6},
+    inet::{
+        IpV4Address, IpV6Address, SocketAddress, SocketAddressV4, SocketAddressV6, Unspecified as _,
+    },
 };
 use core::fmt;
 
@@ -161,6 +163,16 @@ macro_rules! impl_addr {
 
 impl_addr!(LocalAddress);
 
+impl LocalAddress {
+    #[inline]
+    pub fn maybe_update(&mut self, other: &Self) {
+        // only update the local address if it's specified
+        ensure!(!other.is_unspecified());
+
+        *self = *other;
+    }
+}
+
 impl_addr!(RemoteAddress);
 
 impl Handle for RemoteAddress {
@@ -263,14 +275,7 @@ impl Handle for Tuple {
 
     #[inline]
     fn maybe_update(&mut self, other: &Self) {
-        if other.local_address.port() == 0 {
-            return;
-        }
-
-        // once we discover our path, or the port changes, update the address with the new information
-        if self.local_address.port() != other.local_address.port() {
-            self.local_address = other.local_address;
-        }
+        self.local_address.maybe_update(&other.local_address);
     }
 }
 

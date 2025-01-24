@@ -540,21 +540,15 @@ impl<Config: endpoint::Config> Path<Config> {
 
     /// Compare a Path based on its PathHandle.
     ///
-    /// In case the local_address on the connection is unknown and set to
-    /// a default un-specified value only the remote_address is used
-    /// to compare Paths.
-    ///
-    /// In the case of the local endpoint being a client, the remote address is only used
-    /// since the client might experience address rebinding.
+    /// QUIC only considers the remote address when identifying paths
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-9.3
+    //# Receiving a packet from a new peer address containing a non-probing frame
+    //# indicates that the peer has migrated to that address.
     #[inline]
     fn eq_by_handle(&self, handle: &Config::PathHandle) -> bool {
-        if Config::ENDPOINT_TYPE.is_client() || self.handle.local_address().port() == 0 {
-            self.handle
-                .remote_address()
-                .unmapped_eq(&handle.remote_address())
-        } else {
-            self.handle.unmapped_eq(handle)
-        }
+        self.handle
+            .remote_address()
+            .unmapped_eq(&handle.remote_address())
     }
 }
 

@@ -269,8 +269,22 @@ impl<Config: endpoint::Config> Manager<Config> {
                 return Err(DatagramDropReason::InvalidSourceConnectionId);
             }
 
-            // update the address if it was resolved
-            path.handle.maybe_update(path_handle);
+            // Update the address if it was resolved
+            //
+            // NOTE: We don't update the server address since this would cause the client to drop
+            // packets from the server.
+
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-9
+            //# If a client receives packets from an unknown server address, the client MUST discard these packets.
+
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-9
+            //# If the peer sent the disable_active_migration transport parameter, an endpoint also MUST NOT send
+            //# packets (including probing packets; see Section 9.1) from a different local address to the address
+            //# the peer used during the handshake, unless the endpoint has acted on a preferred_address transport
+            //# parameter from the peer.
+            if Config::ENDPOINT_TYPE.is_client() {
+                path.handle.maybe_update(path_handle);
+            }
 
             let amplification_outcome = path.on_bytes_received(datagram.payload_len);
             return Ok((id, amplification_outcome));
