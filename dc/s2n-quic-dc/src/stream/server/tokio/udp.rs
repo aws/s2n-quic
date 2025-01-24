@@ -17,7 +17,7 @@ use crate::{
     },
 };
 use core::ops::ControlFlow;
-use s2n_quic_core::{inet::SocketAddress, time::Clock};
+use s2n_quic_core::{inet::SocketAddress, time::Clock, varint::VarInt};
 use std::io;
 use tracing::debug;
 
@@ -111,11 +111,15 @@ where
 
         let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
 
+        // TODO allocate channel
+        let route_key = VarInt::ZERO;
+
         let stream = match endpoint::accept_stream(
             now,
             &self.env,
             env::UdpUnbound(remote_addr),
             &packet,
+            route_key,
             Some(handshake),
             Some(&mut self.recv_buffer),
             &self.secrets,

@@ -12,7 +12,7 @@ use s2n_quic_core::{probe, varint::VarInt};
 )]
 pub struct Id {
     #[cfg_attr(any(feature = "testing", test), generator(Self::GENERATOR))]
-    pub key_id: VarInt,
+    pub route_key: VarInt,
     pub is_reliable: bool,
     pub is_bidirectional: bool,
 }
@@ -22,7 +22,7 @@ impl fmt::Debug for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
             f.debug_struct("stream::Id")
-                .field("key_id", &self.key_id)
+                .field("route_key", &self.route_key)
                 .field("is_reliable", &self.is_reliable)
                 .field("is_bidirectional", &self.is_bidirectional)
                 .finish()
@@ -66,7 +66,7 @@ impl Id {
     #[inline]
     pub fn next(&self) -> Option<Self> {
         Some(Self {
-            key_id: self.key_id.checked_add_usize(1)?,
+            route_key: self.route_key.checked_add_usize(1)?,
             is_reliable: self.is_reliable,
             is_bidirectional: self.is_bidirectional,
         })
@@ -84,7 +84,7 @@ impl Id {
 
     #[inline]
     pub fn into_varint(self) -> VarInt {
-        let key_id = *self.key_id;
+        let key_id = *self.route_key;
         let is_reliable = if self.is_reliable {
             IS_RELIABLE_MASK
         } else {
@@ -108,7 +108,7 @@ impl Id {
         let is_reliable = *value & IS_RELIABLE_MASK == IS_RELIABLE_MASK;
         let is_bidirectional = *value & IS_BIDIRECTIONAL_MASK == IS_BIDIRECTIONAL_MASK;
         Self {
-            key_id: VarInt::new(*value >> 2).unwrap(),
+            route_key: VarInt::new(*value >> 2).unwrap(),
             is_reliable,
             is_bidirectional,
         }
