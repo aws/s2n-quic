@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   env:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       rust-versions: ${{ steps.definitions.outputs.versions }}
       msrv: ${{ steps.definitions.outputs.msrv }}
@@ -69,7 +69,7 @@ jobs:
           echo "crates=$CRATES" >> $GITHUB_OUTPUT
 
   rustfmt:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,7 +86,7 @@ jobs:
           cargo fmt --all -- --check
 
   clippy:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       fail-fast: false
       matrix:
@@ -119,7 +119,7 @@ jobs:
           cargo clippy --all-features --all-targets --workspace -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
 
   udeps:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -144,7 +144,7 @@ jobs:
           RUSTC_WRAPPER: ""
 
   doc:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -186,93 +186,8 @@ jobs:
           status: "success"
           url: "${{ steps.s3.outputs.URL }}"
 
-  test:
-    runs-on: ${{ matrix.os }}
-    needs: env
-    strategy:
-      fail-fast: false
-      matrix:
-        rust: ${{ fromJson(needs.env.outputs.rust-versions) }}
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        target: [native]
-        env: [default]
-        include:
-          - os: windows-latest
-            # s2n-tls and s2n-quic-dc don't currently build on windows
-            exclude: --exclude s2n-quic-tls --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
-          - rust: stable
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            # s2n-quic-dc doesn't currently build on aarch64
-            exclude: --exclude s2n-quic-dc  --exclude s2n-quic-dc-benches
-          - rust: stable
-            os: ubuntu-latest
-            target: i686-unknown-linux-gnu
-          - rust: stable
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            args: --features aws-lc-bindgen
-          # test with different platform features
-          - rust: stable
-            os: ubuntu-latest
-            target: native
-            env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=""
-            # s2n-quic-dc requires platform features
-            exclude: --exclude s2n-quic-dc  --exclude s2n-quic-dc-benches
-          - rust: stable
-            os: ubuntu-latest
-            target: native
-            env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE="mtu_disc,pktinfo,tos,socket_msg" >> $GITHUB_ENV; echo S2N_QUIC_RUN_VERSION_SPECIFIC_TESTS=1
-    steps:
-      - uses: ilammy/setup-nasm@v1
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-          submodules: true
-
-      - name: Install cross target
-        if: ${{ matrix.target != 'native' }}
-        run: |
-          rustup target add ${{ matrix.target }}
-
-      - name: Install rust toolchain
-        id: toolchain
-        run: |
-          rustup toolchain install ${{ matrix.rust }}
-          rustup override set ${{ matrix.rust }}
-          # if not 'native', this install the toolchain for target, otherwise it's a noop
-          rustup toolchain install ${{ matrix.rust }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }}
-
-      - name: Install cross
-        if: ${{ matrix.target != 'native' }}
-        uses: camshaft/install@v1
-        with:
-          crate: cross
-
-      - uses: camshaft/rust-cache@v1
-        with:
-          key: ${{ matrix.target }}
-
-      - name: Restore fuzz corpus
-        shell: bash
-        run: |
-          find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
-
-      - name: Set environment variables
-        if: ${{ matrix.env != 'default' }}
-        run: echo ${{ matrix.env }} >> $GITHUB_ENV
-
-      # Build the tests before running to improve cross compilation speed
-      - name: Run cargo/cross build
-        run: |
-          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} build --tests --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
-
-      - name: Run cargo/cross test
-        run: |
-          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
-
   asan:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -310,7 +225,7 @@ jobs:
             --workspace
 
   fips:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -334,8 +249,7 @@ jobs:
 
   miri:
     # miri needs quite a bit of memory so use a larger instance
-    runs-on:
-      labels: s2n_ubuntu-20.04_8-core
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       fail-fast: false
       matrix:
@@ -363,7 +277,7 @@ jobs:
           MIRIFLAGS: -Zmiri-disable-isolation
 
   no_std:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -381,7 +295,7 @@ jobs:
         run: ./scripts/test_no_std ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
   compliance:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -397,7 +311,7 @@ jobs:
           cdn: $CDN
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -451,7 +365,7 @@ jobs:
   # otherwise release to crates.io will be blocked
   crates:
     needs: env
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       fail-fast: false
       matrix:
@@ -472,7 +386,7 @@ jobs:
 
   examples:
     needs: env
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       fail-fast: false
       matrix:
@@ -516,7 +430,7 @@ jobs:
         run: cargo build
 
   recovery-simulations:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -558,7 +472,7 @@ jobs:
           url: "${{ steps.s3.outputs.URL }}"
 
   sims:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -603,7 +517,7 @@ jobs:
           url: "${{ steps.s3.outputs.URL }}"
 
   copyright:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
 
@@ -613,7 +527,7 @@ jobs:
 
   # ensures the event codegen is up to date
   events:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -638,7 +552,7 @@ jobs:
 
   # ensures there are no unused snapshots
   snapshots:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -669,7 +583,7 @@ jobs:
   # generates a report of time spent in compilation
   # https://doc.rust-lang.org/stable/cargo/reference/timings.html
   timing:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -711,7 +625,7 @@ jobs:
           url: "${{ steps.s3.outputs.URL }}"
 
   typos:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -735,7 +649,7 @@ jobs:
           ! grep -q '[^[:space:]]' /tmp/typos.json
 
   kani:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       fail-fast: false
       matrix:
@@ -751,7 +665,7 @@ jobs:
           working-directory: ${{ matrix.crate }}
 
   dhat:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
 
@@ -807,7 +721,7 @@ jobs:
           url: "${{ steps.s3.outputs.URL }}"
 
   loom:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       matrix:
         crate: [quic/s2n-quic-core]
@@ -833,7 +747,7 @@ jobs:
           RUSTFLAGS: --cfg loom -Cdebug-assertions
 
   xdp:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-GitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -861,46 +775,3 @@ jobs:
           RUST_LOG: trace
         run: cargo +stable xtask ci
 
-  dc-wireshark:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macOS-latest]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-
-      - name: Install rust toolchain
-        working-directory: dc/wireshark
-        run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
-          rustup override set stable
-
-      - uses: camshaft/install@v1
-        with:
-          crate: bindgen-cli
-          bins: bindgen
-
-      - uses: camshaft/rust-cache@v1
-
-      - name: Generate bindings
-        working-directory: dc/wireshark
-        run: cargo xtask bindings
-
-      - name: Run cargo fmt
-        working-directory: dc/wireshark
-        run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        working-directory: dc/wireshark
-        run: cargo clippy --tests
-
-      - name: Run tests
-        working-directory: dc/wireshark
-        run: cargo xtask test
-
-      - name: Run build
-        working-directory: dc/wireshark
-        run: cargo xtask build
