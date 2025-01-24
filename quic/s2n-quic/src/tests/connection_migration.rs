@@ -440,6 +440,7 @@ fn rebind_blocked_port() {
 
     let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
 
+    assert!(!datagram_dropped_events.is_empty());
     for event in datagram_dropped_events.iter() {
         if let DatagramDropReason::RejectedConnectionMigration { reason, .. } = &event.reason {
             assert!(matches!(reason, MigrationDenyReason::BlockedPort { .. }));
