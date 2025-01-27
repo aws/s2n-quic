@@ -4,7 +4,7 @@
 use crate::{
     event::{self, api::Subscriber as _, IntoEvent as _},
     msg, packet,
-    path::secret::{self, Map},
+    path::secret::{self, map, Map},
     random::Random,
     stream::{
         application,
@@ -35,16 +35,21 @@ pub struct AcceptError<Peer> {
 #[inline]
 pub fn open_stream<Env, P>(
     env: &Env,
-    map: &Map,
-    crypto: secret::map::Bidirectional,
-    parameters: dc::ApplicationParams,
+    entry: map::Peer,
     peer: P,
     subscriber: Env::Subscriber,
+    parameter_override: Option<&dyn Fn(dc::ApplicationParams) -> dc::ApplicationParams>,
 ) -> Result<application::Builder<Env::Subscriber>>
 where
     Env: Environment,
     P: Peer<Env>,
 {
+    let (crypto, mut parameters) = entry.pair(&peer.features());
+
+    if let Some(o) = parameter_override {
+        parameters = o(parameters);
+    }
+
     let key_id = crypto.credentials.key_id;
     let stream_id = packet::stream::Id {
         key_id,
@@ -69,7 +74,7 @@ where
         stream_id,
         None,
         crypto,
-        map,
+        entry.map(),
         parameters,
         None,
         None,
