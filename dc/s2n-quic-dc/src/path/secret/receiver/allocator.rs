@@ -101,7 +101,7 @@ impl Allocator {
         assert_eq!(layout.size() % PAGE_SIZE, 0);
         let free_pages: Vec<_> = (0..layout.size())
             .step_by(PAGE_SIZE)
-            .map(|offset| unsafe { dbg!(NonNull::new(region.as_ptr().add(offset)).unwrap()) })
+            .map(|offset| unsafe { NonNull::new(region.as_ptr().add(offset)).unwrap() })
             .collect();
         let end = (region.as_ptr() as usize)
             .checked_add(layout.size())
@@ -323,11 +323,11 @@ pub struct AllocationGuard<'a> {
 }
 
 impl AllocationGuard<'_> {
-    fn as_ptr(&self) -> NonNull<u8> {
+    pub fn as_ptr(&self) -> NonNull<u8> {
         self.ptr
     }
 
-    fn handle(&self) -> usize {
+    pub fn handle(&self) -> usize {
         self.mutex
     }
 }

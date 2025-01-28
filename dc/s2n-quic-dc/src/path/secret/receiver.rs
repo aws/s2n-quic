@@ -4,6 +4,8 @@
 use self::allocator::Allocator;
 use crate::credentials::{Credentials, KeyId};
 use std::alloc::Layout;
+use std::mem::MaybeUninit;
+use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
 mod allocator;
@@ -127,10 +129,10 @@ impl SharedIndexMemory {
         match self {
             SharedIndexMemory::None => SharedIndex::None,
             SharedIndexMemory::Array([a, b, c]) => {
-                SharedIndex::Array(u32::from_le_bytes([0, a, b, c]) as usize)
+                SharedIndex::Array(u32::from_le_bytes([a, b, c, 0]) as usize)
             }
             SharedIndexMemory::Bitset([a, b, c]) => {
-                SharedIndex::Bitset(u32::from_le_bytes([0, a, b, c]) as usize)
+                SharedIndex::Bitset(u32::from_le_bytes([a, b, c, 0]) as usize)
             }
         }
     }
@@ -143,14 +145,14 @@ impl SharedIndex {
             SharedIndex::Array(i) => {
                 assert!(i < (1 << 24));
                 let [a, b, c, d] = (i as u32).to_le_bytes();
-                assert!(a == 0);
-                SharedIndexMemory::Array([b, c, d])
+                assert!(d == 0);
+                SharedIndexMemory::Array([a, b, c])
             }
             SharedIndex::Bitset(i) => {
                 assert!(i < (1 << 24));
                 let [a, b, c, d] = (i as u32).to_le_bytes();
-                assert!(a == 0);
-                SharedIndexMemory::Bitset([b, c, d])
+                assert!(d == 0);
+                SharedIndexMemory::Bitset([a, b, c])
             }
         }
     }
@@ -291,8 +293,88 @@ impl State {
         }
     }
 
+    fn deallocate_shared(&self, entry: &mut InnerState) {
+        if let SharedIndex::Bitset(handle) | SharedIndex::Array(handle) = entry.shared.unpack() {
+            entry.shared = SharedIndexMemory::None;
+            // SAFETY: we've cleared the shared field, so won't get called again.
+            unsafe { self.shared.alloc.deallocate(handle) };
+        }
+    }
+
     fn push_list(&self, entry: &mut InnerState, id: u64) {
-        entry.list.push(id);
+        for _ in 0..2 {
+            match entry.shared.unpack() {
+                SharedIndex::None => {
+                    let guard = self.shared.alloc.allocate(SortedList::layout_for_cap(1));
+                    entry.shared = SharedIndex::Array(guard.handle()).pack();
+                    unsafe {
+                        let mut list = SortedList::initialize(guard.as_ptr(), 1);
+                        // Safe to unwrap because it can't need to grow -- we allocated with capacity
+                        // for 1 element and that element will get used up here.
+                        list.insert(id).unwrap();
+                    }
+
+                    // we're done, exit
+                    return;
+                }
+                SharedIndex::Array(handle) => {
+                    let Some(existing) = self.shared.alloc.read_allocation(handle) else {
+                        self.deallocate_shared(entry);
+                        // loop around to try again with a new allocation
+                        continue;
+                    };
+
+                    let mut list = unsafe { SortedList::from_existing(existing.as_ptr()) };
+                    let Err(err) = list.insert(id) else {
+                        // successfully inserted, done.
+                        return;
+                    };
+
+                    // drop the lock before we allocate, cannot hold entry lock across
+                    // allocation or we may deadlock.
+                    drop(existing);
+
+                    let (_new_guard, mut list) = match err {
+                        CapacityError::Array(cap) => {
+                            let guard = self.shared.alloc.allocate(SortedList::layout_for_cap(cap));
+                            entry.shared = SharedIndex::Array(guard.handle()).pack();
+                            let list = unsafe {
+                                SortedList::initialize(guard.as_ptr(), cap.try_into().unwrap())
+                            };
+                            (guard, list)
+                        }
+                        CapacityError::Bitset => {
+                            todo!()
+                        }
+                    };
+
+                    let previous = self.shared.alloc.read_allocation(handle);
+                    if let Some(previous) = previous {
+                        let mut prev_list = unsafe { SortedList::from_existing(previous.as_ptr()) };
+                        prev_list.copy_to(&mut list);
+                    }
+
+                    // Safe to unwrap because it can't need to grow -- we allocated with
+                    // capacity for at least one more element and that element will get used up
+                    // here. We haven't released the lock on this list since allocation so it's
+                    // impossible for some other thread to have used up the space.
+                    //
+                    // FIXME: that assumption is not true if we failed to copy, since we probably
+                    // need to *shrink* then. Maybe we should allocate a temporary buffer to copy
+                    // into?
+                    list.insert(id).unwrap();
+
+                    return;
+                }
+                SharedIndex::Bitset(_) => {
+                    todo!()
+                }
+            }
+        }
+
+        // Should be unreachable - we should always exit from the loop in at most two "turns" via
+        // `return`.
+        unreachable!()
     }
 
     fn try_remove_list(&self, entry: &mut InnerState, id: u64) -> Result<(), ()> {
@@ -307,6 +389,285 @@ impl State {
 }
 
 impl super::map::SizeOf for State {}
+
+#[derive(Copy, Clone)]
+struct SortedListHeader {
+    len: u16,
+    count: u16,
+    cap: u16,
+    minimum: u64,
+}
+
+struct SortedList {
+    p: NonNull<u8>,
+}
+
+impl SortedList {
+    unsafe fn initialize(ptr: NonNull<u8>, cap: u16) -> SortedList {
+        ptr.as_ptr()
+            .cast::<SortedListHeader>()
+            .write(SortedListHeader {
+                len: 0,
+                count: 0,
+                cap,
+                minimum: 0,
+            });
+        SortedList { p: ptr.cast() }
+    }
+
+    fn layout_for_cap(cap: usize) -> Layout {
+        Layout::new::<SortedListHeader>()
+            .extend(Layout::array::<u16>(cap).unwrap())
+            .unwrap()
+            .0
+            .extend(Layout::array::<u8>(cap.div_ceil(8)).unwrap())
+            .unwrap()
+            .0
+    }
+    fn bitset_offset(cap: usize) -> usize {
+        Layout::new::<SortedListHeader>()
+            .extend(Layout::array::<u16>(cap).unwrap())
+            .unwrap()
+            .0
+            .extend(Layout::array::<u8>(cap.div_ceil(8)).unwrap())
+            .unwrap()
+            .1
+    }
+
+    fn slice_offset(cap: usize) -> usize {
+        Layout::new::<SortedListHeader>()
+            .extend(Layout::array::<u16>(cap).unwrap())
+            .unwrap()
+            .1
+    }
+
+    fn minimum(&self) -> u64 {
+        // aligned to 8 bytes, so should be aligned.
+        unsafe { self.p.cast::<SortedListHeader>().as_ref().minimum }
+    }
+
+    fn set_minimum(&self, min: u64) {
+        unsafe {
+            self.p.cast::<SortedListHeader>().as_mut().minimum = min;
+        }
+    }
+
+    fn len(&self) -> usize {
+        unsafe { usize::from(self.p.cast::<SortedListHeader>().as_ref().len) }
+    }
+
+    fn set_len(&self, len: usize) {
+        unsafe {
+            self.p.cast::<SortedListHeader>().as_mut().len = len.try_into().unwrap();
+        }
+    }
+
+    fn capacity(&self) -> usize {
+        unsafe { usize::from(self.p.cast::<SortedListHeader>().as_ref().cap) }
+    }
+
+    fn set_capacity(&self, cap: usize) {
+        unsafe {
+            self.p.cast::<SortedListHeader>().as_mut().cap = cap.try_into().unwrap();
+        }
+    }
+
+    fn count(&self) -> usize {
+        unsafe { usize::from(self.p.cast::<SortedListHeader>().as_ref().count) }
+    }
+
+    fn set_count(&self, count: usize) {
+        unsafe {
+            self.p.cast::<SortedListHeader>().as_mut().count = count.try_into().unwrap();
+        }
+    }
+
+    #[inline(never)]
+    fn insert(&mut self, value: u64) -> Result<(), CapacityError> {
+        let value = match self.to_offset(value) {
+            Some(v) => v,
+            None => {
+                self.compact_ensuring(value);
+                self.to_offset(value).expect("compact ensuring guarantee")
+            }
+        };
+        if self.len() == self.capacity() {
+            // FIXME: might actually need to go to bitset or compact
+            return Err(CapacityError::Array(self.len() + 1));
+        }
+        unsafe {
+            // move past the header
+            self.p
+                .as_ptr()
+                .add(Self::slice_offset(self.capacity()))
+                .cast::<u16>()
+                .add(self.len())
+                .write(value);
+            self.set_len(self.len() + 1);
+            self.set_count(self.count() + 1);
+        }
+
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn remove(&mut self, value: u64) -> Result<(), Error> {
+        let Some(value) = self.to_offset(value) else {
+            // If the value is >= minimum, but we can't compute an offset, we know for sure that it
+            // was not inserted into the array. As such it must have been received already.
+            return if value >= self.minimum() {
+                Err(Error::AlreadyExists)
+            } else {
+                Err(Error::Unknown)
+            };
+        };
+        let slice = unsafe {
+            std::slice::from_raw_parts::<u16>(
+                self.p
+                    .as_ptr()
+                    .add(Self::slice_offset(self.capacity()))
+                    .cast::<u16>(),
+                self.len(),
+            )
+        };
+
+        let Ok(idx) = slice.binary_search(&value) else {
+            return Err(Error::Unknown);
+        };
+        let bitset = unsafe {
+            std::slice::from_raw_parts_mut::<u8>(
+                self.p.as_ptr().add(Self::bitset_offset(self.capacity())),
+                self.len().div_ceil(8),
+            )
+        };
+        let pos = idx / 8;
+        let mask = 1 << (idx % 8);
+        if bitset[pos] & mask != 0 {
+            return Err(Error::AlreadyExists);
+        }
+        bitset[pos] |= mask;
+
+        self.set_count(self.count() - 1);
+
+        if self.count() * 2 < self.len() {
+            self.shrink();
+        }
+
+        Ok(())
+    }
+
+    //fn grow(&mut self) {
+    //    todo!()
+    //    let new_cap = (self.capacity() + 1)
+    //        .next_power_of_two()
+    //        .clamp(0, u16::MAX as usize);
+    //    self.reallocate_to(new_cap);
+    //}
+
+    fn copy_to(&mut self, new: &mut SortedList) {
+        unsafe {
+            let new_cap = new.capacity();
+            let new = new.p;
+
+            // copy header
+            self.p
+                .as_ptr()
+                .copy_to_nonoverlapping(new.as_ptr(), std::mem::size_of::<SortedListHeader>());
+
+            // copy bitset
+            self.p
+                .as_ptr()
+                .add(Self::bitset_offset(self.capacity()))
+                .copy_to_nonoverlapping(
+                    new.as_ptr().add(Self::bitset_offset(new_cap)),
+                    self.capacity().div_ceil(8),
+                );
+
+            // Zero out tail of the new bitset (that didn't get init'd by the copy above).
+            std::slice::from_raw_parts_mut::<MaybeUninit<u8>>(
+                new.as_ptr().add(Self::bitset_offset(new_cap)).cast(),
+                new_cap.div_ceil(8),
+            )[self.capacity().div_ceil(8)..]
+                .fill(MaybeUninit::zeroed());
+
+            // Copy the actual values
+            self.p
+                .as_ptr()
+                .add(Self::slice_offset(self.capacity()))
+                .cast::<u16>()
+                .copy_to_nonoverlapping(
+                    new.as_ptr().add(Self::slice_offset(new_cap)).cast(),
+                    self.len(),
+                );
+
+            self.p = new;
+            self.set_capacity(new_cap);
+        }
+    }
+
+    // this also updates `minimum` to be best-possible given the data.
+    fn shrink(&mut self) {
+        todo!()
+        //let slice = unsafe {
+        //    std::slice::from_raw_parts::<u16>(
+        //        self.p
+        //            .as_ptr()
+        //            .add(Self::slice_offset(self.capacity()))
+        //            .cast::<u16>(),
+        //        self.len(),
+        //    )
+        //};
+        //let bitset = unsafe {
+        //    std::slice::from_raw_parts::<u8>(
+        //        self.p.as_ptr().add(Self::bitset_offset(self.capacity())),
+        //        self.len().div_ceil(8),
+        //    )
+        //};
+
+        //let mut new = Self::new();
+        //let mut cap = 0;
+        //while cap < self.count() {
+        //    // should match grow()'s impl
+        //    cap = (cap + 1).next_power_of_two().clamp(0, u16::MAX as usize);
+        //}
+        //new.reallocate_to(cap);
+        //for (idx, value) in slice.iter().copied().enumerate() {
+        //    let pos = idx / 8;
+        //    let mask = 1 << (idx % 8);
+        //    // not yet removed...
+        //    if bitset[pos] & mask == 0 {
+        //        new.insert(self.minimum() + value as u64);
+        //    }
+        //}
+        //*self = new;
+    }
+
+    fn to_offset(&mut self, value: u64) -> Option<u16> {
+        if self.minimum() == u64::MAX {
+            self.set_minimum(value);
+        }
+        let value = value.checked_sub(self.minimum())?;
+        u16::try_from(value).ok()
+    }
+
+    unsafe fn from_existing(p: NonNull<u8>) -> SortedList {
+        SortedList { p }
+    }
+
+    /// Re-pack the sorted list, potentially dropping values, to ensure that `can_fit` fits into
+    /// the list.
+    fn compact_ensuring(&self, can_fit: u64) {
+        todo!()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+enum CapacityError {
+    #[error("need to grow or shrink to an array with capacity {0}")]
+    Array(usize),
+    #[error("need to grow or shrink to a bitset")]
+    Bitset,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
