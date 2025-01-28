@@ -132,11 +132,11 @@ impl Allocator {
     /// Allocate `Layout`.
     ///
     /// Returns a handle which can be used to lookup the allocation.
-    pub fn allocate(&self, layout: Layout) -> usize {
-        self.inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .allocate(layout)
+    pub fn allocate(&self, layout: Layout) -> AllocationGuard<'_> {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let handle = inner.allocate(layout);
+        // this allocation cannot be freed yet as we didn't release the `inner` lock.
+        inner.read_allocation(self, handle).unwrap()
     }
 
     pub fn read_allocation(&self, handle: usize) -> Option<AllocationGuard<'_>> {
@@ -326,6 +326,10 @@ impl AllocationGuard<'_> {
     fn as_ptr(&self) -> NonNull<u8> {
         self.ptr
     }
+
+    fn handle(&self) -> usize {
+        self.mutex
+    }
 }
 
 impl Drop for AllocationGuard<'_> {
@@ -456,6 +460,30 @@ impl AllocatorInner {
         }
 
         parent_idx
+    }
+
+    fn read_allocation<'a>(
+        &self,
+        parent: &'a Allocator,
+        handle: usize,
+    ) -> Option<AllocationGuard<'a>> {
+        let guard = self.parents[handle].lock();
+        let Some(offset) = *guard else {
+            return None;
+        };
+
+        // FIXME: we leak this guard, and then release the `inner` mutex lock which is a bit
+        // problematic since &mut could let you get_mut() on the Mutex... some safety condition is
+        // probably missing somewhere.
+        parking_lot::MutexGuard::leak(guard);
+
+        Some(AllocationGuard {
+            this: parent,
+            mutex: handle,
+            ptr: unsafe {
+                NonNull::new(self.region.as_ptr().add(usize::try_from(offset).unwrap())).unwrap()
+            },
+        })
     }
 }
 

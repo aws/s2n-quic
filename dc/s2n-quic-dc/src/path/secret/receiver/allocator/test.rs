@@ -4,8 +4,8 @@ use std::alloc::Layout;
 #[test]
 fn trivial_check() {
     let allocator = Allocator::with_capacity(8192);
-    let handle1 = allocator.allocate(Layout::new::<u32>());
-    let handle2 = allocator.allocate(Layout::new::<u32>());
+    let handle1 = allocator.allocate(Layout::new::<u32>()).handle();
+    let handle2 = allocator.allocate(Layout::new::<u32>()).handle();
     let ptr1 = allocator.read_allocation(handle1).unwrap();
     let ptr2 = allocator.read_allocation(handle2).unwrap();
     assert_ne!(ptr1.as_ptr(), ptr2.as_ptr());
@@ -23,7 +23,7 @@ fn fills_page() {
     let allocator = Allocator::with_capacity(1);
     let mut handles = vec![];
     for _ in 0..1021 {
-        handles.push(allocator.allocate(Layout::new::<u32>()));
+        handles.push(allocator.allocate(Layout::new::<u32>()).handle());
     }
     let mut count = 0;
     for handle in handles.iter() {
@@ -40,7 +40,7 @@ fn allocates_indefinitely() {
     let layout = Layout::new::<u32>();
     let mut handles = vec![];
     for _ in 0..(1021 * if cfg!(miri) { 2 } else { 1000 }) {
-        handles.push(allocator.allocate(layout));
+        handles.push(allocator.allocate(layout).handle());
     }
     let mut count = 0;
     for handle in handles {
@@ -62,7 +62,7 @@ fn allocate_and_deallocate_multipage() {
     let mut handles = vec![];
     let layout = Layout::new::<u32>();
     for _ in 0..3000 {
-        handles.push(allocator.allocate(layout));
+        handles.push(allocator.allocate(layout).handle());
     }
     let mut count = 0;
     for handle in handles.iter() {
@@ -86,13 +86,13 @@ fn allocate_and_deallocate_multilayout() {
     let layout2 = Layout::new::<[u32; 2]>();
     let layout3 = Layout::new::<[u32; 3]>();
     for _ in 0..1000 {
-        handles.push(allocator.allocate(layout1));
+        handles.push(allocator.allocate(layout1).handle());
     }
     for _ in 0..1000 {
-        handles.push(allocator.allocate(layout2));
+        handles.push(allocator.allocate(layout2).handle());
     }
     for _ in 0..1000 {
-        handles.push(allocator.allocate(layout3));
+        handles.push(allocator.allocate(layout3).handle());
     }
     let mut count = 0;
     for handle in handles.iter() {
@@ -120,11 +120,11 @@ fn allocate_and_deallocate_multilayout() {
 #[test]
 fn reuse_handle() {
     let allocator = Allocator::with_capacity(1);
-    let handle1 = allocator.allocate(Layout::new::<u32>());
+    let handle1 = allocator.allocate(Layout::new::<u32>()).handle();
     unsafe {
         allocator.deallocate(handle1);
     }
-    let handle2 = allocator.allocate(Layout::new::<u32>());
+    let handle2 = allocator.allocate(Layout::new::<u32>()).handle();
     unsafe {
         allocator.deallocate(handle2);
     }

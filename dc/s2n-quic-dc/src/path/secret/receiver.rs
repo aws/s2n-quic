@@ -60,9 +60,9 @@ pub struct State {
 impl Drop for State {
     fn drop(&mut self) {
         let entry = self.shared.remove(self.entry);
-        if let Some(handle) = entry.shared {
+        if let SharedIndex::Bitset(handle) | SharedIndex::Array(handle) = entry.shared.unpack() {
             // SAFETY: Entry is being dropped, so this is called at most once.
-            unsafe { self.shared.alloc.deallocate(handle as usize) };
+            unsafe { self.shared.alloc.deallocate(handle) };
         }
     }
 }
@@ -83,20 +83,77 @@ impl Drop for State {
 pub struct InnerState {
     max_seen: u64,
 
+    // Directly stored bitset, adjacent to max_seen.
+    bitset: u32,
+
     // Any key ID > to this is either AlreadyExists or Ok.
     // Note that == is Unknown, since += 1 is *not* a safe operation.
     //
     // This is updated when we evict from the list/bitset (i.e., drop a still-Ok value).
+    // FIXME: actually not updated today, because we need to thread this into deallocation for
+    // proper updates.
     minimum_evicted: u64,
 
-    // Directly stored bitset.
-    bitset: u32,
-
-    // Index into the shared allocator's entry array, if any.
-    shared: Option<u32>,
+    // Index into the shared allocator's parents/entry array, if any.
+    shared: SharedIndexMemory,
 
     // FIXME: Move into shared allocation.
     list: Vec<u64>,
+}
+
+// "u24" indices keep the in-memory size down.
+#[derive(Copy, Clone)]
+enum SharedIndexMemory {
+    None,
+    Array([u8; 3]),
+    Bitset([u8; 3]),
+}
+
+impl std::fmt::Debug for SharedIndexMemory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.unpack().fmt(f)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+enum SharedIndex {
+    None,
+    Array(usize),
+    Bitset(usize),
+}
+
+impl SharedIndexMemory {
+    fn unpack(self) -> SharedIndex {
+        match self {
+            SharedIndexMemory::None => SharedIndex::None,
+            SharedIndexMemory::Array([a, b, c]) => {
+                SharedIndex::Array(u32::from_le_bytes([0, a, b, c]) as usize)
+            }
+            SharedIndexMemory::Bitset([a, b, c]) => {
+                SharedIndex::Bitset(u32::from_le_bytes([0, a, b, c]) as usize)
+            }
+        }
+    }
+}
+
+impl SharedIndex {
+    fn pack(self) -> SharedIndexMemory {
+        match self {
+            SharedIndex::None => SharedIndexMemory::None,
+            SharedIndex::Array(i) => {
+                assert!(i < (1 << 24));
+                let [a, b, c, d] = (i as u32).to_le_bytes();
+                assert!(a == 0);
+                SharedIndexMemory::Array([b, c, d])
+            }
+            SharedIndex::Bitset(i) => {
+                assert!(i < (1 << 24));
+                let [a, b, c, d] = (i as u32).to_le_bytes();
+                assert!(a == 0);
+                SharedIndexMemory::Bitset([b, c, d])
+            }
+        }
+    }
 }
 
 impl InnerState {
@@ -105,7 +162,7 @@ impl InnerState {
             max_seen: u64::MAX,
             minimum_evicted: u64::MAX,
             bitset: 0,
-            shared: None,
+            shared: SharedIndexMemory::None,
 
             list: vec![],
         }
@@ -166,7 +223,7 @@ impl State {
             entry.max_seen = *credentials.key_id;
 
             for id in entry.skipped_bitset(None) {
-                entry.list.push(id);
+                self.push_list(entry, id);
             }
 
             Ok(())
@@ -189,12 +246,12 @@ impl State {
                     continue;
                 };
                 if entry.bitset & (1 << bit) == 0 {
-                    entry.list.push(id);
+                    self.push_list(entry, id);
                 }
             }
 
             for id in entry.skipped_bitset(Some(previous_max)) {
-                entry.list.push(id);
+                self.push_list(entry, id);
             }
 
             if delta <= u32::BITS as u64 {
@@ -224,15 +281,27 @@ impl State {
                     entry.bitset |= 1 << (delta - 1) as u32;
                     Ok(())
                 }
-            } else if let Ok(idx) = entry.list.binary_search(&*credentials.key_id) {
-                // FIXME: augment with bitset for fast removal
-                entry.list.remove(idx);
+            } else if let Ok(()) = self.try_remove_list(entry, *credentials.key_id) {
                 Ok(())
             } else if *credentials.key_id > entry.minimum_evicted {
                 Err(Error::AlreadyExists)
             } else {
                 Err(Error::Unknown)
             }
+        }
+    }
+
+    fn push_list(&self, entry: &mut InnerState, id: u64) {
+        entry.list.push(id);
+    }
+
+    fn try_remove_list(&self, entry: &mut InnerState, id: u64) -> Result<(), ()> {
+        if let Ok(idx) = entry.list.binary_search(&id) {
+            // FIXME: augment with bitset for fast removal
+            entry.list.remove(idx);
+            Ok(())
+        } else {
+            Err(())
         }
     }
 }
