@@ -169,14 +169,12 @@ event_recorder!(
 use s2n_quic_core::event::api::DatagramDropReason;
 #[derive(Debug)]
 pub struct DatagramDroppedEvent {
-    pub remote_addr: SocketAddr,
     pub reason: DatagramDropReason,
 }
 
 impl<'a> From<&events::DatagramDropped<'a>> for DatagramDroppedEvent {
     fn from(value: &events::DatagramDropped<'a>) -> Self {
         DatagramDroppedEvent {
-            remote_addr: value.remote_addr.to_string().parse().unwrap(),
             reason: value.reason.clone(),
         }
     }

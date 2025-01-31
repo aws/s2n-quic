@@ -765,7 +765,7 @@ fn test_adding_new_path() {
 // - call on_datagram_received with new remote address bit handshake_confirmed false
 //
 // Expectation:
-// - asset on_datagram_received errors
+// - assert on_datagram_received does not error
 // - assert we have one paths
 fn do_not_add_new_path_if_handshake_not_confirmed() {
     // Setup:
@@ -811,7 +811,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
     );
 
     // Expectation:
-    assert!(on_datagram_result.is_err());
+    assert!(on_datagram_result.is_ok());
     assert!(manager.path(&new_addr).is_none());
     assert_eq!(manager.paths.len(), 1);
 }

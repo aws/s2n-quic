@@ -225,15 +225,13 @@ fn ip_and_port_rebind_test() {
 #[derive(Default)]
 struct RebindPortBeforeHandshakeConfirmed {
     datagram_count: usize,
-    changed_port: bool,
 }
 
 const REBIND_PORT: u16 = 55555;
 impl Interceptor for RebindPortBeforeHandshakeConfirmed {
     fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
-        if self.datagram_count == 1 && !self.changed_port {
+        if (1..5).contains(&self.datagram_count) {
             addr.set_port(REBIND_PORT);
-            self.changed_port = true;
         }
     }
 
@@ -279,14 +277,10 @@ fn rebind_before_handshake_confirmed() {
     .unwrap();
 
     let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
-
-    assert_eq!(1, datagram_dropped_events.len());
-    let event = datagram_dropped_events.first().unwrap();
-    assert!(matches!(
-        event.reason,
-        DatagramDropReason::ConnectionMigrationDuringHandshake { .. },
-    ));
-    assert_eq!(REBIND_PORT, event.remote_addr.port());
+    assert!(
+        datagram_dropped_events.is_empty(),
+        "the server should allow packets to be processed before the handshake completes"
+    );
 }
 
 // Changes the remote address to ipv4-mapped after the first packet
