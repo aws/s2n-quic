@@ -225,15 +225,13 @@ fn ip_and_port_rebind_test() {
 #[derive(Default)]
 struct RebindPortBeforeHandshakeConfirmed {
     datagram_count: usize,
-    changed_port: bool,
 }
 
 const REBIND_PORT: u16 = 55555;
 impl Interceptor for RebindPortBeforeHandshakeConfirmed {
     fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
-        if self.datagram_count == 1 && !self.changed_port {
+        if (1..5).contains(&self.datagram_count) {
             addr.set_port(REBIND_PORT);
-            self.changed_port = true;
         }
     }
 
@@ -253,8 +251,11 @@ impl Interceptor for RebindPortBeforeHandshakeConfirmed {
 #[test]
 fn rebind_before_handshake_confirmed() {
     let model = Model::default();
-    let subscriber = recorder::DatagramDropped::new();
-    let datagram_dropped_events = subscriber.events();
+    let subscriber_dropped = recorder::DatagramDropped::new();
+    let subscriber_addr_change = recorder::HandshakeRemoteAddressChangeObserved::new();
+    let datagram_dropped_events = subscriber_dropped.events();
+    let addr_change_events = subscriber_addr_change.events();
+    let subscriber = (subscriber_dropped, subscriber_addr_change);
 
     test(model, move |handle| {
         let server = Server::builder()
@@ -279,14 +280,17 @@ fn rebind_before_handshake_confirmed() {
     .unwrap();
 
     let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
+    assert!(
+        datagram_dropped_events.is_empty(),
+        "the server should allow packets to be processed before the handshake completes"
+    );
 
-    assert_eq!(1, datagram_dropped_events.len());
-    let event = datagram_dropped_events.first().unwrap();
-    assert!(matches!(
-        event.reason,
-        DatagramDropReason::ConnectionMigrationDuringHandshake { .. },
-    ));
-    assert_eq!(REBIND_PORT, event.remote_addr.port());
+    let addr_change_events = addr_change_events.lock().unwrap();
+    assert!(!addr_change_events.is_empty());
+
+    for addr in addr_change_events.iter() {
+        assert_eq!(addr.port(), REBIND_PORT);
+    }
 }
 
 // Changes the remote address to ipv4-mapped after the first packet

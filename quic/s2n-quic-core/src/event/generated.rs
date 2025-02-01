@@ -2315,6 +2315,29 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " The remote address was changed before the handshake was complete"]
+    pub struct HandshakeRemoteAddressChangeObserved<'a> {
+        pub local_addr: SocketAddress<'a>,
+        #[doc = " The newly observed remote address"]
+        pub remote_addr: SocketAddress<'a>,
+        #[doc = " The remote address established from the initial packet"]
+        pub initial_remote_addr: SocketAddress<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for HandshakeRemoteAddressChangeObserved<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("HandshakeRemoteAddressChangeObserved");
+            fmt.field("local_addr", &self.local_addr);
+            fmt.field("remote_addr", &self.remote_addr);
+            fmt.field("initial_remote_addr", &self.initial_remote_addr);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for HandshakeRemoteAddressChangeObserved<'a> {
+        const NAME: &'static str = "transport:handshake_remote_address_change_observed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " ConnectionId updated"]
     pub struct ConnectionIdUpdated<'a> {
         pub path_id: u64,
@@ -3919,6 +3942,21 @@ pub mod tracing {
                 reason,
             } = event;
             tracing :: event ! (target : "datagram_dropped" , parent : id , tracing :: Level :: DEBUG , { local_addr = tracing :: field :: debug (local_addr) , remote_addr = tracing :: field :: debug (remote_addr) , destination_cid = tracing :: field :: debug (destination_cid) , source_cid = tracing :: field :: debug (source_cid) , len = tracing :: field :: debug (len) , reason = tracing :: field :: debug (reason) });
+        }
+        #[inline]
+        fn on_handshake_remote_address_change_observed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::HandshakeRemoteAddressChangeObserved,
+        ) {
+            let id = context.id();
+            let api::HandshakeRemoteAddressChangeObserved {
+                local_addr,
+                remote_addr,
+                initial_remote_addr,
+            } = event;
+            tracing :: event ! (target : "handshake_remote_address_change_observed" , parent : id , tracing :: Level :: DEBUG , { local_addr = tracing :: field :: debug (local_addr) , remote_addr = tracing :: field :: debug (remote_addr) , initial_remote_addr = tracing :: field :: debug (initial_remote_addr) });
         }
         #[inline]
         fn on_connection_id_updated(
@@ -5978,6 +6016,32 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " The remote address was changed before the handshake was complete"]
+    pub struct HandshakeRemoteAddressChangeObserved<'a> {
+        pub local_addr: SocketAddress<'a>,
+        #[doc = " The newly observed remote address"]
+        pub remote_addr: SocketAddress<'a>,
+        #[doc = " The remote address established from the initial packet"]
+        pub initial_remote_addr: SocketAddress<'a>,
+    }
+    impl<'a> IntoEvent<api::HandshakeRemoteAddressChangeObserved<'a>>
+        for HandshakeRemoteAddressChangeObserved<'a>
+    {
+        #[inline]
+        fn into_event(self) -> api::HandshakeRemoteAddressChangeObserved<'a> {
+            let HandshakeRemoteAddressChangeObserved {
+                local_addr,
+                remote_addr,
+                initial_remote_addr,
+            } = self;
+            api::HandshakeRemoteAddressChangeObserved {
+                local_addr: local_addr.into_event(),
+                remote_addr: remote_addr.into_event(),
+                initial_remote_addr: initial_remote_addr.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " ConnectionId updated"]
     pub struct ConnectionIdUpdated<'a> {
         pub path_id: u64,
@@ -7073,6 +7137,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `HandshakeRemoteAddressChangeObserved` event is triggered"]
+        #[inline]
+        fn on_handshake_remote_address_change_observed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::HandshakeRemoteAddressChangeObserved,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `ConnectionIdUpdated` event is triggered"]
         #[inline]
         fn on_connection_id_updated(
@@ -7783,6 +7859,16 @@ mod traits {
             (self.1).on_datagram_dropped(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_handshake_remote_address_change_observed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::HandshakeRemoteAddressChangeObserved,
+        ) {
+            (self.0).on_handshake_remote_address_change_observed(&mut context.0, meta, event);
+            (self.1).on_handshake_remote_address_change_observed(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_connection_id_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -8348,6 +8434,11 @@ mod traits {
         fn on_datagram_received(&mut self, event: builder::DatagramReceived);
         #[doc = "Publishes a `DatagramDropped` event to the publisher's subscriber"]
         fn on_datagram_dropped(&mut self, event: builder::DatagramDropped);
+        #[doc = "Publishes a `HandshakeRemoteAddressChangeObserved` event to the publisher's subscriber"]
+        fn on_handshake_remote_address_change_observed(
+            &mut self,
+            event: builder::HandshakeRemoteAddressChangeObserved,
+        );
         #[doc = "Publishes a `ConnectionIdUpdated` event to the publisher's subscriber"]
         fn on_connection_id_updated(&mut self, event: builder::ConnectionIdUpdated);
         #[doc = "Publishes a `EcnStateChanged` event to the publisher's subscriber"]
@@ -8660,6 +8751,21 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_datagram_dropped(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_handshake_remote_address_change_observed(
+            &mut self,
+            event: builder::HandshakeRemoteAddressChangeObserved,
+        ) {
+            let event = event.into_event();
+            self.subscriber.on_handshake_remote_address_change_observed(
+                self.context,
+                &self.meta,
+                &event,
+            );
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -9106,6 +9212,7 @@ pub mod testing {
         pub datagram_sent: u64,
         pub datagram_received: u64,
         pub datagram_dropped: u64,
+        pub handshake_remote_address_change_observed: u64,
         pub connection_id_updated: u64,
         pub ecn_state_changed: u64,
         pub connection_migration_denied: u64,
@@ -9196,6 +9303,7 @@ pub mod testing {
                 datagram_sent: 0,
                 datagram_received: 0,
                 datagram_dropped: 0,
+                handshake_remote_address_change_observed: 0,
                 connection_id_updated: 0,
                 ecn_state_changed: 0,
                 connection_migration_denied: 0,
@@ -9598,6 +9706,20 @@ pub mod testing {
             event: &api::DatagramDropped,
         ) {
             self.datagram_dropped += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_handshake_remote_address_change_observed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::HandshakeRemoteAddressChangeObserved,
+        ) {
+            self.handshake_remote_address_change_observed += 1;
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -10037,6 +10159,7 @@ pub mod testing {
         pub datagram_sent: u64,
         pub datagram_received: u64,
         pub datagram_dropped: u64,
+        pub handshake_remote_address_change_observed: u64,
         pub connection_id_updated: u64,
         pub ecn_state_changed: u64,
         pub connection_migration_denied: u64,
@@ -10117,6 +10240,7 @@ pub mod testing {
                 datagram_sent: 0,
                 datagram_received: 0,
                 datagram_dropped: 0,
+                handshake_remote_address_change_observed: 0,
                 connection_id_updated: 0,
                 ecn_state_changed: 0,
                 connection_migration_denied: 0,
@@ -10504,6 +10628,18 @@ pub mod testing {
         }
         fn on_datagram_dropped(&mut self, event: builder::DatagramDropped) {
             self.datagram_dropped += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_handshake_remote_address_change_observed(
+            &mut self,
+            event: builder::HandshakeRemoteAddressChangeObserved,
+        ) {
+            self.handshake_remote_address_change_observed += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

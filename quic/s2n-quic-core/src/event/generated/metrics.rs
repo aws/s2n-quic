@@ -52,6 +52,7 @@ pub struct Context<R: Recorder> {
     datagram_sent: u64,
     datagram_received: u64,
     datagram_dropped: u64,
+    handshake_remote_address_change_observed: u64,
     connection_id_updated: u64,
     ecn_state_changed: u64,
     connection_migration_denied: u64,
@@ -109,6 +110,7 @@ where
             datagram_sent: 0,
             datagram_received: 0,
             datagram_dropped: 0,
+            handshake_remote_address_change_observed: 0,
             connection_id_updated: 0,
             ecn_state_changed: 0,
             connection_migration_denied: 0,
@@ -417,6 +419,20 @@ where
             .on_datagram_dropped(&mut context.recorder, meta, event);
     }
     #[inline]
+    fn on_handshake_remote_address_change_observed(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::HandshakeRemoteAddressChangeObserved,
+    ) {
+        context.handshake_remote_address_change_observed += 1;
+        self.subscriber.on_handshake_remote_address_change_observed(
+            &mut context.recorder,
+            meta,
+            event,
+        );
+    }
+    #[inline]
     fn on_connection_id_updated(
         &mut self,
         context: &mut Self::ConnectionContext,
@@ -675,6 +691,10 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("datagram_received", self.datagram_received as _);
         self.recorder
             .increment_counter("datagram_dropped", self.datagram_dropped as _);
+        self.recorder.increment_counter(
+            "handshake_remote_address_change_observed",
+            self.handshake_remote_address_change_observed as _,
+        );
         self.recorder
             .increment_counter("connection_id_updated", self.connection_id_updated as _);
         self.recorder
