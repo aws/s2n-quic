@@ -189,3 +189,14 @@ event_recorder!(
         storage.push(event.into());
     }
 );
+
+event_recorder!(
+    HandshakeRemoteAddressChangeObserved,
+    HandshakeRemoteAddressChangeObserved,
+    on_handshake_remote_address_change_observed,
+    SocketAddr,
+    |event: &events::HandshakeRemoteAddressChangeObserved, storage: &mut Vec<SocketAddr>| {
+        let addr = event.remote_addr.to_string().parse().unwrap();
+        storage.push(addr);
+    }
+);

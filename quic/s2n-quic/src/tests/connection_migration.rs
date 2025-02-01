@@ -251,8 +251,11 @@ impl Interceptor for RebindPortBeforeHandshakeConfirmed {
 #[test]
 fn rebind_before_handshake_confirmed() {
     let model = Model::default();
-    let subscriber = recorder::DatagramDropped::new();
-    let datagram_dropped_events = subscriber.events();
+    let subscriber_dropped = recorder::DatagramDropped::new();
+    let subscriber_addr_change = recorder::HandshakeRemoteAddressChangeObserved::new();
+    let datagram_dropped_events = subscriber_dropped.events();
+    let addr_change_events = subscriber_addr_change.events();
+    let subscriber = (subscriber_dropped, subscriber_addr_change);
 
     test(model, move |handle| {
         let server = Server::builder()
@@ -281,6 +284,13 @@ fn rebind_before_handshake_confirmed() {
         datagram_dropped_events.is_empty(),
         "the server should allow packets to be processed before the handshake completes"
     );
+
+    let addr_change_events = addr_change_events.lock().unwrap();
+    assert!(!addr_change_events.is_empty());
+
+    for addr in addr_change_events.iter() {
+        assert_eq!(addr.port(), REBIND_PORT);
+    }
 }
 
 // Changes the remote address to ipv4-mapped after the first packet

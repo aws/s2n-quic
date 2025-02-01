@@ -284,6 +284,16 @@ struct DatagramDropped<'a> {
     reason: DatagramDropReason,
 }
 
+#[event("transport:handshake_remote_address_change_observed")]
+/// The remote address was changed before the handshake was complete
+struct HandshakeRemoteAddressChangeObserved<'a> {
+    local_addr: SocketAddress<'a>,
+    /// The newly observed remote address
+    remote_addr: SocketAddress<'a>,
+    /// The remote address established from the initial packet
+    initial_remote_addr: SocketAddress<'a>,
+}
+
 #[event("connectivity:connection_id_updated")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.4
 /// ConnectionId updated

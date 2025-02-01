@@ -262,6 +262,29 @@ impl<Config: endpoint::Config> Manager<Config> {
             // it doesn't mean we can't handle the packet. So instead we pick the default path.
             let path_id = self.active_path_id();
             let path = self.active_path_mut();
+
+            // check if the remote addr changed
+            if !path
+                .handle
+                .remote_address()
+                .unmapped_eq(&path_handle.remote_address())
+            {
+                publisher.on_handshake_remote_address_change_observed(
+                    event::builder::HandshakeRemoteAddressChangeObserved {
+                        local_addr: path.handle.local_address().into_event(),
+                        initial_remote_addr: path.handle.remote_address().into_event(),
+                        remote_addr: path_handle.remote_address().into_event(),
+                    },
+                );
+
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-9
+                //# If a client receives packets from an unknown server address,
+                //# the client MUST discard these packets.
+                if Config::ENDPOINT_TYPE.is_client() {
+                    return Err(DatagramDropReason::UnknownServerAddress);
+                }
+            }
+
             Some((path_id, path))
         };
 
