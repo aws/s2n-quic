@@ -44,6 +44,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = tr
 zerocopy = { version = "0.7", features = ["derive"] }
 zeroize = "1"
 parking_lot = "0.12"
+bitvec = { version = "1.0.1", default-features = false }
 
 [dev-dependencies]
 bolero = "0.12"

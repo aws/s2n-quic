@@ -78,8 +78,6 @@ where
     // FIXME: This will get replaced with sending on a handshake socket associated with the map.
     pub(super) control_socket: Arc<std::net::UdpSocket>,
 
-    pub(super) receiver_shared: Arc<receiver::Shared>,
-
     cleaner: Cleaner,
 
     init_time: Timestamp,
@@ -136,7 +134,6 @@ where
             requested_handshakes: Default::default(),
             cleaner: Cleaner::new(),
             signer,
-            receiver_shared: receiver::Shared::new(),
             control_socket,
             init_time,
             clock,
@@ -554,10 +551,6 @@ where
 
     fn signer(&self) -> &stateless_reset::Signer {
         &self.signer
-    }
-
-    fn receiver(&self) -> &Arc<receiver::Shared> {
-        &self.receiver_shared
     }
 
     fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]) {
