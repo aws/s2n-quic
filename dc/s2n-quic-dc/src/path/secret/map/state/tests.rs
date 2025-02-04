@@ -136,7 +136,7 @@ impl Model {
                     ip,
                     secret,
                     sender::State::new(stateless_reset),
-                    state.receiver().clone().new_receiver(),
+                    receiver::State::new(),
                     dc::testing::TEST_APPLICATION_PARAMS,
                     dc::testing::TEST_REHANDSHAKE_PERIOD,
                 )));

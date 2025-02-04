@@ -106,7 +106,7 @@ impl Entry {
 
     #[cfg(any(test, feature = "testing"))]
     pub fn fake(peer: SocketAddr, receiver: Option<receiver::State>) -> Arc<Entry> {
-        let receiver = receiver.unwrap_or_else(receiver::State::without_shared);
+        let receiver = receiver.unwrap_or_default();
 
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();

@@ -43,8 +43,6 @@ pub trait Store: 'static + Send + Sync {
 
     fn signer(&self) -> &stateless_reset::Signer;
 
-    fn receiver(&self) -> &Arc<receiver::Shared>;
-
     fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]);
 
     fn rehandshake_period(&self) -> Duration;

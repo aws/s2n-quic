@@ -4,7 +4,7 @@
 use super::{Entry, Map};
 use crate::{
     packet::secret_control as control,
-    path::secret::{schedule, sender},
+    path::secret::{receiver, schedule, sender},
 };
 use s2n_quic_core::{
     dc::{self, ApplicationParams, DatagramInfo},
@@ -123,7 +123,7 @@ impl dc::Path for HandshakingPath {
                 .into_inner(),
         );
 
-        let receiver = self.map.store.receiver().clone().new_receiver();
+        let receiver = receiver::State::new();
 
         let entry = Entry::new(
             self.peer,
