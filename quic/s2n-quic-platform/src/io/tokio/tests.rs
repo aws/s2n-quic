@@ -141,16 +141,19 @@ impl<const IS_SERVER: bool> Endpoint for TestEndpoint<IS_SERVER> {
 async fn runtime<A: ToSocketAddrs>(
     receive_addr: A,
     send_addr: Option<A>,
+    only_v6: bool,
 ) -> io::Result<(super::Io, SocketAddress)> {
-    let rx_socket = syscall::bind_udp(receive_addr, false, false)?;
+    let mut io_builder = Io::builder().with_only_v6(only_v6)?;
+
+    let rx_socket = syscall::bind_udp(receive_addr, false, false, only_v6)?;
     rx_socket.set_nonblocking(true)?;
     let rx_socket: std::net::UdpSocket = rx_socket.into();
     let rx_addr = rx_socket.local_addr()?;
 
-    let mut io_builder = Io::builder().with_rx_socket(rx_socket)?;
+    io_builder = io_builder.with_rx_socket(rx_socket)?;
 
     if let Some(tx_addr) = send_addr {
-        let tx_socket = syscall::bind_udp(tx_addr, false, false)?;
+        let tx_socket = syscall::bind_udp(tx_addr, false, false, only_v6)?;
         tx_socket.set_nonblocking(true)?;
         let tx_socket: std::net::UdpSocket = tx_socket.into();
         io_builder = io_builder.with_tx_socket(tx_socket)?
@@ -177,9 +180,10 @@ async fn test<A: ToSocketAddrs>(
     server_tx_addr: Option<A>,
     client_rx_addr: A,
     client_tx_addr: Option<A>,
+    only_v6: bool,
 ) -> io::Result<()> {
-    let (server_io, server_addr) = runtime(server_rx_addr, server_tx_addr).await?;
-    let (client_io, client_addr) = runtime(client_rx_addr, client_tx_addr).await?;
+    let (server_io, server_addr) = runtime(server_rx_addr, server_tx_addr, only_v6).await?;
+    let (client_io, client_addr) = runtime(client_rx_addr, client_tx_addr, only_v6).await?;
 
     let server_endpoint = {
         let mut handle = PathHandle::from_remote_address(client_addr.into());
@@ -208,21 +212,25 @@ async fn test<A: ToSocketAddrs>(
 
 static IPV4_LOCALHOST: &str = "127.0.0.1:0";
 static IPV6_LOCALHOST: &str = "[::1]:0";
+static IPV6_ANY_ADDRESS: &str = "[::]:0";
 
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
 async fn ipv4_test() -> io::Result<()> {
-    test(IPV4_LOCALHOST, None, IPV4_LOCALHOST, None).await
+    let only_v6: bool = false;
+    test(IPV4_LOCALHOST, None, IPV4_LOCALHOST, None, only_v6).await
 }
 
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
 async fn ipv4_two_socket_test() -> io::Result<()> {
+    let only_v6: bool = false;
     test(
         IPV4_LOCALHOST,
         Some(IPV4_LOCALHOST),
         IPV4_LOCALHOST,
         Some(IPV4_LOCALHOST),
+        only_v6,
     )
     .await
 }
@@ -230,7 +238,8 @@ async fn ipv4_two_socket_test() -> io::Result<()> {
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
 async fn ipv6_test() -> io::Result<()> {
-    let result = test(IPV6_LOCALHOST, None, IPV6_LOCALHOST, None).await;
+    let only_v6: bool = false;
+    let result = test(IPV6_LOCALHOST, None, IPV6_LOCALHOST, None, only_v6).await;
 
     match result {
         Err(err) if err.kind() == io::ErrorKind::AddrNotAvailable => {
@@ -244,11 +253,13 @@ async fn ipv6_test() -> io::Result<()> {
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
 async fn ipv6_two_socket_test() -> io::Result<()> {
+    let only_v6: bool = false;
     let result = test(
         IPV6_LOCALHOST,
         Some(IPV6_LOCALHOST),
         IPV6_LOCALHOST,
         Some(IPV6_LOCALHOST),
+        only_v6,
     )
     .await;
 
@@ -259,4 +270,19 @@ async fn ipv6_two_socket_test() -> io::Result<()> {
         }
         other => other,
     }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn only_v6_test() -> io::Result<()> {
+    let mut only_v6 = false;
+    let socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
+    assert_eq!(socket.only_v6()?, only_v6);
+
+    only_v6 = true;
+    let socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
+    assert_eq!(socket.only_v6()?, only_v6);
+
+    Ok(())
 }

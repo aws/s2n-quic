@@ -19,6 +19,7 @@ pub struct Builder {
     pub(super) gro_enabled: Option<bool>,
     pub(super) reuse_address: bool,
     pub(super) reuse_port: bool,
+    pub(super) only_v6: bool,
 }
 
 impl Builder {
@@ -233,6 +234,11 @@ impl Builder {
             ));
         }
         self.reuse_port = true;
+        Ok(self)
+    }
+
+    pub fn with_only_v6(mut self, only_v6: bool) -> io::Result<Self> {
+        self.only_v6 = only_v6;
         Ok(self)
     }
 
