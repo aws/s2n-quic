@@ -17,7 +17,7 @@ use s2n_quic_core::{
 use std::{
     hash::{BuildHasherDefault, Hasher},
     net::{Ipv4Addr, SocketAddr},
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
 };
 
@@ -64,11 +64,6 @@ where
     // needed.
     pub(super) peers: fixed_map::Map<SocketAddr, Arc<Entry>>,
 
-    // Stores the set of SocketAddr for which we received a UnknownPathSecret packet.
-    // When handshake_with is called we will allow a new handshake if this contains a socket, this
-    // is a temporary solution until we implement proper background handshaking.
-    pub(super) requested_handshakes: flurry::HashSet<SocketAddr>,
-
     // All known entries.
     pub(super) ids: fixed_map::Map<Id, Arc<Entry>, BuildHasherDefault<NoopIdHasher>>,
 
@@ -77,6 +72,9 @@ where
     // This socket is used *only* for sending secret control packets.
     // FIXME: This will get replaced with sending on a handshake socket associated with the map.
     pub(super) control_socket: Arc<std::net::UdpSocket>,
+
+    #[allow(clippy::type_complexity)]
+    pub(super) request_handshake: RwLock<Option<Box<dyn Fn(SocketAddr) + Send + Sync>>>,
 
     cleaner: Cleaner,
 
@@ -131,13 +129,13 @@ where
             rehandshake_period: Duration::from_secs(3600 * 24),
             peers: fixed_map::Map::with_capacity(capacity, Default::default()),
             ids: fixed_map::Map::with_capacity(capacity, Default::default()),
-            requested_handshakes: Default::default(),
             cleaner: Cleaner::new(),
             signer,
             control_socket,
             init_time,
             clock,
             subscriber,
+            request_handshake: RwLock::new(None),
         };
 
         let state = Arc::new(state);
@@ -152,17 +150,34 @@ where
     }
 
     pub fn request_handshake(&self, peer: SocketAddr) {
-        // The length is reset as part of cleanup to 5000.
-        let handshakes = self.requested_handshakes.pin();
-        if handshakes.len() <= 6000 {
-            handshakes.insert(peer);
-            self.subscriber()
-                .on_path_secret_map_background_handshake_requested(
-                    event::builder::PathSecretMapBackgroundHandshakeRequested {
-                        peer_address: SocketAddress::from(peer).into_event(),
-                    },
-                );
+        self.subscriber()
+            .on_path_secret_map_background_handshake_requested(
+                event::builder::PathSecretMapBackgroundHandshakeRequested {
+                    peer_address: SocketAddress::from(peer).into_event(),
+                },
+            );
+
+        // Normally we'd expect callers to use the Subscriber to register interest in this, but the
+        // Map is typically created *before* the s2n_quic::Client with the dc provider registered.
+        //
+        // Users of the state tracker typically register the callback when creating a new s2n-quic
+        // client to handshake into this map.
+        if let Some(callback) = self
+            .request_handshake
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_deref()
+        {
+            (callback)(peer);
         }
+    }
+
+    fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>) {
+        // FIXME: Maybe panic if already initialized?
+        *self
+            .request_handshake
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(cb);
     }
 
     fn handle_unknown_secret(
@@ -370,16 +385,9 @@ where
         self.peers.contains_key(peer)
     }
 
-    fn needs_handshake(&self, peer: &SocketAddr) -> bool {
-        self.requested_handshakes.pin().contains(peer)
-    }
-
     fn on_new_path_secrets(&self, entry: Arc<Entry>) {
         let id = *entry.id();
         let peer = entry.peer();
-
-        // On insert clear our interest in a handshake.
-        self.requested_handshakes.pin().remove(peer);
 
         let (same, other) = self.ids.insert(id, entry.clone());
         if same.is_some() {
@@ -443,6 +451,10 @@ where
                 peer_address: SocketAddress::from(peer).into_event(),
                 credential_id: id.into_event(),
             });
+    }
+
+    fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>) {
+        self.register_request_handshake(cb);
     }
 
     fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {

@@ -22,7 +22,7 @@ use s2n_quic_core::{dc, varint::VarInt};
 use std::{
     net::SocketAddr,
     sync::{
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicU32, AtomicU8, Ordering},
         Arc,
     },
     time::{Duration, Instant},
@@ -34,7 +34,7 @@ mod tests;
 #[derive(Debug)]
 pub(super) struct Entry {
     creation_time: Instant,
-    rehandshake_delta_secs: u32,
+    rehandshake_delta_secs: AtomicU32,
     peer: SocketAddr,
     secret: schedule::Secret,
     retired: IsRetired,
@@ -72,6 +72,7 @@ impl SizeOf for Entry {
 }
 
 impl SizeOf for AtomicU8 {}
+impl SizeOf for AtomicU32 {}
 
 impl Entry {
     pub fn new(
@@ -88,12 +89,9 @@ impl Entry {
             .fetch_min(crate::stream::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
 
         assert!(rehandshake_time.as_secs() <= u32::MAX as u64);
-        Self {
+        let entry = Self {
             creation_time: Instant::now(),
-            // Schedule another handshake sometime in [5 minutes, rehandshake_time] from now.
-            rehandshake_delta_secs: rand::thread_rng().gen_range(
-                std::cmp::min(rehandshake_time.as_secs(), 360)..rehandshake_time.as_secs(),
-            ) as u32,
+            rehandshake_delta_secs: AtomicU32::new(0),
             peer,
             secret,
             retired: Default::default(),
@@ -101,7 +99,9 @@ impl Entry {
             receiver,
             parameters,
             accessed: AtomicU8::new(0),
-        }
+        };
+        entry.rehandshake_time_reschedule(rehandshake_time);
+        entry
     }
 
     #[cfg(any(test, feature = "testing"))]
@@ -246,7 +246,26 @@ impl Entry {
     }
 
     pub fn rehandshake_time(&self) -> Instant {
-        self.creation_time + Duration::from_secs(u64::from(self.rehandshake_delta_secs))
+        self.creation_time
+            + Duration::from_secs(u64::from(
+                self.rehandshake_delta_secs.load(Ordering::Relaxed),
+            ))
+    }
+
+    /// Reschedule the handshake some time into the future.
+    pub fn rehandshake_time_reschedule(&self, rehandshake_period: Duration) {
+        // The goal of rescheduling is to avoid continuously re-handshaking for N (possibly stale)
+        // peers every cleaner loop, instead we defer handshakes out again. This effectively acts
+        // as a (slow) retry mechanism.
+        let delta = rand::thread_rng().gen_range(
+            std::cmp::min(rehandshake_period.as_secs(), 360)..rehandshake_period.as_secs(),
+        ) as u32;
+        // This can't practically overflow -- each time we add we push out the next add by at least
+        // that much time. The fastest this loops is then running once every 360 seconds and adding
+        // 360 each time. That takes (2**32/360)*360 to fill u32, which happens after 136 years of
+        // continuous execution.
+        self.rehandshake_delta_secs
+            .fetch_add(delta, Ordering::Relaxed);
     }
 
     pub fn age(&self) -> Duration {

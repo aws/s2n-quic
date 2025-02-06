@@ -103,6 +103,7 @@ impl Cleaner {
         let mut address_entries_initial = 0usize;
         let mut address_entries_retired = 0usize;
         let mut address_entries_active = 0usize;
+        let mut handshake_requests = 0usize;
 
         // For non-retired entries, if it's time for them to handshake again, request a
         // handshake to happen. This handshake will currently happen on the next request for this
@@ -115,7 +116,9 @@ impl Cleaner {
                 current_epoch.saturating_sub(retired_at) < eviction_cycles
             } else {
                 if entry.rehandshake_time() <= now {
+                    handshake_requests += 1;
                     state.request_handshake(*entry.peer());
+                    entry.rehandshake_time_reschedule(state.rehandshake_period());
                 }
 
                 // always retain
@@ -152,28 +155,6 @@ impl Cleaner {
             retained
         });
 
-        // Iteration order should be effectively random, so this effectively just prunes the list
-        // periodically. 5000 is chosen arbitrarily to make sure this isn't a memory leak. Note
-        // that peers the application is actively interested in will typically bypass this list, so
-        // this is mostly a risk of delaying regular re-handshaking with very large cardinalities.
-        //
-        // FIXME: Long or mid-term it likely makes sense to replace this data structure with a
-        // fuzzy set of some kind and/or just moving to immediate background handshake attempts.
-        const MAX_REQUESTED_HANDSHAKES: usize = 5000;
-
-        let mut handshake_requests = 0usize;
-        let mut handshake_requests_retired = 0usize;
-        state.requested_handshakes.pin().retain(|_| {
-            handshake_requests += 1;
-            let retain = handshake_requests < MAX_REQUESTED_HANDSHAKES;
-
-            if !retain {
-                handshake_requests_retired += 1;
-            }
-
-            retain
-        });
-
         let id_entries = id_entries_initial - id_entries_retired;
         let address_entries = address_entries_initial - address_entries_retired;
 
@@ -192,7 +173,7 @@ impl Cleaner {
                 address_entries_initial_utilization: utilization(address_entries_initial),
                 address_entries_retired,
                 handshake_requests,
-                handshake_requests_retired,
+                handshake_requests_retired: 0,
             },
         );
     }
