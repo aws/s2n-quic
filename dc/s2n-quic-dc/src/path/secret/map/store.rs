@@ -27,8 +27,6 @@ pub trait Store: 'static + Send + Sync {
 
     fn contains(&self, peer: &SocketAddr) -> bool;
 
-    fn needs_handshake(&self, peer: &SocketAddr) -> bool;
-
     fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
 
     fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
@@ -46,6 +44,8 @@ pub trait Store: 'static + Send + Sync {
     fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]);
 
     fn rehandshake_period(&self) -> Duration;
+
+    fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>);
 
     fn check_dedup(
         &self,

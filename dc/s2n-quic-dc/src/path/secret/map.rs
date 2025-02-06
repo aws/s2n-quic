@@ -90,13 +90,8 @@ impl Map {
         self.store.contains(peer)
     }
 
-    /// Check whether we would like to (re-)handshake with this peer.
-    ///
-    /// Note that this is distinct from `contains`, we may already have *some* credentials for a
-    /// peer but still be interested in handshaking (e.g., due to periodic refresh of the
-    /// credentials).
-    pub fn needs_handshake(&self, peer: &SocketAddr) -> bool {
-        self.store.needs_handshake(peer)
+    pub fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>) {
+        self.store.register_request_handshake(cb);
     }
 
     /// Gets the [`Peer`] entry for the given address
