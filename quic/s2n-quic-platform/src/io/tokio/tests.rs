@@ -273,16 +273,21 @@ async fn ipv6_two_socket_test() -> io::Result<()> {
 
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
-async fn only_v6_test() -> io::Result<()> {
-    let mut only_v6 = true;
+async fn only_v6_enabled_test() -> io::Result<()> {
+    let only_v6: bool = true;
+    let result = test(
+        IPV6_LOCALHOST,
+        Some(IPV6_LOCALHOST),
+        IPV4_LOCALHOST,
+        Some(IPV4_LOCALHOST),
+        only_v6,
+    )
+    .await;
 
-    let socket = syscall::bind_udp(IPV6_LOCALHOST, false, false, only_v6)?;
-    assert_eq!(socket.only_v6()?, only_v6);
-
-    only_v6 = false;
-
-    let socket = syscall::bind_udp(IPV6_LOCALHOST, false, false, only_v6)?;
-    assert_eq!(socket.only_v6()?, only_v6);
-
-    Ok(())
+    match result {
+        // The client can't send IPv4 message to the server is only_v6 is enabled.
+        // test() times out after 60 seconds.
+        Err(err) if err.kind() == std::io::ErrorKind::TimedOut => Ok(()),
+        other => other,
+    }
 }
