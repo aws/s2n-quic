@@ -212,6 +212,7 @@ async fn test<A: ToSocketAddrs>(
 
 static IPV4_LOCALHOST: &str = "127.0.0.1:0";
 static IPV6_LOCALHOST: &str = "[::1]:0";
+static IPV6_ANY_ADDRESS: &str = "[::]:0";
 
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
@@ -290,4 +291,20 @@ async fn only_v6_enabled_test() -> io::Result<()> {
         Err(err) if err.kind() == std::io::ErrorKind::TimedOut => Ok(()),
         other => other,
     }
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn only_v6_test() -> io::Result<()> {
+    let mut only_v6 = true;
+
+    let socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
+    assert_eq!(socket.only_v6()?, only_v6);
+
+    only_v6 = false;
+
+    let socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
+    assert_eq!(socket.only_v6()?, only_v6);
+
+    Ok(())
 }
