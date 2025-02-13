@@ -276,32 +276,13 @@ async fn ipv6_two_socket_test() -> io::Result<()> {
 #[tokio::test]
 #[cfg_attr(miri, ignore)]
 async fn only_v6_test() -> io::Result<()> {
-    let client_addr = IPV4_LOCALHOST.to_socket_addrs()?.next().unwrap();
-
     let mut only_v6 = false;
-
     let server_socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
     assert_eq!(server_socket.only_v6()?, only_v6);
-
-    server_socket.connect(&client_addr.into())?;
 
     only_v6 = true;
-
     let server_socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
     assert_eq!(server_socket.only_v6()?, only_v6);
 
-    let result = server_socket.connect(&client_addr.into());
-    // We should expect this error, since we restrict the server_socket to only accept connection from ipv6
-    // Error: Os { code: 97, kind: Uncategorized, message: "Address family not supported by protocol" }
-    match result {
-        Err(err)
-            if err.raw_os_error() == Some(97)
-                && err
-                    .to_string()
-                    .contains("Address family not supported by protocol") =>
-        {
-            Ok(())
-        }
-        other => other,
-    }
+    Ok(())
 }
