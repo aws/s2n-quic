@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{if_xdp::RingFlags, ring, umem::Umem};
 use core::{mem::size_of, time::Duration};
-use rand::prelude::*;
+use rand::Rng;
 use s2n_quic_core::{
     inet::ExplicitCongestionNotification,
     io::{
@@ -131,7 +131,7 @@ async fn send(count: u32, outputs: Vec<tx::Channel<atomic_waker::Handle>>, umem:
 
         tx.queue(|queue| {
             let max = queue.capacity().min((count - counter) as usize);
-            let count = thread_rng().gen_range(0..=max);
+            let count = rand::rng().random_range(0..=max);
             trace!("max: {max}, count: {count}");
 
             for _ in 0..count {
@@ -182,7 +182,7 @@ async fn recv(packets: u32, inputs: Vec<rx::Channel<atomic_waker::Handle>>, umem
 
 /// Randomly yields to other tasks
 async fn maybe_yield() {
-    if thread_rng().gen() {
+    if rand::rng().random() {
         trace!("yielding");
         tokio::task::yield_now().await;
     }
