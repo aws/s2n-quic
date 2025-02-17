@@ -64,6 +64,7 @@ impl super::Worker for Worker {
         &mut self,
         _remote_address: SocketAddress,
         _stream: Self::Stream,
+        _linger: Option<Duration>,
         _connection_context: Self::ConnectionContext,
         _publisher: &Pub,
         clock: &C,
@@ -160,6 +161,7 @@ impl Harness {
         self.manager.insert(
             SocketAddress::default(),
             (),
+            None,
             &mut (),
             (),
             &publisher(&self.subscriber, &self.clock),
