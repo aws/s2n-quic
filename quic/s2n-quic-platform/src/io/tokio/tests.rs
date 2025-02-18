@@ -274,11 +274,11 @@ async fn only_v6_test() -> io::Result<()> {
 
     let mut only_v6 = false;
     let socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
-    assert_eq!(socket.only_v6()?, only_v6);
+    assert!(!socket.only_v6()?);
 
     only_v6 = true;
     let socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
-    assert_eq!(socket.only_v6()?, only_v6);
+    assert!(socket.only_v6()?);
 
     Ok(())
 }
