@@ -1,0 +1,29 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-4.2"
+
+# Confirmation of Probed Packet Size
+#
+#    The PL needs a method to determine (confirm) when probe packets have
+#    been successfully received end-to-end across a network path.
+# 
+#    Transport protocols can include end-to-end methods that detect and
+#    report reception of specific datagrams that they send (e.g., DCCP,
+#    SCTP, and QUIC provide keep-alive/heartbeat features).  When
+#    supported, this mechanism MAY also be used by DPLPMTUD to acknowledge
+#    reception of a probe packet.
+# 
+#    A PL that does not acknowledge data reception (e.g., UDP and UDP-
+#    Lite) is unable itself to detect when the packets that it sends are
+#    discarded because their size is greater than the actual PMTU.  These
+#    PLs need to rely on an application protocol to detect this loss.
+# 
+#    Section 6 specifies this function for a set of IETF-specified
+#    protocols.
+
+[[spec]]
+level = "MAY"
+quote = '''
+When
+supported, this mechanism MAY also be used by DPLPMTUD to acknowledge
+reception of a probe packet.
+'''
+
