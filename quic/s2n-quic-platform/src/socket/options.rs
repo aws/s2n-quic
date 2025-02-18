@@ -32,6 +32,7 @@ pub struct Options {
     pub send_buffer: Option<usize>,
     pub recv_buffer: Option<usize>,
     pub backlog: usize,
+    pub only_v6: bool,
 }
 
 impl Default for Options {
@@ -47,6 +48,7 @@ impl Default for Options {
             recv_buffer: None,
             delay: false,
             backlog: 4096,
+            only_v6: false,
         }
     }
 }
@@ -62,7 +64,7 @@ impl Options {
 
     #[inline]
     pub fn build_udp(&self) -> io::Result<UdpSocket> {
-        let socket = syscall::udp_socket(self.addr)?;
+        let socket = syscall::udp_socket(self.addr, self.only_v6)?;
 
         if self.gro {
             let _ = syscall::configure_gro(&socket);

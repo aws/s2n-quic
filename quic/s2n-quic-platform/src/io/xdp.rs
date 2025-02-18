@@ -28,7 +28,8 @@ pub mod socket {
         interface: &::std::ffi::CStr,
         addr: ::std::net::SocketAddr,
     ) -> ::std::io::Result<::std::net::UdpSocket> {
-        let socket = crate::syscall::udp_socket(addr)?;
+        let only_v6 = false;
+        let socket = crate::syscall::udp_socket(addr, only_v6)?;
 
         // associate the socket with a single interface
         crate::syscall::bind_to_interface(&socket, interface)?;
