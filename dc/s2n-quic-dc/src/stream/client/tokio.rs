@@ -11,7 +11,7 @@ use crate::{
         socket::Protocol,
     },
 };
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
 
 /// Connects using the UDP transport layer
@@ -54,6 +54,7 @@ pub async fn connect_tcp<H, Sub>(
     acceptor_addr: SocketAddr,
     env: &Environment<Sub>,
     subscriber: Sub,
+    linger: Option<Duration>,
 ) -> io::Result<Stream<Sub>>
 where
     H: core::future::Future<Output = io::Result<secret::map::Peer>>,
@@ -64,7 +65,10 @@ where
 
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
-    let _ = socket.set_linger(Some(core::time::Duration::ZERO));
+
+    if linger.is_some() {
+        let _ = socket.set_linger(linger);
+    }
 
     // if the acceptor_ip isn't known, then ask the socket to resolve it for us
     let peer_addr = if acceptor_addr.ip().is_unspecified() {

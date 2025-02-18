@@ -98,6 +98,7 @@ where
         &mut self,
         remote_address: SocketAddress,
         stream: TcpStream,
+        linger: Option<Duration>,
         subscriber_ctx: Self::ConnectionContext,
         publisher: &Pub,
         clock: &C,
@@ -107,7 +108,10 @@ where
     {
         // Make sure TCP_NODELAY is set
         let _ = stream.set_nodelay(true);
-        let _ = stream.set_linger(Some(Duration::ZERO));
+
+        if linger.is_some() {
+            let _ = stream.set_linger(linger);
+        }
 
         let now = clock.get_time();
 
@@ -116,7 +120,14 @@ where
         let prev_stream = core::mem::replace(&mut self.stream, Some((stream, remote_address)));
         let prev_ctx = core::mem::replace(&mut self.subscriber_ctx, Some(subscriber_ctx));
 
-        if let Some(remote_address) = prev_stream.map(|(_socket, remote_address)| remote_address) {
+        if let Some(remote_address) = prev_stream.map(|(socket, remote_address)| {
+            // If linger wasn't already set or it was set to a value other than 0, then override it
+            if linger.is_none() || linger != Some(Duration::ZERO) {
+                // close the stream immediately and send a reset to the client
+                let _ = socket.set_linger(Some(Duration::ZERO));
+            }
+            remote_address
+        }) {
             let sojourn_time = now.saturating_duration_since(prev_queue_time);
             let buffer_len = match prev_state {
                 WorkerState::Init => 0,
@@ -331,6 +342,10 @@ impl WorkerState {
                                 error: error.error,
                             };
                             continue;
+                        } else {
+                            // close the stream immediately and send a reset to the client
+                            let _ = socket.set_linger(Some(Duration::ZERO));
+                            drop(socket);
                         }
                     }
                     return Err(Some(error.error)).into();
@@ -381,16 +396,15 @@ impl WorkerState {
     }
 
     #[inline]
-    fn poll_initial_packet<S, Pub>(
+    fn poll_initial_packet<Pub>(
         cx: &mut task::Context,
-        stream: &mut S,
+        stream: &mut TcpStream,
         remote_address: &SocketAddress,
         recv_buffer: &mut msg::recv::Message,
         sojourn_time: Duration,
         publisher: &Pub,
     ) -> Poll<Result<server::InitialPacket, Option<io::Error>>>
     where
-        S: Socket,
         Pub: EndpointPublisher,
     {
         loop {
@@ -403,6 +417,10 @@ impl WorkerState {
                         sojourn_time,
                     },
                 );
+
+                // close the stream immediately and send a reset to the client
+                let _ = stream.set_linger(Some(Duration::ZERO));
+
                 return Err(None).into();
             }
 
@@ -436,6 +454,9 @@ impl WorkerState {
                             sojourn_time,
                         },
                     );
+
+                    // close the stream immediately and send a reset to the client
+                    let _ = stream.set_linger(Some(Duration::ZERO));
 
                     return Err(None).into();
                 }

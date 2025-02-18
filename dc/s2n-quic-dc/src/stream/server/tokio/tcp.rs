@@ -9,6 +9,7 @@ use crate::{
 };
 use core::{future::poll_fn, task::Poll};
 use s2n_quic_core::{inet::SocketAddress, time::Clock};
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tracing::debug;
 
@@ -26,6 +27,7 @@ where
     secrets: secret::Map,
     backlog: usize,
     accept_flavor: accept::Flavor,
+    linger: Option<Duration>,
     subscriber: Sub,
 }
 
@@ -42,6 +44,7 @@ where
         secrets: &secret::Map,
         backlog: usize,
         accept_flavor: accept::Flavor,
+        linger: Option<Duration>,
         subscriber: Sub,
     ) -> Self {
         let acceptor = Self {
@@ -51,6 +54,7 @@ where
             secrets: secrets.clone(),
             backlog,
             accept_flavor,
+            linger,
             subscriber,
         };
 
@@ -98,6 +102,7 @@ where
                 workers.insert(
                     remote_address,
                     socket,
+                    self.linger,
                     &mut context,
                     subscriber_ctx,
                     &publisher,
