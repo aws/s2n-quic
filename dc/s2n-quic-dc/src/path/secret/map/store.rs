@@ -4,7 +4,6 @@
 use super::Entry;
 use crate::{
     credentials::{Credentials, Id},
-    fixed_map::ReadGuard,
     packet::{secret_control as control, Packet, WireVersion},
     path::secret::{receiver, stateless_reset},
 };
@@ -27,11 +26,11 @@ pub trait Store: 'static + Send + Sync {
 
     fn contains(&self, peer: &SocketAddr) -> bool;
 
-    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
+    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<Arc<Entry>>;
 
-    fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
+    fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<Arc<Entry>>;
 
-    fn get_by_id_untracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
+    fn get_by_id_untracked(&self, id: &Id) -> Option<Arc<Entry>>;
 
     fn get_by_id_tracked(&self, id: &Id) -> Option<Arc<Entry>>;
 

@@ -200,11 +200,7 @@ impl Model {
                     }
                 }
                 Invariant::IdRemoved(id) => {
-                    assert!(
-                        !state.ids.contains_key(id),
-                        "{:?}",
-                        state.ids.get_by_key(id)
-                    );
+                    assert!(!state.ids.contains_key(id), "{:?}", state.ids.get(*id));
                 }
             }
         }

@@ -6,7 +6,6 @@ use crate::{
     credentials::{Credentials, Id},
     crypto,
     event::{self, EndpointPublisher as _, IntoEvent as _},
-    fixed_map::{self, ReadGuard},
     packet::{secret_control as control, Packet},
     path::secret::receiver,
 };
@@ -15,7 +14,8 @@ use s2n_quic_core::{
     time::{self, Timestamp},
 };
 use std::{
-    hash::{BuildHasherDefault, Hasher},
+    collections::VecDeque,
+    hash::BuildHasher,
     net::{Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex, RwLock, Weak},
     time::Duration,
@@ -24,24 +24,143 @@ use std::{
 #[cfg(test)]
 mod tests;
 
-// # Managing memory consumption
-//
-// For regular rotation with live peers, we retain at most two secrets: one derived from the most
-// recent locally initiated handshake and the most recent remote initiated handshake (from our
-// perspective). We guarantee that at most one handshake is ongoing for a given peer pair at a
-// time, so both sides will have at least one mutually trusted entry after the handshake. If a peer
-// is only acting as a client or only as a server, then one of the peer maps will always be empty.
-//
-// Previous entries can safely be removed after a grace period (EVICTION_TIME). EVICTION_TIME
-// is only needed because a stream/datagram might be opening/sent concurrently with the new
-// handshake (e.g., during regular rotation), and we don't want that to fail spuriously.
-//
-// We also need to manage secrets for no longer existing peers. These are peers where typically the
-// underlying host has gone away and/or the address for it has changed. At 95% occupancy for the
-// maximum size allowed, we will remove least recently used secrets (1% of these per minute). Usage
-// is defined by access to the entry in the map. Unfortunately we lack any good way to authenticate
-// a peer as *not* having credentials, especially after the peer is gone. It's possible that in the
-// future information could also come from the TLS provider.
+#[derive(Default)]
+pub(crate) struct PeerMap(
+    Mutex<hashbrown::HashTable<Arc<Entry>>>,
+    std::collections::hash_map::RandomState,
+);
+
+#[derive(Default)]
+pub(crate) struct IdMap(Mutex<hashbrown::HashTable<Arc<Entry>>>);
+
+impl PeerMap {
+    fn reserve(&self, additional: usize) {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reserve(additional, |e| self.hash(e));
+    }
+
+    fn hash(&self, entry: &Entry) -> u64 {
+        self.hash_key(entry.peer())
+    }
+
+    fn hash_key(&self, entry: &SocketAddr) -> u64 {
+        self.1.hash_one(entry)
+    }
+
+    pub(crate) fn insert(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
+        let hash = self.hash(&entry);
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        match map.entry(hash, |other| other.peer() == entry.peer(), |e| self.hash(e)) {
+            hashbrown::hash_table::Entry::Occupied(mut o) => {
+                Some(std::mem::replace(o.get_mut(), entry))
+            }
+            hashbrown::hash_table::Entry::Vacant(v) => {
+                v.insert(entry);
+                None
+            }
+        }
+    }
+
+    pub(crate) fn contains_key(&self, ip: &SocketAddr) -> bool {
+        let hash = self.hash_key(ip);
+        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.find(hash, |o| o.peer() == ip).is_some()
+    }
+
+    pub(crate) fn get(&self, peer: SocketAddr) -> Option<Arc<Entry>> {
+        let hash = self.hash_key(&peer);
+        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.find(hash, |o| *o.peer() == peer).cloned()
+    }
+
+    pub(crate) fn clear(&self) {
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.clear();
+    }
+
+    pub(super) fn len(&self) -> usize {
+        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.len()
+    }
+
+    fn remove_exact(&self, entry: &Arc<Entry>) -> Option<Arc<Entry>> {
+        let hash = self.hash(entry);
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        // Note that we are passing `eq` by **ID** not by address: this ensures that we find the
+        // specific entry. The hash is still of the SocketAddr so we will look at the right entries
+        // while doing this.
+        match map.find_entry(hash, |other| other.id() == entry.id()) {
+            Ok(o) => Some(o.remove().0),
+            Err(_) => None,
+        }
+    }
+}
+
+impl IdMap {
+    fn reserve(&self, additional: usize) {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reserve(additional, |e| self.hash(e));
+    }
+
+    fn hash(&self, entry: &Entry) -> u64 {
+        self.hash_key(entry.id())
+    }
+
+    fn hash_key(&self, entry: &Id) -> u64 {
+        entry.to_hash()
+    }
+
+    pub(crate) fn insert(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
+        let hash = self.hash(&entry);
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        match map.entry(hash, |other| other.id() == entry.id(), |e| self.hash(e)) {
+            hashbrown::hash_table::Entry::Occupied(mut o) => {
+                Some(std::mem::replace(o.get_mut(), entry))
+            }
+            hashbrown::hash_table::Entry::Vacant(v) => {
+                v.insert(entry);
+                None
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn contains_key(&self, id: &Id) -> bool {
+        let hash = self.hash_key(id);
+        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.find(hash, |o| o.id() == id).is_some()
+    }
+
+    pub(crate) fn get(&self, id: Id) -> Option<Arc<Entry>> {
+        let hash = self.hash_key(&id);
+        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.find(hash, |o| *o.id() == id).cloned()
+    }
+
+    pub(crate) fn clear(&self) {
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.clear();
+    }
+
+    pub(super) fn len(&self) -> usize {
+        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.len()
+    }
+
+    pub(super) fn remove(&self, id: Id) -> Option<Arc<Entry>> {
+        let hash = self.hash_key(&id);
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        match map.find_entry(hash, |other| *other.id() == id) {
+            Ok(o) => Some(o.remove().0),
+            Err(_) => None,
+        }
+    }
+}
+
 pub(super) struct State<C, S>
 where
     C: 'static + time::Clock + Sync + Send,
@@ -62,10 +181,15 @@ where
     // In the future it's likely we'll want to build bidirectional support in which case splitting
     // this into two maps (per the discussion in "Managing memory consumption" above) will be
     // needed.
-    pub(super) peers: fixed_map::Map<SocketAddr, Arc<Entry>>,
+    pub(super) peers: PeerMap,
 
     // All known entries.
-    pub(super) ids: fixed_map::Map<Id, Arc<Entry>, BuildHasherDefault<NoopIdHasher>>,
+    pub(super) ids: IdMap,
+
+    // We evict entries based on FIFO order. When an entry is created, it gets added to the queue.
+    // Entries can die in one of two ways: exiting the queue, and replacement due to re-handshaking
+    // (if the peer address is the same).
+    pub(super) eviction_queue: Mutex<VecDeque<Weak<Entry>>>,
 
     pub(super) signer: stateless_reset::Signer,
 
@@ -77,6 +201,10 @@ where
     pub(super) request_handshake: RwLock<Option<Box<dyn Fn(SocketAddr) + Send + Sync>>>,
 
     cleaner: Cleaner,
+
+    // Avoids allocating/deallocating on each cleaner run.
+    // We use a PeerMap to save memory -- an Arc is 8 bytes, SocketAddr is 32 bytes.
+    pub(super) cleaner_peer_seen: PeerMap,
 
     init_time: Timestamp,
 
@@ -127,8 +255,10 @@ where
             max_capacity: capacity,
             // FIXME: Allow configuring the rehandshake_period.
             rehandshake_period: Duration::from_secs(3600 * 24),
-            peers: fixed_map::Map::with_capacity(capacity, Default::default()),
-            ids: fixed_map::Map::with_capacity(capacity, Default::default()),
+            peers: Default::default(),
+            ids: Default::default(),
+            eviction_queue: Default::default(),
+            cleaner_peer_seen: Default::default(),
             cleaner: Cleaner::new(),
             signer,
             control_socket,
@@ -137,6 +267,16 @@ where
             subscriber,
             request_handshake: RwLock::new(None),
         };
+
+        // Growing to double our maximum inserted entries should ensure that we never grow again, see:
+        // https://github.com/rust-lang/hashbrown/blob/3bcb84537de01372cab2c1cd3bbfd8577a67ce05/src/raw/mod.rs#L2614
+        //
+        // In practice we don't pin a particular version of hashbrown but there's definitely at
+        // most a constant factor of growth left (vs continuous upwards resizing) with any
+        // reasonable implementation.
+        state.peers.reserve(2 * state.max_capacity);
+        state.ids.reserve(2 * state.max_capacity);
+        state.cleaner_peer_seen.reserve(2 * state.max_capacity);
 
         let state = Arc::new(state);
 
@@ -147,6 +287,44 @@ where
             .on_path_secret_map_initialized(event::builder::PathSecretMapInitialized { capacity });
 
         state
+    }
+
+    // Sometimes called with queue lock held -- must not acquire it.
+    pub(super) fn evict(&self, evicted: &Arc<Entry>) -> (bool, bool) {
+        let mut id_removed = false;
+        let mut peer_removed = false;
+
+        // A concurrent cleaner can drop the entry from the `ids` map so we need to
+        // re-check whether we actually evicted something.
+        if self.ids.remove(*evicted.id()).is_some() {
+            id_removed = true;
+            self.subscriber().on_path_secret_map_id_entry_evicted(
+                event::builder::PathSecretMapIdEntryEvicted {
+                    peer_address: SocketAddress::from(*evicted.peer()).into_event(),
+                    credential_id: evicted.id().into_event(),
+                    age: evicted.age(),
+                },
+            );
+        }
+
+        // A concurrent cleaner can drop the entry from the `peers` map too so we need
+        // to re-check whether we actually evicted something.
+        //
+        // We drop from the peers map only if this is exactly the entry in that map to
+        // avoid evicting a newer path secret (in case of rehandshaking with the same
+        // peer).
+        if self.peers.remove_exact(evicted).is_some() {
+            peer_removed = true;
+            self.subscriber().on_path_secret_map_address_entry_evicted(
+                event::builder::PathSecretMapAddressEntryEvicted {
+                    peer_address: SocketAddress::from(*evicted.peer()).into_event(),
+                    credential_id: evicted.id().into_event(),
+                    age: evicted.age(),
+                },
+            );
+        }
+
+        (id_removed, peer_removed)
     }
 
     pub fn request_handshake(&self, peer: SocketAddr) {
@@ -244,7 +422,7 @@ where
                 peer_address,
             });
 
-        let Some(entry) = self.ids.get_by_key(packet.credential_id()) else {
+        let Some(entry) = self.ids.get(*packet.credential_id()) else {
             self.subscriber()
                 .on_stale_key_packet_dropped(event::builder::StaleKeyPacketDropped {
                     credential_id: packet.credential_id().into_event(),
@@ -289,7 +467,7 @@ where
             },
         );
 
-        let Some(entry) = self.ids.get_by_key(packet.credential_id()) else {
+        let Some(entry) = self.ids.get(*packet.credential_id()) else {
             self.subscriber().on_replay_detected_packet_dropped(
                 event::builder::ReplayDetectedPacketDropped {
                     credential_id: packet.credential_id().into_event(),
@@ -342,8 +520,8 @@ where
     #[allow(unused)]
     fn set_max_capacity(&mut self, new: usize) {
         self.max_capacity = new;
-        self.peers = fixed_map::Map::with_capacity(new, Default::default());
-        self.ids = fixed_map::Map::with_capacity(new, Default::default());
+        self.peers = Default::default();
+        self.ids = Default::default();
     }
 
     pub(super) fn subscriber(&self) -> event::EndpointPublisherSubscriber<S> {
@@ -365,11 +543,11 @@ where
     S: event::Subscriber,
 {
     fn secrets_len(&self) -> usize {
-        self.ids.count()
+        self.ids.len()
     }
 
     fn peers_len(&self) -> usize {
-        self.peers.count()
+        self.peers.len()
     }
 
     fn secrets_capacity(&self) -> usize {
@@ -389,20 +567,36 @@ where
         let id = *entry.id();
         let peer = entry.peer();
 
-        let (same, other) = self.ids.insert(id, entry.clone());
+        // This is the only place that inserts into the ID list.
+        let same = self.ids.insert(entry.clone());
         if same.is_some() {
             // FIXME: Make insertion fallible and fail handshakes instead?
             panic!("inserting a path secret ID twice");
         }
 
-        if let Some(evicted) = other {
-            self.subscriber().on_path_secret_map_id_entry_evicted(
-                event::builder::PathSecretMapIdEntryEvicted {
-                    peer_address: SocketAddress::from(*evicted.1.peer()).into_event(),
-                    credential_id: evicted.1.id().into_event(),
-                    age: evicted.1.age(),
-                },
-            );
+        {
+            let mut queue = self
+                .eviction_queue
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+
+            queue.push_back(Arc::downgrade(&entry));
+
+            // We went beyond queue limit, need to prune some entries.
+            if queue.len() > self.max_capacity {
+                // FIXME: Consider a more interesting algorithm, e.g., scanning the first N entries
+                // if the popped entry is still live to see if we can avoid dropping a live entry.
+                // May not be worth it in practice.
+                let element = queue.pop_front().unwrap();
+                // Drop the queue lock prior to dropping element in case we wind up deallocating
+                // This reduces lock contention and avoids interleaving locks (requiring careful
+                // lock ordering).
+                drop(queue);
+
+                if let Some(evicted) = element.upgrade() {
+                    self.evict(&evicted);
+                }
+            }
         }
 
         self.subscriber().on_path_secret_map_entry_inserted(
@@ -417,8 +611,7 @@ where
         let id = *entry.id();
         let peer = *entry.peer();
 
-        let (same, other) = self.peers.insert(peer, entry);
-        if let Some(prev) = same {
+        if let Some(prev) = self.peers.insert(entry) {
             // This shouldn't happen due to the panic in on_new_path_secrets, but just
             // in case something went wrong with the secret map we double check here.
             // FIXME: Make insertion fallible and fail handshakes instead?
@@ -436,15 +629,10 @@ where
             );
         }
 
-        if let Some(evicted) = other {
-            self.subscriber().on_path_secret_map_address_entry_evicted(
-                event::builder::PathSecretMapAddressEntryEvicted {
-                    peer_address: SocketAddress::from(*evicted.1.peer()).into_event(),
-                    credential_id: evicted.1.id().into_event(),
-                    age: evicted.1.age(),
-                },
-            );
-        }
+        // Note we evict only based on "new entry" and that happens strictly in
+        // on_new_path_secrets, on_handshake_complete should never get an entry that's not already
+        // in the eviction queue. *Checking* that is unfortunately expensive since it's O(n) on the
+        // queue, so we don't do that.
 
         self.subscriber()
             .on_path_secret_map_entry_ready(event::builder::PathSecretMapEntryReady {
@@ -457,12 +645,12 @@ where
         self.register_request_handshake(cb);
     }
 
-    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
-        self.peers.get_by_key(peer)
+    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<Arc<Entry>> {
+        self.peers.get(*peer)
     }
 
-    fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>> {
-        let result = self.peers.get_by_key(peer);
+    fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<Arc<Entry>> {
+        let result = self.peers.get(*peer);
 
         self.subscriber().on_path_secret_map_address_cache_accessed(
             event::builder::PathSecretMapAddressCacheAccessed {
@@ -485,13 +673,12 @@ where
         result
     }
 
-    fn get_by_id_untracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>> {
-        self.ids.get_by_key(id)
+    fn get_by_id_untracked(&self, id: &Id) -> Option<Arc<Entry>> {
+        self.ids.get(*id)
     }
 
     fn get_by_id_tracked(&self, id: &Id) -> Option<Arc<Entry>> {
-        // clone here to avoid holding the lock while we insert into `peers`.
-        let result = self.ids.get_by_key(id).map(|v| Arc::clone(&v));
+        let result = self.ids.get(*id);
 
         self.subscriber().on_path_secret_map_id_cache_accessed(
             event::builder::PathSecretMapIdCacheAccessed {
@@ -508,23 +695,6 @@ where
                     age: entry.age(),
                 },
             );
-        }
-
-        // Re-populate the peer cache with this entry if not already present.
-        //
-        // This ensures that a subsequent lookup by the address will likely succeed, refilling any
-        // previous evictions in the peer map. We skip insertion if there's already a peer entry
-        // since that might be a *newer* peer entry that should continue to stick around.
-        if let Some(entry) = &result {
-            if let Some(evicted) = self.peers.insert_new_key(*entry.peer(), entry.clone()) {
-                self.subscriber().on_path_secret_map_address_entry_evicted(
-                    event::builder::PathSecretMapAddressEntryEvicted {
-                        peer_address: SocketAddress::from(*evicted.1.peer()).into_event(),
-                        credential_id: evicted.1.id().into_event(),
-                        age: evicted.1.age(),
-                    },
-                );
-            }
         }
 
         result
@@ -699,23 +869,5 @@ where
                 lifetime,
             },
         );
-    }
-}
-
-#[derive(Default)]
-pub(super) struct NoopIdHasher(Option<u64>);
-
-impl Hasher for NoopIdHasher {
-    fn finish(&self) -> u64 {
-        self.0.unwrap()
-    }
-
-    fn write(&mut self, _bytes: &[u8]) {
-        unimplemented!()
-    }
-
-    fn write_u64(&mut self, x: u64) {
-        debug_assert!(self.0.is_none());
-        self.0 = Some(x);
     }
 }
