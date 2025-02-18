@@ -197,7 +197,7 @@ fn check_delayed_inner(seed: u64, delay: u16) {
         // explanation for what guarantees we're actually trying to provide here).
         if id % 128 != 0 {
             // ...until some random interval no more than WINDOW away.
-            let insert_before = rng.gen_range(id + 1 + delay..id + WINDOW as u64);
+            let insert_before = rng.random_range(id + 1 + delay..id + WINDOW as u64);
             buffered.push((std::cmp::Reverse(insert_before), id));
         } else {
             model.insert(id);

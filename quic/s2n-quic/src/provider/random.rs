@@ -19,7 +19,7 @@ mod rand {
     use core::convert::Infallible;
     use rand::{
         prelude::*,
-        rngs::{adapter::ReseedingRng, OsRng},
+        rngs::{OsRng, ReseedingRng},
     };
     use rand_chacha::ChaChaCore;
     use s2n_quic_core::random;
@@ -71,9 +71,8 @@ mod rand {
     // Constructs a `ReseedingRng` with a ChaCha RNG initially seeded from the OS,
     // that will reseed from the OS after RESEED_THRESHOLD is exceeded
     fn build_rng() -> ReseedingRng<ChaChaCore, OsRng> {
-        let prng = ChaChaCore::from_rng(OsRng)
-            .unwrap_or_else(|err| panic!("could not initialize random generator: {err}"));
-        ReseedingRng::new(prng, RESEED_THRESHOLD, OsRng)
+        ReseedingRng::<ChaChaCore, OsRng>::new(RESEED_THRESHOLD, OsRng)
+            .unwrap_or_else(|err| panic!("could not initialize random generator: {err}"))
     }
 
     impl random::Generator for Generator {

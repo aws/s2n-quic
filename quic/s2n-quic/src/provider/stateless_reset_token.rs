@@ -83,7 +83,7 @@ mod random {
         // be generated the same for a given `local_connection_id` before and after loss of state.
         fn generate(&mut self, _local_connection_id: &[u8]) -> stateless_reset::Token {
             let mut token = [0u8; STATELESS_RESET_TOKEN_LEN];
-            rand::thread_rng().fill_bytes(&mut token);
+            rand::rng().fill_bytes(&mut token);
             token.into()
         }
     }

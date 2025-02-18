@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use lru::LruCache;
-use rand::prelude::*;
+use rand::{Rng as _, RngCore};
 use s2n_codec::encoder::scatter;
 use s2n_quic_core::{
     event::api::Subject,
@@ -31,7 +31,7 @@ struct Random;
 
 impl havoc::Random for Random {
     fn fill(&mut self, bytes: &mut [u8]) {
-        thread_rng().fill_bytes(bytes);
+        rand::rng().fill_bytes(bytes);
     }
 
     fn gen_range(&mut self, range: std::ops::Range<u64>) -> u64 {
@@ -43,7 +43,7 @@ impl havoc::Random for Random {
             return start;
         }
 
-        thread_rng().gen_range(start..end)
+        rand::rng().random_range(start..end)
     }
 }
 

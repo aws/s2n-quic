@@ -68,7 +68,7 @@ impl Cleaner {
                 let pause = if cfg!(test) {
                     60
                 } else {
-                    rand::thread_rng().gen_range(5..60)
+                    rand::rng().random_range(5..60)
                 };
                 std::thread::park_timeout(Duration::from_secs(pause));
 

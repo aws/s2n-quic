@@ -143,7 +143,7 @@ pub mod default {
         fn generate(&mut self, _connection_info: &ConnectionInfo) -> connection::LocalId {
             let mut id = [0u8; connection::id::MAX_LEN];
             let id = &mut id[..self.len];
-            rand::thread_rng().fill_bytes(id);
+            rand::rng().fill_bytes(id);
             (&*id).try_into().expect("length already checked")
         }
 
