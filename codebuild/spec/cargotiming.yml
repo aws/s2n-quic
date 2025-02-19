@@ -19,9 +19,7 @@ phases:
       - cargo build --timings
   post_build:
     commands:
-      - sysctl -a|grep net.ipv6 |grep only
-      - RUST_LOG=trace cargo test -p s2n-quic-platform --lib
-      - ip addr
+      - cargo test --exclude s2n-quic-platform --workspace
 
 artifacts:
   # upload timing reports
