@@ -19,7 +19,7 @@ phases:
       - cargo build --timings
   post_build:
     commands:
-      - cargo test --timings
+      - RUST_LOG=trace cargo test -p s2n-quic-platform --lib
 
 artifacts:
   # upload timing reports
