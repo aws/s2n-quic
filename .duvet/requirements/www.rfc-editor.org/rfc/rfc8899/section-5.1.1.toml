@@ -1,0 +1,71 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-5.1.1"
+
+# Timers
+#
+#    The method utilizes up to three timers:
+# 
+#    PROBE_TIMER:  The PROBE_TIMER is configured to expire after a period
+#       longer than the maximum time to receive an acknowledgment to a
+#       probe packet.  This value MUST NOT be smaller than 1 second and
+#       SHOULD be larger than 15 seconds.  Guidance on the selection of
+#       the timer value is provided in Section 3.1.1 of the UDP Usage
+#       Guidelines [BCP145].
+# 
+#    PMTU_RAISE_TIMER:  The PMTU_RAISE_TIMER is configured to the period a
+#       sender will continue to use the current PLPMTU, after which it
+#       reenters the Search Phase.  This timer has a period of 600
+#       seconds, as recommended by PLPMTUD [RFC4821].
+# 
+#       DPLPMTUD MAY inhibit sending probe packets when no application
+#       data has been sent since the previous probe packet.  A PL
+#       preferring to use an up-to-date PMTU once user data is sent again
+#       can choose to continue PMTU discovery for each path.  However,
+#       this will result in sending additional packets.
+# 
+#    CONFIRMATION_TIMER:  When an acknowledged PL is used, this timer MUST
+#       NOT be used.  For other PLs, the CONFIRMATION_TIMER is configured
+#       to the period a PL sender waits before confirming the current
+#       PLPMTU is still supported.  This is less than the PMTU_RAISE_TIMER
+#       and used to decrease the PLPMTU (e.g., when a black hole is
+#       encountered).  Confirmation needs to be frequent enough when data
+#       is flowing that the sending PL does not black hole extensive
+#       amounts of traffic.  Guidance on selection of the timer value are
+#       provided in Section 3.1.1 of the UDP Usage Guidelines [BCP145].
+# 
+#       DPLPMTUD MAY inhibit sending probe packets when no application
+#       data has been sent since the previous probe packet.  A PL
+#       preferring to use an up-to-date PMTU once user data is sent again,
+#       can choose to continue PMTU discovery for each path.  However,
+#       this could result in sending additional packets.
+# 
+#    DPLPMTUD specifies various timers; however, an implementation could
+#    choose to realize these timer functions using a single timer.
+
+[[spec]]
+level = "MUST"
+quote = '''
+This value MUST NOT be smaller than 1 second and
+SHOULD be larger than 15 seconds.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+DPLPMTUD MAY inhibit sending probe packets when no application
+data has been sent since the previous probe packet.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+CONFIRMATION_TIMER:  When an acknowledged PL is used, this timer MUST
+NOT be used.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+DPLPMTUD MAY inhibit sending probe packets when no application
+data has been sent since the previous probe packet.
+'''
+
