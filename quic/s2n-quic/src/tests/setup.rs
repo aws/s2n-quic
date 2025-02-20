@@ -175,15 +175,11 @@ impl havoc::Random for Random {
     }
 
     fn gen_range(&mut self, range: std::ops::Range<u64>) -> u64 {
-        self.inner.gen_range(range)
+        self.inner.random_range(range)
     }
 }
 
 impl RngCore for Random {
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
-        self.inner.try_fill_bytes(dest)
-    }
-
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         self.inner.fill_bytes(dest)
     }

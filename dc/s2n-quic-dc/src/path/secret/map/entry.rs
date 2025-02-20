@@ -257,7 +257,7 @@ impl Entry {
         // The goal of rescheduling is to avoid continuously re-handshaking for N (possibly stale)
         // peers every cleaner loop, instead we defer handshakes out again. This effectively acts
         // as a (slow) retry mechanism.
-        let delta = rand::thread_rng().gen_range(
+        let delta = rand::rng().random_range(
             std::cmp::min(rehandshake_period.as_secs(), 360)..rehandshake_period.as_secs(),
         ) as u32;
         // This can't practically overflow -- each time we add we push out the next add by at least
