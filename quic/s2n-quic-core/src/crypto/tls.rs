@@ -131,7 +131,7 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     fn on_handshake_complete(&mut self) -> Result<(), crate::transport::Error>;
 
     /// Transfer application context from TLS connection to quic connection
-    fn on_application_context(&mut self, _context: Option<Box<dyn Any + Send + Sync>>) {}
+    fn on_application_context(&mut self, _context: Option<Box<dyn Any + Send + Sync>>);
     fn on_tls_exporter_ready(
         &mut self,
         session: &impl TlsSession,
