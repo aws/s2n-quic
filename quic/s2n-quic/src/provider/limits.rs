@@ -3,7 +3,9 @@
 
 //! Provides limits support for a connection
 
-pub use s2n_quic_core::connection::limits::{ConnectionInfo, Limiter, Limits};
+pub use s2n_quic_core::connection::limits::{
+    ConnectionInfo, Limiter, Limits, PostHandshakeInfo, UpdatableLimits,
+};
 
 pub trait Provider {
     type Limits: 'static + Send + Limiter;

@@ -3,6 +3,7 @@
 
 use crate::{
     ack,
+    application::ServerName,
     event::{api::SocketAddress, IntoEvent},
     inet, recovery, stream,
     transport::parameters::{
@@ -12,6 +13,7 @@ use crate::{
         MaxDatagramFrameSize, MaxIdleTimeout, MigrationSupport, TransportParameters,
     },
 };
+use bytes::Bytes;
 use core::time::Duration;
 use s2n_codec::decoder_invariant;
 
@@ -49,6 +51,28 @@ impl<'a> ConnectionInfo<'a> {
     pub fn new(remote_address: &'a inet::SocketAddress) -> Self {
         Self {
             remote_address: remote_address.into_event(),
+        }
+    }
+}
+
+#[non_exhaustive]
+#[derive(Debug)]
+pub struct PostHandshakeInfo<'a> {
+    pub remote_address: SocketAddress<'a>,
+    pub server_name: Option<&'a ServerName>,
+    pub application_protocol: &'a Bytes,
+}
+
+impl<'a> PostHandshakeInfo<'a> {
+    pub fn new(
+        remote_address: &'a inet::SocketAddress,
+        server_name: Option<&'a ServerName>,
+        application_protocol: &'a Bytes,
+    ) -> PostHandshakeInfo<'a> {
+        Self {
+            remote_address: remote_address.into_event(),
+            server_name,
+            application_protocol,
         }
     }
 }
@@ -397,9 +421,31 @@ impl Limits {
     }
 }
 
+#[must_use]
+#[derive(Debug)]
+pub struct UpdatableLimits<'a>(&'a mut Limits);
+
+impl<'a> UpdatableLimits<'a> {
+    pub fn new(limits: &'a mut Limits) -> UpdatableLimits<'a> {
+        UpdatableLimits(limits)
+    }
+
+    pub fn stream_batch_size(&mut self, size: u8) {
+        self.0.stream_batch_size = size;
+    }
+}
+
 /// Creates limits for a given connection
 pub trait Limiter: 'static + Send {
     fn on_connection(&mut self, info: &ConnectionInfo) -> Limits;
+
+    /// Provides another opportunity to change connection limits with information
+    /// from the handshake
+    #[inline]
+    fn on_post_handshake(&mut self, info: &PostHandshakeInfo, limits: &mut UpdatableLimits) {
+        let _ = info;
+        let _ = limits;
+    }
 }
 
 /// Implement Limiter for a Limits struct
@@ -407,6 +453,8 @@ impl Limiter for Limits {
     fn on_connection(&mut self, _into: &ConnectionInfo) -> Limits {
         *self
     }
+
+    fn on_post_handshake(&mut self, _info: &PostHandshakeInfo, _limits: &mut UpdatableLimits) {}
 }
 
 #[cfg(test)]
