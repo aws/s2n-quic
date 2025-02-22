@@ -27,8 +27,6 @@ pub struct Callback<'a, T, C> {
     pub suite: PhantomData<C>,
     pub err: Option<transport::Error>,
     pub send_buffer: &'a mut BytesMut,
-    pub emitted_server_name: &'a mut bool,
-    pub server_name: &'a Option<ServerName>,
     pub server_params: &'a mut Vec<u8>,
 }
 
@@ -113,17 +111,6 @@ where
 
             // Flush the send buffer before returning to the connection
             self.flush();
-            // attempt to emit server name after making progress and prior to error handling
-            if !*self.emitted_server_name {
-                if let Some(server_name) = self.server_name.clone().or_else(|| {
-                    connection
-                        .server_name()
-                        .map(|server_name| server_name.into())
-                }) {
-                    self.context.on_server_name(server_name)?;
-                    *self.emitted_server_name = true;
-                }
-            }
 
             if let Some(err) = self.err {
                 return Err(err);
@@ -261,15 +248,14 @@ where
                         }
                         let params = unsafe {
                             // Safety: conn needs to outlive params
-                            //
-                            // TODO use interning for these values
-                            // issue: https://github.com/aws/s2n-quic/issues/248
-                            //
-                            // Move this event to where `on_server_name` is emitted once we expose
-                            // the functionality in s2n_tls bindings
                             let application_protocol =
                                 Bytes::copy_from_slice(get_application_protocol(conn)?);
                             self.context.on_application_protocol(application_protocol)?;
+
+                            if let Some(server_name) = get_server_name(conn) {
+                                self.context.on_server_name(server_name)?;
+                            }
+
                             get_application_params(conn)?
                         };
 
@@ -534,6 +520,15 @@ unsafe fn get_application_protocol<'a>(
     let ptr = s2n_get_application_protocol(connection).into_result().ok();
     ptr.and_then(|ptr| get_cstr_slice(ptr))
         .ok_or(tls::Error::MISSING_EXTENSION)
+}
+
+unsafe fn get_server_name(connection: *mut s2n_connection) -> Option<ServerName> {
+    let ptr = s2n_get_server_name(connection).into_result().ok()?;
+    let data = get_cstr_slice(ptr)?;
+
+    // validate sni is a valid UTF-8 string
+    let string = core::str::from_utf8(data).ok()?;
+    Some(string.into())
 }
 
 unsafe fn get_transport_parameters<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {
