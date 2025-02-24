@@ -16,6 +16,10 @@ pub fn assert_async_read<T: tokio::io::AsyncRead>(_v: &T) {}
 pub fn assert_async_write<T: tokio::io::AsyncWrite>(_v: &T) {}
 
 pub fn init_tracing() {
+    if cfg!(any(miri, fuzzing)) {
+        return;
+    }
+
     use std::sync::Once;
 
     static TRACING: Once = Once::new();
