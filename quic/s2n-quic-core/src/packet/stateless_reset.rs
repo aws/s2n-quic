@@ -83,7 +83,7 @@ pub fn encode_packet(
         &mut packet_buf[..unpredictable_bits_max_len],
     );
     // Write the short header tag over the first two bits
-    packet_buf[0] = packet_buf[0] >> TAG_OFFSET | TAG;
+    packet_buf[0] = (packet_buf[0] >> TAG_OFFSET) | TAG;
 
     let packet_len = unpredictable_bits_len + stateless_reset::token::LEN;
 

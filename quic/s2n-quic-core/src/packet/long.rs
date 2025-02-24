@@ -143,11 +143,11 @@ pub enum PacketType {
 
 impl PacketType {
     pub const fn into_bits(self) -> u8 {
-        (self as u8) << PACKET_TYPE_OFFSET & PACKET_TYPE_MASK
+        ((self as u8) << PACKET_TYPE_OFFSET) & PACKET_TYPE_MASK
     }
 
     pub fn from_bits(bits: u8) -> Self {
-        (bits & PACKET_TYPE_MASK >> PACKET_TYPE_OFFSET).into()
+        (bits & (PACKET_TYPE_MASK >> PACKET_TYPE_OFFSET)).into()
     }
 }
 
