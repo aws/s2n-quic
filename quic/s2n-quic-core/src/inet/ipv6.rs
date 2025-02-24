@@ -536,13 +536,13 @@ impl Vtcfl {
 
     #[inline]
     pub fn set_version(&mut self, version: u8) -> &mut Self {
-        self.octets[0] = version << 4 | self.octets[0] & 0x0F;
+        self.octets[0] = (version << 4) | self.octets[0] & 0x0F;
         self
     }
 
     #[inline]
     pub fn dscp(&self) -> u8 {
-        let value = self.octets[0] << 4 | self.octets[1] >> 4;
+        let value = (self.octets[0] << 4) | (self.octets[1] >> 4);
         value >> 2
     }
 
@@ -556,12 +556,12 @@ impl Vtcfl {
 
     #[inline]
     pub fn ecn(&self) -> ExplicitCongestionNotification {
-        ExplicitCongestionNotification::new(self.octets[1] >> 4 & 0b11)
+        ExplicitCongestionNotification::new((self.octets[1] >> 4) & 0b11)
     }
 
     #[inline]
     pub fn set_ecn(&mut self, ecn: ExplicitCongestionNotification) -> &mut Self {
-        self.octets[1] = (self.octets[1] & !(0b11 << 4)) | (ecn as u8) << 4;
+        self.octets[1] = (self.octets[1] & !(0b11 << 4)) | ((ecn as u8) << 4);
         self
     }
 

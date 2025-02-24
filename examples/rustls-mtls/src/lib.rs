@@ -96,7 +96,7 @@ impl MtlsProvider {
         let private_key = into_private_key(my_key_pem.as_ref()).await?;
         Ok(MtlsProvider {
             root_store,
-            my_cert_chain: cert_chain.into_iter().map(CertificateDer::from).collect(),
+            my_cert_chain: cert_chain,
             my_private_key: private_key,
         })
     }
@@ -124,10 +124,7 @@ async fn into_certificate(path: &Path) -> Result<Vec<CertificateDer<'static>>, R
 }
 
 async fn into_root_store(path: &Path) -> Result<RootCertStore, RustlsError> {
-    let ca_certs: Vec<CertificateDer<'static>> = into_certificate(path)
-        .await
-        .map(|certs| certs.into_iter().map(CertificateDer::from))?
-        .collect();
+    let ca_certs: Vec<CertificateDer<'static>> = into_certificate(path).await?;
     let mut cert_store = RootCertStore::empty();
     cert_store.add_parsable_certificates(ca_certs);
     Ok(cert_store)

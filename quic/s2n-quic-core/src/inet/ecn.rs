@@ -132,7 +132,7 @@ mod tests {
             ] {
                 assert_eq!(
                     *ecn,
-                    ExplicitCongestionNotification::new(i << 2 | *ecn as u8)
+                    ExplicitCongestionNotification::new((i << 2) | *ecn as u8)
                 );
             }
         }

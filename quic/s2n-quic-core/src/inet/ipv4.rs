@@ -529,7 +529,7 @@ impl Vihl {
 
     #[inline]
     pub fn set_version(&mut self, value: u8) -> &mut Self {
-        self.value = value << 4 | (self.value & 0x0F);
+        self.value = (value << 4) | (self.value & 0x0F);
         self
     }
 
