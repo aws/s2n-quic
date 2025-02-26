@@ -45,6 +45,11 @@ impl Memory {
 }
 
 /// A pointer to a single descriptor in a group
+///
+/// Fundamentally, this is similar to something like `Arc<DescriptorInner>`. However,
+/// it doesn't use its own allocation for the Arc layout, and instead embeds the reference
+/// counts in the descriptor data. This avoids allocating a new `Arc` every time a packet
+/// is received and instead allows the descriptor to be reused.
 pub(super) struct Descriptor {
     ptr: NonNull<DescriptorInner>,
     phantom: PhantomData<DescriptorInner>,
@@ -76,7 +81,7 @@ impl Descriptor {
 
     #[inline]
     fn data(&self) -> NonNull<u8> {
-        self.inner().data
+        self.inner().payload
     }
 
     #[inline]
@@ -146,26 +151,43 @@ unsafe impl Send for Descriptor {}
 unsafe impl Sync for Descriptor {}
 
 pub(super) struct DescriptorInner {
+    /// An identifier for the descriptor
+    ///
+    /// This can be used by the pool implementation to map the descriptor to an internal
+    /// detail, e.g. in AF_XDP it passes around UMEM offsets.
     id: u64,
+    /// The pointer to the descriptor address
     address: NonNull<Addr>,
-    data: NonNull<u8>,
-
+    /// The pointer to the descriptor payload
+    payload: NonNull<u8>,
+    /// The number of active references for this descriptor.
+    ///
+    /// This refcount allows for splitting descriptors into multiple segments
+    /// and then correctly freeing the descriptor once the last segment is dropped.
     references: AtomicUsize,
-
+    /// A reference back to the memory region that owns the descriptor
     memory: NonNull<Memory>,
 }
 
 impl DescriptorInner {
-    pub(super) fn new(
+    /// # Safety
+    ///
+    /// `address` must be initialized.
+    ///
+    /// `payload` must point to a valid region of memory that is at least `capacity` bytes
+    /// long. Additionally it must be initialized to valid memory.
+    ///
+    /// `memory` must be initialized.
+    pub(super) unsafe fn new(
         id: u64,
         address: NonNull<Addr>,
-        data: NonNull<u8>,
+        payload: NonNull<u8>,
         memory: NonNull<Memory>,
     ) -> Self {
         Self {
             id,
             address,
-            data,
+            payload,
             references: AtomicUsize::new(0),
             memory,
         }
@@ -184,7 +206,8 @@ impl DescriptorInner {
         debug_assert_ne!(mem_refs, 0, "reference count underflow");
 
         // if the free_list is still active (the allocator hasn't dropped) then just push the id
-        // TODO Weak::upgrade is a bit expensive since it clones the `Arc`, only to drop it again
+        // The `upgrade` acts as a lock for freeing the `Memory` instance, in the case that the
+        // free list has been dropped by the allocator.
         if let Some(free_list) = memory.free_list.upgrade() {
             free_list.free(Descriptor {
                 ptr: desc.ptr,
@@ -214,6 +237,11 @@ impl DescriptorInner {
 
 /// An unfilled packet
 pub struct Unfilled {
+    /// The inner raw descriptor.
+    ///
+    /// This needs to be an [`Option`] to allow for both consuming the descriptor
+    /// into a [`Filled`] after receiving a packet or dropping the [`Unfilled`] and
+    /// releasing it back into the packet pool.
     desc: Option<Descriptor>,
 }
 
@@ -225,6 +253,7 @@ impl fmt::Debug for Unfilled {
 }
 
 impl Unfilled {
+    /// Creates an [`Unfilled`] descriptor from a raw [`Descriptor`].
     #[inline]
     pub(super) fn from_descriptor(desc: Descriptor) -> Self {
         desc.upgrade();
@@ -241,7 +270,10 @@ impl Unfilled {
         let inner = desc.inner();
         let addr = unsafe { &mut *inner.address.as_ptr() };
         let capacity = inner.capacity() as usize;
-        let data = unsafe { core::slice::from_raw_parts_mut(inner.data.as_ptr(), capacity) };
+        let data = unsafe {
+            // SAFETY: a pool implementation is required to initialize all payload bytes
+            core::slice::from_raw_parts_mut(inner.payload.as_ptr(), capacity)
+        };
         let iov = IoSliceMut::new(data);
         let mut cmsg = cmsg::Receiver::default();
 
@@ -282,10 +314,18 @@ impl Drop for Unfilled {
     }
 }
 
+/// A filled packet
 pub struct Filled {
+    /// The raw descriptor
     desc: Descriptor,
+    /// The offset into the payload
+    ///
+    /// This allows for splitting up a filled packet into multiple segments, while still ensuring
+    /// exclusive access to a region.
     offset: u16,
+    /// The filled length of the payload
     len: u16,
+    /// The ECN marking of the packet
     ecn: ExplicitCongestionNotification,
 }
 
@@ -338,6 +378,7 @@ impl Filled {
     #[inline]
     pub fn payload(&self) -> &[u8] {
         unsafe {
+            // SAFETY: the descriptor has been filled through the [`Unfilled`] API
             let ptr = self.desc.data().as_ptr().add(self.offset as _);
             let len = self.len as usize;
             core::slice::from_raw_parts(ptr, len)
@@ -349,6 +390,8 @@ impl Filled {
     #[inline]
     pub fn payload_mut(&mut self) -> &mut [u8] {
         unsafe {
+            // SAFETY: the descriptor has been filled through the [`Unfilled`] API
+            // SAFETY: the `offset` + `len` are exclusively owned by this reference
             let ptr = self.desc.data().as_ptr().add(self.offset as _);
             let len = self.len as usize;
             core::slice::from_raw_parts_mut(ptr, len)
@@ -374,8 +417,12 @@ impl Filled {
         let ecn = self.ecn;
         self.offset += at;
         self.len -= at;
+
+        // update the reference counts for the descriptor
+        let desc = self.desc.clone_filled();
+
         Self {
-            desc: self.desc.clone_filled(),
+            desc,
             offset,
             len: at,
             ecn,
@@ -408,6 +455,8 @@ impl Filled {
 impl Drop for Filled {
     #[inline]
     fn drop(&mut self) {
+        // decrement the reference count, which may put the descriptor back into the pool once
+        // it reaches 0
         self.desc.drop_filled()
     }
 }
