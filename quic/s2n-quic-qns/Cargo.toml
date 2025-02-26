@@ -21,6 +21,7 @@ cfg-if = "1"
 futures = "0.3"
 http = "1.0"
 humansize = "2"
+litemap = "=0.7.4" # newer versions require rust 1.81
 lru = "0.13"
 rand = "0.9"
 s2n-codec = { path = "../../common/s2n-codec" }
@@ -31,6 +32,7 @@ tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
+zerofrom = "=0.1.5" # newer versions require rust 1.81
 
 [target.'cfg(unix)'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["provider-event-console-perf", "provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
