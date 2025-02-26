@@ -28,6 +28,7 @@ pub struct Callback<'a, T, C> {
     pub err: Option<transport::Error>,
     pub send_buffer: &'a mut BytesMut,
     pub server_params: &'a mut Vec<u8>,
+    pub server_name: &'a mut Option<ServerName>,
 }
 
 impl<'a, T, C> Callback<'a, T, C>
@@ -111,6 +112,10 @@ where
 
             // Flush the send buffer before returning to the connection
             self.flush();
+
+            if let Some(server_name) = self.server_name.take() {
+                self.context.on_server_name(server_name)?;
+            }
 
             if let Some(err) = self.err {
                 return Err(err);
@@ -252,8 +257,11 @@ where
                                 Bytes::copy_from_slice(get_application_protocol(conn)?);
                             self.context.on_application_protocol(application_protocol)?;
 
-                            if let Some(server_name) = get_server_name(conn) {
-                                self.context.on_server_name(server_name)?;
+                            // Client has already emitted the server name elsewhere
+                            if self.endpoint.is_server() {
+                                if let Some(server_name) = get_server_name(conn) {
+                                    self.context.on_server_name(server_name)?;
+                                }
                             }
 
                             get_application_params(conn)?

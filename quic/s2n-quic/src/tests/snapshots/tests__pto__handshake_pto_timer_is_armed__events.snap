@@ -26,6 +26,7 @@ count#mtu_updated=1
 measure#mtu_updated.mtu=1200b
 count#mtu_updated.cause|NEW_PATH=1
 count#mtu_updated.search_complete=false
+count#server_name_information=1
 count#platform_event_loop_wakeup=1
 count#frame_sent=1
 count#frame_sent.packet|INITIAL=1
