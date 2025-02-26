@@ -27,8 +27,8 @@ pub struct Callback<'a, T, C> {
     pub suite: PhantomData<C>,
     pub err: Option<transport::Error>,
     pub send_buffer: &'a mut BytesMut,
-    pub server_params: &'a mut Vec<u8>,
     pub server_name: &'a mut Option<ServerName>,
+    pub server_params: &'a mut Vec<u8>,
 }
 
 impl<'a, T, C> Callback<'a, T, C>

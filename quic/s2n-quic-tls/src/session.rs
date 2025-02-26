@@ -24,13 +24,13 @@ pub struct Session {
     state: callback::State,
     handshake_complete: bool,
     send_buffer: BytesMut,
-    received_ticket: bool,
-    server_params: Vec<u8>,
     // This field is used to minimize allocations for the client.
     // No allocation needs to occur when the on_server_name callback triggers
     // since the client has already stored the server_name at the beginning
     // of a session.
     server_name: Option<ServerName>,
+    received_ticket: bool,
+    server_params: Vec<u8>,
 }
 
 impl Session {
@@ -74,8 +74,8 @@ impl Session {
             state: Default::default(),
             handshake_complete: false,
             send_buffer: BytesMut::new(),
-            received_ticket: false,
             server_name,
+            received_ticket: false,
             server_params,
         })
     }
@@ -132,8 +132,8 @@ impl tls::Session for Session {
             suite: PhantomData,
             err: None,
             send_buffer: &mut self.send_buffer,
-            server_params: &mut self.server_params,
             server_name: &mut self.server_name,
+            server_params: &mut self.server_params,
         };
 
         unsafe {
