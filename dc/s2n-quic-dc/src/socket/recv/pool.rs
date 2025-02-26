@@ -52,6 +52,7 @@ impl Pool {
                 // initialize the address
                 addr.write(Addr::default());
                 // initialize the descriptor - note that it is self-referential to `addr`, `data`, and `memory`
+                // SAFETY: address, payload, and memory are all initialized
                 descriptor.write(DescriptorInner::new(
                     idx as _,
                     NonNull::new_unchecked(addr),
@@ -123,6 +124,7 @@ impl Region {
         let ptr = unsafe {
             // SAFETY: the layout is non-zero size
             debug_assert_ne!(packets.size(), 0);
+            // ensure that the allocation is zeroed out so we don't have to worry about MaybeUninit
             std::alloc::alloc_zeroed(packets)
         };
         let ptr = NonNull::new(ptr).expect("failed to allocate memory");
@@ -152,6 +154,11 @@ impl Drop for Region {
     }
 }
 
+/// A free list of unfilled descriptors
+///
+/// Note that this uses a [`Vec`] instead of [`std::collections::VecDeque`], which acts more
+/// like a stack than a queue. This is to prefer more-recently used descriptors which should
+/// hopefully reduce the number of cache misses.
 struct Free(Mutex<Vec<Unfilled>>);
 
 impl Free {
@@ -371,7 +378,7 @@ mod tests {
                 let expected_free_packets = 16;
                 let mut model = Model::new(max_packet_size, expected_free_packets);
                 for op in ops {
-                    model.apply(&op);
+                    model.apply(op);
                 }
             });
     }

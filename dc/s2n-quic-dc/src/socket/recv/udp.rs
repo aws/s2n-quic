@@ -49,7 +49,7 @@ impl Allocator {
 }
 
 /// Receives packets from a blocking [`UdpSocket`] and dispatches into the provided [`Router`]
-pub fn blocking<R: Router>(socket: UdpSocket, mut alloc: Allocator, router: R) {
+pub fn blocking<R: Router>(socket: UdpSocket, mut alloc: Allocator, mut router: R) {
     loop {
         let mut unfilled = alloc.alloc();
         loop {
