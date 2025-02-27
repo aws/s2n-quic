@@ -8,7 +8,7 @@ use crate::{
         application::{Builder as StreamBuilder, Stream},
         environment::{tokio::Environment, Environment as _},
     },
-    sync::channel,
+    sync::mpmc,
 };
 use core::time::Duration;
 use s2n_quic_core::time::Clock;
@@ -22,15 +22,15 @@ pub enum Flavor {
     Lifo,
 }
 
-pub type Sender<Sub> = channel::Sender<StreamBuilder<Sub>>;
-pub type Receiver<Sub> = channel::Receiver<StreamBuilder<Sub>>;
+pub type Sender<Sub> = mpmc::Sender<StreamBuilder<Sub>>;
+pub type Receiver<Sub> = mpmc::Receiver<StreamBuilder<Sub>>;
 
 #[inline]
 pub fn channel<Sub>(capacity: usize) -> (Sender<Sub>, Receiver<Sub>)
 where
     Sub: event::Subscriber,
 {
-    channel::new(capacity)
+    mpmc::new(capacity)
 }
 
 #[inline]
@@ -94,7 +94,7 @@ impl Pruner {
     pub async fn run<Sub>(
         self,
         env: Environment<Sub>,
-        channel: channel::WeakReceiver<StreamBuilder<Sub>>,
+        channel: mpmc::WeakReceiver<StreamBuilder<Sub>>,
         stats: stats::Stats,
     ) where
         Sub: event::Subscriber,
@@ -124,7 +124,7 @@ impl Pruner {
             // Use optional locks to avoid lock contention. If there is contention on the channel, the
             // old streams will naturally be pruned, since old ones will be dropped in favor of new
             // ones.
-            let priority = channel::Priority::Optional;
+            let priority = mpmc::Priority::Optional;
 
             loop {
                 // pop off any items that have expired

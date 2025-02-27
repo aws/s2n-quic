@@ -74,7 +74,7 @@ where
 
     #[inline]
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.0.sockets.write_application().local_addr()
+        self.0.sockets.write_application_sender().local_addr()
     }
 
     #[inline]
@@ -184,7 +184,7 @@ where
 
         trace!(?credits);
 
-        let features = self.sockets.write_application().features();
+        let features = self.sockets.features();
 
         let mut batch = if features.is_reliable() {
             // the protocol does recovery for us so no need to track the transmissions
@@ -257,7 +257,7 @@ where
         let len = ready!(self.queue.poll_flush(
             cx,
             limit,
-            self.sockets.write_application(),
+            self.sockets.write_application_sender(),
             &msg::addr::Addr::new(self.shared.write_remote_addr()),
             &self.shared.sender.segment_alloc,
             &self.shared.gso,
@@ -300,13 +300,13 @@ where
 
         // if we've transmitted everything we need to then finished the writing half
         if matches!(ty, ShutdownType::Explicit) && queue.is_empty() {
-            self.sockets.write_application().send_finish()?;
+            self.sockets.write_application_sender().send_finish()?;
         }
 
         let buffer_len = queue.accepted_len();
 
         // pass things to the worker if we need to gracefully shut down
-        if !self.sockets.write_application().features().is_stream() {
+        if !self.sockets.features().is_stream() {
             self.shared
                 .publisher()
                 .on_stream_write_shutdown(event::builder::StreamWriteShutdown {
@@ -490,7 +490,7 @@ where
         let _ = ready!(queue.poll_flush(
             cx,
             usize::MAX,
-            sockets.write_application(),
+            sockets.write_application_sender(),
             &msg::addr::Addr::new(shared.write_remote_addr()),
             &shared.sender.segment_alloc,
             &shared.gso,
@@ -501,7 +501,7 @@ where
         // If the application is explicitly shutting down then do the same. Otherwise let
         // the stream `close` and send a RST
         if matches!(ty, ShutdownType::Explicit) {
-            let _ = sockets.write_application().send_finish();
+            let _ = sockets.write_application_sender().send_finish();
         }
 
         Poll::Ready(())
