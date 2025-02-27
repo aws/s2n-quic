@@ -114,6 +114,7 @@ where
         // TODO allocate a queue for this stream
         let queue_id = VarInt::ZERO;
         let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
+        let recv_buffer = recv::buffer::Either::A(recv_buffer);
 
         let stream = match endpoint::accept_stream(
             now,
