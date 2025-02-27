@@ -4,4 +4,4 @@ resolver = "2"
 
 [workspace.dependencies]
 bolero = "0.12"
-bolero-generator = { version = "0.12", default-features = false }
+bolero-generator = { version = "0.13", default-features = false }
