@@ -162,9 +162,9 @@ mod tests {
     #[test]
     #[cfg_attr(kani, kani::proof, kani::unwind(17), kani::solver(minisat))]
     fn rx_message_test() {
-        let path = bolero::gen::<path::RemoteAddress>();
-        let ecn = bolero::gen();
-        let segment_size = bolero::gen();
+        let path = bolero::produce::<path::RemoteAddress>();
+        let ecn = bolero::produce();
+        let segment_size = bolero::produce();
         let max_payload_len = if cfg!(kani) { 16 } else { u16::MAX as usize };
         let payload_len = 0..=max_payload_len;
 

@@ -757,7 +757,7 @@ mod tests {
     #[test]
     #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
     fn scope_test() {
-        let g = gen::<[u8; 4]>().map_gen(IpV4Address::from);
+        let g = produce::<[u8; 4]>().map_gen(IpV4Address::from);
         check!().with_generator(g).cloned().for_each(|subject| {
             use ip::UnicastScope::*;
 
