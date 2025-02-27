@@ -8,9 +8,11 @@ use crate::{
 use core::task::{Context, Poll};
 use std::io;
 
+pub mod channel;
 mod dispatch;
 mod local;
 
+pub use channel::Channel;
 pub use dispatch::Dispatch;
 pub use local::Local;
 
@@ -36,7 +38,6 @@ pub trait Buffer {
         R: Dispatch;
 }
 
-#[allow(dead_code)] // TODO remove this once we start using the channel buffer
 pub enum Either<A, B> {
     A(A),
     B(B),
