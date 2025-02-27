@@ -314,6 +314,7 @@ impl WorkerState {
             let (socket, remote_address) = stream.take().unwrap();
 
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
+            let recv_buffer = recv::buffer::Either::A(recv_buffer);
 
             let stream_builder = match endpoint::accept_stream(
                 now,

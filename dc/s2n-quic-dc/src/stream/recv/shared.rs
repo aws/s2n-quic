@@ -28,7 +28,7 @@ use std::{
     },
 };
 
-pub type RecvBuffer = recv::buffer::Local;
+pub type RecvBuffer = recv::buffer::Either<recv::buffer::Local, recv::buffer::Channel>;
 
 /// Who will send ACKs?
 #[derive(Clone, Copy, Debug, Default)]
@@ -477,8 +477,8 @@ where
     }
 }
 
-impl<Buf, Crypt, Clk, Sub, const IS_STREAM: bool> recv::buffer::Dispatch
-    for PacketDispatch<'_, Buf, Crypt, Clk, Sub, IS_STREAM>
+impl<'a, Buf, Crypt, Clk, Sub, const IS_STREAM: bool> recv::buffer::Dispatch
+    for PacketDispatch<'a, Buf, Crypt, Clk, Sub, IS_STREAM>
 where
     Buf: buffer::Duplex<Error = core::convert::Infallible>,
     Crypt: crate::crypto::open::control::Stream,
@@ -554,8 +554,8 @@ where
     }
 }
 
-impl<Buf, Crypt, Clk, Sub, const IS_STREAM: bool> Drop
-    for PacketDispatch<'_, Buf, Crypt, Clk, Sub, IS_STREAM>
+impl<'a, Buf, Crypt, Clk, Sub, const IS_STREAM: bool> Drop
+    for PacketDispatch<'a, Buf, Crypt, Clk, Sub, IS_STREAM>
 where
     Buf: buffer::Duplex<Error = core::convert::Infallible>,
     Crypt: crate::crypto::open::control::Stream,

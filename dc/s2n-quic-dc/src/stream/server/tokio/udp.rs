@@ -112,6 +112,7 @@ where
         let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
 
         let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
+        let recv_buffer = recv::buffer::Either::A(recv_buffer);
 
         let stream = match endpoint::accept_stream(
             now,
