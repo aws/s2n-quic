@@ -4,6 +4,7 @@
 use super::*;
 use crate::{
     socket::recv,
+    stream::Actor,
     testing::{ext::*, sim},
 };
 use bolero::{check, TypeGenerator};
@@ -284,13 +285,13 @@ fn alloc_drop_notify() {
             let (stream, control) = alloc.alloc_or_grow();
 
             async move {
-                stream.recv().await.unwrap_err();
+                stream.recv(Actor::Application).await.unwrap_err();
             }
             .primary()
             .spawn();
 
             async move {
-                control.recv().await.unwrap_err();
+                control.recv(Actor::Application).await.unwrap_err();
             }
             .primary()
             .spawn();

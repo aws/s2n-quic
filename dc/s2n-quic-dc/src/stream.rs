@@ -70,3 +70,9 @@ impl TransportFeatures {
     is_feature!(is_stream, STREAM);
     is_feature!(is_connected, CONNECTED);
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Actor {
+    Application,
+    Worker,
+}

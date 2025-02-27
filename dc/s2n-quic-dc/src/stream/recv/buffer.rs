@@ -3,14 +3,16 @@
 
 use crate::{
     event,
-    stream::{recv, socket::Socket, TransportFeatures},
+    stream::{recv, socket::Socket, Actor, TransportFeatures},
 };
 use core::task::{Context, Poll};
 use std::io;
 
+pub mod channel;
 mod dispatch;
 mod local;
 
+pub use channel::Channel;
 pub use dispatch::Dispatch;
 pub use local::Local;
 
@@ -20,6 +22,7 @@ pub trait Buffer {
     fn poll_fill<S, Pub>(
         &mut self,
         cx: &mut Context,
+        actor: Actor,
         socket: &S,
         publisher: &mut Pub,
     ) -> Poll<io::Result<usize>>
@@ -36,7 +39,7 @@ pub trait Buffer {
         R: Dispatch;
 }
 
-#[allow(dead_code)] // TODO remove this once we start using the channel buffer
+#[derive(Debug)]
 pub enum Either<A, B> {
     A(A),
     B(B),
@@ -59,6 +62,7 @@ where
     fn poll_fill<S, Pub>(
         &mut self,
         cx: &mut Context,
+        actor: Actor,
         socket: &S,
         publisher: &mut Pub,
     ) -> Poll<io::Result<usize>>
@@ -67,8 +71,8 @@ where
         Pub: event::ConnectionPublisher,
     {
         match self {
-            Self::A(a) => a.poll_fill(cx, socket, publisher),
-            Self::B(b) => b.poll_fill(cx, socket, publisher),
+            Self::A(a) => a.poll_fill(cx, actor, socket, publisher),
+            Self::B(b) => b.poll_fill(cx, actor, socket, publisher),
         }
     }
 

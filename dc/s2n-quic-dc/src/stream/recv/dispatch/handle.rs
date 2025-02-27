@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{descriptor::Descriptor, queue::Error};
-use crate::sync::ring_deque;
+use crate::{stream::Actor, sync::ring_deque};
 use core::{
     fmt,
     task::{Context, Poll},
@@ -41,22 +41,27 @@ macro_rules! impl_recv {
             }
 
             #[inline]
-            pub async fn recv(&self) -> Result<T, ring_deque::Closed> {
-                core::future::poll_fn(|cx| self.poll_recv(cx)).await
+            pub async fn recv(&self, actor: Actor) -> Result<T, ring_deque::Closed> {
+                core::future::poll_fn(|cx| self.poll_recv(cx, actor)).await
             }
 
             #[inline]
-            pub fn poll_recv(&self, cx: &mut Context) -> Poll<Result<T, ring_deque::Closed>> {
-                unsafe { self.descriptor.$field().poll_pop(cx) }
+            pub fn poll_recv(
+                &self,
+                cx: &mut Context,
+                actor: Actor,
+            ) -> Poll<Result<T, ring_deque::Closed>> {
+                unsafe { self.descriptor.$field().poll_pop(cx, actor) }
             }
 
             #[inline]
             pub fn poll_swap(
                 &self,
                 cx: &mut Context,
+                actor: Actor,
                 out: &mut VecDeque<T>,
             ) -> Poll<Result<(), ring_deque::Closed>> {
-                unsafe { self.descriptor.$field().poll_swap(cx, out) }
+                unsafe { self.descriptor.$field().poll_swap(cx, actor, out) }
             }
         }
 

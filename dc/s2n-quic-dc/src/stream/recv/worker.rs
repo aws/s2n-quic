@@ -5,7 +5,7 @@ use crate::{
     allocator::Allocator,
     clock::Timer,
     event, msg,
-    stream::{shared::ArcShared, socket::Socket},
+    stream::{shared::ArcShared, socket::Socket, Actor},
 };
 use core::task::{Context, Poll};
 use s2n_quic_core::{buffer, endpoint, ensure, ready, time::clock::Timer as _};
@@ -306,6 +306,7 @@ where
 
             let res = recv.poll_fill_recv_buffer(
                 cx,
+                Actor::Worker,
                 &self.socket,
                 &self.shared.clock,
                 &self.shared.subscriber,
