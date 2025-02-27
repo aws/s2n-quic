@@ -17,7 +17,7 @@ impl bolero::TypeGenerator for CheckedRange {
     fn generate<D: bolero::Driver>(driver: &mut D) -> Option<Self> {
         use bolero::ValueGenerator;
 
-        let start = bolero::gen::<usize>().generate(driver)?;
+        let start = bolero::produce::<usize>().generate(driver)?;
         let end = (start..).generate(driver)?;
         Some(CheckedRange::new(start, end, core::ptr::null()))
     }

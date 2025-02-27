@@ -38,8 +38,8 @@ pub struct Data {
 #[cfg(any(feature = "generator", test))]
 impl TypeGenerator for Data {
     fn generate<D: bolero_generator::Driver>(driver: &mut D) -> Option<Self> {
-        let offset = gen::<u64>().generate(driver)?;
-        let final_offset = gen::<Option<u64>>()
+        let offset = produce::<u64>().generate(driver)?;
+        let final_offset = produce::<Option<u64>>()
             .with()
             .value(offset..)
             .generate(driver)?;

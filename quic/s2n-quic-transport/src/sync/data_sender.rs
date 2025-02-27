@@ -753,7 +753,7 @@ mod tests {
     #[test]
     fn model() {
         check!()
-            .with_generator((gen(), gen::<Vec<Event>>().with().len(1usize..128)))
+            .with_generator((produce(), produce::<Vec<Event>>().with().len(1usize..128)))
             .for_each(|(id, events)| {
                 check_model(events, id);
             });

@@ -294,7 +294,7 @@ macro_rules! zerocopy_network_integer {
         #[cfg(feature = "generator")]
         impl TypeGenerator for $name {
             fn generate<D: bolero_generator::Driver>(driver: &mut D) -> Option<Self> {
-                Some(Self::new(driver.gen()?))
+                Some(Self::new(driver.produce()?))
             }
         }
 

@@ -115,7 +115,7 @@ fn two_byte_sequence_test() {
     // the s2n-quic implementation always chooses the smallest encoding possible.
     // this means if we wish to test two-byte sequences, we need to encode a number
     // that is > 63.
-    let g = gen::<(u8, u8)>().filter_gen(|(_, b)| *b > 63);
+    let g = produce::<(u8, u8)>().filter_gen(|(_, b)| *b > 63);
 
     bolero::check!()
         .with_generator(g)
@@ -138,7 +138,7 @@ fn four_byte_sequence_test() {
     // The s2n-quic implementation always chooses the smallest encoding possible.
     // This means if we wish to test the four-byte sequences, we need to encode a number
     // that is > 16383 or 0b0011 1111 1111 1111.
-    let g = gen::<(u8, u8, u8)>().filter_gen(|(_, _, c)| *c > 0x3f);
+    let g = produce::<(u8, u8, u8)>().filter_gen(|(_, _, c)| *c > 0x3f);
 
     bolero::check!().with_generator(g).cloned().for_each(
         |(mut first_byte, second_byte, third_byte)| {
@@ -161,7 +161,7 @@ fn eight_byte_sequence_test() {
     // The s2n-quic implementation always chooses the smallest encoding possible.
     // This means if we wish to test eight-byte sequences, we need to encode a number
     // that is > 1073741823 or 0b0011 1111 1111 1111 1111 1111 1111 1111
-    let g = gen::<(u8, u8, u8, u8)>().filter_gen(|(_, _, _, d)| *d > 0x3f);
+    let g = produce::<(u8, u8, u8, u8)>().filter_gen(|(_, _, _, d)| *d > 0x3f);
 
     bolero::check!().with_generator(g).cloned().for_each(
         |(mut first_byte, second_byte, third_byte, fourth_byte)| {
