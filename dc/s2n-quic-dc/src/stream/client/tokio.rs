@@ -161,5 +161,6 @@ where
 #[inline]
 fn recv_buffer() -> recv::shared::RecvBuffer {
     // TODO replace this with a parameter once everything is in place
-    recv::buffer::Local::new(msg::recv::Message::new(9000), None)
+    let recv_buffer = recv::buffer::Local::new(msg::recv::Message::new(9000), None);
+    recv::buffer::Either::A(recv_buffer)
 }

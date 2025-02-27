@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{Protocol, TransportFeatures};
+use super::{recv::descriptor, Protocol, TransportFeatures};
 use crate::msg::{self, addr::Addr, cmsg};
 use core::task::{Context, Poll};
 use s2n_quic_core::inet::ExplicitCongestionNotification;
@@ -30,6 +30,23 @@ pub trait Socket: 'static + Send + Sync {
 
     /// Returns the amount of buffered data on the socket
     fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>>;
+
+    #[inline]
+    fn poll_recv_desc(
+        &self,
+        cx: &mut Context,
+        desc: descriptor::Unfilled,
+    ) -> Poll<Result<descriptor::Segments, (descriptor::Unfilled, io::Error)>> {
+        let segments = desc.recv_with(|addr, cmsg, buffer| {
+            match self.poll_recv(cx, addr, cmsg, &mut [buffer]) {
+                Poll::Pending => Err(io::ErrorKind::WouldBlock.into()),
+                Poll::Ready(Ok(len)) => Ok(len),
+                Poll::Ready(Err(err)) => Err(err),
+            }
+        })?;
+
+        Ok(segments).into()
+    }
 
     #[inline]
     fn poll_recv_buffer(
