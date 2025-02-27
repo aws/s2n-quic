@@ -748,7 +748,7 @@ mod tests {
         //# For this design to work,
         //# the token MUST be covered by integrity protection against
         //# modification or falsification by clients.
-        let generator = bolero::generator::gen::<Vec<u8>>()
+        let generator = bolero::generator::produce::<Vec<u8>>()
             .with()
             .len(Format::TOKEN_LEN);
         bolero::check!()

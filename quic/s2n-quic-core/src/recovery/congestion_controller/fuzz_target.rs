@@ -247,8 +247,8 @@ fn cubic_fuzz() {
     check!()
         .with_generator((
             MINIMUM_MAX_DATAGRAM_SIZE..=9000,
-            gen(),
-            gen::<Vec<Operation>>(),
+            produce(),
+            produce::<Vec<Operation>>(),
         ))
         .for_each(|(max_datagram_size, seed, operations)| {
             let mut model = Model::new(CubicCongestionController::new(
@@ -271,8 +271,8 @@ fn bbr_fuzz() {
     check!()
         .with_generator((
             MINIMUM_MAX_DATAGRAM_SIZE..=9000,
-            gen(),
-            gen::<Vec<Operation>>(),
+            produce(),
+            produce::<Vec<Operation>>(),
         ))
         .for_each(|(max_datagram_size, seed, operations)| {
             let mut model = Model::new(BbrCongestionController::new(

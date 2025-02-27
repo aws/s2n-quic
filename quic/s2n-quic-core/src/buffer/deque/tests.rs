@@ -160,7 +160,7 @@ impl Model {
 // even with the minimal amount of parameter bounds, this proof's memory consumption explodes
 #[cfg_attr(kani, cfg(kani_slow))]
 fn model_test() {
-    let ops = bolero::gen::<Vec<Op>>().with().len(..=OPS_LEN);
+    let ops = bolero::produce::<Vec<Op>>().with().len(..=OPS_LEN);
 
     check!().with_generator(ops).for_each(|ops| {
         let mut model = Model::default();

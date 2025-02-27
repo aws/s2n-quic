@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use bolero::{check, gen};
+use bolero::{check, produce};
 use core::mem::zeroed;
 use s2n_quic_core::inet::{SocketAddress, Unspecified};
 
@@ -73,7 +73,7 @@ fn address_inverse_pair_test() {
 fn handle_get_set_test() {
     check!()
         .with_generator((
-            gen::<Handle>(),
+            produce::<Handle>(),
             1..=crate::features::gso::MaxSegments::MAX.into(),
         ))
         .cloned()

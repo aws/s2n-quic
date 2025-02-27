@@ -250,7 +250,7 @@ type Operations = Vec<Operation>;
 fn model() {
     let max_capacity = if cfg!(any(kani, miri)) { 2 } else { 64 };
 
-    let generator = (1usize..max_capacity, gen::<Operations>());
+    let generator = (1usize..max_capacity, produce::<Operations>());
 
     check!()
         .with_generator(generator)
@@ -272,7 +272,7 @@ fn model() {
 fn model_zst() {
     let max_capacity = if cfg!(any(kani, miri)) { 2 } else { 64 };
 
-    let generator = (1usize..max_capacity, gen::<Operations>());
+    let generator = (1usize..max_capacity, produce::<Operations>());
 
     check!()
         .with_generator(generator)
@@ -295,7 +295,7 @@ fn alloc_test() {
     };
 
     check!()
-        .with_generator((capacity, gen::<u8>()))
+        .with_generator((capacity, produce::<u8>()))
         .cloned()
         .for_each(|(capacity, push_value)| {
             let (mut send, mut recv) = channel(capacity);

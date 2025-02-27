@@ -335,12 +335,12 @@ mod tests {
         let rtt = close_time.clone().map_gen(|t| t / 3);
         let packet_durations = (0..=5000).map_gen(Duration::from_millis);
         let packet_sizes = 1..=9000;
-        let events = gen::<Vec<_>>()
+        let events = produce::<Vec<_>>()
             .with()
             .values((packet_durations, packet_sizes));
 
         bolero::check!()
-            .with_generator((close_time, rtt, events, gen()))
+            .with_generator((close_time, rtt, events, produce()))
             .for_each(|(close_time, rtt, events, is_validated)| {
                 let mut sender = CloseSender::default();
                 let mut clock = Clock::default();

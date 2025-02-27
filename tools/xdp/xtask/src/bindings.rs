@@ -10,7 +10,7 @@ pub fn run() -> Result<(), anyhow::Error> {
         .header(root.join("src/bindings/input.h").display().to_string())
         .allowlist_var("ETHTOOL_GCHANNELS")
         .allowlist_type("ethtool_channels")
-        .rust_target(bindgen::RustTarget::Stable_1_47)
+        .rust_target(bindgen::RustTarget::stable(1, 47).map_err(|e| anyhow::anyhow!("{}", e))?)
         .layout_tests(false)
         .raw_line(
             r#"
