@@ -184,7 +184,7 @@ where
 
         trace!(?credits);
 
-        let features = self.sockets.write_application().features();
+        let features = self.sockets.features();
 
         let mut batch = if features.is_reliable() {
             // the protocol does recovery for us so no need to track the transmissions
@@ -306,7 +306,7 @@ where
         let buffer_len = queue.accepted_len();
 
         // pass things to the worker if we need to gracefully shut down
-        if !self.sockets.write_application().features().is_stream() {
+        if !self.sockets.features().is_stream() {
             self.shared
                 .publisher()
                 .on_stream_write_shutdown(event::builder::StreamWriteShutdown {
