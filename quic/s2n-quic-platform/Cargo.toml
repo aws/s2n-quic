@@ -37,7 +37,7 @@ libc = "0.2"
 
 [dev-dependencies]
 bach = { version = "0.0.6" }
-bolero = "0.12"
+bolero = "0.13"
 bolero-generator = "0.12"
 futures = { version = "0.3", features = ["std"] }
 insta = { version = "1", features = ["json"] }

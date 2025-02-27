@@ -48,7 +48,7 @@ parking_lot = "0.12"
 bitvec = { version = "1.0.1", default-features = false }
 
 [dev-dependencies]
-bolero = "0.12"
+bolero = "0.13"
 bolero-generator = "0.12"
 insta = "1"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
