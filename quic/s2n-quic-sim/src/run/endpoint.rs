@@ -60,8 +60,7 @@ pub fn client(
         total_delay += delay.gen_duration();
 
         // pick a random server to connect to
-        let server_addr_idx = rand::Any::any(&(0..servers.len()));
-        let server_addr = servers[server_addr_idx];
+        let server_addr = *rand::pick(servers);
         let delay = total_delay;
 
         let client = client.clone();
