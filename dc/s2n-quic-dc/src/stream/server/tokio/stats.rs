@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{event::Subscriber, sync::channel as chan};
+use crate::{event::Subscriber, sync::mpmc as chan};
 use core::{
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
