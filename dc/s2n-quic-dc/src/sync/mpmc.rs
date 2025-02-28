@@ -59,6 +59,11 @@ impl<T> Channel<T> {
     }
 }
 
+/// A message sender
+///
+/// Note that this channel implementation does not allow for backpressure on the
+/// sending rate. Instead, the queue is rotated to make room for new items and
+/// returned to the sender.
 pub struct Sender<T> {
     channel: Arc<Channel<T>>,
 }
@@ -122,8 +127,6 @@ pin_project! {
     /// are dropped, the channel becomes closed.
     ///
     /// The channel can also be closed manually by calling [`Receiver::close()`].
-    ///
-    /// Receivers implement the [`Stream`] trait.
     pub struct Receiver<T> {
         // Inner channel state.
         channel: Arc<Channel<T>>,
@@ -148,7 +151,6 @@ pin_project! {
     }
 }
 
-#[allow(dead_code)] // TODO remove this once the module is public
 impl<T> Receiver<T> {
     /// Attempts to receive a message from the front of the channel.
     ///
@@ -204,6 +206,12 @@ impl<T> Receiver<T> {
             channel: Arc::downgrade(&self.channel),
         }
     }
+
+    /// Closes the channel for receiving
+    #[inline]
+    pub fn close(&self) -> Result<(), Closed> {
+        self.channel.close()
+    }
 }
 
 impl<T> fmt::Debug for Receiver<T> {
@@ -232,7 +240,6 @@ pub struct WeakReceiver<T> {
     channel: Weak<Channel<T>>,
 }
 
-#[allow(dead_code)] // TODO remove this once the module is public
 impl<T> WeakReceiver<T> {
     #[inline]
     pub fn pop_front_if<F>(&self, priority: Priority, f: F) -> Result<Option<T>, Closed>
@@ -314,5 +321,139 @@ impl<T> EventListenerFuture for RecvInner<'_, T> {
                 *this.listener = Some(this.receiver.channel.recv_ops.listen());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::{ext::*, sim, task};
+    use std::time::Duration;
+
+    #[test]
+    fn test_unlimited() {
+        sim(|| {
+            let (tx, rx) = new(2);
+
+            async move {
+                for v in 0u64.. {
+                    if tx.send_back(v).is_err() {
+                        return;
+                    };
+                    // let the receiver read from the task
+                    task::yield_now().await;
+                }
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                for expected in 0u64..10 {
+                    let actual = rx.recv_front().await.unwrap();
+                    assert_eq!(actual, expected);
+                }
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    #[test]
+    fn test_send_limited() {
+        sim(|| {
+            let (tx, rx) = new(2);
+
+            async move {
+                for v in 0u64.. {
+                    if tx.send_back(v).is_err() {
+                        return;
+                    };
+                    Duration::from_millis(1).sleep().await;
+                }
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                for expected in 0u64..10 {
+                    let actual = rx.recv_front().await.unwrap();
+                    assert_eq!(actual, expected);
+                }
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    #[test]
+    fn test_recv_limited() {
+        sim(|| {
+            let (tx, rx) = new(2);
+
+            async move {
+                for v in 0u64.. {
+                    match tx.send_back(v) {
+                        Ok(Some(_old)) => {
+                            // the channel doesn't provide backpressure so we'll need to sleep
+                            Duration::from_millis(1).sleep().await;
+                        }
+                        Ok(None) => {
+                            continue;
+                        }
+                        Err(_) => {
+                            // the receiver is done
+                            return;
+                        }
+                    }
+                }
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                let mut min = 0;
+                for _ in 0u64..10 {
+                    let actual = rx.recv_front().await.unwrap();
+                    assert!(actual > min || actual == 0);
+                    min = actual;
+                    Duration::from_millis(1).sleep().await;
+                }
+            }
+            .primary()
+            .spawn();
+        });
+    }
+
+    #[test]
+    fn test_multi_recv() {
+        sim(|| {
+            let (tx, rx) = new(2);
+
+            async move {
+                for v in 0u64.. {
+                    if tx.send_back(v).is_err() {
+                        return;
+                    };
+                    // let the receiver read from the task
+                    task::yield_now().await;
+                }
+            }
+            .primary()
+            .spawn();
+
+            for _ in 0..2 {
+                let rx = rx.clone();
+                async move {
+                    let mut min = 0;
+                    for _ in 0u64..10 {
+                        let actual = rx.recv_front().await.unwrap();
+                        assert!(actual > min || actual == 0, "{actual} > {min}");
+                        min = actual;
+                    }
+                }
+                .primary()
+                .spawn();
+            }
+        });
     }
 }

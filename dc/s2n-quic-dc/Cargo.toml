@@ -12,13 +12,19 @@ exclude = ["corpus.tar.gz"]
 
 [features]
 default = ["tokio"]
-testing = ["bolero-generator", "s2n-quic-core/testing", "s2n-quic-platform/testing", "tracing-subscriber"]
+testing = [
+    "bolero-generator",
+    "s2n-quic-core/testing",
+    "s2n-quic-platform/testing",
+    "tracing-subscriber",
+]
 tokio = ["tokio/io-util", "tokio/net", "tokio/rt-multi-thread", "tokio/time"]
 
 [dependencies]
 arrayvec = "0.7"
 atomic-waker = "1"
 aws-lc-rs = "1"
+bach = "0.0.10"
 bitflags = "2"
 bolero-generator = { version = "0.13", default-features = false, optional = true }
 bytes = "1"
@@ -41,7 +47,9 @@ hashbrown = "0.15"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["sync"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+], optional = true }
 zerocopy = { version = "0.7", features = ["derive"] }
 zeroize = "1"
 parking_lot = "0.12"
@@ -53,13 +61,12 @@ bolero-generator = "0.13"
 insta = "1"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
-s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = ["testing"] }
+s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = [
+    "testing",
+] }
 tokio = { version = "1", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
-check-cfg = [
-    'cfg(kani)',
-    'cfg(todo)',
-]
+check-cfg = ['cfg(kani)', 'cfg(todo)']
