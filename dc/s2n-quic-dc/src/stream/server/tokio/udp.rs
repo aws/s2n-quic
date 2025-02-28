@@ -12,7 +12,7 @@ use crate::{
             tokio::{self as env, Environment},
             Environment as _,
         },
-        server,
+        recv, server,
         socket::{Ext as _, Socket},
     },
 };
@@ -111,13 +111,14 @@ where
 
         let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
 
+        let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
+
         let stream = match endpoint::accept_stream(
             now,
             &self.env,
             env::UdpUnbound(remote_addr),
             &packet,
-            Some(handshake),
-            Some(&mut self.recv_buffer),
+            recv_buffer,
             &self.secrets,
             self.subscriber.clone(),
             subscriber_ctx,

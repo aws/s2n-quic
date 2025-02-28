@@ -3,13 +3,10 @@
 
 use crate::{
     allocator::Allocator,
-    clock,
-    event::{self, ConnectionPublisher},
-    msg,
+    clock, event, msg,
     packet::{stream, Packet},
     stream::{
-        recv,
-        server::handshake,
+        recv::{self, buffer::Buffer as _},
         shared::{self, ArcShared, Half},
         socket::{self, Socket},
         TransportFeatures,
@@ -17,12 +14,12 @@ use crate::{
     task::waker::worker::Waker as WorkerWaker,
 };
 use core::{
+    fmt,
     mem::ManuallyDrop,
     ops,
     task::{Context, Poll},
 };
-use s2n_codec::{DecoderBufferMut, DecoderError};
-use s2n_quic_core::{buffer, dc, ensure, ready, stream::state, time::Clock};
+use s2n_quic_core::{buffer, dc, ensure, stream::state, time::Clock};
 use std::{
     io,
     sync::{
@@ -30,6 +27,8 @@ use std::{
         Mutex, MutexGuard,
     },
 };
+
+pub type RecvBuffer = recv::buffer::Local;
 
 /// Who will send ACKs?
 #[derive(Clone, Copy, Debug, Default)]
@@ -87,21 +86,15 @@ impl State {
     pub fn new(
         stream_id: stream::Id,
         params: &dc::ApplicationParams,
-        handshake: Option<handshake::Receiver>,
         features: TransportFeatures,
-        recv_buffer: Option<&mut msg::recv::Message>,
+        buffer: RecvBuffer,
     ) -> Self {
-        let recv_buffer = match recv_buffer {
-            Some(prev) => prev.take(),
-            None => msg::recv::Message::new(9000u16),
-        };
         let receiver = recv::state::State::new(stream_id, params, features);
         let reassembler = Default::default();
         let inner = Inner {
             receiver,
             reassembler,
-            handshake,
-            recv_buffer,
+            buffer,
         };
         let inner = Mutex::new(inner);
         Self {
@@ -193,10 +186,7 @@ where
     #[inline]
     fn send_ack(&mut self) -> bool {
         // we only send ACKs for unreliable protocols
-        ensure!(
-            !self.sockets.read_application().features().is_reliable(),
-            false
-        );
+        ensure!(!self.sockets.features().is_reliable(), false);
 
         match self.ack_mode {
             AckMode::Application => {
@@ -276,15 +266,27 @@ where
     }
 }
 
-#[derive(Debug)]
 pub struct Inner {
     pub receiver: recv::state::State,
     pub reassembler: buffer::Reassembler,
-    pub recv_buffer: msg::recv::Message,
-    pub handshake: Option<handshake::Receiver>,
+    buffer: RecvBuffer,
+}
+
+impl fmt::Debug for Inner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Inner")
+            .field("receiver", &self.receiver)
+            .field("reassembler", &self.reassembler)
+            .finish()
+    }
 }
 
 impl Inner {
+    #[inline]
+    pub fn payload_is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+
     #[inline]
     pub fn fill_transmit_queue<Sub>(
         &mut self,
@@ -319,84 +321,14 @@ impl Inner {
         socket: &S,
         clock: &C,
         subscriber: &shared::Subscriber<Sub>,
-    ) -> Poll<io::Result<()>>
-    where
-        S: ?Sized + Socket,
-        C: ?Sized + Clock,
-        Sub: event::Subscriber,
-    {
-        // cache the timestamps to avoid fetching too many
-        let clock = &s2n_quic_core::time::clock::Cached::new(clock);
-
-        loop {
-            if let Some(chan) = self.handshake.as_mut() {
-                match chan.poll_recv(cx) {
-                    Poll::Ready(Some(recv_buffer)) => {
-                        debug_assert!(!recv_buffer.is_empty());
-                        // no point in doing anything with an empty buffer
-                        ensure!(!recv_buffer.is_empty(), continue);
-                        // we got a buffer from the handshake so return and process it
-                        self.recv_buffer = recv_buffer;
-                        return Ok(()).into();
-                    }
-                    Poll::Ready(None) => {
-                        // the channel was closed so drop it
-                        self.handshake = None;
-                    }
-                    Poll::Pending => {
-                        // keep going and read the socket
-                    }
-                }
-            }
-
-            ready!(self.poll_fill_recv_buffer_once(cx, socket, clock, subscriber))?;
-
-            return Ok(()).into();
-        }
-    }
-
-    #[inline(always)]
-    fn poll_fill_recv_buffer_once<S, C, Sub>(
-        &mut self,
-        cx: &mut Context,
-        socket: &S,
-        clock: &C,
-        subscriber: &shared::Subscriber<Sub>,
     ) -> Poll<io::Result<usize>>
     where
         S: ?Sized + Socket,
         C: ?Sized + Clock,
         Sub: event::Subscriber,
     {
-        let capacity = self.recv_buffer.remaining_capacity();
-
-        let result = socket.poll_recv_buffer(cx, &mut self.recv_buffer);
-
-        let now = clock.get_time();
-
-        match &result {
-            Poll::Ready(Ok(len)) => {
-                subscriber.publisher(now).on_stream_read_socket_flushed(
-                    event::builder::StreamReadSocketFlushed {
-                        capacity,
-                        committed_len: *len,
-                    },
-                );
-            }
-            Poll::Ready(Err(error)) => {
-                let errno = error.raw_os_error();
-                subscriber.publisher(now).on_stream_read_socket_errored(
-                    event::builder::StreamReadSocketErrored { capacity, errno },
-                );
-            }
-            Poll::Pending => {
-                subscriber.publisher(now).on_stream_read_socket_blocked(
-                    event::builder::StreamReadSocketBlocked { capacity },
-                );
-            }
-        };
-
-        result
+        self.buffer
+            .poll_fill(cx, socket, &mut subscriber.publisher(clock.get_time()))
     }
 
     #[inline]
@@ -417,11 +349,44 @@ impl Inner {
             .on_read_buffer(&mut self.reassembler, out_buf, clock);
 
         // check if we have any packets to process
-        if !self.recv_buffer.is_empty() {
-            if features.is_stream() {
-                self.dispatch_buffer_stream(out_buf, shared, clock, features)
-            } else {
-                self.dispatch_buffer_datagram(out_buf, shared, clock, features)
+        if !self.buffer.is_empty() {
+            let res = {
+                let mut out_buf = buffer::duplex::Interposer::new(out_buf, &mut self.reassembler);
+
+                if features.is_stream() {
+                    // this opener should never actually be used anywhere. any packets that try to use control
+                    // authentication will result in stream closure.
+                    let control_opener = &crate::crypto::open::control::stream::Reliable::default();
+
+                    let mut router = PacketDispatch::new_stream(
+                        &mut self.receiver,
+                        &mut out_buf,
+                        control_opener,
+                        clock,
+                        shared,
+                    );
+
+                    self.buffer.process(features, &mut router)
+                } else {
+                    let control_opener = shared
+                        .crypto
+                        .control_opener()
+                        .expect("control opener should be available on unreliable transports");
+
+                    let mut router = PacketDispatch::new_datagram(
+                        &mut self.receiver,
+                        &mut out_buf,
+                        control_opener,
+                        clock,
+                        shared,
+                    );
+
+                    self.buffer.process(features, &mut router)
+                }
+            };
+
+            if let Err(err) = res {
+                self.receiver.on_error(err);
             }
 
             // if we processed packets then we may have data to copy out
@@ -438,264 +403,170 @@ impl Inner {
         // indicate to the caller if we need to transmit an ACK
         self.receiver.should_transmit()
     }
+}
 
+struct PacketDispatch<'a, Buf, Crypt, Clk, Sub, const IS_STREAM: bool>
+where
+    Buf: buffer::Duplex<Error = core::convert::Infallible>,
+    Crypt: crate::crypto::open::control::Stream,
+    Clk: Clock + ?Sized,
+    Sub: event::Subscriber,
+{
+    did_complete_handshake: bool,
+    remote_addr: Option<s2n_quic_core::inet::SocketAddress>,
+    receiver: &'a mut recv::state::State,
+    control_opener: &'a Crypt,
+    out_buf: &'a mut Buf,
+    shared: &'a ArcShared<Sub>,
+    clock: &'a Clk,
+}
+
+impl<'a, Buf, Crypt, Clk, Sub> PacketDispatch<'a, Buf, Crypt, Clk, Sub, true>
+where
+    Buf: buffer::Duplex<Error = core::convert::Infallible>,
+    Crypt: crate::crypto::open::control::Stream,
+    Clk: Clock + ?Sized,
+    Sub: event::Subscriber,
+{
+    /// Sets up a dispatcher for stream transports
     #[inline]
-    fn dispatch_buffer_stream<Sub, C>(
-        &mut self,
-        out_buf: &mut impl buffer::writer::Storage,
-        shared: &ArcShared<Sub>,
-        clock: &C,
-        features: TransportFeatures,
-    ) where
-        Sub: event::Subscriber,
-        C: Clock + ?Sized,
-    {
-        let msg = &mut self.recv_buffer;
-        let remote_addr = msg.remote_address();
-        let ecn = msg.ecn();
-        let tag_len = shared.crypto.tag_len();
-
-        let mut any_valid_packets = false;
-        let mut did_complete_handshake = false;
-
-        let mut prev_packet_len = None;
-
-        let mut out_buf = buffer::duplex::Interposer::new(out_buf, &mut self.reassembler);
-
-        // this opener should never actually be used anywhere. any packets that try to use control
-        // authentication will result in stream closure.
-        let control_opener = &crate::crypto::open::control::stream::Reliable::default();
-
-        loop {
-            // consume the previous packet
-            if let Some(packet_len) = prev_packet_len.take() {
-                msg.consume(packet_len);
-            }
-
-            let segment = msg.peek();
-            ensure!(!segment.is_empty(), break);
-
-            let initial_len = segment.len();
-            let decoder = DecoderBufferMut::new(segment);
-
-            let mut packet = match decoder.decode_parameterized(tag_len) {
-                Ok((packet, remaining)) => {
-                    prev_packet_len = Some(initial_len - remaining.len());
-                    packet
-                }
-                Err(decoder_error) => {
-                    if let DecoderError::UnexpectedEof(len) = decoder_error {
-                        // if making the buffer contiguous resulted in the slice increasing, then
-                        // try to parse a packet again
-                        if msg.make_contiguous().len() > initial_len {
-                            continue;
-                        }
-
-                        // otherwise, we'll need to receive more bytes from the stream to correctly
-                        // parse a packet
-
-                        // if we have pending data greater than the max datagram size then it's never going to parse
-                        if msg.payload_len() > crate::stream::MAX_DATAGRAM_SIZE {
-                            tracing::error!(
-                                unconsumed = msg.payload_len(),
-                                remaining_capacity = msg.remaining_capacity()
-                            );
-                            msg.clear();
-                            self.receiver.on_error(recv::error::Kind::Decode);
-                            return;
-                        }
-
-                        tracing::trace!(
-                            protocol_features = ?features,
-                            unexpected_eof = len,
-                            buffer_len = initial_len
-                        );
-
-                        break;
-                    }
-
-                    tracing::error!(
-                        protocol_features = ?features,
-                        fatal_error = %decoder_error,
-                        payload_len = msg.payload_len()
-                    );
-
-                    // any other decoder errors mean the stream has been corrupted so
-                    // it's time to shut down the connection
-                    msg.clear();
-                    self.receiver.on_error(recv::error::Kind::Decode);
-                    return;
-                }
-            };
-
-            tracing::trace!(?packet);
-
-            match &mut packet {
-                Packet::Stream(packet) => {
-                    debug_assert_eq!(Some(packet.total_len()), prev_packet_len);
-
-                    // make sure the packet looks OK before deriving openers from it
-                    if self
-                        .receiver
-                        .precheck_stream_packet(shared.credentials(), packet)
-                        .is_err()
-                    {
-                        // check if the receiver returned an error
-                        if self.receiver.check_error().is_err() {
-                            msg.clear();
-                            return;
-                        } else {
-                            // move on to the next packet
-                            continue;
-                        }
-                    }
-
-                    let _ = shared.crypto.open_with(
-                        |opener| {
-                            self.receiver.on_stream_packet(
-                                opener,
-                                control_opener,
-                                shared.credentials(),
-                                packet,
-                                ecn,
-                                clock,
-                                &mut out_buf,
-                            )?;
-
-                            any_valid_packets = true;
-                            did_complete_handshake |=
-                                packet.next_expected_control_packet().as_u64() > 0;
-
-                            <Result<_, recv::Error>>::Ok(())
-                        },
-                        clock,
-                        &shared.subscriber,
-                    );
-
-                    if self.receiver.check_error().is_err() {
-                        msg.clear();
-                        return;
-                    }
-                }
-                other => {
-                    let kind = other.kind();
-                    shared
-                        .crypto
-                        .map()
-                        .handle_unexpected_packet(other, &shared.read_remote_addr().into());
-
-                    // if we get a packet we don't expect then it's fatal for streams
-                    msg.clear();
-                    self.receiver
-                        .on_error(recv::error::Kind::UnexpectedPacket { packet: kind });
-                    return;
-                }
-            }
-        }
-
-        if let Some(len) = prev_packet_len.take() {
-            msg.consume(len);
-        }
-
-        if any_valid_packets {
-            shared.on_valid_packet(&remote_addr, Half::Read, did_complete_handshake);
+    fn new_stream(
+        receiver: &'a mut recv::state::State,
+        out_buf: &'a mut Buf,
+        control_opener: &'a Crypt,
+        clock: &'a Clk,
+        shared: &'a ArcShared<Sub>,
+    ) -> Self {
+        Self {
+            did_complete_handshake: false,
+            remote_addr: None,
+            receiver,
+            control_opener,
+            out_buf,
+            shared,
+            clock,
         }
     }
+}
 
+impl<'a, Buf, Crypt, Clk, Sub> PacketDispatch<'a, Buf, Crypt, Clk, Sub, false>
+where
+    Buf: buffer::Duplex<Error = core::convert::Infallible>,
+    Crypt: crate::crypto::open::control::Stream,
+    Clk: Clock + ?Sized,
+    Sub: event::Subscriber,
+{
+    /// Sets up a dispatcher for datagram transports
     #[inline]
-    fn dispatch_buffer_datagram<Sub, C>(
+    fn new_datagram(
+        receiver: &'a mut recv::state::State,
+        out_buf: &'a mut Buf,
+        control_opener: &'a Crypt,
+        clock: &'a Clk,
+        shared: &'a ArcShared<Sub>,
+    ) -> Self {
+        Self {
+            did_complete_handshake: false,
+            remote_addr: None,
+            receiver,
+            control_opener,
+            out_buf,
+            shared,
+            clock,
+        }
+    }
+}
+
+impl<Buf, Crypt, Clk, Sub, const IS_STREAM: bool> recv::buffer::Dispatch
+    for PacketDispatch<'_, Buf, Crypt, Clk, Sub, IS_STREAM>
+where
+    Buf: buffer::Duplex<Error = core::convert::Infallible>,
+    Crypt: crate::crypto::open::control::Stream,
+    Clk: Clock + ?Sized,
+    Sub: event::Subscriber,
+{
+    #[inline]
+    fn on_packet(
         &mut self,
-        out_buf: &mut impl buffer::writer::Storage,
-        shared: &ArcShared<Sub>,
-        clock: &C,
-        features: TransportFeatures,
-    ) where
-        Sub: event::Subscriber,
-        C: Clock + ?Sized,
-    {
-        let msg = &mut self.recv_buffer;
-        let remote_addr = msg.remote_address();
-        let ecn = msg.ecn();
-        let tag_len = shared.crypto.tag_len();
+        remote_addr: &s2n_quic_core::inet::SocketAddress,
+        ecn: s2n_quic_core::inet::ExplicitCongestionNotification,
+        packet: crate::packet::Packet,
+    ) -> Result<(), recv::Error> {
+        match packet {
+            Packet::Stream(mut packet) => {
+                // make sure the packet looks OK before deriving openers from it
+                let precheck = self
+                    .receiver
+                    .precheck_stream_packet(self.shared.credentials(), &packet);
 
-        let mut any_valid_packets = false;
-        let mut did_complete_handshake = false;
-
-        let mut out_buf = buffer::duplex::Interposer::new(out_buf, &mut self.reassembler);
-        let control_opener = shared
-            .crypto
-            .control_opener()
-            .expect("control opener should be available on unreliable transports");
-
-        for segment in msg.segments() {
-            let segment_len = segment.len();
-            let mut decoder = DecoderBufferMut::new(segment);
-
-            'segment: while !decoder.is_empty() {
-                let packet = match decoder.decode_parameterized(tag_len) {
-                    Ok((packet, remaining)) => {
-                        decoder = remaining;
-                        packet
-                    }
-                    Err(decoder_error) => {
-                        // the packet was likely corrupted so log it and move on to the
-                        // next segment
-                        tracing::warn!(
-                            protocol_features = ?features,
-                            %decoder_error,
-                            segment_len
-                        );
-
-                        break 'segment;
-                    }
-                };
-
-                match packet {
-                    Packet::Stream(mut packet) => {
-                        // make sure the packet looks OK before deriving openers from it
-                        ensure!(
-                            self.receiver
-                                .precheck_stream_packet(shared.credentials(), &packet)
-                                .is_ok(),
-                            continue
-                        );
-
-                        let _ = shared.crypto.open_with(
-                            |opener| {
-                                self.receiver.on_stream_packet(
-                                    opener,
-                                    control_opener,
-                                    shared.credentials(),
-                                    &mut packet,
-                                    ecn,
-                                    clock,
-                                    &mut out_buf,
-                                )?;
-
-                                any_valid_packets = true;
-                                did_complete_handshake |=
-                                    packet.next_expected_control_packet().as_u64() > 0;
-
-                                <Result<_, recv::Error>>::Ok(())
-                            },
-                            clock,
-                            &shared.subscriber,
-                        );
-                    }
-                    other => {
-                        shared
-                            .crypto
-                            .map()
-                            .handle_unexpected_packet(&other, &shared.read_remote_addr().into());
-
-                        // TODO if the packet was authentic then close the receiver with an error
-                    }
+                if IS_STREAM {
+                    // datagrams drop invalid packets - streams error out since the stream can't recover
+                    precheck?;
                 }
+
+                let _ = self.shared.crypto.open_with(
+                    |opener| {
+                        self.receiver.on_stream_packet(
+                            opener,
+                            self.control_opener,
+                            self.shared.credentials(),
+                            &mut packet,
+                            ecn,
+                            self.clock,
+                            self.out_buf,
+                        )?;
+
+                        self.remote_addr = Some(*remote_addr);
+                        self.did_complete_handshake |=
+                            packet.next_expected_control_packet().as_u64() > 0;
+
+                        <Result<_, recv::Error>>::Ok(())
+                    },
+                    self.clock,
+                    &self.shared.subscriber,
+                );
+
+                if IS_STREAM {
+                    self.receiver.check_error()?;
+                }
+
+                Ok(())
+            }
+            other => {
+                self.shared
+                    .crypto
+                    .map()
+                    .handle_unexpected_packet(&other, &self.shared.read_remote_addr().into());
+
+                if !IS_STREAM {
+                    // TODO if the packet was authentic then close the receiver with an error
+                    // Datagram-based streams just drop unexpected packets
+                    return Ok(());
+                }
+
+                // streams don't allow for other kinds of packets so close it and bail on processing
+                Err(recv::error::Kind::UnexpectedPacket {
+                    packet: other.kind(),
+                }
+                .into())
             }
         }
+    }
+}
 
-        if any_valid_packets {
-            shared.on_valid_packet(&remote_addr, Half::Read, did_complete_handshake);
+impl<Buf, Crypt, Clk, Sub, const IS_STREAM: bool> Drop
+    for PacketDispatch<'_, Buf, Crypt, Clk, Sub, IS_STREAM>
+where
+    Buf: buffer::Duplex<Error = core::convert::Infallible>,
+    Crypt: crate::crypto::open::control::Stream,
+    Clk: Clock + ?Sized,
+    Sub: event::Subscriber,
+{
+    #[inline]
+    fn drop(&mut self) {
+        if let Some(remote_addr) = self.remote_addr {
+            self.shared
+                .on_valid_packet(&remote_addr, Half::Read, self.did_complete_handshake);
         }
     }
 }

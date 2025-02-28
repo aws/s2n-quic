@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    event,
+    event, msg,
     path::secret,
     stream::{
         application::Stream,
         endpoint,
         environment::tokio::{self as env, Environment},
+        recv,
         socket::Protocol,
     },
 };
@@ -33,6 +34,7 @@ where
         env,
         peer,
         env::UdpUnbound(acceptor_addr.into()),
+        recv_buffer(),
         subscriber,
         None,
     )?;
@@ -87,6 +89,7 @@ where
             peer_addr,
             local_port,
         },
+        recv_buffer(),
         subscriber,
         None,
     )?;
@@ -126,6 +129,7 @@ where
             peer_addr,
             local_port,
         },
+        recv_buffer(),
         subscriber,
         None,
     )?;
@@ -152,4 +156,10 @@ where
         .write_from(&mut s2n_quic_core::buffer::reader::storage::Empty)
         .await
         .map(|_| ())
+}
+
+#[inline]
+fn recv_buffer() -> recv::shared::RecvBuffer {
+    // TODO replace this with a parameter once everything is in place
+    recv::buffer::Local::new(msg::recv::Message::new(9000), None)
 }
