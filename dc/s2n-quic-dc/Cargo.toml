@@ -24,6 +24,7 @@ tokio = ["tokio/io-util", "tokio/net", "tokio/rt-multi-thread", "tokio/time"]
 arrayvec = "0.7"
 atomic-waker = "1"
 aws-lc-rs = "1"
+bach = "0.0.10"
 bitflags = "2"
 bolero-generator = { version = "0.13", default-features = false, optional = true }
 bytes = "1"
