@@ -165,6 +165,7 @@ fn check_delayed_specific() {
     check_delayed_inner(0xf323243, 10);
     check_delayed_inner(0xf323243, 63);
     check_delayed_inner(0xf323243, 129);
+    check_delayed_inner(0xf323243, (super::WINDOW - 1) as u16);
 }
 
 // delay represents the *minimum* delay a delayed entry sees. The maximum is up to WINDOW.
@@ -197,7 +198,7 @@ fn check_delayed_inner(seed: u64, delay: u16) {
         // explanation for what guarantees we're actually trying to provide here).
         if id % 128 != 0 {
             // ...until some random interval no more than WINDOW away.
-            let insert_before = rng.random_range(id + 1 + delay..id + WINDOW as u64);
+            let insert_before = rng.random_range(id + 1 + delay..=id + WINDOW as u64);
             buffered.push((std::cmp::Reverse(insert_before), id));
         } else {
             model.insert(id);
