@@ -32,7 +32,7 @@ tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
-zerofrom = "=0.1.5" # newer versions require rust 1.81
+zerofrom = "=0.1.6" # newer versions require rust 1.81
 
 [target.'cfg(unix)'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["provider-event-console-perf", "provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
