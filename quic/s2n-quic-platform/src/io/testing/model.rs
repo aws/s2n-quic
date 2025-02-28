@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::network::{Buffers, Network, Packet};
+use super::{
+    network::{Buffers, Network, Packet},
+    rand::Any,
+};
 use core::time::Duration;
 use s2n_quic_core::{havoc, path::MaxMtu};
 use std::{
@@ -241,7 +244,7 @@ impl Network for Model {
         #[inline]
         fn gen_rate(rate: u64) -> bool {
             // ensure the rate isn't 0 before actually generating a random number
-            rate > 0 && super::rand::gen::<u64>() < rate
+            rate > 0 && super::rand::produce::<u64>().any() < rate
         }
 
         let mut transmit = |packet: Cow<Packet>| {
@@ -360,7 +363,7 @@ impl Network for Model {
 }
 
 fn gen_jitter(max_jitter: Duration) -> Duration {
-    let micros = super::rand::gen_range(0..max_jitter.as_micros() as u64);
+    let micros = Any::any(&(0..max_jitter.as_micros() as u64));
     let micros = micros as f64;
     // even though we're generated micros, we round to the nearest millisecond
     // so packets can be grouped together

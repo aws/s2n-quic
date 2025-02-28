@@ -108,7 +108,7 @@ impl Run {
                 .while_some()
                 .for_each(|_| {
                     use ::rand::prelude::*;
-                    let seed = thread_rng().gen();
+                    let seed = rand::rng().random();
                     test(seed);
                 });
         } else {

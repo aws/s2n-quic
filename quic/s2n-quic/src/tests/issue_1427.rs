@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::*;
+use super::{rand::Any, *};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Ensures tokio `AsyncRead` implementation functions properly
@@ -31,7 +31,7 @@ fn tokio_read_exact_test() {
                 while read_len < LEN {
                     let max_len = buf.len().min(LEN - read_len);
                     // generate a random amount of bytes to read
-                    let len = rand::gen_range(1..=max_len);
+                    let len = Any::any(&(1..=max_len));
 
                     let buf = &mut buf[0..len];
                     recv.read_exact(buf).await.unwrap();
