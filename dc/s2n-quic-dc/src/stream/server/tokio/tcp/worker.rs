@@ -24,6 +24,7 @@ use s2n_quic_core::{
     inet::SocketAddress,
     ready,
     time::{Clock, Timestamp},
+    varint::VarInt,
 };
 use std::io;
 use tokio::{io::AsyncWrite as _, net::TcpStream};
@@ -313,6 +314,8 @@ impl WorkerState {
             let subscriber_ctx = subscriber_ctx.take().unwrap();
             let (socket, remote_address) = stream.take().unwrap();
 
+            // TCP doesn't use the route key so just pick 0
+            let route_key = VarInt::ZERO;
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
 
             let stream_builder = match endpoint::accept_stream(
@@ -324,6 +327,7 @@ impl WorkerState {
                     local_port: context.local_port,
                 },
                 &initial_packet,
+                route_key,
                 recv_buffer,
                 &context.secrets,
                 context.subscriber.clone(),
