@@ -61,6 +61,7 @@ use s2n_quic_core::{
     time::{timer, Timestamp},
     transport,
 };
+use std::any::Any;
 
 /// Possible states for handing over a connection from the endpoint to the
 /// application.
@@ -1942,6 +1943,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     fn application_protocol(&self) -> Bytes {
         self.space_manager.application_protocol.clone()
+    }
+
+    fn take_application_context(&mut self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.space_manager.application_context.take()
     }
 
     fn ping(&mut self) -> Result<(), connection::Error> {
