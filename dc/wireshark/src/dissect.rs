@@ -371,8 +371,8 @@ fn record_stream_id<T: Node>(
     stream_id: Parsed<stream::Id>,
 ) -> stream::Id {
     stream_id
-        .map(|v| v.key_id)
-        .record(buffer, tree, fields.stream_id);
+        .map(|v| v.route_key)
+        .record(buffer, tree, fields.route_key);
     let id = stream_id.value;
 
     tree.add_boolean(
