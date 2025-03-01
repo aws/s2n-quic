@@ -57,18 +57,18 @@ impl<'a> ConnectionInfo<'a> {
 
 #[non_exhaustive]
 #[derive(Debug)]
-pub struct PostHandshakeInfo<'a> {
+pub struct HandshakeInfo<'a> {
     pub remote_address: SocketAddress<'a>,
     pub server_name: Option<&'a ServerName>,
     pub application_protocol: &'a Bytes,
 }
 
-impl<'a> PostHandshakeInfo<'a> {
+impl<'a> HandshakeInfo<'a> {
     pub fn new(
         remote_address: &'a inet::SocketAddress,
         server_name: Option<&'a ServerName>,
         application_protocol: &'a Bytes,
-    ) -> PostHandshakeInfo<'a> {
+    ) -> HandshakeInfo<'a> {
         Self {
             remote_address: remote_address.into_event(),
             server_name,
@@ -442,7 +442,7 @@ pub trait Limiter: 'static + Send {
     /// Provides another opportunity to change connection limits with information
     /// from the handshake
     #[inline]
-    fn on_post_handshake(&mut self, info: &PostHandshakeInfo, limits: &mut UpdatableLimits) {
+    fn on_post_handshake(&mut self, info: &HandshakeInfo, limits: &mut UpdatableLimits) {
         let _ = info;
         let _ = limits;
     }
@@ -454,7 +454,7 @@ impl Limiter for Limits {
         *self
     }
 
-    fn on_post_handshake(&mut self, _info: &PostHandshakeInfo, _limits: &mut UpdatableLimits) {}
+    fn on_post_handshake(&mut self, _info: &HandshakeInfo, _limits: &mut UpdatableLimits) {}
 }
 
 #[cfg(test)]

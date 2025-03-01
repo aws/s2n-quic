@@ -4,7 +4,7 @@
 //! Provides limits support for a connection
 
 pub use s2n_quic_core::connection::limits::{
-    ConnectionInfo, Limiter, Limits, PostHandshakeInfo, UpdatableLimits,
+    ConnectionInfo, Limiter, Limits, HandshakeInfo, UpdatableLimits,
 };
 
 pub trait Provider {

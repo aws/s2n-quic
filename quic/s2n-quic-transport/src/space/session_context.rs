@@ -18,7 +18,7 @@ use s2n_quic_core::{
     ack,
     application::ServerName,
     connection::{
-        limits::{Limiter, PostHandshakeInfo, UpdatableLimits},
+        limits::{HandshakeInfo, Limiter, UpdatableLimits},
         InitialId, PeerId,
     },
     crypto::{
@@ -418,7 +418,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         };
 
         let remote_address = self.path_manager.active_path().remote_address().0;
-        let info = PostHandshakeInfo::new(
+        let info = HandshakeInfo::new(
             &remote_address,
             self.server_name.as_ref(),
             self.application_protocol,
@@ -426,8 +426,6 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         let mut updatable_limits = UpdatableLimits::new(self.limits);
         self.limits_endpoint
             .on_post_handshake(&info, &mut updatable_limits);
-
-        println!("{:?}", self.limits);
 
         self.local_id_registry
             .set_active_connection_id_limit(active_connection_id_limit.as_u64());
@@ -516,7 +514,6 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 chosen_server_name: &server_name,
             });
         *self.server_name = Some(server_name);
-        println!("SERVER NAME: {:?}", self.server_name);
 
         Ok(())
     }
