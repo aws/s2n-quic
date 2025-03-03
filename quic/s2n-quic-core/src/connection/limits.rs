@@ -1,9 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
+#[cfg(feature = "alloc")]
+use crate::application::ServerName;
 use crate::{
     ack,
-    application::ServerName,
     event::{api::SocketAddress, IntoEvent},
     inet, recovery, stream,
     transport::parameters::{
@@ -13,6 +13,7 @@ use crate::{
         MaxDatagramFrameSize, MaxIdleTimeout, MigrationSupport, TransportParameters,
     },
 };
+#[cfg(feature = "alloc")]
 use bytes::Bytes;
 use core::time::Duration;
 use s2n_codec::decoder_invariant;
@@ -57,12 +58,14 @@ impl<'a> ConnectionInfo<'a> {
 
 #[non_exhaustive]
 #[derive(Debug)]
+#[cfg(feature = "alloc")]
 pub struct HandshakeInfo<'a> {
     pub remote_address: SocketAddress<'a>,
     pub server_name: Option<&'a ServerName>,
     pub application_protocol: &'a Bytes,
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> HandshakeInfo<'a> {
     pub fn new(
         remote_address: &'a inet::SocketAddress,
@@ -442,6 +445,7 @@ pub trait Limiter: 'static + Send {
     /// Provides another opportunity to change connection limits with information
     /// from the handshake
     #[inline]
+    #[cfg(feature = "alloc")]
     fn on_post_handshake(&mut self, info: &HandshakeInfo, limits: &mut UpdatableLimits) {
         let _ = info;
         let _ = limits;
@@ -453,7 +457,7 @@ impl Limiter for Limits {
     fn on_connection(&mut self, _into: &ConnectionInfo) -> Limits {
         *self
     }
-
+    #[cfg(feature = "alloc")]
     fn on_post_handshake(&mut self, _info: &HandshakeInfo, _limits: &mut UpdatableLimits) {}
 }
 
