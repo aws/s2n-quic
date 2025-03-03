@@ -26,6 +26,7 @@ mod recorder;
 
 mod resumption;
 mod setup;
+mod connection_limits;
 use setup::*;
 
 mod blackhole;
