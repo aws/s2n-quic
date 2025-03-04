@@ -214,6 +214,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     endpoint_context.event_subscriber,
                     endpoint_context.datagram,
                     endpoint_context.dc,
+                    endpoint_context.connection_limits,
                 ) {
                     conn.close(
                         error,
@@ -607,6 +608,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.packet_interceptor,
                     endpoint_context.datagram,
                     endpoint_context.dc,
+                    endpoint_context.connection_limits,
                     &mut check_for_stateless_reset,
                 ) {
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
@@ -633,6 +635,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     endpoint_context.packet_interceptor,
                     endpoint_context.datagram,
                     endpoint_context.dc,
+                    endpoint_context.connection_limits,
                     &mut check_for_stateless_reset,
                 ) {
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.1
@@ -1228,6 +1231,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             datagram_endpoint: endpoint_context.datagram,
             dc_endpoint: endpoint_context.dc,
             open_registry,
+            limits_endpoint: endpoint_context.connection_limits,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
         self.connections

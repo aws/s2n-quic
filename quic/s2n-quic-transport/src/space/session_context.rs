@@ -17,15 +17,20 @@ use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
     application::ServerName,
-    connection::{InitialId, PeerId},
-    crypto,
-    crypto::{tls, tls::ApplicationParameters, CryptoSuite, Key},
+    connection::{
+        limits::{HandshakeInfo, Limiter, UpdatableLimits},
+        InitialId, PeerId,
+    },
+    crypto::{
+        self,
+        tls::{self, ApplicationParameters},
+        CryptoSuite, Key,
+    },
     ct::ConstantTimeEq,
     datagram::{ConnectionInfo, Endpoint},
-    dc,
-    dc::Endpoint as _,
-    event,
+    dc::{self, Endpoint as _},
     event::{
+        self,
         builder::{DcState, DcStateChanged},
         IntoEvent,
     },
@@ -62,6 +67,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub publisher: &'a mut Pub,
     pub datagram: &'a mut Config::DatagramEndpoint,
     pub dc: &'a mut Config::DcEndpoint,
+    pub limits_endpoint: &'a mut Config::ConnectionLimits,
 }
 
 impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'_, Config, Pub> {
@@ -410,6 +416,16 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             endpoint::Type::Client => self.on_server_params(param_decoder)?,
             endpoint::Type::Server => self.on_client_params(param_decoder)?,
         };
+
+        let remote_address = self.path_manager.active_path().remote_address().0;
+        let info = HandshakeInfo::new(
+            &remote_address,
+            self.server_name.as_ref(),
+            self.application_protocol,
+        );
+        let mut updatable_limits = UpdatableLimits::new(self.limits);
+        self.limits_endpoint
+            .on_post_handshake(&info, &mut updatable_limits);
 
         self.local_id_registry
             .set_active_connection_id_limit(active_connection_id_limit.as_u64());

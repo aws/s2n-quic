@@ -111,6 +111,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         datagram: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        conn_limits: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), connection::Error>;
 
     // Packet handling
@@ -126,6 +127,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when an unprotected initial packet had been received
@@ -139,6 +141,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a handshake packet had been received
@@ -152,6 +155,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a short packet had been received
@@ -165,6 +169,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), ProcessingError>;
 
     /// Is called when a version negotiation packet had been received
@@ -225,6 +230,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
         check_for_stateless_reset: &mut bool,
     ) -> Result<(), connection::Error> {
         macro_rules! emit_drop_reason {
@@ -286,6 +292,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 packet_interceptor,
                 datagram_endpoint,
                 dc_endpoint,
+                connection_limits_endpoint,
             ),
             ProtectedPacket::VersionNegotiation(packet) => self.handle_version_negotiation_packet(
                 datagram,
@@ -303,6 +310,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 packet_interceptor,
                 datagram_endpoint,
                 dc_endpoint,
+                connection_limits_endpoint,
             ),
             ProtectedPacket::ZeroRtt(packet) => self.handle_zero_rtt_packet(
                 datagram,
@@ -320,6 +328,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 packet_interceptor,
                 datagram_endpoint,
                 dc_endpoint,
+                connection_limits_endpoint,
             ),
             ProtectedPacket::Retry(packet) => {
                 self.handle_retry_packet(datagram, path_id, packet, subscriber, packet_interceptor)
@@ -378,6 +387,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
         check_for_stateless_reset: &mut bool,
     ) -> Result<(), connection::Error> {
         macro_rules! emit_drop_reason {
@@ -432,6 +442,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
                 packet_interceptor,
                 datagram_endpoint,
                 dc_endpoint,
+                connection_limits_endpoint,
                 check_for_stateless_reset,
             );
 
