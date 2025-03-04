@@ -7,7 +7,7 @@ A packet capture allows for inspecting the contents of every packet transmitted 
 Since QUIC is an encrypted transport protocol, the payload of each packet is not readable in a standard packet capture. `s2n-quic` supports exporting the TLS session keys used by each QUIC connection so that the packet capture may be decrypted. Both the `s2n-tls` and `rustls` TLS providers support key logging through their associated builders:
 
 ```rust
-let tls = s2n_quic::provider::tls::default::Serverhello::builder()
+let tls = s2n_quic::provider::tls::default::Server::builder()
     .with_certificate(CERT_PEM, KEY_PEM)?
     .with_key_logging()?  // enables key logging
     .build()?;
