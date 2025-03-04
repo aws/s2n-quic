@@ -4,9 +4,11 @@
 use crate::{
     clock::tokio::Clock,
     event,
+    path::secret::Map,
     stream::{
+        recv::{buffer, dispatch::Control, shared::RecvBuffer},
         runtime::{tokio as runtime, ArcHandle},
-        socket::{self, Socket as _},
+        socket::{self, SendOnly, Socket as _},
         TransportFeatures,
     },
 };
@@ -18,6 +20,18 @@ use s2n_quic_platform::features;
 use std::{io, net::UdpSocket, sync::Arc};
 use tokio::{io::unix::AsyncFd, net::TcpStream};
 
+mod udp;
+
+#[derive(Clone)]
+pub enum RecvMode {
+    OwnedSocket,
+    Pool {
+        blocking: bool,
+        reuse_port: bool,
+        map: Map,
+    },
+}
+
 #[derive(Clone)]
 pub struct Builder<Sub> {
     clock: Option<Clock>,
@@ -27,6 +41,7 @@ pub struct Builder<Sub> {
     writer_rt: Option<runtime::Shared<Sub>>,
     thread_name_prefix: Option<String>,
     threads: Option<usize>,
+    recv_mode: Option<RecvMode>,
 }
 
 impl<Sub> Default for Builder<Sub> {
@@ -39,6 +54,7 @@ impl<Sub> Default for Builder<Sub> {
             writer_rt: None,
             thread_name_prefix: None,
             threads: None,
+            recv_mode: None,
         }
     }
 }
@@ -52,21 +68,29 @@ where
         self
     }
 
+    pub fn with_recv_mode(mut self, mode: RecvMode) -> Self {
+        self.recv_mode = Some(mode);
+        self
+    }
+
     #[inline]
     pub fn build(self) -> io::Result<Environment<Sub>> {
         let clock = self.clock.unwrap_or_default();
         let gso = self.gso.unwrap_or_default();
         let socket_options = self.socket_options.unwrap_or_default();
 
+        let thread_count = self.threads.unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|v| v.get())
+                .unwrap_or(1)
+        });
         let thread_name_prefix = self.thread_name_prefix.as_deref().unwrap_or("dc_quic");
 
-        let make_rt = |suffix: &str, threads: Option<usize>| {
+        let make_rt = |suffix: &str| {
             let mut builder = tokio::runtime::Builder::new_multi_thread();
-            if let Some(threads) = threads {
-                builder.worker_threads(threads);
-            }
             Ok(builder
                 .enable_all()
+                .worker_threads(thread_count)
                 .thread_name(format!("{thread_name_prefix}::{suffix}"))
                 .build()?
                 .into())
@@ -75,19 +99,32 @@ where
         let reader_rt = self
             .reader_rt
             .map(<io::Result<_>>::Ok)
-            .unwrap_or_else(|| make_rt("reader", self.threads))?;
+            .unwrap_or_else(|| make_rt("reader"))?;
         let writer_rt = self
             .writer_rt
             .map(<io::Result<_>>::Ok)
-            .unwrap_or_else(|| make_rt("writer", self.threads))?;
+            .unwrap_or_else(|| make_rt("writer"))?;
 
-        Ok(Environment {
+        let mut env = Environment {
             clock,
             gso,
             socket_options,
             reader_rt,
             writer_rt,
-        })
+            recv_pool: None,
+        };
+
+        if let Some(RecvMode::Pool {
+            blocking,
+            reuse_port,
+            map,
+        }) = self.recv_mode
+        {
+            let pool = udp::Pool::new(&env, thread_count, map, blocking, reuse_port)?;
+            env.recv_pool = Some(Arc::new(pool));
+        };
+
+        Ok(env)
     }
 }
 
@@ -98,6 +135,7 @@ pub struct Environment<Sub> {
     socket_options: socket::Options,
     reader_rt: runtime::Shared<Sub>,
     writer_rt: runtime::Shared<Sub>,
+    recv_pool: Option<Arc<udp::Pool>>,
 }
 
 impl<Sub> Default for Environment<Sub>
@@ -109,6 +147,8 @@ where
         Self::builder().build().unwrap()
     }
 }
+
+type AsyncUdpSocket = AsyncFd<Arc<UdpSocket>>;
 
 impl<Sub> Environment<Sub> {
     #[inline]
@@ -155,14 +195,15 @@ where
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct UdpUnbound(pub SocketAddress);
+#[derive(Debug)]
+pub struct UdpOwned(pub SocketAddress, pub RecvBuffer);
 
-impl<Sub> super::Peer<Environment<Sub>> for UdpUnbound
+impl<Sub> super::Peer<Environment<Sub>> for UdpOwned
 where
     Sub: event::Subscriber,
 {
-    type WorkerSocket = AsyncFd<Arc<UdpSocket>>;
+    type ReadWorkerSocket = AsyncUdpSocket;
+    type WriteWorkerSocket = (AsyncUdpSocket, buffer::Local);
 
     #[inline]
     fn features(&self) -> TransportFeatures {
@@ -175,9 +216,16 @@ where
     }
 
     #[inline]
-    fn setup(self, env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
-        let mut options = env.socket_options.clone();
+    fn setup(
+        self,
+        env: &Environment<Sub>,
+    ) -> super::Result<(
+        super::SocketSet<Self::ReadWorkerSocket, Self::WriteWorkerSocket>,
+        RecvBuffer,
+    )> {
         let remote_addr = self.0;
+        let recv_buffer = self.1;
+        let mut options = env.socket_options.clone();
 
         match remote_addr {
             SocketAddress::IpV6(_) if options.addr.is_ipv4() => {
@@ -241,16 +289,63 @@ where
         };
 
         let read_worker = Some(read_worker);
-        let write_worker = Some(write_worker);
+        let write_worker_buffer = crate::msg::recv::Message::new(u16::MAX);
+        let write_worker_buffer = buffer::Local::new(write_worker_buffer, None);
+        let write_worker = Some((write_worker, write_worker_buffer));
 
-        Ok(super::SocketSet {
+        let socket = super::SocketSet {
             application,
             read_worker,
             write_worker,
             remote_addr,
             source_control_port,
             source_stream_port,
-        })
+        };
+
+        Ok((socket, recv_buffer))
+    }
+}
+
+#[derive(Debug)]
+pub struct UdpPoolClient {
+    pub peer_addr: SocketAddress,
+}
+
+impl<Sub> super::Peer<Environment<Sub>> for UdpPoolClient
+where
+    Sub: event::Subscriber,
+{
+    type ReadWorkerSocket = SendOnly<Arc<std::net::UdpSocket>>;
+    type WriteWorkerSocket = (SendOnly<Arc<std::net::UdpSocket>>, buffer::Channel<Control>);
+
+    #[inline]
+    fn features(&self) -> TransportFeatures {
+        TransportFeatures::UDP
+    }
+
+    #[inline]
+    fn with_source_control_port(&mut self, port: u16) {
+        self.peer_addr.set_port(port);
+    }
+
+    #[inline]
+    fn setup(
+        self,
+        env: &Environment<Sub>,
+    ) -> super::Result<(
+        super::SocketSet<Self::ReadWorkerSocket, Self::WriteWorkerSocket>,
+        RecvBuffer,
+    )> {
+        let peer_addr = self.peer_addr;
+        let recv_pool = env.recv_pool.as_ref().expect("pool not configured");
+        let (control, stream, socket) = recv_pool.alloc();
+        super::udp::PoolSocket {
+            peer_addr,
+            control,
+            stream,
+            socket,
+        }
+        .setup(env)
     }
 }
 
@@ -259,13 +354,15 @@ pub struct TcpRegistered {
     pub socket: TcpStream,
     pub peer_addr: SocketAddress,
     pub local_port: u16,
+    pub recv_buffer: RecvBuffer,
 }
 
 impl<Sub> super::Peer<Environment<Sub>> for TcpRegistered
 where
     Sub: event::Subscriber,
 {
-    type WorkerSocket = TcpStream;
+    type ReadWorkerSocket = ();
+    type WriteWorkerSocket = ();
 
     fn features(&self) -> TransportFeatures {
         TransportFeatures::TCP
@@ -277,18 +374,22 @@ where
     }
 
     #[inline]
-    fn setup(self, _env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
+    fn setup(
+        self,
+        _env: &Environment<Sub>,
+    ) -> super::Result<(super::SocketSet<Self::ReadWorkerSocket>, RecvBuffer)> {
         let remote_addr = self.peer_addr;
         let source_control_port = self.local_port;
         let application = Box::new(self.socket);
-        Ok(super::SocketSet {
+        let socket = super::SocketSet {
             application,
             read_worker: None,
             write_worker: None,
             remote_addr,
             source_control_port,
             source_stream_port: None,
-        })
+        };
+        Ok((socket, self.recv_buffer))
     }
 }
 
@@ -297,13 +398,15 @@ pub struct TcpReregistered {
     pub socket: TcpStream,
     pub peer_addr: SocketAddress,
     pub local_port: u16,
+    pub recv_buffer: RecvBuffer,
 }
 
 impl<Sub> super::Peer<Environment<Sub>> for TcpReregistered
 where
     Sub: event::Subscriber,
 {
-    type WorkerSocket = TcpStream;
+    type ReadWorkerSocket = ();
+    type WriteWorkerSocket = ();
 
     fn features(&self) -> TransportFeatures {
         TransportFeatures::TCP
@@ -315,17 +418,21 @@ where
     }
 
     #[inline]
-    fn setup(self, _env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
+    fn setup(
+        self,
+        _env: &Environment<Sub>,
+    ) -> super::Result<(super::SocketSet<Self::ReadWorkerSocket>, RecvBuffer)> {
         let source_control_port = self.local_port;
         let remote_addr = self.peer_addr;
         let application = Box::new(self.socket.into_std()?);
-        Ok(super::SocketSet {
+        let socket = super::SocketSet {
             application,
             read_worker: None,
             write_worker: None,
             remote_addr,
             source_control_port,
             source_stream_port: None,
-        })
+        };
+        Ok((socket, self.recv_buffer))
     }
 }

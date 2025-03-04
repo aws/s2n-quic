@@ -74,7 +74,7 @@ impl Allocator {
     }
 
     #[inline]
-    pub fn alloc(&mut self) -> Option<(Control, Stream)> {
+    pub fn alloc(&self) -> Option<(Control, Stream)> {
         self.pool.alloc()
     }
 
@@ -205,5 +205,38 @@ impl crate::socket::recv::router::Router for Dispatch {
                 debug!(stream_id = ?id, ?credentials, "unroutable stream packet");
             }
         }
+    }
+
+    #[inline]
+    fn handle_replay_detected_packet(
+        &mut self,
+        packet: packet::secret_control::replay_detected::Packet,
+        remote_address: SocketAddress,
+    ) {
+        // TODO reset the destination queue - currently secret control packets don't have queue_ids
+        let _ = packet;
+        let _ = remote_address;
+    }
+
+    #[inline]
+    fn handle_stale_key_packet(
+        &mut self,
+        packet: packet::secret_control::stale_key::Packet,
+        remote_address: SocketAddress,
+    ) {
+        // TODO reset the destination queue - currently secret control packets don't have queue_ids
+        let _ = packet;
+        let _ = remote_address;
+    }
+
+    #[inline]
+    fn handle_unknown_path_secret_packet(
+        &mut self,
+        packet: packet::secret_control::unknown_path_secret::Packet,
+        remote_address: SocketAddress,
+    ) {
+        // TODO reset the destination queue - currently secret control packets don't have queue_ids
+        let _ = packet;
+        let _ = remote_address;
     }
 }

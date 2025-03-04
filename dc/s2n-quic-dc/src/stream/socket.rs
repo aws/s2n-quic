@@ -6,6 +6,7 @@ use super::TransportFeatures;
 pub mod application;
 pub mod fd;
 mod handle;
+mod send_only;
 #[cfg(feature = "tokio")]
 mod tokio;
 mod tracing;
@@ -14,6 +15,7 @@ pub use self::tracing::Tracing;
 pub use crate::socket::*;
 pub use application::Application;
 pub use handle::{Ext, Flags, Socket};
+pub use send_only::SendOnly;
 
 pub type ArcApplication = std::sync::Arc<dyn Application>;
 
