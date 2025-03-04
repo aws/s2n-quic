@@ -25,7 +25,7 @@ fn connection_limits() {
             assert_eq!(info.remote_address.port(), port);
             assert_eq!(*info.server_name.unwrap(), "localhost".into());
             assert_eq!(info.application_protocol, "h3");
-            limits.stream_batch_size(100);
+            limits.stream_batch_size(10);
         }
     }
 

@@ -481,4 +481,15 @@ mod tests {
         assert!(limits.with_bidirectional_remote_data_window(data).is_ok());
         assert!(limits.with_unidirectional_data_window(data).is_ok());
     }
+
+    // Limits can be updated through the UpdatableLimits wrapper
+    #[test]
+    fn updatable_limits() {
+        let mut limits = Limits::default();
+        assert_eq!(limits.stream_batch_size, 1);
+        let mut updatable_limits = UpdatableLimits::new(&mut limits);
+        let new_size = 10;
+        updatable_limits.stream_batch_size(new_size);
+        assert_eq!(limits.stream_batch_size, new_size);
+    }
 }
