@@ -433,7 +433,7 @@ impl<'a> UpdatableLimits<'a> {
         UpdatableLimits(limits)
     }
 
-    pub fn stream_batch_size(&mut self, size: u8) {
+    pub fn with_stream_batch_size(&mut self, size: u8) {
         self.0.stream_batch_size = size;
     }
 }
@@ -489,7 +489,7 @@ mod tests {
         assert_eq!(limits.stream_batch_size, 1);
         let mut updatable_limits = UpdatableLimits::new(&mut limits);
         let new_size = 10;
-        updatable_limits.stream_batch_size(new_size);
+        updatable_limits.with_stream_batch_size(new_size);
         assert_eq!(limits.stream_batch_size, new_size);
     }
 }
