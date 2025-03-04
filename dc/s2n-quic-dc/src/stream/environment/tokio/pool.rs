@@ -44,10 +44,12 @@ impl Config {
     pub fn new(map: Map) -> Self {
         Self {
             blocking: false,
+
             reuse_port: false,
+
             // TODO tune these defaults
             stream_queue: Capacity {
-                max: 4096,
+                max: u32::MAX as _,
                 initial: 256,
             },
 

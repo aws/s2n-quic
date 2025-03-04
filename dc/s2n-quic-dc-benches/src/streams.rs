@@ -8,22 +8,21 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-async fn copy_data(
-    input: &'static [u8],
-    a: impl AsyncWrite + Send + 'static,
-    b: impl AsyncRead + Send + 'static,
-) {
+const ITERATIONS: u64 = 120;
+static BUFFER: &[u8] = &[0x0; 1024 * 1024];
+
+async fn copy_data(a: impl AsyncWrite + Send + 'static, b: impl AsyncRead + Send + 'static) {
     let a = tokio::spawn(async move {
         tokio::pin!(a);
-        for _ in 0..30 {
-            a.write_all(input).await.unwrap();
+        for _ in 0..ITERATIONS {
+            a.write_all(BUFFER).await.unwrap();
         }
         a.shutdown().await.unwrap();
     });
 
     let b = tokio::spawn(async move {
         tokio::pin!(b);
-        let mut void = vec![0; 1024 * 1024];
+        let mut void = vec![0; BUFFER.len()];
         while b.read(&mut void[..]).await.unwrap() != 0 {
             // Read until EOF
         }
@@ -48,19 +47,19 @@ fn pair(
 pub fn benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("streams/throughput");
 
-    group.throughput(criterion::Throughput::Bytes(1024 * 1024 * 30));
+    group.throughput(criterion::Throughput::Bytes(
+        ITERATIONS * BUFFER.len() as u64,
+    ));
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
 
-    let buffer = &*vec![0x0; 1024 * 1024].leak();
-
     group.bench_function(criterion::BenchmarkId::new("duplex", ""), |b| {
         b.to_async(&rt).iter(move || async move {
             let (a, b) = tokio::io::duplex(1024 * 1024);
-            copy_data(buffer, a, b).await;
+            copy_data(a, b).await;
         });
     });
 
@@ -71,7 +70,7 @@ pub fn benchmarks(c: &mut Criterion) {
             let (a, b) = tokio::join!(TcpStream::connect(server_addr), async move {
                 server.accept().await.unwrap().0
             });
-            copy_data(buffer, a.unwrap(), b).await;
+            copy_data(a.unwrap(), b).await;
         });
     });
 
@@ -90,7 +89,7 @@ pub fn benchmarks(c: &mut Criterion) {
                             b
                         });
 
-                    copy_data(buffer, a, b).await;
+                    copy_data(a, b).await;
                 }
             });
         });
