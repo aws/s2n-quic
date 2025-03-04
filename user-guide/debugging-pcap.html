@@ -164,7 +164,7 @@
 <p>Since QUIC is an encrypted transport protocol, the payload of each packet is not readable in a standard packet capture. <code>s2n-quic</code> supports exporting the TLS session keys used by each QUIC connection so that the packet capture may be decrypted. Both the <code>s2n-tls</code> and <code>rustls</code> TLS providers support key logging through their associated builders:</p>
 <pre><pre class="playground"><code class="language-rust edition2021"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let tls = s2n_quic::provider::tls::default::Serverhell::builder()
+</span>let tls = s2n_quic::provider::tls::default::Server::builder()
     .with_certificate(CERT_PEM, KEY_PEM)?
     .with_key_logging()?  // enables key logging
     .build()?;
