@@ -32,23 +32,6 @@ pub trait Socket: 'static + Send + Sync {
     fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>>;
 
     #[inline]
-    fn poll_recv_desc(
-        &self,
-        cx: &mut Context,
-        desc: descriptor::Unfilled,
-    ) -> Poll<Result<descriptor::Segments, (descriptor::Unfilled, io::Error)>> {
-        let segments = desc.recv_with(|addr, cmsg, buffer| {
-            match self.poll_recv(cx, addr, cmsg, &mut [buffer]) {
-                Poll::Pending => Err(io::ErrorKind::WouldBlock.into()),
-                Poll::Ready(Ok(len)) => Ok(len),
-                Poll::Ready(Err(err)) => Err(err),
-            }
-        })?;
-
-        Ok(segments).into()
-    }
-
-    #[inline]
     fn poll_recv_buffer(
         &self,
         cx: &mut Context,

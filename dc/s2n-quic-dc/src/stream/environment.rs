@@ -3,7 +3,7 @@
 
 use crate::{
     clock, event,
-    stream::{runtime, socket, TransportFeatures},
+    stream::{recv, runtime, socket, TransportFeatures},
 };
 use core::future::Future;
 use s2n_quic_core::inet::SocketAddress;
@@ -41,7 +41,7 @@ pub trait Peer<E: Environment> {
 
     fn features(&self) -> TransportFeatures;
     fn with_source_control_port(&mut self, port: u16);
-    fn setup(self, env: &E) -> Result<SocketSet<Self::WorkerSocket>>;
+    fn setup(self, env: &E) -> Result<(SocketSet<Self::WorkerSocket>, recv::shared::RecvBuffer)>;
 }
 
 pub struct AcceptError<Peer> {

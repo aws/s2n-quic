@@ -319,17 +319,19 @@ impl WorkerState {
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
             let recv_buffer = recv::buffer::Either::A(recv_buffer);
 
+            let peer = env::TcpReregistered {
+                socket,
+                peer_addr: remote_address,
+                local_port: context.local_port,
+                recv_buffer,
+            };
+
             let stream_builder = match endpoint::accept_stream(
                 now,
                 &context.env,
-                env::TcpReregistered {
-                    socket,
-                    peer_addr: remote_address,
-                    local_port: context.local_port,
-                },
+                peer,
                 &initial_packet,
                 route_key,
-                recv_buffer,
                 &context.secrets,
                 context.subscriber.clone(),
                 subscriber_ctx,

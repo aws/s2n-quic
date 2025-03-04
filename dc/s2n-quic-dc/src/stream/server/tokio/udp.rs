@@ -116,13 +116,14 @@ where
         let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
         let recv_buffer = recv::buffer::Either::A(recv_buffer);
 
+        let peer = env::UdpOwned(remote_addr, recv_buffer);
+
         let stream = match endpoint::accept_stream(
             now,
             &self.env,
-            env::UdpUnbound(remote_addr),
+            peer,
             &packet,
             route_key,
-            recv_buffer,
             &self.secrets,
             self.subscriber.clone(),
             subscriber_ctx,

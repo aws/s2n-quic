@@ -37,7 +37,6 @@ pub fn open_stream<Env, P>(
     env: &Env,
     entry: map::Peer,
     peer: P,
-    recv_buffer: recv::shared::RecvBuffer,
     subscriber: Env::Subscriber,
     parameter_override: Option<&dyn Fn(dc::ApplicationParams) -> dc::ApplicationParams>,
 ) -> Result<application::Builder<Env::Subscriber>>
@@ -77,7 +76,6 @@ where
         crypto,
         entry.map(),
         parameters,
-        recv_buffer,
         endpoint::Type::Client,
         subscriber,
         subscriber_ctx,
@@ -91,7 +89,6 @@ pub fn accept_stream<Env, P>(
     mut peer: P,
     packet: &server::InitialPacket,
     route_key: VarInt,
-    recv_buffer: recv::shared::RecvBuffer,
     map: &Map,
     subscriber: Env::Subscriber,
     subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
@@ -141,7 +138,6 @@ where
         crypto,
         map,
         parameters,
-        recv_buffer,
         endpoint::Type::Server,
         subscriber,
         subscriber_ctx,
@@ -170,7 +166,6 @@ fn build_stream<Env, P>(
     crypto: secret::map::Bidirectional,
     map: &Map,
     parameters: dc::ApplicationParams,
-    recv_buffer: recv::shared::RecvBuffer,
     endpoint_type: endpoint::Type,
     subscriber: Env::Subscriber,
     subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
@@ -181,7 +176,7 @@ where
 {
     let features = peer.features();
 
-    let sockets = peer.setup(env)?;
+    let (sockets, recv_buffer) = peer.setup(env)?;
 
     // construct shared reader state
     let reader = recv::shared::State::new(stream_id, &parameters, features, recv_buffer);

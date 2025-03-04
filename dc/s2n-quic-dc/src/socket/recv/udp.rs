@@ -3,9 +3,9 @@
 
 use crate::{
     socket::recv::{descriptor, pool, router::Router},
-    stream::socket::fd::udp,
+    stream::socket::{fd::udp, Socket},
 };
-use std::{collections::VecDeque, net::UdpSocket};
+use std::{collections::VecDeque, io, os::fd::AsRawFd, task::Poll};
 
 pub struct Allocator {
     queue: VecDeque<pool::Pool>,
@@ -49,10 +49,10 @@ impl Allocator {
 }
 
 /// Receives packets from a blocking [`UdpSocket`] and dispatches into the provided [`Router`]
-pub fn blocking<R: Router>(socket: UdpSocket, mut alloc: Allocator, mut router: R) {
-    loop {
+pub fn blocking<S: AsRawFd, R: Router>(socket: S, mut alloc: Allocator, mut router: R) {
+    while router.is_open() {
         let mut unfilled = alloc.alloc();
-        loop {
+        while router.is_open() {
             let res = unfilled.recv_with(|addr, cmsg, buffer| {
                 udp::recv(&socket, addr, cmsg, &mut [buffer], Default::default())
             });
@@ -72,4 +72,47 @@ pub fn blocking<R: Router>(socket: UdpSocket, mut alloc: Allocator, mut router: 
             }
         }
     }
+}
+
+/// Receives packets from a blocking [`UdpSocket`] and dispatches into the provided [`Router`]
+pub async fn non_blocking<S: Socket, R: Router>(socket: S, mut alloc: Allocator, mut router: R) {
+    let mut pending = None;
+    core::future::poll_fn(move |cx| {
+        while router.is_open() {
+            let unfilled = pending.take().unwrap_or_else(|| alloc.alloc());
+
+            let res = unfilled.recv_with(|addr, cmsg, buffer| {
+                match socket.poll_recv(cx, addr, cmsg, &mut [buffer]) {
+                    Poll::Pending => Err(io::ErrorKind::WouldBlock.into()),
+                    Poll::Ready(Ok(len)) => Ok(len),
+                    Poll::Ready(Err(err)) => Err(err),
+                }
+            });
+
+            match res {
+                Ok(segments) => {
+                    for segment in segments {
+                        router.on_segment(segment);
+                    }
+
+                    // poll the socket again
+                    continue;
+                }
+                Err((desc, err)) => {
+                    // put the unfilled segment back in the pool
+                    pending = Some(desc);
+
+                    // if we got blocked then yield the future
+                    if err.kind() == io::ErrorKind::WouldBlock {
+                        return Poll::Pending;
+                    }
+
+                    tracing::error!("socket recv error: {err}");
+                }
+            }
+        }
+
+        Poll::Ready(())
+    })
+    .await;
 }

@@ -12,6 +12,7 @@ use core::task::{Context, Poll};
 use s2n_quic_core::ensure;
 use std::{collections::VecDeque, io};
 
+#[derive(Debug)]
 pub struct Channel {
     pending: VecDeque<Filled>,
     receiver: Receiver<Filled>,
