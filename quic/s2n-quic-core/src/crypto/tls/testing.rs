@@ -808,4 +808,6 @@ where
     fn waker(&self) -> &Waker {
         &self.waker
     }
+
+    fn on_application_context(&mut self, _context: Option<Box<dyn core::any::Any + Send + Sync>>) {}
 }
