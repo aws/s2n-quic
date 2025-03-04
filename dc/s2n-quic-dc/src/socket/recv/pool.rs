@@ -3,7 +3,7 @@
 
 use crate::{
     msg::addr::Addr,
-    socket::recv::descriptor::{Descriptor, DescriptorInner, FreeList, Memory, Unfilled},
+    socket::recv::descriptor::{Descriptor, DescriptorInner, FreeList, Unfilled},
 };
 use std::{
     alloc::Layout,
@@ -14,6 +14,8 @@ use std::{
 #[derive(Clone)]
 pub struct Pool {
     free: Arc<Free>,
+    max_packet_size: u16,
+    packet_count: usize,
 }
 
 impl Pool {
@@ -25,23 +27,44 @@ impl Pool {
     /// GRO is enabled, the `max_packet_size` should be set to `u16::MAX`.
     #[inline]
     pub fn new(max_packet_size: u16, packet_count: usize) -> Self {
-        let free = Arc::new(Free(Mutex::new(Vec::with_capacity(packet_count))));
+        let free = Free::new(packet_count);
+        let mut pool = Pool {
+            free,
+            max_packet_size,
+            packet_count,
+        };
+        pool.grow();
+        pool
+    }
 
-        let (region, layout) = Region::alloc(max_packet_size, packet_count);
+    #[inline]
+    pub fn alloc(&self) -> Option<Unfilled> {
+        self.free.alloc()
+    }
+
+    #[inline]
+    pub fn alloc_or_grow(&mut self) -> Unfilled {
+        loop {
+            if let Some(descriptor) = self.free.alloc() {
+                return descriptor;
+            }
+            self.grow();
+        }
+    }
+
+    #[inline(never)] // this should happen rarely
+    fn grow(&mut self) {
+        let (region, layout) = Region::alloc(self.max_packet_size, self.packet_count);
 
         let ptr = region.ptr;
         let packet = layout.packet;
         let addr_offset = layout.addr_offset;
         let packet_offset = layout.packet_offset;
         let max_packet_size = layout.max_packet_size;
-        let region = Box::new(region);
 
-        let memory = Memory::new(max_packet_size, Arc::downgrade(&free), region);
-        // we leak the memory pointer since it frees itself when the final reference is dropped
-        let memory = Box::leak(memory);
-        let memory = unsafe { NonNull::new_unchecked(memory) };
+        let mut pending = vec![];
 
-        for idx in 0..packet_count {
+        for idx in 0..self.packet_count {
             let offset = packet.size() * idx;
             unsafe {
                 let descriptor = ptr.as_ptr().add(offset).cast::<DescriptorInner>();
@@ -51,29 +74,30 @@ impl Pool {
                 // `data` pointer is already zeroed out with the initial allocation
                 // initialize the address
                 addr.write(Addr::default());
-                // initialize the descriptor - note that it is self-referential to `addr`, `data`, and `memory`
+                // initialize the descriptor - note that it is self-referential to `addr`, `data`, and `free`
                 // SAFETY: address, payload, and memory are all initialized
                 descriptor.write(DescriptorInner::new(
                     idx as _,
+                    max_packet_size,
                     NonNull::new_unchecked(addr),
                     NonNull::new_unchecked(data),
-                    memory,
+                    self.free.clone(),
                 ));
 
                 // push the descriptor into the free list
                 let descriptor = Descriptor::new(NonNull::new_unchecked(descriptor));
-                let descriptor = Unfilled::from_descriptor(descriptor);
-                free.0.lock().unwrap().push(descriptor);
+                pending.push(descriptor);
             }
         }
 
-        Self { free: free.clone() }
+        self.free.record_region(region, pending);
     }
+}
 
-    /// Allocates an [`Unfilled`] packet from the [`Pool`]
+impl Drop for Pool {
     #[inline]
-    pub fn alloc(&self) -> Option<Unfilled> {
-        self.free.alloc()
+    fn drop(&mut self) {
+        let _ = self.free.close();
     }
 }
 
@@ -118,7 +142,11 @@ impl Region {
         let packets = {
             // TODO use `packet.repeat(packet_count)` once stable
             // https://doc.rust-lang.org/stable/core/alloc/struct.Layout.html#method.repeat
-            Layout::from_size_align(packet.size() * packet_count, packet.align()).unwrap()
+            Layout::from_size_align(
+                packet.size().checked_mul(packet_count).unwrap(),
+                packet.align(),
+            )
+            .unwrap()
         };
 
         let ptr = unsafe {
@@ -159,21 +187,100 @@ impl Drop for Region {
 /// Note that this uses a [`Vec`] instead of [`std::collections::VecDeque`], which acts more
 /// like a stack than a queue. This is to prefer more-recently used descriptors which should
 /// hopefully reduce the number of cache misses.
-struct Free(Mutex<Vec<Unfilled>>);
+struct Free(Mutex<FreeInner>);
 
 impl Free {
     #[inline]
+    fn new(packet_count: usize) -> Arc<Self> {
+        let descriptors = Vec::with_capacity(packet_count);
+        let regions = Vec::with_capacity(1);
+        let inner = FreeInner {
+            descriptors,
+            regions,
+            total: 0,
+            open: true,
+        };
+        Arc::new(Self(Mutex::new(inner)))
+    }
+
+    #[inline]
     fn alloc(&self) -> Option<Unfilled> {
-        self.0.lock().unwrap().pop()
+        self.0
+            .lock()
+            .unwrap()
+            .descriptors
+            .pop()
+            .map(Unfilled::from_descriptor)
+    }
+
+    #[inline]
+    fn record_region(&self, region: Region, mut descriptors: Vec<Descriptor>) {
+        let mut inner = self.0.lock().unwrap();
+        inner.regions.push(region);
+        inner.total += descriptors.len();
+        inner.descriptors.append(&mut descriptors);
+        drop(inner);
+        drop(descriptors);
+    }
+
+    #[inline]
+    fn close(&self) -> Option<FreeInner> {
+        let mut inner = self.0.lock().unwrap();
+        inner.open = false;
+        inner.try_free()
     }
 }
 
 impl FreeList for Free {
     #[inline]
-    fn free(&self, descriptor: Descriptor) {
-        // convert it back to an `Unfilled` descriptor so the reference counting works
-        let descriptor = Unfilled::from_descriptor(descriptor);
-        self.0.lock().unwrap().push(descriptor);
+    fn free(&self, descriptor: Descriptor) -> Option<Box<dyn 'static + Send>> {
+        let mut inner = self.0.lock().unwrap();
+        inner.descriptors.push(descriptor);
+        if inner.open {
+            return None;
+        }
+        inner
+            .try_free()
+            .map(|to_free| Box::new(to_free) as Box<dyn 'static + Send>)
+    }
+}
+
+struct FreeInner {
+    descriptors: Vec<Descriptor>,
+    regions: Vec<Region>,
+    total: usize,
+    open: bool,
+}
+
+impl FreeInner {
+    #[inline(never)] // this is rarely called
+    fn try_free(&mut self) -> Option<Self> {
+        if self.descriptors.len() < self.total {
+            return None;
+        }
+
+        // move all of the allocations out of itself, since this is self-referential
+        Some(core::mem::replace(
+            self,
+            FreeInner {
+                descriptors: Vec::new(),
+                regions: Vec::new(),
+                total: 0,
+                open: false,
+            },
+        ))
+    }
+}
+
+impl Drop for FreeInner {
+    #[inline]
+    fn drop(&mut self) {
+        for descriptor in self.descriptors.drain(..) {
+            unsafe {
+                // SAFETY: the free list is closed and there are no outstanding descriptors
+                descriptor.drop_in_place();
+            }
+        }
     }
 }
 

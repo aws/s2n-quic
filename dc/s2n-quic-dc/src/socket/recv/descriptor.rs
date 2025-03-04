@@ -10,38 +10,19 @@ use std::{
     ptr::NonNull,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Weak,
+        Arc,
     },
 };
 use tracing::trace;
 
 /// Callback which releases a descriptor back into the free list
 pub(super) trait FreeList: 'static + Send + Sync {
-    fn free(&self, descriptor: Descriptor);
-}
-
-/// A handle to various parts for the descriptor group instance
-pub(super) struct Memory {
-    capacity: u16,
-    references: AtomicUsize,
-    free_list: Weak<dyn FreeList>,
-    #[allow(dead_code)]
-    region: Box<dyn 'static + Send + Sync>,
-}
-
-impl Memory {
-    pub(super) fn new<F: FreeList>(
-        capacity: u16,
-        free_list: Weak<F>,
-        region: Box<dyn 'static + Send + Sync>,
-    ) -> Box<Self> {
-        Box::new(Self {
-            capacity,
-            references: AtomicUsize::new(0),
-            free_list,
-            region,
-        })
-    }
+    /// Frees a descriptor back into the free list
+    ///
+    /// Once the free list has been closed and all descriptors returned, the `free` function
+    /// should return an object that can be dropped to release all of the memory associated
+    /// with the descriptor pool.
+    fn free(&self, descriptor: Descriptor) -> Option<Box<dyn 'static + Send>>;
 }
 
 /// A pointer to a single descriptor in a group
@@ -64,8 +45,18 @@ impl Descriptor {
         }
     }
 
+    /// # Safety
+    ///
+    /// This should only be called once the caller can guarantee the descriptor is no longer
+    /// used.
     #[inline]
-    pub(super) fn id(&self) -> u64 {
+    pub(super) unsafe fn drop_in_place(&self) {
+        let inner = self.inner();
+        Arc::decrement_strong_count(Arc::as_ptr(&inner.free_list));
+    }
+
+    #[inline]
+    pub(super) fn id(&self) -> u32 {
         self.inner().id
     }
 
@@ -88,14 +79,8 @@ impl Descriptor {
     fn upgrade(&self) {
         let inner = self.inner();
         trace!(upgrade = inner.id);
-        inner.references.fetch_add(1, Ordering::Relaxed);
-        unsafe {
-            inner
-                .memory
-                .as_ref()
-                .references
-                .fetch_add(1, Ordering::Relaxed);
-        }
+        // we can use relaxed since this only happens after it is filled, which was done by a single owner
+        inner.references.store(1, Ordering::Relaxed);
     }
 
     #[inline]
@@ -128,22 +113,18 @@ impl Descriptor {
 
         core::sync::atomic::fence(Ordering::Acquire);
 
-        let mem = inner.free(self);
-
+        let storage = inner.free(self);
         trace!(free_desc = inner.id, state = %"filled");
-
-        drop(mem);
+        drop(storage);
     }
 
     #[inline]
     pub(super) fn drop_unfilled(&self) {
         let inner = self.inner();
-        inner.references.store(0, Ordering::Release);
-        let mem = inner.free(self);
-
+        let storage = inner.free(self);
         trace!(free_desc = inner.id, state = %"unfilled");
-
-        drop(mem);
+        let _ = inner;
+        drop(storage);
     }
 }
 
@@ -155,7 +136,9 @@ pub(super) struct DescriptorInner {
     ///
     /// This can be used by the pool implementation to map the descriptor to an internal
     /// detail, e.g. in AF_XDP it passes around UMEM offsets.
-    id: u64,
+    id: u32,
+    /// The maximum capacity for this descriptor
+    capacity: u16,
     /// The pointer to the descriptor address
     address: NonNull<Addr>,
     /// The pointer to the descriptor payload
@@ -165,8 +148,8 @@ pub(super) struct DescriptorInner {
     /// This refcount allows for splitting descriptors into multiple segments
     /// and then correctly freeing the descriptor once the last segment is dropped.
     references: AtomicUsize,
-    /// A reference back to the memory region that owns the descriptor
-    memory: NonNull<Memory>,
+    /// A reference back to the free list
+    free_list: Arc<dyn FreeList>,
 }
 
 impl DescriptorInner {
@@ -179,59 +162,29 @@ impl DescriptorInner {
     ///
     /// `memory` must be initialized.
     pub(super) unsafe fn new(
-        id: u64,
+        id: u32,
+        capacity: u16,
         address: NonNull<Addr>,
         payload: NonNull<u8>,
-        memory: NonNull<Memory>,
+        free_list: Arc<dyn FreeList>,
     ) -> Self {
         Self {
             id,
+            capacity,
             address,
             payload,
             references: AtomicUsize::new(0),
-            memory,
+            free_list,
         }
-    }
-
-    #[inline]
-    fn capacity(&self) -> u16 {
-        unsafe { self.memory.as_ref().capacity }
     }
 
     /// Frees the descriptor back into the pool
     #[inline]
-    fn free(&self, desc: &Descriptor) -> Option<Box<Memory>> {
-        let memory = unsafe { self.memory.as_ref() };
-        let mem_refs = memory.references.fetch_sub(1, Ordering::Release);
-        debug_assert_ne!(mem_refs, 0, "reference count underflow");
-
-        // if the free_list is still active (the allocator hasn't dropped) then just push the id
-        // The `upgrade` acts as a lock for freeing the `Memory` instance, in the case that the
-        // free list has been dropped by the allocator.
-        if let Some(free_list) = memory.free_list.upgrade() {
-            free_list.free(Descriptor {
-                ptr: desc.ptr,
-                phantom: PhantomData,
-            });
-            return None;
-        }
-
-        // the free_list no longer active and we need to clean up the memory
-
-        // based on the implementation in:
-        // https://github.com/rust-lang/rust/blob/28b83ee59698ae069f5355b8e03f976406f410f5/library/alloc/src/sync.rs#L2551
-        if mem_refs != 1 {
-            trace!(memory_draining = mem_refs - 1, desc = self.id);
-            return None;
-        }
-
-        core::sync::atomic::fence(Ordering::Acquire);
-
-        trace!(memory_free = ?self.memory.as_ptr(), desc = self.id);
-
-        // return the boxed memory rather than free it here - this works around
-        // any stacked borrowing issues found by Miri
-        Some(unsafe { Box::from_raw(self.memory.as_ptr()) })
+    fn free(&self, desc: &Descriptor) -> Option<Box<dyn 'static + Send>> {
+        self.free_list.free(Descriptor {
+            ptr: desc.ptr,
+            phantom: PhantomData,
+        })
     }
 }
 
@@ -256,7 +209,6 @@ impl Unfilled {
     /// Creates an [`Unfilled`] descriptor from a raw [`Descriptor`].
     #[inline]
     pub(super) fn from_descriptor(desc: Descriptor) -> Self {
-        desc.upgrade();
         Self { desc: Some(desc) }
     }
 
@@ -269,7 +221,7 @@ impl Unfilled {
         let desc = self.desc.take().expect("invalid state");
         let inner = desc.inner();
         let addr = unsafe { &mut *inner.address.as_ptr() };
-        let capacity = inner.capacity() as usize;
+        let capacity = inner.capacity as usize;
         let data = unsafe {
             // SAFETY: a pool implementation is required to initialize all payload bytes
             core::slice::from_raw_parts_mut(inner.payload.as_ptr(), capacity)
@@ -290,6 +242,8 @@ impl Unfilled {
 
         let segment_len = cmsg.segment_len();
         let ecn = cmsg.ecn();
+        // increment the reference count since it is now filled and has a reference
+        desc.upgrade();
         let desc = Filled {
             desc,
             offset: 0,
