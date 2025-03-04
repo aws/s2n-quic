@@ -9,7 +9,7 @@ use crate::{
     stream::{
         endpoint,
         environment::tokio::{self as env, Environment},
-        server,
+        recv, server,
         socket::Socket,
     },
 };
@@ -313,6 +313,8 @@ impl WorkerState {
             let subscriber_ctx = subscriber_ctx.take().unwrap();
             let (socket, remote_address) = stream.take().unwrap();
 
+            let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
+
             let stream_builder = match endpoint::accept_stream(
                 now,
                 &context.env,
@@ -322,8 +324,7 @@ impl WorkerState {
                     local_port: context.local_port,
                 },
                 &initial_packet,
-                None,
-                Some(recv_buffer),
+                recv_buffer,
                 &context.secrets,
                 context.subscriber.clone(),
                 subscriber_ctx,
