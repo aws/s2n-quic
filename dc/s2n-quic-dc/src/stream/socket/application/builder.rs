@@ -34,24 +34,6 @@ mod tokio_impl {
         }
     }
 
-    pub struct UdpPair {
-        pub reader: Arc<std::net::UdpSocket>,
-        pub writer: Arc<std::net::UdpSocket>,
-    }
-
-    impl Builder for UdpPair {
-        #[inline]
-        fn build(self: Box<Self>) -> io::Result<ArcApplication> {
-            let read = AsyncFd::new(self.reader)?;
-            let read = Tracing(read);
-            let write = AsyncFd::new(self.writer)?;
-            let write = Tracing(write);
-            let v = application::Pair { read, write };
-            let v = Arc::new(v);
-            Ok(v)
-        }
-    }
-
     impl Builder for std::net::TcpStream {
         #[inline]
         fn build(self: Box<Self>) -> io::Result<ArcApplication> {

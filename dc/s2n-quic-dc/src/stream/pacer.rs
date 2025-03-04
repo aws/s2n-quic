@@ -14,7 +14,7 @@ pub struct Naive {
 impl Naive {
     #[inline]
     pub fn poll_pacing<C: Clock + ?Sized>(&mut self, cx: &mut Context, clock: &C) -> Poll<()> {
-        if self.transmissions_without_yield < 5 {
+        if self.transmissions_without_yield < 50 {
             trace!("pass");
             self.transmissions_without_yield += 1;
             return Poll::Ready(());

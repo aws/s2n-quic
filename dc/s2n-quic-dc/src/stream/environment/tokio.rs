@@ -226,7 +226,8 @@ where
 
     #[inline]
     fn spawn_reader<F: 'static + Send + std::future::Future<Output = ()>>(&self, f: F) {
-        self.reader_rt.spawn(f);
+        // self.reader_rt.spawn(f);
+        tokio::spawn(f);
     }
 
     #[inline]
@@ -236,6 +237,7 @@ where
 
     #[inline]
     fn spawn_writer<F: 'static + Send + std::future::Future<Output = ()>>(&self, f: F) {
-        self.writer_rt.spawn(f);
+        // self.writer_rt.spawn(f);
+        tokio::spawn(f);
     }
 }

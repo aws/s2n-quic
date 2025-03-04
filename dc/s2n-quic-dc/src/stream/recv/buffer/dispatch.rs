@@ -42,7 +42,6 @@ pub trait Dispatch {
                         %decoder_error,
                         segment_len
                     );
-
                     break;
                 }
             };
