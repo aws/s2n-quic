@@ -69,4 +69,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
-check-cfg = ['cfg(kani)', 'cfg(todo)']
+check-cfg = ['cfg(fuzzing)', 'cfg(kani)', 'cfg(todo)']
