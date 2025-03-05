@@ -79,7 +79,7 @@ impl Descriptor {
     /// * The [`Descriptor`] needs to be exclusively owned
     /// * The provided `len` cannot exceed the allocated `capacity`
     #[inline]
-    unsafe fn to_filled(self, len: u16, ecn: ExplicitCongestionNotification) -> Filled {
+    unsafe fn into_filled(self, len: u16, ecn: ExplicitCongestionNotification) -> Filled {
         let inner = self.inner();
         trace!(fill = inner.id, len, ?ecn);
         debug_assert!(len <= inner.capacity);
@@ -268,7 +268,7 @@ impl Unfilled {
         let desc = unsafe {
             // SAFETY: the descriptor is exclusively owned here and the returned len does not exceed
             //         the allowed capacity
-            desc.to_filled(len, cmsg.ecn())
+            desc.into_filled(len, cmsg.ecn())
         };
         let segments = Segments {
             descriptor: Some(desc),
