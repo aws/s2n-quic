@@ -79,7 +79,7 @@ OPTIONS=(
 
 mkdir -p src/wireshark_sys/
 
-RUST_TARGET=$(rustup show | awk 'NF' | awk 'END{print $2}')
+RUST_TARGET=$(rustc -vV | grep release: | awk '{ print $2 }')
 
 # This list is filtered to roughly what our current usage requires.
 # It's possible there's a better way to do this -- some of the Wireshark

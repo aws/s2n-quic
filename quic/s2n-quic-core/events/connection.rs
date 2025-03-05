@@ -437,6 +437,14 @@ struct DcStateChanged {
     state: DcState,
 }
 
+#[event("transport:dc_path_created")]
+/// The DC path has been created
+struct DcPathCreated<'a> {
+    /// This is the dc::Path struct, it's just type-erased. But if an event subscriber knows the
+    /// type they can downcast.
+    path: &'a (dyn core::any::Any + Send + 'static),
+}
+
 // NOTE - This event MUST come last, since connection-level aggregation depends on it
 #[event("connectivity:connection_closed")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.3

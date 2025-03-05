@@ -70,6 +70,7 @@ pub struct Context<R: Recorder> {
     pacing_rate_updated: u64,
     bbr_state_changed: u64,
     dc_state_changed: u64,
+    dc_path_created: u64,
     connection_closed: u64,
 }
 impl<S: event::Subscriber> event::Subscriber for Subscriber<S>
@@ -128,6 +129,7 @@ where
             pacing_rate_updated: 0,
             bbr_state_changed: 0,
             dc_state_changed: 0,
+            dc_path_created: 0,
             connection_closed: 0,
         }
     }
@@ -620,6 +622,17 @@ where
             .on_dc_state_changed(&mut context.recorder, meta, event);
     }
     #[inline]
+    fn on_dc_path_created(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::DcPathCreated,
+    ) {
+        context.dc_path_created += 1;
+        self.subscriber
+            .on_dc_path_created(&mut context.recorder, meta, event);
+    }
+    #[inline]
     fn on_connection_closed(
         &mut self,
         context: &mut Self::ConnectionContext,
@@ -735,6 +748,8 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("bbr_state_changed", self.bbr_state_changed as _);
         self.recorder
             .increment_counter("dc_state_changed", self.dc_state_changed as _);
+        self.recorder
+            .increment_counter("dc_path_created", self.dc_path_created as _);
         self.recorder
             .increment_counter("connection_closed", self.connection_closed as _);
     }

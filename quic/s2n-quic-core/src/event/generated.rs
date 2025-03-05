@@ -2655,6 +2655,25 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " The DC path has been created"]
+    pub struct DcPathCreated<'a> {
+        #[doc = " This is the dc::Path struct, it's just type-erased. But if an event subscriber knows the"]
+        #[doc = " type they can downcast."]
+        pub path: &'a (dyn core::any::Any + Send + 'static),
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for DcPathCreated<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DcPathCreated");
+            fmt.field("path", &self.path);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for DcPathCreated<'a> {
+        const NAME: &'static str = "transport:dc_path_created";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Connection closed"]
     pub struct ConnectionClosed {
         pub error: crate::connection::Error,
@@ -4170,6 +4189,17 @@ pub mod tracing {
             let id = context.id();
             let api::DcStateChanged { state } = event;
             tracing :: event ! (target : "dc_state_changed" , parent : id , tracing :: Level :: DEBUG , { state = tracing :: field :: debug (state) });
+        }
+        #[inline]
+        fn on_dc_path_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::DcPathCreated,
+        ) {
+            let id = context.id();
+            let api::DcPathCreated { path } = event;
+            tracing :: event ! (target : "dc_path_created" , parent : id , tracing :: Level :: DEBUG , { path = tracing :: field :: debug (path) });
         }
         #[inline]
         fn on_connection_closed(
@@ -6334,6 +6364,22 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " The DC path has been created"]
+    pub struct DcPathCreated<'a> {
+        #[doc = " This is the dc::Path struct, it's just type-erased. But if an event subscriber knows the"]
+        #[doc = " type they can downcast."]
+        pub path: &'a (dyn core::any::Any + Send + 'static),
+    }
+    impl<'a> IntoEvent<api::DcPathCreated<'a>> for DcPathCreated<'a> {
+        #[inline]
+        fn into_event(self) -> api::DcPathCreated<'a> {
+            let DcPathCreated { path } = self;
+            api::DcPathCreated {
+                path: path.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Connection closed"]
     pub struct ConnectionClosed {
         pub error: crate::connection::Error,
@@ -7353,6 +7399,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `DcPathCreated` event is triggered"]
+        #[inline]
+        fn on_dc_path_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::DcPathCreated,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `ConnectionClosed` event is triggered"]
         #[inline]
         fn on_connection_closed(
@@ -8039,6 +8097,16 @@ mod traits {
             (self.1).on_dc_state_changed(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_dc_path_created(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::DcPathCreated,
+        ) {
+            (self.0).on_dc_path_created(&mut context.0, meta, event);
+            (self.1).on_dc_path_created(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_connection_closed(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -8473,6 +8541,8 @@ mod traits {
         fn on_bbr_state_changed(&mut self, event: builder::BbrStateChanged);
         #[doc = "Publishes a `DcStateChanged` event to the publisher's subscriber"]
         fn on_dc_state_changed(&mut self, event: builder::DcStateChanged);
+        #[doc = "Publishes a `DcPathCreated` event to the publisher's subscriber"]
+        fn on_dc_path_created(&mut self, event: builder::DcPathCreated);
         #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
         fn on_connection_closed(&mut self, event: builder::ConnectionClosed);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
@@ -8924,6 +8994,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_dc_path_created(&mut self, event: builder::DcPathCreated) {
+            let event = event.into_event();
+            self.subscriber
+                .on_dc_path_created(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_connection_closed(&mut self, event: builder::ConnectionClosed) {
             let event = event.into_event();
             self.subscriber
@@ -9230,6 +9309,7 @@ pub mod testing {
         pub pacing_rate_updated: u64,
         pub bbr_state_changed: u64,
         pub dc_state_changed: u64,
+        pub dc_path_created: u64,
         pub connection_closed: u64,
         pub version_information: u64,
         pub endpoint_packet_sent: u64,
@@ -9321,6 +9401,7 @@ pub mod testing {
                 pacing_rate_updated: 0,
                 bbr_state_changed: 0,
                 dc_state_changed: 0,
+                dc_path_created: 0,
                 connection_closed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
@@ -9965,6 +10046,20 @@ pub mod testing {
                 self.output.push(out);
             }
         }
+        fn on_dc_path_created(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::DcPathCreated,
+        ) {
+            self.dc_path_created += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
         fn on_connection_closed(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -10177,6 +10272,7 @@ pub mod testing {
         pub pacing_rate_updated: u64,
         pub bbr_state_changed: u64,
         pub dc_state_changed: u64,
+        pub dc_path_created: u64,
         pub connection_closed: u64,
         pub version_information: u64,
         pub endpoint_packet_sent: u64,
@@ -10258,6 +10354,7 @@ pub mod testing {
                 pacing_rate_updated: 0,
                 bbr_state_changed: 0,
                 dc_state_changed: 0,
+                dc_path_created: 0,
                 connection_closed: 0,
                 version_information: 0,
                 endpoint_packet_sent: 0,
@@ -10793,6 +10890,15 @@ pub mod testing {
         }
         fn on_dc_state_changed(&mut self, event: builder::DcStateChanged) {
             self.dc_state_changed += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_dc_path_created(&mut self, event: builder::DcPathCreated) {
+            self.dc_path_created += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

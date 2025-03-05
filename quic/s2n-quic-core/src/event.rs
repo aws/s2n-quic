@@ -82,6 +82,15 @@ impl<'a> IntoEvent<&'a str> for &'a str {
     }
 }
 
+impl<'a> IntoEvent<&'a (dyn core::any::Any + Send + 'static)>
+    for &'a (dyn core::any::Any + Send + 'static)
+{
+    #[inline]
+    fn into_event(self) -> Self {
+        self
+    }
+}
+
 impl<T> IntoEvent<RangeInclusive<T>> for RangeInclusive<T> {
     #[inline]
     fn into_event(self) -> RangeInclusive<T> {

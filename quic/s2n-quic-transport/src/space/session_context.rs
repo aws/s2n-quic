@@ -31,7 +31,7 @@ use s2n_quic_core::{
     dc::{self, Endpoint as _},
     event::{
         self,
-        builder::{DcState, DcStateChanged},
+        builder::{DcPathCreated, DcState, DcStateChanged},
         IntoEvent,
     },
     packet::number::PacketNumberSpace,
@@ -474,6 +474,12 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 Config::ENDPOINT_TYPE.into_event(),
             );
             let dc_path = self.dc.new_path(&conn_info);
+
+            // &mut would be ideal but events currently need to be `Clone`, and we're OK with
+            // pushing interior mutability for now. dc is all unstable anyway.
+            self.publisher
+                .on_dc_path_created(DcPathCreated { path: &dc_path });
+
             crate::dc::Manager::new(dc_path, dc_version, self.publisher)
         } else {
             if Config::DcEndpoint::ENABLED {
