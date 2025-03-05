@@ -21,7 +21,7 @@ cfg-if = "1"
 futures = "0.3"
 http = "1.0"
 humansize = "2"
-litemap = "=0.7.4" # newer versions require rust 1.81
+litemap = "=0.7.5" # newer versions require rust 1.81
 lru = "0.13"
 rand = "0.9"
 s2n-codec = { path = "../../common/s2n-codec" }
