@@ -12,12 +12,12 @@ use crate::{
             tokio::{self as env, Environment},
             Environment as _,
         },
-        server,
+        recv, server,
         socket::{Ext as _, Socket},
     },
 };
 use core::ops::ControlFlow;
-use s2n_quic_core::{inet::SocketAddress, time::Clock};
+use s2n_quic_core::{inet::SocketAddress, time::Clock, varint::VarInt};
 use std::io;
 use tracing::debug;
 
@@ -111,13 +111,17 @@ where
 
         let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
 
+        // TODO allocate a queue for this stream
+        let queue_id = VarInt::ZERO;
+        let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
+
         let stream = match endpoint::accept_stream(
             now,
             &self.env,
             env::UdpUnbound(remote_addr),
             &packet,
-            Some(handshake),
-            Some(&mut self.recv_buffer),
+            queue_id,
+            recv_buffer,
             &self.secrets,
             self.subscriber.clone(),
             subscriber_ctx,

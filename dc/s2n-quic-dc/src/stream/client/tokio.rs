@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    event,
+    event, msg,
     path::secret,
     stream::{
         application::Stream,
         endpoint,
         environment::tokio::{self as env, Environment},
+        recv,
         socket::Protocol,
     },
 };
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
 
 /// Connects using the UDP transport layer
@@ -33,6 +34,7 @@ where
         env,
         peer,
         env::UdpUnbound(acceptor_addr.into()),
+        recv_buffer(),
         subscriber,
         None,
     )?;
@@ -54,6 +56,7 @@ pub async fn connect_tcp<H, Sub>(
     acceptor_addr: SocketAddr,
     env: &Environment<Sub>,
     subscriber: Sub,
+    linger: Option<Duration>,
 ) -> io::Result<Stream<Sub>>
 where
     H: core::future::Future<Output = io::Result<secret::map::Peer>>,
@@ -64,7 +67,10 @@ where
 
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
-    let _ = socket.set_linger(Some(core::time::Duration::ZERO));
+
+    if linger.is_some() {
+        let _ = socket.set_linger(linger);
+    }
 
     // if the acceptor_ip isn't known, then ask the socket to resolve it for us
     let peer_addr = if acceptor_addr.ip().is_unspecified() {
@@ -83,6 +89,7 @@ where
             peer_addr,
             local_port,
         },
+        recv_buffer(),
         subscriber,
         None,
     )?;
@@ -122,6 +129,7 @@ where
             peer_addr,
             local_port,
         },
+        recv_buffer(),
         subscriber,
         None,
     )?;
@@ -148,4 +156,10 @@ where
         .write_from(&mut s2n_quic_core::buffer::reader::storage::Empty)
         .await
         .map(|_| ())
+}
+
+#[inline]
+fn recv_buffer() -> recv::shared::RecvBuffer {
+    // TODO replace this with a parameter once everything is in place
+    recv::buffer::Local::new(msg::recv::Message::new(9000), None)
 }

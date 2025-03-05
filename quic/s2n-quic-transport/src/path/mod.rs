@@ -13,8 +13,10 @@ use crate::{
 };
 use s2n_quic_core::{
     counter::{Counter, Saturating},
-    event::{self, IntoEvent},
-    frame, packet, random,
+    event::{self, builder::DatagramDropReason, IntoEvent},
+    frame,
+    inet::DatagramInfo,
+    packet, random,
     time::{timer, Timestamp},
 };
 
@@ -227,6 +229,54 @@ impl<Config: endpoint::Config> Path<Config> {
             (true, false) => AmplificationOutcome::InactivePathUnblocked,
             _ => AmplificationOutcome::Unchanged,
         }
+    }
+
+    #[inline]
+    pub fn on_datagram_received(
+        &mut self,
+        path_handle: &Config::PathHandle,
+        datagram: &DatagramInfo,
+        valid_initial_received: bool,
+    ) -> Result<AmplificationOutcome, DatagramDropReason> {
+        let source_cid_changed = datagram
+            .source_connection_id
+            .is_some_and(|scid| scid != self.peer_connection_id && valid_initial_received);
+
+        if source_cid_changed {
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
+            //# Once a client has received a valid Initial packet from the server, it MUST
+            //# discard any subsequent packet it receives on that connection with a
+            //# different Source Connection ID.
+
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
+            //# Any further changes to the Destination Connection ID are only
+            //# permitted if the values are taken from NEW_CONNECTION_ID frames; if
+            //# subsequent Initial packets include a different Source Connection ID,
+            //# they MUST be discarded.
+
+            return Err(DatagramDropReason::InvalidSourceConnectionId);
+        }
+
+        // Update the address if it was resolved
+        //
+        // NOTE: We don't update the server address since this would cause the client to drop
+        // packets from the server.
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
+        //# If a client receives packets from an unknown server address, the client MUST discard these packets.
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-9
+        //# If the peer sent the disable_active_migration transport parameter, an endpoint also MUST NOT send
+        //# packets (including probing packets; see Section 9.1) from a different local address to the address
+        //# the peer used during the handshake, unless the endpoint has acted on a preferred_address transport
+        //# parameter from the peer.
+        if Config::ENDPOINT_TYPE.is_client() {
+            self.handle.maybe_update(path_handle);
+        }
+
+        let amplification_outcome = self.on_bytes_received(datagram.payload_len);
+
+        Ok(amplification_outcome)
     }
 
     #[inline]

@@ -169,14 +169,12 @@ event_recorder!(
 use s2n_quic_core::event::api::DatagramDropReason;
 #[derive(Debug)]
 pub struct DatagramDroppedEvent {
-    pub remote_addr: SocketAddr,
     pub reason: DatagramDropReason,
 }
 
 impl<'a> From<&events::DatagramDropped<'a>> for DatagramDroppedEvent {
     fn from(value: &events::DatagramDropped<'a>) -> Self {
         DatagramDroppedEvent {
-            remote_addr: value.remote_addr.to_string().parse().unwrap(),
             reason: value.reason.clone(),
         }
     }
@@ -189,5 +187,16 @@ event_recorder!(
     DatagramDroppedEvent,
     |event: &events::DatagramDropped, storage: &mut Vec<DatagramDroppedEvent>| {
         storage.push(event.into());
+    }
+);
+
+event_recorder!(
+    HandshakeRemoteAddressChangeObserved,
+    HandshakeRemoteAddressChangeObserved,
+    on_handshake_remote_address_change_observed,
+    SocketAddr,
+    |event: &events::HandshakeRemoteAddressChangeObserved, storage: &mut Vec<SocketAddr>| {
+        let addr = event.remote_addr.to_string().parse().unwrap();
+        storage.push(addr);
     }
 );

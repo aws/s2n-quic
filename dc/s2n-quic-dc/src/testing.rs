@@ -1,6 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+pub use bach::{ext, rand};
+
+pub mod task {
+    pub use bach::task::*;
+    pub use tokio::task::yield_now;
+}
+
 pub fn assert_debug<T: core::fmt::Debug>(_v: &T) {}
 pub fn assert_send<T: Send>(_v: &T) {}
 pub fn assert_sync<T: Sync>(_v: &T) {}
@@ -9,6 +16,10 @@ pub fn assert_async_read<T: tokio::io::AsyncRead>(_v: &T) {}
 pub fn assert_async_write<T: tokio::io::AsyncWrite>(_v: &T) {}
 
 pub fn init_tracing() {
+    if cfg!(any(miri, fuzzing)) {
+        return;
+    }
+
     use std::sync::Once;
 
     static TRACING: Once = Once::new();
@@ -38,4 +49,11 @@ pub fn init_tracing() {
             .with_test_writer()
             .init();
     });
+}
+
+/// Runs a function in a deterministic, discrete event simulation environment
+pub fn sim(f: impl FnOnce()) {
+    init_tracing();
+
+    bach::environment::default::Runtime::new().run(f);
 }

@@ -68,8 +68,14 @@ impl Client {
 
         match server.protocol {
             Protocol::Tcp => {
-                stream_client::connect_tcp(handshake, server.local_addr, &self.env, subscriber)
-                    .await
+                stream_client::connect_tcp(
+                    handshake,
+                    server.local_addr,
+                    &self.env,
+                    subscriber,
+                    None,
+                )
+                .await
             }
             Protocol::Udp => {
                 stream_client::connect_udp(handshake, server.local_addr, &self.env, subscriber)
@@ -181,6 +187,8 @@ mod drop_handle {
 }
 
 pub mod server {
+    use std::time::Duration;
+
     use super::*;
 
     #[derive(Clone)]
@@ -201,6 +209,7 @@ pub mod server {
         flavor: accept::Flavor,
         protocol: Protocol,
         map_capacity: usize,
+        linger: Option<Duration>,
         subscriber: event::testing::Subscriber,
     }
 
@@ -211,6 +220,7 @@ pub mod server {
                 flavor: accept::Flavor::default(),
                 protocol: Protocol::Tcp,
                 map_capacity: 16,
+                linger: None,
                 subscriber: event::testing::Subscriber::no_snapshot(),
             }
         }
@@ -255,6 +265,11 @@ pub mod server {
             self
         }
 
+        pub fn linger(mut self, linger: Duration) -> Self {
+            self.linger = Some(linger);
+            self
+        }
+
         pub fn subscriber(mut self, subscriber: event::testing::Subscriber) -> Self {
             self.subscriber = subscriber;
             self
@@ -266,6 +281,7 @@ pub mod server {
                 flavor,
                 protocol,
                 map_capacity,
+                linger,
                 subscriber,
             } = self;
 
@@ -291,7 +307,7 @@ pub mod server {
                     let socket = tokio::net::TcpListener::from_std(socket).unwrap();
 
                     let acceptor = stream_server::tcp::Acceptor::new(
-                        0, socket, &sender, &env, &map, backlog, flavor, subscriber,
+                        0, socket, &sender, &env, &map, backlog, flavor, linger, subscriber,
                     );
                     let acceptor = drop_handle_receiver.wrap(acceptor.run());
                     let acceptor = acceptor.instrument(tracing::info_span!("tcp"));

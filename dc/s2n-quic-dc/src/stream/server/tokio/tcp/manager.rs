@@ -153,6 +153,7 @@ where
         &mut self,
         remote_address: SocketAddress,
         stream: W::Stream,
+        linger: Option<Duration>,
         cx: &mut W::Context,
         connection_context: W::ConnectionContext,
         publisher: &Pub,
@@ -179,6 +180,7 @@ where
         self.inner.workers[idx].worker.replace(
             remote_address,
             stream,
+            linger,
             connection_context,
             publisher,
             clock,
@@ -377,6 +379,7 @@ pub trait Worker {
         &mut self,
         remote_address: SocketAddress,
         stream: Self::Stream,
+        linger: Option<Duration>,
         connection_context: Self::ConnectionContext,
         publisher: &Pub,
         clock: &C,

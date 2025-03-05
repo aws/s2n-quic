@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
+#[cfg(feature = "alloc")]
+use crate::application::ServerName;
 use crate::{
     ack,
     event::{api::SocketAddress, IntoEvent},
@@ -12,6 +13,8 @@ use crate::{
         MaxDatagramFrameSize, MaxIdleTimeout, MigrationSupport, TransportParameters,
     },
 };
+#[cfg(feature = "alloc")]
+use bytes::Bytes;
 use core::time::Duration;
 use s2n_codec::decoder_invariant;
 
@@ -49,6 +52,30 @@ impl<'a> ConnectionInfo<'a> {
     pub fn new(remote_address: &'a inet::SocketAddress) -> Self {
         Self {
             remote_address: remote_address.into_event(),
+        }
+    }
+}
+
+#[non_exhaustive]
+#[derive(Debug)]
+#[cfg(feature = "alloc")]
+pub struct HandshakeInfo<'a> {
+    pub remote_address: SocketAddress<'a>,
+    pub server_name: Option<&'a ServerName>,
+    pub application_protocol: &'a Bytes,
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> HandshakeInfo<'a> {
+    pub fn new(
+        remote_address: &'a inet::SocketAddress,
+        server_name: Option<&'a ServerName>,
+        application_protocol: &'a Bytes,
+    ) -> HandshakeInfo<'a> {
+        Self {
+            remote_address: remote_address.into_event(),
+            server_name,
+            application_protocol,
         }
     }
 }
@@ -397,9 +424,32 @@ impl Limits {
     }
 }
 
+#[must_use]
+#[derive(Debug)]
+pub struct UpdatableLimits<'a>(&'a mut Limits);
+
+impl<'a> UpdatableLimits<'a> {
+    pub fn new(limits: &'a mut Limits) -> UpdatableLimits<'a> {
+        UpdatableLimits(limits)
+    }
+
+    pub fn with_stream_batch_size(&mut self, size: u8) {
+        self.0.stream_batch_size = size;
+    }
+}
+
 /// Creates limits for a given connection
 pub trait Limiter: 'static + Send {
     fn on_connection(&mut self, info: &ConnectionInfo) -> Limits;
+
+    /// Provides another opportunity to change connection limits with information
+    /// from the handshake
+    #[inline]
+    #[cfg(feature = "alloc")]
+    fn on_post_handshake(&mut self, info: &HandshakeInfo, limits: &mut UpdatableLimits) {
+        let _ = info;
+        let _ = limits;
+    }
 }
 
 /// Implement Limiter for a Limits struct
@@ -407,6 +457,8 @@ impl Limiter for Limits {
     fn on_connection(&mut self, _into: &ConnectionInfo) -> Limits {
         *self
     }
+    #[cfg(feature = "alloc")]
+    fn on_post_handshake(&mut self, _info: &HandshakeInfo, _limits: &mut UpdatableLimits) {}
 }
 
 #[cfg(test)]
@@ -428,5 +480,16 @@ mod tests {
         assert!(limits.with_bidirectional_local_data_window(data).is_ok());
         assert!(limits.with_bidirectional_remote_data_window(data).is_ok());
         assert!(limits.with_unidirectional_data_window(data).is_ok());
+    }
+
+    // Limits can be updated through the UpdatableLimits wrapper
+    #[test]
+    fn updatable_limits() {
+        let mut limits = Limits::default();
+        assert_eq!(limits.stream_batch_size, 1);
+        let mut updatable_limits = UpdatableLimits::new(&mut limits);
+        let new_size = 10;
+        updatable_limits.with_stream_batch_size(new_size);
+        assert_eq!(limits.stream_batch_size, new_size);
     }
 }

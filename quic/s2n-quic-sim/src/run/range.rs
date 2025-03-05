@@ -47,14 +47,14 @@ impl<T: PartialEq + fmt::Display> fmt::Display for CliRange<T> {
 
 impl<T> CliRange<T>
 where
-    T: Copy + PartialOrd + ::rand::distributions::uniform::SampleUniform,
+    T: Copy + PartialOrd + ::bolero_generator::bounded::BoundedValue,
 {
     pub fn gen(&self) -> T {
         if self.start == self.end {
             return self.start;
         }
 
-        rand::gen_range(self.start..self.end)
+        rand::Any::any(&(self.start..self.end))
     }
 }
 
@@ -67,7 +67,7 @@ impl CliRange<humantime::Duration> {
             return Duration::from_nanos(start as _);
         }
 
-        let nanos = rand::gen_range(start..end);
+        let nanos = rand::Any::any(&(start..end));
         Duration::from_nanos(nanos as _)
     }
 }

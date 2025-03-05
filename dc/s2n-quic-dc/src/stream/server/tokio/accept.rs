@@ -8,7 +8,7 @@ use crate::{
         application::{Builder as StreamBuilder, Stream},
         environment::{tokio::Environment, Environment as _},
     },
-    sync::channel,
+    sync::mpmc as channel,
 };
 use core::time::Duration;
 use s2n_quic_core::time::Clock;

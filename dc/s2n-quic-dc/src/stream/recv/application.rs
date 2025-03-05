@@ -203,7 +203,7 @@ where
 
         let shared = &self.shared;
         let sockets = &self.sockets;
-        let transport_features = sockets.read_application().features();
+        let transport_features = sockets.features();
 
         let mut reader = shared.receiver.application_guard(
             self.ack_mode,
@@ -263,8 +263,6 @@ where
                 _ => {}
             }
 
-            let before_len = reader.recv_buffer.payload_len();
-
             let recv = reader.poll_fill_recv_buffer(
                 cx,
                 self.sockets.read_application(),
@@ -272,19 +270,18 @@ where
                 &self.shared.subscriber,
             );
 
-            match Self::handle_socket_result(cx, &mut reader.receiver, &mut self.timer, recv) {
-                Poll::Ready(res) => res?,
-                // if we've written at least one byte then return that amount
-                Poll::Pending if out_buf.written_len() > 0 => break,
-                Poll::Pending => return Poll::Pending,
-            }
+            let recv_len =
+                match Self::handle_socket_result(cx, &mut reader.receiver, &mut self.timer, recv) {
+                    Poll::Ready(res) => res?,
+                    // if we've written at least one byte then return that amount
+                    Poll::Pending if out_buf.written_len() > 0 => break,
+                    Poll::Pending => return Poll::Pending,
+                };
 
             // clear the forced receive after performing it once
             force_recv = false;
 
-            let after_len = reader.recv_buffer.payload_len();
-
-            if before_len == after_len {
+            if recv_len == 0 {
                 if transport_features.is_stream() {
                     // if we got a 0-length read then the stream was closed - notify the receiver
                     reader.receiver.on_transport_close();
@@ -303,8 +300,8 @@ where
         cx: &mut Context,
         receiver: &mut recv::state::State,
         timer: &mut Option<Timer>,
-        res: Poll<io::Result<()>>,
-    ) -> Poll<io::Result<()>> {
+        res: Poll<io::Result<usize>>,
+    ) -> Poll<io::Result<usize>> {
         if let Poll::Ready(res) = res {
             return res.into();
         }
@@ -320,7 +317,8 @@ where
             ready!(timer.poll_ready(cx));
 
             // if the timer expired then keep going, even if the recv buffer is empty
-            Ok(()).into()
+            // we return `1` to make the caller think that something was written to the buffer
+            Ok(1).into()
         } else {
             timer.cancel();
             Poll::Pending

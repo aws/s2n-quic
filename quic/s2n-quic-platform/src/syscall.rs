@@ -66,15 +66,14 @@ pub trait UnixMessage: crate::message::Message {
     );
 }
 
-pub fn udp_socket(addr: std::net::SocketAddr) -> io::Result<Socket> {
+pub fn udp_socket(addr: std::net::SocketAddr, only_v6: bool) -> io::Result<Socket> {
     let domain = Domain::for_address(addr);
     let socket_type = Type::DGRAM;
     let protocol = Some(Protocol::UDP);
 
     let socket = Socket::new(domain, socket_type, protocol)?;
 
-    // allow ipv4 to also connect - ignore the error if it fails
-    let _ = socket.set_only_v6(false);
+    let _ = socket.set_only_v6(only_v6);
 
     Ok(socket)
 }
@@ -84,6 +83,7 @@ pub fn bind_udp<A: std::net::ToSocketAddrs>(
     addr: A,
     reuse_address: bool,
     reuse_port: bool,
+    only_v6: bool,
 ) -> io::Result<Socket> {
     let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
         std::io::Error::new(
@@ -91,7 +91,7 @@ pub fn bind_udp<A: std::net::ToSocketAddrs>(
             "the provided bind address was empty",
         )
     })?;
-    let socket = udp_socket(addr)?;
+    let socket = udp_socket(addr, only_v6)?;
 
     socket.set_reuse_address(reuse_address)?;
 

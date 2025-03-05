@@ -2,4 +2,4 @@
 source: quic/s2n-quic-core/src/event/snapshot.rs
 input_file: quic/s2n-quic-transport/src/path/manager/tests.rs
 ---
-
+HandshakeRemoteAddressChangeObserved { local_addr: 0.0.0.0:0, remote_addr: 127.0.0.1:8001, initial_remote_addr: 0.0.0.0:0 }

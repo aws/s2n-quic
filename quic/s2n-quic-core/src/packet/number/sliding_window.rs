@@ -475,7 +475,7 @@ mod test {
     #[cfg_attr(miri, ignore)] // this test is too expensive for miri
     fn insert_test() {
         // Make sure the two packet numbers are not the same
-        let gen = gen::<(VarInt, VarInt)>().filter_gen(|(a, b)| a != b);
+        let gen = produce::<(VarInt, VarInt)>().filter_gen(|(a, b)| a != b);
 
         check!()
             .with_generator(gen)

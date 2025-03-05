@@ -90,13 +90,8 @@ impl Map {
         self.store.contains(peer)
     }
 
-    /// Check whether we would like to (re-)handshake with this peer.
-    ///
-    /// Note that this is distinct from `contains`, we may already have *some* credentials for a
-    /// peer but still be interested in handshaking (e.g., due to periodic refresh of the
-    /// credentials).
-    pub fn needs_handshake(&self, peer: &SocketAddr) -> bool {
-        self.store.needs_handshake(peer)
+    pub fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>) {
+        self.store.register_request_handshake(cb);
     }
 
     /// Gets the [`Peer`] entry for the given address
@@ -188,8 +183,6 @@ impl Map {
         let mut stateless_reset = [0; control::TAG_LEN];
         aws_lc_rs::rand::fill(&mut stateless_reset).unwrap();
 
-        let receiver_shared = receiver::Shared::new();
-
         let mut ids = Vec::with_capacity(peers.len());
         for (idx, (ciphersuite, version, peer)) in peers.into_iter().enumerate() {
             secret[..8].copy_from_slice(&(idx as u64).to_be_bytes()[..]);
@@ -206,7 +199,7 @@ impl Map {
                 peer,
                 secret,
                 sender,
-                receiver_shared.clone().new_receiver(),
+                receiver::State::new(),
                 dc::testing::TEST_APPLICATION_PARAMS,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
             );
@@ -226,7 +219,7 @@ impl Map {
     #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
     pub fn test_insert(&self, peer: SocketAddr) {
-        let receiver = self.store.receiver().clone().new_receiver();
+        let receiver = super::receiver::State::new();
         let entry = Entry::fake(peer, Some(receiver));
         self.store.test_insert(entry);
     }
@@ -259,7 +252,7 @@ impl Map {
                 peer_addr,
                 secret,
                 sender,
-                map.store.receiver().clone().new_receiver(),
+                super::receiver::State::new(),
                 dc::testing::TEST_APPLICATION_PARAMS,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
             );

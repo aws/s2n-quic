@@ -87,4 +87,6 @@ pub struct Parameters<'a, Cfg: endpoint::Config> {
     pub dc_endpoint: &'a mut Cfg::DcEndpoint,
     /// The event subscriber for the endpoint
     pub event_subscriber: &'a mut Cfg::EventSubscriber,
+    /// The connection limits provider
+    pub limits_endpoint: &'a mut Cfg::ConnectionLimits,
 }

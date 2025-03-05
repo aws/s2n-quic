@@ -142,15 +142,17 @@ async fn runtime<A: ToSocketAddrs>(
     receive_addr: A,
     send_addr: Option<A>,
 ) -> io::Result<(super::Io, SocketAddress)> {
-    let rx_socket = syscall::bind_udp(receive_addr, false, false)?;
+    let mut io_builder = Io::builder();
+
+    let rx_socket = syscall::bind_udp(receive_addr, false, false, false)?;
     rx_socket.set_nonblocking(true)?;
     let rx_socket: std::net::UdpSocket = rx_socket.into();
     let rx_addr = rx_socket.local_addr()?;
 
-    let mut io_builder = Io::builder().with_rx_socket(rx_socket)?;
+    io_builder = io_builder.with_rx_socket(rx_socket)?;
 
     if let Some(tx_addr) = send_addr {
-        let tx_socket = syscall::bind_udp(tx_addr, false, false)?;
+        let tx_socket = syscall::bind_udp(tx_addr, false, false, false)?;
         tx_socket.set_nonblocking(true)?;
         let tx_socket: std::net::UdpSocket = tx_socket.into();
         io_builder = io_builder.with_tx_socket(tx_socket)?
@@ -259,4 +261,24 @@ async fn ipv6_two_socket_test() -> io::Result<()> {
         }
         other => other,
     }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn only_v6_test() -> io::Result<()> {
+    // Socket always set only_v6 to true if it binds
+    // to a specific IPV6 address. We use ANY address
+    // to test for only_v6.
+    static IPV6_ANY_ADDRESS: &str = "[::]:0";
+
+    let mut only_v6 = false;
+    let socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
+    assert!(!socket.only_v6()?);
+
+    only_v6 = true;
+    let socket = syscall::bind_udp(IPV6_ANY_ADDRESS, false, false, only_v6)?;
+    assert!(socket.only_v6()?);
+
+    Ok(())
 }

@@ -191,7 +191,7 @@ where
         {
             if let Ok(Some(mut recv)) = self.shared.receiver.worker_try_lock() {
                 // check to see if we have anything in the reassembler as well
-                let is_buffer_empty = recv.recv_buffer.is_empty() && recv.reassembler.is_empty();
+                let is_buffer_empty = recv.payload_is_empty() && recv.reassembler.is_empty();
 
                 let error = if !is_buffer_empty || is_panicking {
                     // we still had data in our buffer so notify the sender
@@ -296,7 +296,7 @@ where
             };
 
             // make sure to process any left over packets, if any
-            if !recv.recv_buffer.is_empty() {
+            if !recv.payload_is_empty() {
                 *should_transmit |= recv.process_recv_buffer(
                     &mut buffer::writer::storage::Empty,
                     &self.shared,

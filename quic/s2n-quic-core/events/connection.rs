@@ -284,6 +284,16 @@ struct DatagramDropped<'a> {
     reason: DatagramDropReason,
 }
 
+#[event("transport:handshake_remote_address_change_observed")]
+/// The remote address was changed before the handshake was complete
+struct HandshakeRemoteAddressChangeObserved<'a> {
+    local_addr: SocketAddress<'a>,
+    /// The newly observed remote address
+    remote_addr: SocketAddress<'a>,
+    /// The remote address established from the initial packet
+    initial_remote_addr: SocketAddress<'a>,
+}
+
 #[event("connectivity:connection_id_updated")]
 //= https://tools.ietf.org/id/draft-marx-qlog-event-definitions-quic-h3-02#5.1.4
 /// ConnectionId updated
@@ -425,6 +435,14 @@ struct BbrStateChanged {
 struct DcStateChanged {
     #[nominal_counter("state")]
     state: DcState,
+}
+
+#[event("transport:dc_path_created")]
+/// The DC path has been created
+struct DcPathCreated<'a> {
+    /// This is the dc::Path struct, it's just type-erased. But if an event subscriber knows the
+    /// type they can downcast.
+    path: &'a (dyn core::any::Any + Send + 'static),
 }
 
 // NOTE - This event MUST come last, since connection-level aggregation depends on it

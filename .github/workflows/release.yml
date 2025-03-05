@@ -28,7 +28,7 @@ jobs:
           submodules: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.8.0
+        uses: docker/setup-buildx-action@v3.10.0
 
       - name: Compute tags
         id: tags
@@ -46,7 +46,7 @@ jobs:
           fi
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
 
-      - uses: aws-actions/configure-aws-credentials@v4.0.3
+      - uses: aws-actions/configure-aws-credentials@v4.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCEcrRole

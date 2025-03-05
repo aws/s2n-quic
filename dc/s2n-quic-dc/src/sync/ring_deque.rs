@@ -5,6 +5,7 @@ use s2n_quic_core::ensure;
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
+    task::{Context, Poll, Waker},
 };
 
 #[cfg(test)]
@@ -20,11 +21,11 @@ pub enum Priority {
     Optional,
 }
 
-pub struct RingDeque<T> {
-    inner: Arc<Mutex<Inner<T>>>,
+pub struct RingDeque<T, W = ()> {
+    inner: Arc<Mutex<Inner<T, W>>>,
 }
 
-impl<T> Clone for RingDeque<T> {
+impl<T, W> Clone for RingDeque<T, W> {
     #[inline]
     fn clone(&self) -> Self {
         Self {
@@ -33,12 +34,23 @@ impl<T> Clone for RingDeque<T> {
     }
 }
 
-#[allow(dead_code)] // TODO remove this once the module is public
-impl<T> RingDeque<T> {
+impl<T, W: Default + RecvWaker> RingDeque<T, W> {
     #[inline]
     pub fn new(capacity: usize) -> Self {
+        let waker = W::default();
+        Self::with_waker(capacity, waker)
+    }
+}
+
+impl<T, W: RecvWaker> RingDeque<T, W> {
+    #[inline]
+    pub fn with_waker(capacity: usize, recv_waker: W) -> Self {
         let queue = VecDeque::with_capacity(capacity);
-        let inner = Inner { open: true, queue };
+        let inner = Inner {
+            open: true,
+            queue,
+            recv_waker,
+        };
         let inner = Arc::new(Mutex::new(inner));
         RingDeque { inner }
     }
@@ -54,6 +66,11 @@ impl<T> RingDeque<T> {
         };
 
         inner.queue.push_back(value);
+        let waker = inner.recv_waker.take();
+        drop(inner);
+        if let Some(waker) = waker {
+            waker.wake();
+        }
 
         Ok(prev)
     }
@@ -69,8 +86,37 @@ impl<T> RingDeque<T> {
         };
 
         inner.queue.push_front(value);
+        let waker = inner.recv_waker.take();
+        drop(inner);
+        if let Some(waker) = waker {
+            waker.wake();
+        }
 
         Ok(prev)
+    }
+
+    #[inline]
+    pub fn poll_swap(&self, cx: &mut Context, out: &mut VecDeque<T>) -> Poll<Result<(), Closed>> {
+        debug_assert!(out.is_empty());
+        let mut inner = self.lock()?;
+        if inner.queue.is_empty() {
+            inner.recv_waker.update(cx);
+            Poll::Pending
+        } else {
+            core::mem::swap(&mut inner.queue, out);
+            Ok(()).into()
+        }
+    }
+
+    #[inline]
+    pub fn poll_pop_back(&self, cx: &mut Context) -> Poll<Result<T, Closed>> {
+        let mut inner = self.lock()?;
+        if let Some(item) = inner.queue.pop_back() {
+            Ok(item).into()
+        } else {
+            inner.recv_waker.update(cx);
+            Poll::Pending
+        }
     }
 
     #[inline]
@@ -101,6 +147,17 @@ impl<T> RingDeque<T> {
             Ok(inner.queue.pop_back())
         } else {
             Ok(None)
+        }
+    }
+
+    #[inline]
+    pub fn poll_pop_front(&self, cx: &mut Context) -> Poll<Result<T, Closed>> {
+        let mut inner = self.lock()?;
+        if let Some(item) = inner.queue.pop_front() {
+            Ok(item).into()
+        } else {
+            inner.recv_waker.update(cx);
+            Poll::Pending
         }
     }
 
@@ -139,18 +196,23 @@ impl<T> RingDeque<T> {
     pub fn close(&self) -> Result<(), Closed> {
         let mut inner = self.lock()?;
         inner.open = false;
+        let waker = inner.recv_waker.take();
+        drop(inner);
+        if let Some(waker) = waker {
+            waker.wake();
+        }
         Ok(())
     }
 
     #[inline]
-    fn lock(&self) -> Result<std::sync::MutexGuard<Inner<T>>, Closed> {
+    fn lock(&self) -> Result<std::sync::MutexGuard<Inner<T, W>>, Closed> {
         let inner = self.inner.lock().unwrap();
         ensure!(inner.open, Err(Closed));
         Ok(inner)
     }
 
     #[inline]
-    fn try_lock(&self) -> Result<Option<std::sync::MutexGuard<Inner<T>>>, Closed> {
+    fn try_lock(&self) -> Result<Option<std::sync::MutexGuard<Inner<T, W>>>, Closed> {
         use std::sync::TryLockError;
         let inner = match self.inner.try_lock() {
             Ok(inner) => inner,
@@ -162,7 +224,53 @@ impl<T> RingDeque<T> {
     }
 }
 
-struct Inner<T> {
+struct Inner<T, W> {
     open: bool,
     queue: VecDeque<T>,
+    recv_waker: W,
+}
+
+/// An interface for storing a waker in the synchronized queue
+///
+/// This can be used for implementing single consumer queues without
+/// additional machinery for storing wakers.
+pub trait RecvWaker {
+    /// Takes the current waker and returns it, if set
+    ///
+    /// This is to avoid calling `wake` while holding the lock on the queue
+    /// to avoid contention.
+    fn take(&mut self) -> Option<Waker>;
+    fn update(&mut self, cx: &mut core::task::Context);
+}
+
+impl RecvWaker for () {
+    #[inline(always)]
+    fn take(&mut self) -> Option<Waker> {
+        None
+    }
+
+    #[inline(always)]
+    fn update(&mut self, _cx: &mut core::task::Context) {
+        panic!("polling is disabled");
+    }
+}
+
+impl RecvWaker for Option<Waker> {
+    #[inline(always)]
+    fn take(&mut self) -> Option<Waker> {
+        self.take()
+    }
+
+    #[inline(always)]
+    fn update(&mut self, cx: &mut core::task::Context) {
+        let new_waker = cx.waker();
+        match self {
+            Some(waker) => {
+                if !waker.will_wake(new_waker) {
+                    *self = Some(new_waker.clone());
+                }
+            }
+            None => *self = Some(new_waker.clone()),
+        }
+    }
 }
