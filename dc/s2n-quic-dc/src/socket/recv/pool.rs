@@ -155,7 +155,7 @@ impl Region {
             // ensure that the allocation is zeroed out so we don't have to worry about MaybeUninit
             std::alloc::alloc_zeroed(packets)
         };
-        let ptr = NonNull::new(ptr).expect("failed to allocate memory");
+        let ptr = NonNull::new(ptr).unwrap_or_else(|| std::alloc::handle_alloc_error(packets));
 
         let region = Self {
             ptr,
@@ -219,6 +219,9 @@ impl Free {
         inner.regions.push(region);
         inner.total += descriptors.len();
         inner.descriptors.append(&mut descriptors);
+        // Even though the `descriptors` is now empty (`len=0`), it still owns
+        // capacity and will need to be freed. Drop the lock before interacting
+        // with the global allocator.
         drop(inner);
         drop(descriptors);
     }

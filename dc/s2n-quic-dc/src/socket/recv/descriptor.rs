@@ -21,16 +21,16 @@ pub(super) trait FreeList: 'static + Send + Sync {
     ///
     /// Once the free list has been closed and all descriptors returned, the `free` function
     /// should return an object that can be dropped to release all of the memory associated
-    /// with the descriptor pool.
+    /// with the descriptor pool. This works around any issues around the "Stacked Borrows"
+    /// model by deferring freeing memory borrowed by `self`.
     fn free(&self, descriptor: Descriptor) -> Option<Box<dyn 'static + Send>>;
 }
 
 /// A pointer to a single descriptor in a group
 ///
 /// Fundamentally, this is similar to something like `Arc<DescriptorInner>`. However,
-/// it doesn't use its own allocation for the Arc layout, and instead embeds the reference
-/// counts in the descriptor data. This avoids allocating a new `Arc` every time a packet
-/// is received and instead allows the descriptor to be reused.
+/// unlike [`Arc`] which frees back to the global allocator, a Descriptor deallocates into
+/// the backing [`FreeList`].
 pub(super) struct Descriptor {
     ptr: NonNull<DescriptorInner>,
     phantom: PhantomData<DescriptorInner>,
@@ -51,8 +51,7 @@ impl Descriptor {
     /// used.
     #[inline]
     pub(super) unsafe fn drop_in_place(&self) {
-        let inner = self.inner();
-        Arc::decrement_strong_count(Arc::as_ptr(&inner.free_list));
+        core::ptr::drop_in_place(self.ptr.as_ptr());
     }
 
     #[inline]
@@ -75,12 +74,25 @@ impl Descriptor {
         self.inner().payload
     }
 
+    /// # Safety
+    ///
+    /// * The [`Descriptor`] needs to be exclusively owned
+    /// * The provided `len` cannot exceed the allocated `capacity`
     #[inline]
-    fn upgrade(&self) {
+    unsafe fn to_filled(self, len: u16, ecn: ExplicitCongestionNotification) -> Filled {
         let inner = self.inner();
-        trace!(upgrade = inner.id);
+        trace!(fill = inner.id, len, ?ecn);
+        debug_assert!(len <= inner.capacity);
+
         // we can use relaxed since this only happens after it is filled, which was done by a single owner
         inner.references.store(1, Ordering::Relaxed);
+
+        Filled {
+            desc: self,
+            offset: 0,
+            len,
+            ecn,
+        }
     }
 
     #[inline]
@@ -98,8 +110,12 @@ impl Descriptor {
         }
     }
 
+    /// # Safety
+    ///
+    /// * The descriptor must be in a filled state.
+    /// * After calling this method, the descriptor handle should not be used
     #[inline]
-    fn drop_filled(&self) {
+    unsafe fn drop_filled(&self) {
         let inner = self.inner();
         let desc_ref = inner.references.fetch_sub(1, Ordering::Release);
         debug_assert_ne!(desc_ref, 0, "reference count underflow");
@@ -118,8 +134,12 @@ impl Descriptor {
         drop(storage);
     }
 
+    /// # Safety
+    ///
+    /// * The descriptor must be in an unfilled state.
+    /// * After calling this method, the descriptor handle should not be used
     #[inline]
-    pub(super) fn drop_unfilled(&self) {
+    unsafe fn drop_unfilled(&self) {
         let inner = self.inner();
         let storage = inner.free(self);
         trace!(free_desc = inner.id, state = %"unfilled");
@@ -179,8 +199,13 @@ impl DescriptorInner {
     }
 
     /// Frees the descriptor back into the pool
+    ///
+    /// # Safety
+    ///
+    /// * The descriptor must not be referenced (`references == 0`)
     #[inline]
-    fn free(&self, desc: &Descriptor) -> Option<Box<dyn 'static + Send>> {
+    unsafe fn free(&self, desc: &Descriptor) -> Option<Box<dyn 'static + Send>> {
+        debug_assert_eq!(desc.inner().references.load(Ordering::Relaxed), 0);
         self.free_list.free(Descriptor {
             ptr: desc.ptr,
             phantom: PhantomData,
@@ -240,19 +265,14 @@ impl Unfilled {
             }
         };
 
-        let segment_len = cmsg.segment_len();
-        let ecn = cmsg.ecn();
-        // increment the reference count since it is now filled and has a reference
-        desc.upgrade();
-        let desc = Filled {
-            desc,
-            offset: 0,
-            len,
-            ecn,
+        let desc = unsafe {
+            // SAFETY: the descriptor is exclusively owned here and the returned len does not exceed
+            //         the allowed capacity
+            desc.to_filled(len, cmsg.ecn())
         };
         let segments = Segments {
             descriptor: Some(desc),
-            segment_len,
+            segment_len: cmsg.segment_len(),
         };
         Ok(segments)
     }
@@ -263,7 +283,10 @@ impl Drop for Unfilled {
     fn drop(&mut self) {
         if let Some(desc) = self.desc.take() {
             // put the descriptor back in the pool if it wasn't filled
-            desc.drop_unfilled();
+            unsafe {
+                // SAFETY: the descriptor is in the `unfilled` state and no longer used
+                desc.drop_unfilled();
+            }
         }
     }
 }
@@ -372,7 +395,10 @@ impl Filled {
         self.offset += at;
         self.len -= at;
 
-        // update the reference counts for the descriptor
+        // Update the reference counts for the descriptor.
+        //
+        // Even if one of the lengths is set to 0, we still need to increment the
+        // reference count, since the descriptor can still access the `remote_address`.
         let desc = self.desc.clone_filled();
 
         Self {
@@ -411,7 +437,10 @@ impl Drop for Filled {
     fn drop(&mut self) {
         // decrement the reference count, which may put the descriptor back into the pool once
         // it reaches 0
-        self.desc.drop_filled()
+        unsafe {
+            // SAFETY: the descriptor is in the `filled` state and the handle is no longer used
+            self.desc.drop_filled()
+        }
     }
 }
 
