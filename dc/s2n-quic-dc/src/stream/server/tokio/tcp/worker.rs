@@ -315,7 +315,7 @@ impl WorkerState {
             let (socket, remote_address) = stream.take().unwrap();
 
             // TCP doesn't use the route key so just pick 0
-            let route_key = VarInt::ZERO;
+            let queue_id = VarInt::ZERO;
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
 
             let stream_builder = match endpoint::accept_stream(
@@ -327,7 +327,7 @@ impl WorkerState {
                     local_port: context.local_port,
                 },
                 &initial_packet,
-                route_key,
+                queue_id,
                 recv_buffer,
                 &context.secrets,
                 context.subscriber.clone(),

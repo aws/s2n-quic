@@ -111,8 +111,8 @@ where
 
         let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
 
-        // TODO allocate a route key for this stream
-        let route_key = VarInt::ZERO;
+        // TODO allocate a queue for this stream
+        let queue_id = VarInt::ZERO;
         let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
 
         let stream = match endpoint::accept_stream(
@@ -120,7 +120,7 @@ where
             &self.env,
             env::UdpUnbound(remote_addr),
             &packet,
-            route_key,
+            queue_id,
             recv_buffer,
             &self.secrets,
             self.subscriber.clone(),

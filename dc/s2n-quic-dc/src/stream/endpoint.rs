@@ -53,7 +53,7 @@ where
 
     let stream_id = packet::stream::Id {
         // the client starts with routing to 0 until the server updates the value
-        route_key: VarInt::ZERO,
+        queue_id: VarInt::ZERO,
         is_reliable: true,
         is_bidirectional: true,
     };
@@ -90,7 +90,7 @@ pub fn accept_stream<Env, P>(
     env: &Env,
     mut peer: P,
     packet: &server::InitialPacket,
-    route_key: VarInt,
+    queue_id: VarInt,
     recv_buffer: recv::shared::RecvBuffer,
     map: &Map,
     subscriber: Env::Subscriber,
@@ -127,7 +127,7 @@ where
 
     let stream_id = packet::stream::Id {
         // select our own route key for this stream
-        route_key,
+        queue_id,
         // inherit the rest of the parameters from the client
         ..packet.stream_id
     };
