@@ -94,8 +94,8 @@ fn check_stream_parse() {
                     .map(|v| Field::Integer(v.get() as u64))
             );
             assert_eq!(
-                tracker.remove(fields.stream_id),
-                Field::Integer(u64::from(packet.stream_id.key_id))
+                tracker.remove(fields.queue_id),
+                Field::Integer(u64::from(packet.stream_id.queue_id))
             );
             assert_eq!(
                 tracker.remove(fields.is_reliable),

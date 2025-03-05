@@ -51,7 +51,7 @@ pub struct Registration {
 
     pub is_bidirectional: i32,
     pub is_reliable: i32,
-    pub stream_id: i32,
+    pub queue_id: i32,
     pub relative_packet_number: i32,
     pub stream_offset: i32,
     pub final_offset: i32,
@@ -416,8 +416,8 @@ fn init() -> Registration {
             )
             .with_mask(0x2)
             .register(),
-        stream_id: protocol
-            .field(c"Stream ID", c"dcquic.stream_id", UINT64, BASE_DEC, c"")
+        queue_id: protocol
+            .field(c"Route Key", c"dcquic.queue_id", UINT64, BASE_DEC, c"")
             .register(),
         relative_packet_number: protocol
             .field(

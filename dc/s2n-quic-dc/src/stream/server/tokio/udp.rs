@@ -17,7 +17,7 @@ use crate::{
     },
 };
 use core::ops::ControlFlow;
-use s2n_quic_core::{inet::SocketAddress, time::Clock};
+use s2n_quic_core::{inet::SocketAddress, time::Clock, varint::VarInt};
 use std::io;
 use tracing::debug;
 
@@ -111,6 +111,8 @@ where
 
         let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
 
+        // TODO allocate a queue for this stream
+        let queue_id = VarInt::ZERO;
         let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
 
         let stream = match endpoint::accept_stream(
@@ -118,6 +120,7 @@ where
             &self.env,
             env::UdpUnbound(remote_addr),
             &packet,
+            queue_id,
             recv_buffer,
             &self.secrets,
             self.subscriber.clone(),
