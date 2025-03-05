@@ -28,7 +28,7 @@ use std::{
     },
 };
 
-pub type RecvBuffer = recv::buffer::Local;
+pub type RecvBuffer = recv::buffer::Either<recv::buffer::Local, recv::buffer::Channel>;
 
 /// Who will send ACKs?
 #[derive(Clone, Copy, Debug, Default)]
