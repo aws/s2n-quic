@@ -175,7 +175,7 @@ pub(super) struct DescriptorInner {
 impl DescriptorInner {
     /// # Safety
     ///
-    /// `address` must be initialized.
+    /// `address` must be a valid pointer (i.e., safe to create `&Addr` from it with lifetime bounded by the `Arc<dyn FreeList>`)
     ///
     /// `payload` must point to a valid region of memory that is at least `capacity` bytes
     /// long. Additionally it must be initialized to valid memory.
