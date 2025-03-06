@@ -20,6 +20,7 @@ use rand::Rng as _;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, varint::VarInt};
 use std::{
+    any::Any,
     net::SocketAddr,
     sync::{
         atomic::{AtomicU32, AtomicU8, Ordering},
@@ -31,8 +32,10 @@ use std::{
 #[cfg(test)]
 mod tests;
 
+pub type ApplicationData = Arc<dyn Any + Send + Sync>;
+
 #[derive(Debug)]
-pub(super) struct Entry {
+pub struct Entry {
     creation_time: Instant,
     rehandshake_delta_secs: AtomicU32,
     peer: SocketAddr,
@@ -44,6 +47,7 @@ pub(super) struct Entry {
     // we store this as a u8 to allow the cleaner to separately "take" accessed for id and addr
     // maps while not having two writes and wasting an extra byte of space.
     accessed: AtomicU8,
+    application_data: ApplicationData,
 }
 
 impl SizeOf for Entry {
@@ -58,6 +62,7 @@ impl SizeOf for Entry {
             receiver,
             parameters,
             accessed,
+            application_data,
         } = self;
         creation_time.size()
             + rehandshake_delta_secs.size()
@@ -68,6 +73,13 @@ impl SizeOf for Entry {
             + receiver.size()
             + parameters.size()
             + accessed.size()
+            + application_data.size()
+    }
+}
+
+impl SizeOf for ApplicationData {
+    fn size(&self) -> usize {
+        std::mem::size_of_val(self)
     }
 }
 
@@ -82,6 +94,7 @@ impl Entry {
         receiver: receiver::State,
         parameters: dc::ApplicationParams,
         rehandshake_time: Duration,
+        application_data: ApplicationData,
     ) -> Self {
         // clamp max datagram size to a well-known value
         parameters
@@ -99,6 +112,7 @@ impl Entry {
             receiver,
             parameters,
             accessed: AtomicU8::new(0),
+            application_data,
         };
         entry.rehandshake_time_reschedule(rehandshake_time);
         entry
@@ -123,6 +137,7 @@ impl Entry {
             receiver,
             dc::testing::TEST_APPLICATION_PARAMS,
             dc::testing::TEST_REHANDSHAKE_PERIOD,
+            Arc::new(()),
         ))
     }
 
@@ -286,6 +301,10 @@ impl Entry {
 
     pub fn control_sealer(&self) -> crate::crypto::awslc::seal::control::Secret {
         self.secret.control_sealer()
+    }
+
+    pub fn application_data(&self) -> &ApplicationData {
+        &self.application_data
     }
 }
 

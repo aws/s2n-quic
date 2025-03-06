@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::Entry;
+use super::{entry::ApplicationData, Entry};
 use crate::{
     credentials::{Credentials, Id},
     packet::{secret_control as control, Packet, WireVersion},
@@ -101,4 +101,17 @@ pub trait Store: 'static + Send + Sync {
 
         Some(state.clone())
     }
+
+    #[allow(clippy::type_complexity)]
+    fn register_make_application_data(
+        &self,
+        cb: Box<
+            dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData + Send + Sync,
+        >,
+    );
+
+    fn application_data(
+        &self,
+        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+    ) -> ApplicationData;
 }
