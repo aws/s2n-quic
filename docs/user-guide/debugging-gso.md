@@ -15,4 +15,4 @@ let mut server = Server::builder()
     .start()?;
 ```
 
-In the case of running tests in broken GSO environments, setting `S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=""` as an environment variable will disable the feature.
+In the case of running tests in broken GSO environments, setting `S2N_QUIC_PLATFORM_FEATURES_OVERRIDE="default,-gso,-gro"` as an environment variable will disable the feature.
