@@ -875,6 +875,8 @@ pub mod api {
         UnknownServerAddress {},
         #[non_exhaustive]
         #[doc = " The peer initiated a connection migration before the handshake was confirmed."]
+        #[doc = ""]
+        #[doc = " Note: This drop reason is no longer emitted"]
         ConnectionMigrationDuringHandshake {},
         #[non_exhaustive]
         #[doc = " The attempted connection migration was rejected."]
@@ -884,6 +886,8 @@ pub mod api {
         PathLimitExceeded {},
         #[non_exhaustive]
         #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
+        #[doc = ""]
+        #[doc = " Note: This drop reason is no longer emitted"]
         InsufficientConnectionIds {},
     }
     impl aggregate::AsVariant for DatagramDropReason {
@@ -5051,12 +5055,16 @@ pub mod builder {
         #[doc = " A datagram was received from an unknown server address."]
         UnknownServerAddress,
         #[doc = " The peer initiated a connection migration before the handshake was confirmed."]
+        #[doc = ""]
+        #[doc = " Note: This drop reason is no longer emitted"]
         ConnectionMigrationDuringHandshake,
         #[doc = " The attempted connection migration was rejected."]
         RejectedConnectionMigration { reason: MigrationDenyReason },
         #[doc = " The maximum number of paths per connection was exceeded."]
         PathLimitExceeded,
         #[doc = " The peer initiated a connection migration without supplying enough connection IDs to use."]
+        #[doc = ""]
+        #[doc = " Note: This drop reason is no longer emitted"]
         InsufficientConnectionIds,
     }
     impl IntoEvent<api::DatagramDropReason> for DatagramDropReason {
