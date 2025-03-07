@@ -3,9 +3,8 @@
 
 use super::*;
 use crate::{
-    credentials::Credentials,
-    path::secret::Map,
-    socket::recv::{self, router::Router as _},
+    socket::recv,
+    testing::{ext::*, sim},
 };
 use bolero::{check, TypeGenerator};
 use s2n_quic_core::varint::VarInt;
@@ -18,26 +17,34 @@ enum Op {
     FreeStream { idx: u16 },
     SendControl { idx: u16 },
     SendStream { idx: u16, inject: bool },
+    DropAllocator,
+    DropDispatcher,
 }
 
 struct Model {
     oracle: Oracle,
-    alloc: Allocator,
-    dispatch: Dispatch,
+    alloc: Option<Allocator>,
+    dispatch: Option<Dispatch>,
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self::new(Default::default())
+    }
 }
 
 impl Model {
-    fn new(map: Map, packets: Packets) -> Self {
+    fn new(packets: Packets) -> Self {
         let stream_cap = 32;
         let control_cap = 8;
-        let alloc = Allocator::new(map, stream_cap, control_cap);
+        let alloc = Allocator::new(stream_cap, control_cap);
         let dispatch = alloc.dispatcher();
         let oracle = Oracle::new(packets);
 
         Self {
             oracle,
-            alloc,
-            dispatch,
+            alloc: Some(alloc),
+            dispatch: Some(dispatch),
         }
     }
 
@@ -58,11 +65,20 @@ impl Model {
             Op::SendStream { idx, inject } => {
                 self.send_stream((*idx).into(), *inject);
             }
+            Op::DropAllocator => {
+                self.alloc = None;
+            }
+            Op::DropDispatcher => {
+                self.dispatch = None;
+            }
         }
     }
 
     fn alloc(&mut self) {
-        let (control, stream) = self.alloc.alloc_or_grow();
+        let Some(alloc) = self.alloc.as_mut() else {
+            return;
+        };
+        let (control, stream) = alloc.alloc_or_grow();
         self.oracle.on_alloc(control, stream);
     }
 
@@ -75,20 +91,13 @@ impl Model {
     }
 
     fn send_control(&mut self, queue_id: VarInt) {
-        let tag = Default::default();
-        let id = packet::stream::Id {
-            queue_id,
-            is_reliable: true,
-            is_bidirectional: true,
+        let Some(dispatch) = self.dispatch.as_mut() else {
+            return;
         };
-        let credentials = Credentials {
-            id: Default::default(),
-            key_id: VarInt::ZERO,
-        };
+
         let (packet_id, packet) = self.oracle.packets.create();
-        self.dispatch
-            .dispatch_control_packet(tag, Some(id), credentials, packet);
-        self.oracle.on_control_dispatch(queue_id, packet_id);
+        let res = dispatch.send_control(queue_id, packet);
+        self.oracle.on_control_dispatch(queue_id, packet_id, res);
     }
 
     fn send_stream(&mut self, queue_id: VarInt, inject: bool) {
@@ -96,20 +105,13 @@ impl Model {
             return self.oracle.send_stream_inject(queue_id);
         }
 
-        let tag = Default::default();
-        let id = packet::stream::Id {
-            queue_id,
-            is_reliable: true,
-            is_bidirectional: true,
+        let Some(dispatch) = self.dispatch.as_mut() else {
+            return;
         };
-        let credentials = Credentials {
-            id: Default::default(),
-            key_id: VarInt::ZERO,
-        };
+
         let (packet_id, packet) = self.oracle.packets.create();
-        self.dispatch
-            .dispatch_stream_packet(tag, id, credentials, packet);
-        self.oracle.on_stream_dispatch(queue_id, packet_id);
+        let res = dispatch.send_stream(queue_id, packet);
+        self.oracle.on_stream_dispatch(queue_id, packet_id, res);
     }
 }
 
@@ -151,10 +153,17 @@ impl Oracle {
         );
     }
 
-    fn on_control_dispatch(&mut self, idx: VarInt, packet_id: u64) {
+    fn on_control_dispatch(
+        &mut self,
+        idx: VarInt,
+        packet_id: u64,
+        result: Result<Option<desc::Filled>, Error>,
+    ) {
         let Some(channel) = self.control.get(&idx) else {
+            assert!(result.is_err());
             return;
         };
+        assert!(result.is_ok());
         let actual = channel.try_recv().unwrap().unwrap();
         assert_eq!(
             actual.payload(),
@@ -167,10 +176,17 @@ impl Oracle {
         );
     }
 
-    fn on_stream_dispatch(&mut self, idx: VarInt, packet_id: u64) {
+    fn on_stream_dispatch(
+        &mut self,
+        idx: VarInt,
+        packet_id: u64,
+        result: Result<Option<desc::Filled>, Error>,
+    ) {
         let Some(channel) = self.stream.get(&idx) else {
+            assert!(result.is_err());
             return;
         };
+        assert!(result.is_ok());
         let actual = channel.try_recv().unwrap().unwrap();
         assert_eq!(
             actual.payload(),
@@ -192,20 +208,16 @@ impl Oracle {
             return;
         };
         let (packet_id, packet) = self.packets.create();
-        assert!(
-            channel.sender().send(packet).unwrap().is_none(),
-            "queue should accept packet"
-        );
+        assert!(channel.push(packet).is_none(), "queue should accept packet");
         let actual = channel.try_recv().unwrap().unwrap();
         assert_eq!(
             actual.payload(),
             packet_id.to_be_bytes(),
             "queue should contain expected packet id"
         );
-        assert!(
-            channel.try_recv().unwrap().is_none(),
-            "queue should be empty now"
-        );
+        if matches!(channel.try_recv(), Ok(Some(_))) {
+            panic!("queue should be empty or errored");
+        }
     }
 }
 
@@ -246,14 +258,49 @@ impl Packets {
 fn model_test() {
     crate::testing::init_tracing();
 
-    // create a Map and Packet allocator once to avoid setup/teardown costs
-    let map = AssertUnwindSafe(crate::path::secret::map::testing::new(1));
-    let pool = AssertUnwindSafe(Packets::default());
+    // create a Packet allocator once to avoid setup/teardown costs
+    let packets = AssertUnwindSafe(Packets::default());
 
-    check!().with_type::<Vec<Op>>().for_each(move |ops| {
-        let mut model = Model::new(map.clone(), pool.clone());
-        for op in ops {
-            model.apply(op);
+    check!()
+        .with_type::<Vec<Op>>()
+        .with_test_time(core::time::Duration::from_secs(30))
+        .for_each(move |ops| {
+            let mut model = Model::new(packets.clone());
+            for op in ops {
+                model.apply(op);
+            }
+        });
+}
+
+/// ensure that freeing an allocator notifies all of the open receivers
+#[test]
+fn alloc_drop_notify() {
+    sim(|| {
+        let stream_cap = 1;
+        let control_cap = 1;
+        let mut alloc = Allocator::new(stream_cap, control_cap);
+
+        for _ in 0..2 {
+            let (stream, control) = alloc.alloc_or_grow();
+
+            async move {
+                stream.recv().await.unwrap_err();
+            }
+            .primary()
+            .spawn();
+
+            async move {
+                control.recv().await.unwrap_err();
+            }
+            .primary()
+            .spawn();
         }
+
+        async move {
+            core::time::Duration::from_millis(100).sleep().await;
+
+            drop(alloc);
+        }
+        .spawn();
     });
 }

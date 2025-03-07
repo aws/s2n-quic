@@ -1,39 +1,67 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{credentials, packet, path, socket::recv::descriptor as desc, sync::mpsc};
-use s2n_quic_core::inet::SocketAddress;
+use crate::{credentials, packet, socket::recv::descriptor as desc, sync::ring_deque};
+use s2n_quic_core::{inet::SocketAddress, varint::VarInt};
 use tracing::debug;
 
 mod descriptor;
+mod free_list;
+mod handle;
 mod pool;
+mod queue;
 mod sender;
 
 #[cfg(test)]
 mod tests;
 
 /// Allocate this many channels at a time
-const PAGE_SIZE: usize = 256;
+///
+/// With `debug_assertions`, we allocate smaller pages to try and cover more
+/// branches in the allocator logic around growth.
+const PAGE_SIZE: usize = if cfg!(debug_assertions) { 8 } else { 256 };
 
-pub type Control = descriptor::Control<desc::Filled>;
-pub type Stream = descriptor::Stream<desc::Filled>;
-pub type StreamSender = descriptor::StreamSender<desc::Filled>;
+pub type Error = queue::Error;
+pub type Control = handle::Control<desc::Filled>;
+pub type Stream = handle::Stream<desc::Filled>;
 
+/// A queue allocator for registering a receiver to process packets
+/// for a given ID.
 #[derive(Clone)]
 pub struct Allocator {
     pool: pool::Pool<desc::Filled, PAGE_SIZE>,
-    map: path::secret::Map,
 }
 
 impl Allocator {
     pub fn new(
-        map: path::secret::Map,
-        stream_capacity: impl Into<mpsc::Capacity>,
-        control_capacity: impl Into<mpsc::Capacity>,
+        stream_capacity: impl Into<ring_deque::Capacity>,
+        control_capacity: impl Into<ring_deque::Capacity>,
     ) -> Self {
         Self {
-            pool: pool::Pool::new(stream_capacity.into(), control_capacity.into()),
-            map,
+            pool: pool::Pool::new(
+                VarInt::ZERO,
+                stream_capacity.into(),
+                control_capacity.into(),
+            ),
+        }
+    }
+
+    /// Creates an allocator with a non-zero queue id
+    ///
+    /// This is used for patterns where the `queue_id=0` is special and used to
+    /// indicate newly initialized flows waiting to be assigned. For example,
+    /// a client sends a packet with `queue_id=0` to a server and waits for the
+    /// server to respond with an actual `queue_id` for future packets from the client.
+    pub fn new_non_zero(
+        stream_capacity: impl Into<ring_deque::Capacity>,
+        control_capacity: impl Into<ring_deque::Capacity>,
+    ) -> Self {
+        Self {
+            pool: pool::Pool::new(
+                VarInt::from_u8(1),
+                stream_capacity.into(),
+                control_capacity.into(),
+            ),
         }
     }
 
@@ -41,7 +69,6 @@ impl Allocator {
     pub fn dispatcher(&self) -> Dispatch {
         Dispatch {
             senders: self.pool.senders(),
-            map: self.map.clone(),
             is_open: true,
         }
     }
@@ -57,11 +84,50 @@ impl Allocator {
     }
 }
 
+/// A dispatcher which routes packets to the specified queue, if
+/// there is a registered receiver.
 #[derive(Clone)]
 pub struct Dispatch {
     senders: sender::Senders<desc::Filled, PAGE_SIZE>,
-    map: path::secret::Map,
     is_open: bool,
+}
+
+impl Dispatch {
+    #[inline]
+    pub fn send_control(
+        &mut self,
+        queue_id: VarInt,
+        segment: desc::Filled,
+    ) -> Result<Option<desc::Filled>, Error> {
+        let mut res = Err(Error::Unallocated);
+        self.senders.lookup(queue_id, |sender| {
+            res = sender.send_control(segment);
+        });
+
+        if matches!(res, Err(Error::Closed)) {
+            self.is_open = false;
+        }
+
+        res
+    }
+
+    #[inline]
+    pub fn send_stream(
+        &mut self,
+        queue_id: VarInt,
+        segment: desc::Filled,
+    ) -> Result<Option<desc::Filled>, Error> {
+        let mut res = Err(Error::Unallocated);
+        self.senders.lookup(queue_id, |sender| {
+            res = sender.send_stream(segment);
+        });
+
+        if matches!(res, Err(Error::Closed)) {
+            self.is_open = false;
+        }
+
+        res
+    }
 }
 
 impl crate::socket::recv::router::Router for Dispatch {
@@ -97,31 +163,16 @@ impl crate::socket::recv::router::Router for Dispatch {
             return;
         };
 
-        let mut did_send = false;
-        let mut prev = None;
-        self.senders.lookup(id.queue_id, |sender| {
-            did_send = true;
-            match sender.control.send_back(segment) {
-                Ok(new_prev) => {
-                    // drop the previous segment outside of the lookup call
-                    prev = new_prev;
-                }
-                Err(_) => {
-                    // if any channels are closed then the whole thing is dropped
-                    self.is_open = false;
-                }
+        match self.send_control(id.queue_id, segment) {
+            Ok(None) => {}
+            Ok(Some(_prev)) => {
+                // TODO increment metrics
+                debug!(queue_id = %id.queue_id, "control queue overflow");
             }
-        });
-
-        if !did_send {
-            // TODO increment metrics
-            debug!(stream_id = ?id, ?credentials, "unroutable control packet");
-            return;
-        }
-
-        if prev.is_some() {
-            // TODO increment metrics
-            debug!(queue_id = %id.queue_id, "control queue overflow");
+            Err(_) => {
+                // TODO increment metrics
+                debug!(stream_id = ?id, ?credentials, "unroutable control packet");
+            }
         }
     }
 
@@ -143,76 +194,16 @@ impl crate::socket::recv::router::Router for Dispatch {
         credentials: credentials::Credentials,
         segment: desc::Filled,
     ) {
-        let mut did_send = false;
-        let mut prev = None;
-        self.senders.lookup(id.queue_id, |sender| {
-            did_send = true;
-            match sender.stream.send_back(segment) {
-                Ok(new_prev) => {
-                    // drop the previous segment outside of the lookup call
-                    prev = new_prev;
-                }
-                Err(_) => {
-                    // if any channels are closed then the whole thing is dropped
-                    self.is_open = false;
-                }
+        match self.send_stream(id.queue_id, segment) {
+            Ok(None) => {}
+            Ok(Some(_prev)) => {
+                // TODO increment metrics
+                debug!(queue_id = %id.queue_id, "stream queue overflow");
             }
-        });
-
-        if !did_send {
-            // TODO increment metrics
-            debug!(stream_id = ?id, ?credentials, "unroutable stream packet");
-            return;
+            Err(_) => {
+                // TODO increment metrics
+                debug!(stream_id = ?id, ?credentials, "unroutable stream packet");
+            }
         }
-
-        if prev.is_some() {
-            // TODO increment metrics
-            debug!(queue_id = %id.queue_id, "stream queue overflow");
-        }
-    }
-
-    #[inline]
-    fn handle_stale_key_packet(
-        &mut self,
-        packet: packet::secret_control::stale_key::Packet,
-        remote_address: SocketAddress,
-    ) {
-        self.map
-            .handle_control_packet(&packet.into(), &remote_address.into());
-    }
-
-    #[inline]
-    fn handle_replay_detected_packet(
-        &mut self,
-        packet: packet::secret_control::replay_detected::Packet,
-        remote_address: SocketAddress,
-    ) {
-        self.map
-            .handle_control_packet(&packet.into(), &remote_address.into());
-    }
-
-    #[inline]
-    fn handle_unknown_path_secret_packet(
-        &mut self,
-        packet: packet::secret_control::unknown_path_secret::Packet,
-        remote_address: SocketAddress,
-    ) {
-        self.map
-            .handle_control_packet(&packet.into(), &remote_address.into());
-    }
-
-    #[inline(always)]
-    fn on_decode_error(
-        &mut self,
-        error: s2n_codec::DecoderError,
-        remote_address: SocketAddress,
-        segment: desc::Filled,
-    ) {
-        tracing::warn!(
-            ?error,
-            ?remote_address,
-            packet_len = segment.len(),
-            "failed to decode packet"
-        );
     }
 }
