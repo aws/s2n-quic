@@ -14,6 +14,24 @@ mod tests;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Closed;
 
+#[derive(Clone, Copy, Debug)]
+pub struct Capacity {
+    /// Set the upper bound of items in the queue
+    pub max: usize,
+    /// Initial allocated capacity
+    pub initial: usize,
+}
+
+impl From<usize> for Capacity {
+    #[inline]
+    fn from(capacity: usize) -> Self {
+        Self {
+            max: capacity,
+            initial: capacity,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub enum Priority {
     #[default]
@@ -36,7 +54,7 @@ impl<T, W> Clone for RingDeque<T, W> {
 
 impl<T, W: Default + RecvWaker> RingDeque<T, W> {
     #[inline]
-    pub fn new(capacity: usize) -> Self {
+    pub fn new<C: Into<Capacity>>(capacity: C) -> Self {
         let waker = W::default();
         Self::with_waker(capacity, waker)
     }
@@ -44,11 +62,13 @@ impl<T, W: Default + RecvWaker> RingDeque<T, W> {
 
 impl<T, W: RecvWaker> RingDeque<T, W> {
     #[inline]
-    pub fn with_waker(capacity: usize, recv_waker: W) -> Self {
-        let queue = VecDeque::with_capacity(capacity);
+    pub fn with_waker<C: Into<Capacity>>(capacity: C, recv_waker: W) -> Self {
+        let capacity = capacity.into();
+        let queue = VecDeque::with_capacity(capacity.initial);
         let inner = Inner {
             open: true,
             queue,
+            capacity: capacity.max,
             recv_waker,
         };
         let inner = Arc::new(Mutex::new(inner));
@@ -59,7 +79,7 @@ impl<T, W: RecvWaker> RingDeque<T, W> {
     pub fn push_back(&self, value: T) -> Result<Option<T>, Closed> {
         let mut inner = self.lock()?;
 
-        let prev = if inner.queue.capacity() == inner.queue.len() {
+        let prev = if inner.capacity == inner.queue.len() {
             inner.queue.pop_front()
         } else {
             None
@@ -79,7 +99,7 @@ impl<T, W: RecvWaker> RingDeque<T, W> {
     pub fn push_front(&self, value: T) -> Result<Option<T>, Closed> {
         let mut inner = self.lock()?;
 
-        let prev = if inner.queue.capacity() == inner.queue.len() {
+        let prev = if inner.capacity == inner.queue.len() {
             inner.queue.pop_back()
         } else {
             None
@@ -227,6 +247,7 @@ impl<T, W: RecvWaker> RingDeque<T, W> {
 struct Inner<T, W> {
     open: bool,
     queue: VecDeque<T>,
+    capacity: usize,
     recv_waker: W,
 }
 
