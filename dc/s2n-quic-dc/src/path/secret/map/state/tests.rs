@@ -139,6 +139,7 @@ impl Model {
                     receiver::State::new(),
                     dc::testing::TEST_APPLICATION_PARAMS,
                     dc::testing::TEST_REHANDSHAKE_PERIOD,
+                    Arc::new(()),
                 )));
 
                 self.invariants.insert(Invariant::ContainsIp(ip));

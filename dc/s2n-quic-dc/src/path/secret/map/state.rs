@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{cleaner::Cleaner, stateless_reset, Entry, Store};
+use super::{cleaner::Cleaner, entry::ApplicationData, stateless_reset, Entry, Store};
 use crate::{
     credentials::{Credentials, Id},
     crypto,
@@ -211,6 +211,19 @@ where
     clock: C,
 
     subscriber: S,
+
+    #[allow(clippy::type_complexity)]
+    mk_application_data: RwLock<
+        Option<
+            Box<
+                dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData
+                    + Send
+                    + Sync,
+            >,
+        >,
+    >,
+
+    dummy_application_data: ApplicationData,
 }
 
 // Share control sockets -- we only send on these so it doesn't really matter if there's only one
@@ -266,6 +279,8 @@ where
             clock,
             subscriber,
             request_handshake: RwLock::new(None),
+            mk_application_data: RwLock::new(None),
+            dummy_application_data: Arc::new(()),
         };
 
         // Growing to double our maximum inserted entries should ensure that we never grow again, see:
@@ -645,6 +660,20 @@ where
         self.register_request_handshake(cb);
     }
 
+    #[allow(clippy::type_complexity)]
+    fn register_make_application_data(
+        &self,
+        cb: Box<
+            dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData + Send + Sync,
+        >,
+    ) {
+        // FIXME: Maybe panic if already initialized?
+        *self
+            .mk_application_data
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(cb);
+    }
+
     fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<Arc<Entry>> {
         self.peers.get(*peer)
     }
@@ -844,6 +873,21 @@ where
     #[cfg(test)]
     fn test_stop_cleaner(&self) {
         self.cleaner.stop();
+    }
+
+    fn application_data(
+        &self,
+        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+    ) -> ApplicationData {
+        if let Some(ctxt) = &*self
+            .mk_application_data
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+        {
+            (ctxt)(session)
+        } else {
+            self.dummy_application_data.clone()
+        }
     }
 }
 

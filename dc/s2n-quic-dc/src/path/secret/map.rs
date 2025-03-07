@@ -8,6 +8,7 @@ use crate::{
     path::secret::{open, seal, stateless_reset},
     stream::TransportFeatures,
 };
+pub use entry::ApplicationData;
 use s2n_quic_core::{dc, time};
 use std::{net::SocketAddr, sync::Arc};
 
@@ -26,7 +27,7 @@ pub mod testing;
 #[cfg(test)]
 mod event_tests;
 
-use entry::Entry;
+pub use entry::Entry;
 use store::Store;
 
 pub use entry::{ApplicationPair, Bidirectional, ControlPair};
@@ -202,6 +203,7 @@ impl Map {
                 receiver::State::new(),
                 dc::testing::TEST_APPLICATION_PARAMS,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
+                Arc::new(()),
             );
             let entry = Arc::new(entry);
             provider.store.test_insert(entry);
@@ -255,6 +257,7 @@ impl Map {
                 super::receiver::State::new(),
                 dc::testing::TEST_APPLICATION_PARAMS,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
+                Arc::new(()),
             );
             let entry = Arc::new(entry);
             map.store.test_insert(entry);
@@ -268,5 +271,15 @@ impl Map {
         assert_eq!(client_id, server_id);
 
         client_id
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn register_make_application_data(
+        &self,
+        cb: Box<
+            dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData + Send + Sync,
+        >,
+    ) {
+        self.store.register_make_application_data(cb);
     }
 }
