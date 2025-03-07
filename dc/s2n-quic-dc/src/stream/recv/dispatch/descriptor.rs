@@ -1,12 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::sync::mpsc;
-use core::{
-    fmt,
-    task::{Context, Poll},
-};
-use s2n_quic_core::{sync::CachePadded, varint::VarInt};
+use super::{free_list::FreeList, queue::Queue};
+use crate::sync::ring_deque;
+use s2n_quic_core::{ensure, varint::VarInt};
 use std::{
     marker::PhantomData,
     ptr::NonNull,
@@ -16,17 +13,6 @@ use std::{
     },
 };
 use tracing::trace;
-
-/// Callback which releases a descriptor back into the free list
-pub(super) trait FreeList<T>: 'static + Send + Sync {
-    /// Frees a descriptor back into the free list
-    ///
-    /// Once the free list has been closed and all descriptors returned, the `free` function
-    /// should return an object that can be dropped to release all of the memory associated
-    /// with the descriptor pool. This works around any issues around the "Stacked Borrows"
-    /// model by deferring freeing memory borrowed by `self`.
-    fn free(&self, descriptor: Descriptor<T>) -> Option<Box<dyn 'static + Send>>;
-}
 
 /// A pointer to a single descriptor in a group
 ///
@@ -47,9 +33,15 @@ impl<T: 'static> Descriptor<T> {
         }
     }
 
+    /// # Safety
+    ///
+    /// The caller needs to guarantee the [`Descriptor`] is still allocated. Additionally,
+    /// the [`Self::drop_sender`] method should be used when the cloned descriptor is
+    /// no longer needed.
     #[inline]
-    pub(super) fn is_active(&self) -> bool {
-        self.inner().references.load(Ordering::Relaxed) > 0
+    pub unsafe fn clone_for_sender(&self) -> Descriptor<T> {
+        self.inner().senders.fetch_add(1, Ordering::Relaxed);
+        Descriptor::new(self.ptr)
     }
 
     /// # Safety
@@ -57,8 +49,32 @@ impl<T: 'static> Descriptor<T> {
     /// This should only be called once the caller can guarantee the descriptor is no longer
     /// used.
     #[inline]
-    pub(super) unsafe fn drop_in_place(&self) {
+    pub unsafe fn drop_in_place(&self) {
         core::ptr::drop_in_place(self.ptr.as_ptr());
+    }
+
+    /// # Safety
+    ///
+    /// The caller needs to guarantee the [`Descriptor`] is still allocated.
+    #[inline]
+    pub unsafe fn queue_id(&self) -> VarInt {
+        self.inner().id
+    }
+
+    /// # Safety
+    ///
+    /// The caller needs to guarantee the [`Descriptor`] is still allocated.
+    #[inline]
+    pub unsafe fn stream_queue(&self) -> &Queue<T> {
+        &self.inner().stream
+    }
+
+    /// # Safety
+    ///
+    /// The caller needs to guarantee the [`Descriptor`] is still allocated.
+    #[inline]
+    pub unsafe fn control_queue(&self) -> &Queue<T> {
+        &self.inner().control
     }
 
     #[inline]
@@ -68,54 +84,81 @@ impl<T: 'static> Descriptor<T> {
 
     /// # Safety
     ///
-    /// * The [`Descriptor`] needs to be exclusively owned
+    /// * The [`Descriptor`] needs to be marked as free of receivers
     #[inline]
-    pub(super) unsafe fn into_owned(self) -> (Control<T>, Stream<T>) {
+    pub unsafe fn into_receiver_pair(self) -> (Self, Self) {
         let inner = self.inner();
 
-        // we can use relaxed since this only happens after it is filled, which was done by a single owner
-        inner.references.store(2, Ordering::Relaxed);
+        // open the queues back up for receiving
+        inner.control.open_receiver();
+        inner.stream.open_receiver();
 
-        let stream = Stream(Self {
+        let other = Self {
             ptr: self.ptr,
             phantom: PhantomData,
-        });
-        let control = Control(self);
+        };
 
-        (control, stream)
+        (self, other)
     }
 
     /// # Safety
     ///
-    /// * The descriptor must be in an owned state.
-    /// * After calling this method, the descriptor handle should not be used
+    /// This method can be used to drop the Descriptor, but shouldn't be called after the last sender Descriptor
+    /// is released. That implies only calling it once on a given Descriptor handle obtained from [`Self::clone_for_sender`].
     #[inline]
-    unsafe fn drop_owned(&self) {
+    pub unsafe fn drop_sender(&self) {
         let inner = self.inner();
-        let desc_ref = inner.references.fetch_sub(1, Ordering::Release);
+        let desc_ref = inner.senders.fetch_sub(1, Ordering::Release);
         debug_assert_ne!(desc_ref, 0, "reference count underflow");
 
         // based on the implementation in:
         // https://github.com/rust-lang/rust/blob/28b83ee59698ae069f5355b8e03f976406f410f5/library/alloc/src/sync.rs#L2551
         if desc_ref != 1 {
-            trace!(drop_desc_ref = ?inner.id);
+            trace!(id = ?inner.id, "drop_sender");
             return;
         }
 
         core::sync::atomic::fence(Ordering::Acquire);
 
-        // drain any remaining items
-        for recv in [&inner.control, &inner.stream] {
-            while let Ok(Some(item)) = recv.try_recv_front() {
-                drop(item);
-            }
-        }
+        // close both of the queues so the receivers are notified
+        inner.control.close();
+        inner.stream.close();
+        trace!(id = ?inner.id, "close_queue");
+    }
 
+    /// # Safety
+    ///
+    /// This method can be used to drop the Descriptor, but shouldn't be called after the last receiver Descriptor
+    /// is released. That implies only calling it once on a given Descriptor handle obtained from [`Self::into_receiver_pair`].
+    #[inline]
+    pub unsafe fn drop_stream_receiver(&self) {
+        let inner = self.inner();
+        trace!(id = ?inner.id, "drop_stream_receiver");
+        inner.stream.close_receiver();
+        // check if the control is still open
+        ensure!(!inner.control.has_receiver());
         let storage = inner.free_list.free(Descriptor {
             ptr: self.ptr,
             phantom: PhantomData,
         });
-        trace!(free_desc = ?inner.id, state = %"owned");
+        drop(storage);
+    }
+
+    /// # Safety
+    ///
+    /// This method can be used to drop the Descriptor, but shouldn't be called after the last receiver Descriptor
+    /// is released. That implies only calling it once on a given Descriptor handle obtained from [`Self::into_receiver_pair`].
+    #[inline]
+    pub unsafe fn drop_control_receiver(&self) {
+        let inner = self.inner();
+        trace!(id = ?inner.id, "drop_control_receiver");
+        inner.control.close_receiver();
+        // check if the stream is still open
+        ensure!(!inner.stream.has_receiver());
+        let storage = inner.free_list.free(Descriptor {
+            ptr: self.ptr,
+            phantom: PhantomData,
+        });
         drop(storage);
     }
 }
@@ -125,101 +168,28 @@ unsafe impl<T: Sync> Sync for Descriptor<T> {}
 
 pub(super) struct DescriptorInner<T> {
     id: VarInt,
-    references: CachePadded<AtomicUsize>,
-    stream: CachePadded<mpsc::Receiver<T>>,
-    control: CachePadded<mpsc::Receiver<T>>,
+    stream: Queue<T>,
+    control: Queue<T>,
     /// A reference back to the free list
     free_list: Arc<dyn FreeList<T>>,
+    senders: AtomicUsize,
 }
 
 impl<T> DescriptorInner<T> {
     pub(super) fn new(
         id: VarInt,
-        stream: mpsc::Receiver<T>,
-        control: mpsc::Receiver<T>,
+        stream: ring_deque::Capacity,
+        control: ring_deque::Capacity,
         free_list: Arc<dyn FreeList<T>>,
     ) -> Self {
+        let stream = Queue::new(stream);
+        let control = Queue::new(control);
         Self {
             id,
-            stream: CachePadded::new(stream),
-            control: CachePadded::new(control),
-            references: CachePadded::new(AtomicUsize::new(0)),
+            stream,
+            control,
+            senders: AtomicUsize::new(0),
             free_list,
         }
-    }
-}
-
-macro_rules! impl_recv {
-    ($name:ident, $field:ident) => {
-        pub struct $name<T: 'static>(Descriptor<T>);
-
-        impl<T: 'static> $name<T> {
-            #[inline]
-            pub fn queue_id(&self) -> VarInt {
-                self.0.inner().id
-            }
-
-            #[inline]
-            pub fn try_recv(&self) -> Result<Option<T>, mpsc::Closed> {
-                self.0.inner().$field.try_recv_front()
-            }
-
-            #[inline]
-            pub fn poll_recv(&self, cx: &mut Context) -> Poll<Result<T, mpsc::Closed>> {
-                self.0.inner().$field.poll_recv_front(cx)
-            }
-
-            #[inline]
-            pub fn poll_swap(
-                &self,
-                cx: &mut Context,
-                out: &mut std::collections::VecDeque<T>,
-            ) -> Poll<Result<(), mpsc::Closed>> {
-                self.0.inner().$field.poll_swap(cx, out)
-            }
-        }
-
-        impl<T: 'static> fmt::Debug for $name<T> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.debug_struct(stringify!($name))
-                    .field("queue_id", &self.queue_id())
-                    .finish()
-            }
-        }
-
-        impl<T: 'static> Drop for $name<T> {
-            #[inline]
-            fn drop(&mut self) {
-                unsafe {
-                    self.0.drop_owned();
-                }
-            }
-        }
-    };
-}
-
-impl_recv!(Control, control);
-impl_recv!(Stream, stream);
-
-impl<T: 'static> Stream<T> {
-    #[inline]
-    pub fn sender(&self) -> StreamSender<T> {
-        StreamSender(self.0.inner().stream.sender())
-    }
-}
-
-pub struct StreamSender<T>(mpsc::Sender<T>);
-
-impl<T> Clone for StreamSender<T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl<T: 'static> StreamSender<T> {
-    #[inline]
-    pub fn send(&self, item: T) -> Result<Option<T>, mpsc::Closed> {
-        self.0.send_back(item)
     }
 }

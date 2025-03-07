@@ -29,6 +29,7 @@ pub fn init_tracing() {
         let format = tracing_subscriber::fmt::format()
             //.with_level(false) // don't include levels in formatted output
             //.with_ansi(false)
+            .with_timer(Uptime::default())
             .compact(); // Use a less verbose output format.
 
         let default_level = if cfg!(debug_assertions) {
@@ -49,6 +50,20 @@ pub fn init_tracing() {
             .with_test_writer()
             .init();
     });
+}
+
+#[derive(Default)]
+struct Uptime(tracing_subscriber::fmt::time::SystemTime);
+
+// Generate the timestamp from the testing IO provider rather than wall clock.
+impl tracing_subscriber::fmt::time::FormatTime for Uptime {
+    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
+        if bach::is_active() {
+            write!(w, "{}", bach::time::Instant::now())
+        } else {
+            self.0.format_time(w)
+        }
+    }
 }
 
 /// Runs a function in a deterministic, discrete event simulation environment

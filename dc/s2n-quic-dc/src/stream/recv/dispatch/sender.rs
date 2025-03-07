@@ -1,20 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::descriptor::Descriptor;
-use crate::sync::mpsc;
+use super::{free_list, handle::Sender};
 use s2n_quic_core::varint::VarInt;
 use std::sync::{Arc, RwLock};
 
-pub struct Senders<T, const PAGE_SIZE: usize> {
+pub struct Senders<T: 'static, const PAGE_SIZE: usize> {
     pub(super) senders: Arc<RwLock<SenderPages<T>>>,
-    pub(super) local: Vec<Arc<[SenderEntry<T>]>>,
+    pub(super) local: Vec<Arc<[Sender<T>]>>,
+    pub(super) memory_handle: Arc<free_list::Memory<T>>,
 }
 
 impl<T: 'static, const PAGE_SIZE: usize> Clone for Senders<T, PAGE_SIZE> {
     fn clone(&self) -> Self {
         Self {
             senders: self.senders.clone(),
+            memory_handle: self.memory_handle.clone(),
             local: self.local.clone(),
         }
     }
@@ -47,33 +48,21 @@ impl<T: 'static, const PAGE_SIZE: usize> Senders<T, PAGE_SIZE> {
         let Some(sender) = page.get(offset) else {
             return;
         };
-        if !sender.descriptor.is_active() {
-            return;
-        }
-        f(&sender.inner)
+        f(sender)
     }
 }
 
-pub struct Sender<T> {
-    pub stream: mpsc::Sender<T>,
-    pub control: mpsc::Sender<T>,
-}
-
-pub(super) struct SenderPages<T> {
-    pub(super) pages: Vec<Arc<[SenderEntry<T>]>>,
+pub(super) struct SenderPages<T: 'static> {
+    pub(super) pages: Vec<Arc<[Sender<T>]>>,
     pub(super) epoch: VarInt,
 }
 
-impl<T> Default for SenderPages<T> {
-    fn default() -> Self {
+impl<T: 'static> SenderPages<T> {
+    #[inline]
+    pub(super) fn new(epoch: VarInt) -> Self {
         Self {
             pages: Vec::with_capacity(8),
-            epoch: VarInt::ZERO,
+            epoch,
         }
     }
-}
-
-pub(super) struct SenderEntry<T> {
-    pub(super) inner: Sender<T>,
-    pub(super) descriptor: Descriptor<T>,
 }
