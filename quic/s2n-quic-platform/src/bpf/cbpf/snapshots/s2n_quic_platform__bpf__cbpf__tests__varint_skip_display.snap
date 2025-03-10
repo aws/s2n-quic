@@ -1,0 +1,15 @@
+---
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
+---
+l0   : LDX #0
+l1   : LDB [x + 0]
+l2   : RSH #6
+l3   : ADD #1
+l4   : JGT #2,l8,l5
+l5   : ADD #1
+l6   : JEQ #4,l8,l7
+l7   : ADD #4
+l8   : ADD x
+l9   : tax
+l10  : RET #0

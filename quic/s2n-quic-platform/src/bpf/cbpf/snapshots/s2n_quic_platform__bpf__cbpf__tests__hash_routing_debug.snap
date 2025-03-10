@@ -1,0 +1,34 @@
+---
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
+---
+Program {
+    instructions: [
+        Instruction {
+            code: 32,
+            jt: 0,
+            jf: 0,
+            class: LD,
+            size: W,
+            mode: ABS,
+            k: 0xfffff020,
+        },
+        Instruction {
+            code: 84,
+            jt: 0,
+            jf: 0,
+            class: ALU,
+            op: AND,
+            k: 0x1,
+        },
+        Instruction {
+            code: 22,
+            jt: 0,
+            jf: 0,
+            class: RET,
+            size: B,
+            mode: IMM,
+            k: 0,
+        },
+    ],
+}

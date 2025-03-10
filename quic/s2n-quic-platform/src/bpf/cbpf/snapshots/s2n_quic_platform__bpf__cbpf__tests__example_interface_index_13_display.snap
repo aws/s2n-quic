@@ -1,0 +1,8 @@
+---
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
+---
+l0   : LD ifidx ; [0xfffff008] // skb->dev->ifindex
+l1   : JEQ #13,l2,l3
+l2   : RET #4294967295
+l3   : RET #0
