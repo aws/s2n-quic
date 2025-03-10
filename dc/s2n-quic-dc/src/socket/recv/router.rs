@@ -11,6 +11,8 @@ use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 
 /// Routes incoming packet segments to the appropriate destination
 pub trait Router {
+    fn is_open(&self) -> bool;
+
     #[inline(always)]
     fn tag_len(&self) -> usize {
         16

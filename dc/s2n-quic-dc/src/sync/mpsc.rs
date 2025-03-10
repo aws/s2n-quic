@@ -11,10 +11,11 @@ use std::{
     task::Waker,
 };
 
-pub use ring_deque::{Closed, Priority};
+pub use ring_deque::{Capacity, Closed, Priority};
 
-pub fn new<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
-    assert!(cap >= 1, "capacity must be at least 2");
+pub fn new<T>(cap: impl Into<Capacity>) -> (Sender<T>, Receiver<T>) {
+    let cap = cap.into();
+    assert!(cap.max >= 1, "capacity must be at least 2");
 
     let channel = Arc::new(Channel {
         queue: RingDeque::new(cap),
@@ -34,6 +35,16 @@ struct Channel<T> {
 }
 
 impl<T> Channel<T> {
+    #[inline]
+    fn clone_for_sender(self: &Arc<Self>) -> Arc<Self> {
+        let count = self.sender_count.fetch_add(1, Ordering::Relaxed);
+
+        // Make sure the count never overflows, even if lots of sender clones are leaked.
+        assert!(count < usize::MAX / 2, "too many senders");
+
+        self.clone()
+    }
+
     /// Closes the channel and notifies all blocked operations.
     ///
     /// Returns `Err` if this call has closed the channel and it was not closed already.
@@ -85,14 +96,10 @@ impl<T> fmt::Debug for Sender<T> {
 }
 
 impl<T> Clone for Sender<T> {
+    #[inline]
     fn clone(&self) -> Sender<T> {
-        let count = self.channel.sender_count.fetch_add(1, Ordering::Relaxed);
-
-        // Make sure the count never overflows, even if lots of sender clones are leaked.
-        assert!(count < usize::MAX / 2, "too many senders");
-
         Sender {
-            channel: self.channel.clone(),
+            channel: self.channel.clone_for_sender(),
         }
     }
 }
@@ -114,6 +121,13 @@ impl<T> Drop for Receiver<T> {
 }
 
 impl<T> Receiver<T> {
+    #[inline]
+    pub fn sender(&self) -> Sender<T> {
+        Sender {
+            channel: self.channel.clone_for_sender(),
+        }
+    }
+
     /// Attempts to receive a message from the front of the channel.
     ///
     /// If the channel is empty, or empty and closed, this method returns an error.
