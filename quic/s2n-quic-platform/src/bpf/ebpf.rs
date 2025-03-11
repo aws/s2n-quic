@@ -55,11 +55,15 @@ impl super::instruction::Dialect for Ebpf {
         f.field("k", &k).finish()
     }
 
-    fn display(i: &Instruction, f: &mut fmt::Formatter) -> fmt::Result {
+    fn display(i: &Instruction, f: &mut fmt::Formatter, line: Option<usize>) -> fmt::Result {
         let code = i.code;
         let k = i.k;
         let jt = i.jt;
         let jf = i.jf;
+
+        if let Some(line) = line {
+            write!(f, "l{line:<4}: ")?;
+        }
 
         let class = Class::decode(code);
 
@@ -70,7 +74,18 @@ impl super::instruction::Dialect for Ebpf {
 
                 match mode {
                     Mode::IMM => return write!(f, "{class}{size} #{k}"),
-                    Mode::ABS => return write!(f, "{class}{size} [{k}]"),
+                    Mode::ABS => {
+                        let prefix = if k == 0 { "" } else { "0x" };
+                        return if let Some(info) = super::ancillary::lookup(k) {
+                            write!(
+                                f,
+                                "{class}{size} {} ; [{prefix}{k:x}] // {}",
+                                info.extension, info.capi
+                            )
+                        } else {
+                            write!(f, "{class}{size} [{prefix}{k:x}]")
+                        };
+                    }
                     _ => {}
                 }
             }
@@ -87,10 +102,21 @@ impl super::instruction::Dialect for Ebpf {
                 let op = Jump::decode(code);
                 let source = Source::decode(code);
 
-                return match source {
-                    Source::K => write!(f, "{op} #{k},{jt},{jf}"),
-                    Source::X => write!(f, "{op} x,{jt},{jf}"),
-                };
+                match source {
+                    Source::K => write!(f, "{op} #{k}")?,
+                    Source::X => write!(f, "{op} x")?,
+                }
+
+                if let Some(line) = line {
+                    let line = line + 1;
+                    let jt = line + jt as usize;
+                    let jf = line + jf as usize;
+                    write!(f, ",l{jt},l{jf}")?
+                } else {
+                    write!(f, ",{jt},{jf}")?
+                }
+
+                return Ok(());
             }
             _ => {}
         }
@@ -205,3 +231,8 @@ define!(
 );
 
 impl_ops!();
+
+pub const fn len() -> K {
+    // still need to figure out what the API is for eBPF - cBPF has a dedicated Mode
+    todo!()
+}

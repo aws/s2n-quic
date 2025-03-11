@@ -9,7 +9,11 @@ pub trait Dialect: Sized {
     const SOCKOPT: libc::c_int;
 
     fn debug(instruction: &Instruction<Self>, f: &mut fmt::Formatter) -> fmt::Result;
-    fn display(instruction: &Instruction<Self>, f: &mut fmt::Formatter) -> fmt::Result;
+    fn display(
+        instruction: &Instruction<Self>,
+        f: &mut fmt::Formatter,
+        idx: Option<usize>,
+    ) -> fmt::Result;
 }
 
 #[derive(Clone, Copy)]
@@ -35,13 +39,14 @@ impl<D: Dialect> fmt::Display for Instruction<D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
             // write the C literal format if requested
+            let k_prefix = if self.k == 0 { "00" } else { "0x" };
             write!(
                 f,
-                "{{ {}, {}, {}, {} }}",
+                "{{ 0x{:0>2x}, {:>2}, {:>2}, {k_prefix}{:0>8x} }}",
                 self.code, self.jt, self.jf, self.k
             )
         } else {
-            D::display(self, f)
+            D::display(self, f, None)
         }
     }
 }

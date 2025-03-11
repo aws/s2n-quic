@@ -1,25 +1,17 @@
 ---
-source: quic/s2n-quic-platform/src/bpf/cbpf.rs
-expression: PROGRAM
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
 ---
 Program {
     instructions: [
         Instruction {
-            code: 48,
+            code: 32,
             jt: 0,
             jf: 0,
             class: LD,
-            size: B,
+            size: W,
             mode: ABS,
-            k: 0,
-        },
-        Instruction {
-            code: 84,
-            jt: 0,
-            jf: 0,
-            class: ALU,
-            op: AND,
-            k: 192,
+            k: 0xfffff008,
         },
         Instruction {
             code: 21,
@@ -28,7 +20,16 @@ Program {
             class: JMP,
             op: JEQ,
             jf: 1,
-            k: 64,
+            k: 0xd,
+        },
+        Instruction {
+            code: 6,
+            jt: 0,
+            jf: 0,
+            class: RET,
+            size: W,
+            mode: IMM,
+            k: 0xffffffff,
         },
         Instruction {
             code: 6,
@@ -38,15 +39,6 @@ Program {
             size: W,
             mode: IMM,
             k: 0,
-        },
-        Instruction {
-            code: 6,
-            jt: 0,
-            jf: 0,
-            class: RET,
-            size: W,
-            mode: IMM,
-            k: 1,
         },
     ],
 }

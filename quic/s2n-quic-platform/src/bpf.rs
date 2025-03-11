@@ -5,6 +5,8 @@
 pub mod instruction;
 #[macro_use]
 mod common;
+#[macro_use]
+pub mod ancillary;
 
 pub mod cbpf;
 pub mod ebpf;

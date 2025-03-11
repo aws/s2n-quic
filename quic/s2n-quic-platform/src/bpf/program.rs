@@ -54,8 +54,9 @@ impl<D: Dialect> fmt::Debug for Program<'_, D> {
 
 impl<D: Dialect> fmt::Display for Program<'_, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for inst in self.instructions {
-            writeln!(f, "{inst}")?;
+        for (idx, inst) in self.instructions.iter().enumerate() {
+            D::display(inst, f, Some(idx))?;
+            writeln!(f)?;
         }
         Ok(())
     }

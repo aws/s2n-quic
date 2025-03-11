@@ -11,7 +11,7 @@ use std::{io, net::UdpSocket};
 /// High-level algorithm with asm is available here: https://godbolt.org/z/crxT4d53j
 pub static ROUTER: Program = Program::new(&[
     // load the first byte of the packet
-    ldb(0),
+    ldb(abs(0)),
     // mask off the LSBs
     and(!stream::Tag::MAX as _),
     // IF:

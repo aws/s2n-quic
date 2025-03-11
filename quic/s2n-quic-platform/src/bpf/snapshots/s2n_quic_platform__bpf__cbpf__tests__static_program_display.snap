@@ -1,9 +1,0 @@
----
-source: quic/s2n-quic-platform/src/bpf/cbpf.rs
-expression: PROGRAM
----
-LDB [0]
-AND #192
-JEQ #64,0,1
-RET #0
-RET #1

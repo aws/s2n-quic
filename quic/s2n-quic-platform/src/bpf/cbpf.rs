@@ -3,6 +3,9 @@
 
 use core::fmt;
 
+#[cfg(all(test, not(miri)))]
+mod tests;
+
 pub use super::common::*;
 pub type Instruction = super::Instruction<Cbpf>;
 pub type Program<'a> = super::Program<'a, Cbpf>;
@@ -53,14 +56,19 @@ impl super::instruction::Dialect for Cbpf {
             f.field("jf", &jf);
         }
 
-        f.field("k", &k).finish()
+        let prefix = if k == 0 { "" } else { "0x" };
+        f.field("k", &format_args!("{prefix}{k:x}")).finish()
     }
 
-    fn display(i: &Instruction, f: &mut fmt::Formatter) -> fmt::Result {
+    fn display(i: &Instruction, f: &mut fmt::Formatter, line: Option<usize>) -> fmt::Result {
         let code = i.code;
         let k = i.k;
         let jt = i.jt;
         let jf = i.jf;
+
+        if let Some(line) = line {
+            write!(f, "l{line:<4}: ")?;
+        }
 
         let class = Class::decode(code);
 
@@ -71,7 +79,20 @@ impl super::instruction::Dialect for Cbpf {
 
                 match mode {
                     Mode::IMM => return write!(f, "{class}{size} #{k}"),
-                    Mode::ABS => return write!(f, "{class}{size} [{k}]"),
+                    Mode::ABS => {
+                        let prefix = if k == 0 { "" } else { "0x" };
+                        return if let Some(info) = super::ancillary::lookup(k) {
+                            write!(
+                                f,
+                                "{class}{size} {} ; [{prefix}{k:x}] // {}",
+                                info.extension, info.capi
+                            )
+                        } else {
+                            write!(f, "{class}{size} [{prefix}{k:x}]")
+                        };
+                    }
+                    Mode::LEN => return write!(f, "{class}{size} len"),
+                    Mode::IND => return write!(f, "{class}{size} [x + {k}]"),
                     _ => {}
                 }
             }
@@ -88,17 +109,37 @@ impl super::instruction::Dialect for Cbpf {
                 let op = Jump::decode(code);
                 let source = Source::decode(code);
 
-                return match source {
-                    Source::K => write!(f, "{op} #{k},{jt},{jf}"),
-                    Source::X => write!(f, "{op} x,{jt},{jf}"),
-                };
+                match source {
+                    Source::K => write!(f, "{op} #{k}")?,
+                    Source::X => write!(f, "{op} x")?,
+                }
+
+                if let Some(line) = line {
+                    let line = line + 1;
+                    let jt = line + jt as usize;
+                    let jf = line + jf as usize;
+                    write!(f, ",l{jt},l{jf}")?
+                } else {
+                    write!(f, ",{jt},{jf}")?
+                }
+
+                return Ok(());
             }
             Class::RET => {
                 let source = Source::decode(code);
+                let size = Size::decode(code);
 
-                return match source {
-                    Source::K => write!(f, "{class} #{k}"),
-                    Source::X => write!(f, "{class} x"),
+                return match (source, size) {
+                    (Source::K, Size::B) if k == 0 => write!(f, "{class} %a"),
+                    (Source::K, _) => write!(f, "{class} #{k}"),
+                    (Source::X, _) => write!(f, "{class} %x"),
+                };
+            }
+            Class::MISC => {
+                let misc = Misc::decode(code);
+                return match misc {
+                    Misc::TAX => write!(f, "tax"),
+                    Misc::TXA => write!(f, "txa"),
                 };
             }
             _ => {}
@@ -189,42 +230,28 @@ define!(
     }
 );
 
+define!(
+    #[mask(0xf0)]
+    pub enum Misc {
+        TAX = 0x00,
+        TXA = 0x80,
+    }
+);
+
 impl_ops!();
 impl_ret!();
 
-#[cfg(test)]
-mod tests {
-    use crate::bpf::cbpf::*;
-
-    static PROGRAM: Program = {
-        const MAX: u8 = 0b0011_1111;
-
-        Program::new(&[
-            // load the first byte of the packet
-            ldb(0),
-            // mask off the LSBs
-            and(!MAX as _),
-            // IF:
-            // the control bit is set
-            jneq(MAX as u32 + 1, 1, 0),
-            // THEN:
-            // return a 0 indicating we want to route to the writer socket
-            ret(0),
-            // ELSE:
-            // return a 1 indicating we want to route to the reader socket
-            ret(1),
-        ])
-    };
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn static_program_debug() {
-        insta::assert_debug_snapshot!(PROGRAM);
+pub const fn len() -> K {
+    K {
+        mode: Mode::LEN,
+        value: 0,
     }
+}
 
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn static_program_display() {
-        insta::assert_snapshot!(PROGRAM);
-    }
+pub const fn tax() -> Instruction {
+    Instruction::raw(Class::MISC as u16 | Misc::TAX as u16, 0, 0, 0)
+}
+
+pub const fn txa() -> Instruction {
+    Instruction::raw(Class::MISC as u16 | Misc::TXA as u16, 0, 0, 0)
 }

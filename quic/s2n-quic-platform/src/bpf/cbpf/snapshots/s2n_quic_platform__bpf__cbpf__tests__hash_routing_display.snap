@@ -1,0 +1,7 @@
+---
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
+---
+l0   : LD rxhash ; [0xfffff020] // skb->hash
+l1   : AND #1
+l2   : RET %a

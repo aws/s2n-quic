@@ -1,6 +1,6 @@
 ---
-source: dc/s2n-quic-dc/src/socket/bpf.rs
-expression: ROUTER
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
 ---
 l0   : LDB [0]
 l1   : AND #192

@@ -1,0 +1,7 @@
+---
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: actual_c_literal
+---
+{ 0x20,  0,  0, 0xfffff020 },
+{ 0x54,  0,  0, 0x00000001 },
+{ 0x16,  0,  0, 0000000000 },
