@@ -221,24 +221,15 @@ where
             AsyncFd::new(writer.clone())?
         };
 
-        // if we're on a platform that requires two different ports then we need to create
-        // a socket for the writer as well
-        let multi_port = read_worker.local_port()? != write_worker.local_port()?;
+        debug_assert_eq!(
+            read_worker.local_port()?,
+            write_worker.local_port()?,
+            "worker ports must match with owned socket implementation"
+        );
 
         let source_control_port = write_worker.local_port()?;
 
-        // if the reader port is different from the writer then tell the peer
-        let source_stream_port = if multi_port {
-            Some(read_worker.local_port()?)
-        } else {
-            None
-        };
-
-        let application: Box<dyn socket::application::Builder> = if multi_port {
-            Box::new(socket::application::builder::UdpPair { reader, writer })
-        } else {
-            Box::new(reader)
-        };
+        let application = Box::new(reader);
 
         let read_worker = Some(read_worker);
         let write_worker = Some(write_worker);
@@ -249,7 +240,7 @@ where
             write_worker,
             remote_addr,
             source_control_port,
-            source_stream_port,
+            source_queue_id: None,
         })
     }
 }
@@ -287,7 +278,7 @@ where
             write_worker: None,
             remote_addr,
             source_control_port,
-            source_stream_port: None,
+            source_queue_id: None,
         })
     }
 }
@@ -325,7 +316,7 @@ where
             write_worker: None,
             remote_addr,
             source_control_port,
-            source_stream_port: None,
+            source_queue_id: None,
         })
     }
 }

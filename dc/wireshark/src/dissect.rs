@@ -67,7 +67,7 @@ pub fn stream<T: Node>(
 
     let mut tag_tree = tree.add_subtree(tag_item, fields.tag_subtree);
     for field in [
-        fields.has_source_stream_port,
+        fields.has_source_queue_id,
         fields.is_recovery_packet,
         fields.has_control_data,
         fields.has_final_offset,
@@ -91,13 +91,13 @@ pub fn stream<T: Node>(
     let source_control_port = buffer.consume::<u16>()?;
     source_control_port.record(buffer, tree, fields.source_control_port);
 
-    if tag.has_source_stream_port() {
-        let source_stream_port = buffer.consume::<u16>()?;
-        source_stream_port.record(buffer, tree, fields.source_stream_port);
-    }
-
     let stream_id = buffer.consume()?;
     let stream_id = record_stream_id(tree, fields, buffer, stream_id);
+
+    if tag.has_source_queue_id() {
+        let source_queue_id = buffer.consume::<VarInt>()?;
+        source_queue_id.record(buffer, tree, fields.source_queue_id);
+    }
 
     let packet_number = buffer.consume::<VarInt>()?;
     packet_number.record(buffer, tree, fields.packet_number);

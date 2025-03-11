@@ -19,7 +19,7 @@ use std::{collections::HashMap, num::NonZeroU16, ptr, time::Duration};
 struct StreamPacket {
     credentials: s2n_quic_dc::credentials::Credentials,
     source_control_port: NonZeroU16,
-    source_stream_port: Option<NonZeroU16>,
+    source_queue_id: Option<VarInt>,
     stream_id: stream::Id,
     packet_space: stream::PacketSpace,
     packet_number: VarInt,
@@ -51,7 +51,7 @@ fn check_stream_parse() {
             let length = s2n_quic_dc::packet::stream::encoder::encode(
                 EncoderBuffer::new(&mut buffer),
                 NonZeroU16::get(packet.source_control_port),
-                packet.source_stream_port.map(NonZeroU16::get),
+                packet.source_queue_id,
                 packet.stream_id,
                 packet.packet_number,
                 packet.next_expected_control_packet,
@@ -88,10 +88,8 @@ fn check_stream_parse() {
                 Field::Integer(packet.source_control_port.get() as u64)
             );
             assert_eq!(
-                tracker.take(fields.source_stream_port),
-                packet
-                    .source_stream_port
-                    .map(|v| Field::Integer(v.get() as u64))
+                tracker.take(fields.source_queue_id),
+                packet.source_queue_id.map(|v| Field::Integer(v.as_u64()))
             );
             assert_eq!(
                 tracker.remove(fields.queue_id),
@@ -124,7 +122,7 @@ fn check_stream_parse() {
 
             // Tag fields all store the tag value itself.
             for field in [
-                fields.has_source_stream_port,
+                fields.has_source_queue_id,
                 fields.is_recovery_packet,
                 fields.has_control_data,
                 fields.has_final_offset,

@@ -6,7 +6,7 @@ use crate::{
     stream::{runtime, socket, TransportFeatures},
 };
 use core::future::Future;
-use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_core::{inet::SocketAddress, varint::VarInt};
 use s2n_quic_platform::features;
 use std::io;
 
@@ -33,7 +33,7 @@ pub struct SocketSet<S> {
     pub write_worker: Option<S>,
     pub remote_addr: SocketAddress,
     pub source_control_port: u16,
-    pub source_stream_port: Option<u16>,
+    pub source_queue_id: Option<VarInt>,
 }
 
 pub trait Peer<E: Environment> {
