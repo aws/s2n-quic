@@ -9,6 +9,7 @@ pub struct Senders<T: 'static, const PAGE_SIZE: usize> {
     pub(super) senders: Arc<RwLock<SenderPages<T>>>,
     pub(super) local: Vec<Arc<[Sender<T>]>>,
     pub(super) memory_handle: Arc<free_list::Memory<T>>,
+    pub(super) base: VarInt,
 }
 
 impl<T: 'static, const PAGE_SIZE: usize> Clone for Senders<T, PAGE_SIZE> {
@@ -17,6 +18,7 @@ impl<T: 'static, const PAGE_SIZE: usize> Clone for Senders<T, PAGE_SIZE> {
             senders: self.senders.clone(),
             memory_handle: self.memory_handle.clone(),
             local: self.local.clone(),
+            base: self.base,
         }
     }
 }
@@ -24,6 +26,9 @@ impl<T: 'static, const PAGE_SIZE: usize> Clone for Senders<T, PAGE_SIZE> {
 impl<T: 'static, const PAGE_SIZE: usize> Senders<T, PAGE_SIZE> {
     #[inline]
     pub fn lookup<F: FnOnce(&Sender<T>)>(&mut self, queue_id: VarInt, f: F) {
+        let Some(queue_id) = queue_id.checked_sub(self.base) else {
+            return;
+        };
         let queue_id = queue_id.as_u64() as usize;
         let page = queue_id / PAGE_SIZE;
         let offset = queue_id % PAGE_SIZE;

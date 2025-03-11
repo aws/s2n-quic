@@ -74,7 +74,7 @@ impl Allocator {
     }
 
     #[inline]
-    pub fn alloc(&mut self) -> Option<(Control, Stream)> {
+    pub fn alloc(&self) -> Option<(Control, Stream)> {
         self.pool.alloc()
     }
 
@@ -99,13 +99,28 @@ impl Dispatch {
         queue_id: VarInt,
         segment: desc::Filled,
     ) -> Result<Option<desc::Filled>, Error> {
+        let payload_len = segment.len();
         let mut res = Err(Error::Unallocated);
         self.senders.lookup(queue_id, |sender| {
             res = sender.send_control(segment);
         });
 
-        if matches!(res, Err(Error::Closed)) {
-            self.is_open = false;
+        match &res {
+            Ok(prev) => {
+                tracing::trace!(
+                    %queue_id,
+                    payload_len,
+                    overflow = prev.is_some(),
+                    "send_control"
+                );
+            }
+            Err(error) => {
+                if matches!(error, Error::Closed) {
+                    self.is_open = false;
+                }
+                // TODO increment metrics
+                debug!(%queue_id, "unroutable control packet");
+            }
         }
 
         res
@@ -117,13 +132,28 @@ impl Dispatch {
         queue_id: VarInt,
         segment: desc::Filled,
     ) -> Result<Option<desc::Filled>, Error> {
+        let payload_len = segment.len();
         let mut res = Err(Error::Unallocated);
         self.senders.lookup(queue_id, |sender| {
             res = sender.send_stream(segment);
         });
 
-        if matches!(res, Err(Error::Closed)) {
-            self.is_open = false;
+        match &res {
+            Ok(prev) => {
+                tracing::trace!(
+                    %queue_id,
+                    payload_len,
+                    overflow = prev.is_some(),
+                    "send_stream"
+                );
+            }
+            Err(error) => {
+                if matches!(error, Error::Closed) {
+                    self.is_open = false;
+                }
+                // TODO increment metrics
+                debug!(%queue_id, "unroutable stream packet");
+            }
         }
 
         res
@@ -156,24 +186,14 @@ impl crate::socket::recv::router::Router for Dispatch {
         &mut self,
         _tag: packet::control::Tag,
         id: Option<packet::stream::Id>,
-        credentials: credentials::Credentials,
+        _credentials: credentials::Credentials,
         segment: desc::Filled,
     ) {
         let Some(id) = id else {
             return;
         };
 
-        match self.send_control(id.queue_id, segment) {
-            Ok(None) => {}
-            Ok(Some(_prev)) => {
-                // TODO increment metrics
-                debug!(queue_id = %id.queue_id, "control queue overflow");
-            }
-            Err(_) => {
-                // TODO increment metrics
-                debug!(stream_id = ?id, ?credentials, "unroutable control packet");
-            }
-        }
+        let _ = self.send_control(id.queue_id, segment);
     }
 
     /// implement this so we don't get warnings about not handling it
@@ -191,19 +211,42 @@ impl crate::socket::recv::router::Router for Dispatch {
         &mut self,
         _tag: packet::stream::Tag,
         id: packet::stream::Id,
-        credentials: credentials::Credentials,
+        _credentials: credentials::Credentials,
         segment: desc::Filled,
     ) {
-        match self.send_stream(id.queue_id, segment) {
-            Ok(None) => {}
-            Ok(Some(_prev)) => {
-                // TODO increment metrics
-                debug!(queue_id = %id.queue_id, "stream queue overflow");
-            }
-            Err(_) => {
-                // TODO increment metrics
-                debug!(stream_id = ?id, ?credentials, "unroutable stream packet");
-            }
-        }
+        let _ = self.send_stream(id.queue_id, segment);
+    }
+
+    #[inline]
+    fn handle_replay_detected_packet(
+        &mut self,
+        packet: packet::secret_control::replay_detected::Packet,
+        remote_address: SocketAddress,
+    ) {
+        // TODO reset the destination queue - currently secret control packets don't have queue_ids
+        let _ = packet;
+        let _ = remote_address;
+    }
+
+    #[inline]
+    fn handle_stale_key_packet(
+        &mut self,
+        packet: packet::secret_control::stale_key::Packet,
+        remote_address: SocketAddress,
+    ) {
+        // TODO reset the destination queue - currently secret control packets don't have queue_ids
+        let _ = packet;
+        let _ = remote_address;
+    }
+
+    #[inline]
+    fn handle_unknown_path_secret_packet(
+        &mut self,
+        packet: packet::secret_control::unknown_path_secret::Packet,
+        remote_address: SocketAddress,
+    ) {
+        // TODO reset the destination queue - currently secret control packets don't have queue_ids
+        let _ = packet;
+        let _ = remote_address;
     }
 }
