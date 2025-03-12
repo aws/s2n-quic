@@ -44,7 +44,7 @@ pub fn client(
     events: events::Events,
     servers: &[SocketAddr],
     count: usize,
-    delay: CliRange<humantime::Duration>,
+    delay: CliRange<jiff::SignedDuration>,
     streams: CliRange<u32>,
     stream_data: CliRange<u64>,
 ) -> Result {

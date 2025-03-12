@@ -405,7 +405,7 @@ impl Type {
                 }
             }
             Self::Duration => {
-                if let Ok(v) = value.parse::<humantime::Duration>() {
+                if let Ok(v) = value.parse::<jiff::SignedDuration>() {
                     Ok(v.as_secs_f64())
                 } else {
                     Ok(value.parse()?)
