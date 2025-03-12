@@ -315,6 +315,7 @@ impl WorkerState {
 
             // TCP doesn't use the route key so just pick 0
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
+            let recv_buffer = recv::buffer::Either::A(recv_buffer);
 
             let stream_builder = match endpoint::accept_stream(
                 now,

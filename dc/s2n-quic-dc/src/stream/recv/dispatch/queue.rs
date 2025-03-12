@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::sync::ring_deque::{Capacity, Closed, RecvWaker};
+use crate::{
+    stream::Actor,
+    sync::ring_deque::{Capacity, Closed, RecvWaker},
+};
 use core::task::{Context, Poll};
 use s2n_quic_core::ensure;
 use std::{collections::VecDeque, sync::Mutex, task::Waker};
@@ -27,7 +30,17 @@ struct Inner<T> {
     capacity: usize,
     is_open: bool,
     has_receiver: bool,
-    waker: Option<Waker>,
+    app_waker: Option<Waker>,
+    worker_waker: Option<Waker>,
+}
+
+impl<T> Inner<T> {
+    fn wake_all(&mut self) -> Wakers {
+        Wakers {
+            app_waker: self.app_waker.take(),
+            worker_waker: self.worker_waker.take(),
+        }
+    }
 }
 
 pub struct Queue<T> {
@@ -43,7 +56,8 @@ impl<T> Queue<T> {
                 capacity: capacity.max,
                 is_open: true,
                 has_receiver: false,
-                waker: None,
+                app_waker: None,
+                worker_waker: None,
             }),
         }
     }
@@ -65,11 +79,8 @@ impl<T> Queue<T> {
         trace!(has_overflow = prev.is_some(), "push");
 
         inner.queue.push_back(value);
-        let waker = inner.waker.take();
+        let _wakers = inner.wake_all();
         drop(inner);
-        if let Some(waker) = waker {
-            waker.wake();
-        }
 
         Ok(prev)
     }
@@ -90,11 +101,8 @@ impl<T> Queue<T> {
         trace!(has_overflow = prev.is_some(), "push");
 
         inner.queue.push_back(value);
-        let waker = inner.waker.take();
+        let _wakers = inner.wake_all();
         drop(inner);
-        if let Some(waker) = waker {
-            waker.wake();
-        }
 
         prev
     }
@@ -112,28 +120,46 @@ impl<T> Queue<T> {
     }
 
     #[inline]
-    pub fn poll_pop(&self, cx: &mut Context) -> Poll<Result<T, Closed>> {
+    pub fn poll_pop(&self, cx: &mut Context, actor: Actor) -> Poll<Result<T, Closed>> {
         let mut inner = self.lock()?;
-        trace!(has_items = !inner.queue.is_empty(), "poll_pop");
+        trace!(has_items = !inner.queue.is_empty(), ?actor, "poll_pop");
         if let Some(item) = inner.queue.pop_front() {
             Ok(item).into()
         } else {
             ensure!(inner.is_open, Err(Closed).into());
-            inner.waker.update(cx);
+            match actor {
+                Actor::Application => &mut inner.app_waker,
+                Actor::Worker => &mut inner.worker_waker,
+            }
+            .update(cx);
             Poll::Pending
         }
     }
 
     #[inline]
-    pub fn poll_swap(&self, cx: &mut Context, items: &mut VecDeque<T>) -> Poll<Result<(), Closed>> {
+    pub fn poll_swap(
+        &self,
+        cx: &mut Context,
+        actor: Actor,
+        items: &mut VecDeque<T>,
+    ) -> Poll<Result<(), Closed>> {
+        debug_assert!(items.is_empty(), "destination items should be empty");
+
         let mut inner = self.lock()?;
-        trace!(items = 0, "poll_swap");
         if inner.queue.is_empty() {
             ensure!(inner.is_open, Err(Closed).into());
-            inner.waker.update(cx);
+            match actor {
+                Actor::Application => &mut inner.app_waker,
+                Actor::Worker => &mut inner.worker_waker,
+            }
+            .update(cx);
+            drop(inner);
+            trace!(items = 0, ?actor, "poll_swap");
             return Poll::Pending;
         }
         core::mem::swap(items, &mut inner.queue);
+        drop(inner);
+        trace!(items = items.len(), ?actor, "poll_swap");
         Ok(()).into()
     }
 
@@ -158,7 +184,8 @@ impl<T> Queue<T> {
         };
         trace!("closing receiver");
         inner.has_receiver = false;
-        inner.waker = None;
+        inner.app_waker = None;
+        inner.worker_waker = None;
         inner.queue.clear();
     }
 
@@ -172,13 +199,28 @@ impl<T> Queue<T> {
         // Leave the remaining items in the queue in case the receiver wants them.
 
         // Notify the receiver that the queue is now closed
-        if let Some(waker) = inner.waker.take() {
-            waker.wake();
-        }
+        let _wakers = inner.wake_all();
     }
 
     #[inline]
     fn lock(&self) -> Result<std::sync::MutexGuard<Inner<T>>, Closed> {
         self.inner.lock().map_err(|_| Closed)
+    }
+}
+
+struct Wakers {
+    app_waker: Option<Waker>,
+    worker_waker: Option<Waker>,
+}
+
+impl Drop for Wakers {
+    #[inline]
+    fn drop(&mut self) {
+        if let Some(waker) = self.app_waker.take() {
+            waker.wake();
+        }
+        if let Some(waker) = self.worker_waker.take() {
+            waker.wake();
+        }
     }
 }

@@ -4,7 +4,7 @@
 use super::Dispatch;
 use crate::{
     event, msg,
-    stream::{recv, server::handshake, socket::Socket, TransportFeatures},
+    stream::{recv, server::handshake, socket::Socket, Actor, TransportFeatures},
 };
 use core::task::{Context, Poll};
 use s2n_codec::{DecoderBufferMut, DecoderError};
@@ -37,6 +37,7 @@ impl super::Buffer for Local {
     fn poll_fill<S, Pub>(
         &mut self,
         cx: &mut Context,
+        _actor: Actor,
         socket: &S,
         publisher: &mut Pub,
     ) -> Poll<io::Result<usize>>

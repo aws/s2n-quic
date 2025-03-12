@@ -9,7 +9,7 @@ use crate::{
         recv::{self, buffer::Buffer as _},
         shared::{self, ArcShared, Half},
         socket::{self, Socket},
-        TransportFeatures,
+        Actor, TransportFeatures,
     },
     task::waker::worker::Waker as WorkerWaker,
 };
@@ -28,7 +28,7 @@ use std::{
     },
 };
 
-pub type RecvBuffer = recv::buffer::Local;
+pub type RecvBuffer = recv::buffer::Either<recv::buffer::Local, recv::buffer::Channel>;
 
 /// Who will send ACKs?
 #[derive(Clone, Copy, Debug, Default)]
@@ -318,6 +318,7 @@ impl Inner {
     pub fn poll_fill_recv_buffer<S, C, Sub>(
         &mut self,
         cx: &mut Context,
+        actor: Actor,
         socket: &S,
         clock: &C,
         subscriber: &shared::Subscriber<Sub>,
@@ -327,8 +328,12 @@ impl Inner {
         C: ?Sized + Clock,
         Sub: event::Subscriber,
     {
-        self.buffer
-            .poll_fill(cx, socket, &mut subscriber.publisher(clock.get_time()))
+        self.buffer.poll_fill(
+            cx,
+            actor,
+            socket,
+            &mut subscriber.publisher(clock.get_time()),
+        )
     }
 
     #[inline]

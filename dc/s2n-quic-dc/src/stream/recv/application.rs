@@ -5,7 +5,7 @@ use crate::{
     clock::Timer,
     event::{self, ConnectionPublisher as _},
     msg,
-    stream::{recv, runtime, shared::ArcShared, socket},
+    stream::{recv, runtime, shared::ArcShared, socket, Actor},
 };
 use core::{
     fmt,
@@ -265,6 +265,7 @@ where
 
             let recv = reader.poll_fill_recv_buffer(
                 cx,
+                Actor::Application,
                 self.sockets.read_application(),
                 &self.shared.clock,
                 &self.shared.subscriber,
