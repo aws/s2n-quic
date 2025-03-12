@@ -6,17 +6,14 @@ use crate::{
     event,
     stream::{
         runtime::{tokio as runtime, ArcHandle},
-        socket::{self, Socket as _},
-        TransportFeatures,
+        socket,
     },
 };
-use s2n_quic_core::{
-    ensure,
-    inet::{SocketAddress, Unspecified},
-};
 use s2n_quic_platform::features;
-use std::{io, net::UdpSocket, sync::Arc};
-use tokio::{io::unix::AsyncFd, net::TcpStream};
+use std::io;
+
+pub mod tcp;
+pub mod udp;
 
 #[derive(Clone)]
 pub struct Builder<Sub> {
@@ -58,15 +55,18 @@ where
         let gso = self.gso.unwrap_or_default();
         let socket_options = self.socket_options.unwrap_or_default();
 
+        let thread_count = self.threads.unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|v| v.get())
+                .unwrap_or(1)
+        });
         let thread_name_prefix = self.thread_name_prefix.as_deref().unwrap_or("dc_quic");
 
-        let make_rt = |suffix: &str, threads: Option<usize>| {
+        let make_rt = |suffix: &str| {
             let mut builder = tokio::runtime::Builder::new_multi_thread();
-            if let Some(threads) = threads {
-                builder.worker_threads(threads);
-            }
             Ok(builder
                 .enable_all()
+                .worker_threads(thread_count)
                 .thread_name(format!("{thread_name_prefix}::{suffix}"))
                 .build()?
                 .into())
@@ -75,19 +75,21 @@ where
         let reader_rt = self
             .reader_rt
             .map(<io::Result<_>>::Ok)
-            .unwrap_or_else(|| make_rt("reader", self.threads))?;
+            .unwrap_or_else(|| make_rt("reader"))?;
         let writer_rt = self
             .writer_rt
             .map(<io::Result<_>>::Ok)
-            .unwrap_or_else(|| make_rt("writer", self.threads))?;
+            .unwrap_or_else(|| make_rt("writer"))?;
 
-        Ok(Environment {
+        let env = Environment {
             clock,
             gso,
             socket_options,
             reader_rt,
             writer_rt,
-        })
+        };
+
+        Ok(env)
     }
 }
 
@@ -152,171 +154,5 @@ where
     #[inline]
     fn spawn_writer<F: 'static + Send + std::future::Future<Output = ()>>(&self, f: F) {
         self.writer_rt.spawn(f);
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct UdpUnbound(pub SocketAddress);
-
-impl<Sub> super::Peer<Environment<Sub>> for UdpUnbound
-where
-    Sub: event::Subscriber,
-{
-    type WorkerSocket = AsyncFd<Arc<UdpSocket>>;
-
-    #[inline]
-    fn features(&self) -> TransportFeatures {
-        TransportFeatures::UDP
-    }
-
-    #[inline]
-    fn with_source_control_port(&mut self, port: u16) {
-        self.0.set_port(port);
-    }
-
-    #[inline]
-    fn setup(self, env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
-        let mut options = env.socket_options.clone();
-        let remote_addr = self.0;
-
-        match remote_addr {
-            SocketAddress::IpV6(_) if options.addr.is_ipv4() => {
-                let addr: SocketAddress = options.addr.into();
-                if addr.ip().is_unspecified() {
-                    options.addr.set_ip(std::net::Ipv6Addr::UNSPECIFIED.into());
-                } else {
-                    let addr = addr.to_ipv6_mapped();
-                    options.addr = addr.into();
-                }
-            }
-            SocketAddress::IpV4(_) if options.addr.is_ipv6() => {
-                let addr: SocketAddress = options.addr.into();
-                if addr.ip().is_unspecified() {
-                    options.addr.set_ip(std::net::Ipv4Addr::UNSPECIFIED.into());
-                } else {
-                    let addr = addr.unmap();
-                    // ensure the local IP maps to v4, otherwise it won't bind correctly
-                    ensure!(
-                        matches!(addr, SocketAddress::IpV4(_)),
-                        Err(io::ErrorKind::Unsupported.into())
-                    );
-                    options.addr = addr.into();
-                }
-            }
-            _ => {}
-        }
-
-        let socket::Pair { writer, reader } = socket::Pair::open(options)?;
-
-        let writer = Arc::new(writer);
-        let reader = Arc::new(reader);
-
-        let read_worker = {
-            let _guard = env.reader_rt.enter();
-            AsyncFd::new(reader.clone())?
-        };
-
-        let write_worker = {
-            let _guard = env.writer_rt.enter();
-            AsyncFd::new(writer.clone())?
-        };
-
-        debug_assert_eq!(
-            read_worker.local_port()?,
-            write_worker.local_port()?,
-            "worker ports must match with owned socket implementation"
-        );
-
-        let source_control_port = write_worker.local_port()?;
-
-        let application = Box::new(reader);
-
-        let read_worker = Some(read_worker);
-        let write_worker = Some(write_worker);
-
-        Ok(super::SocketSet {
-            application,
-            read_worker,
-            write_worker,
-            remote_addr,
-            source_control_port,
-            source_queue_id: None,
-        })
-    }
-}
-
-/// A socket that is already registered with the application runtime
-pub struct TcpRegistered {
-    pub socket: TcpStream,
-    pub peer_addr: SocketAddress,
-    pub local_port: u16,
-}
-
-impl<Sub> super::Peer<Environment<Sub>> for TcpRegistered
-where
-    Sub: event::Subscriber,
-{
-    type WorkerSocket = TcpStream;
-
-    fn features(&self) -> TransportFeatures {
-        TransportFeatures::TCP
-    }
-
-    #[inline]
-    fn with_source_control_port(&mut self, port: u16) {
-        let _ = port;
-    }
-
-    #[inline]
-    fn setup(self, _env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
-        let remote_addr = self.peer_addr;
-        let source_control_port = self.local_port;
-        let application = Box::new(self.socket);
-        Ok(super::SocketSet {
-            application,
-            read_worker: None,
-            write_worker: None,
-            remote_addr,
-            source_control_port,
-            source_queue_id: None,
-        })
-    }
-}
-
-/// A socket that should be reregistered with the application runtime
-pub struct TcpReregistered {
-    pub socket: TcpStream,
-    pub peer_addr: SocketAddress,
-    pub local_port: u16,
-}
-
-impl<Sub> super::Peer<Environment<Sub>> for TcpReregistered
-where
-    Sub: event::Subscriber,
-{
-    type WorkerSocket = TcpStream;
-
-    fn features(&self) -> TransportFeatures {
-        TransportFeatures::TCP
-    }
-
-    #[inline]
-    fn with_source_control_port(&mut self, port: u16) {
-        let _ = port;
-    }
-
-    #[inline]
-    fn setup(self, _env: &Environment<Sub>) -> super::Result<super::SocketSet<Self::WorkerSocket>> {
-        let source_control_port = self.local_port;
-        let remote_addr = self.peer_addr;
-        let application = Box::new(self.socket.into_std()?);
-        Ok(super::SocketSet {
-            application,
-            read_worker: None,
-            write_worker: None,
-            remote_addr,
-            source_control_port,
-            source_queue_id: None,
-        })
     }
 }

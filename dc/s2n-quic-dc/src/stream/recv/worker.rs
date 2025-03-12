@@ -133,9 +133,13 @@ where
                     // check to see if the application is progressing before peeking the socket
                     ensure!(!self.is_application_progressing(), continue);
 
-                    // peek the socket buffer size - we don't care how big, just that there is at
-                    // least one packet there
-                    let _len = ready!(self.socket.poll_peek_len(cx))?;
+                    // check if we have something pending
+                    ready!(self.shared.receiver.poll_peek_worker(
+                        cx,
+                        &self.socket,
+                        &self.shared.clock,
+                        &self.shared.subscriber,
+                    ));
 
                     self.arm_timer();
                     self.state.on_peek_packet().unwrap();

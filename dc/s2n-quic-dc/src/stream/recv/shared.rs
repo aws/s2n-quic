@@ -19,7 +19,7 @@ use core::{
     ops,
     task::{Context, Poll},
 };
-use s2n_quic_core::{buffer, dc, ensure, stream::state, time::Clock};
+use s2n_quic_core::{buffer, dc, ensure, ready, stream::state, time::Clock};
 use std::{
     io,
     sync::{
@@ -79,6 +79,7 @@ pub struct State {
     application_epoch: AtomicU64,
     application_state: AtomicU8,
     pub worker_waker: WorkerWaker,
+    is_owned_socket: bool,
 }
 
 impl State {
@@ -91,6 +92,7 @@ impl State {
     ) -> Self {
         let receiver = recv::state::State::new(stream_id, params, features);
         let reassembler = Default::default();
+        let is_owned_socket = matches!(buffer, recv::buffer::Either::A(recv::buffer::Local { .. }));
         let inner = Inner {
             receiver,
             reassembler,
@@ -102,6 +104,7 @@ impl State {
             application_epoch: AtomicU64::new(0),
             application_state: AtomicU8::new(0),
             worker_waker: Default::default(),
+            is_owned_socket,
         }
     }
 
@@ -151,6 +154,31 @@ impl State {
     pub fn shutdown(&self, is_panicking: bool) {
         ApplicationState::close(&self.application_state, is_panicking);
         self.worker_waker.wake();
+    }
+
+    #[inline]
+    pub fn poll_peek_worker<S, C, Sub>(
+        &self,
+        cx: &mut Context,
+        socket: &S,
+        clock: &C,
+        subscriber: &shared::Subscriber<Sub>,
+    ) -> Poll<()>
+    where
+        S: ?Sized + Socket,
+        C: ?Sized + Clock,
+        Sub: event::Subscriber,
+    {
+        if self.is_owned_socket {
+            let _ = ready!(socket.poll_peek_len(cx));
+            return Poll::Ready(());
+        }
+        let Ok(Some(mut inner)) = self.worker_try_lock() else {
+            // have the worker arm its timer
+            return Poll::Ready(());
+        };
+        let _ = ready!(inner.poll_fill_recv_buffer(cx, Actor::Worker, socket, clock, subscriber));
+        Poll::Ready(())
     }
 
     #[inline]
