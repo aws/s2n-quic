@@ -28,16 +28,10 @@ where
     Sub: event::Subscriber,
 {
     // ensure we have a secret for the peer
-    let peer = handshake.await?;
+    let entry = handshake.await?;
 
-    let stream = endpoint::open_stream(
-        env,
-        peer,
-        env::UdpUnbound(acceptor_addr.into()),
-        recv_buffer(),
-        subscriber,
-        None,
-    )?;
+    let peer = env::udp::Owned(acceptor_addr.into(), recv_buffer());
+    let stream = endpoint::open_stream(env, entry, peer, subscriber, None)?;
 
     // build the stream inside the application context
     let mut stream = stream.connect()?;
@@ -63,7 +57,7 @@ where
     Sub: event::Subscriber,
 {
     // Race TCP handshake with the TLS handshake
-    let (socket, peer) = tokio::try_join!(TcpStream::connect(acceptor_addr), handshake,)?;
+    let (socket, entry) = tokio::try_join!(TcpStream::connect(acceptor_addr), handshake,)?;
 
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
@@ -81,18 +75,14 @@ where
     .into();
     let local_port = socket.local_addr()?.port();
 
-    let stream = endpoint::open_stream(
-        env,
-        peer,
-        env::TcpRegistered {
-            socket,
-            peer_addr,
-            local_port,
-        },
-        recv_buffer(),
-        subscriber,
-        None,
-    )?;
+    let peer = env::tcp::Registered {
+        socket,
+        peer_addr,
+        local_port,
+        recv_buffer: recv_buffer(),
+    };
+
+    let stream = endpoint::open_stream(env, entry, peer, subscriber, None)?;
 
     // build the stream inside the application context
     let mut stream = stream.connect()?;
@@ -111,7 +101,7 @@ where
 /// The provided `map` must contain a shared secret for the `handshake_addr`
 #[inline]
 pub async fn connect_tcp_with<Sub>(
-    peer: secret::map::Peer,
+    entry: secret::map::Peer,
     socket: TcpStream,
     env: &Environment<Sub>,
     subscriber: Sub,
@@ -121,18 +111,15 @@ where
 {
     let local_port = socket.local_addr()?.port();
     let peer_addr = socket.peer_addr()?.into();
-    let stream = endpoint::open_stream(
-        env,
-        peer,
-        env::TcpRegistered {
-            socket,
-            peer_addr,
-            local_port,
-        },
-        recv_buffer(),
-        subscriber,
-        None,
-    )?;
+
+    let peer = env::tcp::Registered {
+        socket,
+        peer_addr,
+        local_port,
+        recv_buffer: recv_buffer(),
+    };
+
+    let stream = endpoint::open_stream(env, entry, peer, subscriber, None)?;
 
     // build the stream inside the application context
     let mut stream = stream.connect()?;

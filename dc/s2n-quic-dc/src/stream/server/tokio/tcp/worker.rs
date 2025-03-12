@@ -313,20 +313,21 @@ impl WorkerState {
             let subscriber_ctx = subscriber_ctx.take().unwrap();
             let (socket, remote_address) = stream.take().unwrap();
 
-            // TCP doesn't use the route key so just pick 0
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
             let recv_buffer = recv::buffer::Either::A(recv_buffer);
+
+            let peer = env::tcp::Reregistered {
+                socket,
+                peer_addr: remote_address,
+                local_port: context.local_port,
+                recv_buffer,
+            };
 
             let stream_builder = match endpoint::accept_stream(
                 now,
                 &context.env,
-                env::TcpReregistered {
-                    socket,
-                    peer_addr: remote_address,
-                    local_port: context.local_port,
-                },
+                peer,
                 &initial_packet,
-                recv_buffer,
                 &context.secrets,
                 context.subscriber.clone(),
                 subscriber_ctx,
@@ -334,7 +335,7 @@ impl WorkerState {
             ) {
                 Ok(stream) => stream,
                 Err(error) => {
-                    if let Some(env::TcpReregistered { socket, .. }) = error.peer {
+                    if let Some(env::tcp::Reregistered { socket, .. }) = error.peer {
                         if !error.secret_control.is_empty() {
                             // if we need to send an error then update the state and loop back
                             // around
