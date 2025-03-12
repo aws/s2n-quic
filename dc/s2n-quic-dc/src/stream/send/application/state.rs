@@ -8,6 +8,7 @@ use crate::{
     stream::{
         packet_number,
         send::{application::transmission, error::Error, flow, path, probes},
+        TransportFeatures,
     },
 };
 use bytes::buf::UninitSlice;
@@ -47,6 +48,7 @@ impl State {
         credentials: &Credentials,
         clock: &Clk,
         message: &mut M,
+        features: &TransportFeatures,
     ) -> Result<(), Error>
     where
         E: seal::Application,
@@ -71,13 +73,22 @@ impl State {
         let max_header_len = self.max_header_len();
 
         let mut total_payload_len = 0;
+        let max_record_size = if features.is_stream() {
+            // If the underlying transport is stream based, it will perform its own packetization
+            // based on the MTU determined at that layer. Therefore, we do not need to restrict
+            // writes to the probed max datagram size, and can instead use a larger value, in this
+            // case 2^14, based on the TLS max record size.
+            1 << 14
+        } else {
+            path.max_datagram_size
+        };
 
         loop {
             let packet_number = packet_number.next()?;
 
             let buffer_len = {
                 let estimated_len = reader.buffered_len() + max_header_len;
-                (path.max_datagram_size as usize).min(estimated_len)
+                (max_record_size as usize).min(estimated_len)
             };
 
             message.push(buffer_len, |buffer| {
@@ -108,7 +119,7 @@ impl State {
                 );
 
                 // buffer is clamped to u16::MAX so this is safe to cast without loss
-                let _: u16 = path.max_datagram_size;
+                let _: u16 = max_record_size;
                 let packet_len = packet_len as u16;
                 let payload_len = reader.consumed_len() as u16;
                 total_payload_len += payload_len as usize;

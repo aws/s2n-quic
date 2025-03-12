@@ -416,8 +416,10 @@ where
             ready!(self.pacer.poll_pacing(cx, &self.shared.clock));
 
             // construct all of the segments we're going to send in this batch
-            let segments =
-                msg::segment::Batch::new(self.sender.transmit_queue_iter(clock).take(max_segments));
+            let segments = msg::segment::Batch::new(
+                self.sender.transmit_queue_iter(clock).take(max_segments),
+                &self.socket.features(),
+            );
 
             let ecn = segments.ecn();
             let res = ready!(self.socket.poll_send(cx, &addr, ecn, &segments));

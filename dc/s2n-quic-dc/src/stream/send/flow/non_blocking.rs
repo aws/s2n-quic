@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::Credits;
-use crate::stream::send::{
-    error::{self, Error},
-    flow,
+use crate::stream::{
+    send::{
+        error::{self, Error},
+        flow,
+    },
+    TransportFeatures,
 };
 use atomic_waker::AtomicWaker;
 use core::{
@@ -96,8 +99,12 @@ impl State {
 
     /// Called by the application to acquire flow credits
     #[inline]
-    pub async fn acquire(&self, request: flow::Request) -> Result<Credits, Error> {
-        core::future::poll_fn(|cx| self.poll_acquire(cx, request)).await
+    pub async fn acquire(
+        &self,
+        request: flow::Request,
+        features: &TransportFeatures,
+    ) -> Result<Credits, Error> {
+        core::future::poll_fn(|cx| self.poll_acquire(cx, request, features)).await
     }
 
     /// Called by the application to acquire flow credits
@@ -106,6 +113,7 @@ impl State {
         &self,
         cx: &mut Context,
         mut request: flow::Request,
+        features: &TransportFeatures,
     ) -> Poll<Result<Credits, Error>> {
         let mut current_offset = self.acquire_offset(&request)?;
 
@@ -138,8 +146,10 @@ impl State {
                 continue;
             };
 
-            // clamp the request to the flow credits we have
-            request.clamp(flow_credits);
+            if !features.is_flow_controlled() {
+                // clamp the request to the flow credits we have
+                request.clamp(flow_credits);
+            }
 
             let mut new_offset = (current_offset & OFFSET_MASK)
                 .checked_add(request.len as u64)
@@ -223,6 +233,7 @@ mod tests {
         // TODO support more than one Waker via intrusive list or something
         let workers = 1;
         let worker_counts = Vec::from_iter((0..workers).map(|_| Arc::new(AtomicU64::new(0))));
+        let features = TransportFeatures::UDP;
 
         let mut tasks = tokio::task::JoinSet::new();
 
@@ -246,7 +257,7 @@ mod tests {
                     };
                     request.clamp(path_info.max_flow_credits(max_header_len, max_segments));
 
-                    let Ok(credits) = state.acquire(request).await else {
+                    let Ok(credits) = state.acquire(request, &features).await else {
                         break;
                     };
 
