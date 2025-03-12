@@ -18,6 +18,7 @@ use tracing::Instrument;
 
 type Subscriber = (Arc<event::testing::Subscriber>, event::tracing::Subscriber);
 
+#[derive(Clone)]
 pub struct Client {
     map: secret::Map,
     env: env::Environment<Subscriber>,
