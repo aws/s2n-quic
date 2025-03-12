@@ -4,6 +4,7 @@
 use crate::{
     credentials::Credentials,
     packet::{self, stream},
+    path::secret,
     socket::recv::descriptor,
 };
 use s2n_codec::DecoderBufferMut;
@@ -11,6 +12,15 @@ use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 
 /// Routes incoming packet segments to the appropriate destination
 pub trait Router {
+    /// Wraps `self` in a router that intercepts secret control messages and forwards
+    /// them to the provided [`secret::Map`].
+    fn with_map(self, map: secret::Map) -> WithMap<Self>
+    where
+        Self: Sized,
+    {
+        WithMap { inner: self, map }
+    }
+
     fn is_open(&self) -> bool;
 
     #[inline(always)]
@@ -27,37 +37,48 @@ pub trait Router {
             // We don't check `remaining` since we currently assume one packet per segment.
             // If we ever support multiple packets per segment, we'll need to split the segment up even
             // further and correctly dispatch to the right place.
-            Ok((packet, _remaining)) => match packet {
-                packet::Packet::Control(packet) => {
-                    let tag = packet.tag();
-                    let stream_id = packet.stream_id().copied();
-                    let credentials = *packet.credentials();
-                    self.handle_control_packet(remote_address, ecn, packet);
-                    self.dispatch_control_packet(tag, stream_id, credentials, segment);
+            Ok((packet, remaining)) => {
+                if cfg!(test) {
+                    assert!(remaining.is_empty());
                 }
-                packet::Packet::Stream(packet) => {
-                    let tag = packet.tag();
-                    let stream_id = *packet.stream_id();
-                    let credentials = *packet.credentials();
-                    self.handle_stream_packet(remote_address, ecn, packet);
-                    self.dispatch_stream_packet(tag, stream_id, credentials, segment);
+                match packet {
+                    packet::Packet::Control(packet) => {
+                        let tag = packet.tag();
+                        let stream_id = packet.stream_id().copied();
+                        let credentials = *packet.credentials();
+                        tracing::trace!(?tag, ?stream_id, ?credentials, "parsed_control_packet");
+                        self.handle_control_packet(remote_address, ecn, packet);
+                        self.dispatch_control_packet(tag, stream_id, credentials, segment);
+                    }
+                    packet::Packet::Stream(packet) => {
+                        let tag = packet.tag();
+                        let stream_id = *packet.stream_id();
+                        let credentials = *packet.credentials();
+                        tracing::trace!(?tag, ?stream_id, ?credentials, "parsed_stream_packet");
+                        self.handle_stream_packet(remote_address, ecn, packet);
+                        self.dispatch_stream_packet(tag, stream_id, credentials, segment);
+                    }
+                    packet::Packet::Datagram(packet) => {
+                        let tag = packet.tag();
+                        let credentials = *packet.credentials();
+                        tracing::trace!(?tag, ?credentials, "parsed_datagram_packet");
+                        self.handle_datagram_packet(remote_address, ecn, packet);
+                        self.dispatch_datagram_packet(tag, credentials, segment);
+                    }
+                    packet::Packet::StaleKey(packet) => {
+                        tracing::trace!(?packet, "parsed_stale_key_packet");
+                        self.handle_stale_key_packet(packet, remote_address);
+                    }
+                    packet::Packet::ReplayDetected(packet) => {
+                        tracing::trace!(?packet, "parsed_replay_detected_packet");
+                        self.handle_replay_detected_packet(packet, remote_address);
+                    }
+                    packet::Packet::UnknownPathSecret(packet) => {
+                        tracing::trace!(?packet, "parsed_unknown_path_secret_packet");
+                        self.handle_unknown_path_secret_packet(packet, remote_address);
+                    }
                 }
-                packet::Packet::Datagram(packet) => {
-                    let tag = packet.tag();
-                    let credentials = *packet.credentials();
-                    self.handle_datagram_packet(remote_address, ecn, packet);
-                    self.dispatch_datagram_packet(tag, credentials, segment);
-                }
-                packet::Packet::StaleKey(packet) => {
-                    self.handle_stale_key_packet(packet, remote_address);
-                }
-                packet::Packet::ReplayDetected(packet) => {
-                    self.handle_replay_detected_packet(packet, remote_address);
-                }
-                packet::Packet::UnknownPathSecret(packet) => {
-                    self.handle_unknown_path_secret_packet(packet, remote_address);
-                }
-            },
+            }
             Err(error) => {
                 self.on_decode_error(error, remote_address, segment);
             }
@@ -194,5 +215,149 @@ pub trait Router {
             packet_len = segment.len(),
             "failed to decode packet"
         );
+    }
+}
+
+#[derive(Clone)]
+pub struct WithMap<Inner> {
+    inner: Inner,
+    map: crate::path::secret::Map,
+}
+
+impl<Inner: Router> Router for WithMap<Inner> {
+    #[inline]
+    fn is_open(&self) -> bool {
+        self.inner.is_open()
+    }
+
+    #[inline]
+    fn tag_len(&self) -> usize {
+        self.inner.tag_len()
+    }
+
+    #[inline]
+    fn handle_control_packet(
+        &mut self,
+        remote_address: SocketAddress,
+        ecn: ExplicitCongestionNotification,
+        packet: packet::control::decoder::Packet,
+    ) {
+        self.inner
+            .handle_control_packet(remote_address, ecn, packet);
+    }
+
+    #[inline]
+    fn dispatch_control_packet(
+        &mut self,
+        tag: packet::control::Tag,
+        id: Option<stream::Id>,
+        credentials: Credentials,
+        segment: descriptor::Filled,
+    ) {
+        self.inner
+            .dispatch_control_packet(tag, id, credentials, segment);
+    }
+
+    #[inline]
+    fn handle_stream_packet(
+        &mut self,
+        remote_address: SocketAddress,
+        ecn: ExplicitCongestionNotification,
+        packet: packet::stream::decoder::Packet,
+    ) {
+        self.inner.handle_stream_packet(remote_address, ecn, packet);
+    }
+
+    #[inline]
+    fn dispatch_stream_packet(
+        &mut self,
+        tag: stream::Tag,
+        id: stream::Id,
+        credentials: Credentials,
+        segment: descriptor::Filled,
+    ) {
+        self.inner
+            .dispatch_stream_packet(tag, id, credentials, segment);
+    }
+
+    #[inline]
+    fn handle_datagram_packet(
+        &mut self,
+        remote_address: SocketAddress,
+        ecn: ExplicitCongestionNotification,
+        packet: packet::datagram::decoder::Packet,
+    ) {
+        self.inner
+            .handle_datagram_packet(remote_address, ecn, packet);
+    }
+
+    #[inline]
+    fn dispatch_datagram_packet(
+        &mut self,
+        tag: packet::datagram::Tag,
+        credentials: Credentials,
+        segment: descriptor::Filled,
+    ) {
+        self.inner
+            .dispatch_datagram_packet(tag, credentials, segment);
+    }
+
+    #[inline]
+    fn handle_stale_key_packet(
+        &mut self,
+        packet: packet::secret_control::stale_key::Packet,
+        remote_address: SocketAddress,
+    ) {
+        // TODO check if the packet was authentic before forwarding the packet on to inner
+        self.map.handle_control_packet(
+            &packet::secret_control::Packet::StaleKey(packet),
+            &remote_address.into(),
+        );
+        self.inner.handle_stale_key_packet(packet, remote_address);
+    }
+
+    #[inline]
+    fn handle_replay_detected_packet(
+        &mut self,
+        packet: packet::secret_control::replay_detected::Packet,
+        remote_address: SocketAddress,
+    ) {
+        // TODO check if the packet was authentic before forwarding the packet on to inner
+        self.map.handle_control_packet(
+            &packet::secret_control::Packet::ReplayDetected(packet),
+            &remote_address.into(),
+        );
+        self.inner
+            .handle_replay_detected_packet(packet, remote_address);
+    }
+
+    #[inline]
+    fn handle_unknown_path_secret_packet(
+        &mut self,
+        packet: packet::secret_control::unknown_path_secret::Packet,
+        remote_address: SocketAddress,
+    ) {
+        // TODO check if the packet was authentic before forwarding the packet on to inner
+        self.map.handle_control_packet(
+            &packet::secret_control::Packet::UnknownPathSecret(packet),
+            &remote_address.into(),
+        );
+        self.inner
+            .handle_unknown_path_secret_packet(packet, remote_address);
+    }
+
+    #[inline]
+    fn on_unhandled_packet(&mut self, remote_address: SocketAddress, packet: packet::Packet) {
+        self.inner.on_unhandled_packet(remote_address, packet);
+    }
+
+    #[inline]
+    fn on_decode_error(
+        &mut self,
+        error: s2n_codec::DecoderError,
+        remote_address: SocketAddress,
+        segment: descriptor::Filled,
+    ) {
+        self.inner.on_decode_error(error, remote_address, segment);
     }
 }

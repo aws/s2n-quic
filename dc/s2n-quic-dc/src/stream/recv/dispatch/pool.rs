@@ -24,6 +24,7 @@ pub struct Pool<T: 'static + Send, const PAGE_SIZE: usize> {
     stream_capacity: Capacity,
     control_capacity: Capacity,
     epoch: VarInt,
+    base: VarInt,
 }
 
 impl<T: 'static + Send, const PAGE_SIZE: usize> Clone for Pool<T, PAGE_SIZE> {
@@ -36,6 +37,7 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Clone for Pool<T, PAGE_SIZE> {
             stream_capacity: self.stream_capacity,
             control_capacity: self.control_capacity,
             epoch: self.epoch,
+            base: self.base,
         }
     }
 }
@@ -52,6 +54,7 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Pool<T, PAGE_SIZE> {
             stream_capacity,
             control_capacity,
             epoch,
+            base: epoch,
         };
         pool.grow();
         pool
@@ -64,6 +67,7 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Pool<T, PAGE_SIZE> {
             // make sure the memory lives as long as this sender is alive
             memory_handle: self.memory_handle.clone(),
             local: Default::default(),
+            base: self.base,
         }
     }
 
