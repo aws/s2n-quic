@@ -261,6 +261,7 @@ mod tcp {
     negative_suite!();
 }
 
+#[cfg(target_os = "linux")] // things are only working on linux right now
 mod udp {
     use super::*;
     const PROTOCOL: Protocol = Protocol::Udp;
