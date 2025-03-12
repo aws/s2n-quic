@@ -29,7 +29,7 @@ pub struct Registration {
     pub is_ack_eliciting: i32,
     pub is_connected: i32,
     pub has_application_header: i32,
-    pub has_source_stream_port: i32,
+    pub has_source_queue_id: i32,
     pub is_recovery_packet: i32,
     pub has_control_data: i32,
     pub has_final_offset: i32,
@@ -38,7 +38,7 @@ pub struct Registration {
     pub path_secret_id: i32,
     pub key_id: i32,
     pub source_control_port: i32,
-    pub source_stream_port: i32,
+    pub source_queue_id: i32,
     pub packet_number: i32,
     pub payload_len: i32,
     pub next_expected_control_packet: i32,
@@ -232,15 +232,15 @@ fn init() -> Registration {
             )
             .with_mask(masks::HAS_APPLICATION_HEADER)
             .register(),
-        has_source_stream_port: protocol
+        has_source_queue_id: protocol
             .field(
-                c"Has source stream port?",
-                c"dcquic.tag.has_source_stream_port",
+                c"Has source queue_id?",
+                c"dcquic.tag.has_source_queue_id",
                 BOOLEAN,
                 SEP_DOT,
                 c"",
             )
-            .with_mask(masks::HAS_SOURCE_STREAM_PORT)
+            .with_mask(masks::HAS_SOURCE_QUEUE_ID)
             .register(),
         is_recovery_packet: protocol
             .field(
@@ -312,11 +312,11 @@ fn init() -> Registration {
                 c"source control port",
             )
             .register(),
-        source_stream_port: protocol
+        source_queue_id: protocol
             .field(
-                c"Source Stream Port",
-                c"dcquic.source_stream_port",
-                UINT16,
+                c"Source Queue ID",
+                c"dcquic.source_queue_id",
+                UINT64,
                 BASE_DEC,
                 c"",
             )
@@ -558,7 +558,7 @@ mod masks {
     pub const IS_STREAM: u64 = control::Tag::IS_STREAM_MASK as _;
     pub const ACK_ELICITING: u64 = datagram::Tag::ACK_ELICITING_MASK as _;
     pub const IS_CONNECTED: u64 = datagram::Tag::IS_CONNECTED_MASK as _;
-    pub const HAS_SOURCE_STREAM_PORT: u64 = stream::Tag::HAS_SOURCE_STREAM_PORT as _;
+    pub const HAS_SOURCE_QUEUE_ID: u64 = stream::Tag::HAS_SOURCE_QUEUE_ID as _;
     pub const IS_RECOVERY_PACKET: u64 = stream::Tag::IS_RECOVERY_PACKET as _;
     pub const HAS_CONTROL_DATA: u64 = stream::Tag::HAS_CONTROL_DATA_MASK as _;
     pub const HAS_FINAL_OFFSET: u64 = stream::Tag::HAS_FINAL_OFFSET_MASK as _;

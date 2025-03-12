@@ -73,7 +73,6 @@ where
         env,
         peer,
         stream_id,
-        None,
         crypto,
         entry.map(),
         parameters,
@@ -90,7 +89,6 @@ pub fn accept_stream<Env, P>(
     env: &Env,
     mut peer: P,
     packet: &server::InitialPacket,
-    queue_id: VarInt,
     recv_buffer: recv::shared::RecvBuffer,
     map: &Map,
     subscriber: Env::Subscriber,
@@ -126,8 +124,8 @@ where
     peer.with_source_control_port(packet.source_control_port);
 
     let stream_id = packet::stream::Id {
-        // select our own route key for this stream
-        queue_id,
+        // use the client's `source_queue_id`, if specified
+        queue_id: packet.source_queue_id.unwrap_or(VarInt::ZERO),
         // inherit the rest of the parameters from the client
         ..packet.stream_id
     };
@@ -137,7 +135,6 @@ where
         env,
         peer,
         stream_id,
-        packet.source_stream_port,
         crypto,
         map,
         parameters,
@@ -166,7 +163,6 @@ fn build_stream<Env, P>(
     env: &Env,
     peer: P,
     stream_id: packet::stream::Id,
-    remote_stream_port: Option<u16>,
     crypto: secret::map::Bidirectional,
     map: &Map,
     parameters: dc::ApplicationParams,
@@ -231,7 +227,7 @@ where
         let application = send::application::state::State {
             stream_id,
             source_control_port: sockets.source_control_port,
-            source_stream_port: sockets.source_stream_port,
+            source_queue_id: sockets.source_queue_id,
         };
 
         let fixed = shared::FixedValues {
@@ -242,13 +238,12 @@ where
         };
 
         let remote_port = sockets.remote_addr.port();
-        let write_remote_port = remote_stream_port.unwrap_or(remote_port);
 
         shared::Common {
             clock: env.clock().clone(),
             gso: env.gso(),
             read_remote_port: remote_port.into(),
-            write_remote_port: write_remote_port.into(),
+            write_remote_port: remote_port.into(),
             last_peer_activity: Default::default(),
             fixed,
             closed_halves: 0u8.into(),

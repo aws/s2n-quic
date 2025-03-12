@@ -13,6 +13,10 @@ use tracing::{info_span, Instrument};
 /// This test checks that the sealer stream key and opener stream key are updated when
 /// more than the confidentiality limit of packets are transmitted.
 #[tokio::test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "test requires debug_assertions to be enabled"
+)]
 async fn key_update() {
     test(TEST_MAX_RECORDS, 1).await;
 }

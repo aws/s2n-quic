@@ -179,21 +179,12 @@ impl State {
         credentials: &Credentials,
         packet: &stream::decoder::Packet,
     ) -> Result<(), Error> {
-        ensure!(
-            packet.credentials().id == credentials.id,
-            Err(error::Kind::CredentialMismatch {
-                expected: credentials.id,
-                actual: packet.credentials().id,
-            }
-            .err())
-        );
-
         // make sure we're getting packets for the correct stream
         ensure!(
-            *packet.stream_id() == self.stream_id,
-            Err(error::Kind::StreamMismatch {
-                expected: self.stream_id,
-                actual: *packet.stream_id(),
+            packet.credentials() == credentials,
+            Err(error::Kind::CredentialMismatch {
+                expected: *credentials,
+                actual: *packet.credentials(),
             }
             .err())
         );

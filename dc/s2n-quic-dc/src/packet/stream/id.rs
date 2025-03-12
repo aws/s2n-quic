@@ -20,15 +20,11 @@ pub struct Id {
 impl fmt::Debug for Id {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if f.alternate() {
-            f.debug_struct("stream::Id")
-                .field("queue_id", &self.queue_id)
-                .field("is_reliable", &self.is_reliable)
-                .field("is_bidirectional", &self.is_bidirectional)
-                .finish()
-        } else {
-            self.into_varint().as_u64().fmt(f)
-        }
+        f.debug_struct("stream::Id")
+            .field("queue_id", &self.queue_id)
+            .field("is_reliable", &self.is_reliable)
+            .field("is_bidirectional", &self.is_bidirectional)
+            .finish()
     }
 }
 

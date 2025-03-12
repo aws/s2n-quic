@@ -55,7 +55,7 @@ pub struct Owned {
     pub wire_version: WireVersion,
     pub credentials: Credentials,
     pub source_control_port: u16,
-    pub source_stream_port: Option<u16>,
+    pub source_queue_id: Option<VarInt>,
     pub stream_id: stream::Id,
     pub original_packet_number: PacketNumber,
     pub packet_number: PacketNumber,
@@ -79,7 +79,7 @@ impl<'a> From<Packet<'a>> for Owned {
             wire_version: packet.wire_version,
             credentials: packet.credentials,
             source_control_port: packet.source_control_port,
-            source_stream_port: packet.source_stream_port,
+            source_queue_id: packet.source_queue_id,
             stream_id: packet.stream_id,
             original_packet_number: packet.original_packet_number,
             packet_number: packet.packet_number,
@@ -100,7 +100,7 @@ pub struct Packet<'a> {
     wire_version: WireVersion,
     credentials: Credentials,
     source_control_port: u16,
-    source_stream_port: Option<u16>,
+    source_queue_id: Option<VarInt>,
     stream_id: stream::Id,
     original_packet_number: PacketNumber,
     packet_number: PacketNumber,
@@ -122,7 +122,7 @@ impl fmt::Debug for Packet<'_> {
             .field("wire_version", &self.wire_version)
             .field("credentials", &self.credentials)
             .field("source_control_port", &self.source_control_port)
-            .field("source_stream_port", &self.source_stream_port)
+            .field("source_queue_id", &self.source_queue_id)
             .field("stream_id", &self.stream_id)
             .field("packet_number", &self.packet_number())
             .field("stream_offset", &self.stream_offset)
@@ -156,8 +156,8 @@ impl Packet<'_> {
     }
 
     #[inline]
-    pub fn source_stream_port(&self) -> Option<u16> {
-        self.source_stream_port
+    pub fn source_queue_id(&self) -> Option<VarInt> {
+        self.source_queue_id
     }
 
     #[inline]
@@ -425,19 +425,19 @@ impl Packet<'_> {
 
         let (_source_control_port, buffer) = buffer.decode::<u16>()?;
 
-        let (_source_stream_port, buffer) = if tag.has_source_stream_port() {
-            let (port, buffer) = buffer.decode::<u16>()?;
-            (Some(port), buffer)
-        } else {
-            (None, buffer)
-        };
-
         let (stream_id, buffer) = buffer.decode::<stream::Id>()?;
 
         decoder_invariant!(
             stream_id.is_reliable,
             "only reliable streams can be retransmitted"
         );
+
+        let (_source_queue_id, buffer) = if tag.has_source_queue_id() {
+            let (v, buffer) = buffer.decode::<VarInt>()?;
+            (Some(v), buffer)
+        } else {
+            (None, buffer)
+        };
 
         let (original_packet_number, buffer) = buffer.decode::<VarInt>()?;
         let (retransmission_packet_number_buffer, buffer) =
@@ -504,7 +504,7 @@ impl Packet<'_> {
             wire_version,
             credentials,
             source_control_port,
-            source_stream_port,
+            source_queue_id,
             stream_id,
             original_packet_number,
             packet_number,
@@ -537,14 +537,14 @@ impl Packet<'_> {
 
             let (source_control_port, buffer) = buffer.decode()?;
 
-            let (source_stream_port, buffer) = if tag.has_source_stream_port() {
-                let (port, buffer) = buffer.decode()?;
-                (Some(port), buffer)
+            let (stream_id, buffer) = buffer.decode::<stream::Id>()?;
+
+            let (source_queue_id, buffer) = if tag.has_source_queue_id() {
+                let (v, buffer) = buffer.decode()?;
+                (Some(v), buffer)
             } else {
                 (None, buffer)
             };
-
-            let (stream_id, buffer) = buffer.decode::<stream::Id>()?;
 
             let (original_packet_number, buffer) = buffer.decode::<VarInt>()?;
 
@@ -599,7 +599,7 @@ impl Packet<'_> {
                 wire_version,
                 credentials,
                 source_control_port,
-                source_stream_port,
+                source_queue_id,
                 stream_id,
                 original_packet_number,
                 packet_number,
@@ -651,7 +651,7 @@ impl Packet<'_> {
             wire_version,
             credentials,
             source_control_port,
-            source_stream_port,
+            source_queue_id,
             stream_id,
             original_packet_number,
             packet_number,

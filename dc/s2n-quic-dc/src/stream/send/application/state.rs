@@ -32,7 +32,7 @@ pub trait Message {
 pub struct State {
     pub stream_id: stream::Id,
     pub source_control_port: u16,
-    pub source_stream_port: Option<u16>,
+    pub source_queue_id: Option<VarInt>,
 }
 
 impl State {
@@ -94,7 +94,7 @@ impl State {
                 let packet_len = encoder::encode(
                     encoder,
                     self.source_control_port,
-                    self.source_stream_port,
+                    self.source_queue_id,
                     stream_id,
                     packet_number,
                     path.next_expected_control_packet,
