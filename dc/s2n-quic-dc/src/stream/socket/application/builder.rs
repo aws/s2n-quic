@@ -1,11 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::socket::ArcApplication;
-use std::io;
+use crate::stream::socket::{application, fd, ArcApplication, SendOnly, Tracing};
+use std::{io, sync::Arc};
 
 pub trait Builder: 'static + Send + Sync {
     fn build(self: Box<Self>) -> io::Result<ArcApplication>;
+}
+
+impl<S: fd::udp::Socket> Builder for SendOnly<Arc<S>> {
+    #[inline]
+    fn build(self: Box<Self>) -> io::Result<ArcApplication> {
+        let v = Tracing(*self);
+        let v = application::Single(v);
+        let v = Arc::new(v);
+        Ok(v)
+    }
 }
 
 #[cfg(feature = "tokio")]
