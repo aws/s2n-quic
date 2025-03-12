@@ -18,6 +18,9 @@ use tracing::Instrument;
 
 type Subscriber = (Arc<event::testing::Subscriber>, event::tracing::Subscriber);
 
+// limit the number of threads used in testing to reduce costs of harnesses
+const TEST_THREADS: usize = 2;
+
 #[derive(Clone)]
 pub struct Client {
     map: secret::Map,
@@ -29,9 +32,15 @@ impl Default for Client {
     fn default() -> Self {
         let _span = tracing::info_span!("client").entered();
         let map = secret::map::testing::new(16);
+        let env = env::Environment::builder()
+            .with_threads(TEST_THREADS)
+            // TODO enable this once ready
+            // .with_pool(env::pool::Config::new(map.clone()))
+            .build()
+            .unwrap();
         Self {
             map,
-            env: Default::default(),
+            env,
             subscriber: Arc::new(event::testing::Subscriber::no_snapshot()),
         }
     }
@@ -292,7 +301,10 @@ pub mod server {
 
             let options = crate::socket::Options::new("127.0.0.1:0".parse().unwrap());
 
-            let env = env::Builder::default().build().unwrap();
+            let env = env::Builder::default()
+                .with_threads(TEST_THREADS)
+                .build()
+                .unwrap();
 
             let test_subscriber = Arc::new(subscriber);
             let subscriber = (

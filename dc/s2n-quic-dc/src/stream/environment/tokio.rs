@@ -10,8 +10,9 @@ use crate::{
     },
 };
 use s2n_quic_platform::features;
-use std::io;
+use std::{io, sync::Arc};
 
+pub mod pool;
 pub mod tcp;
 pub mod udp;
 
@@ -24,6 +25,7 @@ pub struct Builder<Sub> {
     writer_rt: Option<runtime::Shared<Sub>>,
     thread_name_prefix: Option<String>,
     threads: Option<usize>,
+    pool: Option<pool::Config>,
 }
 
 impl<Sub> Default for Builder<Sub> {
@@ -36,6 +38,7 @@ impl<Sub> Default for Builder<Sub> {
             writer_rt: None,
             thread_name_prefix: None,
             threads: None,
+            pool: None,
         }
     }
 }
@@ -46,6 +49,11 @@ where
 {
     pub fn with_threads(mut self, threads: usize) -> Self {
         self.threads = Some(threads);
+        self
+    }
+
+    pub fn with_pool(mut self, config: pool::Config) -> Self {
+        self.pool = Some(config);
         self
     }
 
@@ -81,12 +89,18 @@ where
             .map(<io::Result<_>>::Ok)
             .unwrap_or_else(|| make_rt("writer"))?;
 
-        let env = Environment {
+        let mut env = Environment {
             clock,
             gso,
             socket_options,
             reader_rt,
             writer_rt,
+            recv_pool: None,
+        };
+
+        if let Some(config) = self.pool {
+            let pool = pool::Pool::new(&env, thread_count, config)?;
+            env.recv_pool = Some(Arc::new(pool));
         };
 
         Ok(env)
@@ -100,6 +114,7 @@ pub struct Environment<Sub> {
     socket_options: socket::Options,
     reader_rt: runtime::Shared<Sub>,
     writer_rt: runtime::Shared<Sub>,
+    recv_pool: Option<Arc<pool::Pool>>,
 }
 
 impl<Sub> Default for Environment<Sub>
@@ -116,6 +131,11 @@ impl<Sub> Environment<Sub> {
     #[inline]
     pub fn builder() -> Builder<Sub> {
         Default::default()
+    }
+
+    #[inline]
+    pub fn has_recv_pool(&self) -> bool {
+        self.recv_pool.is_some()
     }
 }
 

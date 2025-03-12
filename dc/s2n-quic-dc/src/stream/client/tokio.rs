@@ -30,8 +30,14 @@ where
     // ensure we have a secret for the peer
     let entry = handshake.await?;
 
-    let peer = env::udp::Owned(acceptor_addr.into(), recv_buffer());
-    let stream = endpoint::open_stream(env, entry, peer, subscriber, None)?;
+    // TODO potentially branch on not using the recv pool if we're under a certain concurrency?
+    let stream = if env.has_recv_pool() {
+        let peer = env::udp::Pooled(acceptor_addr.into());
+        endpoint::open_stream(env, entry, peer, subscriber, None)?
+    } else {
+        let peer = env::udp::Owned(acceptor_addr.into(), recv_buffer());
+        endpoint::open_stream(env, entry, peer, subscriber, None)?
+    };
 
     // build the stream inside the application context
     let mut stream = stream.connect()?;

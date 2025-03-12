@@ -45,6 +45,33 @@ impl<T: Socket> Socket for Box<T> {
     }
 }
 
+#[derive(Clone)]
+pub struct CachedAddr<S: Socket> {
+    inner: S,
+    addr: SocketAddr,
+}
+
+impl<S: Socket> CachedAddr<S> {
+    #[inline]
+    pub fn new(inner: S, addr: SocketAddr) -> Self {
+        Self { addr, inner }
+    }
+}
+
+impl<S: Socket> AsRawFd for CachedAddr<S> {
+    #[inline]
+    fn as_raw_fd(&self) -> std::os::unix::prelude::RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
+impl<S: Socket> Socket for CachedAddr<S> {
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        Ok(self.addr)
+    }
+}
+
 pub use super::peek;
 
 #[inline]
