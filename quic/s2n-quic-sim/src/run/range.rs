@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::{fmt, marker::PhantomData, str::FromStr, time::Duration};
+use jiff::SignedDuration;
 use s2n_quic::provider::io::testing::rand;
 use serde::Deserialize;
 
@@ -26,11 +27,11 @@ impl Default for CliRange<u64> {
     }
 }
 
-impl Default for CliRange<humantime::Duration> {
+impl Default for CliRange<jiff::SignedDuration> {
     fn default() -> Self {
         Self {
-            start: Duration::ZERO.into(),
-            end: Duration::ZERO.into(),
+            start: SignedDuration::ZERO,
+            end: SignedDuration::ZERO,
         }
     }
 }
@@ -58,7 +59,7 @@ where
     }
 }
 
-impl CliRange<humantime::Duration> {
+impl CliRange<jiff::SignedDuration> {
     pub fn gen_duration(&self) -> Duration {
         let start = self.start.as_nanos();
         let end = self.end.as_nanos();
