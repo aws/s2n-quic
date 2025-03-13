@@ -54,6 +54,12 @@ impl Descriptor {
         core::ptr::drop_in_place(self.ptr.as_ptr());
     }
 
+    #[cfg(debug_assertions)]
+    pub(super) fn as_usize(&self) -> usize {
+        // TODO use `.addr()` once MSRV is 1.84
+        self.ptr.as_ptr() as usize
+    }
+
     #[inline]
     pub(super) fn id(&self) -> u32 {
         self.inner().id
