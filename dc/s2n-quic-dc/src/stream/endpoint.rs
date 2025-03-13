@@ -87,7 +87,7 @@ where
 pub fn accept_stream<Env, P>(
     now: Timestamp,
     env: &Env,
-    mut peer: P,
+    peer: P,
     packet: &server::InitialPacket,
     map: &Map,
     subscriber: Env::Subscriber,
@@ -118,9 +118,6 @@ where
     if let Some(o) = parameter_override {
         parameters = o(parameters);
     }
-
-    // inform the value of what the source_control_port is
-    peer.with_source_control_port(packet.source_control_port);
 
     let stream_id = packet::stream::Id {
         // use the client's `source_queue_id`, if specified
@@ -175,6 +172,7 @@ where
     let features = peer.features();
 
     let (sockets, recv_buffer) = peer.setup(env)?;
+    let source_queue_id = sockets.source_queue_id;
 
     // construct shared reader state
     let reader = recv::shared::State::new(stream_id, &parameters, features, recv_buffer);
@@ -222,25 +220,29 @@ where
     // construct shared common state between readers/writers
     let common = {
         let application = send::application::state::State {
-            stream_id,
-            source_control_port: sockets.source_control_port,
-            source_queue_id: sockets.source_queue_id,
+            is_reliable: stream_id.is_reliable,
         };
 
+        let remote_addr = sockets.remote_addr;
+
         let fixed = shared::FixedValues {
-            remote_ip: UnsafeCell::new(sockets.remote_addr.ip()),
-            source_control_port: UnsafeCell::new(sockets.source_control_port),
+            remote_ip: UnsafeCell::new(remote_addr.ip()),
             application: UnsafeCell::new(application),
             credentials: UnsafeCell::new(crypto.credentials),
         };
 
-        let remote_port = sockets.remote_addr.port();
-
         shared::Common {
             clock: env.clock().clone(),
             gso: env.gso(),
-            read_remote_port: remote_port.into(),
-            write_remote_port: remote_port.into(),
+            remote_port: remote_addr.port().into(),
+            remote_queue_id: stream_id.queue_id.as_u64().into(),
+            local_queue_id: if let Some(id) = source_queue_id {
+                id.as_u64()
+            } else {
+                // use MAX as `None`
+                u64::MAX
+            }
+            .into(),
             last_peer_activity: Default::default(),
             fixed,
             closed_halves: 0u8.into(),

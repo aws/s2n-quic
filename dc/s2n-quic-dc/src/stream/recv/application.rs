@@ -122,7 +122,7 @@ where
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.shared.common.ensure_open()?;
-        Ok(self.0.shared.read_remote_addr().into())
+        Ok(self.0.shared.remote_addr().into())
     }
 
     #[inline]

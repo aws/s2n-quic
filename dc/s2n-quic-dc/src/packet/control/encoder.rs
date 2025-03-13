@@ -12,7 +12,7 @@ use s2n_quic_core::{assume, buffer, varint::VarInt};
 #[inline(always)]
 pub fn encode<H, CD, C>(
     mut encoder: EncoderBuffer,
-    source_control_port: u16,
+    source_queue_id: Option<VarInt>,
     stream_id: Option<stream::Id>,
     packet_number: VarInt,
     header_len: VarInt,
@@ -27,9 +27,8 @@ where
     CD: EncoderValue,
     C: crypto::seal::control::Stream,
 {
-    debug_assert_ne!(source_control_port, 0);
-
     let mut tag = Tag::default();
+    tag.set_has_source_queue_id(source_queue_id.is_some());
     tag.set_is_stream(stream_id.is_some());
     tag.set_has_application_header(*header_len > 0);
     encoder.encode(&tag);
@@ -40,9 +39,8 @@ where
     // wire version - we only support `0` currently
     encoder.encode(&WireVersion::ZERO);
 
-    encoder.encode(&source_control_port);
-
     encoder.encode(&stream_id);
+    encoder.encode(&source_queue_id);
 
     encoder.encode(&packet_number);
 

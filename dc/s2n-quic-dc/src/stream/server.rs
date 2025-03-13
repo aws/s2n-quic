@@ -14,7 +14,6 @@ pub mod tokio;
 pub struct InitialPacket {
     pub credentials: Credentials,
     pub stream_id: packet::stream::Id,
-    pub source_control_port: u16,
     pub source_queue_id: Option<VarInt>,
     pub payload_len: usize,
     pub is_zero_offset: bool,
@@ -51,7 +50,6 @@ impl<'a> From<packet::stream::decoder::Packet<'a>> for InitialPacket {
     fn from(packet: packet::stream::decoder::Packet<'a>) -> Self {
         let credentials = *packet.credentials();
         let stream_id = *packet.stream_id();
-        let source_control_port = packet.source_control_port();
         let source_queue_id = packet.source_queue_id();
         let payload_len = packet.payload().len();
         let is_zero_offset = packet.stream_offset().as_u64() == 0;
@@ -61,7 +59,6 @@ impl<'a> From<packet::stream::decoder::Packet<'a>> for InitialPacket {
         Self {
             credentials,
             stream_id,
-            source_control_port,
             source_queue_id,
             is_zero_offset,
             payload_len,

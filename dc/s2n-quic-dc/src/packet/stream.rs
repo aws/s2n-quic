@@ -3,7 +3,7 @@
 
 use super::tag::Common;
 use core::fmt;
-use s2n_quic_core::{packet::KeyPhase, probe};
+use s2n_quic_core::{packet::KeyPhase, probe, state::is};
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
 
 pub mod decoder;
@@ -22,6 +22,11 @@ pub use id::Id;
 pub enum PacketSpace {
     Stream,
     Recovery,
+}
+
+impl PacketSpace {
+    is!(is_stream, Stream);
+    is!(is_recovery, Recovery);
 }
 
 impl probe::Arg for PacketSpace {

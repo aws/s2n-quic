@@ -43,11 +43,6 @@ where
     }
 
     #[inline]
-    fn with_source_control_port(&mut self, port: u16) {
-        self.0.set_port(port);
-    }
-
-    #[inline]
     fn setup(
         self,
         env: &Environment<Sub>,
@@ -105,8 +100,6 @@ where
             "worker ports must match with owned socket implementation"
         );
 
-        let source_control_port = write_worker.local_port()?;
-
         let application = Box::new(TokioUdpSocket(reader));
 
         let read_worker = Some(read_worker);
@@ -119,7 +112,6 @@ where
             read_worker,
             write_worker,
             remote_addr,
-            source_control_port,
             source_queue_id: None,
         };
 
@@ -140,11 +132,6 @@ where
     #[inline]
     fn features(&self) -> TransportFeatures {
         TransportFeatures::UDP
-    }
-
-    #[inline]
-    fn with_source_control_port(&mut self, port: u16) {
-        self.0.set_port(port);
     }
 
     #[inline]

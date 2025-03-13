@@ -30,10 +30,11 @@ where
     #[inline]
     pub(crate) fn accept(self) -> io::Result<(Stream<Sub>, Duration)> {
         let sojourn_time = {
-            let remote_address = self.shared.read_remote_addr();
+            let remote_address = self.shared.remote_addr();
             let remote_address = &remote_address;
-            let credential_id = &*self.shared.credentials().id;
-            let stream_id = self.shared.application().stream_id.into_varint().as_u64();
+            let creds = self.shared.credentials();
+            let credential_id = &*creds.id;
+            let stream_id = creds.key_id.as_u64();
             let now = self.shared.common.clock.get_time();
             let sojourn_time = now.saturating_duration_since(self.queue_time);
 
@@ -81,10 +82,11 @@ where
     #[inline]
     pub(crate) fn prune(self, reason: event::builder::AcceptorStreamPruneReason) {
         let now = self.shared.clock.get_time();
-        let remote_address = self.shared.read_remote_addr();
+        let remote_address = self.shared.remote_addr();
         let remote_address = &remote_address;
-        let credential_id = &*self.shared.credentials().id;
-        let stream_id = self.shared.application().stream_id.into_varint().as_u64();
+        let creds = self.shared.credentials();
+        let credential_id = &*creds.id;
+        let stream_id = creds.key_id.as_u64();
         let sojourn_time = now.saturating_duration_since(self.queue_time);
 
         self.shared

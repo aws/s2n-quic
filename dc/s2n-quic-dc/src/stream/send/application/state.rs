@@ -31,9 +31,7 @@ pub trait Message {
 
 #[derive(Clone, Copy, Debug)]
 pub struct State {
-    pub stream_id: stream::Id,
-    pub source_control_port: u16,
-    pub source_queue_id: Option<VarInt>,
+    pub is_reliable: bool,
 }
 
 impl State {
@@ -46,6 +44,8 @@ impl State {
         packet_number: &packet_number::Counter,
         encrypt_key: &E,
         credentials: &Credentials,
+        stream_id: &stream::Id,
+        source_queue_id: Option<VarInt>,
         clock: &Clk,
         message: &mut M,
         features: &TransportFeatures,
@@ -69,7 +69,6 @@ impl State {
         );
         let mut reader = reader.with_read_limit(credits.len);
 
-        let stream_id = *self.stream_id();
         let max_header_len = self.max_header_len();
 
         let mut total_payload_len = 0;
@@ -104,9 +103,8 @@ impl State {
                 let encoder = EncoderBuffer::new(buffer);
                 let packet_len = encoder::encode(
                     encoder,
-                    self.source_control_port,
-                    self.source_queue_id,
-                    stream_id,
+                    source_queue_id,
+                    *stream_id,
                     packet_number,
                     path.next_expected_control_packet,
                     VarInt::ZERO,
@@ -133,7 +131,7 @@ impl State {
                 let time_sent = clock.get_time();
                 probes::on_transmit_stream(
                     credentials.id,
-                    stream_id,
+                    credentials.key_id,
                     stream::PacketSpace::Stream,
                     s2n_quic_core::packet::number::PacketNumberSpace::Initial
                         .new_packet_number(packet_number),
@@ -172,13 +170,8 @@ impl State {
     }
 
     #[inline]
-    fn stream_id(&self) -> &stream::Id {
-        &self.stream_id
-    }
-
-    #[inline]
     pub fn max_header_len(&self) -> usize {
-        if self.stream_id().is_reliable {
+        if self.is_reliable {
             encoder::MAX_RETRANSMISSION_HEADER_LEN
         } else {
             encoder::MAX_HEADER_LEN

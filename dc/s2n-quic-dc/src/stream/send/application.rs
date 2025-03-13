@@ -70,7 +70,7 @@ where
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.shared.common.ensure_open()?;
-        Ok(self.0.shared.write_remote_addr().into())
+        Ok(self.0.shared.remote_addr().into())
     }
 
     #[inline]
@@ -204,6 +204,9 @@ where
             Some(batch)
         };
 
+        let stream_id = self.shared.stream_id();
+        let local_queue_id = self.shared.local_queue_id();
+
         self.queue.push_buffer(
             buf,
             &mut batch,
@@ -220,6 +223,8 @@ where
                             &self.shared.sender.packet_number,
                             sealer,
                             self.shared.credentials(),
+                            &stream_id,
+                            local_queue_id,
                             &clock::Cached::new(&self.shared.clock),
                             message,
                             &features,
@@ -262,7 +267,7 @@ where
             cx,
             limit,
             self.sockets.write_application(),
-            &msg::addr::Addr::new(self.shared.write_remote_addr()),
+            &msg::addr::Addr::new(self.shared.remote_addr()),
             &self.shared.sender.segment_alloc,
             &self.shared.gso,
             &self.shared.clock,
@@ -495,7 +500,7 @@ where
             cx,
             usize::MAX,
             sockets.write_application(),
-            &msg::addr::Addr::new(shared.write_remote_addr()),
+            &msg::addr::Addr::new(shared.remote_addr()),
             &shared.sender.segment_alloc,
             &shared.gso,
             &shared.clock,

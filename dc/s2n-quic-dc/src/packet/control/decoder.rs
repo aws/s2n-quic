@@ -49,7 +49,7 @@ pub struct Packet<'a> {
     tag: Tag,
     wire_version: WireVersion,
     credentials: Credentials,
-    source_control_port: u16,
+    source_queue_id: Option<VarInt>,
     stream_id: Option<stream::Id>,
     packet_number: PacketNumber,
     header: &'a mut [u8],
@@ -75,8 +75,8 @@ impl Packet<'_> {
     }
 
     #[inline]
-    pub fn source_control_port(&self) -> u16 {
-        self.source_control_port
+    pub fn source_queue_id(&self) -> Option<VarInt> {
+        self.source_queue_id
     }
 
     #[inline]
@@ -124,7 +124,7 @@ impl Packet<'_> {
             tag,
             wire_version,
             credentials,
-            source_control_port,
+            source_queue_id,
             stream_id,
             packet_number,
             header_len,
@@ -149,11 +149,16 @@ impl Packet<'_> {
             let (credentials, buffer) = buffer.decode()?;
             let (wire_version, buffer) = buffer.decode()?;
 
-            let (source_control_port, buffer) = buffer.decode()?;
-
             let (stream_id, buffer) = if tag.is_stream() {
                 let (stream_id, buffer) = buffer.decode()?;
                 (Some(stream_id), buffer)
+            } else {
+                (None, buffer)
+            };
+
+            let (source_queue_id, buffer) = if tag.has_source_queue_id() {
+                let (v, buffer) = buffer.decode()?;
+                (Some(v), buffer)
             } else {
                 (None, buffer)
             };
@@ -183,7 +188,7 @@ impl Packet<'_> {
                 tag,
                 wire_version,
                 credentials,
-                source_control_port,
+                source_queue_id,
                 stream_id,
                 packet_number,
                 header_len,
@@ -225,7 +230,7 @@ impl Packet<'_> {
             tag,
             wire_version,
             credentials,
-            source_control_port,
+            source_queue_id,
             stream_id,
             packet_number,
             header,

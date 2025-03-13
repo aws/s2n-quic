@@ -37,17 +37,11 @@ where
     }
 
     #[inline]
-    fn with_source_control_port(&mut self, port: u16) {
-        self.peer_addr.set_port(port);
-    }
-
-    #[inline]
     fn setup(self, _env: &E) -> SetupResult<Self::ReadWorkerSocket, Self::WriteWorkerSocket> {
         let remote_addr = self.peer_addr;
         let control = self.control;
         let stream = self.stream;
         let queue_id = control.queue_id();
-        let source_control_port = self.worker_socket.local_port()?;
 
         let application = Box::new(self.application_socket);
         let read_worker = Some(self.worker_socket.clone());
@@ -58,7 +52,6 @@ where
             read_worker,
             write_worker,
             remote_addr,
-            source_control_port,
             source_queue_id: Some(queue_id),
         };
 

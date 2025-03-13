@@ -35,7 +35,6 @@ pub struct SocketSet<R, W = R> {
     pub read_worker: Option<R>,
     pub write_worker: Option<W>,
     pub remote_addr: SocketAddress,
-    pub source_control_port: u16,
     pub source_queue_id: Option<VarInt>,
 }
 
@@ -47,7 +46,6 @@ pub trait Peer<E: Environment> {
     type WriteWorkerSocket: WriteWorkerSocket;
 
     fn features(&self) -> TransportFeatures;
-    fn with_source_control_port(&mut self, port: u16);
     fn setup(self, env: &E) -> SetupResult<Self::ReadWorkerSocket, Self::WriteWorkerSocket>;
 }
 

@@ -357,15 +357,11 @@ impl WorkerState {
             };
 
             {
-                let remote_address: SocketAddress = stream_builder.shared.read_remote_addr();
+                let remote_address: SocketAddress = stream_builder.shared.remote_addr();
                 let remote_address = &remote_address;
-                let credential_id = &*stream_builder.shared.credentials().id;
-                let stream_id = stream_builder
-                    .shared
-                    .application()
-                    .stream_id
-                    .into_varint()
-                    .as_u64();
+                let creds = stream_builder.shared.credentials();
+                let credential_id = &*creds.id;
+                let stream_id = creds.key_id.as_u64();
                 publisher.on_acceptor_tcp_stream_enqueued(
                     event::builder::AcceptorTcpStreamEnqueued {
                         remote_address,

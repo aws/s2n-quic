@@ -11,7 +11,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__control_packet]
         pub fn on_control_packet(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             packet_number: VarInt,
             control_data_len: usize,
         );
@@ -20,7 +20,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__control_packet_decrypted]
         pub fn on_control_packet_decrypted(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             packet_number: VarInt,
             control_data_len: usize,
             valid: bool,
@@ -30,7 +30,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__control_packet_decrypted]
         pub fn on_control_packet_duplicate(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             packet_number: VarInt,
             control_data_len: usize,
         );
@@ -39,7 +39,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__packet_ack]
         pub fn on_packet_ack(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             packet_space: stream::PacketSpace,
             packet_number: u64,
             packet_len: u16,
@@ -52,7 +52,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__packet_lost]
         pub fn on_packet_lost(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             packet_space: stream::PacketSpace,
             packet_number: u64,
             packet_len: u16,
@@ -66,7 +66,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__pto_backoff_reset]
         pub fn on_pto_backoff_reset(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             previous_value: u32,
         );
 
@@ -74,7 +74,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__pto_armed]
         pub fn on_pto_armed(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             pto_period: Duration,
             pto_backoff: u32,
         );
@@ -83,7 +83,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__transmit_stream]
         pub fn on_transmit_stream(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             packet_space: stream::PacketSpace,
             packet_number: PacketNumber,
             stream_offset: VarInt,
@@ -96,7 +96,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__transmit_probe]
         pub fn on_transmit_probe(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             packet_space: stream::PacketSpace,
             packet_number: PacketNumber,
             stream_offset: VarInt,
@@ -109,7 +109,7 @@ probe::define!(
         #[link_name = s2n_quic_dc__stream__send__close]
         pub fn on_close(
             credential_id: credentials::Id,
-            stream_id: stream::Id,
+            key_id: VarInt,
             packet_number: VarInt,
             error_code: VarInt,
         );

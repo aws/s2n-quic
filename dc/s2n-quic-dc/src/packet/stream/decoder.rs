@@ -54,7 +54,6 @@ pub struct Owned {
     pub tag: Tag,
     pub wire_version: WireVersion,
     pub credentials: Credentials,
-    pub source_control_port: u16,
     pub source_queue_id: Option<VarInt>,
     pub stream_id: stream::Id,
     pub original_packet_number: PacketNumber,
@@ -78,7 +77,6 @@ impl<'a> From<Packet<'a>> for Owned {
             tag: packet.tag,
             wire_version: packet.wire_version,
             credentials: packet.credentials,
-            source_control_port: packet.source_control_port,
             source_queue_id: packet.source_queue_id,
             stream_id: packet.stream_id,
             original_packet_number: packet.original_packet_number,
@@ -99,7 +97,6 @@ pub struct Packet<'a> {
     tag: Tag,
     wire_version: WireVersion,
     credentials: Credentials,
-    source_control_port: u16,
     source_queue_id: Option<VarInt>,
     stream_id: stream::Id,
     original_packet_number: PacketNumber,
@@ -121,7 +118,6 @@ impl fmt::Debug for Packet<'_> {
             .field("tag", &self.tag)
             .field("wire_version", &self.wire_version)
             .field("credentials", &self.credentials)
-            .field("source_control_port", &self.source_control_port)
             .field("source_queue_id", &self.source_queue_id)
             .field("stream_id", &self.stream_id)
             .field("packet_number", &self.packet_number())
@@ -148,11 +144,6 @@ impl Packet<'_> {
     #[inline]
     pub fn credentials(&self) -> &Credentials {
         &self.credentials
-    }
-
-    #[inline]
-    pub fn source_control_port(&self) -> u16 {
-        self.source_control_port
     }
 
     #[inline]
@@ -503,7 +494,6 @@ impl Packet<'_> {
             tag,
             wire_version,
             credentials,
-            source_control_port,
             source_queue_id,
             stream_id,
             original_packet_number,
@@ -535,7 +525,9 @@ impl Packet<'_> {
             let (credentials, buffer) = buffer.decode()?;
             let (wire_version, buffer) = buffer.decode()?;
 
-            let (source_control_port, buffer) = buffer.decode()?;
+            // unused space - was source_control_port when we did port migration but that has
+            // been replaced with `source_queue_id`, which is more flexible
+            let (_source_control_port, buffer) = buffer.decode::<u16>()?;
 
             let (stream_id, buffer) = buffer.decode::<stream::Id>()?;
 
@@ -598,7 +590,6 @@ impl Packet<'_> {
                 tag,
                 wire_version,
                 credentials,
-                source_control_port,
                 source_queue_id,
                 stream_id,
                 original_packet_number,
@@ -650,7 +641,6 @@ impl Packet<'_> {
             tag,
             wire_version,
             credentials,
-            source_control_port,
             source_queue_id,
             stream_id,
             original_packet_number,

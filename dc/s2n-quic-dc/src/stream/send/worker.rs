@@ -15,7 +15,7 @@ use crate::{
             shared::Event,
             state::State,
         },
-        shared::{self, Half},
+        shared,
         socket::Socket,
         Actor, TransportFeatures,
     },
@@ -23,7 +23,7 @@ use crate::{
 use core::task::{Context, Poll};
 use s2n_quic_core::{
     endpoint, ensure,
-    inet::ExplicitCongestionNotification,
+    inet::{ExplicitCongestionNotification, SocketAddress},
     random, ready,
     recovery::bandwidth::Bandwidth,
     time::{
@@ -78,6 +78,7 @@ where
     application_queue: Queue,
     pacer: pacer::Naive,
     socket: S,
+    is_handshaking: bool,
 }
 
 #[derive(Debug)]
@@ -172,6 +173,7 @@ where
             application_queue: Default::default(),
             pacer: Default::default(),
             socket,
+            is_handshaking: true,
         }
     }
 
@@ -314,7 +316,9 @@ where
             sender: &mut self.sender,
             clock,
             remote_addr: Default::default(),
+            remote_queue_id: None,
             any_valid_packets: false,
+            is_handshaking: &mut self.is_handshaking,
         };
 
         let _ = self
@@ -345,10 +349,13 @@ where
 
             match self.state {
                 waiting::State::Acking => {
+                    let stream_id = self.shared.stream_id();
+                    let source_queue_id = self.shared.local_queue_id();
                     let _ = self.sender.fill_transmit_queue(
                         control_sealer,
                         self.shared.credentials(),
-                        self.socket.local_addr().unwrap().port(),
+                        &stream_id,
+                        source_queue_id,
                         &self.shared.clock,
                     );
                 }
@@ -358,7 +365,7 @@ where
                         cx,
                         usize::MAX,
                         &self.socket,
-                        &addr::Addr::new(self.shared.write_remote_addr()),
+                        &addr::Addr::new(self.shared.remote_addr()),
                         &self.shared.sender.segment_alloc,
                         &self.shared.gso,
                         &self.shared.clock,
@@ -382,10 +389,13 @@ where
                     continue;
                 }
                 waiting::State::ShuttingDown => {
+                    let stream_id = self.shared.stream_id();
+                    let source_queue_id = self.shared.local_queue_id();
                     let _ = self.sender.fill_transmit_queue(
                         control_sealer,
                         self.shared.credentials(),
-                        self.socket.local_addr().unwrap().port(),
+                        &stream_id,
+                        source_queue_id,
                         &self.shared.clock,
                     );
 
@@ -407,7 +417,7 @@ where
         ensure!(!self.sender.transmit_queue.is_empty(), Poll::Ready(()));
 
         let mut max_segments = self.shared.gso.max_segments();
-        let addr = self.shared.write_remote_addr();
+        let addr = self.shared.remote_addr();
         let addr = addr::Addr::new(addr);
         let clock = &self.shared.clock;
 
@@ -476,9 +486,11 @@ where
     sender: &'a mut State,
     opener: &'a crate::crypto::awslc::open::control::Stream,
     clock: clock::Cached<'a, C>,
-    remote_addr: s2n_quic_core::inet::SocketAddress,
+    remote_addr: SocketAddress,
+    remote_queue_id: Option<VarInt>,
     random: &'a mut R,
     any_valid_packets: bool,
+    is_handshaking: &'a mut bool,
 }
 
 impl<Sub, C, R> buffer::Dispatch for Router<'_, Sub, C, R>
@@ -489,7 +501,7 @@ where
 {
     fn on_packet(
         &mut self,
-        remote_addr: &s2n_quic_core::inet::SocketAddress,
+        remote_addr: &SocketAddress,
         ecn: ExplicitCongestionNotification,
         packet: crate::packet::Packet,
     ) -> Result<(), crate::stream::recv::Error> {
@@ -497,6 +509,8 @@ where
             Packet::Control(mut packet) => {
                 // make sure we're processing the expected stream
                 ensure!(packet.credentials() == self.shared.credentials(), Ok(()));
+
+                let remote_queue_id = packet.source_queue_id();
 
                 let res = self.sender.on_control_packet(
                     self.opener,
@@ -510,15 +524,18 @@ where
                 );
 
                 if res.is_ok() {
-                    self.remote_addr = *remote_addr;
                     self.any_valid_packets = true;
+                    self.remote_addr = *remote_addr;
+                    if remote_queue_id.is_some() {
+                        self.remote_queue_id = remote_queue_id;
+                    }
                 }
             }
             other => self
                 .shared
                 .crypto
                 .map()
-                .handle_unexpected_packet(&other, &self.shared.write_remote_addr().into()),
+                .handle_unexpected_packet(&other, &(*remote_addr).into()),
         }
 
         Ok(())
@@ -533,11 +550,15 @@ where
 {
     #[inline]
     fn drop(&mut self) {
-        if self.any_valid_packets {
-            // if the writer saw any ACKs then we're done handshaking
-            let did_complete_handshake = true;
-            self.shared
-                .on_valid_packet(&self.remote_addr, Half::Write, did_complete_handshake);
-        }
+        ensure!(self.any_valid_packets);
+
+        // if we saw any valid packets then we're done handshaking
+        let did_complete_handshake = core::mem::take(self.is_handshaking);
+
+        self.shared.on_valid_packet(
+            &self.remote_addr,
+            self.remote_queue_id,
+            did_complete_handshake,
+        );
     }
 }

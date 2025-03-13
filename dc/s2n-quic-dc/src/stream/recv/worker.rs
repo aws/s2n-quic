@@ -76,7 +76,7 @@ where
 {
     #[inline]
     pub fn new(socket: S, shared: ArcShared<Sub>, endpoint: endpoint::Type) -> Self {
-        let send_buffer = msg::send::Message::new(shared.read_remote_addr(), shared.gso.clone());
+        let send_buffer = msg::send::Message::new(shared.remote_addr(), shared.gso.clone());
         let timer = Timer::new_with_timeout(&shared.clock, INITIAL_TIMEOUT);
 
         let state = match endpoint {
