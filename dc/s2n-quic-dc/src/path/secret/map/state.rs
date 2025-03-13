@@ -626,7 +626,7 @@ where
         let id = *entry.id();
         let peer = *entry.peer();
 
-        if let Some(prev) = self.peers.insert(entry) {
+        if let Some(prev) = self.peers.insert(entry.clone()) {
             // This shouldn't happen due to the panic in on_new_path_secrets, but just
             // in case something went wrong with the secret map we double check here.
             // FIXME: Make insertion fallible and fail handshakes instead?
@@ -634,6 +634,8 @@ where
             assert_ne!(prev_id, id, "duplicate path secret id");
 
             prev.retire(self.cleaner.epoch());
+
+            entry.inherit_rehandshake(&prev);
 
             self.subscriber().on_path_secret_map_entry_replaced(
                 event::builder::PathSecretMapEntryReplaced {
