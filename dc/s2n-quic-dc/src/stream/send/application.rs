@@ -222,7 +222,7 @@ where
                             self.shared.credentials(),
                             &clock::Cached::new(&self.shared.clock),
                             message,
-                            &self.sockets.features(),
+                            &features,
                         )
                     },
                     |sealer| {

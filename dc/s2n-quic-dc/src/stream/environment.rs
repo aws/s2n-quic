@@ -16,6 +16,7 @@ type Result<T = (), E = io::Error> = core::result::Result<T, E>;
 
 #[cfg(feature = "tokio")]
 pub mod tokio;
+pub mod udp;
 
 pub trait Environment {
     type Clock: Clone + clock::Clock;

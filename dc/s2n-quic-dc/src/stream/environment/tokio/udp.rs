@@ -5,8 +5,13 @@ use crate::{
     event,
     stream::{
         environment::{tokio::Environment, Peer, SetupResult, SocketSet},
-        recv::{buffer, shared::RecvBuffer},
-        socket::{self, Socket as _},
+        recv::{buffer, dispatch::Control, shared::RecvBuffer},
+        socket::{
+            self,
+            application::{builder::TokioUdpSocket, Single},
+            fd::udp::CachedAddr,
+            SendOnly, Socket as _, Tracing,
+        },
         TransportFeatures,
     },
 };
@@ -17,7 +22,10 @@ use s2n_quic_core::{
 use std::{io, net::UdpSocket, sync::Arc};
 use tokio::io::unix::AsyncFd;
 
-type AsyncUdpSocket = AsyncFd<Arc<UdpSocket>>;
+pub(super) type RecvSocket = Arc<UdpSocket>;
+pub(super) type WorkerSocket = Arc<Tracing<SendOnly<CachedAddr<RecvSocket>>>>;
+pub(super) type ApplicationSocket = Arc<Single<Tracing<SendOnly<CachedAddr<RecvSocket>>>>>;
+type OwnedSocket = AsyncFd<Arc<CachedAddr<UdpSocket>>>;
 
 #[derive(Debug)]
 pub struct Owned(pub SocketAddress, pub RecvBuffer);
@@ -26,8 +34,8 @@ impl<Sub> Peer<Environment<Sub>> for Owned
 where
     Sub: event::Subscriber,
 {
-    type ReadWorkerSocket = AsyncUdpSocket;
-    type WriteWorkerSocket = (AsyncUdpSocket, buffer::Local);
+    type ReadWorkerSocket = OwnedSocket;
+    type WriteWorkerSocket = (OwnedSocket, buffer::Local);
 
     #[inline]
     fn features(&self) -> TransportFeatures {
@@ -77,8 +85,9 @@ where
 
         let socket::Pair { writer, reader } = socket::Pair::open(options)?;
 
-        let writer = Arc::new(writer);
-        let reader = Arc::new(reader);
+        let local_addr = writer.local_addr()?;
+        let writer = Arc::new(CachedAddr::new(writer, local_addr));
+        let reader = Arc::new(CachedAddr::new(reader, local_addr));
 
         let read_worker = {
             let _guard = env.reader_rt.enter();
@@ -98,7 +107,7 @@ where
 
         let source_control_port = write_worker.local_port()?;
 
-        let application = Box::new(reader);
+        let application = Box::new(TokioUdpSocket(reader));
 
         let read_worker = Some(read_worker);
         let write_worker_buffer = crate::msg::recv::Message::new(u16::MAX);
@@ -115,5 +124,44 @@ where
         };
 
         Ok((socket, recv_buffer))
+    }
+}
+
+#[derive(Debug)]
+pub struct Pooled(pub SocketAddress);
+
+impl<Sub> Peer<Environment<Sub>> for Pooled
+where
+    Sub: event::Subscriber,
+{
+    type ReadWorkerSocket = WorkerSocket;
+    type WriteWorkerSocket = (WorkerSocket, buffer::Channel<Control>);
+
+    #[inline]
+    fn features(&self) -> TransportFeatures {
+        TransportFeatures::UDP
+    }
+
+    #[inline]
+    fn with_source_control_port(&mut self, port: u16) {
+        self.0.set_port(port);
+    }
+
+    #[inline]
+    fn setup(
+        self,
+        env: &Environment<Sub>,
+    ) -> SetupResult<Self::ReadWorkerSocket, Self::WriteWorkerSocket> {
+        let peer_addr = self.0;
+        let recv_pool = env.recv_pool.as_ref().expect("pool not configured");
+        let (control, stream, application_socket, worker_socket) = recv_pool.alloc();
+        crate::stream::environment::udp::Pooled {
+            peer_addr,
+            control,
+            stream,
+            application_socket,
+            worker_socket,
+        }
+        .setup(env)
     }
 }

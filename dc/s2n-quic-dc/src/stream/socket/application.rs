@@ -40,7 +40,7 @@ impl<T: ?Sized + Application> Application for Arc<T> {
     }
 }
 
-pub struct Single<S: Socket>(S);
+pub struct Single<S>(pub(crate) S);
 
 impl<S: Socket> Application for Single<S> {
     #[inline]
