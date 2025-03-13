@@ -26,6 +26,7 @@ mod builder;
 pub mod state;
 pub mod transmission;
 
+use crate::stream::socket::Application;
 pub use builder::Builder;
 
 pub struct Writer<Sub: event::Subscriber>(Box<Inner<Sub>>);
@@ -176,15 +177,17 @@ where
 
         let path = self.shared.sender.path.load();
 
-        // clamp the flow request based on the path state
-        request.clamp(path.max_flow_credits(max_header_len, max_segments));
+        let features = self.sockets.features();
+
+        if !features.is_flow_controlled() {
+            // clamp the flow request based on the path state
+            request.clamp(path.max_flow_credits(max_header_len, max_segments));
+        }
 
         // acquire flow credits from the worker
-        let credits = ready!(self.shared.sender.flow.poll_acquire(cx, request))?;
+        let credits = ready!(self.shared.sender.flow.poll_acquire(cx, request, &features))?;
 
         trace!(?credits);
-
-        let features = self.sockets.features();
 
         let mut batch = if features.is_reliable() {
             // the protocol does recovery for us so no need to track the transmissions
@@ -219,6 +222,7 @@ where
                             self.shared.credentials(),
                             &clock::Cached::new(&self.shared.clock),
                             message,
+                            &self.sockets.features(),
                         )
                     },
                     |sealer| {

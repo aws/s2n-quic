@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::stream::TransportFeatures;
 use arrayvec::ArrayVec;
 use core::ops::Deref;
 use s2n_quic_core::{ensure, inet::ExplicitCongestionNotification};
@@ -12,7 +13,7 @@ use std::io::IoSlice;
 /// > #define UIO_FASTIOV 8
 pub const MAX_COUNT: usize = if cfg!(target_os = "linux") { 8 } else { 1 };
 
-/// The maximum payload allowed in sendmsg calls
+/// The maximum payload allowed in sendmsg calls using UDP
 ///
 /// From <https://github.com/torvalds/linux/blob/8cd26fd90c1ad7acdcfb9f69ca99d13aa7b24561/net/ipv4/ip_output.c#L987-L995>
 /// > Linux enforces a u16::MAX - IP_HEADER_LEN - UDP_HEADER_LEN
@@ -36,13 +37,13 @@ impl<'a> Deref for Batch<'a> {
 
 impl<'a> Batch<'a> {
     #[inline]
-    pub fn new<Q>(queue: Q) -> Self
+    pub fn new<Q>(queue: Q, features: &TransportFeatures) -> Self
     where
         Q: IntoIterator<Item = (ExplicitCongestionNotification, &'a [u8])>,
     {
         // this value is replaced by the first segment
         let mut ecn = ExplicitCongestionNotification::Ect0;
-        let mut total_len = 0u16;
+        let mut total_len = 0u32;
         let mut segments = Segments::new();
 
         for segment in queue {
@@ -53,12 +54,12 @@ impl<'a> Batch<'a> {
             );
             let packet_len = packet_len as u16;
 
-            // make sure the packet fits in u16::MAX
-            let Some(new_total_len) = total_len.checked_add(packet_len) else {
-                break;
-            };
-            // make sure we don't exceed the max allowed payload size
-            ensure!(new_total_len < MAX_TOTAL, break);
+            let new_total_len = total_len + packet_len as u32;
+
+            if !features.is_stream() {
+                // make sure we don't exceed the max allowed payload size
+                ensure!(new_total_len < MAX_TOTAL as u32, break);
+            }
 
             // track if the current segment is undersized from the previous
             let mut undersized_segment = false;
