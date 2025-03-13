@@ -28,10 +28,10 @@ pub type Reader = recv::application::Reader<Subscriber>;
 // limit the number of threads used in testing to reduce costs of harnesses
 const TEST_THREADS: usize = 2;
 
-const MAX_DATAGRAM_SIZE: Option<u16> = if cfg!(target_os = "linux") {
-    Some(8950)
+pub(crate) const MAX_DATAGRAM_SIZE: u16 = if cfg!(target_os = "linux") {
+    8950
 } else {
-    None
+    1450
 };
 
 #[derive(Clone)]
@@ -44,26 +44,15 @@ pub struct Client {
 
 impl Default for Client {
     fn default() -> Self {
-        let _span = tracing::info_span!("client").entered();
-        let map = secret::map::testing::new(16);
-        let options = socket::options::Options::new("127.0.0.1:0".parse().unwrap());
-        let env = env::Environment::builder()
-            .with_threads(TEST_THREADS)
-            // TODO enable this once ready
-            // .with_pool(env::pool::Config::new(map.clone()))
-            .with_socket_options(options)
-            .build()
-            .unwrap();
-        Self {
-            map,
-            env,
-            subscriber: Arc::new(event::testing::Subscriber::no_snapshot()),
-            mtu: MAX_DATAGRAM_SIZE,
-        }
+        Self::builder().build()
     }
 }
 
 impl Client {
+    pub fn builder() -> client::Builder {
+        client::Builder::default()
+    }
+
     pub fn handshake_with<S: AsRef<server::Handle>>(
         &self,
         server: &S,
@@ -91,9 +80,7 @@ impl Client {
 
     fn params(&self) -> ApplicationParams {
         let mut params = dc::testing::TEST_APPLICATION_PARAMS;
-        if let Some(mtu) = self.mtu {
-            params.max_datagram_size = mtu.into();
-        }
+        params.max_datagram_size = self.mtu.unwrap_or(MAX_DATAGRAM_SIZE).into();
         params
     }
 
@@ -139,6 +126,67 @@ impl Client {
 
     pub fn subscriber(&self) -> Arc<testing::Subscriber> {
         self.subscriber.clone()
+    }
+}
+
+pub mod client {
+    use super::*;
+
+    pub struct Builder {
+        map_capacity: usize,
+        mtu: Option<u16>,
+        subscriber: event::testing::Subscriber,
+    }
+
+    impl Default for Builder {
+        fn default() -> Self {
+            Self {
+                map_capacity: 16,
+                mtu: None,
+                subscriber: event::testing::Subscriber::no_snapshot(),
+            }
+        }
+    }
+
+    impl Builder {
+        pub fn map_capacity(mut self, map_capacity: usize) -> Self {
+            self.map_capacity = map_capacity;
+            self
+        }
+
+        pub fn mtu(mut self, mtu: u16) -> Self {
+            self.mtu = Some(mtu);
+            self
+        }
+
+        pub fn subscriber(mut self, subscriber: event::testing::Subscriber) -> Self {
+            self.subscriber = subscriber;
+            self
+        }
+
+        pub fn build(self) -> Client {
+            let Self {
+                map_capacity,
+                mtu,
+                subscriber,
+            } = self;
+            let _span = tracing::info_span!("client").entered();
+            let map = secret::map::testing::new(map_capacity);
+            let options = socket::options::Options::new("127.0.0.1:0".parse().unwrap());
+            let env = env::Environment::builder()
+                .with_threads(TEST_THREADS)
+                // TODO enable this once ready
+                // .with_pool(env::pool::Config::new(map.clone()))
+                .with_socket_options(options)
+                .build()
+                .unwrap();
+            Client {
+                map,
+                env,
+                subscriber: Arc::new(subscriber),
+                mtu,
+            }
+        }
     }
 }
 
@@ -194,7 +242,7 @@ impl Server {
     }
 }
 
-mod drop_handle {
+pub(crate) mod drop_handle {
     use core::future::Future;
     use tokio::sync::watch;
 
@@ -241,9 +289,7 @@ pub mod server {
     impl Handle {
         pub(super) fn params(&self) -> ApplicationParams {
             let mut params = dc::testing::TEST_APPLICATION_PARAMS;
-            if let Some(mtu) = self.mtu {
-                params.max_datagram_size = mtu.into();
-            }
+            params.max_datagram_size = self.mtu.unwrap_or(MAX_DATAGRAM_SIZE).into();
             params
         }
     }
@@ -418,11 +464,7 @@ pub mod server {
                 map,
                 protocol,
                 local_addr,
-                mtu: if let Some(mtu) = mtu {
-                    Some(mtu)
-                } else {
-                    MAX_DATAGRAM_SIZE
-                },
+                mtu,
             };
 
             super::Server {
