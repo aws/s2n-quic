@@ -230,8 +230,10 @@ impl Map {
     pub(crate) fn test_insert_pair(
         &self,
         local_addr: SocketAddr,
+        local_params: Option<dc::ApplicationParams>,
         peer: &Self,
         peer_addr: SocketAddr,
+        peer_params: Option<dc::ApplicationParams>,
     ) -> crate::credentials::Id {
         use crate::path::secret::{schedule, sender};
         use s2n_quic_core::endpoint::Type;
@@ -241,7 +243,11 @@ impl Map {
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();
 
-        let insert = |map: &Self, peer: &Self, peer_addr, endpoint| {
+        let insert = |map: &Self,
+                      peer: &Self,
+                      peer_addr,
+                      params: Option<dc::ApplicationParams>,
+                      endpoint| {
             let secret =
                 schedule::Secret::new(ciphersuite, dc::SUPPORTED_VERSIONS[0], endpoint, &secret);
             let id = *secret.id();
@@ -250,12 +256,14 @@ impl Map {
 
             let sender = sender::State::new(srt);
 
+            let params = params.unwrap_or(dc::testing::TEST_APPLICATION_PARAMS);
+
             let entry = Entry::new(
                 peer_addr,
                 secret,
                 sender,
                 super::receiver::State::new(),
-                dc::testing::TEST_APPLICATION_PARAMS,
+                params,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
                 Arc::new(()),
             );
@@ -265,8 +273,8 @@ impl Map {
             id
         };
 
-        let client_id = insert(self, peer, peer_addr, Type::Client);
-        let server_id = insert(peer, self, local_addr, Type::Server);
+        let client_id = insert(self, peer, peer_addr, peer_params, Type::Client);
+        let server_id = insert(peer, self, local_addr, local_params, Type::Server);
 
         assert_eq!(client_id, server_id);
 
