@@ -17,7 +17,7 @@ fips = ["aws-lc-rs/fips"]
 testing = []
 
 [dependencies]
-aws-lc-rs = { version = "1.9", features = ["prebuilt-nasm"] }
+aws-lc-rs = { version = "1.12", features = ["prebuilt-nasm"] }
 cfg-if = "1"
 lazy_static = "1"
 s2n-codec = { version = "=0.55.0", path = "../../common/s2n-codec", default-features = false }
