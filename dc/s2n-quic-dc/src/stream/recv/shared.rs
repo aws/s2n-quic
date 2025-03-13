@@ -7,7 +7,7 @@ use crate::{
     packet::{stream, Packet},
     stream::{
         recv::{self, buffer::Buffer as _},
-        shared::{self, ArcShared, Half},
+        shared::{self, ArcShared},
         socket::{self, Socket},
         Actor, TransportFeatures,
     },
@@ -19,7 +19,9 @@ use core::{
     ops,
     task::{Context, Poll},
 };
-use s2n_quic_core::{buffer, dc, ensure, ready, stream::state, time::Clock};
+use s2n_quic_core::{
+    buffer, dc, ensure, inet::SocketAddress, ready, stream::state, time::Clock, varint::VarInt,
+};
 use std::{
     io,
     sync::{
@@ -97,6 +99,7 @@ impl State {
             receiver,
             reassembler,
             buffer,
+            is_handshaking: true,
         };
         let inner = Mutex::new(inner);
         Self {
@@ -298,6 +301,7 @@ pub struct Inner {
     pub receiver: recv::state::State,
     pub reassembler: buffer::Reassembler,
     buffer: RecvBuffer,
+    is_handshaking: bool,
 }
 
 impl fmt::Debug for Inner {
@@ -305,6 +309,7 @@ impl fmt::Debug for Inner {
         f.debug_struct("Inner")
             .field("receiver", &self.receiver)
             .field("reassembler", &self.reassembler)
+            .field("is_handshaking", &self.is_handshaking)
             .finish()
     }
 }
@@ -323,7 +328,8 @@ impl Inner {
     ) where
         Sub: event::Subscriber,
     {
-        let source_control_port = shared.source_control_port();
+        let stream_id = shared.stream_id();
+        let source_queue_id = shared.local_queue_id();
 
         self.receiver.on_transmit(
             shared
@@ -331,7 +337,8 @@ impl Inner {
                 .control_sealer()
                 .expect("control sealer should be available with recv transmissions"),
             shared.credentials(),
-            source_control_port,
+            stream_id,
+            source_queue_id,
             send_buffer,
             &shared.clock,
         );
@@ -339,7 +346,7 @@ impl Inner {
         ensure!(!send_buffer.is_empty());
 
         // Update the remote address with the latest value
-        send_buffer.set_remote_address(shared.read_remote_addr());
+        send_buffer.set_remote_address(shared.remote_addr());
     }
 
     #[inline]
@@ -393,6 +400,7 @@ impl Inner {
 
                     let mut router = PacketDispatch::new_stream(
                         &mut self.receiver,
+                        &mut self.is_handshaking,
                         &mut out_buf,
                         control_opener,
                         clock,
@@ -408,6 +416,7 @@ impl Inner {
 
                     let mut router = PacketDispatch::new_datagram(
                         &mut self.receiver,
+                        &mut self.is_handshaking,
                         &mut out_buf,
                         control_opener,
                         clock,
@@ -446,7 +455,10 @@ where
     Sub: event::Subscriber,
 {
     did_complete_handshake: bool,
-    remote_addr: Option<s2n_quic_core::inet::SocketAddress>,
+    any_valid_packets: bool,
+    is_handshaking: &'a mut bool,
+    remote_addr: SocketAddress,
+    remote_queue_id: Option<VarInt>,
     receiver: &'a mut recv::state::State,
     control_opener: &'a Crypt,
     out_buf: &'a mut Buf,
@@ -465,6 +477,7 @@ where
     #[inline]
     fn new_stream(
         receiver: &'a mut recv::state::State,
+        is_handshaking: &'a mut bool,
         out_buf: &'a mut Buf,
         control_opener: &'a Crypt,
         clock: &'a Clk,
@@ -472,12 +485,15 @@ where
     ) -> Self {
         Self {
             did_complete_handshake: false,
-            remote_addr: None,
+            any_valid_packets: false,
+            remote_addr: Default::default(),
+            remote_queue_id: None,
             receiver,
             control_opener,
             out_buf,
             shared,
             clock,
+            is_handshaking,
         }
     }
 }
@@ -493,6 +509,7 @@ where
     #[inline]
     fn new_datagram(
         receiver: &'a mut recv::state::State,
+        is_handshaking: &'a mut bool,
         out_buf: &'a mut Buf,
         control_opener: &'a Crypt,
         clock: &'a Clk,
@@ -500,12 +517,15 @@ where
     ) -> Self {
         Self {
             did_complete_handshake: false,
-            remote_addr: None,
+            any_valid_packets: false,
+            remote_addr: Default::default(),
+            remote_queue_id: None,
             receiver,
             control_opener,
             out_buf,
             shared,
             clock,
+            is_handshaking,
         }
     }
 }
@@ -521,7 +541,7 @@ where
     #[inline]
     fn on_packet(
         &mut self,
-        remote_addr: &s2n_quic_core::inet::SocketAddress,
+        remote_addr: &SocketAddress,
         ecn: s2n_quic_core::inet::ExplicitCongestionNotification,
         packet: crate::packet::Packet,
     ) -> Result<(), recv::Error> {
@@ -537,6 +557,8 @@ where
                     precheck?;
                 }
 
+                let source_queue_id = packet.source_queue_id();
+
                 let _ = self.shared.crypto.open_with(
                     |opener| {
                         self.receiver.on_stream_packet(
@@ -549,9 +571,22 @@ where
                             self.out_buf,
                         )?;
 
-                        self.remote_addr = Some(*remote_addr);
-                        self.did_complete_handshake |=
-                            packet.next_expected_control_packet().as_u64() > 0;
+                        self.any_valid_packets = true;
+                        self.remote_addr = *remote_addr;
+
+                        if source_queue_id.is_some() {
+                            self.remote_queue_id = source_queue_id;
+                        }
+
+                        if *self.is_handshaking {
+                            // if the peer has seen at least one packet from us, then transition to handshake complete
+                            let peer_has_seen_control_packet =
+                                packet.next_expected_control_packet().as_u64() > 0;
+                            if peer_has_seen_control_packet {
+                                *self.is_handshaking = false;
+                                self.did_complete_handshake = true;
+                            }
+                        }
 
                         <Result<_, recv::Error>>::Ok(())
                     },
@@ -569,7 +604,7 @@ where
                 self.shared
                     .crypto
                     .map()
-                    .handle_unexpected_packet(&other, &self.shared.read_remote_addr().into());
+                    .handle_unexpected_packet(&other, &(*remote_addr).into());
 
                 if !IS_STREAM {
                     // TODO if the packet was authentic then close the receiver with an error
@@ -597,9 +632,11 @@ where
 {
     #[inline]
     fn drop(&mut self) {
-        if let Some(remote_addr) = self.remote_addr {
-            self.shared
-                .on_valid_packet(&remote_addr, Half::Read, self.did_complete_handshake);
-        }
+        ensure!(self.any_valid_packets);
+        self.shared.on_valid_packet(
+            &self.remote_addr,
+            self.remote_queue_id,
+            self.did_complete_handshake,
+        );
     }
 }

@@ -32,24 +32,17 @@ where
     }
 
     #[inline]
-    fn with_source_control_port(&mut self, port: u16) {
-        let _ = port;
-    }
-
-    #[inline]
     fn setup(
         self,
         _env: &Environment<Sub>,
     ) -> SetupResult<Self::ReadWorkerSocket, Self::WriteWorkerSocket> {
         let remote_addr = self.peer_addr;
-        let source_control_port = self.local_port;
         let application = Box::new(self.socket);
         let socket = SocketSet {
             application,
             read_worker: None,
             write_worker: None,
             remote_addr,
-            source_control_port,
             source_queue_id: None,
         };
         Ok((socket, self.recv_buffer))
@@ -76,16 +69,10 @@ where
     }
 
     #[inline]
-    fn with_source_control_port(&mut self, port: u16) {
-        let _ = port;
-    }
-
-    #[inline]
     fn setup(
         self,
         _env: &Environment<Sub>,
     ) -> SetupResult<Self::ReadWorkerSocket, Self::WriteWorkerSocket> {
-        let source_control_port = self.local_port;
         let remote_addr = self.peer_addr;
         let application = Box::new(self.socket.into_std()?);
         let socket = SocketSet {
@@ -93,7 +80,6 @@ where
             read_worker: None,
             write_worker: None,
             remote_addr,
-            source_control_port,
             source_queue_id: None,
         };
         Ok((socket, self.recv_buffer))

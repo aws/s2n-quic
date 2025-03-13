@@ -143,10 +143,11 @@ where
         };
 
         {
-            let remote_address: SocketAddress = stream.shared.read_remote_addr();
+            let remote_address: SocketAddress = stream.shared.remote_addr();
             let remote_address = &remote_address;
-            let credential_id = &*stream.shared.credentials().id;
-            let stream_id = stream.shared.application().stream_id.into_varint().as_u64();
+            let creds = stream.shared.credentials();
+            let credential_id = &*creds.id;
+            let stream_id = creds.key_id.as_u64();
             publisher.on_acceptor_udp_stream_enqueued(event::builder::AcceptorUdpStreamEnqueued {
                 remote_address,
                 credential_id,

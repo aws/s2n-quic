@@ -3,12 +3,13 @@
 
 use crate::{credentials, msg::recv};
 use core::task::{Context, Poll};
+use s2n_quic_core::varint::VarInt;
 use std::sync::{Arc, Weak};
 use tokio::sync::mpsc;
 
 type Sender = mpsc::Sender<recv::Message>;
 type ReceiverChan = mpsc::Receiver<recv::Message>;
-type Key = credentials::Id;
+type Key = (credentials::Id, VarInt);
 type HashMap = flurry::HashMap<Key, Sender>;
 
 pub enum Outcome {
@@ -41,7 +42,7 @@ impl Map {
             .take()
             .unwrap_or_else(|| mpsc::channel(self.channel_size));
 
-        let key = packet.credentials.id;
+        let key = (packet.credentials.id, packet.credentials.key_id);
 
         let guard = self.inner.guard();
         match self.inner.try_insert(key, sender, &guard) {

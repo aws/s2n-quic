@@ -60,25 +60,6 @@ impl Id {
     }
 
     #[inline]
-    pub fn next(&self) -> Option<Self> {
-        Some(Self {
-            queue_id: self.queue_id.checked_add_usize(1)?,
-            is_reliable: self.is_reliable,
-            is_bidirectional: self.is_bidirectional,
-        })
-    }
-
-    #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = Self> {
-        let mut next = Some(*self);
-        core::iter::from_fn(move || {
-            let current = next;
-            next = next.and_then(|v| v.next());
-            current
-        })
-    }
-
-    #[inline]
     pub fn into_varint(self) -> VarInt {
         let key_id = *self.queue_id;
         let is_reliable = if self.is_reliable {
