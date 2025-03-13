@@ -53,6 +53,12 @@ impl<T: 'static> Descriptor<T> {
         core::ptr::drop_in_place(self.ptr.as_ptr());
     }
 
+    #[cfg(debug_assertions)]
+    pub(super) fn as_usize(&self) -> usize {
+        // TODO use `.addr()` once MSRV is 1.84
+        self.ptr.as_ptr() as usize
+    }
+
     /// # Safety
     ///
     /// The caller needs to guarantee the [`Descriptor`] is still allocated.
