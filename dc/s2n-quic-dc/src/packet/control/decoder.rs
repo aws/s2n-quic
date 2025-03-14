@@ -5,10 +5,11 @@ use crate::{
     credentials::Credentials,
     packet::{control::Tag, stream, WireVersion},
 };
+use core::fmt;
 use s2n_codec::{
     decoder_invariant, CheckedRange, DecoderBufferMut, DecoderBufferMutResult as R, DecoderError,
 };
-use s2n_quic_core::{assume, varint::VarInt};
+use s2n_quic_core::{assume, frame::FrameMut, varint::VarInt};
 
 type PacketNumber = VarInt;
 
@@ -44,7 +45,6 @@ where
     }
 }
 
-#[derive(Debug)]
 pub struct Packet<'a> {
     tag: Tag,
     wire_version: WireVersion,
@@ -56,6 +56,31 @@ pub struct Packet<'a> {
     application_header: CheckedRange,
     control_data: CheckedRange,
     auth_tag: &'a mut [u8],
+}
+
+impl fmt::Debug for Packet<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let header = &*self.header;
+
+        let mut s = f.debug_struct("control::Packet");
+
+        s.field("tag", &self.tag)
+            .field("wire_version", &self.wire_version)
+            .field("credentials", &self.credentials)
+            .field("source_queue_id", &self.source_queue_id)
+            .field("stream_id", &self.stream_id)
+            .field("packet_number", &self.packet_number);
+
+        if !self.application_header.is_empty() {
+            s.field("application_header", &self.application_header.get(header));
+        }
+
+        if !self.control_data.is_empty() {
+            s.field("control_data", &self.control_data.get(header));
+        }
+
+        s.field("auth_tag", &self.auth_tag).finish()
+    }
 }
 
 impl Packet<'_> {
@@ -102,6 +127,13 @@ impl Packet<'_> {
     #[inline]
     pub fn control_data_mut(&mut self) -> &mut [u8] {
         self.control_data.get_mut(self.header)
+    }
+
+    #[inline]
+    pub fn control_frames_mut(&mut self) -> ControlFramesMut {
+        ControlFramesMut {
+            buffer: self.control_data.get_mut(self.header),
+        }
     }
 
     #[inline]
@@ -240,5 +272,36 @@ impl Packet<'_> {
         };
 
         Ok((packet, buffer))
+    }
+}
+
+pub struct ControlFramesMut<'a> {
+    buffer: &'a mut [u8],
+}
+
+impl<'a> Iterator for ControlFramesMut<'a> {
+    type Item = Result<FrameMut<'a>, s2n_codec::DecoderError>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buffer.is_empty() {
+            return None;
+        }
+
+        let buffer = unsafe {
+            // extend the lifetime of the buffer
+            core::mem::transmute::<&mut [u8], &mut [u8]>(self.buffer)
+        };
+        match DecoderBufferMut::new(buffer).decode::<FrameMut>() {
+            Ok((frame, remaining)) => {
+                self.buffer = remaining.into_less_safe_slice();
+                Some(Ok(frame))
+            }
+            Err(err) => {
+                // clear out the buffer and return an error
+                self.buffer = &mut [];
+                Some(Err(err))
+            }
+        }
     }
 }
