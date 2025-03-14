@@ -199,31 +199,36 @@ impl Free {
             regions,
             total: 0,
             open: true,
+            #[cfg(debug_assertions)]
+            active: Default::default(),
         };
         Arc::new(Self(Mutex::new(inner)))
     }
 
     #[inline]
     fn alloc(&self) -> Option<Unfilled> {
-        self.0
-            .lock()
-            .unwrap()
-            .descriptors
-            .pop()
-            .map(Unfilled::from_descriptor)
+        let mut inner = self.0.lock().unwrap();
+        let desc = inner.descriptors.pop()?;
+        #[cfg(debug_assertions)]
+        assert!(inner.active.insert(desc.as_usize()));
+        drop(inner);
+        Some(Unfilled::from_descriptor(desc))
     }
 
     #[inline]
     fn record_region(&self, region: Region, mut descriptors: Vec<Descriptor>) {
         let mut inner = self.0.lock().unwrap();
         inner.regions.push(region);
-        inner.total += descriptors.len();
+        let prev = inner.total;
+        let next = prev + descriptors.len();
+        inner.total = next;
         inner.descriptors.append(&mut descriptors);
         // Even though the `descriptors` is now empty (`len=0`), it still owns
         // capacity and will need to be freed. Drop the lock before interacting
         // with the global allocator.
         drop(inner);
         drop(descriptors);
+        tracing::debug!(prev, next, "growing pool");
     }
 
     #[inline]
@@ -238,6 +243,10 @@ impl FreeList for Free {
     #[inline]
     fn free(&self, descriptor: Descriptor) -> Option<Box<dyn 'static + Send>> {
         let mut inner = self.0.lock().unwrap();
+
+        #[cfg(debug_assertions)]
+        assert!(inner.active.remove(&descriptor.as_usize()));
+
         inner.descriptors.push(descriptor);
         if inner.open {
             return None;
@@ -253,6 +262,8 @@ struct FreeInner {
     regions: Vec<Region>,
     total: usize,
     open: bool,
+    #[cfg(debug_assertions)]
+    active: std::collections::BTreeSet<usize>,
 }
 
 impl FreeInner {
@@ -270,6 +281,8 @@ impl FreeInner {
                 regions: Vec::new(),
                 total: 0,
                 open: false,
+                #[cfg(debug_assertions)]
+                active: Default::default(),
             },
         ))
     }
@@ -278,6 +291,15 @@ impl FreeInner {
 impl Drop for FreeInner {
     #[inline]
     fn drop(&mut self) {
+        if self.descriptors.is_empty() {
+            return;
+        }
+
+        #[cfg(debug_assertions)]
+        assert!(self.active.is_empty());
+
+        tracing::trace!("dropping {} descriptors", self.descriptors.len());
+
         for descriptor in self.descriptors.drain(..) {
             unsafe {
                 // SAFETY: the free list is closed and there are no outstanding descriptors
