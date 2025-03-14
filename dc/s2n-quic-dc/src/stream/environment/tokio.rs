@@ -57,6 +57,11 @@ where
         self
     }
 
+    pub fn with_socket_options(mut self, socket_options: socket::Options) -> Self {
+        self.socket_options = Some(socket_options);
+        self
+    }
+
     #[inline]
     pub fn build(self) -> io::Result<Environment<Sub>> {
         let clock = self.clock.unwrap_or_default();

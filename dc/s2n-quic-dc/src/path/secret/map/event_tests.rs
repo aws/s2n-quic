@@ -61,7 +61,7 @@ fn control_packets() {
     let client_addr = "127.0.0.1:1234".parse().unwrap();
     let server_addr = "127.0.0.1:5678".parse().unwrap();
 
-    let id = client.test_insert_pair(client_addr, &server, server_addr);
+    let id = client.test_insert_pair(client_addr, None, &server, server_addr, None);
 
     let mut out = [0; 128];
 
