@@ -18,6 +18,10 @@ AWS Security via our [vulnerability reporting page](http://aws.amazon.com/securi
 
 Include a trace log and packet capture (with embedded key log) if possible. See https://aws.github.io/s2n-quic/user-guide/debugging.html for instructions on how to capture these. -->
 
+### Need By Date:
+
+Do you have a date that you need this issue resolved by? What is the reason for that date, and what are the consequences of missing it? Any additional information you can provide to help prioritize the issue is appreciated. However, we cannot guarantee that this issue will be fixed by the requested date.
+
 ### Solution:
 
 <!--A description of the possible solution in terms of s2n-quic architecture. Highlight and explain any potentially controversial design decisions taken.
