@@ -609,6 +609,9 @@ where
                 if !IS_STREAM {
                     // TODO if the packet was authentic then close the receiver with an error
                     // Datagram-based streams just drop unexpected packets
+
+                    tracing::trace!("unexpected packet: {other:?}");
+
                     return Ok(());
                 }
 

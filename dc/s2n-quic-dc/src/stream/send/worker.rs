@@ -184,6 +184,11 @@ where
 
     #[inline]
     pub fn poll(&mut self, cx: &mut Context) -> Poll<()> {
+        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| self.poll_impl(cx))
+    }
+
+    #[inline]
+    fn poll_impl(&mut self, cx: &mut Context) -> Poll<()> {
         let initial = self.snapshot();
 
         let is_initial = self.sender.state.is_ready();
