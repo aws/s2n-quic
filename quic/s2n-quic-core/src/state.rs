@@ -27,9 +27,9 @@ macro_rules! __state_transition__ {
         if matches!($state, $valid) {
             let __event__ = stringify!($event);
             if __event__.is_empty() || __event__ == "_" {
-                $crate::state::_debug!(prev = ?$state, next = ?$target);
+                $crate::state::_debug!(prev = ?$state, next = ?$target, location = %core::panic::Location::caller());
             } else {
-                $crate::state::_debug!(event = %__event__, prev = ?$state, next = ?$target);
+                $crate::state::_debug!(event = %__event__, prev = ?$state, next = ?$target, location = %core::panic::Location::caller());
             }
 
             *$state = $target;
@@ -78,6 +78,7 @@ macro_rules! __state_event__ {
             #[doc = $doc]
         )*
         #[inline]
+        #[track_caller]
         pub fn $event(&mut self) -> $crate::state::Result<Self> {
             $crate::state::transition!(
                 @build [],
