@@ -4,12 +4,12 @@
 use super::{tag::Common, HeaderLen, PacketNumber, PayloadLen};
 use core::fmt;
 use s2n_quic_core::packet::KeyPhase;
-use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
+use zerocopy::{FromBytes, Unaligned};
 
 pub mod decoder;
 pub mod encoder;
 
-#[derive(Clone, Copy, PartialEq, Eq, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Clone, Copy, PartialEq, Eq, FromBytes, Unaligned)]
 #[repr(C)]
 pub struct Tag(Common);
 

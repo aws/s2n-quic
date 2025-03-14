@@ -44,7 +44,7 @@ probe = { version = "0.5", optional = true }
 s2n-codec = { version = "=0.55.0", path = "../../common/s2n-codec", default-features = false }
 subtle = { version = "2", default-features = false }
 tracing = { version = "0.1", default-features = false, optional = true }
-zerocopy = { version = "0.7", features = ["derive"] }
+zerocopy = { version = "0.8", features = ["derive"] }
 futures-test = { version = "0.3", optional = true } # For testing Waker interactions
 once_cell = { version = "1", optional = true }
 

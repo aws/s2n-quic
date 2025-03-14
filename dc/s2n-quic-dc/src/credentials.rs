@@ -7,7 +7,7 @@ use core::{
 };
 use s2n_codec::{
     decoder_value,
-    zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned},
+    zerocopy::{FromBytes, IntoBytes, Unaligned},
     zerocopy_value_codec, Encoder, EncoderValue,
 };
 pub use s2n_quic_core::varint::VarInt as KeyId;
@@ -15,9 +15,7 @@ pub use s2n_quic_core::varint::VarInt as KeyId;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
-#[derive(
-    Clone, Copy, Default, PartialEq, Eq, AsBytes, FromBytes, FromZeroes, Unaligned, PartialOrd, Ord,
-)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, FromBytes, IntoBytes, Unaligned, PartialOrd, Ord)]
 #[cfg_attr(
     any(test, feature = "testing"),
     derive(bolero_generator::TypeGenerator)
