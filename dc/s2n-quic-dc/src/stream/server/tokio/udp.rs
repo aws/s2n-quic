@@ -130,12 +130,15 @@ where
             Err(error) => {
                 tracing::trace!("send_start");
 
-                let addr = msg::addr::Addr::new(remote_addr);
-                let ecn = Default::default();
-                let buffer = &[io::IoSlice::new(&error.secret_control)];
+                let buffer = &error.secret_control;
+                if !buffer.is_empty() {
+                    let addr = msg::addr::Addr::new(remote_addr);
+                    let ecn = Default::default();
+                    let buffer = &[io::IoSlice::new(&error.secret_control)];
 
-                // ignore any errors since this is just for responding to invalid connect attempts
-                let _ = self.socket.try_send(&addr, ecn, buffer);
+                    // ignore any errors since this is just for responding to invalid connect attempts
+                    let _ = self.socket.try_send(&addr, ecn, buffer);
+                }
 
                 tracing::trace!("send_finish");
                 return Err(error.error);
