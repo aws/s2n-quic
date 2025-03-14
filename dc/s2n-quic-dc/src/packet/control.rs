@@ -3,12 +3,12 @@
 
 use super::tag::Common;
 use core::fmt;
-use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
+use zerocopy::{FromBytes, Unaligned};
 
 pub mod decoder;
 pub mod encoder;
 
-#[derive(Clone, Copy, PartialEq, Eq, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Clone, Copy, PartialEq, Eq, FromBytes, Unaligned)]
 #[repr(C)]
 pub struct Tag(Common);
 

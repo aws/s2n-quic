@@ -8,7 +8,7 @@ use s2n_codec::{
     EncoderBuffer, EncoderValue,
 };
 use s2n_quic_core::varint::VarInt;
-use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
+use zerocopy::{FromBytes, Unaligned};
 
 #[macro_use]
 mod decoder;
@@ -23,7 +23,7 @@ pub const TAG_LEN: usize = 16;
 
 macro_rules! impl_tag {
     ($tag:expr) => {
-        #[derive(Clone, Copy, PartialEq, Eq, AsBytes, FromBytes, FromZeroes, Unaligned)]
+        #[derive(Clone, Copy, PartialEq, Eq, FromBytes, Unaligned)]
         #[repr(C)]
         pub struct Tag(u8);
 

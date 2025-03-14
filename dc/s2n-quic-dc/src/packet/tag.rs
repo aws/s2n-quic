@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use s2n_codec::{decoder_invariant, decoder_value};
-use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
+use zerocopy::{FromBytes, Unaligned};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, FromBytes, Unaligned)]
 #[repr(C)]
 pub(super) struct Common(pub(super) u8);
 

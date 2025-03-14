@@ -46,7 +46,7 @@ pub trait Encoder: Sized {
 
     /// Writes a zerocopy value to the buffer
     fn write_zerocopy<
-        T: zerocopy::AsBytes + zerocopy::FromBytes + zerocopy::Unaligned,
+        T: zerocopy::IntoBytes + zerocopy::FromBytes + zerocopy::Unaligned,
         F: FnOnce(&mut T),
     >(
         &mut self,

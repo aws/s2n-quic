@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::fmt::Debug;
-use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
+use zerocopy::{FromBytes, IntoBytes, Unaligned};
 
 mod error;
 pub use error::Error;
@@ -323,7 +323,7 @@ impl crate::event::IntoEvent<crate::event::api::CipherSuite> for CipherSuite {
 
 macro_rules! handshake_type {
     ($($variant:ident($value:literal)),* $(,)?) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, AsBytes, Unaligned)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, IntoBytes, Unaligned)]
         #[cfg_attr(any(test, feature = "bolero-generator"), derive(bolero_generator::TypeGenerator))]
         #[repr(u8)]
         pub enum HandshakeType {
@@ -383,7 +383,7 @@ handshake_type!(
 //#         case finished:            Finished;
 //#   } body;
 //# } Handshake;
-#[derive(Clone, Copy, Debug, AsBytes, FromBytes, FromZeroes, Unaligned)]
+#[derive(Clone, Copy, Debug, IntoBytes, FromBytes, Unaligned)]
 #[repr(C)]
 pub struct HandshakeHeader {
     msg_type: u8,
