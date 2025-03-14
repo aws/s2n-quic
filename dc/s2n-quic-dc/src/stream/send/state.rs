@@ -312,98 +312,92 @@ impl State {
         let mut max_acked_recovery = None;
         let mut loaded_transmit_queue = false;
 
-        {
-            let mut decoder = DecoderBufferMut::new(packet.control_data_mut());
-            while !decoder.is_empty() {
-                let (frame, remaining) = decoder
-                    .decode::<FrameMut>()
-                    .map_err(|decoder| error::Kind::FrameError { decoder }.err())?;
-                decoder = remaining;
+        for frame in packet.control_frames_mut() {
+            let frame = frame.map_err(|err| error::Kind::FrameError { decoder: err }.err())?;
 
-                trace!(?frame);
+            trace!(?frame);
 
-                match frame {
-                    FrameMut::Padding(_) => {
-                        continue;
-                    }
-                    FrameMut::Ping(_) => {
-                        // no need to do anything special here
-                    }
-                    FrameMut::Ack(ack) => {
-                        if !core::mem::replace(&mut loaded_transmit_queue, true) {
-                            // make sure we have a current view of the application transmissions
-                            self.load_transmission_queue(transmission_queue);
-                        }
-
-                        if ack.ecn_counts.is_some() {
-                            self.on_frame_ack::<_, _, true>(
-                                credentials,
-                                &ack,
-                                random,
-                                &recv_time,
-                                &mut newly_acked,
-                                &mut max_acked_stream,
-                                &mut max_acked_recovery,
-                                segment_alloc,
-                            )?;
-                        } else {
-                            self.on_frame_ack::<_, _, false>(
-                                credentials,
-                                &ack,
-                                random,
-                                &recv_time,
-                                &mut newly_acked,
-                                &mut max_acked_stream,
-                                &mut max_acked_recovery,
-                                segment_alloc,
-                            )?;
-                        }
-                    }
-                    FrameMut::MaxData(frame) => {
-                        if self.max_data < frame.maximum_data {
-                            self.max_data = frame.maximum_data;
-                        }
-                    }
-                    FrameMut::ConnectionClose(close) => {
-                        debug!(connection_close = ?close, state = ?self.state);
-
-                        probes::on_close(
-                            credentials.id,
-                            credentials.key_id,
-                            packet_number,
-                            close.error_code,
-                        );
-
-                        // if there was no error and we transmitted everything then just shut the
-                        // stream down
-                        if close.error_code == VarInt::ZERO
-                            && close.frame_type.is_some()
-                            && self.state.on_recv_all_acks().is_ok()
-                        {
-                            self.clean_up();
-                            // transmit one more PTO packet so we can ACK the peer's
-                            // CONNECTION_CLOSE frame and they can shutdown quickly. Otherwise,
-                            // they'll need to hang around to respond to potential loss.
-                            self.pto.force_transmit();
-                            return Ok(None);
-                        }
-
-                        // no need to transmit a reset back to the peer - just close it
-                        let _ = self.state.on_send_reset();
-                        let _ = self.state.on_recv_reset_ack();
-                        let error = if close.frame_type.is_some() {
-                            error::Kind::TransportError {
-                                code: close.error_code,
-                            }
-                        } else {
-                            error::Kind::ApplicationError {
-                                error: close.error_code.into(),
-                            }
-                        };
-                        return Err(error.err());
-                    }
-                    _ => continue,
+            match frame {
+                FrameMut::Padding(_) => {
+                    continue;
                 }
+                FrameMut::Ping(_) => {
+                    // no need to do anything special here
+                }
+                FrameMut::Ack(ack) => {
+                    if !core::mem::replace(&mut loaded_transmit_queue, true) {
+                        // make sure we have a current view of the application transmissions
+                        self.load_transmission_queue(transmission_queue);
+                    }
+
+                    if ack.ecn_counts.is_some() {
+                        self.on_frame_ack::<_, _, true>(
+                            credentials,
+                            &ack,
+                            random,
+                            &recv_time,
+                            &mut newly_acked,
+                            &mut max_acked_stream,
+                            &mut max_acked_recovery,
+                            segment_alloc,
+                        )?;
+                    } else {
+                        self.on_frame_ack::<_, _, false>(
+                            credentials,
+                            &ack,
+                            random,
+                            &recv_time,
+                            &mut newly_acked,
+                            &mut max_acked_stream,
+                            &mut max_acked_recovery,
+                            segment_alloc,
+                        )?;
+                    }
+                }
+                FrameMut::MaxData(frame) => {
+                    if self.max_data < frame.maximum_data {
+                        self.max_data = frame.maximum_data;
+                    }
+                }
+                FrameMut::ConnectionClose(close) => {
+                    debug!(connection_close = ?close, state = ?self.state);
+
+                    probes::on_close(
+                        credentials.id,
+                        credentials.key_id,
+                        packet_number,
+                        close.error_code,
+                    );
+
+                    // if there was no error and we transmitted everything then just shut the
+                    // stream down
+                    if close.error_code == VarInt::ZERO
+                        && close.frame_type.is_some()
+                        && self.state.on_recv_all_acks().is_ok()
+                    {
+                        self.clean_up();
+                        // transmit one more PTO packet so we can ACK the peer's
+                        // CONNECTION_CLOSE frame and they can shutdown quickly. Otherwise,
+                        // they'll need to hang around to respond to potential loss.
+                        self.pto.force_transmit();
+                        return Ok(None);
+                    }
+
+                    // no need to transmit a reset back to the peer - just close it
+                    let _ = self.state.on_send_reset();
+                    let _ = self.state.on_recv_reset_ack();
+                    let error = if close.frame_type.is_some() {
+                        error::Kind::TransportError {
+                            code: close.error_code,
+                        }
+                    } else {
+                        error::Kind::ApplicationError {
+                            error: close.error_code.into(),
+                        }
+                    };
+                    return Err(error.err());
+                }
+                _ => continue,
             }
         }
 
