@@ -22,7 +22,7 @@ pub struct Registered {
 
 impl<Sub> Peer<Environment<Sub>> for Registered
 where
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     type ReadWorkerSocket = ();
     type WriteWorkerSocket = ();
@@ -59,7 +59,7 @@ pub struct Reregistered {
 
 impl<Sub> Peer<Environment<Sub>> for Reregistered
 where
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     type ReadWorkerSocket = ();
     type WriteWorkerSocket = ();

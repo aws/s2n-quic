@@ -10,15 +10,35 @@ use crate::{
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
 
+mod with_map;
+mod zero_router;
+
+pub use with_map::WithMap;
+pub use zero_router::ZeroRouter;
+
 /// Routes incoming packet segments to the appropriate destination
 pub trait Router {
     /// Wraps `self` in a router that intercepts secret control messages and forwards
     /// them to the provided [`secret::Map`].
+    #[inline]
     fn with_map(self, map: secret::Map) -> WithMap<Self>
     where
         Self: Sized,
     {
-        WithMap { inner: self, map }
+        WithMap::new(self, map)
+    }
+
+    /// Wraps `self` in a router that intercepts packets with a `0` queue ID and routes
+    /// it to the provides `zero` router.
+    #[inline]
+    fn with_zero_router<Zero: Router>(self, zero: Zero) -> ZeroRouter<Zero, Self>
+    where
+        Self: Sized,
+    {
+        ZeroRouter {
+            zero,
+            non_zero: self,
+        }
     }
 
     fn is_open(&self) -> bool;
@@ -215,149 +235,5 @@ pub trait Router {
             packet_len = segment.len(),
             "failed to decode packet"
         );
-    }
-}
-
-#[derive(Clone)]
-pub struct WithMap<Inner> {
-    inner: Inner,
-    map: crate::path::secret::Map,
-}
-
-impl<Inner: Router> Router for WithMap<Inner> {
-    #[inline]
-    fn is_open(&self) -> bool {
-        self.inner.is_open()
-    }
-
-    #[inline]
-    fn tag_len(&self) -> usize {
-        self.inner.tag_len()
-    }
-
-    #[inline]
-    fn handle_control_packet(
-        &mut self,
-        remote_address: SocketAddress,
-        ecn: ExplicitCongestionNotification,
-        packet: packet::control::decoder::Packet,
-    ) {
-        self.inner
-            .handle_control_packet(remote_address, ecn, packet);
-    }
-
-    #[inline]
-    fn dispatch_control_packet(
-        &mut self,
-        tag: packet::control::Tag,
-        id: Option<stream::Id>,
-        credentials: Credentials,
-        segment: descriptor::Filled,
-    ) {
-        self.inner
-            .dispatch_control_packet(tag, id, credentials, segment);
-    }
-
-    #[inline]
-    fn handle_stream_packet(
-        &mut self,
-        remote_address: SocketAddress,
-        ecn: ExplicitCongestionNotification,
-        packet: packet::stream::decoder::Packet,
-    ) {
-        self.inner.handle_stream_packet(remote_address, ecn, packet);
-    }
-
-    #[inline]
-    fn dispatch_stream_packet(
-        &mut self,
-        tag: stream::Tag,
-        id: stream::Id,
-        credentials: Credentials,
-        segment: descriptor::Filled,
-    ) {
-        self.inner
-            .dispatch_stream_packet(tag, id, credentials, segment);
-    }
-
-    #[inline]
-    fn handle_datagram_packet(
-        &mut self,
-        remote_address: SocketAddress,
-        ecn: ExplicitCongestionNotification,
-        packet: packet::datagram::decoder::Packet,
-    ) {
-        self.inner
-            .handle_datagram_packet(remote_address, ecn, packet);
-    }
-
-    #[inline]
-    fn dispatch_datagram_packet(
-        &mut self,
-        tag: packet::datagram::Tag,
-        credentials: Credentials,
-        segment: descriptor::Filled,
-    ) {
-        self.inner
-            .dispatch_datagram_packet(tag, credentials, segment);
-    }
-
-    #[inline]
-    fn handle_stale_key_packet(
-        &mut self,
-        packet: packet::secret_control::stale_key::Packet,
-        remote_address: SocketAddress,
-    ) {
-        // TODO check if the packet was authentic before forwarding the packet on to inner
-        self.map.handle_control_packet(
-            &packet::secret_control::Packet::StaleKey(packet),
-            &remote_address.into(),
-        );
-        self.inner.handle_stale_key_packet(packet, remote_address);
-    }
-
-    #[inline]
-    fn handle_replay_detected_packet(
-        &mut self,
-        packet: packet::secret_control::replay_detected::Packet,
-        remote_address: SocketAddress,
-    ) {
-        // TODO check if the packet was authentic before forwarding the packet on to inner
-        self.map.handle_control_packet(
-            &packet::secret_control::Packet::ReplayDetected(packet),
-            &remote_address.into(),
-        );
-        self.inner
-            .handle_replay_detected_packet(packet, remote_address);
-    }
-
-    #[inline]
-    fn handle_unknown_path_secret_packet(
-        &mut self,
-        packet: packet::secret_control::unknown_path_secret::Packet,
-        remote_address: SocketAddress,
-    ) {
-        // TODO check if the packet was authentic before forwarding the packet on to inner
-        self.map.handle_control_packet(
-            &packet::secret_control::Packet::UnknownPathSecret(packet),
-            &remote_address.into(),
-        );
-        self.inner
-            .handle_unknown_path_secret_packet(packet, remote_address);
-    }
-
-    #[inline]
-    fn on_unhandled_packet(&mut self, remote_address: SocketAddress, packet: packet::Packet) {
-        self.inner.on_unhandled_packet(remote_address, packet);
-    }
-
-    #[inline]
-    fn on_decode_error(
-        &mut self,
-        error: s2n_codec::DecoderError,
-        remote_address: SocketAddress,
-        segment: descriptor::Filled,
-    ) {
-        self.inner.on_decode_error(error, remote_address, segment);
     }
 }

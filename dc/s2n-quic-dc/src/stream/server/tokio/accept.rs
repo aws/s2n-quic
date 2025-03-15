@@ -7,6 +7,7 @@ use crate::{
     stream::{
         application::{Builder as StreamBuilder, Stream},
         environment::{tokio::Environment, Environment as _},
+        server::accept::Receiver,
     },
     sync::mpmc as channel,
 };
@@ -14,24 +15,6 @@ use core::time::Duration;
 use s2n_quic_core::time::Clock;
 use std::{io, net::SocketAddr};
 use tokio::time::sleep;
-
-#[derive(Clone, Copy, Default)]
-pub enum Flavor {
-    #[default]
-    Fifo,
-    Lifo,
-}
-
-pub type Sender<Sub> = channel::Sender<StreamBuilder<Sub>>;
-pub type Receiver<Sub> = channel::Receiver<StreamBuilder<Sub>>;
-
-#[inline]
-pub fn channel<Sub>(capacity: usize) -> (Sender<Sub>, Receiver<Sub>)
-where
-    Sub: event::Subscriber,
-{
-    channel::new(capacity)
-}
 
 #[inline]
 pub async fn accept<Sub>(
@@ -97,7 +80,7 @@ impl Pruner {
         channel: channel::WeakReceiver<StreamBuilder<Sub>>,
         stats: stats::Stats,
     ) where
-        Sub: event::Subscriber,
+        Sub: event::Subscriber + Clone,
     {
         let Self {
             sojourn_multiplier,

@@ -20,8 +20,9 @@ pub mod udp;
 
 pub trait Environment {
     type Clock: Clone + clock::Clock;
-    type Subscriber: event::Subscriber;
+    type Subscriber: event::Subscriber + Clone;
 
+    fn subscriber(&self) -> &Self::Subscriber;
     fn clock(&self) -> &Self::Clock;
     fn gso(&self) -> features::Gso;
     fn reader_rt(&self) -> runtime::ArcHandle<Self::Subscriber>;
