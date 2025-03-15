@@ -24,6 +24,20 @@ bitflags::bitflags!(
 );
 
 async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features: TestFeatures) {
+    tokio::time::timeout(
+        core::time::Duration::from_secs(60),
+        run_impl(protocol, buffer_len, iterations, features),
+    )
+    .await
+    .unwrap()
+}
+
+async fn run_impl(
+    protocol: Protocol,
+    buffer_len: usize,
+    iterations: usize,
+    features: TestFeatures,
+) {
     let (client, server) = pair(protocol);
     let server_handle = server.handle();
 

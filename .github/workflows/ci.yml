@@ -131,7 +131,6 @@ jobs:
           rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal
           rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
-
       - uses: camshaft/rust-cache@v1
 
       - uses: camshaft/install@v1
@@ -203,11 +202,11 @@ jobs:
           - rust: stable
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            # s2n-quic-dc doesn't currently build on aarch64
-            exclude: --exclude s2n-quic-dc  --exclude s2n-quic-dc-benches
           - rust: stable
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
+            # s2n-quic-dc requires a large number of threads for testing, which isn't supported on i686
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
           - rust: stable
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
@@ -218,7 +217,7 @@ jobs:
             target: native
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=""
             # s2n-quic-dc requires platform features
-            exclude: --exclude s2n-quic-dc  --exclude s2n-quic-dc-benches
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
           - rust: stable
             os: ubuntu-latest
             target: native
@@ -290,7 +289,7 @@ jobs:
       # multiple versioned binaries, like /usr/bin/llvm-symbolizer-13. This step
       # finds the latest symbolizer and use it as the "base" llvm-symbolizer binary.
       #
-      # llvm-symbolizer is necessary to get nice stack traces from asan errors. 
+      # llvm-symbolizer is necessary to get nice stack traces from asan errors.
       # Otherwise the stack trace just contains a hex address like "0x55bc6a28a9b6"
       - name: set llvm symbolizer
         run: |
@@ -300,7 +299,7 @@ jobs:
         env:
           RUSTDOCFLAGS: -Zsanitizer=address
           RUSTFLAGS: -Zsanitizer=address
-          # We got a few globals that aren't cleaned up. Need to 
+          # We got a few globals that aren't cleaned up. Need to
           # determine if we should reenable this in the future.
           ASAN_OPTIONS: detect_leaks=false
         run: |
@@ -692,7 +691,6 @@ jobs:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
-
 
       - name: Upload to S3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
