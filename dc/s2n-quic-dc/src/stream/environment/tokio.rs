@@ -6,18 +6,21 @@ use crate::{
     event,
     stream::{
         runtime::{tokio as runtime, ArcHandle},
+        server::accept,
         socket,
     },
 };
 use s2n_quic_platform::features;
-use std::{io, sync::Arc};
+use std::{io, net::SocketAddr, sync::Arc};
 
 pub mod pool;
 pub mod tcp;
 pub mod udp;
 
-#[derive(Clone)]
-pub struct Builder<Sub> {
+pub struct Builder<Sub>
+where
+    Sub: event::Subscriber,
+{
     clock: Option<Clock>,
     gso: Option<features::Gso>,
     socket_options: Option<socket::Options>,
@@ -26,10 +29,24 @@ pub struct Builder<Sub> {
     thread_name_prefix: Option<String>,
     threads: Option<usize>,
     pool: Option<pool::Config>,
+    acceptor: Option<accept::Sender<Sub>>,
+    subscriber: Sub,
 }
 
-impl<Sub> Default for Builder<Sub> {
+impl<Sub> Default for Builder<Sub>
+where
+    Sub: event::Subscriber + Clone + Default,
+{
     fn default() -> Self {
+        Self::new(Default::default())
+    }
+}
+
+impl<Sub> Builder<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
+    pub fn new(subscriber: Sub) -> Self {
         Self {
             clock: None,
             gso: None,
@@ -38,15 +55,12 @@ impl<Sub> Default for Builder<Sub> {
             writer_rt: None,
             thread_name_prefix: None,
             threads: None,
+            acceptor: None,
             pool: None,
+            subscriber,
         }
     }
-}
 
-impl<Sub> Builder<Sub>
-where
-    Sub: event::Subscriber,
-{
     pub fn with_threads(mut self, threads: usize) -> Self {
         self.threads = Some(threads);
         self
@@ -62,22 +76,39 @@ where
         self
     }
 
+    pub fn with_acceptor(mut self, sender: accept::Sender<Sub>) -> Self {
+        self.acceptor = Some(sender);
+        self
+    }
+
     #[inline]
     pub fn build(self) -> io::Result<Environment<Sub>> {
-        let clock = self.clock.unwrap_or_default();
-        let gso = self.gso.unwrap_or_else(|| {
+        let Self {
+            clock,
+            gso,
+            socket_options,
+            reader_rt,
+            writer_rt,
+            thread_name_prefix,
+            threads,
+            pool,
+            acceptor,
+            subscriber,
+        } = self;
+        let clock = clock.unwrap_or_default();
+        let gso = gso.unwrap_or_else(|| {
             // rather than clamping it to the max burst size, let the CCA be the only
             // component that controls send quantums
             features::gso::MAX_SEGMENTS.into()
         });
-        let socket_options = self.socket_options.unwrap_or_default();
+        let socket_options = socket_options.unwrap_or_default();
 
-        let thread_count = self.threads.unwrap_or_else(|| {
+        let thread_count = threads.unwrap_or_else(|| {
             std::thread::available_parallelism()
                 .map(|v| v.get())
                 .unwrap_or(1)
         });
-        let thread_name_prefix = self.thread_name_prefix.as_deref().unwrap_or("dc_quic");
+        let thread_name_prefix = thread_name_prefix.as_deref().unwrap_or("dc_quic");
 
         let make_rt = |suffix: &str| {
             let mut builder = tokio::runtime::Builder::new_multi_thread();
@@ -89,12 +120,10 @@ where
                 .into())
         };
 
-        let reader_rt = self
-            .reader_rt
+        let reader_rt = reader_rt
             .map(<io::Result<_>>::Ok)
             .unwrap_or_else(|| make_rt("reader"))?;
-        let writer_rt = self
-            .writer_rt
+        let writer_rt = writer_rt
             .map(<io::Result<_>>::Ok)
             .unwrap_or_else(|| make_rt("writer"))?;
 
@@ -105,10 +134,11 @@ where
             reader_rt,
             writer_rt,
             recv_pool: None,
+            subscriber,
         };
 
-        if let Some(config) = self.pool {
-            let pool = pool::Pool::new(&env, thread_count, config)?;
+        if let Some(config) = pool {
+            let pool = pool::Pool::new(&env, thread_count, config, acceptor)?;
             env.recv_pool = Some(Arc::new(pool));
         };
 
@@ -123,12 +153,13 @@ pub struct Environment<Sub> {
     socket_options: socket::Options,
     reader_rt: runtime::Shared<Sub>,
     writer_rt: runtime::Shared<Sub>,
+    subscriber: Sub,
     recv_pool: Option<Arc<pool::Pool>>,
 }
 
 impl<Sub> Default for Environment<Sub>
 where
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone + Default,
 {
     #[inline]
     fn default() -> Self {
@@ -136,24 +167,47 @@ where
     }
 }
 
-impl<Sub> Environment<Sub> {
+impl<Sub> Environment<Sub>
+where
+    Sub: event::Subscriber + Clone + Default,
+{
     #[inline]
     pub fn builder() -> Builder<Sub> {
         Default::default()
+    }
+}
+
+impl<Sub> Environment<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
+    #[inline]
+    pub fn builder_with_subscriber(subscriber: Sub) -> Builder<Sub> {
+        Builder::new(subscriber)
     }
 
     #[inline]
     pub fn has_recv_pool(&self) -> bool {
         self.recv_pool.is_some()
     }
+
+    #[inline]
+    pub fn pool_addr(&self) -> Option<SocketAddr> {
+        self.recv_pool.as_ref().and_then(|v| v.local_addr())
+    }
 }
 
 impl<Sub> super::Environment for Environment<Sub>
 where
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     type Clock = Clock;
     type Subscriber = Sub;
+
+    #[inline]
+    fn subscriber(&self) -> &Self::Subscriber {
+        &self.subscriber
+    }
 
     #[inline]
     fn clock(&self) -> &Self::Clock {
