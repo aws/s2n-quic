@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::accept;
 use crate::{
     event::{self, EndpointPublisher, IntoEvent, Subscriber},
     msg,
@@ -12,7 +11,8 @@ use crate::{
             tokio::{self as env, Environment},
             Environment as _,
         },
-        recv, server,
+        recv,
+        server::{self, accept},
         socket::{Ext as _, Socket},
     },
 };
@@ -33,7 +33,6 @@ where
     env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
-    subscriber: Sub,
 }
 
 impl<S, Sub> Acceptor<S, Sub>
@@ -49,7 +48,6 @@ where
         env: &Environment<Sub>,
         secrets: &secret::Map,
         accept_flavor: accept::Flavor,
-        subscriber: Sub,
     ) -> Self {
         let acceptor = Self {
             sender: sender.clone(),
@@ -59,7 +57,6 @@ where
             env: env.clone(),
             secrets: secrets.clone(),
             accept_flavor,
-            subscriber,
         };
 
         if let Ok(addr) = acceptor.socket.local_addr() {
@@ -92,7 +89,7 @@ where
         let packet = self.recv_packet().await?;
 
         let now = self.env.clock().get_time();
-        let publisher = publisher(&self.subscriber, &now);
+        let publisher = publisher(self.env.subscriber(), &now);
 
         let server::handshake::Outcome::Created {
             receiver: handshake,
@@ -109,7 +106,10 @@ where
         };
         let info = event::api::ConnectionInfo {};
 
-        let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
+        let subscriber_ctx = self
+            .env
+            .subscriber()
+            .create_connection_context(&meta, &info);
 
         let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
         let recv_buffer = recv::buffer::Either::A(recv_buffer);
@@ -122,7 +122,6 @@ where
             peer,
             &packet,
             &self.secrets,
-            self.subscriber.clone(),
             subscriber_ctx,
             None,
         ) {
@@ -230,7 +229,7 @@ where
     }
 
     fn publisher(&self) -> event::EndpointPublisherSubscriber<Sub> {
-        publisher(&self.subscriber, self.env.clock())
+        publisher(self.env.subscriber(), self.env.clock())
     }
 }
 

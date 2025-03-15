@@ -38,7 +38,6 @@ where
     env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
-    subscriber: Sub,
     local_port: u16,
 }
 
@@ -54,7 +53,6 @@ where
             env: acceptor.env.clone(),
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
-            subscriber: acceptor.subscriber.clone(),
             local_port: acceptor.socket.local_addr().unwrap().port(),
         }
     }
@@ -329,7 +327,6 @@ impl WorkerState {
                 peer,
                 &initial_packet,
                 &context.secrets,
-                context.subscriber.clone(),
                 subscriber_ctx,
                 None,
             ) {
