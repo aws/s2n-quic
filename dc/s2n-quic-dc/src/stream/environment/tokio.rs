@@ -65,7 +65,11 @@ where
     #[inline]
     pub fn build(self) -> io::Result<Environment<Sub>> {
         let clock = self.clock.unwrap_or_default();
-        let gso = self.gso.unwrap_or_default();
+        let gso = self.gso.unwrap_or_else(|| {
+            // rather than clamping it to the max burst size, let the CCA be the only
+            // component that controls send quantums
+            features::gso::MAX_SEGMENTS.into()
+        });
         let socket_options = self.socket_options.unwrap_or_default();
 
         let thread_count = self.threads.unwrap_or_else(|| {
