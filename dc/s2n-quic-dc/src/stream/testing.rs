@@ -175,8 +175,7 @@ pub mod client {
             let options = socket::options::Options::new("127.0.0.1:0".parse().unwrap());
             let env = env::Environment::builder()
                 .with_threads(TEST_THREADS)
-                // TODO enable this once ready
-                // .with_pool(env::pool::Config::new(map.clone()))
+                .with_pool(env::pool::Config::new(map.clone()))
                 .with_socket_options(options)
                 .build()
                 .unwrap();
