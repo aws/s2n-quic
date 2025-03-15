@@ -32,7 +32,7 @@ pub struct Owned(pub SocketAddress, pub RecvBuffer);
 
 impl<Sub> Peer<Environment<Sub>> for Owned
 where
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     type ReadWorkerSocket = OwnedSocket;
     type WriteWorkerSocket = (OwnedSocket, buffer::Local);
@@ -124,7 +124,7 @@ pub struct Pooled(pub SocketAddress);
 
 impl<Sub> Peer<Environment<Sub>> for Pooled
 where
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     type ReadWorkerSocket = WorkerSocket;
     type WriteWorkerSocket = (WorkerSocket, buffer::Channel<Control>);

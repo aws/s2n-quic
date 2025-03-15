@@ -21,11 +21,10 @@ pub async fn connect_udp<H, Sub>(
     handshake: H,
     acceptor_addr: SocketAddr,
     env: &Environment<Sub>,
-    subscriber: Sub,
 ) -> io::Result<Stream<Sub>>
 where
     H: core::future::Future<Output = io::Result<secret::map::Peer>>,
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     // ensure we have a secret for the peer
     let entry = handshake.await?;
@@ -33,10 +32,10 @@ where
     // TODO potentially branch on not using the recv pool if we're under a certain concurrency?
     let stream = if env.has_recv_pool() {
         let peer = env::udp::Pooled(acceptor_addr.into());
-        endpoint::open_stream(env, entry, peer, subscriber, None)?
+        endpoint::open_stream(env, entry, peer, None)?
     } else {
         let peer = env::udp::Owned(acceptor_addr.into(), recv_buffer());
-        endpoint::open_stream(env, entry, peer, subscriber, None)?
+        endpoint::open_stream(env, entry, peer, None)?
     };
 
     // build the stream inside the application context
@@ -55,12 +54,11 @@ pub async fn connect_tcp<H, Sub>(
     handshake: H,
     acceptor_addr: SocketAddr,
     env: &Environment<Sub>,
-    subscriber: Sub,
     linger: Option<Duration>,
 ) -> io::Result<Stream<Sub>>
 where
     H: core::future::Future<Output = io::Result<secret::map::Peer>>,
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     // Race TCP handshake with the TLS handshake
     let (socket, entry) = tokio::try_join!(TcpStream::connect(acceptor_addr), handshake,)?;
@@ -88,7 +86,7 @@ where
         recv_buffer: recv_buffer(),
     };
 
-    let stream = endpoint::open_stream(env, entry, peer, subscriber, None)?;
+    let stream = endpoint::open_stream(env, entry, peer, None)?;
 
     // build the stream inside the application context
     let mut stream = stream.connect()?;
@@ -110,10 +108,9 @@ pub async fn connect_tcp_with<Sub>(
     entry: secret::map::Peer,
     socket: TcpStream,
     env: &Environment<Sub>,
-    subscriber: Sub,
 ) -> io::Result<Stream<Sub>>
 where
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     let local_port = socket.local_addr()?.port();
     let peer_addr = socket.peer_addr()?.into();
@@ -125,7 +122,7 @@ where
         recv_buffer: recv_buffer(),
     };
 
-    let stream = endpoint::open_stream(env, entry, peer, subscriber, None)?;
+    let stream = endpoint::open_stream(env, entry, peer, None)?;
 
     // build the stream inside the application context
     let mut stream = stream.connect()?;

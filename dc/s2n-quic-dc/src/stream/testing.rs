@@ -11,7 +11,7 @@ use crate::{
         client::tokio as stream_client,
         environment::{tokio as env, Environment as _},
         recv, send,
-        server::{tokio as stream_server, tokio::accept},
+        server::{accept, tokio as stream_server},
     },
 };
 use s2n_quic_core::dc::{self, ApplicationParams};
@@ -24,6 +24,9 @@ pub type Subscriber = (Arc<event::testing::Subscriber>, event::tracing::Subscrib
 pub type Stream = application::Stream<Subscriber>;
 pub type Writer = send::application::Writer<Subscriber>;
 pub type Reader = recv::application::Reader<Subscriber>;
+
+// TODO enable this once ready
+const DEFAULT_POOLED: bool = true;
 
 // limit the number of threads used in testing to reduce costs of harnesses
 const TEST_THREADS: usize = 2;
@@ -38,7 +41,6 @@ pub(crate) const MAX_DATAGRAM_SIZE: u16 = if cfg!(target_os = "linux") {
 pub struct Client {
     map: secret::Map,
     env: env::Environment<Subscriber>,
-    subscriber: Arc<event::testing::Subscriber>,
     mtu: Option<u16>,
 }
 
@@ -88,22 +90,12 @@ impl Client {
         let server = server.as_ref();
         let handshake = async { self.handshake_with(server) };
 
-        let subscriber = (self.subscriber(), event::tracing::Subscriber::default());
-
         match server.protocol {
             Protocol::Tcp => {
-                stream_client::connect_tcp(
-                    handshake,
-                    server.local_addr,
-                    &self.env,
-                    subscriber,
-                    None,
-                )
-                .await
+                stream_client::connect_tcp(handshake, server.local_addr, &self.env, None).await
             }
             Protocol::Udp => {
-                stream_client::connect_udp(handshake, server.local_addr, &self.env, subscriber)
-                    .await
+                stream_client::connect_udp(handshake, server.local_addr, &self.env).await
             }
             Protocol::Other(name) => {
                 todo!("protocol {name:?} not implemented")
@@ -119,13 +111,11 @@ impl Client {
         let server = server.as_ref();
         let handshake = async { self.handshake_with(server) }.await?;
 
-        let subscriber = (self.subscriber(), event::tracing::Subscriber::default());
-
-        stream_client::connect_tcp_with(handshake, stream, &self.env, subscriber).await
+        stream_client::connect_tcp_with(handshake, stream, &self.env).await
     }
 
     pub fn subscriber(&self) -> Arc<testing::Subscriber> {
-        self.subscriber.clone()
+        self.env.subscriber().0.clone()
     }
 }
 
@@ -136,6 +126,7 @@ pub mod client {
         map_capacity: usize,
         mtu: Option<u16>,
         subscriber: event::testing::Subscriber,
+        pooled: bool,
     }
 
     impl Default for Builder {
@@ -144,6 +135,7 @@ pub mod client {
                 map_capacity: 16,
                 mtu: None,
                 subscriber: event::testing::Subscriber::no_snapshot(),
+                pooled: DEFAULT_POOLED,
             }
         }
     }
@@ -169,23 +161,24 @@ pub mod client {
                 map_capacity,
                 mtu,
                 subscriber,
+                pooled,
             } = self;
             let _span = tracing::info_span!("client").entered();
             let map = secret::map::testing::new(map_capacity);
             let options = socket::options::Options::new("127.0.0.1:0".parse().unwrap());
-            let env = env::Environment::builder()
+            let subscriber = Arc::new(subscriber);
+            let subscriber = (subscriber, event::tracing::Subscriber::default());
+            let mut env = env::Builder::new(subscriber)
                 .with_threads(TEST_THREADS)
-                // TODO enable this once ready
-                // .with_pool(env::pool::Config::new(map.clone()))
-                .with_socket_options(options)
-                .build()
-                .unwrap();
-            Client {
-                map,
-                env,
-                subscriber: Arc::new(subscriber),
-                mtu,
+                .with_socket_options(options);
+
+            if pooled {
+                let pool = env::pool::Config::new(map.clone());
+                env = env.with_pool(pool);
             }
+
+            let env = env.build().unwrap();
+            Client { map, env, mtu }
         }
     }
 }
@@ -234,7 +227,7 @@ impl Server {
     }
 
     pub async fn accept(&self) -> io::Result<(Stream, SocketAddr)> {
-        accept::accept(&self.receiver, &self.stats).await
+        stream_server::accept::accept(&self.receiver, &self.stats).await
     }
 
     pub fn subscriber(&self) -> Arc<testing::Subscriber> {
@@ -308,6 +301,7 @@ pub mod server {
         linger: Option<Duration>,
         mtu: Option<u16>,
         subscriber: event::testing::Subscriber,
+        pooled: bool,
     }
 
     impl Default for Builder {
@@ -320,6 +314,7 @@ pub mod server {
                 linger: None,
                 mtu: None,
                 subscriber: event::testing::Subscriber::no_snapshot(),
+                pooled: DEFAULT_POOLED,
             }
         }
     }
@@ -387,6 +382,7 @@ pub mod server {
                 linger,
                 mtu,
                 subscriber,
+                pooled,
             } = self;
 
             let _span = tracing::info_span!("server").entered();
@@ -395,17 +391,25 @@ pub mod server {
 
             let options = crate::socket::Options::new("127.0.0.1:0".parse().unwrap());
 
-            let env = env::Builder::default()
-                .with_threads(TEST_THREADS)
-                .with_socket_options(options.clone())
-                .build()
-                .unwrap();
-
             let test_subscriber = Arc::new(subscriber);
             let subscriber = (
                 test_subscriber.clone(),
                 event::tracing::Subscriber::default(),
             );
+
+            let mut env = env::Builder::new(subscriber.clone())
+                .with_threads(TEST_THREADS)
+                .with_socket_options(options.clone());
+
+            if pooled {
+                let mut pool = env::pool::Config::new(map.clone());
+                pool.accept_flavor = flavor;
+                pool.reuse_port = true;
+                env = env.with_pool(pool).with_acceptor(sender.clone());
+            }
+
+            let env = env.build().unwrap();
+
             let (drop_handle_sender, drop_handle_receiver) = drop_handle::new();
 
             let local_addr = match protocol {
@@ -415,7 +419,7 @@ pub mod server {
                     let socket = tokio::net::TcpListener::from_std(socket).unwrap();
 
                     let acceptor = stream_server::tcp::Acceptor::new(
-                        0, socket, &sender, &env, &map, backlog, flavor, linger, subscriber,
+                        0, socket, &sender, &env, &map, backlog, flavor, linger,
                     );
                     let acceptor = drop_handle_receiver.wrap(acceptor.run());
                     let acceptor = acceptor.instrument(tracing::info_span!("tcp"));
@@ -423,15 +427,18 @@ pub mod server {
 
                     local_addr
                 }
+                Protocol::Udp if pooled => {
+                    // acceptor configured in env
+                    env.pool_addr().unwrap()
+                }
                 Protocol::Udp => {
                     let socket = options.build_udp().unwrap();
                     let local_addr = socket.local_addr().unwrap();
 
                     let socket = tokio::io::unix::AsyncFd::new(socket).unwrap();
 
-                    let acceptor = stream_server::udp::Acceptor::new(
-                        0, socket, &sender, &env, &map, flavor, subscriber,
-                    );
+                    let acceptor =
+                        stream_server::udp::Acceptor::new(0, socket, &sender, &env, &map, flavor);
                     let acceptor = drop_handle_receiver.wrap(acceptor.run());
                     let acceptor = acceptor.instrument(tracing::info_span!("udp"));
                     tokio::task::spawn(acceptor);
@@ -454,7 +461,7 @@ pub mod server {
 
             if matches!(flavor, accept::Flavor::Lifo) {
                 let channel = receiver.downgrade();
-                let task = accept::Pruner::default().run(env, channel, stats);
+                let task = stream_server::accept::Pruner::default().run(env, channel, stats);
                 let task = task.instrument(tracing::info_span!("pruner"));
                 let task = drop_handle_receiver.wrap(task);
                 tokio::task::spawn(task);

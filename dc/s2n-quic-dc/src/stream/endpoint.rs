@@ -39,7 +39,6 @@ pub fn open_stream<Env, P>(
     env: &Env,
     entry: map::Peer,
     peer: P,
-    subscriber: Env::Subscriber,
     parameter_override: Option<&dyn Fn(dc::ApplicationParams) -> dc::ApplicationParams>,
 ) -> Result<application::Builder<Env::Subscriber>>
 where
@@ -67,6 +66,7 @@ where
     };
     let info = event::api::ConnectionInfo {};
 
+    let subscriber = env.subscriber().clone();
     let subscriber_ctx = subscriber.create_connection_context(&meta, &info);
 
     build_stream(
@@ -90,7 +90,6 @@ pub fn accept_stream<Env, P>(
     peer: P,
     packet: &server::InitialPacket,
     map: &Map,
-    subscriber: Env::Subscriber,
     subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
     parameter_override: Option<&dyn Fn(dc::ApplicationParams) -> dc::ApplicationParams>,
 ) -> Result<application::Builder<Env::Subscriber>, AcceptError<P>>
@@ -125,6 +124,8 @@ where
         // inherit the rest of the parameters from the client
         ..packet.stream_id
     };
+
+    let subscriber = env.subscriber().clone();
 
     let res = build_stream(
         now,
