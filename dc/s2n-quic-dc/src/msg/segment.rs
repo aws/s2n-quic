@@ -5,13 +5,27 @@ use crate::stream::TransportFeatures;
 use arrayvec::ArrayVec;
 use core::ops::Deref;
 use s2n_quic_core::{ensure, inet::ExplicitCongestionNotification};
+use s2n_quic_platform::features;
 use std::io::IoSlice;
 
 /// The maximum number of segments in sendmsg calls
 ///
 /// From <https://elixir.bootlin.com/linux/v6.8.7/source/include/uapi/linux/uio.h#L27>
 /// > #define UIO_FASTIOV 8
-pub const MAX_COUNT: usize = if cfg!(target_os = "linux") { 8 } else { 1 };
+/// > #define UIO_MAXIOV  1024
+pub const MAX_COUNT: usize = if features::gso::IS_SUPPORTED {
+    // base the max segments on the max datagram size for the default ethernet mtu
+    let mut max_datagram_size = 1500;
+    // take off the IPv6 header size
+    max_datagram_size -= 40;
+    // take off the UDP header size
+    max_datagram_size -= 8;
+
+    MAX_TOTAL as usize / max_datagram_size
+} else {
+    // only a single segment can be sent per syscall
+    1
+};
 
 /// The maximum payload allowed in sendmsg calls using UDP
 ///
