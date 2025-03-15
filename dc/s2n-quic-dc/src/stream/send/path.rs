@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::msg::segment::MAX_TOTAL;
 use core::{
     fmt,
     sync::atomic::{AtomicU64, Ordering},
@@ -94,6 +95,13 @@ impl State {
 
         data |= ecn as u8 as u64;
         data <<= 8;
+
+        // clamp the number of segments so it's under the max payload we can write in
+        // a single syscall
+        let max_segments = MAX_TOTAL / max_datagram_size;
+        let send_quantum = send_quantum.min(max_segments as u8);
+        // we need this to be at least 1
+        let send_quantum = send_quantum.max(1);
 
         data |= send_quantum as u64;
         data <<= 16;
