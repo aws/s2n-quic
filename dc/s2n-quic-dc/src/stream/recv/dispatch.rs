@@ -9,6 +9,7 @@ mod descriptor;
 mod free_list;
 mod handle;
 mod pool;
+mod probes;
 mod queue;
 mod sender;
 

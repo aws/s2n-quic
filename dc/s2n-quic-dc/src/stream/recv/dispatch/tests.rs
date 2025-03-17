@@ -309,3 +309,54 @@ fn alloc_drop_notify() {
         .spawn();
     });
 }
+
+#[test]
+fn stress_test() {
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc::sync_channel as channel,
+        },
+        thread::{scope, sleep, yield_now},
+        time::Duration,
+    };
+
+    crate::testing::init_tracing();
+
+    let mut alloc = Allocator::new(1, 1);
+    let (stream_send, stream_recv) = channel(10);
+    let (control_send, control_recv) = channel(10);
+
+    scope(|s| {
+        static IS_OPEN: AtomicBool = AtomicBool::new(true);
+
+        s.spawn(|| {
+            sleep(Duration::from_secs(1));
+            IS_OPEN.store(false, Ordering::Relaxed);
+        });
+
+        let alloc = s.spawn(move || {
+            while IS_OPEN.load(Ordering::Relaxed) {
+                let (control, stream) = alloc.alloc_or_grow();
+                stream_send.send(stream).unwrap();
+                control_send.send(control).unwrap();
+            }
+        });
+
+        s.spawn(move || {
+            while let Ok(stream) = stream_recv.recv() {
+                yield_now();
+                drop(stream);
+            }
+        });
+
+        s.spawn(move || {
+            while let Ok(control) = control_recv.recv() {
+                yield_now();
+                drop(control);
+            }
+        });
+
+        alloc.join().unwrap();
+    });
+}
