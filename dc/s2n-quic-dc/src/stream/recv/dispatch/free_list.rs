@@ -5,6 +5,7 @@ use super::{
     descriptor::Descriptor,
     handle::{Control, Stream},
     pool::Region,
+    probes,
 };
 use std::sync::{Arc, Mutex};
 
@@ -36,6 +37,8 @@ impl<T: 'static> FreeVec<T> {
             regions,
             total: 0,
             open: true,
+            #[cfg(debug_assertions)]
+            active: Default::default(),
         };
         let free = Arc::new(Self(Mutex::new(inner)));
         let memory = Arc::new(Memory(free.clone()));
@@ -44,24 +47,40 @@ impl<T: 'static> FreeVec<T> {
 
     #[inline]
     pub fn alloc(&self) -> Option<(Control<T>, Stream<T>)> {
-        self.0.lock().unwrap().descriptors.pop().map(|v| unsafe {
+        let mut inner = self.0.lock().unwrap();
+        let descriptor = inner.descriptors.pop()?;
+
+        #[cfg(debug_assertions)]
+        assert!(
+            inner.active.insert(descriptor.as_usize()),
+            "{} already in {:?}",
+            descriptor.as_usize(),
+            inner.active
+        );
+
+        drop(inner);
+
+        unsafe {
             // SAFETY: the descriptor is only owned by the free list
-            let (control, stream) = v.into_receiver_pair();
-            (Control::new(control), Stream::new(stream))
-        })
+            let (control, stream) = descriptor.into_receiver_pair();
+            Some((Control::new(control), Stream::new(stream)))
+        }
     }
 
     #[inline]
     pub fn record_region(&self, region: Region<T>, mut descriptors: Vec<Descriptor<T>>) {
         let mut inner = self.0.lock().unwrap();
         inner.regions.push(region);
-        inner.total += descriptors.len();
+        let prev = inner.total;
+        let next = prev + descriptors.len();
+        inner.total = next;
         inner.descriptors.append(&mut descriptors);
         // Even though the `descriptors` is now empty (`len=0`), it still owns
         // capacity and will need to be freed. Drop the lock before interacting
         // with the global allocator.
         drop(inner);
         drop(descriptors);
+        probes::on_grow(prev, next);
     }
 
     #[inline]
@@ -89,6 +108,15 @@ impl<T: 'static + Send> FreeList<T> for FreeVec<T> {
     #[inline]
     fn free(&self, descriptor: Descriptor<T>) -> Option<Box<dyn 'static + Send>> {
         let mut inner = self.0.lock().unwrap();
+
+        #[cfg(debug_assertions)]
+        assert!(
+            inner.active.remove(&descriptor.as_usize()),
+            "{} not in {:?}",
+            descriptor.as_usize(),
+            inner.active
+        );
+
         inner.descriptors.push(descriptor);
         if inner.open {
             return None;
@@ -104,17 +132,20 @@ struct FreeInner<T: 'static> {
     regions: Vec<Region<T>>,
     total: usize,
     open: bool,
+    #[cfg(debug_assertions)]
+    active: std::collections::BTreeSet<usize>,
 }
 
 impl<T: 'static> FreeInner<T> {
     #[inline(never)] // this is rarely called
     fn try_free(&mut self) -> Option<Self> {
+        #[cfg(debug_assertions)]
+        assert_eq!(self.total - self.descriptors.len(), self.active.len());
+
         if self.descriptors.len() < self.total {
-            tracing::trace!("waiting for more descriptors to be freed");
+            probes::on_draining(self.total, self.total - self.descriptors.len());
             return None;
         }
-
-        tracing::trace!("all descriptors freed back to pool");
 
         // move all of the allocations out of itself, since this is self-referential
         Some(core::mem::replace(
@@ -124,6 +155,8 @@ impl<T: 'static> FreeInner<T> {
                 regions: Vec::new(),
                 total: 0,
                 open: false,
+                #[cfg(debug_assertions)]
+                active: Default::default(),
             },
         ))
     }
@@ -136,7 +169,10 @@ impl<T: 'static> Drop for FreeInner<T> {
             return;
         }
 
-        tracing::trace!("dropping {} descriptors", self.descriptors.len());
+        #[cfg(debug_assertions)]
+        assert!(self.active.is_empty());
+
+        probes::on_drained(self.total);
 
         for descriptor in self.descriptors.drain(..) {
             unsafe {

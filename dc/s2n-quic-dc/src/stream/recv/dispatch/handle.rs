@@ -1,7 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{descriptor::Descriptor, queue::Error};
+use super::{
+    descriptor::Descriptor,
+    probes,
+    queue::{Error, Half},
+};
 use crate::{stream::Actor, sync::ring_deque};
 use core::{
     fmt,
@@ -11,7 +15,7 @@ use s2n_quic_core::varint::VarInt;
 use std::collections::VecDeque;
 
 macro_rules! impl_recv {
-    ($name:ident, $field:ident, $drop:ident) => {
+    ($name:ident, $field:ident, $half:expr) => {
         pub struct $name<T: 'static> {
             descriptor: Descriptor<T>,
         }
@@ -32,12 +36,20 @@ macro_rules! impl_recv {
 
             #[inline]
             pub fn push(&self, item: T) -> Option<T> {
-                unsafe { self.descriptor.$field().force_push(item) }
+                unsafe {
+                    let prev = self.descriptor.$field().force_push(item);
+                    probes::on_send(self.descriptor.queue_id(), $half, prev.is_some());
+                    prev
+                }
             }
 
             #[inline]
             pub fn try_recv(&self) -> Result<Option<T>, ring_deque::Closed> {
-                unsafe { self.descriptor.$field().pop() }
+                unsafe {
+                    let value = self.descriptor.$field().pop()?;
+                    probes::on_recv(self.descriptor.queue_id(), $half, value.is_some().into());
+                    Ok(value)
+                }
             }
 
             #[inline]
@@ -51,7 +63,19 @@ macro_rules! impl_recv {
                 cx: &mut Context,
                 actor: Actor,
             ) -> Poll<Result<T, ring_deque::Closed>> {
-                unsafe { self.descriptor.$field().poll_pop(cx, actor) }
+                unsafe {
+                    match self.descriptor.$field().poll_pop(cx, actor) {
+                        Poll::Ready(Ok(value)) => {
+                            probes::on_recv(self.descriptor.queue_id(), $half, 1);
+                            Poll::Ready(Ok(value))
+                        }
+                        Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+                        Poll::Pending => {
+                            probes::on_recv(self.descriptor.queue_id(), $half, 0);
+                            Poll::Pending
+                        }
+                    }
+                }
             }
 
             #[inline]
@@ -61,7 +85,19 @@ macro_rules! impl_recv {
                 actor: Actor,
                 out: &mut VecDeque<T>,
             ) -> Poll<Result<(), ring_deque::Closed>> {
-                unsafe { self.descriptor.$field().poll_swap(cx, actor, out) }
+                unsafe {
+                    match self.descriptor.$field().poll_swap(cx, actor, out) {
+                        Poll::Ready(Ok(_)) => {
+                            probes::on_recv(self.descriptor.queue_id(), $half, out.len());
+                            Poll::Ready(Ok(()))
+                        }
+                        Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+                        Poll::Pending => {
+                            probes::on_recv(self.descriptor.queue_id(), $half, 0);
+                            Poll::Pending
+                        }
+                    }
+                }
             }
         }
 
@@ -77,15 +113,15 @@ macro_rules! impl_recv {
             #[inline]
             fn drop(&mut self) {
                 unsafe {
-                    self.descriptor.$drop();
+                    self.descriptor.drop_receiver($half);
                 }
             }
         }
     };
 }
 
-impl_recv!(Control, control_queue, drop_control_receiver);
-impl_recv!(Stream, stream_queue, drop_stream_receiver);
+impl_recv!(Control, control_queue, Half::Control);
+impl_recv!(Stream, stream_queue, Half::Stream);
 
 pub struct Sender<T: 'static> {
     descriptor: Descriptor<T>,
@@ -110,12 +146,20 @@ impl<T: 'static> Sender<T> {
 
     #[inline]
     pub fn send_stream(&self, item: T) -> Result<Option<T>, Error> {
-        unsafe { self.descriptor.stream_queue().push(item) }
+        unsafe {
+            let prev = self.descriptor.stream_queue().push(item)?;
+            probes::on_send(self.descriptor.queue_id(), Half::Stream, prev.is_some());
+            Ok(prev)
+        }
     }
 
     #[inline]
     pub fn send_control(&self, item: T) -> Result<Option<T>, Error> {
-        unsafe { self.descriptor.control_queue().push(item) }
+        unsafe {
+            let prev = self.descriptor.control_queue().push(item)?;
+            probes::on_send(self.descriptor.queue_id(), Half::Control, prev.is_some());
+            Ok(prev)
+        }
     }
 }
 

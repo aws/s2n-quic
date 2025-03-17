@@ -1,7 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{free_list::FreeList, queue::Queue};
+use super::{
+    free_list::FreeList,
+    probes,
+    queue::{Half, Queue},
+};
 use crate::sync::ring_deque;
 use s2n_quic_core::{ensure, varint::VarInt};
 use std::{
@@ -12,7 +16,6 @@ use std::{
         Arc,
     },
 };
-use tracing::trace;
 
 /// A pointer to a single descriptor in a group
 ///
@@ -53,6 +56,12 @@ impl<T: 'static> Descriptor<T> {
         core::ptr::drop_in_place(self.ptr.as_ptr());
     }
 
+    #[cfg(debug_assertions)]
+    pub(super) fn as_usize(&self) -> usize {
+        // TODO use `.addr()` once MSRV is 1.84
+        self.ptr.as_ptr() as usize
+    }
+
     /// # Safety
     ///
     /// The caller needs to guarantee the [`Descriptor`] is still allocated.
@@ -90,8 +99,9 @@ impl<T: 'static> Descriptor<T> {
         let inner = self.inner();
 
         // open the queues back up for receiving
-        inner.control.open_receiver();
-        inner.stream.open_receiver();
+        inner.stream.open_receivers(&inner.control).unwrap();
+
+        probes::on_receiver_open(inner.id);
 
         let other = Self {
             ptr: self.ptr,
@@ -114,7 +124,7 @@ impl<T: 'static> Descriptor<T> {
         // based on the implementation in:
         // https://github.com/rust-lang/rust/blob/28b83ee59698ae069f5355b8e03f976406f410f5/library/alloc/src/sync.rs#L2551
         if desc_ref != 1 {
-            trace!(id = ?inner.id, "drop_sender");
+            probes::on_sender_drop(inner.id);
             return;
         }
 
@@ -123,7 +133,8 @@ impl<T: 'static> Descriptor<T> {
         // close both of the queues so the receivers are notified
         inner.control.close();
         inner.stream.close();
-        trace!(id = ?inner.id, "close_queue");
+
+        probes::on_sender_close(inner.id);
     }
 
     /// # Safety
@@ -131,30 +142,16 @@ impl<T: 'static> Descriptor<T> {
     /// This method can be used to drop the Descriptor, but shouldn't be called after the last receiver Descriptor
     /// is released. That implies only calling it once on a given Descriptor handle obtained from [`Self::into_receiver_pair`].
     #[inline]
-    pub unsafe fn drop_stream_receiver(&self) {
+    pub unsafe fn drop_receiver(&self, half: Half) {
         let inner = self.inner();
-        trace!(id = ?inner.id, "drop_stream_receiver");
-        inner.stream.close_receiver();
-        // check if the control is still open
-        ensure!(!inner.control.has_receiver());
-        let storage = inner.free_list.free(Descriptor {
-            ptr: self.ptr,
-            phantom: PhantomData,
-        });
-        drop(storage);
-    }
+        probes::on_receiver_drop(inner.id, half);
 
-    /// # Safety
-    ///
-    /// This method can be used to drop the Descriptor, but shouldn't be called after the last receiver Descriptor
-    /// is released. That implies only calling it once on a given Descriptor handle obtained from [`Self::into_receiver_pair`].
-    #[inline]
-    pub unsafe fn drop_control_receiver(&self) {
-        let inner = self.inner();
-        trace!(id = ?inner.id, "drop_control_receiver");
-        inner.control.close_receiver();
-        // check if the stream is still open
-        ensure!(!inner.stream.has_receiver());
+        ensure!(inner
+            .stream
+            .close_receiver(&inner.control, half)
+            .is_continue());
+
+        probes::on_receiver_free(inner.id, half);
         let storage = inner.free_list.free(Descriptor {
             ptr: self.ptr,
             phantom: PhantomData,
@@ -182,8 +179,8 @@ impl<T> DescriptorInner<T> {
         control: ring_deque::Capacity,
         free_list: Arc<dyn FreeList<T>>,
     ) -> Self {
-        let stream = Queue::new(stream);
-        let control = Queue::new(control);
+        let stream = Queue::new(stream, Half::Stream);
+        let control = Queue::new(control, Half::Control);
         Self {
             id,
             stream,
