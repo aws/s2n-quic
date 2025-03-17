@@ -12,7 +12,7 @@ publish = false
 [dependencies]
 bytes = { version = "1", default-features = false }
 futures = { version = "0.3", default-features = false }
-h3 = "0.0.6"
+h3 = "0.0.7"
 s2n-quic = { path = "../s2n-quic" }
 tracing = { version = "0.1", optional = true }
 
