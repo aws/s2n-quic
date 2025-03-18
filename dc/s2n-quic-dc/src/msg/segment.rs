@@ -35,16 +35,24 @@ pub const MAX_COUNT: usize = if features::gso::IS_SUPPORTED {
     1
 };
 
-/// The maximum payload allowed in sendmsg calls using UDP
-///
-/// From <https://github.com/torvalds/linux/blob/8cd26fd90c1ad7acdcfb9f69ca99d13aa7b24561/net/ipv4/ip_output.c#L987-L995>
-/// > Linux enforces a u16::MAX - IP_HEADER_LEN - UDP_HEADER_LEN
-const MAX_TOTAL_IPV4: u16 = u16::MAX - IPV4_HEADER_LEN - UDP_HEADER_LEN;
+/// The maximum payload allowed in sendmsg calls using IPv4+UDP
+const MAX_TOTAL_IPV4: u16 = if cfg!(target_os = "linux") {
+    // From <https://github.com/torvalds/linux/blob/8cd26fd90c1ad7acdcfb9f69ca99d13aa7b24561/net/ipv4/ip_output.c#L987-L995>
+    // > Linux enforces a u16::MAX - IP_HEADER_LEN - UDP_HEADER_LEN
+    u16::MAX - IPV4_HEADER_LEN - UDP_HEADER_LEN
+} else {
+    9001 - IPV4_HEADER_LEN - UDP_HEADER_LEN
+};
 
-/// The IPv6 doesn't include the IP header size in the calculation
-const MAX_TOTAL_IPV6: u16 = u16::MAX - UDP_HEADER_LEN;
+/// The maximum payload allowed in sendmsg calls using IPv6+UDP
+const MAX_TOTAL_IPV6: u16 = if cfg!(target_os = "linux") {
+    // IPv6 doesn't include the IP header size in the calculation
+    u16::MAX - UDP_HEADER_LEN
+} else {
+    9001 - IPV6_HEADER_LEN - UDP_HEADER_LEN
+};
 
-/// The minimum payload size between the IPv4 and IPv6
+/// The minimum payload size between the IPv4 and IPv6 sizes
 pub const MAX_TOTAL: u16 = min_u16(MAX_TOTAL_IPV4, MAX_TOTAL_IPV6);
 
 #[test]
