@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use criterion::Criterion;
-use s2n_quic_dc::stream::{self, server::tokio::accept, socket::Protocol};
+use s2n_quic_dc::stream::{self, server::accept, socket::Protocol};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::{TcpListener, TcpStream},

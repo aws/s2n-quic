@@ -3,14 +3,20 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::{credentials::Credentials, msg::recv, packet};
+use crate::{
+    credentials::{self, Credentials},
+    msg::recv,
+    packet,
+};
 use s2n_codec::{DecoderBufferMut, DecoderError};
 use s2n_quic_core::varint::VarInt;
 
+pub mod accept;
 pub mod handshake;
 pub mod tokio;
+pub mod udp;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct InitialPacket {
     pub credentials: Credentials,
     pub stream_id: packet::stream::Id,
@@ -42,6 +48,27 @@ impl InitialPacket {
         let packet: InitialPacket = packet.into();
 
         Ok(packet)
+    }
+
+    #[inline]
+    pub fn empty() -> Self {
+        Self {
+            credentials: Credentials {
+                id: credentials::Id::default(),
+                key_id: VarInt::ZERO,
+            },
+            stream_id: packet::stream::Id {
+                queue_id: VarInt::ZERO,
+                is_bidirectional: false,
+                is_reliable: false,
+            },
+            source_queue_id: None,
+            payload_len: 0,
+            is_zero_offset: false,
+            is_retransmission: false,
+            is_fin: false,
+            is_fin_known: false,
+        }
     }
 }
 

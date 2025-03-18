@@ -43,6 +43,9 @@ rand_chacha = "0.9"
 s2n-codec = { version = "=0.55.0", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.55.0", path = "../../quic/s2n-quic-core", default-features = false }
 s2n-quic-platform = { version = "=0.55.0", path = "../../quic/s2n-quic-platform" }
+schnellru = { version = "0.2", features = [
+    "runtime-rng",
+], default-features = false }
 slotmap = "1"
 hashbrown = "0.15"
 thiserror = "2"

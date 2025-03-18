@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::accept;
 use crate::{
     event::{self, EndpointPublisher, IntoEvent, Subscriber},
     msg,
@@ -12,7 +11,8 @@ use crate::{
             tokio::{self as env, Environment},
             Environment as _,
         },
-        recv, server,
+        recv,
+        server::{self, accept},
         socket::{Ext as _, Socket},
     },
 };
@@ -33,7 +33,6 @@ where
     env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
-    subscriber: Sub,
 }
 
 impl<S, Sub> Acceptor<S, Sub>
@@ -49,7 +48,6 @@ where
         env: &Environment<Sub>,
         secrets: &secret::Map,
         accept_flavor: accept::Flavor,
-        subscriber: Sub,
     ) -> Self {
         let acceptor = Self {
             sender: sender.clone(),
@@ -59,14 +57,14 @@ where
             env: env.clone(),
             secrets: secrets.clone(),
             accept_flavor,
-            subscriber,
         };
 
         if let Ok(addr) = acceptor.socket.local_addr() {
             let addr: SocketAddress = addr.into();
             let local_address = addr.into_event();
             acceptor
-                .publisher()
+                .env
+                .endpoint_publisher()
                 .on_acceptor_udp_started(event::builder::AcceptorUdpStarted { id, local_address });
         }
 
@@ -79,10 +77,9 @@ where
                 Ok(ControlFlow::Continue(())) => continue,
                 Ok(ControlFlow::Break(())) => break,
                 Err(error) => {
-                    self.publisher()
-                        .on_acceptor_udp_io_error(event::builder::AcceptorUdpIoError {
-                            error: &error,
-                        });
+                    self.env.endpoint_publisher().on_acceptor_udp_io_error(
+                        event::builder::AcceptorUdpIoError { error: &error },
+                    );
                 }
             }
         }
@@ -92,7 +89,7 @@ where
         let packet = self.recv_packet().await?;
 
         let now = self.env.clock().get_time();
-        let publisher = publisher(&self.subscriber, &now);
+        let publisher = self.env.endpoint_publisher_with_time(now);
 
         let server::handshake::Outcome::Created {
             receiver: handshake,
@@ -109,7 +106,10 @@ where
         };
         let info = event::api::ConnectionInfo {};
 
-        let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
+        let subscriber_ctx = self
+            .env
+            .subscriber()
+            .create_connection_context(&meta, &info);
 
         let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
         let recv_buffer = recv::buffer::Either::A(recv_buffer);
@@ -122,7 +122,6 @@ where
             peer,
             &packet,
             &self.secrets,
-            self.subscriber.clone(),
             subscriber_ctx,
             None,
         ) {
@@ -190,7 +189,7 @@ where
             let remote_address = &remote_address;
             let packet = server::InitialPacket::peek(&mut self.recv_buffer, 16);
 
-            let publisher = self.publisher();
+            let publisher = self.env.endpoint_publisher();
             publisher.on_acceptor_udp_datagram_received(
                 event::builder::AcceptorUdpDatagramReceived {
                     remote_address,
@@ -228,21 +227,4 @@ where
             }
         }
     }
-
-    fn publisher(&self) -> event::EndpointPublisherSubscriber<Sub> {
-        publisher(&self.subscriber, self.env.clock())
-    }
-}
-
-fn publisher<'a, Sub: Subscriber, C: Clock>(
-    subscriber: &'a Sub,
-    clock: &C,
-) -> event::EndpointPublisherSubscriber<'a, Sub> {
-    let timestamp = clock.get_time().into_event();
-
-    event::EndpointPublisherSubscriber::new(
-        event::builder::EndpointMeta { timestamp },
-        None,
-        subscriber,
-    )
 }
