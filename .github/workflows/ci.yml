@@ -56,6 +56,10 @@ jobs:
         run: |
           rustup show active-toolchain
           export MSRV=$(rustup show active-toolchain | awk -F'-' '{print $1}')
+          if [ -z "$MSRV" ]; then
+            echo "Error: MSRV did not parse correctly"
+            exit 1
+          fi
           echo "msrv=$MSRV"
           echo "msrv=$MSRV" >> $GITHUB_OUTPUT
           export RAW_VERSIONS="stable beta $MSRV"
