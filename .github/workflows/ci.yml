@@ -54,10 +54,11 @@ jobs:
       - name: Evaluate definitions
         id: definitions
         run: |
-          export MSRV=$(rustup show | awk 'NF' | awk 'END{print $2}')
+          rustup show active-toolchain
+          export MSRV=$(rustup show active-toolchain | awk -F'-' '{print $1}')
           echo "msrv=$MSRV"
           echo "msrv=$MSRV" >> $GITHUB_OUTPUT
-          export RAW_VERSIONS="stable beta $RUST_NIGHTLY_TOOLCHAIN $MSRV"
+          export RAW_VERSIONS="stable beta $MSRV"
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
           echo "versions=$VERSIONS"
           echo "versions=$VERSIONS" >> $GITHUB_OUTPUT
