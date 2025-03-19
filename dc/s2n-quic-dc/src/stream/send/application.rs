@@ -26,6 +26,7 @@ mod builder;
 pub mod state;
 pub mod transmission;
 
+use crate::stream::socket::Application;
 pub use builder::Builder;
 
 pub struct Writer<Sub: event::Subscriber>(Box<Inner<Sub>>);
@@ -69,7 +70,7 @@ where
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.shared.common.ensure_open()?;
-        Ok(self.0.shared.write_remote_addr().into())
+        Ok(self.0.shared.remote_addr().into())
     }
 
     #[inline]
@@ -176,15 +177,17 @@ where
 
         let path = self.shared.sender.path.load();
 
-        // clamp the flow request based on the path state
-        request.clamp(path.max_flow_credits(max_header_len, max_segments));
+        let features = self.sockets.features();
+
+        if !features.is_flow_controlled() {
+            // clamp the flow request based on the path state
+            request.clamp(path.max_flow_credits(max_header_len, max_segments));
+        }
 
         // acquire flow credits from the worker
-        let credits = ready!(self.shared.sender.flow.poll_acquire(cx, request))?;
+        let credits = ready!(self.shared.sender.flow.poll_acquire(cx, request, &features))?;
 
         trace!(?credits);
-
-        let features = self.sockets.write_application().features();
 
         let mut batch = if features.is_reliable() {
             // the protocol does recovery for us so no need to track the transmissions
@@ -200,6 +203,9 @@ where
                 .alloc_batch(msg::segment::MAX_COUNT);
             Some(batch)
         };
+
+        let stream_id = self.shared.stream_id();
+        let local_queue_id = self.shared.local_queue_id();
 
         self.queue.push_buffer(
             buf,
@@ -217,8 +223,11 @@ where
                             &self.shared.sender.packet_number,
                             sealer,
                             self.shared.credentials(),
+                            &stream_id,
+                            local_queue_id,
                             &clock::Cached::new(&self.shared.clock),
                             message,
+                            &features,
                         )
                     },
                     |sealer| {
@@ -258,7 +267,7 @@ where
             cx,
             limit,
             self.sockets.write_application(),
-            &msg::addr::Addr::new(self.shared.write_remote_addr()),
+            &msg::addr::Addr::new(self.shared.remote_addr()),
             &self.shared.sender.segment_alloc,
             &self.shared.gso,
             &self.shared.clock,
@@ -306,7 +315,7 @@ where
         let buffer_len = queue.accepted_len();
 
         // pass things to the worker if we need to gracefully shut down
-        if !self.sockets.write_application().features().is_stream() {
+        if !self.sockets.features().is_stream() {
             self.shared
                 .publisher()
                 .on_stream_write_shutdown(event::builder::StreamWriteShutdown {
@@ -491,7 +500,7 @@ where
             cx,
             usize::MAX,
             sockets.write_application(),
-            &msg::addr::Addr::new(shared.write_remote_addr()),
+            &msg::addr::Addr::new(shared.remote_addr()),
             &shared.sender.segment_alloc,
             &shared.gso,
             &shared.clock,

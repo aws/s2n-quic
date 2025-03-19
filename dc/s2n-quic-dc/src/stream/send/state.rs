@@ -78,7 +78,6 @@ pub struct SentRecoveryPacket {
 
 #[derive(Debug)]
 pub struct State {
-    pub stream_id: stream::Id,
     pub rtt_estimator: RttEstimator,
     pub sent_stream_packets: PacketMap<SentStreamPacket>,
     pub stream_packet_buffers: SlotMap<BufferIndex, buffer::Segment>,
@@ -108,6 +107,7 @@ pub struct State {
     pub peer_activity: Option<PeerActivity>,
     pub max_datagram_size: u16,
     pub max_sent_segment_size: u16,
+    pub is_reliable: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -130,7 +130,6 @@ impl State {
         let max_sent_offset = VarInt::ZERO;
 
         Self {
-            stream_id,
             next_expected_control_packet: VarInt::ZERO,
             rtt_estimator: recovery::rtt_estimator(),
             cca,
@@ -160,6 +159,7 @@ impl State {
             peer_activity: None,
             max_datagram_size,
             max_sent_segment_size: 0,
+            is_reliable: stream_id.is_reliable,
         }
     }
 
@@ -261,7 +261,7 @@ impl State {
     {
         probes::on_control_packet(
             credentials.id,
-            self.stream_id,
+            credentials.key_id,
             packet.packet_number(),
             packet.control_data().len(),
         );
@@ -271,7 +271,7 @@ impl State {
 
         probes::on_control_packet_decrypted(
             credentials.id,
-            self.stream_id,
+            credentials.key_id,
             packet.packet_number(),
             packet.control_data().len(),
             res.is_ok(),
@@ -288,7 +288,7 @@ impl State {
             return {
                 probes::on_control_packet_duplicate(
                     credentials.id,
-                    self.stream_id,
+                    credentials.key_id,
                     packet.packet_number(),
                     packet.control_data().len(),
                 );
@@ -312,98 +312,92 @@ impl State {
         let mut max_acked_recovery = None;
         let mut loaded_transmit_queue = false;
 
-        {
-            let mut decoder = DecoderBufferMut::new(packet.control_data_mut());
-            while !decoder.is_empty() {
-                let (frame, remaining) = decoder
-                    .decode::<FrameMut>()
-                    .map_err(|decoder| error::Kind::FrameError { decoder }.err())?;
-                decoder = remaining;
+        for frame in packet.control_frames_mut() {
+            let frame = frame.map_err(|err| error::Kind::FrameError { decoder: err }.err())?;
 
-                trace!(?frame);
+            trace!(?frame);
 
-                match frame {
-                    FrameMut::Padding(_) => {
-                        continue;
-                    }
-                    FrameMut::Ping(_) => {
-                        // no need to do anything special here
-                    }
-                    FrameMut::Ack(ack) => {
-                        if !core::mem::replace(&mut loaded_transmit_queue, true) {
-                            // make sure we have a current view of the application transmissions
-                            self.load_transmission_queue(transmission_queue);
-                        }
-
-                        if ack.ecn_counts.is_some() {
-                            self.on_frame_ack::<_, _, true>(
-                                credentials,
-                                &ack,
-                                random,
-                                &recv_time,
-                                &mut newly_acked,
-                                &mut max_acked_stream,
-                                &mut max_acked_recovery,
-                                segment_alloc,
-                            )?;
-                        } else {
-                            self.on_frame_ack::<_, _, false>(
-                                credentials,
-                                &ack,
-                                random,
-                                &recv_time,
-                                &mut newly_acked,
-                                &mut max_acked_stream,
-                                &mut max_acked_recovery,
-                                segment_alloc,
-                            )?;
-                        }
-                    }
-                    FrameMut::MaxData(frame) => {
-                        if self.max_data < frame.maximum_data {
-                            self.max_data = frame.maximum_data;
-                        }
-                    }
-                    FrameMut::ConnectionClose(close) => {
-                        debug!(connection_close = ?close, state = ?self.state);
-
-                        probes::on_close(
-                            credentials.id,
-                            self.stream_id,
-                            packet_number,
-                            close.error_code,
-                        );
-
-                        // if there was no error and we transmitted everything then just shut the
-                        // stream down
-                        if close.error_code == VarInt::ZERO
-                            && close.frame_type.is_some()
-                            && self.state.on_recv_all_acks().is_ok()
-                        {
-                            self.clean_up();
-                            // transmit one more PTO packet so we can ACK the peer's
-                            // CONNECTION_CLOSE frame and they can shutdown quickly. Otherwise,
-                            // they'll need to hang around to respond to potential loss.
-                            self.pto.force_transmit();
-                            return Ok(None);
-                        }
-
-                        // no need to transmit a reset back to the peer - just close it
-                        let _ = self.state.on_send_reset();
-                        let _ = self.state.on_recv_reset_ack();
-                        let error = if close.frame_type.is_some() {
-                            error::Kind::TransportError {
-                                code: close.error_code,
-                            }
-                        } else {
-                            error::Kind::ApplicationError {
-                                error: close.error_code.into(),
-                            }
-                        };
-                        return Err(error.err());
-                    }
-                    _ => continue,
+            match frame {
+                FrameMut::Padding(_) => {
+                    continue;
                 }
+                FrameMut::Ping(_) => {
+                    // no need to do anything special here
+                }
+                FrameMut::Ack(ack) => {
+                    if !core::mem::replace(&mut loaded_transmit_queue, true) {
+                        // make sure we have a current view of the application transmissions
+                        self.load_transmission_queue(transmission_queue);
+                    }
+
+                    if ack.ecn_counts.is_some() {
+                        self.on_frame_ack::<_, _, true>(
+                            credentials,
+                            &ack,
+                            random,
+                            &recv_time,
+                            &mut newly_acked,
+                            &mut max_acked_stream,
+                            &mut max_acked_recovery,
+                            segment_alloc,
+                        )?;
+                    } else {
+                        self.on_frame_ack::<_, _, false>(
+                            credentials,
+                            &ack,
+                            random,
+                            &recv_time,
+                            &mut newly_acked,
+                            &mut max_acked_stream,
+                            &mut max_acked_recovery,
+                            segment_alloc,
+                        )?;
+                    }
+                }
+                FrameMut::MaxData(frame) => {
+                    if self.max_data < frame.maximum_data {
+                        self.max_data = frame.maximum_data;
+                    }
+                }
+                FrameMut::ConnectionClose(close) => {
+                    debug!(connection_close = ?close, state = ?self.state);
+
+                    probes::on_close(
+                        credentials.id,
+                        credentials.key_id,
+                        packet_number,
+                        close.error_code,
+                    );
+
+                    // if there was no error and we transmitted everything then just shut the
+                    // stream down
+                    if close.error_code == VarInt::ZERO
+                        && close.frame_type.is_some()
+                        && self.state.on_recv_all_acks().is_ok()
+                    {
+                        self.clean_up();
+                        // transmit one more PTO packet so we can ACK the peer's
+                        // CONNECTION_CLOSE frame and they can shutdown quickly. Otherwise,
+                        // they'll need to hang around to respond to potential loss.
+                        self.pto.force_transmit();
+                        return Ok(None);
+                    }
+
+                    // no need to transmit a reset back to the peer - just close it
+                    let _ = self.state.on_send_reset();
+                    let _ = self.state.on_recv_reset_ack();
+                    let error = if close.frame_type.is_some() {
+                        error::Kind::TransportError {
+                            code: close.error_code,
+                        }
+                    } else {
+                        error::Kind::ApplicationError {
+                            error: close.error_code.into(),
+                        }
+                    };
+                    return Err(error.err());
+                }
+                _ => continue,
             }
         }
 
@@ -490,7 +484,7 @@ impl State {
 
                         probes::on_packet_ack(
                             credentials.id,
-                            self.stream_id,
+                            credentials.key_id,
                             stream::PacketSpace::$space,
                             num.as_u64(),
                             packet.info.packet_len,
@@ -594,7 +588,7 @@ impl State {
 
                     probes::on_packet_lost(
                         credentials.id,
-                        self.stream_id,
+                        credentials.key_id,
                         packet_space,
                         num.as_u64(),
                         packet.info.packet_len,
@@ -626,7 +620,7 @@ impl State {
                         self.retransmissions.push(retransmission);
                     } else {
                         // we can only recover reliable streams
-                        is_unrecoverable |= packet.info.payload_len > 0 && !self.stream_id.is_reliable;
+                        is_unrecoverable |= packet.info.payload_len > 0 && !self.is_reliable;
                     }
                 }}
             }
@@ -926,16 +920,21 @@ impl State {
         &mut self,
         control_key: &C,
         credentials: &Credentials,
-        source_control_port: u16,
+        stream_id: &stream::Id,
+        source_queue_id: Option<VarInt>,
         clock: &Clk,
     ) -> Result<(), Error>
     where
         C: crypto::seal::control::Stream,
         Clk: Clock,
     {
-        if let Err(error) =
-            self.fill_transmit_queue_impl(control_key, credentials, source_control_port, clock)
-        {
+        if let Err(error) = self.fill_transmit_queue_impl(
+            control_key,
+            credentials,
+            stream_id,
+            source_queue_id,
+            clock,
+        ) {
             self.on_error(error);
             return Err(error);
         }
@@ -948,7 +947,8 @@ impl State {
         &mut self,
         control_key: &C,
         credentials: &Credentials,
-        source_control_port: u16,
+        stream_id: &stream::Id,
+        source_queue_id: Option<VarInt>,
         clock: &Clk,
     ) -> Result<(), Error>
     where
@@ -961,7 +961,7 @@ impl State {
         }
 
         self.try_transmit_retransmissions(control_key, credentials, clock)?;
-        self.try_transmit_probe(control_key, credentials, source_control_port, clock)?;
+        self.try_transmit_probe(control_key, credentials, stream_id, source_queue_id, clock)?;
 
         Ok(())
     }
@@ -978,7 +978,7 @@ impl State {
         Clk: Clock,
     {
         // We'll only have retransmissions if we're reliable
-        ensure!(self.stream_id.is_reliable, Ok(()));
+        ensure!(self.is_reliable, Ok(()));
 
         while let Some(retransmission) = self.retransmissions.peek() {
             // make sure we fit in the current congestion window
@@ -1049,7 +1049,7 @@ impl State {
 
                 probes::on_transmit_stream(
                     credentials.id,
-                    self.stream_id,
+                    credentials.key_id,
                     stream::PacketSpace::Recovery,
                     PacketNumberSpace::Initial.new_packet_number(packet_number),
                     stream_offset,
@@ -1075,7 +1075,8 @@ impl State {
         &mut self,
         control_key: &C,
         credentials: &Credentials,
-        source_control_port: u16,
+        stream_id: &stream::Id,
+        source_queue_id: Option<VarInt>,
         clock: &Clk,
     ) -> Result<(), Error>
     where
@@ -1120,9 +1121,8 @@ impl State {
             let encoder = EncoderBuffer::new(&mut buffer);
             let packet_len = encoder::probe(
                 encoder,
-                source_control_port,
-                None,
-                self.stream_id,
+                source_queue_id,
+                *stream_id,
                 packet_number,
                 self.next_expected_control_packet,
                 VarInt::ZERO,

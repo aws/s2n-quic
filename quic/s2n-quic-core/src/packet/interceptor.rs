@@ -5,6 +5,7 @@ use crate::{
     event::api::{SocketAddress, Subject},
     havoc,
     packet::number::{PacketNumber, PacketNumberSpace},
+    path::{LocalAddress, RemoteAddress},
     time::Timestamp,
     varint::VarInt,
 };
@@ -45,9 +46,15 @@ pub trait Interceptor: 'static + Send {
     }
 
     #[inline(always)]
-    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
+    fn intercept_rx_local_address(&mut self, subject: &Subject, addr: &mut LocalAddress) {
         let _ = subject;
-        let _ = port;
+        let _ = addr;
+    }
+
+    #[inline(always)]
+    fn intercept_rx_remote_address(&mut self, subject: &Subject, addr: &mut RemoteAddress) {
+        let _ = subject;
+        let _ = addr;
     }
 
     #[inline(always)]
@@ -116,9 +123,15 @@ where
     }
 
     #[inline(always)]
-    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
-        self.0.intercept_rx_remote_port(subject, port);
-        self.1.intercept_rx_remote_port(subject, port);
+    fn intercept_rx_local_address(&mut self, subject: &Subject, addr: &mut LocalAddress) {
+        self.0.intercept_rx_local_address(subject, addr);
+        self.1.intercept_rx_local_address(subject, addr);
+    }
+
+    #[inline(always)]
+    fn intercept_rx_remote_address(&mut self, subject: &Subject, addr: &mut RemoteAddress) {
+        self.0.intercept_rx_remote_address(subject, addr);
+        self.1.intercept_rx_remote_address(subject, addr);
     }
 
     #[inline(always)]
@@ -188,8 +201,10 @@ where
     R: 'static + Send + havoc::Random,
 {
     #[inline]
-    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
-        *port = self.port.havoc_u16(&mut self.random, *port);
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
+        let port = addr.port();
+        let port = self.port.havoc_u16(&mut self.random, port);
+        addr.set_port(port);
     }
 
     #[inline]
@@ -229,9 +244,16 @@ where
 
 impl<T: Interceptor> Interceptor for Option<T> {
     #[inline]
-    fn intercept_rx_remote_port(&mut self, subject: &Subject, port: &mut u16) {
+    fn intercept_rx_local_address(&mut self, subject: &Subject, addr: &mut LocalAddress) {
         if let Some(inner) = self.as_mut() {
-            inner.intercept_rx_remote_port(subject, port)
+            inner.intercept_rx_local_address(subject, addr)
+        }
+    }
+
+    #[inline]
+    fn intercept_rx_remote_address(&mut self, subject: &Subject, addr: &mut RemoteAddress) {
+        if let Some(inner) = self.as_mut() {
+            inner.intercept_rx_remote_address(subject, addr)
         }
     }
 

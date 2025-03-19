@@ -12,7 +12,7 @@ use s2n_quic_core::{probe, varint::VarInt};
 )]
 pub struct Id {
     #[cfg_attr(any(feature = "testing", test), generator(Self::GENERATOR))]
-    pub key_id: VarInt,
+    pub queue_id: VarInt,
     pub is_reliable: bool,
     pub is_bidirectional: bool,
 }
@@ -20,15 +20,11 @@ pub struct Id {
 impl fmt::Debug for Id {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if f.alternate() {
-            f.debug_struct("stream::Id")
-                .field("key_id", &self.key_id)
-                .field("is_reliable", &self.is_reliable)
-                .field("is_bidirectional", &self.is_bidirectional)
-                .finish()
-        } else {
-            self.into_varint().as_u64().fmt(f)
-        }
+        f.debug_struct("stream::Id")
+            .field("queue_id", &self.queue_id)
+            .field("is_reliable", &self.is_reliable)
+            .field("is_bidirectional", &self.is_bidirectional)
+            .finish()
     }
 }
 
@@ -64,27 +60,8 @@ impl Id {
     }
 
     #[inline]
-    pub fn next(&self) -> Option<Self> {
-        Some(Self {
-            key_id: self.key_id.checked_add_usize(1)?,
-            is_reliable: self.is_reliable,
-            is_bidirectional: self.is_bidirectional,
-        })
-    }
-
-    #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = Self> {
-        let mut next = Some(*self);
-        core::iter::from_fn(move || {
-            let current = next;
-            next = next.and_then(|v| v.next());
-            current
-        })
-    }
-
-    #[inline]
     pub fn into_varint(self) -> VarInt {
-        let key_id = *self.key_id;
+        let key_id = *self.queue_id;
         let is_reliable = if self.is_reliable {
             IS_RELIABLE_MASK
         } else {
@@ -108,7 +85,7 @@ impl Id {
         let is_reliable = *value & IS_RELIABLE_MASK == IS_RELIABLE_MASK;
         let is_bidirectional = *value & IS_BIDIRECTIONAL_MASK == IS_BIDIRECTIONAL_MASK;
         Self {
-            key_id: VarInt::new(*value >> 2).unwrap(),
+            queue_id: VarInt::new(*value >> 2).unwrap(),
             is_reliable,
             is_bidirectional,
         }

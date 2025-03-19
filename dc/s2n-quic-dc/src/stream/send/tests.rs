@@ -79,7 +79,9 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
     let expected = buffer_len * iterations;
     println!("expected={expected}");
 
-    tokio::spawn(
+    tokio::spawn({
+        let client = client.clone();
+
         async move {
             let mut stream = client.connect_to(&server_handle).await.unwrap();
             let mut total = 0;
@@ -97,11 +99,16 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
                 let _ = stream.shutdown().await;
             }
         }
-        .instrument(tracing::debug_span!("application")),
-    );
+        .instrument(tracing::debug_span!("client"))
+    });
 
     let actual = client_response.await.unwrap();
     assert_eq!(expected, actual);
+
+    tokio::time::sleep(core::time::Duration::from_secs(1)).await;
+
+    // make sure the client lives long enough to complete the streams
+    drop(client);
 
     // TODO make sure the worker shut down correctly
     //worker.await.unwrap();
@@ -254,7 +261,7 @@ mod tcp {
     negative_suite!();
 }
 
-#[cfg(todo)] // These tests are currently flaky
+#[cfg(target_os = "linux")] // things are only working on linux right now
 mod udp {
     use super::*;
     const PROTOCOL: Protocol = Protocol::Udp;

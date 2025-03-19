@@ -11,45 +11,12 @@ use s2n_quic_core::{ensure, inet::ExplicitCongestionNotification, ready};
 use std::{
     io::{self, IoSlice, IoSliceMut},
     net::SocketAddr,
-    os::fd::AsRawFd,
 };
 use tokio::io::unix::{AsyncFd, TryIoError};
 
-trait UdpSocket: 'static + AsRawFd + Send + Sync {
-    fn local_addr(&self) -> io::Result<SocketAddr>;
-}
-
-impl UdpSocket for std::net::UdpSocket {
-    #[inline]
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        (*self).local_addr()
-    }
-}
-
-impl UdpSocket for tokio::net::UdpSocket {
-    #[inline]
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        (*self).local_addr()
-    }
-}
-
-impl<T: UdpSocket> UdpSocket for std::sync::Arc<T> {
-    #[inline]
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        (**self).local_addr()
-    }
-}
-
-impl<T: UdpSocket> UdpSocket for Box<T> {
-    #[inline]
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        (**self).local_addr()
-    }
-}
-
 impl<T> Socket for AsyncFd<T>
 where
-    T: UdpSocket,
+    T: udp::Socket,
 {
     #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
@@ -152,7 +119,7 @@ where
         );
 
         loop {
-            match udp::send(self.get_ref(), addr, ecn, buffer) {
+            match udp::send(self.get_ref(), addr, ecn, buffer, Default::default()) {
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
                     // try the operation again if we were interrupted
                     continue;
@@ -186,7 +153,7 @@ where
         loop {
             let mut socket = ready!(self.poll_write_ready(cx))?;
 
-            let res = socket.try_io(|fd| udp::send(fd, addr, ecn, buffer));
+            let res = socket.try_io(|fd| udp::send(fd, addr, ecn, buffer, Default::default()));
 
             match res {
                 Ok(Ok(len)) => return Ok(len).into(),

@@ -196,7 +196,7 @@ impl Model {
                 match datagram_drop_reason {
                     // Ignore errors emitted by the migration::validator and peer_id_registry
                     DatagramDropReason::InsufficientConnectionIds => {}
-                    DatagramDropReason::RejectedConnectionMigration => {}
+                    DatagramDropReason::RejectedConnectionMigration { .. } => {}
                     DatagramDropReason::PathLimitExceeded => {}
                     datagram_drop_reason => panic!("{:?}", datagram_drop_reason),
                 };

@@ -782,12 +782,16 @@ enum DatagramDropReason {
     /// A datagram was received from an unknown server address.
     UnknownServerAddress,
     /// The peer initiated a connection migration before the handshake was confirmed.
+    ///
+    /// Note: This drop reason is no longer emitted
     ConnectionMigrationDuringHandshake,
     /// The attempted connection migration was rejected.
-    RejectedConnectionMigration,
+    RejectedConnectionMigration { reason: MigrationDenyReason },
     /// The maximum number of paths per connection was exceeded.
     PathLimitExceeded,
     /// The peer initiated a connection migration without supplying enough connection IDs to use.
+    ///
+    /// Note: This drop reason is no longer emitted
     InsufficientConnectionIds,
 }
 

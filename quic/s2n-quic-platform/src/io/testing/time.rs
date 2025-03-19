@@ -11,7 +11,7 @@ use core::{
 use s2n_quic_core::time::{clock, Timestamp};
 
 pub fn now() -> Timestamp {
-    unsafe { Timestamp::from_duration(time::now()) }
+    unsafe { Timestamp::from_duration(time::Instant::now().elapsed_since_start()) }
 }
 
 pub fn delay(duration: Duration) -> Timer {

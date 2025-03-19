@@ -68,7 +68,7 @@ impl Cleaner {
                 let pause = if cfg!(test) {
                     60
                 } else {
-                    rand::thread_rng().gen_range(5..60)
+                    rand::rng().random_range(5..60)
                 };
                 std::thread::park_timeout(Duration::from_secs(pause));
 
@@ -97,85 +97,89 @@ impl Cleaner {
 
         let utilization = |count: usize| (count as f32 / state.secrets_capacity() as f32) * 100.0;
 
-        let mut id_entries_initial = 0usize;
+        let id_entries_initial = state.ids.len();
         let mut id_entries_retired = 0usize;
         let mut id_entries_active = 0usize;
-        let mut address_entries_initial = 0usize;
+        let address_entries_initial = state.peers.len();
         let mut address_entries_retired = 0usize;
         let mut address_entries_active = 0usize;
+        let mut handshake_requests = 0usize;
 
-        // For non-retired entries, if it's time for them to handshake again, request a
-        // handshake to happen. This handshake will currently happen on the next request for this
-        // particular peer.
-        state.ids.retain(|_, entry| {
-            id_entries_initial += 1;
+        // We want to avoid taking long lived locks which affect gets on the maps (where we want
+        // p100 latency to be in microseconds at most).
+        //
+        // Impeding *handshake* latency is much more acceptable though since this happens at most
+        // once a minute and handshakes are of similar magnitude (~milliseconds/handshake, this is
+        // also expected to run for single digit milliseconds).
+        //
+        // Note that we expect the queue to be an exhaustive list of entries - no entry should not
+        // be in the queue but be in the maps for more than a few microseconds during a handshake
+        // (when we pop from the queue to remove from the maps).
+        let mut queue = state
+            .eviction_queue
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
-            let retained = if let Some(retired_at) = entry.retired_at() {
-                // retain if we aren't yet ready to evict.
-                current_epoch.saturating_sub(retired_at) < eviction_cycles
-            } else {
-                if entry.rehandshake_time() <= now {
-                    state.request_handshake(*entry.peer());
-                }
+        // This map is only accessed with queue lock held and in cleaner, so it is in practice
+        // single threaded. No concurrent access is permitted.
+        state.cleaner_peer_seen.clear();
 
-                // always retain
-                true
+        // FIXME: add metrics for queue depth?
+        // These are sort of equivalent to the ID map -- so maybe not worth it for now unless we
+        // can get something more interesting out of it.
+        queue.retain(|entry| {
+            let Some(entry) = entry.upgrade() else {
+                return false;
             };
-
-            if !retained {
-                id_entries_retired += 1;
-            }
 
             if entry.take_accessed_id() {
                 id_entries_active += 1;
             }
 
-            retained
-        });
-
-        // Drop IP entries if we no longer have the path secret ID entry.
-        // FIXME: Don't require a loop to do this. This is likely somewhat slow since it takes a
-        // write lock + read lock essentially per-entry, but should be near-constant-time.
-        state.peers.retain(|_, entry| {
-            address_entries_initial += 1;
-
-            let retained = state.ids.contains_key(entry.id());
-
-            if !retained {
-                address_entries_retired += 1;
-            }
-
-            if entry.take_accessed_addr() {
+            // Avoid double counting by making sure we have unique peer IPs.
+            // We clear/take the accessed bit regardless of whether we're going to count it to
+            // preserve the property that every cleaner run snapshots last ~minute.
+            if entry.take_accessed_addr() && state.cleaner_peer_seen.insert(entry.clone()).is_none()
+            {
                 address_entries_active += 1;
             }
 
-            retained
-        });
+            let retained = if let Some(retired_at) = entry.retired_at() {
+                // retain if we aren't yet ready to evict.
+                current_epoch.saturating_sub(retired_at) < eviction_cycles
+            } else {
+                // always retain non-retired entries.
+                true
+            };
 
-        // Iteration order should be effectively random, so this effectively just prunes the list
-        // periodically. 5000 is chosen arbitrarily to make sure this isn't a memory leak. Note
-        // that peers the application is actively interested in will typically bypass this list, so
-        // this is mostly a risk of delaying regular re-handshaking with very large cardinalities.
-        //
-        // FIXME: Long or mid-term it likely makes sense to replace this data structure with a
-        // fuzzy set of some kind and/or just moving to immediate background handshake attempts.
-        const MAX_REQUESTED_HANDSHAKES: usize = 5000;
-
-        let mut handshake_requests = 0usize;
-        let mut handshake_requests_retired = 0usize;
-        state.requested_handshakes.pin().retain(|_| {
-            handshake_requests += 1;
-            let retain = handshake_requests < MAX_REQUESTED_HANDSHAKES;
-
-            if !retain {
-                handshake_requests_retired += 1;
+            if !retained {
+                let (id_removed, peer_removed) = state.evict(&entry);
+                if id_removed {
+                    id_entries_retired += 1;
+                }
+                if peer_removed {
+                    address_entries_retired += 1;
+                }
+                return false;
             }
 
-            retain
+            // Schedule re-handshaking
+            if entry.rehandshake_time() <= now {
+                handshake_requests += 1;
+                state.request_handshake(*entry.peer());
+                entry.rehandshake_time_reschedule(state.rehandshake_period());
+            }
+
+            true
         });
 
-        let id_entries = id_entries_initial - id_entries_retired;
-        let address_entries = address_entries_initial - address_entries_retired;
+        // Avoid retaining entries for longer than expected.
+        state.cleaner_peer_seen.clear();
+
+        drop(queue);
+
+        let id_entries = state.ids.len();
+        let address_entries = state.peers.len();
 
         state.subscriber().on_path_secret_map_cleaner_cycled(
             event::builder::PathSecretMapCleanerCycled {
@@ -192,7 +196,7 @@ impl Cleaner {
                 address_entries_initial_utilization: utilization(address_entries_initial),
                 address_entries_retired,
                 handshake_requests,
-                handshake_requests_retired,
+                handshake_requests_retired: 0,
             },
         );
     }

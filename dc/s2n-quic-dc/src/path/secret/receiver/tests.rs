@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use bolero::check;
+use crate::credentials::Id;
+use bolero::{check, ValueGenerator};
 use rand::{seq::SliceRandom, Rng, SeedableRng};
 use std::collections::{binary_heap::PeekMut, BinaryHeap, HashSet};
 
@@ -10,7 +11,7 @@ use std::collections::{binary_heap::PeekMut, BinaryHeap, HashSet};
 fn check() {
     check!().with_type::<Vec<KeyId>>().for_each(|ops| {
         let mut oracle = std::collections::HashSet::new();
-        let subject = State::with_shared(Shared::new());
+        let subject = State::new();
         let id = Id::from([0; 16]);
         for op in ops {
             let expected = oracle.insert(*op);
@@ -28,12 +29,27 @@ fn check() {
 }
 
 #[test]
+fn check_huge_gap() {
+    let subject = State::new();
+    let id = Id::from([0; 16]);
+    for op in [0u64, u32::MAX as u64 + 10] {
+        let actual = subject
+            .post_authentication(&Credentials {
+                id,
+                key_id: KeyId::new(op).unwrap(),
+            })
+            .is_ok();
+        assert!(actual);
+    }
+}
+
+#[test]
 fn check_ordered() {
     check!().with_type::<Vec<KeyId>>().for_each(|ops| {
         let mut ops = ops.clone();
         ops.sort();
         let mut oracle = std::collections::HashSet::new();
-        let subject = State::with_shared(Shared::new());
+        let subject = State::new();
         let id = Id::from([0; 16]);
         for op in ops {
             let expected = oracle.insert(op);
@@ -49,7 +65,7 @@ fn check_ordered() {
 fn check_u16() {
     check!().with_type::<Vec<u16>>().for_each(|ops| {
         let mut oracle = std::collections::HashSet::new();
-        let subject = State::with_shared(Shared::new());
+        let subject = State::new();
         for op in ops {
             let op = KeyId::new(*op as u64).unwrap();
             let expected = oracle.insert(op);
@@ -60,10 +76,6 @@ fn check_u16() {
             // If we did expect this to be a new value, it may have already been marked as
             // "seen" by the set. However, we should never return a false OK (i.e., claim that
             // the value was not seen when it actually was).
-            //
-            // Note that despite the u16::MAX < SHARED_ENTRIES, this is still not able to be
-            // 100% reliable because not all evicted entries from the local set are put into
-            // the backing allocation.
             if !expected {
                 assert!(!actual);
             }
@@ -77,7 +89,7 @@ fn check_ordered_u16() {
         let mut ops = ops.clone();
         ops.sort();
         let mut oracle = std::collections::HashSet::new();
-        let subject = State::with_shared(Shared::new());
+        let subject = State::new();
         let id = Id::from([0; 16]);
         for op in ops {
             let op = KeyId::new(op as u64).unwrap();
@@ -88,61 +100,6 @@ fn check_ordered_u16() {
             assert_eq!(actual, expected);
         }
     });
-}
-
-#[test]
-fn shared() {
-    let subject = Shared::new();
-    let id1 = Id::from([0; 16]);
-    let mut id2 = Id::from([0; 16]);
-    // This is a part of the key ID not used for hashing.
-    id2[10] = 1;
-    let key1 = KeyId::new(0).unwrap();
-    let key2 = KeyId::new(1).unwrap();
-    subject.insert(&Credentials {
-        id: id1,
-        key_id: key1,
-    });
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id1,
-            key_id: key1,
-        }),
-        Ok(())
-    );
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id1,
-            key_id: key1,
-        }),
-        Err(Error::AlreadyExists)
-    );
-    subject.insert(&Credentials {
-        id: id2,
-        key_id: key1,
-    });
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id1,
-            key_id: key1,
-        }),
-        Err(Error::Unknown)
-    );
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id1,
-            key_id: key2,
-        }),
-        Err(Error::Unknown)
-    );
-    // Removal never taints an entry, so this is still fine.
-    assert_eq!(
-        subject.remove(&Credentials {
-            id: id2,
-            key_id: key1,
-        }),
-        Ok(())
-    );
 }
 
 // This test is not particularly interesting, it's mostly just the same as the random tests above
@@ -187,7 +144,7 @@ fn check_shuffled_chunks_inner(seed: u64, chunk_size: u8) {
 
 // This represents the commonly seen behavior in production where a small percentage of inserted
 // keys are potentially significantly delayed. Currently our percentage is fixed, but the delay is
-// not; it's minimum is set by our test here and the maximum is always at most SHARED_ENTRIES.
+// not; it's minimum is set by our test here and the maximum is always at most WINDOW.
 //
 // This ensures that in the common case we see in production our receiver map, presuming no
 // contention in the shared map, is reliably able to return accurate results.
@@ -196,6 +153,9 @@ fn check_delayed() {
     check!()
         .with_type::<(u64, u16)>()
         .for_each(|&(seed, delay)| {
+            if delay as usize >= WINDOW {
+                return;
+            }
             check_delayed_inner(seed, delay);
         });
 }
@@ -205,13 +165,12 @@ fn check_delayed_specific() {
     check_delayed_inner(0xf323243, 10);
     check_delayed_inner(0xf323243, 63);
     check_delayed_inner(0xf323243, 129);
+    check_delayed_inner(0xf323243, (super::WINDOW - 1) as u16);
 }
 
-// delay represents the *minimum* delay a delayed entry sees. The maximum is up to SHARED_ENTRIES.
+// delay represents the *minimum* delay a delayed entry sees. The maximum is up to WINDOW.
 fn check_delayed_inner(seed: u64, delay: u16) {
-    // We expect that the shared map is always big enough to absorb our delay.
-    // (This is statically true; u16::MAX < SHARED_ENTRIES).
-    assert!((delay as usize) < SHARED_ENTRIES);
+    assert!((delay as usize) < super::WINDOW);
     let delay = delay as u64;
     eprintln!("======== starting test run ({seed} {delay}) ==========");
     let mut model = Model::default();
@@ -221,7 +180,7 @@ fn check_delayed_inner(seed: u64, delay: u16) {
     // there are multiple elements to insert, inserting most recent first and only afterwards older
     // entries.
     let mut buffered: BinaryHeap<(std::cmp::Reverse<u64>, u64)> = BinaryHeap::new();
-    for id in 0..(SHARED_ENTRIES as u64 * 3) {
+    for id in 0..(100_000u64 * 3) {
         while let Some(peeked) = buffered.peek_mut() {
             // min-heap means that if the first entry isn't the one we want, then there's no entry
             // that we want.
@@ -238,8 +197,8 @@ fn check_delayed_inner(seed: u64, delay: u16) {
         // to each other. (That's an approximation, it's not obvious how to really derive a simple
         // explanation for what guarantees we're actually trying to provide here).
         if id % 128 != 0 {
-            // ...until some random interval no more than SHARED_ENTRIES away.
-            let insert_before = rng.gen_range(id + 1 + delay..id + SHARED_ENTRIES as u64);
+            // ...until some random interval no more than WINDOW away.
+            let insert_before = rng.random_range(id + 1 + delay..=id + WINDOW as u64);
             buffered.push((std::cmp::Reverse(insert_before), id));
         } else {
             model.insert(id);
@@ -258,7 +217,7 @@ impl Default for Model {
         Self {
             oracle: Default::default(),
             insert_order: Vec::new(),
-            subject: State::with_shared(Shared::new()),
+            subject: State::new(),
         }
     }
 }
@@ -287,66 +246,85 @@ impl Model {
 }
 
 #[test]
-fn shared_no_collisions() {
-    let mut seen = HashSet::new();
-    let shared = Shared::new();
-    for key_id in 0..SHARED_ENTRIES as u64 {
-        let index = shared.index(&Credentials {
-            id: Id::from([0; 16]),
-            key_id: KeyId::new(key_id).unwrap(),
-        });
-        assert!(seen.insert(index));
+fn check_sequential() {
+    let subject = State::new();
+    let id = Id::from([0; 16]);
+    for op in 0u64..(100 * u16::MAX as u64) {
+        let actual = subject
+            .post_authentication(&Credentials {
+                id,
+                key_id: KeyId::new(op).unwrap(),
+            })
+            .is_ok();
+        assert!(actual);
     }
 
-    // The next entry should collide, since we will wrap around.
-    let index = shared.index(&Credentials {
-        id: Id::from([0; 16]),
-        key_id: KeyId::new(SHARED_ENTRIES as u64 + 1).unwrap(),
-    });
-    assert!(!seen.insert(index));
-}
-
-#[test]
-fn shared_id_pair_no_collisions() {
-    let shared = Shared::new();
-
-    // Two random IDs. Exact constants shouldn't matter much, we're mainly aiming to test overall
-    // quality of our mapping from Id + KeyId.
-    let id1 = Id::from(u128::to_ne_bytes(0x25add729cce683cd0cda41d35436bdc6));
-    let id2 = Id::from(u128::to_ne_bytes(0x2862115d0691fe180f2aeb26af3c2e5e));
-
-    for key_id in 0..SHARED_ENTRIES as u64 {
-        let index1 = shared.index(&Credentials {
-            id: id1,
-            key_id: KeyId::new(key_id).unwrap(),
-        });
-        let index2 = shared.index(&Credentials {
-            id: id2,
-            key_id: KeyId::new(key_id).unwrap(),
-        });
-
-        // Our path secret IDs are sufficiently different that we expect that for any given index
-        // we map to a different slot. This test is not *really* saying much since it's highly
-        // dependent on the exact values of the path secret IDs, but it prevents simple bugs like
-        // ignoring the IDs entirely.
-        assert_ne!(index1, index2);
+    // check all of those are considered gone.
+    for op in 0u64..(100 * u16::MAX as u64) {
+        subject
+            .post_authentication(&Credentials {
+                id,
+                key_id: KeyId::new(op).unwrap(),
+            })
+            .unwrap_err();
     }
 }
 
-// Confirms that we start out without any entries present in the map.
 #[test]
-fn shared_no_entries() {
-    let shared = Shared::new();
-    // We have to check all slots to be sure. The index used for lookup is going to be shuffled due
-    // to the hashing in of the secret. We need to use an all-zero path secret ID since the entries
-    // in the map start out zero-initialized today.
-    for key_id in 0..SHARED_ENTRIES as u64 {
-        assert_eq!(
-            shared.remove(&Credentials {
-                id: Id::from([0; 16]),
-                key_id: KeyId::new(key_id).unwrap(),
-            }),
-            Err(Error::Unknown)
-        );
-    }
+fn unseen() {
+    let subject = State::new();
+    assert_eq!(*subject.minimum_unseen_key_id(), 0);
+    let id = Id::from([0; 16]);
+    subject
+        .post_authentication(&Credentials {
+            id,
+            key_id: KeyId::new(0).unwrap(),
+        })
+        .unwrap();
+    assert_eq!(*subject.minimum_unseen_key_id(), 1);
+
+    let id = Id::from([0; 16]);
+    subject
+        .post_authentication(&Credentials {
+            id,
+            key_id: KeyId::new(3).unwrap(),
+        })
+        .unwrap();
+    assert_eq!(*subject.minimum_unseen_key_id(), 4);
+
+    let id = Id::from([0; 16]);
+    subject
+        .post_authentication(&Credentials {
+            id,
+            key_id: KeyId::new(2).unwrap(),
+        })
+        .unwrap();
+    assert_eq!(*subject.minimum_unseen_key_id(), 4);
+}
+
+#[test]
+#[cfg_attr(kani, kani::proof, kani::unwind(130), kani::solver(kissat))]
+#[cfg_attr(miri, ignore)] // this test is too expensive for miri
+fn insert_unequal() {
+    // Make sure the two packet numbers are not the same
+    let gen = bolero::produce::<(KeyId, KeyId)>().filter_gen(|(a, b)| a != b);
+
+    check!()
+        .with_generator(gen)
+        .cloned()
+        .for_each(|(pn, other_pn)| {
+            let state = State::new();
+            let id = Id::from([0; 16]);
+            let pn = Credentials { id, key_id: pn };
+            let other_pn = Credentials {
+                id,
+                key_id: other_pn,
+            };
+            assert!(state.post_authentication(&pn).is_ok());
+            assert_eq!(Err(Error::AlreadyExists), state.post_authentication(&pn));
+            assert_ne!(
+                Err(Error::AlreadyExists),
+                state.post_authentication(&other_pn)
+            );
+        });
 }

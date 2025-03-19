@@ -2,8 +2,8 @@
 source: dc/s2n-quic-dc/src/socket/bpf.rs
 expression: ROUTER
 ---
-LDB [0]
-AND #192
-JEQ #64,0,1
-RET #0
-RET #1
+l0   : LDB [0]
+l1   : AND #192
+l2   : JEQ #64,l3,l4
+l3   : RET #0
+l4   : RET #1

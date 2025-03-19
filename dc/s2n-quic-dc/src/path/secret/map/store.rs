@@ -1,10 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::Entry;
+use super::{entry::ApplicationData, Entry};
 use crate::{
     credentials::{Credentials, Id},
-    fixed_map::ReadGuard,
     packet::{secret_control as control, Packet, WireVersion},
     path::secret::{receiver, stateless_reset},
 };
@@ -27,13 +26,11 @@ pub trait Store: 'static + Send + Sync {
 
     fn contains(&self, peer: &SocketAddr) -> bool;
 
-    fn needs_handshake(&self, peer: &SocketAddr) -> bool;
+    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<Arc<Entry>>;
 
-    fn get_by_addr_untracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
+    fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<Arc<Entry>>;
 
-    fn get_by_addr_tracked(&self, peer: &SocketAddr) -> Option<ReadGuard<Arc<Entry>>>;
-
-    fn get_by_id_untracked(&self, id: &Id) -> Option<ReadGuard<Arc<Entry>>>;
+    fn get_by_id_untracked(&self, id: &Id) -> Option<Arc<Entry>>;
 
     fn get_by_id_tracked(&self, id: &Id) -> Option<Arc<Entry>>;
 
@@ -43,11 +40,11 @@ pub trait Store: 'static + Send + Sync {
 
     fn signer(&self) -> &stateless_reset::Signer;
 
-    fn receiver(&self) -> &Arc<receiver::Shared>;
-
     fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]);
 
     fn rehandshake_period(&self) -> Duration;
+
+    fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>);
 
     fn check_dedup(
         &self,
@@ -104,4 +101,17 @@ pub trait Store: 'static + Send + Sync {
 
         Some(state.clone())
     }
+
+    #[allow(clippy::type_complexity)]
+    fn register_make_application_data(
+        &self,
+        cb: Box<
+            dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData + Send + Sync,
+        >,
+    );
+
+    fn application_data(
+        &self,
+        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+    ) -> ApplicationData;
 }

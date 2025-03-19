@@ -136,9 +136,10 @@ impl Model {
                     ip,
                     secret,
                     sender::State::new(stateless_reset),
-                    state.receiver().clone().new_receiver(),
+                    receiver::State::new(),
                     dc::testing::TEST_APPLICATION_PARAMS,
                     dc::testing::TEST_REHANDSHAKE_PERIOD,
+                    Arc::new(()),
                 )));
 
                 self.invariants.insert(Invariant::ContainsIp(ip));
@@ -200,11 +201,7 @@ impl Model {
                     }
                 }
                 Invariant::IdRemoved(id) => {
-                    assert!(
-                        !state.ids.contains_key(id),
-                        "{:?}",
-                        state.ids.get_by_key(id)
-                    );
+                    assert!(!state.ids.contains_key(id), "{:?}", state.ids.get(*id));
                 }
             }
         }

@@ -529,7 +529,7 @@ impl Vihl {
 
     #[inline]
     pub fn set_version(&mut self, value: u8) -> &mut Self {
-        self.value = value << 4 | (self.value & 0x0F);
+        self.value = (value << 4) | (self.value & 0x0F);
         self
     }
 
@@ -757,7 +757,7 @@ mod tests {
     #[test]
     #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
     fn scope_test() {
-        let g = gen::<[u8; 4]>().map_gen(IpV4Address::from);
+        let g = produce::<[u8; 4]>().map_gen(IpV4Address::from);
         check!().with_generator(g).cloned().for_each(|subject| {
             use ip::UnicastScope::*;
 

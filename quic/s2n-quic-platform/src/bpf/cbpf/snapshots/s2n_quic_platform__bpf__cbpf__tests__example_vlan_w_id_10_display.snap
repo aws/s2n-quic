@@ -1,0 +1,8 @@
+---
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
+---
+l0   : LD vlan_tci ; [0xfffff02c] // skb_vlan_tag_get(skb)
+l1   : JEQ #10,l2,l3
+l2   : RET #4294967295
+l3   : RET #0

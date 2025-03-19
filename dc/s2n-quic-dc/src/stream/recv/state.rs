@@ -36,7 +36,6 @@ use s2n_quic_core::{
 
 #[derive(Debug)]
 pub struct State {
-    stream_id: stream::Id,
     ecn_counts: EcnCounts,
     control_packet_number: u64,
     stream_ack: ack::Space,
@@ -47,6 +46,7 @@ pub struct State {
     // maintains a stable tick timer to avoid timer churn in the platform timer
     tick_timer: Timer,
     _should_transmit: bool,
+    is_reliable: bool,
     max_data: VarInt,
     max_data_window: VarInt,
     error: Option<Error>,
@@ -63,7 +63,7 @@ impl State {
     ) -> Self {
         let initial_max_data = params.local_recv_max_data;
         Self {
-            stream_id,
+            is_reliable: stream_id.is_reliable,
             ecn_counts: Default::default(),
             control_packet_number: Default::default(),
             stream_ack: Default::default(),
@@ -79,11 +79,6 @@ impl State {
             fin_ack_packet_number: None,
             features,
         }
-    }
-
-    #[inline]
-    pub fn id(&self) -> stream::Id {
-        self.stream_id
     }
 
     #[inline]
@@ -179,21 +174,12 @@ impl State {
         credentials: &Credentials,
         packet: &stream::decoder::Packet,
     ) -> Result<(), Error> {
-        ensure!(
-            packet.credentials().id == credentials.id,
-            Err(error::Kind::CredentialMismatch {
-                expected: credentials.id,
-                actual: packet.credentials().id,
-            }
-            .err())
-        );
-
         // make sure we're getting packets for the correct stream
         ensure!(
-            *packet.stream_id() == self.stream_id,
-            Err(error::Kind::StreamMismatch {
-                expected: self.stream_id,
-                actual: *packet.stream_id(),
+            packet.credentials() == credentials,
+            Err(error::Kind::CredentialMismatch {
+                expected: *credentials,
+                actual: *packet.credentials(),
             }
             .err())
         );
@@ -246,7 +232,7 @@ impl State {
     {
         probes::on_stream_packet(
             credentials.id,
-            self.stream_id,
+            *packet.stream_id(),
             packet.tag().packet_space(),
             packet.packet_number(),
             packet.stream_offset(),
@@ -354,7 +340,7 @@ impl State {
 
         probes::on_stream_packet_decrypted(
             credentials.id,
-            self.stream_id,
+            *packet.stream_id(),
             packet.tag().packet_space(),
             packet.packet_number(),
             packet.stream_offset(),
@@ -390,7 +376,7 @@ impl State {
 
         probes::on_stream_packet_decrypted(
             credentials.id,
-            self.stream_id,
+            *packet.stream_id(),
             packet.tag().packet_space(),
             packet.packet_number(),
             packet.stream_offset(),
@@ -463,7 +449,7 @@ impl State {
 
         self.ecn_counts.increment(ecn);
 
-        if !self.stream_id.is_reliable {
+        if !self.is_reliable {
             // TODO should we perform loss detection on the receiver and reset the stream if we have a big
             // enough gap?
         }
@@ -645,6 +631,7 @@ impl State {
         self.tick_timer.cancel();
         self.stream_ack.clear();
         self.recovery_ack.clear();
+        tracing::trace!("silent_shutdown");
     }
 
     #[inline]
@@ -652,7 +639,8 @@ impl State {
         &mut self,
         key: &K,
         credentials: &Credentials,
-        source_control_port: u16,
+        stream_id: stream::Id,
+        source_queue_id: Option<VarInt>,
         output: &mut A,
         clock: &Clk,
     ) where
@@ -668,7 +656,8 @@ impl State {
             self,
             key,
             credentials,
-            source_control_port,
+            stream_id,
+            source_queue_id,
             output,
             // avoid querying the clock for every transmitted packet
             &clock::Cached::new(clock),
@@ -680,7 +669,8 @@ impl State {
         &mut self,
         key: &K,
         credentials: &Credentials,
-        source_control_port: u16,
+        stream_id: stream::Id,
+        source_queue_id: Option<VarInt>,
         output: &mut A,
         _clock: &Clk,
     ) where
@@ -729,8 +719,8 @@ impl State {
 
         let result = control::encoder::encode(
             encoder,
-            source_control_port,
-            Some(self.stream_id),
+            source_queue_id,
+            Some(stream_id),
             packet_number,
             VarInt::ZERO,
             &mut &[][..],
@@ -764,7 +754,7 @@ impl State {
             if let (Some(min), Some(max), Some(gaps)) = metrics {
                 probes::on_transmit_control(
                     credentials.id,
-                    self.stream_id,
+                    stream_id,
                     space,
                     packet_number,
                     min,
@@ -789,7 +779,8 @@ impl State {
         &mut self,
         control_key: &K,
         credentials: &Credentials,
-        source_control_port: u16,
+        stream_id: stream::Id,
+        source_queue_id: Option<VarInt>,
         output: &mut A,
         _clock: &Clk,
     ) where
@@ -822,8 +813,8 @@ impl State {
 
         let result = control::encoder::encode(
             encoder,
-            source_control_port,
-            Some(self.stream_id),
+            source_queue_id,
+            Some(stream_id),
             packet_number,
             VarInt::ZERO,
             &mut &[][..],
@@ -850,12 +841,7 @@ impl State {
         self.stream_ack.clear();
         self.recovery_ack.clear();
 
-        probes::on_transmit_close(
-            credentials.id,
-            self.stream_id,
-            packet_number,
-            frame.error_code,
-        );
+        probes::on_transmit_close(credentials.id, stream_id, packet_number, frame.error_code);
 
         self.on_packet_sent(packet_number);
     }

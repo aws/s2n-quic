@@ -3,6 +3,8 @@
 
 mod ack;
 pub mod application;
+pub(crate) mod buffer;
+pub mod dispatch;
 mod error;
 mod packet;
 mod probes;

@@ -273,6 +273,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
+        limits: &mut Config::ConnectionLimits,
     ) -> Result<(), connection::Error> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
@@ -286,6 +287,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             &mut publisher,
             datagram,
             dc,
+            limits,
         ) {
             Poll::Ready(Ok(())) => {}
             // use `from` instead of `into` so the location is correctly captured
@@ -659,6 +661,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 parameters.event_subscriber,
                 parameters.datagram_endpoint,
                 parameters.dc_endpoint,
+                parameters.limits_endpoint,
             ) {
                 connection.with_event_publisher(
                     parameters.timestamp,
@@ -1129,12 +1132,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
+        conn_limits: &mut Config::ConnectionLimits,
     ) -> Result<(), connection::Error> {
         // reset the queued state first so that new wakeup request are not missed
         self.wakeup_handle.wakeup_handled();
 
         // check if crypto progress can be made
-        self.update_crypto_state(timestamp, subscriber, datagram, dc)?;
+        self.update_crypto_state(timestamp, subscriber, datagram, dc, conn_limits)?;
 
         // return an error if the application set one
         self.error?;
@@ -1221,6 +1225,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet_interceptor: &mut Config::PacketInterceptor,
         datagram_endpoint: &mut Config::DatagramEndpoint,
         dc_endpoint: &mut Config::DcEndpoint,
+        connection_limits_endpoint: &mut Config::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //= type=TODO
@@ -1262,6 +1267,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 packet_interceptor,
                 datagram_endpoint,
                 dc_endpoint,
+                connection_limits_endpoint,
             )?;
         }
 
@@ -1279,6 +1285,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet_interceptor: &mut Config::PacketInterceptor,
         datagram_endpoint: &mut Config::DatagramEndpoint,
         dc_endpoint: &mut Config::DcEndpoint,
+        connection_limits_endpoint: &mut Config::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
             let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
@@ -1340,6 +1347,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 subscriber,
                 datagram_endpoint,
                 dc_endpoint,
+                connection_limits_endpoint,
             )?;
 
             // notify the connection a packet was processed
@@ -1360,6 +1368,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet_interceptor: &mut Config::PacketInterceptor,
         datagram_endpoint: &mut Config::DatagramEndpoint,
         dc_endpoint: &mut Config::DcEndpoint,
+        connection_limits_endpoint: &mut Config::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1445,6 +1454,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 subscriber,
                 datagram_endpoint,
                 dc_endpoint,
+                connection_limits_endpoint,
             )?;
 
             // notify the connection a packet was processed
@@ -1465,6 +1475,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         packet_interceptor: &mut Config::PacketInterceptor,
         datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut Config::DcEndpoint,
+        limits_endpoint: &mut Config::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1562,6 +1573,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     &mut publisher,
                     datagram_endpoint,
                     dc_endpoint,
+                    limits_endpoint,
                 )?;
             }
             // notify the connection a packet was processed

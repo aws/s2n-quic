@@ -6,6 +6,10 @@
 
 - [Introduction]()
 - [Installation](user-guide/installation.md)
+- [Debugging](user-guide/debugging.md)
+  - [Tracing Logs](user-guide/debugging-tracelog.md)
+  - [Packet Capture](user-guide/debugging-pcap.md)
+  - [GSO and GRO](user-guide/debugging-gso.md)
 
 # Developer Guide
 

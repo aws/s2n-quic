@@ -16,7 +16,7 @@ use s2n_quic_core::{
 };
 use s2n_quic_crypto::{constant_time, digest, hmac};
 use std::hash::{Hash, Hasher};
-use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
+use zerocopy::{FromBytes, IntoBytes, Unaligned};
 use zeroize::Zeroizing;
 
 struct BaseKey {
@@ -356,7 +356,7 @@ impl super::Format for Format {
     }
 }
 
-#[derive(Clone, Copy, Debug, FromBytes, FromZeroes, AsBytes, Unaligned)]
+#[derive(Clone, Copy, Debug, FromBytes, IntoBytes, Unaligned)]
 #[repr(C)]
 pub(crate) struct Header(u8);
 
@@ -416,7 +416,7 @@ impl Header {
 //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4
 //#   There is no need for a single well-defined format for the token
 //#   because the server that generates the token also consumes it.
-#[derive(Copy, Clone, Debug, FromBytes, FromZeroes, AsBytes, Unaligned)]
+#[derive(Copy, Clone, Debug, FromBytes, IntoBytes, Unaligned)]
 #[repr(C)]
 struct Token {
     header: Header,
@@ -748,7 +748,7 @@ mod tests {
         //# For this design to work,
         //# the token MUST be covered by integrity protection against
         //# modification or falsification by clients.
-        let generator = bolero::generator::gen::<Vec<u8>>()
+        let generator = bolero::generator::produce::<Vec<u8>>()
             .with()
             .len(Format::TOKEN_LEN);
         bolero::check!()

@@ -34,9 +34,9 @@ where
     pub fn build(self, shared: ArcShared<Sub>, sockets: socket::ArcApplication) -> Reader<Sub> {
         let Self { endpoint, runtime } = self;
 
-        let remote_addr = shared.read_remote_addr();
+        let remote_addr = shared.remote_addr();
         // we only need a timer for unreliable transports
-        let is_reliable = sockets.read_application().features().is_reliable();
+        let is_reliable = sockets.features().is_reliable();
         let timer = if is_reliable {
             None
         } else {

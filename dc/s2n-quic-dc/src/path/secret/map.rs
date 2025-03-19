@@ -8,6 +8,7 @@ use crate::{
     path::secret::{open, seal, stateless_reset},
     stream::TransportFeatures,
 };
+pub use entry::ApplicationData;
 use s2n_quic_core::{dc, time};
 use std::{net::SocketAddr, sync::Arc};
 
@@ -26,7 +27,7 @@ pub mod testing;
 #[cfg(test)]
 mod event_tests;
 
-use entry::Entry;
+pub use entry::Entry;
 use store::Store;
 
 pub use entry::{ApplicationPair, Bidirectional, ControlPair};
@@ -90,13 +91,8 @@ impl Map {
         self.store.contains(peer)
     }
 
-    /// Check whether we would like to (re-)handshake with this peer.
-    ///
-    /// Note that this is distinct from `contains`, we may already have *some* credentials for a
-    /// peer but still be interested in handshaking (e.g., due to periodic refresh of the
-    /// credentials).
-    pub fn needs_handshake(&self, peer: &SocketAddr) -> bool {
-        self.store.needs_handshake(peer)
+    pub fn register_request_handshake(&self, cb: Box<dyn Fn(SocketAddr) + Send + Sync>) {
+        self.store.register_request_handshake(cb);
     }
 
     /// Gets the [`Peer`] entry for the given address
@@ -188,8 +184,6 @@ impl Map {
         let mut stateless_reset = [0; control::TAG_LEN];
         aws_lc_rs::rand::fill(&mut stateless_reset).unwrap();
 
-        let receiver_shared = receiver::Shared::new();
-
         let mut ids = Vec::with_capacity(peers.len());
         for (idx, (ciphersuite, version, peer)) in peers.into_iter().enumerate() {
             secret[..8].copy_from_slice(&(idx as u64).to_be_bytes()[..]);
@@ -206,9 +200,10 @@ impl Map {
                 peer,
                 secret,
                 sender,
-                receiver_shared.clone().new_receiver(),
+                receiver::State::new(),
                 dc::testing::TEST_APPLICATION_PARAMS,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
+                Arc::new(()),
             );
             let entry = Arc::new(entry);
             provider.store.test_insert(entry);
@@ -226,7 +221,7 @@ impl Map {
     #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
     pub fn test_insert(&self, peer: SocketAddr) {
-        let receiver = self.store.receiver().clone().new_receiver();
+        let receiver = super::receiver::State::new();
         let entry = Entry::fake(peer, Some(receiver));
         self.store.test_insert(entry);
     }
@@ -235,8 +230,10 @@ impl Map {
     pub(crate) fn test_insert_pair(
         &self,
         local_addr: SocketAddr,
+        local_params: Option<dc::ApplicationParams>,
         peer: &Self,
         peer_addr: SocketAddr,
+        peer_params: Option<dc::ApplicationParams>,
     ) -> crate::credentials::Id {
         use crate::path::secret::{schedule, sender};
         use s2n_quic_core::endpoint::Type;
@@ -246,7 +243,11 @@ impl Map {
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();
 
-        let insert = |map: &Self, peer: &Self, peer_addr, endpoint| {
+        let insert = |map: &Self,
+                      peer: &Self,
+                      peer_addr,
+                      params: Option<dc::ApplicationParams>,
+                      endpoint| {
             let secret =
                 schedule::Secret::new(ciphersuite, dc::SUPPORTED_VERSIONS[0], endpoint, &secret);
             let id = *secret.id();
@@ -255,13 +256,16 @@ impl Map {
 
             let sender = sender::State::new(srt);
 
+            let params = params.unwrap_or(dc::testing::TEST_APPLICATION_PARAMS);
+
             let entry = Entry::new(
                 peer_addr,
                 secret,
                 sender,
-                map.store.receiver().clone().new_receiver(),
-                dc::testing::TEST_APPLICATION_PARAMS,
+                super::receiver::State::new(),
+                params,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
+                Arc::new(()),
             );
             let entry = Arc::new(entry);
             map.store.test_insert(entry);
@@ -269,11 +273,21 @@ impl Map {
             id
         };
 
-        let client_id = insert(self, peer, peer_addr, Type::Client);
-        let server_id = insert(peer, self, local_addr, Type::Server);
+        let client_id = insert(self, peer, peer_addr, peer_params, Type::Client);
+        let server_id = insert(peer, self, local_addr, local_params, Type::Server);
 
         assert_eq!(client_id, server_id);
 
         client_id
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn register_make_application_data(
+        &self,
+        cb: Box<
+            dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData + Send + Sync,
+        >,
+    ) {
+        self.store.register_make_application_data(cb);
     }
 }

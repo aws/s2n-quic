@@ -4,8 +4,9 @@
 use super::*;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    event::api::{DatagramDropReason, Subject},
+    event::api::{DatagramDropReason, MigrationDenyReason, Subject},
     packet::interceptor::{Datagram, Interceptor},
+    path::{LocalAddress, RemoteAddress},
 };
 
 fn run_test<F>(mut on_rebind: F)
@@ -136,9 +137,10 @@ struct RebindPortBeforeLastHandshakePacket {
 
 impl Interceptor for RebindPortBeforeLastHandshakePacket {
     // Change the port after the first Handshake packet is received
-    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
         if self.handshake_packet_count == 1 && !self.changed_port {
-            *port += 1;
+            let port = addr.port();
+            addr.set_port(port + 1);
             self.changed_port = true;
         }
     }
@@ -223,15 +225,13 @@ fn ip_and_port_rebind_test() {
 #[derive(Default)]
 struct RebindPortBeforeHandshakeConfirmed {
     datagram_count: usize,
-    changed_port: bool,
 }
 
 const REBIND_PORT: u16 = 55555;
 impl Interceptor for RebindPortBeforeHandshakeConfirmed {
-    fn intercept_rx_remote_port(&mut self, _subject: &Subject, port: &mut u16) {
-        if self.datagram_count == 1 && !self.changed_port {
-            *port = REBIND_PORT;
-            self.changed_port = true;
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
+        if (1..5).contains(&self.datagram_count) {
+            addr.set_port(REBIND_PORT);
         }
     }
 
@@ -251,8 +251,11 @@ impl Interceptor for RebindPortBeforeHandshakeConfirmed {
 #[test]
 fn rebind_before_handshake_confirmed() {
     let model = Model::default();
-    let subscriber = recorder::DatagramDropped::new();
-    let datagram_dropped_events = subscriber.events();
+    let subscriber_dropped = recorder::DatagramDropped::new();
+    let subscriber_addr_change = recorder::HandshakeRemoteAddressChangeObserved::new();
+    let datagram_dropped_events = subscriber_dropped.events();
+    let addr_change_events = subscriber_addr_change.events();
+    let subscriber = (subscriber_dropped, subscriber_addr_change);
 
     test(model, move |handle| {
         let server = Server::builder()
@@ -277,12 +280,237 @@ fn rebind_before_handshake_confirmed() {
     .unwrap();
 
     let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
+    assert!(
+        datagram_dropped_events.is_empty(),
+        "the server should allow packets to be processed before the handshake completes"
+    );
 
-    assert_eq!(1, datagram_dropped_events.len());
-    let event = datagram_dropped_events.first().unwrap();
-    assert!(matches!(
-        event.reason,
-        DatagramDropReason::ConnectionMigrationDuringHandshake { .. },
-    ));
-    assert_eq!(REBIND_PORT, event.remote_addr.port());
+    let addr_change_events = addr_change_events.lock().unwrap();
+    assert!(!addr_change_events.is_empty());
+
+    for addr in addr_change_events.iter() {
+        assert_eq!(addr.port(), REBIND_PORT);
+    }
+}
+
+// Changes the remote address to ipv4-mapped after the first packet
+#[derive(Default)]
+struct RebindMappedAddrBeforeHandshakeConfirmed {
+    local: bool,
+    remote: bool,
+    datagram_count: usize,
+}
+
+impl Interceptor for RebindMappedAddrBeforeHandshakeConfirmed {
+    fn intercept_rx_local_address(&mut self, _subject: &Subject, addr: &mut LocalAddress) {
+        if self.datagram_count > 0 && self.local {
+            *addr = (*addr).to_ipv6_mapped().into();
+        }
+    }
+
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
+        if self.datagram_count > 0 && self.remote {
+            *addr = (*addr).to_ipv6_mapped().into();
+        }
+    }
+
+    fn intercept_rx_datagram<'a>(
+        &mut self,
+        _subject: &Subject,
+        _datagram: &Datagram,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        self.datagram_count += 1;
+        payload
+    }
+}
+
+/// Ensures that a datagram received from a client that changes from ipv4 to ipv4-mapped
+/// is still accepted
+#[test]
+fn rebind_ipv4_mapped_before_handshake_confirmed() {
+    fn run_test(interceptor: RebindMappedAddrBeforeHandshakeConfirmed) {
+        let model = Model::default();
+        let subscriber = recorder::DatagramDropped::new();
+        let datagram_dropped_events = subscriber.events();
+
+        test(model, move |handle| {
+            let server = Server::builder()
+                .with_io(handle.builder().build()?)?
+                .with_tls(SERVER_CERTS)?
+                .with_event((tracing_events(), subscriber))?
+                .with_random(Random::with_seed(456))?
+                .with_packet_interceptor(interceptor)?
+                .start()?;
+
+            let client = Client::builder()
+                .with_io(handle.builder().build()?)?
+                .with_tls(certificates::CERT_PEM)?
+                .with_event(tracing_events())?
+                .with_random(Random::with_seed(456))?
+                .start()?;
+
+            let addr = start_server(server)?;
+            start_client(client, addr, Data::new(1000))?;
+            Ok(addr)
+        })
+        .unwrap();
+
+        let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
+        let datagram_dropped_events = &datagram_dropped_events[..];
+
+        assert!(
+            datagram_dropped_events.is_empty(),
+            "s2n-quic should not drop IPv4-mapped packets {datagram_dropped_events:?}"
+        );
+    }
+
+    // test all combinations
+    for local in [false, true] {
+        for remote in [false, true] {
+            let interceptor = RebindMappedAddrBeforeHandshakeConfirmed {
+                local,
+                remote,
+                ..Default::default()
+            };
+            run_test(interceptor);
+        }
+    }
+}
+
+/// Rebinds to a port after a specified number of packets
+struct RebindToPort {
+    port: u16,
+    after: usize,
+}
+
+impl Interceptor for RebindToPort {
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
+        if self.after == 0 {
+            addr.set_port(self.port);
+        }
+    }
+
+    fn intercept_rx_datagram<'a>(
+        &mut self,
+        _subject: &Subject,
+        _datagram: &Datagram,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        self.after = self.after.saturating_sub(1);
+        payload
+    }
+}
+
+/// Ensures that a blocked port is not migrated to
+#[test]
+fn rebind_blocked_port() {
+    let model = Model::default();
+    let subscriber = recorder::DatagramDropped::new();
+    let datagram_dropped_events = subscriber.events();
+
+    test(model, move |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event((tracing_events(), subscriber))?
+            .with_random(Random::with_seed(456))?
+            .with_packet_interceptor(RebindToPort { port: 53, after: 2 })?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let addr = start_server(server)?;
+
+        primary::spawn(async move {
+            let mut connection = client
+                .connect(Connect::new(addr).with_server_name("localhost"))
+                .await
+                .unwrap();
+            let mut stream = connection.open_bidirectional_stream().await.unwrap();
+            let _ = stream.send(Bytes::from_static(b"hello")).await;
+            let _ = stream.finish();
+            let _ = stream.receive().await;
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
+
+    assert!(!datagram_dropped_events.is_empty());
+    for event in datagram_dropped_events.iter() {
+        if let DatagramDropReason::RejectedConnectionMigration { reason, .. } = &event.reason {
+            assert!(matches!(reason, MigrationDenyReason::BlockedPort { .. }));
+        }
+    }
+}
+
+// Changes the local address after N packets
+#[derive(Default)]
+struct RebindAddrAfter {
+    count: usize,
+}
+
+impl Interceptor for RebindAddrAfter {
+    fn intercept_rx_local_address(&mut self, _subject: &Subject, addr: &mut LocalAddress) {
+        if self.count == 0 {
+            addr.0 = rebind_port(rebind_ip(addr.0.into())).into();
+        }
+    }
+
+    fn intercept_rx_datagram<'a>(
+        &mut self,
+        _subject: &Subject,
+        _datagram: &Datagram,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        self.count = self.count.saturating_sub(1);
+        payload
+    }
+}
+
+/// Ensures that a datagram received from a client on a different server IP/port is still
+/// accepted.
+#[test]
+fn rebind_server_addr_before_handshake_confirmed() {
+    let model = Model::default();
+    let subscriber = recorder::DatagramDropped::new();
+    let datagram_dropped_events = subscriber.events();
+
+    test(model, move |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event((tracing_events(), subscriber))?
+            .with_random(Random::with_seed(456))?
+            .with_packet_interceptor(RebindAddrAfter { count: 1 })?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let addr = start_server(server)?;
+        start_client(client, addr, Data::new(1000))?;
+        Ok(addr)
+    })
+    .unwrap();
+
+    let datagram_dropped_events = datagram_dropped_events.lock().unwrap();
+    let datagram_dropped_events = &datagram_dropped_events[..];
+
+    assert!(
+        datagram_dropped_events.is_empty(),
+        "s2n-quic should not drop packets with different server addrs {datagram_dropped_events:?}"
+    );
 }

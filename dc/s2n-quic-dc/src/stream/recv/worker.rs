@@ -5,7 +5,7 @@ use crate::{
     allocator::Allocator,
     clock::Timer,
     event, msg,
-    stream::{shared::ArcShared, socket::Socket},
+    stream::{shared::ArcShared, socket::Socket, Actor},
 };
 use core::task::{Context, Poll};
 use s2n_quic_core::{buffer, endpoint, ensure, ready, time::clock::Timer as _};
@@ -25,11 +25,13 @@ mod waiting {
         Cooldown,
         DataRecvd,
         Detached,
+        TimeWait,
         Finished,
     }
 
     impl State {
         is!(is_peek_packet, PeekPacket);
+        is!(is_time_wait, TimeWait);
         event! {
             on_peek_packet(PeekPacket => EpochTimeout);
             on_cooldown_elapsed(Cooldown => PeekPacket);
@@ -37,7 +39,8 @@ mod waiting {
             on_application_progress(PeekPacket | EpochTimeout | Cooldown => Cooldown);
             on_application_detach(PeekPacket | EpochTimeout | Cooldown => Detached);
             on_data_received(PeekPacket | EpochTimeout | Cooldown => DataRecvd);
-            on_finished(PeekPacket | EpochTimeout | Cooldown | Detached | DataRecvd => Finished);
+            on_time_wait(Detached | DataRecvd => TimeWait);
+            on_finished(PeekPacket | EpochTimeout | Cooldown | Detached | DataRecvd | TimeWait => Finished);
         }
     }
 
@@ -76,7 +79,7 @@ where
 {
     #[inline]
     pub fn new(socket: S, shared: ArcShared<Sub>, endpoint: endpoint::Type) -> Self {
-        let send_buffer = msg::send::Message::new(shared.read_remote_addr(), shared.gso.clone());
+        let send_buffer = msg::send::Message::new(shared.remote_addr(), shared.gso.clone());
         let timer = Timer::new_with_timeout(&shared.clock, INITIAL_TIMEOUT);
 
         let state = match endpoint {
@@ -105,6 +108,11 @@ where
 
     #[inline]
     pub fn poll(&mut self, cx: &mut Context) -> Poll<()> {
+        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| self.poll_impl(cx))
+    }
+
+    #[inline]
+    fn poll_impl(&mut self, cx: &mut Context) -> Poll<()> {
         if let Poll::Ready(Err(err)) = self.poll_flush_socket(cx) {
             tracing::error!(socket_error = ?err);
             // TODO should we return? if we get a send error it's most likely fatal
@@ -133,9 +141,13 @@ where
                     // check to see if the application is progressing before peeking the socket
                     ensure!(!self.is_application_progressing(), continue);
 
-                    // peek the socket buffer size - we don't care how big, just that there is at
-                    // least one packet there
-                    let _len = ready!(self.socket.poll_peek_len(cx))?;
+                    // check if we have something pending
+                    ready!(self.shared.receiver.poll_peek_worker(
+                        cx,
+                        &self.socket,
+                        &self.shared.clock,
+                        &self.shared.subscriber,
+                    ));
 
                     self.arm_timer();
                     self.state.on_peek_packet().unwrap();
@@ -169,11 +181,37 @@ where
                     ready!(self.timer.poll_ready(cx));
 
                     // go back to waiting for a packet
-                    self.state.on_cooldown_elapsed().unwrap();
+                    let _ = self.state.on_cooldown_elapsed();
                     continue;
                 }
                 waiting::State::Detached | waiting::State::DataRecvd => {
-                    ready!(self.poll_drain_recv_socket(cx))?;
+                    // check if we have any packets in the queue
+                    let _ = self.poll_drain_recv_socket(cx);
+
+                    // transition to time wait and arm the timer
+                    ensure!(self.state.on_time_wait().is_ok(), continue);
+
+                    // TODO instead of arming a timer, we should add a mode to the `stream` receiver
+                    // that allows it to be marked as "free" for reuse while holding the last control
+                    // packet that this worker sent. The recv socket pool would look at the credentials
+                    // on each packet to see if it should intercept and respond with an old control packet
+                    // in case the sender didn't see the control packet. This is similar to TCP Reuse/Recycle.
+                    let now = self.shared.clock.get_time();
+                    let target = now + Duration::from_millis(500);
+                    self.timer.update(target);
+                }
+                waiting::State::TimeWait => {
+                    // check if we have any packets in the socket
+                    let _ = self.poll_drain_recv_socket(cx);
+
+                    // make sure we're still in `TimeWait` after looking at the socket
+                    ensure!(self.state.is_time_wait(), continue);
+
+                    // wait for the timer to expire
+                    ready!(self.timer.poll_ready(cx));
+
+                    // after the timer expires, then transition to the finished state
+                    let _ = self.state.on_finished();
                 }
                 waiting::State::Finished => {
                     // nothing left to do
@@ -191,7 +229,7 @@ where
         {
             if let Ok(Some(mut recv)) = self.shared.receiver.worker_try_lock() {
                 // check to see if we have anything in the reassembler as well
-                let is_buffer_empty = recv.recv_buffer.is_empty() && recv.reassembler.is_empty();
+                let is_buffer_empty = recv.payload_is_empty() && recv.reassembler.is_empty();
 
                 let error = if !is_buffer_empty || is_panicking {
                     // we still had data in our buffer so notify the sender
@@ -202,8 +240,6 @@ where
                 };
 
                 recv.receiver.stop_sending(error.into());
-
-                // TODO arm the timer so we can clean up when we're done
 
                 if recv.receiver.is_finished() {
                     let _ = self.state.on_finished();
@@ -267,8 +303,6 @@ where
 
             if recv.receiver.is_finished() {
                 let _ = self.state.on_finished();
-            } else {
-                // TODO update the timer so we get woken up on idle timeout
             }
         }
 
@@ -296,7 +330,7 @@ where
             };
 
             // make sure to process any left over packets, if any
-            if !recv.recv_buffer.is_empty() {
+            if !recv.payload_is_empty() {
                 *should_transmit |= recv.process_recv_buffer(
                     &mut buffer::writer::storage::Empty,
                     &self.shared,
@@ -306,6 +340,7 @@ where
 
             let res = recv.poll_fill_recv_buffer(
                 cx,
+                Actor::Worker,
                 &self.socket,
                 &self.shared.clock,
                 &self.shared.subscriber,

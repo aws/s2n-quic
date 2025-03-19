@@ -8,21 +8,22 @@ use crate::{
     packet::Packet,
     stream::{
         pacer,
+        recv::buffer::{self, Buffer},
         send::{
             error::{self, Error},
             queue::Queue,
             shared::Event,
             state::State,
         },
-        shared::{self, Half},
+        shared,
         socket::Socket,
+        Actor, TransportFeatures,
     },
 };
 use core::task::{Context, Poll};
-use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     endpoint, ensure,
-    inet::ExplicitCongestionNotification,
+    inet::{ExplicitCongestionNotification, SocketAddress},
     random, ready,
     recovery::bandwidth::Bandwidth,
     time::{
@@ -60,22 +61,24 @@ mod waiting {
     }
 }
 
-pub struct Worker<S, R, Sub, C>
+pub struct Worker<S, B, R, Sub, C>
 where
     S: Socket,
+    B: Buffer,
     R: random::Generator,
     Sub: event::Subscriber,
     C: Clock,
 {
     shared: Arc<shared::Shared<Sub, C>>,
     sender: State,
-    recv_buffer: msg::recv::Message,
+    recv_buffer: B,
     random: R,
     state: waiting::State,
     timer: Timer,
     application_queue: Queue,
     pacer: pacer::Naive,
     socket: S,
+    is_handshaking: bool,
 }
 
 #[derive(Debug)]
@@ -135,9 +138,10 @@ impl Snapshot {
     }
 }
 
-impl<S, R, Sub, C> Worker<S, R, Sub, C>
+impl<S, B, R, Sub, C> Worker<S, B, R, Sub, C>
 where
     S: Socket,
+    B: Buffer,
     R: random::Generator,
     Sub: event::Subscriber,
     C: Clock,
@@ -145,13 +149,13 @@ where
     #[inline]
     pub fn new(
         socket: S,
+        recv_buffer: B,
         random: R,
         shared: Arc<shared::Shared<Sub, C>>,
         mut sender: State,
         endpoint: endpoint::Type,
     ) -> Self {
         let timer = Timer::new(&shared.clock);
-        let recv_buffer = msg::recv::Message::new(u16::MAX);
         let state = Default::default();
 
         // if this is a client then set up the sender
@@ -169,6 +173,7 @@ where
             application_queue: Default::default(),
             pacer: Default::default(),
             socket,
+            is_handshaking: true,
         }
     }
 
@@ -179,6 +184,11 @@ where
 
     #[inline]
     pub fn poll(&mut self, cx: &mut Context) -> Poll<()> {
+        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| self.poll_impl(cx))
+    }
+
+    #[inline]
+    fn poll_impl(&mut self, cx: &mut Context) -> Poll<()> {
         let initial = self.snapshot();
 
         let is_initial = self.sender.state.is_ready();
@@ -282,8 +292,12 @@ where
     #[inline]
     fn poll_socket(&mut self, cx: &mut Context) -> Poll<()> {
         loop {
+            let mut publisher = self.shared.publisher();
             // try to receive until we get blocked
-            let _ = ready!(self.socket.poll_recv_buffer(cx, &mut self.recv_buffer));
+            let _ =
+                ready!(self
+                    .recv_buffer
+                    .poll_fill(cx, Actor::Worker, &self.socket, &mut publisher));
             self.process_recv_buffer();
         }
     }
@@ -292,75 +306,29 @@ where
     fn process_recv_buffer(&mut self) {
         ensure!(!self.recv_buffer.is_empty());
 
-        let remote_addr = self.recv_buffer.remote_address();
-        let tag_len = self.shared.crypto.tag_len();
-        let ecn = self.recv_buffer.ecn();
         let random = &mut self.random;
-        let mut any_valid_packets = false;
-        let clock = &clock::Cached::new(&self.shared.clock);
+        let clock = clock::Cached::new(&self.shared.clock);
         let opener = self
             .shared
             .crypto
             .control_opener()
             .expect("control crypto should be available");
 
-        for segment in self.recv_buffer.segments() {
-            let segment_len = segment.len();
-            let mut decoder = DecoderBufferMut::new(segment);
+        let mut router = Router {
+            shared: &self.shared,
+            opener,
+            random,
+            sender: &mut self.sender,
+            clock,
+            remote_addr: Default::default(),
+            remote_queue_id: None,
+            any_valid_packets: false,
+            is_handshaking: &mut self.is_handshaking,
+        };
 
-            while !decoder.is_empty() {
-                let remaining_len = decoder.len();
-
-                let packet = match decoder.decode_parameterized(tag_len) {
-                    Ok((packet, remaining)) => {
-                        decoder = remaining;
-                        packet
-                    }
-                    Err(err) => {
-                        // we couldn't parse the rest of the packet so bail
-                        tracing::error!(decoder_error = %err, segment_len, remaining_len);
-                        break;
-                    }
-                };
-
-                match packet {
-                    Packet::Control(mut packet) => {
-                        // make sure we're processing the expected stream
-                        ensure!(
-                            packet.stream_id() == Some(&self.shared.application().stream_id),
-                            continue
-                        );
-
-                        let res = self.sender.on_control_packet(
-                            opener,
-                            self.shared.credentials(),
-                            ecn,
-                            &mut packet,
-                            random,
-                            clock,
-                            &self.shared.sender.application_transmission_queue,
-                            &self.shared.sender.segment_alloc,
-                        );
-
-                        if res.is_ok() {
-                            any_valid_packets = true;
-                        }
-                    }
-                    other => self
-                        .shared
-                        .crypto
-                        .map()
-                        .handle_unexpected_packet(&other, &self.shared.write_remote_addr().into()),
-                }
-            }
-        }
-
-        if any_valid_packets {
-            // if the writer saw any ACKs then we're done handshaking
-            let did_complete_handshake = true;
-            self.shared
-                .on_valid_packet(&remote_addr, Half::Write, did_complete_handshake);
-        }
+        let _ = self
+            .recv_buffer
+            .process(TransportFeatures::UDP, &mut router);
     }
 
     #[inline]
@@ -386,10 +354,13 @@ where
 
             match self.state {
                 waiting::State::Acking => {
+                    let stream_id = self.shared.stream_id();
+                    let source_queue_id = self.shared.local_queue_id();
                     let _ = self.sender.fill_transmit_queue(
                         control_sealer,
                         self.shared.credentials(),
-                        self.socket.local_addr().unwrap().port(),
+                        &stream_id,
+                        source_queue_id,
                         &self.shared.clock,
                     );
                 }
@@ -399,7 +370,7 @@ where
                         cx,
                         usize::MAX,
                         &self.socket,
-                        &addr::Addr::new(self.shared.write_remote_addr()),
+                        &addr::Addr::new(self.shared.remote_addr()),
                         &self.shared.sender.segment_alloc,
                         &self.shared.gso,
                         &self.shared.clock,
@@ -423,10 +394,13 @@ where
                     continue;
                 }
                 waiting::State::ShuttingDown => {
+                    let stream_id = self.shared.stream_id();
+                    let source_queue_id = self.shared.local_queue_id();
                     let _ = self.sender.fill_transmit_queue(
                         control_sealer,
                         self.shared.credentials(),
-                        self.socket.local_addr().unwrap().port(),
+                        &stream_id,
+                        source_queue_id,
                         &self.shared.clock,
                     );
 
@@ -448,7 +422,7 @@ where
         ensure!(!self.sender.transmit_queue.is_empty(), Poll::Ready(()));
 
         let mut max_segments = self.shared.gso.max_segments();
-        let addr = self.shared.write_remote_addr();
+        let addr = self.shared.remote_addr();
         let addr = addr::Addr::new(addr);
         let clock = &self.shared.clock;
 
@@ -457,8 +431,10 @@ where
             ready!(self.pacer.poll_pacing(cx, &self.shared.clock));
 
             // construct all of the segments we're going to send in this batch
-            let segments =
-                msg::segment::Batch::new(self.sender.transmit_queue_iter(clock).take(max_segments));
+            let segments = msg::segment::Batch::new(
+                self.sender.transmit_queue_iter(clock).take(max_segments),
+                &self.socket.features(),
+            );
 
             let ecn = segments.ecn();
             let res = ready!(self.socket.poll_send(cx, &addr, ecn, &segments));
@@ -502,5 +478,92 @@ where
             bandwidth: self.sender.cca.bandwidth(),
             error: self.sender.error,
         }
+    }
+}
+
+struct Router<'a, Sub, C, R>
+where
+    Sub: event::Subscriber,
+    C: Clock,
+    R: random::Generator,
+{
+    shared: &'a shared::Shared<Sub, C>,
+    sender: &'a mut State,
+    opener: &'a crate::crypto::awslc::open::control::Stream,
+    clock: clock::Cached<'a, C>,
+    remote_addr: SocketAddress,
+    remote_queue_id: Option<VarInt>,
+    random: &'a mut R,
+    any_valid_packets: bool,
+    is_handshaking: &'a mut bool,
+}
+
+impl<Sub, C, R> buffer::Dispatch for Router<'_, Sub, C, R>
+where
+    Sub: event::Subscriber,
+    C: Clock,
+    R: random::Generator,
+{
+    fn on_packet(
+        &mut self,
+        remote_addr: &SocketAddress,
+        ecn: ExplicitCongestionNotification,
+        packet: crate::packet::Packet,
+    ) -> Result<(), crate::stream::recv::Error> {
+        match packet {
+            Packet::Control(mut packet) => {
+                // make sure we're processing the expected stream
+                ensure!(packet.credentials() == self.shared.credentials(), Ok(()));
+
+                let remote_queue_id = packet.source_queue_id();
+
+                let res = self.sender.on_control_packet(
+                    self.opener,
+                    self.shared.credentials(),
+                    ecn,
+                    &mut packet,
+                    self.random,
+                    &self.clock,
+                    &self.shared.sender.application_transmission_queue,
+                    &self.shared.sender.segment_alloc,
+                );
+
+                if res.is_ok() {
+                    self.any_valid_packets = true;
+                    self.remote_addr = *remote_addr;
+                    if remote_queue_id.is_some() {
+                        self.remote_queue_id = remote_queue_id;
+                    }
+                }
+            }
+            other => self
+                .shared
+                .crypto
+                .map()
+                .handle_unexpected_packet(&other, &(*remote_addr).into()),
+        }
+
+        Ok(())
+    }
+}
+
+impl<Sub, C, R> Drop for Router<'_, Sub, C, R>
+where
+    Sub: event::Subscriber,
+    C: Clock,
+    R: random::Generator,
+{
+    #[inline]
+    fn drop(&mut self) {
+        ensure!(self.any_valid_packets);
+
+        // if we saw any valid packets then we're done handshaking
+        let did_complete_handshake = core::mem::take(self.is_handshaking);
+
+        self.shared.on_valid_packet(
+            &self.remote_addr,
+            self.remote_queue_id,
+            did_complete_handshake,
+        );
     }
 }

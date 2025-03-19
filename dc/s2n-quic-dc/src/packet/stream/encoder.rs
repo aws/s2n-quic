@@ -23,8 +23,7 @@ pub const MAX_HEADER_LEN: usize = 64;
 #[inline(always)]
 pub fn encode<H, CD, P, C>(
     mut encoder: EncoderBuffer,
-    source_control_port: u16,
-    source_stream_port: Option<u16>,
+    source_queue_id: Option<VarInt>,
     stream_id: stream::Id,
     packet_number: VarInt,
     next_expected_control_packet: VarInt,
@@ -49,8 +48,7 @@ where
         packet_space,
         crypto.key_phase(),
         credentials,
-        source_control_port,
-        source_stream_port,
+        source_queue_id,
         stream_id,
         packet_number,
         next_expected_control_packet,
@@ -108,8 +106,7 @@ where
 #[inline(always)]
 pub fn probe<H, CD, P, C>(
     mut encoder: EncoderBuffer,
-    source_control_port: u16,
-    source_stream_port: Option<u16>,
+    source_queue_id: Option<VarInt>,
     stream_id: stream::Id,
     packet_number: VarInt,
     next_expected_control_packet: VarInt,
@@ -134,8 +131,7 @@ where
         packet_space,
         KeyPhase::Zero,
         credentials,
-        source_control_port,
-        source_stream_port,
+        source_queue_id,
         stream_id,
         packet_number,
         next_expected_control_packet,
@@ -184,8 +180,7 @@ fn encode_header<H, CD, P>(
     packet_space: stream::PacketSpace,
     key_phase: KeyPhase,
     credentials: &Credentials,
-    source_control_port: u16,
-    source_stream_port: Option<u16>,
+    source_queue_id: Option<VarInt>,
     stream_id: stream::Id,
     packet_number: VarInt,
     next_expected_control_packet: VarInt,
@@ -204,15 +199,12 @@ where
     let stream_offset = payload.current_offset();
     let final_offset = payload.final_offset();
 
-    debug_assert_ne!(source_control_port, 0);
-    debug_assert_ne!(source_stream_port, Some(0));
-
     let mut tag = Tag::default();
     tag.set_key_phase(key_phase);
     tag.set_has_control_data(*control_data_len > 0);
     tag.set_has_final_offset(final_offset.is_some());
     tag.set_has_application_header(*header_len > 0);
-    tag.set_has_source_stream_port(source_stream_port.is_some());
+    tag.set_has_source_queue_id(source_queue_id.is_some());
     tag.set_packet_space(packet_space);
     encoder.encode(&tag);
 
@@ -222,10 +214,12 @@ where
     // wire version - we only support `0` currently
     encoder.encode(&WireVersion::ZERO);
 
-    encoder.encode(&source_control_port);
-    encoder.encode(&source_stream_port);
+    // unused space - was source_control_port when we did port migration but that has
+    // been replaced with `source_queue_id`, which is more flexible
+    encoder.encode(&0u16);
 
     encoder.encode(&stream_id);
+    encoder.encode(&source_queue_id);
 
     encoder.encode(&packet_number);
     if stream_id.is_reliable {

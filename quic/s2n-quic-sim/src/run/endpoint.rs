@@ -44,7 +44,7 @@ pub fn client(
     events: events::Events,
     servers: &[SocketAddr],
     count: usize,
-    delay: CliRange<humantime::Duration>,
+    delay: CliRange<jiff::SignedDuration>,
     streams: CliRange<u32>,
     stream_data: CliRange<u64>,
 ) -> Result {
@@ -60,7 +60,7 @@ pub fn client(
         total_delay += delay.gen_duration();
 
         // pick a random server to connect to
-        let server_addr = *rand::one_of(servers);
+        let server_addr = *rand::pick(servers);
         let delay = total_delay;
 
         let client = client.clone();

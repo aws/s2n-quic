@@ -1,10 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{Entry, Map};
+use super::{entry::ApplicationData, Entry, Map};
 use crate::{
     packet::secret_control as control,
-    path::secret::{schedule, sender},
+    path::secret::{receiver, schedule, sender},
 };
 use s2n_quic_core::{
     dc::{self, ApplicationParams, DatagramInfo},
@@ -24,6 +24,7 @@ pub struct HandshakingPath {
     endpoint_type: s2n_quic_core::endpoint::Type,
     secret: Option<schedule::Secret>,
     entry: Option<Arc<Entry>>,
+    application_data: Option<ApplicationData>,
     map: Map,
 }
 
@@ -41,6 +42,7 @@ impl HandshakingPath {
             endpoint_type,
             secret: None,
             entry: None,
+            application_data: None,
             map,
         }
     }
@@ -82,6 +84,8 @@ impl dc::Path for HandshakingPath {
         &mut self,
         session: &impl s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
+        self.application_data = Some(self.map.store.application_data(session));
+
         let mut material = Zeroizing::new([0; TLS_EXPORTER_LENGTH]);
         session
             .tls_exporter(
@@ -123,7 +127,7 @@ impl dc::Path for HandshakingPath {
                 .into_inner(),
         );
 
-        let receiver = self.map.store.receiver().clone().new_receiver();
+        let receiver = receiver::State::new();
 
         let entry = Entry::new(
             self.peer,
@@ -134,6 +138,7 @@ impl dc::Path for HandshakingPath {
             receiver,
             self.parameters.clone(),
             self.map.store.rehandshake_period(),
+            self.application_data.take().unwrap(),
         );
         let entry = Arc::new(entry);
         self.entry = Some(entry.clone());

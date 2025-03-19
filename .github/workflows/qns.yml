@@ -216,7 +216,7 @@ jobs:
                 $from
           done
 
-      - uses: aws-actions/configure-aws-credentials@v4.0.2
+      - uses: aws-actions/configure-aws-credentials@v4.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -308,7 +308,7 @@ jobs:
             results/**/result.json > \
               web/logs/latest/result.json
 
-      - uses: aws-actions/configure-aws-credentials@v4.0.2
+      - uses: aws-actions/configure-aws-credentials@v4.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -460,7 +460,7 @@ jobs:
           cd perf-results
           tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
 
-      - uses: aws-actions/configure-aws-credentials@v4.0.2
+      - uses: aws-actions/configure-aws-credentials@v4.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole

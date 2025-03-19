@@ -3,7 +3,9 @@
 
 use crate::{
     event,
-    inet::{IpV4Address, IpV6Address, SocketAddress, SocketAddressV4, SocketAddressV6},
+    inet::{
+        IpV4Address, IpV6Address, SocketAddress, SocketAddressV4, SocketAddressV6, Unspecified as _,
+    },
 };
 use core::fmt;
 
@@ -59,17 +61,20 @@ pub trait Handle: 'static + Copy + Send + fmt::Debug {
     /// Returns the remote address for the given handle
     fn remote_address(&self) -> RemoteAddress;
 
-    /// Updates the remote port to the given value
-    fn set_remote_port(&mut self, port: u16);
+    /// Updates the remote address to the given value
+    fn set_remote_address(&mut self, addr: RemoteAddress);
 
     /// Returns the local address for the given handle
     fn local_address(&self) -> LocalAddress;
+
+    /// Updates the local address to the given value
+    fn set_local_address(&mut self, addr: LocalAddress);
 
     /// Returns `true` if the two handles are equal from a network perspective
     ///
     /// This function is used to determine if a connection has migrated to another
     /// path.
-    fn eq(&self, other: &Self) -> bool;
+    fn unmapped_eq(&self, other: &Self) -> bool;
 
     /// Returns `true` if the two handles are strictly equal to each other, i.e.
     /// byte-for-byte.
@@ -94,6 +99,16 @@ macro_rules! impl_addr {
         #[cfg_attr(any(test, feature = "generator"), derive(TypeGenerator))]
         #[cfg_attr(kani, derive(kani::Arbitrary))]
         pub struct $name(pub SocketAddress);
+
+        impl $name {
+            /// Returns `true` if the two addresses are equal from a network perspective.
+            ///
+            /// This will unmap IPv4-mapped addresses to IpV4 tagged enum values
+            #[inline]
+            pub fn unmapped_eq(&self, other: &Self) -> bool {
+                self.0.unmapped_eq(&other.0)
+            }
+        }
 
         impl From<event::api::SocketAddress<'_>> for $name {
             #[inline]
@@ -148,6 +163,16 @@ macro_rules! impl_addr {
 
 impl_addr!(LocalAddress);
 
+impl LocalAddress {
+    #[inline]
+    pub fn maybe_update(&mut self, other: &Self) {
+        // only update the local address if it's specified
+        ensure!(!other.is_unspecified());
+
+        *self = *other;
+    }
+}
+
 impl_addr!(RemoteAddress);
 
 impl Handle for RemoteAddress {
@@ -162,8 +187,8 @@ impl Handle for RemoteAddress {
     }
 
     #[inline]
-    fn set_remote_port(&mut self, port: u16) {
-        self.0.set_port(port)
+    fn set_remote_address(&mut self, addr: RemoteAddress) {
+        *self = addr;
     }
 
     #[inline]
@@ -172,8 +197,13 @@ impl Handle for RemoteAddress {
     }
 
     #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        PartialEq::eq(&self.unmap(), &other.unmap())
+    fn set_local_address(&mut self, _addr: LocalAddress) {
+        // nothing to update
+    }
+
+    #[inline]
+    fn unmapped_eq(&self, other: &Self) -> bool {
+        Self::unmapped_eq(self, other)
     }
 
     #[inline]
@@ -218,8 +248,8 @@ impl Handle for Tuple {
     }
 
     #[inline]
-    fn set_remote_port(&mut self, port: u16) {
-        self.remote_address.set_port(port)
+    fn set_remote_address(&mut self, addr: RemoteAddress) {
+        self.remote_address = addr;
     }
 
     #[inline]
@@ -228,9 +258,14 @@ impl Handle for Tuple {
     }
 
     #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        PartialEq::eq(&self.local_address.unmap(), &other.local_address.unmap())
-            && Handle::eq(&self.remote_address, &other.remote_address)
+    fn set_local_address(&mut self, addr: LocalAddress) {
+        self.local_address = addr;
+    }
+
+    #[inline]
+    fn unmapped_eq(&self, other: &Self) -> bool {
+        self.local_address.unmapped_eq(&other.local_address)
+            && self.remote_address.unmapped_eq(&other.remote_address)
     }
 
     #[inline]
@@ -240,14 +275,7 @@ impl Handle for Tuple {
 
     #[inline]
     fn maybe_update(&mut self, other: &Self) {
-        if other.local_address.port() == 0 {
-            return;
-        }
-
-        // once we discover our path, or the port changes, update the address with the new information
-        if self.local_address.port() != other.local_address.port() {
-            self.local_address = other.local_address;
-        }
+        self.local_address.maybe_update(&other.local_address);
     }
 }
 

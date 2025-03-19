@@ -136,6 +136,7 @@ impl connection::Trait for TestConnection {
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _datagram: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        _conn_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), connection::Error> {
         Ok(())
     }
@@ -150,6 +151,7 @@ impl connection::Trait for TestConnection {
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        _conn_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -165,6 +167,7 @@ impl connection::Trait for TestConnection {
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        _conn_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -180,6 +183,7 @@ impl connection::Trait for TestConnection {
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        _connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -195,6 +199,7 @@ impl connection::Trait for TestConnection {
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
         _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
+        _limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }

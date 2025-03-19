@@ -1,0 +1,10 @@
+---
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
+---
+l0   : LD [0]
+l1   : JGT #1,l5,l2
+l2   : JGT #2,l3,l5
+l3   : JEQ #3,l5,l4
+l4   : JEQ #4,l5,l5
+l5   : RET #0

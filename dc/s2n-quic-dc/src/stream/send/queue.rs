@@ -250,11 +250,14 @@ impl Queue {
     {
         while !self.segments.is_empty() {
             let mut provided_len = 0;
-            let segments = segment::Batch::new(self.segments.iter().map(|v| {
-                let slice = v.as_slice();
-                provided_len += slice.len();
-                (v.ecn, v.as_slice())
-            }));
+            let segments = segment::Batch::new(
+                self.segments.iter().map(|v| {
+                    let slice = v.as_slice();
+                    provided_len += slice.len();
+                    (v.ecn, v.as_slice())
+                }),
+                &socket.features(),
+            );
 
             let ecn = segments.ecn();
 
@@ -369,6 +372,7 @@ impl Queue {
                         (v.ecn, slice)
                     })
                     .take(max_segments),
+                &socket.features(),
             );
 
             let ecn = segments.ecn();

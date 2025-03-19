@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use bach::time::scheduler;
+use bach::{environment::Macrostep, time::scheduler};
 use core::task::Poll;
 use s2n_quic_core::{
     endpoint::Endpoint, inet::SocketAddress, io::event_loop::EventLoop, path::mtu,
@@ -42,7 +42,7 @@ pub mod rand {
 
         #[inline]
         fn gen_bool(&mut self) -> bool {
-            gen()
+            produce::<bool>().any()
         }
 
         #[inline]
@@ -52,7 +52,7 @@ pub mod rand {
 
         #[inline]
         fn gen_range(&mut self, range: core::ops::Range<u64>) -> u64 {
-            gen_range(range)
+            range.any()
         }
     }
 }
@@ -90,7 +90,7 @@ impl<N: Network> Executor<N> {
     }
 
     pub fn enter<F: FnOnce() -> O, O>(&mut self, f: F) -> O {
-        self.executor.environment().enter(f)
+        bach::environment::Environment::enter(self.executor.environment(), f)
     }
 
     pub fn run(&mut self) {
@@ -100,7 +100,7 @@ impl<N: Network> Executor<N> {
     pub fn close(&mut self) {
         // close the environment, which notifies all of the tasks that we're shutting down
         self.executor.environment().close(|| {});
-        while self.executor.macrostep() > 0 {}
+        while self.executor.macrostep().tasks > 0 {}
 
         // then close the actual executor
         self.executor.close()
@@ -123,10 +123,6 @@ struct Env<N> {
 }
 
 impl<N> Env<N> {
-    fn enter<F: FnOnce() -> O, O>(&self, f: F) -> O {
-        self.handle.enter(|| self.time.enter(|| self.rand.enter(f)))
-    }
-
     fn close<F: FnOnce()>(&mut self, f: F) {
         let handle = &mut self.handle;
         let rand = &mut self.rand;
@@ -144,11 +140,15 @@ impl<N> Env<N> {
     }
 }
 
-impl<N: Network> bach::executor::Environment for Env<N> {
-    fn run<Tasks, F>(&mut self, tasks: Tasks) -> Poll<()>
+impl<N: Network> bach::environment::Environment for Env<N> {
+    fn enter<F: FnOnce() -> O, O>(&mut self, f: F) -> O {
+        self.handle.enter(|| self.time.enter(|| self.rand.enter(f)))
+    }
+
+    fn run<Tasks, R>(&mut self, tasks: Tasks) -> Poll<()>
     where
-        Tasks: Iterator<Item = F> + Send,
-        F: 'static + FnOnce() -> Poll<()> + Send,
+        Tasks: IntoIterator<Item = R>,
+        R: bach::environment::Runnable,
     {
         let mut is_ready = true;
 
@@ -165,7 +165,7 @@ impl<N: Network> bach::executor::Environment for Env<N> {
             time.enter(|| {
                 rand.enter(|| {
                     for task in tasks {
-                        is_ready &= task().is_ready();
+                        is_ready &= task.run().is_ready();
                     }
                     network.execute(buffers);
                 })
@@ -179,11 +179,11 @@ impl<N: Network> bach::executor::Environment for Env<N> {
         }
     }
 
-    fn on_macrostep(&mut self, count: usize) {
+    fn on_macrostep(&mut self, macrostep: Macrostep) -> Macrostep {
         // only advance time after a stall
-        if count > 0 {
+        if macrostep.tasks > 0 {
             self.stalled_iterations = 0;
-            return;
+            return macrostep;
         }
 
         self.stalled_iterations += 1;
@@ -206,6 +206,7 @@ impl<N: Network> bach::executor::Environment for Env<N> {
                 break;
             }
         }
+        macrostep
     }
 
     fn close<F>(&mut self, close: F)

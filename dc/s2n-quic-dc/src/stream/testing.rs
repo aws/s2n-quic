@@ -7,31 +7,58 @@ use crate::{
     event::testing,
     path::secret,
     stream::{
-        application::Stream,
+        application,
         client::tokio as stream_client,
         environment::{tokio as env, Environment as _},
+        recv, send,
         server::{tokio as stream_server, tokio::accept},
     },
 };
+use s2n_quic_core::dc::{self, ApplicationParams};
+use s2n_quic_platform::socket;
 use std::{io, net::SocketAddr, sync::Arc};
 use tracing::Instrument;
 
-type Subscriber = (Arc<event::testing::Subscriber>, event::tracing::Subscriber);
+pub type Subscriber = (Arc<event::testing::Subscriber>, event::tracing::Subscriber);
 
+pub type Stream = application::Stream<Subscriber>;
+pub type Writer = send::application::Writer<Subscriber>;
+pub type Reader = recv::application::Reader<Subscriber>;
+
+// limit the number of threads used in testing to reduce costs of harnesses
+const TEST_THREADS: usize = 2;
+
+const MAX_DATAGRAM_SIZE: Option<u16> = if cfg!(target_os = "linux") {
+    Some(8950)
+} else {
+    None
+};
+
+#[derive(Clone)]
 pub struct Client {
     map: secret::Map,
     env: env::Environment<Subscriber>,
     subscriber: Arc<event::testing::Subscriber>,
+    mtu: Option<u16>,
 }
 
 impl Default for Client {
     fn default() -> Self {
         let _span = tracing::info_span!("client").entered();
         let map = secret::map::testing::new(16);
+        let options = socket::options::Options::new("127.0.0.1:0".parse().unwrap());
+        let env = env::Environment::builder()
+            .with_threads(TEST_THREADS)
+            // TODO enable this once ready
+            // .with_pool(env::pool::Config::new(map.clone()))
+            .with_socket_options(options)
+            .build()
+            .unwrap();
         Self {
             map,
-            env: Default::default(),
+            env,
             subscriber: Arc::new(event::testing::Subscriber::no_snapshot()),
+            mtu: MAX_DATAGRAM_SIZE,
         }
     }
 }
@@ -48,8 +75,13 @@ impl Client {
         }
 
         let local_addr = "127.0.0.1:1337".parse().unwrap();
-        self.map
-            .test_insert_pair(local_addr, &server.map, server.local_addr);
+        self.map.test_insert_pair(
+            local_addr,
+            Some(self.params()),
+            &server.map,
+            server.local_addr,
+            Some(server.params()),
+        );
 
         // cache hit already tracked above
         self.map.get_untracked(peer).ok_or_else(|| {
@@ -57,10 +89,15 @@ impl Client {
         })
     }
 
-    pub async fn connect_to<S: AsRef<server::Handle>>(
-        &self,
-        server: &S,
-    ) -> io::Result<Stream<Subscriber>> {
+    fn params(&self) -> ApplicationParams {
+        let mut params = dc::testing::TEST_APPLICATION_PARAMS;
+        if let Some(mtu) = self.mtu {
+            params.max_datagram_size = mtu.into();
+        }
+        params
+    }
+
+    pub async fn connect_to<S: AsRef<server::Handle>>(&self, server: &S) -> io::Result<Stream> {
         let server = server.as_ref();
         let handshake = async { self.handshake_with(server) };
 
@@ -68,8 +105,14 @@ impl Client {
 
         match server.protocol {
             Protocol::Tcp => {
-                stream_client::connect_tcp(handshake, server.local_addr, &self.env, subscriber)
-                    .await
+                stream_client::connect_tcp(
+                    handshake,
+                    server.local_addr,
+                    &self.env,
+                    subscriber,
+                    None,
+                )
+                .await
             }
             Protocol::Udp => {
                 stream_client::connect_udp(handshake, server.local_addr, &self.env, subscriber)
@@ -85,7 +128,7 @@ impl Client {
         &self,
         server: &S,
         stream: tokio::net::TcpStream,
-    ) -> io::Result<Stream<Subscriber>> {
+    ) -> io::Result<Stream> {
         let server = server.as_ref();
         let handshake = async { self.handshake_with(server) }.await?;
 
@@ -99,6 +142,7 @@ impl Client {
     }
 }
 
+#[derive(Clone)]
 pub struct Server {
     handle: server::Handle,
     receiver: accept::Receiver<Subscriber>,
@@ -141,7 +185,7 @@ impl Server {
         self.handle.clone()
     }
 
-    pub async fn accept(&self) -> io::Result<(Stream<Subscriber>, SocketAddr)> {
+    pub async fn accept(&self) -> io::Result<(Stream, SocketAddr)> {
         accept::accept(&self.receiver, &self.stats).await
     }
 
@@ -177,10 +221,13 @@ mod drop_handle {
         }
     }
 
+    #[derive(Clone)]
     pub struct Sender(#[allow(dead_code)] watch::Sender<()>);
 }
 
 pub mod server {
+    use std::time::Duration;
+
     use super::*;
 
     #[derive(Clone)]
@@ -188,6 +235,17 @@ pub mod server {
         pub(super) map: secret::Map,
         pub(super) protocol: Protocol,
         pub(super) local_addr: SocketAddr,
+        pub(super) mtu: Option<u16>,
+    }
+
+    impl Handle {
+        pub(super) fn params(&self) -> ApplicationParams {
+            let mut params = dc::testing::TEST_APPLICATION_PARAMS;
+            if let Some(mtu) = self.mtu {
+                params.max_datagram_size = mtu.into();
+            }
+            params
+        }
     }
 
     impl AsRef<Handle> for Handle {
@@ -201,6 +259,8 @@ pub mod server {
         flavor: accept::Flavor,
         protocol: Protocol,
         map_capacity: usize,
+        linger: Option<Duration>,
+        mtu: Option<u16>,
         subscriber: event::testing::Subscriber,
     }
 
@@ -211,6 +271,8 @@ pub mod server {
                 flavor: accept::Flavor::default(),
                 protocol: Protocol::Tcp,
                 map_capacity: 16,
+                linger: None,
+                mtu: None,
                 subscriber: event::testing::Subscriber::no_snapshot(),
             }
         }
@@ -255,6 +317,16 @@ pub mod server {
             self
         }
 
+        pub fn linger(mut self, linger: Duration) -> Self {
+            self.linger = Some(linger);
+            self
+        }
+
+        pub fn mtu(mut self, mtu: u16) -> Self {
+            self.mtu = Some(mtu);
+            self
+        }
+
         pub fn subscriber(mut self, subscriber: event::testing::Subscriber) -> Self {
             self.subscriber = subscriber;
             self
@@ -266,6 +338,8 @@ pub mod server {
                 flavor,
                 protocol,
                 map_capacity,
+                linger,
+                mtu,
                 subscriber,
             } = self;
 
@@ -275,7 +349,11 @@ pub mod server {
 
             let options = crate::socket::Options::new("127.0.0.1:0".parse().unwrap());
 
-            let env = env::Builder::default().build().unwrap();
+            let env = env::Builder::default()
+                .with_threads(TEST_THREADS)
+                .with_socket_options(options.clone())
+                .build()
+                .unwrap();
 
             let test_subscriber = Arc::new(subscriber);
             let subscriber = (
@@ -291,7 +369,7 @@ pub mod server {
                     let socket = tokio::net::TcpListener::from_std(socket).unwrap();
 
                     let acceptor = stream_server::tcp::Acceptor::new(
-                        0, socket, &sender, &env, &map, backlog, flavor, subscriber,
+                        0, socket, &sender, &env, &map, backlog, flavor, linger, subscriber,
                     );
                     let acceptor = drop_handle_receiver.wrap(acceptor.run());
                     let acceptor = acceptor.instrument(tracing::info_span!("tcp"));
@@ -340,6 +418,11 @@ pub mod server {
                 map,
                 protocol,
                 local_addr,
+                mtu: if let Some(mtu) = mtu {
+                    Some(mtu)
+                } else {
+                    MAX_DATAGRAM_SIZE
+                },
             };
 
             super::Server {

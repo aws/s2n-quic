@@ -9,8 +9,68 @@ use crate::msg::{
 use s2n_quic_core::inet::ExplicitCongestionNotification;
 use std::{
     io::{self, IoSlice, IoSliceMut},
+    net::SocketAddr,
     os::fd::AsRawFd,
 };
+
+pub trait Socket: 'static + AsRawFd + Send + Sync {
+    fn local_addr(&self) -> io::Result<SocketAddr>;
+}
+
+impl Socket for std::net::UdpSocket {
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        (*self).local_addr()
+    }
+}
+
+impl Socket for tokio::net::UdpSocket {
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        (*self).local_addr()
+    }
+}
+
+impl<T: Socket> Socket for std::sync::Arc<T> {
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        (**self).local_addr()
+    }
+}
+
+impl<T: Socket> Socket for Box<T> {
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        (**self).local_addr()
+    }
+}
+
+#[derive(Clone)]
+pub struct CachedAddr<S: Socket> {
+    inner: S,
+    addr: SocketAddr,
+}
+
+impl<S: Socket> CachedAddr<S> {
+    #[inline]
+    pub fn new(inner: S, addr: SocketAddr) -> Self {
+        Self { addr, inner }
+    }
+}
+
+impl<S: Socket> AsRawFd for CachedAddr<S> {
+    #[inline]
+    fn as_raw_fd(&self) -> std::os::unix::prelude::RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
+impl<S: Socket> Socket for CachedAddr<S> {
+    #[inline]
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        Ok(self.addr)
+    }
+}
 
 pub use super::peek;
 
@@ -66,12 +126,13 @@ pub fn send<T>(
     addr: &Addr,
     ecn: ExplicitCongestionNotification,
     buffer: &[IoSlice],
+    flags: Flags,
 ) -> io::Result<usize>
 where
     T: AsRawFd,
 {
     send_msghdr(addr, ecn, buffer, |msghdr| {
-        libc_call(|| unsafe { libc::sendmsg(fd.as_raw_fd(), msghdr, 0) as _ })
+        libc_call(|| unsafe { libc::sendmsg(fd.as_raw_fd(), msghdr, flags) as _ })
     })
 }
 

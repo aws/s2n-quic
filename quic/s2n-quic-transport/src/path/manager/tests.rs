@@ -765,7 +765,7 @@ fn test_adding_new_path() {
 // - call on_datagram_received with new remote address bit handshake_confirmed false
 //
 // Expectation:
-// - asset on_datagram_received errors
+// - assert on_datagram_received does not error
 // - assert we have one paths
 fn do_not_add_new_path_if_handshake_not_confirmed() {
     // Setup:
@@ -811,7 +811,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
     );
 
     // Expectation:
-    assert!(on_datagram_result.is_err());
+    assert!(on_datagram_result.is_ok());
     assert!(manager.path(&new_addr).is_none());
     assert_eq!(manager.paths.len(), 1);
 }
@@ -982,6 +982,9 @@ fn limit_number_of_connection_migrations() {
     assert_eq!(total_paths, MAX_ALLOWED_PATHS);
 }
 
+// Connection migration is still allowed to proceed even if the `disable_active_migration`
+// transport parameter is sent, as there is no way to definitely distinguish an active
+// migration from a NAT rebind.
 #[test]
 fn active_connection_migration_disabled() {
     // Setup:
@@ -1015,13 +1018,14 @@ fn active_connection_migration_disabled() {
     let new_addr: SocketAddr = "127.0.0.2:1".parse().unwrap();
     let new_addr = SocketAddress::from(new_addr);
     let new_addr = RemoteAddress::from(new_addr);
-    let new_cid = connection::LocalId::try_from_bytes(b"id02").unwrap();
+    let new_cid_1 = connection::LocalId::try_from_bytes(b"id02").unwrap();
+    let new_cid_2 = connection::LocalId::try_from_bytes(b"id03").unwrap();
     let now = NoopClock {}.get_time();
     let mut datagram = DatagramInfo {
         timestamp: now,
         payload_len: 0,
         ecn: ExplicitCongestionNotification::default(),
-        destination_connection_id: new_cid,
+        destination_connection_id: new_cid_1,
         destination_connection_id_classification: connection::id::Classification::Local,
         source_connection_id: None,
     };
@@ -1040,14 +1044,21 @@ fn active_connection_migration_disabled() {
         &mut publisher,
     );
 
-    // The active migration is rejected
-    assert!(matches!(
-        res,
-        Err(DatagramDropReason::RejectedConnectionMigration)
-    ));
-    assert_eq!(1, manager.paths.len());
+    // The migration succeeds
+    assert!(res.is_ok());
+    assert_eq!(2, manager.paths.len());
+    // The new path uses a new CID since there were enough supplied
+    assert_eq!(
+        manager.paths[res.unwrap().0.as_u8() as usize].peer_connection_id,
+        id_3
+    );
+
+    // Clear the pending packet authentication to allow another migration to proceed
+    manager.pending_packet_authentication = None;
 
     // Try an active connection migration with active migration enabled (default)
+    datagram.destination_connection_id = new_cid_2;
+
     let res = manager.handle_connection_migration(
         &new_addr,
         &datagram,
@@ -1060,7 +1071,12 @@ fn active_connection_migration_disabled() {
 
     // The migration succeeds
     assert!(res.is_ok());
-    assert_eq!(2, manager.paths.len());
+    assert_eq!(3, manager.paths.len());
+    // The new path uses the existing id since there wasn't a new one available
+    assert_eq!(
+        manager.paths[res.unwrap().0.as_u8() as usize].peer_connection_id,
+        id_2
+    );
 
     // Now try a non-active (passive) migration, with active migration disabled
     // the same CID is used, so it's not an active migration
@@ -1086,7 +1102,12 @@ fn active_connection_migration_disabled() {
 
     // The passive migration succeeds
     assert!(res.is_ok());
-    assert_eq!(3, manager.paths.len());
+    assert_eq!(4, manager.paths.len());
+    // The new path uses the existing id since the peer did not change their destination CID
+    assert_eq!(
+        manager.paths[res.unwrap().0.as_u8() as usize].peer_connection_id,
+        id_2
+    );
 }
 
 #[test]

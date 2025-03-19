@@ -12,7 +12,7 @@ use crate::{
             tokio::{self as env, Environment},
             Environment as _,
         },
-        server,
+        recv, server,
         socket::{Ext as _, Socket},
     },
 };
@@ -111,13 +111,16 @@ where
 
         let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
 
+        let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
+        let recv_buffer = recv::buffer::Either::A(recv_buffer);
+
+        let peer = env::udp::Owned(remote_addr, recv_buffer);
+
         let stream = match endpoint::accept_stream(
             now,
             &self.env,
-            env::UdpUnbound(remote_addr),
+            peer,
             &packet,
-            Some(handshake),
-            Some(&mut self.recv_buffer),
             &self.secrets,
             self.subscriber.clone(),
             subscriber_ctx,
@@ -127,12 +130,15 @@ where
             Err(error) => {
                 tracing::trace!("send_start");
 
-                let addr = msg::addr::Addr::new(remote_addr);
-                let ecn = Default::default();
-                let buffer = &[io::IoSlice::new(&error.secret_control)];
+                let buffer = &error.secret_control;
+                if !buffer.is_empty() {
+                    let addr = msg::addr::Addr::new(remote_addr);
+                    let ecn = Default::default();
+                    let buffer = &[io::IoSlice::new(&error.secret_control)];
 
-                // ignore any errors since this is just for responding to invalid connect attempts
-                let _ = self.socket.try_send(&addr, ecn, buffer);
+                    // ignore any errors since this is just for responding to invalid connect attempts
+                    let _ = self.socket.try_send(&addr, ecn, buffer);
+                }
 
                 tracing::trace!("send_finish");
                 return Err(error.error);
@@ -140,10 +146,11 @@ where
         };
 
         {
-            let remote_address: SocketAddress = stream.shared.read_remote_addr();
+            let remote_address: SocketAddress = stream.shared.remote_addr();
             let remote_address = &remote_address;
-            let credential_id = &*stream.shared.credentials().id;
-            let stream_id = stream.shared.application().stream_id.into_varint().as_u64();
+            let creds = stream.shared.credentials();
+            let credential_id = &*creds.id;
+            let stream_id = creds.key_id.as_u64();
             publisher.on_acceptor_udp_stream_enqueued(event::builder::AcceptorUdpStreamEnqueued {
                 remote_address,
                 credential_id,

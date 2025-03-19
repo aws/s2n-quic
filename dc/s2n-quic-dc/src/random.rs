@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use rand::{rngs::adapter::ReseedingRng, RngCore, SeedableRng};
+use rand::{rngs::ReseedingRng, RngCore};
 use rand_chacha::ChaChaCore;
 
 pub use s2n_quic_core::random::*;
@@ -25,12 +25,7 @@ impl RngCore for AwsLc {
 
     #[inline]
     fn fill_bytes(&mut self, dest: &mut [u8]) {
-        self.try_fill_bytes(dest).unwrap()
-    }
-
-    #[inline]
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
-        aws_lc_rs::rand::fill(dest).map_err(rand::Error::new)
+        aws_lc_rs::rand::fill(dest).unwrap()
     }
 }
 
@@ -58,10 +53,8 @@ fn build_rng() -> ReseedingRng<ChaChaCore, AwsLc> {
     // This value is based on THREAD_RNG_RESEED_THRESHOLD from
     // [rand::rngs::thread.rs](https://github.com/rust-random/rand/blob/ef75e56cf5824d33c55622bf84a70ec6e22761ba/src/rngs/thread.rs#L39)
     const RESEED_THRESHOLD: u64 = 1024 * 64;
-
-    let prng = ChaChaCore::from_rng(AwsLc)
-        .unwrap_or_else(|err| panic!("could not initialize random generator: {err}"));
-    ReseedingRng::new(prng, RESEED_THRESHOLD, AwsLc)
+    ReseedingRng::<ChaChaCore, AwsLc>::new(RESEED_THRESHOLD, AwsLc)
+        .unwrap_or_else(|err| panic!("could not initialize random generator: {err}"))
 }
 
 impl Generator for Random {

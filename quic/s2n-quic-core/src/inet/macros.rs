@@ -12,7 +12,7 @@ macro_rules! define_inet_type {
         #[cfg(any(test, feature = "generator"))]
         use bolero_generator::prelude::*;
 
-        #[derive(Clone, Copy, Default, Eq, PartialEq, PartialOrd, Ord, zerocopy::FromZeroes, zerocopy::FromBytes, zerocopy::AsBytes, zerocopy::Unaligned)]
+        #[derive(Clone, Copy, Default, Eq, PartialEq, PartialOrd, Ord, zerocopy::FromBytes, zerocopy::IntoBytes, zerocopy::Unaligned, zerocopy::Immutable)]
         #[cfg_attr(any(test, feature = "generator"), derive(bolero_generator::TypeGenerator))]
         #[cfg_attr(kani, derive(kani::Arbitrary))]
         #[repr(C)]
@@ -48,12 +48,12 @@ macro_rules! define_inet_type {
 
             #[inline]
             pub fn as_bytes(&self) -> &[u8] {
-                zerocopy::AsBytes::as_bytes(self)
+                zerocopy::IntoBytes::as_bytes(self)
             }
 
             #[inline]
             pub fn as_bytes_mut(&mut self) -> &mut [u8] {
-                zerocopy::AsBytes::as_bytes_mut(self)
+                zerocopy::IntoBytes::as_mut_bytes(self)
             }
         }
 

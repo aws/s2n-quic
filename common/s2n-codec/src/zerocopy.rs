@@ -12,7 +12,7 @@ pub use zerocopy::*;
 use bolero_generator::prelude::*;
 
 /// Define a codec implementation for a zerocopy value that implements
-/// `FromBytes`, `AsBytes`, and `Unaligned`.
+/// `FromBytes`, `IntoBytes`, and `Unaligned`.
 #[macro_export]
 macro_rules! zerocopy_value_codec {
     ($name:ident) => {
@@ -91,7 +91,7 @@ macro_rules! zerocopy_value_codec {
 
         impl $crate::EncoderValue for $name
         where
-            $name: $crate::zerocopy::AsBytes,
+            $name: $crate::zerocopy::IntoBytes,
         {
             #[inline]
             fn encoding_size(&self) -> usize {
@@ -106,7 +106,7 @@ macro_rules! zerocopy_value_codec {
             #[inline]
             fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {
                 let bytes = unsafe {
-                    // Safety: the type implements AsBytes
+                    // Safety: the type implements IntoBytes
                     core::slice::from_raw_parts(
                         self as *const $name as *const u8,
                         core::mem::size_of::<$name>(),
@@ -118,7 +118,7 @@ macro_rules! zerocopy_value_codec {
 
         impl<'a> $crate::EncoderValue for &'a $name
         where
-            $name: $crate::zerocopy::AsBytes,
+            $name: $crate::zerocopy::IntoBytes,
         {
             #[inline]
             fn encoding_size(&self) -> usize {
@@ -133,7 +133,7 @@ macro_rules! zerocopy_value_codec {
             #[inline]
             fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {
                 let bytes = unsafe {
-                    // Safety: the type implements AsBytes
+                    // Safety: the type implements IntoBytes
                     core::slice::from_raw_parts(
                         *self as *const $name as *const u8,
                         core::mem::size_of::<$name>(),
@@ -145,7 +145,7 @@ macro_rules! zerocopy_value_codec {
 
         impl<'a> $crate::EncoderValue for &'a mut $name
         where
-            $name: $crate::zerocopy::AsBytes,
+            $name: $crate::zerocopy::IntoBytes,
         {
             #[inline]
             fn encoding_size(&self) -> usize {
@@ -160,7 +160,7 @@ macro_rules! zerocopy_value_codec {
             #[inline]
             fn encode<E: $crate::Encoder>(&self, encoder: &mut E) {
                 let bytes = unsafe {
-                    // Safety: the type implements AsBytes
+                    // Safety: the type implements IntoBytes
                     core::slice::from_raw_parts(
                         *self as *const $name as *const u8,
                         core::mem::size_of::<$name>(),
@@ -182,9 +182,9 @@ macro_rules! zerocopy_network_integer {
             Copy,
             Default,
             Eq,
+            Immutable,
             $crate::zerocopy::FromBytes,
-            $crate::zerocopy::FromZeroes,
-            $crate::zerocopy::AsBytes,
+            $crate::zerocopy::IntoBytes,
             $crate::zerocopy::Unaligned,
         )]
         #[repr(C)]
@@ -215,12 +215,12 @@ macro_rules! zerocopy_network_integer {
 
             #[inline(always)]
             pub fn set(&mut self, value: $native) {
-                self.0.as_bytes_mut().copy_from_slice(&value.to_be_bytes());
+                self.0.as_mut_bytes().copy_from_slice(&value.to_be_bytes());
             }
 
             #[inline(always)]
             pub fn set_be(&mut self, value: $native) {
-                self.0.as_bytes_mut().copy_from_slice(&value.to_ne_bytes());
+                self.0.as_mut_bytes().copy_from_slice(&value.to_ne_bytes());
             }
         }
 
@@ -294,7 +294,7 @@ macro_rules! zerocopy_network_integer {
         #[cfg(feature = "generator")]
         impl TypeGenerator for $name {
             fn generate<D: bolero_generator::Driver>(driver: &mut D) -> Option<Self> {
-                Some(Self::new(driver.gen()?))
+                Some(Self::new(driver.produce()?))
             }
         }
 
@@ -322,9 +322,7 @@ zerocopy_network_integer!(u128, U128);
 fn zerocopy_struct_test() {
     use crate::DecoderBuffer;
 
-    #[derive(
-        Copy, Clone, Debug, PartialEq, PartialOrd, FromZeroes, FromBytes, AsBytes, Unaligned,
-    )]
+    #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, FromBytes, IntoBytes, Unaligned)]
     #[repr(C)]
     struct UdpHeader {
         source_port: U16,

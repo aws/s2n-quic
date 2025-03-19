@@ -79,8 +79,8 @@ pub enum Kind {
     Duplicate,
     #[error("the packet was for another credential ({actual:?}) but was handled by {expected:?}")]
     CredentialMismatch {
-        expected: credentials::Id,
-        actual: credentials::Id,
+        expected: credentials::Credentials,
+        actual: credentials::Credentials,
     },
     #[error("the packet was for another stream ({actual}) but was handled by {expected}")]
     StreamMismatch {

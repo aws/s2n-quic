@@ -5,6 +5,7 @@ use crate::{
     clock::Clock,
     credentials::Credentials,
     event::{self, IntoEvent as _},
+    packet::stream,
     stream::{
         recv::shared as recv,
         send::{application, shared as send},
@@ -13,16 +14,17 @@ use crate::{
 use core::{
     cell::UnsafeCell,
     ops,
-    sync::atomic::{AtomicU16, AtomicU64, AtomicU8, Ordering},
+    sync::atomic::{AtomicU64, AtomicU8, Ordering},
     time::Duration,
 };
 use s2n_quic_core::{
     ensure,
     inet::{IpAddress, SocketAddress},
     time::Timestamp,
+    varint::VarInt,
 };
 use s2n_quic_platform::features;
-use std::sync::Arc;
+use std::sync::{atomic::AtomicU16, Arc};
 
 pub use crate::stream::crypto::Crypto;
 
@@ -54,24 +56,20 @@ where
     pub fn on_valid_packet(
         &self,
         remote_addr: &SocketAddress,
-        half: Half,
+        remote_queue_id: Option<VarInt>,
         did_complete_handshake: bool,
     ) {
         if did_complete_handshake {
-            /*
-            // TODO only update this if this if we are done "handshaking"
-            let remote_port = match half {
-                Half::Read => &self.read_remote_port,
-                Half::Write => &self.write_remote_port,
-            };
-            remote_port.store(remote_addr.port(), Ordering::Relaxed);
-            */
-            let _ = half;
-            let remote_port = remote_addr.port();
-            if remote_port != 0 {
-                self.read_remote_port.store(remote_port, Ordering::Relaxed);
-                self.write_remote_port.store(remote_port, Ordering::Relaxed);
+            self.remote_port
+                .store(remote_addr.port(), Ordering::Relaxed);
+
+            if let Some(queue_id) = remote_queue_id {
+                self.remote_queue_id
+                    .store(queue_id.as_u64(), Ordering::Relaxed);
             }
+
+            // no need to keep sending the local queue id once the peer has seen a full round trip
+            self.local_queue_id.store(u64::MAX, Ordering::Relaxed);
         }
 
         // update the last time we've seen peer activity
@@ -100,23 +98,29 @@ where
     }
 
     #[inline]
-    pub fn write_remote_addr(&self) -> SocketAddress {
-        self.remote_ip()
-            .with_port(self.common.write_remote_port.load(Ordering::Relaxed))
+    pub fn stream_id(&self) -> stream::Id {
+        let queue_id = self.remote_queue_id.load(Ordering::Relaxed);
+        // TODO support alternative modes
+        stream::Id {
+            queue_id: unsafe { VarInt::new_unchecked(queue_id) },
+            is_reliable: true,
+            is_bidirectional: true,
+        }
     }
 
     #[inline]
-    pub fn read_remote_addr(&self) -> SocketAddress {
-        self.remote_ip()
-            .with_port(self.common.read_remote_port.load(Ordering::Relaxed))
+    pub fn local_queue_id(&self) -> Option<VarInt> {
+        let queue_id = self.local_queue_id.load(Ordering::Relaxed);
+        VarInt::new(queue_id).ok()
     }
 
     #[inline]
-    pub fn remote_ip(&self) -> IpAddress {
+    pub fn remote_addr(&self) -> SocketAddress {
         unsafe {
             // SAFETY: the fixed information doesn't change for the lifetime of the stream
             *self.common.fixed.remote_ip.get()
         }
+        .with_port(self.remote_port.load(Ordering::Relaxed))
     }
 
     #[inline]
@@ -124,14 +128,6 @@ where
         unsafe {
             // SAFETY: the fixed information doesn't change for the lifetime of the stream
             *self.common.fixed.application.get()
-        }
-    }
-
-    #[inline]
-    pub fn source_control_port(&self) -> u16 {
-        unsafe {
-            // SAFETY: the fixed information doesn't change for the lifetime of the stream
-            *self.common.fixed.source_control_port.get()
         }
     }
 
@@ -163,8 +159,9 @@ where
     Clk: ?Sized + Clock,
 {
     pub gso: features::Gso,
-    pub read_remote_port: AtomicU16,
-    pub write_remote_port: AtomicU16,
+    pub(super) remote_port: AtomicU16,
+    pub(super) local_queue_id: AtomicU64,
+    pub(super) remote_queue_id: AtomicU64,
     pub fixed: FixedValues,
     /// The last time we received a packet from the peer
     pub last_peer_activity: AtomicU64,
@@ -272,7 +269,6 @@ where
 /// Values that don't change while the state is shared between threads
 pub struct FixedValues {
     pub remote_ip: UnsafeCell<IpAddress>,
-    pub source_control_port: UnsafeCell<u16>,
     pub application: UnsafeCell<application::state::State>,
     pub credentials: UnsafeCell<Credentials>,
 }

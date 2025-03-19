@@ -1,0 +1,9 @@
+---
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
+---
+l0   : LDB [0]
+l1   : AND #192
+l2   : JEQ #64,l3,l4
+l3   : RET #0
+l4   : RET #1

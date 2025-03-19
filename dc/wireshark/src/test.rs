@@ -18,8 +18,7 @@ use std::{collections::HashMap, num::NonZeroU16, ptr, time::Duration};
 #[derive(Clone, Debug, bolero::TypeGenerator)]
 struct StreamPacket {
     credentials: s2n_quic_dc::credentials::Credentials,
-    source_control_port: NonZeroU16,
-    source_stream_port: Option<NonZeroU16>,
+    source_queue_id: Option<VarInt>,
     stream_id: stream::Id,
     packet_space: stream::PacketSpace,
     packet_number: VarInt,
@@ -50,8 +49,7 @@ fn check_stream_parse() {
             ];
             let length = s2n_quic_dc::packet::stream::encoder::encode(
                 EncoderBuffer::new(&mut buffer),
-                NonZeroU16::get(packet.source_control_port),
-                packet.source_stream_port.map(NonZeroU16::get),
+                packet.source_queue_id,
                 packet.stream_id,
                 packet.packet_number,
                 packet.next_expected_control_packet,
@@ -84,18 +82,12 @@ fn check_stream_parse() {
                 Field::Integer(packet.credentials.key_id.into())
             );
             assert_eq!(
-                tracker.remove(fields.source_control_port),
-                Field::Integer(packet.source_control_port.get() as u64)
+                tracker.take(fields.source_queue_id),
+                packet.source_queue_id.map(|v| Field::Integer(v.as_u64()))
             );
             assert_eq!(
-                tracker.take(fields.source_stream_port),
-                packet
-                    .source_stream_port
-                    .map(|v| Field::Integer(v.get() as u64))
-            );
-            assert_eq!(
-                tracker.remove(fields.stream_id),
-                Field::Integer(u64::from(packet.stream_id.key_id))
+                tracker.remove(fields.queue_id),
+                Field::Integer(u64::from(packet.stream_id.queue_id))
             );
             assert_eq!(
                 tracker.remove(fields.is_reliable),
@@ -124,7 +116,7 @@ fn check_stream_parse() {
 
             // Tag fields all store the tag value itself.
             for field in [
-                fields.has_source_stream_port,
+                fields.stream_has_source_queue_id,
                 fields.is_recovery_packet,
                 fields.has_control_data,
                 fields.has_final_offset,
@@ -322,7 +314,7 @@ fn check_datagram_parse() {
 #[derive(Clone, Debug, bolero::TypeGenerator)]
 struct ControlPacket {
     credentials: s2n_quic_dc::credentials::Credentials,
-    source_control_port: NonZeroU16,
+    source_queue_id: Option<VarInt>,
     stream_id: Option<stream::Id>,
     packet_number: VarInt,
     next_expected_control_packet: Option<VarInt>,
@@ -351,7 +343,7 @@ fn check_control_parse() {
             ];
             let length = s2n_quic_dc::packet::control::encoder::encode(
                 EncoderBuffer::new(&mut buffer),
-                packet.source_control_port.get(),
+                packet.source_queue_id,
                 packet.stream_id,
                 packet.packet_number,
                 VarInt::new(packet.application_header.buffered_len() as u64).unwrap(),
@@ -371,6 +363,16 @@ fn check_control_parse() {
             assert!(dissect::control(&mut tracker, fields, tag, &mut buffer, &mut ()).is_some());
             let tag: Parsed<u8> = tag.map(|v| v.into());
 
+            // Tag fields all store the tag value itself.
+            for field in [
+                fields.control_has_source_queue_id,
+                fields.is_stream,
+                fields.has_application_header,
+                fields.key_phase,
+            ] {
+                assert_eq!(tracker.remove(field), Field::Integer(tag.value as u64));
+            }
+
             assert_eq!(tracker.remove(fields.tag), Field::Integer(tag.value as u64));
             assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
             assert_eq!(
@@ -381,10 +383,12 @@ fn check_control_parse() {
                 tracker.remove(fields.key_id),
                 Field::Integer(packet.credentials.key_id.into())
             );
-            assert_eq!(
-                tracker.remove(fields.source_control_port),
-                Field::Integer(packet.source_control_port.get() as u64)
-            );
+            if let Some(source_queue_id) = packet.source_queue_id {
+                assert_eq!(
+                    tracker.remove(fields.source_queue_id),
+                    Field::Integer(source_queue_id.as_u64())
+                );
+            }
             assert_eq!(
                 tracker.remove(fields.packet_number),
                 Field::Integer(packet.packet_number.as_u64())

@@ -3,12 +3,13 @@
 
 use crate::{credentials, msg::recv};
 use core::task::{Context, Poll};
+use s2n_quic_core::varint::VarInt;
 use std::sync::{Arc, Weak};
 use tokio::sync::mpsc;
 
 type Sender = mpsc::Sender<recv::Message>;
 type ReceiverChan = mpsc::Receiver<recv::Message>;
-type Key = (credentials::Id, u64);
+type Key = (credentials::Id, VarInt);
 type HashMap = flurry::HashMap<Key, Sender>;
 
 pub enum Outcome {
@@ -36,20 +37,19 @@ impl Default for Map {
 impl Map {
     #[inline]
     pub fn handle(&mut self, packet: &super::InitialPacket, msg: &mut recv::Message) -> Outcome {
-        let stream_id = packet.stream_id.into_varint().as_u64();
         let (sender, receiver) = self
             .next
             .take()
             .unwrap_or_else(|| mpsc::channel(self.channel_size));
 
-        let key = (packet.credentials.id, stream_id);
+        let key = (packet.credentials.id, packet.credentials.key_id);
 
         let guard = self.inner.guard();
         match self.inner.try_insert(key, sender, &guard) {
             Ok(_) => {
                 drop(guard);
                 let map = Arc::downgrade(&self.inner);
-                tracing::trace!(action = "register", credentials = ?&key.0, stream_id = key.1);
+                tracing::trace!(action = "register", credentials = ?&key);
                 let receiver = ReceiverState {
                     map,
                     key,
@@ -61,18 +61,18 @@ impl Map {
             Err(err) => {
                 self.next = Some((err.not_inserted, receiver));
 
-                tracing::trace!(action = "forward", credentials = ?&key.0, stream_id = key.1);
+                tracing::trace!(action = "forward", credentials = ?&key);
                 if let Err(err) = err.current.try_send(msg.take()) {
                     match err {
                         mpsc::error::TrySendError::Closed(_) => {
                             // remove the channel from the map since we're closed
                             self.inner.remove(&key, &guard);
-                            tracing::debug!(stream_id, error = "channel_closed");
+                            tracing::debug!(credentials = ?key, error = "channel_closed");
                         }
                         mpsc::error::TrySendError::Full(_) => {
                             // drop the packet
                             let _ = msg;
-                            tracing::debug!(stream_id, error = "channel_full");
+                            tracing::debug!(credentials = ?key, error = "channel_full");
                         }
                     }
                 }
@@ -104,7 +104,7 @@ impl Drop for Receiver {
     #[inline]
     fn drop(&mut self) {
         if let Some(map) = self.0.map.upgrade() {
-            tracing::trace!(action = "unregister", credentials = ?&self.0.key.0, stream_id = self.0.key.1);
+            tracing::trace!(action = "unregister", credentials = ?&self.0.key);
             let _ = map.remove(&self.0.key, &map.guard());
         }
     }

@@ -17,16 +17,21 @@ use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
     application::ServerName,
-    connection::{InitialId, PeerId},
-    crypto,
-    crypto::{tls, tls::ApplicationParameters, CryptoSuite, Key},
+    connection::{
+        limits::{HandshakeInfo, Limiter, UpdatableLimits},
+        InitialId, PeerId,
+    },
+    crypto::{
+        self,
+        tls::{self, ApplicationParameters},
+        CryptoSuite, Key,
+    },
     ct::ConstantTimeEq,
     datagram::{ConnectionInfo, Endpoint},
-    dc,
-    dc::Endpoint as _,
-    event,
+    dc::{self, Endpoint as _},
     event::{
-        builder::{DcState, DcStateChanged},
+        self,
+        builder::{DcPathCreated, DcState, DcStateChanged},
         IntoEvent,
     },
     packet::number::PacketNumberSpace,
@@ -63,6 +68,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub publisher: &'a mut Pub,
     pub datagram: &'a mut Config::DatagramEndpoint,
     pub dc: &'a mut Config::DcEndpoint,
+    pub limits_endpoint: &'a mut Config::ConnectionLimits,
     pub application_context: &'a mut Option<Box<dyn Any + Send + Sync>>,
 }
 
@@ -413,6 +419,16 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             endpoint::Type::Server => self.on_client_params(param_decoder)?,
         };
 
+        let remote_address = self.path_manager.active_path().remote_address().0;
+        let info = HandshakeInfo::new(
+            &remote_address,
+            self.server_name.as_ref(),
+            self.application_protocol,
+        );
+        let mut updatable_limits = UpdatableLimits::new(self.limits);
+        self.limits_endpoint
+            .on_post_handshake(&info, &mut updatable_limits);
+
         self.local_id_registry
             .set_active_connection_id_limit(active_connection_id_limit.as_u64());
 
@@ -460,6 +476,12 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 Config::ENDPOINT_TYPE.into_event(),
             );
             let dc_path = self.dc.new_path(&conn_info);
+
+            // &mut would be ideal but events currently need to be `Clone`, and we're OK with
+            // pushing interior mutability for now. dc is all unstable anyway.
+            self.publisher
+                .on_dc_path_created(DcPathCreated { path: &dc_path });
+
             crate::dc::Manager::new(dc_path, dc_version, self.publisher)
         } else {
             if Config::DcEndpoint::ENABLED {

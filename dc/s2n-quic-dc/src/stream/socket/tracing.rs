@@ -11,6 +11,7 @@ use std::{
 };
 use tracing::trace;
 
+#[derive(Clone)]
 pub struct Tracing<S: Socket>(pub S);
 
 impl<S: Socket> Socket for Tracing<S> {

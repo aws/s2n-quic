@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::CliRange;
-use humantime::Duration;
+use jiff::SignedDuration;
 use serde::Deserialize;
 use structopt::StructOpt;
 
@@ -57,15 +57,15 @@ config!(
 
         #[name = "jitter"]
         #[default = "0ms"]
-        jitter: CliRange<Duration>,
+        jitter: CliRange<SignedDuration>,
 
         #[name = "network_jitter"]
         #[default = "0ms"]
-        network_jitter: CliRange<Duration>,
+        network_jitter: CliRange<SignedDuration>,
 
         #[name = "delay"]
         #[default = "100ms"]
-        delay: CliRange<Duration>,
+        delay: CliRange<SignedDuration>,
 
         #[name = "transmit_rate"]
         #[default = "0"]
@@ -85,7 +85,7 @@ config!(
 
         #[name = "inflight_delay"]
         #[default = "0ms"]
-        inflight_delay: CliRange<Duration>,
+        inflight_delay: CliRange<SignedDuration>,
 
         #[name = "inflight_delay_threshold"]
         #[default = "0"]
@@ -101,7 +101,7 @@ config!(
 
         #[name = "connect_delay"]
         #[default = "0ms"]
-        connect_delay: CliRange<Duration>,
+        connect_delay: CliRange<SignedDuration>,
 
         #[name = "connections"]
         #[default = "1"]

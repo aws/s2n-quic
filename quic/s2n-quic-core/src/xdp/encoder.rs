@@ -409,7 +409,7 @@ mod tests {
 
             header.path.swap();
 
-            assert!(Handle::eq(&header.path, &message.path));
+            assert!(header.path.unmapped_eq(&message.path));
             assert_eq!(header.ecn, message.ecn);
             assert_eq!(payload.into_less_safe_slice(), &message.payload);
         });

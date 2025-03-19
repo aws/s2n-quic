@@ -7,7 +7,7 @@ use core::{
 };
 use s2n_codec::{
     decoder_value,
-    zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned},
+    zerocopy::{FromBytes, IntoBytes, Unaligned},
     zerocopy_value_codec, Encoder, EncoderValue,
 };
 pub use s2n_quic_core::varint::VarInt as KeyId;
@@ -15,9 +15,7 @@ pub use s2n_quic_core::varint::VarInt as KeyId;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
-#[derive(
-    Clone, Copy, Default, PartialEq, Eq, AsBytes, FromBytes, FromZeroes, Unaligned, PartialOrd, Ord,
-)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, FromBytes, IntoBytes, Unaligned, PartialOrd, Ord)]
 #[cfg_attr(
     any(test, feature = "testing"),
     derive(bolero_generator::TypeGenerator)
@@ -25,12 +23,18 @@ pub mod testing;
 #[repr(C)]
 pub struct Id([u8; 16]);
 
-impl std::hash::Hash for Id {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl Id {
+    pub(crate) fn to_hash(self) -> u64 {
         // The ID has very high quality entropy already, so write just one half of it to keep hash
         // costs as low as possible. For the main use of the Hash impl in the fixed-size ID map
         // this translates to just directly using these bytes for the indexing.
-        state.write_u64(u64::from_ne_bytes(self.0[..8].try_into().unwrap()));
+        u64::from_ne_bytes(self.0[..8].try_into().unwrap())
+    }
+}
+
+impl std::hash::Hash for Id {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(self.to_hash());
     }
 }
 

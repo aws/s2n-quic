@@ -1,0 +1,8 @@
+---
+source: quic/s2n-quic-platform/src/bpf/cbpf/tests.rs
+expression: prog
+---
+l0   : LD len
+l1   : JGT #100,l3,l2
+l2   : RET #0
+l3   : RET #1

@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::Credits;
-use crate::stream::send::{
-    error::{self, Error},
-    flow,
+use crate::stream::{
+    send::{
+        error::{self, Error},
+        flow,
+    },
+    TransportFeatures,
 };
 use s2n_quic_core::{ensure, varint::VarInt};
 use std::sync::{Condvar, Mutex};
@@ -65,7 +68,11 @@ impl State {
 
     /// Called by the application to acquire flow credits
     #[inline]
-    pub fn acquire(&self, mut request: flow::Request) -> Result<Credits, Error> {
+    pub fn acquire(
+        &self,
+        mut request: flow::Request,
+        features: &TransportFeatures,
+    ) -> Result<Credits, Error> {
         let mut guard = self
             .state
             .lock()
@@ -104,8 +111,10 @@ impl State {
                 continue;
             };
 
-            // clamp the request to the flow credits we have
-            request.clamp(flow_credits);
+            if !features.is_flow_controlled() {
+                // clamp the request to the flow credits we have
+                request.clamp(flow_credits);
+            }
 
             // update the stream offset with the given request
             guard.stream_offset = current_offset
@@ -154,6 +163,7 @@ mod tests {
         let total = AtomicU64::new(0);
         let workers = 5;
         let worker_counts = Vec::from_iter((0..workers).map(|_| AtomicU64::new(0)));
+        let features = TransportFeatures::UDP;
 
         thread::scope(|s| {
             let total = &total;
@@ -178,7 +188,7 @@ mod tests {
                         };
                         request.clamp(path_info.max_flow_credits(max_header_len, max_segments));
 
-                        let Ok(credits) = state.acquire(request) else {
+                        let Ok(credits) = state.acquire(request, &features) else {
                             break;
                         };
 

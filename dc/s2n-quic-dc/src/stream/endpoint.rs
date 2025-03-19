@@ -3,7 +3,7 @@
 
 use crate::{
     event::{self, api::Subscriber as _, IntoEvent as _},
-    msg, packet,
+    packet,
     path::secret::{self, map, Map},
     random::Random,
     stream::{
@@ -23,6 +23,8 @@ use s2n_quic_core::{
 };
 use std::{io, sync::Arc};
 use tracing::{debug_span, Instrument as _};
+
+use super::environment::{ReadWorkerSocket as _, WriteWorkerSocket as _};
 
 type Result<T = (), E = io::Error> = core::result::Result<T, E>;
 
@@ -50,9 +52,9 @@ where
         parameters = o(parameters);
     }
 
-    let key_id = crypto.credentials.key_id;
     let stream_id = packet::stream::Id {
-        key_id,
+        // the client starts with routing to 0 until the server updates the value
+        queue_id: VarInt::ZERO,
         is_reliable: true,
         is_bidirectional: true,
     };
@@ -72,12 +74,9 @@ where
         env,
         peer,
         stream_id,
-        None,
         crypto,
         entry.map(),
         parameters,
-        None,
-        None,
         endpoint::Type::Client,
         subscriber,
         subscriber_ctx,
@@ -88,10 +87,8 @@ where
 pub fn accept_stream<Env, P>(
     now: Timestamp,
     env: &Env,
-    mut peer: P,
+    peer: P,
     packet: &server::InitialPacket,
-    handshake: Option<server::handshake::Receiver>,
-    buffer: Option<&mut msg::recv::Message>,
     map: &Map,
     subscriber: Env::Subscriber,
     subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
@@ -122,20 +119,21 @@ where
         parameters = o(parameters);
     }
 
-    // inform the value of what the source_control_port is
-    peer.with_source_control_port(packet.source_control_port);
+    let stream_id = packet::stream::Id {
+        // use the client's `source_queue_id`, if specified
+        queue_id: packet.source_queue_id.unwrap_or(VarInt::ZERO),
+        // inherit the rest of the parameters from the client
+        ..packet.stream_id
+    };
 
     let res = build_stream(
         now,
         env,
         peer,
-        packet.stream_id,
-        packet.source_stream_port,
+        stream_id,
         crypto,
         map,
         parameters,
-        handshake,
-        buffer,
         endpoint::Type::Server,
         subscriber,
         subscriber_ctx,
@@ -160,12 +158,9 @@ fn build_stream<Env, P>(
     env: &Env,
     peer: P,
     stream_id: packet::stream::Id,
-    remote_stream_port: Option<u16>,
     crypto: secret::map::Bidirectional,
     map: &Map,
     parameters: dc::ApplicationParams,
-    handshake: Option<server::handshake::Receiver>,
-    recv_buffer: Option<&mut msg::recv::Message>,
     endpoint_type: endpoint::Type,
     subscriber: Env::Subscriber,
     subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
@@ -176,10 +171,11 @@ where
 {
     let features = peer.features();
 
-    let sockets = peer.setup(env)?;
+    let (sockets, recv_buffer) = peer.setup(env)?;
+    let source_queue_id = sockets.source_queue_id;
 
     // construct shared reader state
-    let reader = recv::shared::State::new(stream_id, &parameters, handshake, features, recv_buffer);
+    let reader = recv::shared::State::new(stream_id, &parameters, features, recv_buffer);
 
     let writer = {
         let worker = sockets
@@ -224,26 +220,29 @@ where
     // construct shared common state between readers/writers
     let common = {
         let application = send::application::state::State {
-            stream_id,
-            source_control_port: sockets.source_control_port,
-            source_stream_port: sockets.source_stream_port,
+            is_reliable: stream_id.is_reliable,
         };
 
+        let remote_addr = sockets.remote_addr;
+
         let fixed = shared::FixedValues {
-            remote_ip: UnsafeCell::new(sockets.remote_addr.ip()),
-            source_control_port: UnsafeCell::new(sockets.source_control_port),
+            remote_ip: UnsafeCell::new(remote_addr.ip()),
             application: UnsafeCell::new(application),
             credentials: UnsafeCell::new(crypto.credentials),
         };
 
-        let remote_port = sockets.remote_addr.port();
-        let write_remote_port = remote_stream_port.unwrap_or(remote_port);
-
         shared::Common {
             clock: env.clock().clone(),
             gso: env.gso(),
-            read_remote_port: remote_port.into(),
-            write_remote_port: write_remote_port.into(),
+            remote_port: remote_addr.port().into(),
+            remote_queue_id: stream_id.queue_id.as_u64().into(),
+            local_queue_id: if let Some(id) = source_queue_id {
+                id.as_u64()
+            } else {
+                // use MAX as `None`
+                u64::MAX
+            }
+            .into(),
             last_peer_activity: Default::default(),
             fixed,
             closed_halves: 0u8.into(),
@@ -275,6 +274,7 @@ where
 
     // spawn the read worker
     if let Some(socket) = sockets.read_worker {
+        let socket = socket.setup();
         let shared = shared.clone();
 
         let task = async move {
@@ -308,11 +308,18 @@ where
 
     // spawn the write worker
     if let Some((worker, socket)) = writer.1 {
+        let (socket, recv_buffer) = socket.setup();
         let shared = shared.clone();
 
         let task = async move {
-            let mut writer =
-                send::worker::Worker::new(socket, Random::default(), shared, worker, endpoint_type);
+            let mut writer = send::worker::Worker::new(
+                socket,
+                recv_buffer,
+                Random::default(),
+                shared,
+                worker,
+                endpoint_type,
+            );
 
             let mut prev_waker: Option<core::task::Waker> = None;
             core::future::poll_fn(|cx| {

@@ -67,7 +67,7 @@ pub fn stream<T: Node>(
 
     let mut tag_tree = tree.add_subtree(tag_item, fields.tag_subtree);
     for field in [
-        fields.has_source_stream_port,
+        fields.stream_has_source_queue_id,
         fields.is_recovery_packet,
         fields.has_control_data,
         fields.has_final_offset,
@@ -88,16 +88,17 @@ pub fn stream<T: Node>(
     let wire_version = buffer.consume::<WireVersion>()?;
     wire_version.record(buffer, tree, fields.wire_version);
 
-    let source_control_port = buffer.consume::<u16>()?;
-    source_control_port.record(buffer, tree, fields.source_control_port);
-
-    if tag.has_source_stream_port() {
-        let source_stream_port = buffer.consume::<u16>()?;
-        source_stream_port.record(buffer, tree, fields.source_stream_port);
-    }
+    // unused space - was source_control_port when we did port migration but that has
+    // been replaced with `source_queue_id`, which is more flexible
+    let _source_control_port = buffer.consume::<u16>()?;
 
     let stream_id = buffer.consume()?;
     let stream_id = record_stream_id(tree, fields, buffer, stream_id);
+
+    if tag.has_source_queue_id() {
+        let source_queue_id = buffer.consume::<VarInt>()?;
+        source_queue_id.record(buffer, tree, fields.source_queue_id);
+    }
 
     let packet_number = buffer.consume::<VarInt>()?;
     packet_number.record(buffer, tree, fields.packet_number);
@@ -152,8 +153,13 @@ pub fn stream<T: Node>(
     auth_tag.record(buffer, tree, fields.auth_tag);
 
     info.append_delim(" ");
+    let space = if tag.packet_space().is_recovery() {
+        ", SPACE=RECOVERY"
+    } else {
+        ""
+    };
     info.append(format_args!(
-        "Stream(ID={}, PN={},{control_info} LEN={})",
+        "Stream(ID={}{space}, PN={},{control_info} LEN={})",
         key_id.value, packet_number.value, payload.len
     ));
 
@@ -171,6 +177,7 @@ pub fn control<T: Node>(
 
     let mut tag_tree = tree.add_subtree(tag_item, fields.tag_subtree);
     for field in [
+        fields.control_has_source_queue_id,
         fields.is_stream,
         fields.has_application_header,
         fields.key_phase,
@@ -189,12 +196,14 @@ pub fn control<T: Node>(
     let wire_version = buffer.consume::<WireVersion>()?;
     wire_version.record(buffer, tree, fields.wire_version);
 
-    let source_control_port = buffer.consume::<u16>()?;
-    source_control_port.record(buffer, tree, fields.source_control_port);
-
     if tag.is_stream() {
         let stream_id = buffer.consume()?;
         record_stream_id(tree, fields, buffer, stream_id);
+    }
+
+    if tag.has_source_queue_id() {
+        let source_queue_id = buffer.consume::<VarInt>()?;
+        source_queue_id.record(buffer, tree, fields.source_queue_id);
     }
 
     let packet_number = buffer.consume::<VarInt>()?;
@@ -371,8 +380,8 @@ fn record_stream_id<T: Node>(
     stream_id: Parsed<stream::Id>,
 ) -> stream::Id {
     stream_id
-        .map(|v| v.key_id)
-        .record(buffer, tree, fields.stream_id);
+        .map(|v| v.queue_id)
+        .record(buffer, tree, fields.queue_id);
     let id = stream_id.value;
 
     tree.add_boolean(

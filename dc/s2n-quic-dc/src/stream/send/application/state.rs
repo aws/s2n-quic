@@ -8,6 +8,7 @@ use crate::{
     stream::{
         packet_number,
         send::{application::transmission, error::Error, flow, path, probes},
+        TransportFeatures,
     },
 };
 use bytes::buf::UninitSlice;
@@ -30,9 +31,7 @@ pub trait Message {
 
 #[derive(Clone, Copy, Debug)]
 pub struct State {
-    pub stream_id: stream::Id,
-    pub source_control_port: u16,
-    pub source_stream_port: Option<u16>,
+    pub is_reliable: bool,
 }
 
 impl State {
@@ -45,8 +44,11 @@ impl State {
         packet_number: &packet_number::Counter,
         encrypt_key: &E,
         credentials: &Credentials,
+        stream_id: &stream::Id,
+        source_queue_id: Option<VarInt>,
         clock: &Clk,
         message: &mut M,
+        features: &TransportFeatures,
     ) -> Result<(), Error>
     where
         E: seal::Application,
@@ -67,17 +69,25 @@ impl State {
         );
         let mut reader = reader.with_read_limit(credits.len);
 
-        let stream_id = *self.stream_id();
         let max_header_len = self.max_header_len();
 
         let mut total_payload_len = 0;
+        let max_record_size = if features.is_stream() {
+            // If the underlying transport is stream based, it will perform its own packetization
+            // based on the MTU determined at that layer. Therefore, we do not need to restrict
+            // writes to the probed max datagram size, and can instead use a larger value, in this
+            // case 2^14, based on the TLS max record size.
+            1 << 14
+        } else {
+            path.max_datagram_size
+        };
 
         loop {
             let packet_number = packet_number.next()?;
 
             let buffer_len = {
                 let estimated_len = reader.buffered_len() + max_header_len;
-                (path.max_datagram_size as usize).min(estimated_len)
+                (max_record_size as usize).min(estimated_len)
             };
 
             message.push(buffer_len, |buffer| {
@@ -93,9 +103,8 @@ impl State {
                 let encoder = EncoderBuffer::new(buffer);
                 let packet_len = encoder::encode(
                     encoder,
-                    self.source_control_port,
-                    self.source_stream_port,
-                    stream_id,
+                    source_queue_id,
+                    *stream_id,
                     packet_number,
                     path.next_expected_control_packet,
                     VarInt::ZERO,
@@ -108,7 +117,7 @@ impl State {
                 );
 
                 // buffer is clamped to u16::MAX so this is safe to cast without loss
-                let _: u16 = path.max_datagram_size;
+                let _: u16 = max_record_size;
                 let packet_len = packet_len as u16;
                 let payload_len = reader.consumed_len() as u16;
                 total_payload_len += payload_len as usize;
@@ -122,7 +131,7 @@ impl State {
                 let time_sent = clock.get_time();
                 probes::on_transmit_stream(
                     credentials.id,
-                    stream_id,
+                    credentials.key_id,
                     stream::PacketSpace::Stream,
                     s2n_quic_core::packet::number::PacketNumberSpace::Initial
                         .new_packet_number(packet_number),
@@ -161,13 +170,8 @@ impl State {
     }
 
     #[inline]
-    fn stream_id(&self) -> &stream::Id {
-        &self.stream_id
-    }
-
-    #[inline]
     pub fn max_header_len(&self) -> usize {
-        if self.stream_id().is_reliable {
+        if self.is_reliable {
             encoder::MAX_RETRANSMISSION_HEADER_LEN
         } else {
             encoder::MAX_HEADER_LEN

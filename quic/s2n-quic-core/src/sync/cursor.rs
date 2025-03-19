@@ -540,7 +540,7 @@ mod tests {
     #[cfg_attr(kani, kani::proof, kani::unwind(5), kani::solver(kissat))]
     fn oracle_test() {
         check!()
-            .with_generator((1..=MAX_POWER_OF_TWO, gen(), gen::<Ops>()))
+            .with_generator((1..=MAX_POWER_OF_TWO, produce(), produce::<Ops>()))
             .for_each(|(power_of_two, init_cursor, ops)| model(*power_of_two, *init_cursor, ops));
     }
 }

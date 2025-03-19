@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::{fmt, marker::PhantomData, str::FromStr, time::Duration};
+use jiff::SignedDuration;
 use s2n_quic::provider::io::testing::rand;
 use serde::Deserialize;
 
@@ -26,11 +27,11 @@ impl Default for CliRange<u64> {
     }
 }
 
-impl Default for CliRange<humantime::Duration> {
+impl Default for CliRange<jiff::SignedDuration> {
     fn default() -> Self {
         Self {
-            start: Duration::ZERO.into(),
-            end: Duration::ZERO.into(),
+            start: SignedDuration::ZERO,
+            end: SignedDuration::ZERO,
         }
     }
 }
@@ -47,18 +48,18 @@ impl<T: PartialEq + fmt::Display> fmt::Display for CliRange<T> {
 
 impl<T> CliRange<T>
 where
-    T: Copy + PartialOrd + ::rand::distributions::uniform::SampleUniform,
+    T: Copy + PartialOrd + ::bolero_generator::bounded::BoundedValue,
 {
     pub fn gen(&self) -> T {
         if self.start == self.end {
             return self.start;
         }
 
-        rand::gen_range(self.start..self.end)
+        rand::Any::any(&(self.start..self.end))
     }
 }
 
-impl CliRange<humantime::Duration> {
+impl CliRange<jiff::SignedDuration> {
     pub fn gen_duration(&self) -> Duration {
         let start = self.start.as_nanos();
         let end = self.end.as_nanos();
@@ -67,7 +68,7 @@ impl CliRange<humantime::Duration> {
             return Duration::from_nanos(start as _);
         }
 
-        let nanos = rand::gen_range(start..end);
+        let nanos = rand::Any::any(&(start..end));
         Duration::from_nanos(nanos as _)
     }
 }
