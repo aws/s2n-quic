@@ -5,7 +5,6 @@ use s2n_quic_core::varint::VarInt;
 
 pub mod blocking;
 pub mod non_blocking;
-pub use crate::msg::segment::MAX_TOTAL;
 
 /// Flow credits acquired by an application request
 #[derive(Debug)]
@@ -35,7 +34,7 @@ impl Request {
     /// Clamps the request with the given number of credits
     #[inline]
     pub fn clamp(&mut self, credits: u64) {
-        let len = self.len.min(credits.min(MAX_TOTAL as _) as usize);
+        let len = self.len.min(credits as usize);
 
         // if we didn't acquire the entire len, then clear the `is_fin` flag
         if self.len != len {
