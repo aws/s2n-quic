@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    either::Either,
     event, msg,
     path::secret,
     stream::{
@@ -16,6 +17,9 @@ use std::{io, net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
 
 /// Connects using the UDP transport layer
+///
+/// Callers should send data immediately after calling this to ensure minimal
+/// credential reordering.
 #[inline]
 pub async fn connect_udp<H, Sub>(
     handshake: H,
@@ -39,16 +43,17 @@ where
     };
 
     // build the stream inside the application context
-    let mut stream = stream.connect()?;
+    let stream = stream.connect()?;
 
     debug_assert_eq!(stream.protocol(), Protocol::Udp);
-
-    write_prelude(&mut stream).await?;
 
     Ok(stream)
 }
 
 /// Connects using the TCP transport layer
+///
+/// Callers should send data immediately after calling this to ensure minimal
+/// credential reordering.
 #[inline]
 pub async fn connect_tcp<H, Sub>(
     handshake: H,
@@ -89,16 +94,17 @@ where
     let stream = endpoint::open_stream(env, entry, peer, None)?;
 
     // build the stream inside the application context
-    let mut stream = stream.connect()?;
+    let stream = stream.connect()?;
 
     debug_assert_eq!(stream.protocol(), Protocol::Tcp);
-
-    write_prelude(&mut stream).await?;
 
     Ok(stream)
 }
 
 /// Connects with a pre-existing TCP stream
+///
+/// Callers should send data immediately after calling this to ensure minimal
+/// credential reordering.
 ///
 /// # Note
 ///
@@ -125,32 +131,16 @@ where
     let stream = endpoint::open_stream(env, entry, peer, None)?;
 
     // build the stream inside the application context
-    let mut stream = stream.connect()?;
+    let stream = stream.connect()?;
 
     debug_assert_eq!(stream.protocol(), Protocol::Tcp);
 
-    write_prelude(&mut stream).await?;
-
     Ok(stream)
-}
-
-#[inline]
-async fn write_prelude<Sub>(stream: &mut Stream<Sub>) -> io::Result<()>
-where
-    Sub: event::Subscriber,
-{
-    // TODO should we actually write the prelude here or should we do late sealer binding on
-    // the first packet to reduce secret reordering on the peer
-
-    stream
-        .write_from(&mut s2n_quic_core::buffer::reader::storage::Empty)
-        .await
-        .map(|_| ())
 }
 
 #[inline]
 fn recv_buffer() -> recv::shared::RecvBuffer {
     // TODO replace this with a parameter once everything is in place
     let recv_buffer = recv::buffer::Local::new(msg::recv::Message::new(9000), None);
-    recv::buffer::Either::A(recv_buffer)
+    Either::A(recv_buffer)
 }

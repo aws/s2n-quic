@@ -92,6 +92,14 @@ where
     }
 
     #[inline]
+    pub async fn write_from_fin<S>(&mut self, buf: &mut S) -> io::Result<usize>
+    where
+        S: buffer::reader::storage::Infallible,
+    {
+        core::future::poll_fn(|cx| self.poll_write_from(cx, buf, true)).await
+    }
+
+    #[inline]
     pub fn poll_write_from<S>(
         &mut self,
         cx: &mut Context,
