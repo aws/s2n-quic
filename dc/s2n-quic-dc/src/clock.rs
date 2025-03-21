@@ -5,15 +5,55 @@ use core::{fmt, pin::Pin, task::Poll, time::Duration};
 use s2n_quic_core::{ensure, time};
 use tracing::trace;
 
+#[macro_use]
+mod macros;
+
+#[cfg(any(test, feature = "testing"))]
+pub mod bach;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 pub use time::clock::Cached;
 
 pub use time::Timestamp;
+
+use crate::either::Either;
 pub type SleepHandle = Pin<Box<dyn Sleep>>;
 
 pub trait Clock: 'static + Send + Sync + fmt::Debug + time::Clock {
     fn sleep(&self, amount: Duration) -> (SleepHandle, Timestamp);
+
+    fn timer(&self) -> Timer
+    where
+        Self: Sized,
+    {
+        Timer::new(self)
+    }
+}
+
+impl<A, B> Clock for Either<A, B>
+where
+    A: Clock,
+    B: Clock,
+{
+    fn sleep(&self, amount: Duration) -> (SleepHandle, Timestamp) {
+        match self {
+            Either::A(a) => a.sleep(amount),
+            Either::B(b) => b.sleep(amount),
+        }
+    }
+}
+
+impl<A, B> time::Clock for Either<A, B>
+where
+    A: time::Clock,
+    B: time::Clock,
+{
+    fn get_time(&self) -> Timestamp {
+        match self {
+            Either::A(a) => a.get_time(),
+            Either::B(b) => b.get_time(),
+        }
+    }
 }
 
 pub trait Sleep: Clock + core::future::Future<Output = ()> {
@@ -58,6 +98,12 @@ impl Timer {
     pub fn cancel(&mut self) {
         trace!(cancel = ?self.target);
         self.target = None;
+    }
+
+    pub async fn sleep(&mut self, target: Timestamp) {
+        use time::clock::Timer;
+        self.update(target);
+        core::future::poll_fn(|cx| self.poll_ready(cx)).await
     }
 }
 

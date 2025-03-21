@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    either::Either,
     event,
     stream::{recv, socket::Socket, Actor, TransportFeatures},
 };
@@ -37,12 +38,6 @@ pub trait Buffer {
     ) -> Result<(), recv::Error>
     where
         R: Dispatch;
-}
-
-#[derive(Debug)]
-pub enum Either<A, B> {
-    A(A),
-    B(B),
 }
 
 impl<A, B> Buffer for Either<A, B>

@@ -159,6 +159,14 @@ where
     }
 
     #[inline]
+    pub async fn write_from_fin(
+        &mut self,
+        buf: &mut impl buffer::reader::storage::Infallible,
+    ) -> io::Result<usize> {
+        self.write.write_from_fin(buf).await
+    }
+
+    #[inline]
     pub async fn read_into(
         &mut self,
         out_buf: &mut impl buffer::writer::Storage,

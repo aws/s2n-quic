@@ -1,44 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::stats;
 use crate::{
+    clock::Clock,
     event,
-    stream::{
-        application::{Builder as StreamBuilder, Stream},
-        environment::{tokio::Environment, Environment as _},
-        server::accept::Receiver,
-    },
+    stream::{application::Builder as StreamBuilder, environment::Environment, server::stats},
     sync::mpmc as channel,
 };
 use core::time::Duration;
-use s2n_quic_core::time::Clock;
-use std::{io, net::SocketAddr};
-use tokio::time::sleep;
-
-#[inline]
-pub async fn accept<Sub>(
-    streams: &Receiver<Sub>,
-    stats: &stats::Sender,
-) -> io::Result<(Stream<Sub>, SocketAddr)>
-where
-    Sub: event::Subscriber,
-{
-    let stream = streams.recv_front().await.map_err(|_err| {
-        io::Error::new(
-            io::ErrorKind::NotConnected,
-            "server acceptor runtime is no longer available",
-        )
-    })?;
-
-    // build the stream inside the application context
-    let (stream, sojourn_time) = stream.accept()?;
-    stats.send(sojourn_time);
-
-    let remote_addr = stream.peer_addr()?;
-
-    Ok((stream, remote_addr))
-}
+use s2n_quic_core::time::Clock as _;
 
 #[derive(Clone, Debug)]
 pub struct Pruner {
@@ -74,13 +44,13 @@ impl Default for Pruner {
 
 impl Pruner {
     /// A task which prunes the accept queue to enforce a maximum sojourn time
-    pub async fn run<Sub>(
+    pub async fn run<Env>(
         self,
-        env: Environment<Sub>,
-        channel: channel::WeakReceiver<StreamBuilder<Sub>>,
+        env: Env,
+        channel: channel::WeakReceiver<StreamBuilder<Env::Subscriber>>,
         stats: stats::Stats,
     ) where
-        Sub: event::Subscriber + Clone,
+        Env: Environment,
     {
         let Self {
             sojourn_multiplier,
@@ -90,17 +60,19 @@ impl Pruner {
             max_sleep_time,
         } = self;
 
-        sleep(min_sleep_time).await;
+        let clock = env.clock().clone();
+        let mut timer = clock.timer();
+        timer.sleep(clock.get_time() + min_sleep_time).await;
 
         loop {
-            let now = env.clock().get_time();
+            let now = clock.get_time();
             let smoothed_sojourn_time = stats.smoothed_sojourn_time();
 
             // compute the oldest allowed queue time
             let Some(queue_time_threshold) = now.checked_sub(
                 (smoothed_sojourn_time * sojourn_multiplier).clamp(min_threshold, max_threshold),
             ) else {
-                sleep(min_sleep_time).await;
+                timer.sleep(now + min_sleep_time).await;
                 continue;
             };
 
@@ -131,7 +103,9 @@ impl Pruner {
             }
 
             // wake up later based on the smoothed sojourn time
-            sleep(smoothed_sojourn_time.clamp(min_sleep_time, max_sleep_time)).await;
+            let target = smoothed_sojourn_time.clamp(min_sleep_time, max_sleep_time);
+            let target = clock.get_time() + target;
+            timer.sleep(target).await;
         }
     }
 }

@@ -3,6 +3,7 @@
 
 use super::accept;
 use crate::{
+    either::Either,
     event::{self, EndpointPublisher, IntoEvent},
     msg,
     path::secret,
@@ -312,7 +313,7 @@ impl WorkerState {
             let (socket, remote_address) = stream.take().unwrap();
 
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
-            let recv_buffer = recv::buffer::Either::A(recv_buffer);
+            let recv_buffer = Either::A(recv_buffer);
 
             let peer = env::tcp::Reregistered {
                 socket,

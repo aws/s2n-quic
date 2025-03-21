@@ -6,22 +6,21 @@ use crate::{
     event,
     socket::recv::{pool::Pool as Packets, router::Router, udp},
     stream::{
-        environment::{tokio::Environment, udp::Config},
+        environment::{bach::Environment, udp::Config},
         recv::dispatch::{Allocator as Queues, Control, Stream},
         server::{accept, udp::Acceptor},
-        socket::{application::Single, fd::udp::CachedAddr, SendOnly, Tracing},
+        socket::{application::Single, Tracing},
     },
 };
+use bach::net::{socket, SocketAddr, UdpSocket};
 use s2n_quic_platform::socket::options::{Options, ReusePort};
 use std::{
     io::{self, Result},
-    net::{SocketAddr, UdpSocket},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
     },
 };
-use tokio::io::unix::AsyncFd;
 use tracing::Instrument;
 
 pub(super) struct Pool {
@@ -43,9 +42,7 @@ impl Socket {
     fn new(socket: UdpSocket, queue: Queues) -> io::Result<Self> {
         let recv_socket = Arc::new(socket);
 
-        let local_addr = recv_socket.local_addr()?;
-
-        let send_socket = Tracing(SendOnly(CachedAddr::new(recv_socket.clone(), local_addr)));
+        let send_socket = Tracing(recv_socket.clone());
 
         let application_socket = Arc::new(Single(send_socket.clone()));
 
@@ -78,25 +75,21 @@ impl Pool {
 
         let mask = workers - 1;
 
-        let mut options = env.socket_options.clone();
-        options.blocking = config.blocking;
+        let options = env.socket_options.clone();
 
         if config.workers.is_none() {
             config.workers = Some(workers);
         }
+
         let sockets = Self::create_workers(options, &config)?;
 
-        let local_addr = if config.reuse_port {
-            let addr = sockets[0].recv_socket.local_addr()?;
-            if cfg!(debug_assertions) {
-                for socket in sockets.iter().skip(1) {
-                    debug_assert_eq!(addr, socket.recv_socket.local_addr()?);
-                }
+        let local_addr = sockets[0].recv_socket.local_addr()?;
+
+        if cfg!(debug_assertions) && config.reuse_port {
+            for socket in sockets.iter().skip(1) {
+                debug_assert_eq!(local_addr, socket.recv_socket.local_addr()?);
             }
-            Some(addr)
-        } else {
-            None
-        };
+        }
 
         let max_packet_size = config.max_packet_size;
         let packet_count = config.packet_count;
@@ -104,12 +97,7 @@ impl Pool {
 
         macro_rules! spawn {
             ($create_router:expr) => {
-                if config.blocking {
-                    Self::spawn_blocking(&sockets, create_packets, $create_router)
-                } else {
-                    let _rt = env.reader_rt.enter();
-                    Self::spawn_non_blocking(&sockets, create_packets, $create_router)?;
-                }
+                Self::spawn_non_blocking(&sockets, create_packets, $create_router)?;
             };
         }
 
@@ -144,7 +132,7 @@ impl Pool {
             sockets: sockets.into(),
             current: AtomicUsize::new(0),
             mask,
-            local_addr,
+            local_addr: Some(local_addr),
         })
     }
 
@@ -163,25 +151,6 @@ impl Pool {
         self.local_addr
     }
 
-    fn spawn_blocking<R>(
-        sockets: &[Socket],
-        create_packets: impl Fn() -> Packets,
-        create_router: impl Fn(&Packets, &Socket) -> R,
-    ) where
-        R: 'static + Send + Router,
-    {
-        for (udp_socket_worker, socket) in sockets.iter().enumerate() {
-            let packets = create_packets();
-            let router = create_router(&packets, socket);
-            let recv_socket = socket.recv_socket.clone();
-            let span = tracing::trace_span!("udp_socket_worker", udp_socket_worker);
-            std::thread::spawn(move || {
-                let _span = span.entered();
-                udp::blocking(recv_socket, packets, router);
-            });
-        }
-    }
-
     fn spawn_non_blocking<R>(
         sockets: &[Socket],
         create_packets: impl Fn() -> Packets,
@@ -193,15 +162,15 @@ impl Pool {
         for (udp_socket_worker, socket) in sockets.iter().enumerate() {
             let packets = create_packets();
             let router = create_router(&packets, socket);
-            let recv_socket = AsyncFd::new(socket.recv_socket.clone())?;
+            let recv_socket = socket.recv_socket.clone();
             let span = tracing::trace_span!("udp_socket_worker", udp_socket_worker);
             let task = async move {
                 udp::non_blocking(recv_socket, packets, router).await;
             };
             if span.is_disabled() {
-                tokio::spawn(task);
+                bach::spawn(task);
             } else {
-                tokio::spawn(task.instrument(span));
+                bach::spawn(task.instrument(span));
             }
         }
         Ok(())
@@ -229,7 +198,7 @@ impl Pool {
                     // set reuse port after we bind for the first socket
                     options.reuse_port = ReusePort::AfterBind;
                 }
-                let socket = options.build_udp()?;
+                let socket = build_udp(&options)?;
 
                 if config.reuse_port {
                     // for any additional sockets, set reuse port before bind
@@ -241,7 +210,7 @@ impl Pool {
 
                 socket
             } else {
-                options.build_udp()?
+                build_udp(&options)?
             };
 
             let queue = if let Some(shared_queue) = &shared_queue {
@@ -257,4 +226,15 @@ impl Pool {
 
         Ok(sockets)
     }
+}
+
+fn build_udp(options: &Options) -> Result<UdpSocket> {
+    let mut opts = socket::Options::default();
+    opts.local_addr = options.addr;
+    opts.reuse_port = !matches!(options.reuse_port, ReusePort::Disabled);
+
+    // TODO send buffer, recv buffer
+
+    let socket = opts.build_udp()?;
+    Ok(socket)
 }

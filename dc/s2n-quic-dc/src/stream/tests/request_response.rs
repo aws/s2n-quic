@@ -1,18 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::{
-    socket::Protocol,
-    testing::{self, Stream, MAX_DATAGRAM_SIZE},
+use crate::{
+    stream::{
+        socket::Protocol,
+        testing::{self, Stream, MAX_DATAGRAM_SIZE},
+    },
+    testing::{sleep, spawn, timeout},
 };
 use bolero::{produce, TypeGenerator, ValueGenerator as _};
 use core::time::Duration;
 use s2n_quic_core::{buffer::writer::Storage as _, stream::testing::Data};
 use std::{io, sync::Arc};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    time::sleep,
-};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{info, info_span, Instrument};
 
 #[derive(Clone, Copy, Debug, Default, TypeGenerator)]
@@ -280,9 +280,8 @@ impl Harness {
     async fn run_with(self, client: testing::Client, server: testing::Server) {
         let (run_handle, run_watch) = testing::drop_handle::new();
         let task = self.run_with_drop_handle(client, server, run_watch);
-        tokio::time::timeout(Duration::from_secs(120), task)
-            .await
-            .unwrap();
+        let duration = Duration::from_secs(120);
+        timeout(duration, task).await.unwrap();
         drop(run_handle);
     }
 
@@ -297,7 +296,7 @@ impl Harness {
         let requests: Arc<[Request]> = self.requests.into();
 
         for idx in 0..self.server.count {
-            tokio::spawn({
+            spawn({
                 let config = self.server;
                 let server = server.clone();
                 let requests = requests.clone();
@@ -308,7 +307,7 @@ impl Harness {
                         let (stream, peer_addr) = server.accept().await.unwrap();
                         info!(%peer_addr, local_addr = %stream.local_addr().unwrap());
 
-                        tokio::spawn(
+                        spawn(
                             check_server(stream, config, requests.clone())
                                 .instrument(info_span!("stream", stream = idx)),
                         );
