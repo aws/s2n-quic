@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::{socket::Protocol, testing};
+use crate::{
+    stream::{socket::Protocol, testing},
+    testing::{ext::*, sleep, spawn, timeout},
+};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -24,12 +27,26 @@ bitflags::bitflags!(
 );
 
 async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features: TestFeatures) {
+    timeout(
+        core::time::Duration::from_secs(120),
+        run_impl(protocol, buffer_len, iterations, features),
+    )
+    .await
+    .unwrap()
+}
+
+async fn run_impl(
+    protocol: Protocol,
+    buffer_len: usize,
+    iterations: usize,
+    features: TestFeatures,
+) {
     let (client, server) = pair(protocol);
     let server_handle = server.handle();
 
     let (server_response, client_response) = tokio::sync::oneshot::channel();
 
-    tokio::spawn(
+    spawn(
         async move {
             let mut server_response = Some(server_response);
             loop {
@@ -38,12 +55,12 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
 
                 let total = Arc::new(AtomicUsize::new(0));
 
-                tokio::spawn({
+                spawn({
                     let total = total.clone();
                     async move {
                         let mut prev = 0;
                         loop {
-                            tokio::time::sleep(core::time::Duration::from_secs(1)).await;
+                            sleep(core::time::Duration::from_secs(1)).await;
                             let total = total.load(Ordering::Relaxed);
                             let gbps = (total - prev) as f64 * 8e-9;
                             prev = total;
@@ -52,7 +69,7 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
                     }
                 });
 
-                tokio::spawn(
+                spawn(
                     async move {
                         let mut data = vec![0; 1 << 17];
                         loop {
@@ -64,7 +81,7 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
                             }
                             total.fetch_add(len, Ordering::Relaxed);
                             if features.contains(TestFeatures::RECV_LIMITED) {
-                                tokio::time::sleep(core::time::Duration::from_millis(1)).await;
+                                sleep(core::time::Duration::from_millis(1)).await;
                             }
                         }
                         let _ = server_response.send(total.load(Ordering::Relaxed));
@@ -79,7 +96,7 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
     let expected = buffer_len * iterations;
     println!("expected={expected}");
 
-    tokio::spawn({
+    spawn({
         let client = client.clone();
 
         async move {
@@ -90,7 +107,7 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
                 stream.write_all(&buffer).await.unwrap();
                 total += buffer.len();
                 if features.contains(TestFeatures::SEND_LIMITED) {
-                    tokio::time::sleep(core::time::Duration::from_millis(1)).await;
+                    sleep(core::time::Duration::from_millis(1)).await;
                 }
             }
             assert_eq!(total, expected);
@@ -105,7 +122,7 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
     let actual = client_response.await.unwrap();
     assert_eq!(expected, actual);
 
-    tokio::time::sleep(core::time::Duration::from_secs(1)).await;
+    sleep(core::time::Duration::from_secs(1)).await;
 
     // make sure the client lives long enough to complete the streams
     drop(client);
@@ -115,8 +132,8 @@ async fn run(protocol: Protocol, buffer_len: usize, iterations: usize, features:
 }
 
 macro_rules! suite {
-    ($flavor:literal, $name:ident) => {
-        mod $name {
+    ($flavor:ident) => {
+        mod $flavor {
             use super::{TestFeatures as F, *};
 
             fn large_times() -> usize {
@@ -135,25 +152,24 @@ macro_rules! suite {
             suite!($flavor, write_100k_x_times, 100_000, large_times());
         }
     };
-    ($flavor:literal, $name:ident, $size:expr) => {
+    ($flavor:ident, $name:ident, $size:expr) => {
         suite!($flavor, $name, $size, 1);
     };
-    ($flavor:literal, $name:ident, $size:expr, $times:expr, $features:expr) => {
+    ($flavor:ident, $name:ident, $size:expr, $times:expr, $features:expr) => {
         mod $name {
             use super::*;
 
-            #[tokio::test(flavor = $flavor)]
-            async fn drop_test() {
-                run(PROTOCOL, $size, $times, $features).await;
-            }
-
-            #[tokio::test(flavor = $flavor)]
-            async fn shutdown_test() {
-                run(PROTOCOL, $size, $times, $features | F::EXPLICIT_SHUTDOWN).await;
-            }
+            $flavor!(drop_test, PROTOCOL, $size, $times, $features);
+            $flavor!(
+                shutdown_test,
+                PROTOCOL,
+                $size,
+                $times,
+                $features | F::EXPLICIT_SHUTDOWN
+            );
         }
     };
-    ($flavor:literal, $name:ident, $size:expr, $times:expr) => {
+    ($flavor:ident, $name:ident, $size:expr, $times:expr) => {
         mod $name {
             use super::*;
 
@@ -175,12 +191,12 @@ macro_rules! negative_suite {
                 let (client, server) = pair(PROTOCOL);
                 let server_handle = server.handle();
 
-                tokio::spawn(
+                spawn(
                     async move {
                         loop {
                             let (stream, _peer_addr) = server.accept().await.unwrap();
 
-                            tokio::spawn(
+                            spawn(
                                 async move {
                                     let () = core::future::pending().await;
                                     drop(stream);
@@ -212,14 +228,14 @@ macro_rules! negative_suite {
 
                 let (server_response, client_response) = tokio::sync::oneshot::channel();
 
-                tokio::spawn(
+                spawn(
                     async move {
                         let mut server_response = Some(server_response);
                         loop {
                             let (mut stream, _peer_addr) = server.accept().await.unwrap();
                             let server_response = server_response.take().unwrap();
 
-                            tokio::spawn(
+                            spawn(
                                 async move {
                                     let mut buffer = vec![];
                                     let _ =
@@ -232,7 +248,7 @@ macro_rules! negative_suite {
                     .instrument(tracing::debug_span!("server")),
                 );
 
-                tokio::spawn(
+                spawn(
                     async move {
                         let mut stream = client.connect_to(&server_handle).await.unwrap();
                         let _ = stream.write_all(b"hello!").await;
@@ -252,12 +268,45 @@ macro_rules! negative_suite {
     };
 }
 
+macro_rules! current_thread {
+    ($name:ident, $protocol:expr, $buffer_len:expr, $iterations:expr, $features:expr) => {
+        #[tokio::test]
+        async fn $name() {
+            run($protocol, $buffer_len, $iterations, $features).await;
+        }
+    };
+}
+
+macro_rules! multi_thread {
+    ($name:ident, $protocol:expr, $buffer_len:expr, $iterations:expr, $features:expr) => {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn $name() {
+            run($protocol, $buffer_len, $iterations, $features).await;
+        }
+    };
+}
+
+macro_rules! sim {
+    ($name:ident, $protocol:expr, $buffer_len:expr, $iterations:expr, $features:expr) => {
+        #[test]
+        fn $name() {
+            crate::testing::sim(|| {
+                async {
+                    run($protocol, $buffer_len, $iterations, $features).await;
+                }
+                .primary()
+                .spawn();
+            });
+        }
+    };
+}
+
 mod tcp {
     use super::*;
     const PROTOCOL: Protocol = Protocol::Tcp;
 
-    suite!("current_thread", current_thread);
-    suite!("multi_thread", multi_thread);
+    suite!(current_thread);
+    suite!(multi_thread);
     negative_suite!();
 }
 
@@ -266,7 +315,8 @@ mod udp {
     use super::*;
     const PROTOCOL: Protocol = Protocol::Udp;
 
-    suite!("current_thread", current_thread);
-    suite!("multi_thread", multi_thread);
+    suite!(current_thread);
+    suite!(multi_thread);
+    suite!(sim);
     negative_suite!();
 }

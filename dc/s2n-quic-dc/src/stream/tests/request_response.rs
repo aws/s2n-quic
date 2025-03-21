@@ -6,11 +6,14 @@ use crate::{
         socket::Protocol,
         testing::{self, Stream, MAX_DATAGRAM_SIZE},
     },
-    testing::{sleep, spawn, timeout},
+    testing::{ext::*, sim, sleep, spawn, task::spawn_named, timeout},
 };
 use bolero::{produce, TypeGenerator, ValueGenerator as _};
 use core::time::Duration;
-use s2n_quic_core::{buffer::writer::Storage as _, stream::testing::Data};
+use s2n_quic_core::{
+    buffer::{reader::Storage as _, writer::Storage as _},
+    stream::testing::Data,
+};
 use std::{io, sync::Arc};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{info, info_span, Instrument};
@@ -94,12 +97,20 @@ impl Default for Client {
 }
 
 impl Client {
-    fn build(&self) -> testing::Client {
-        let mut builder = testing::Client::builder();
-        if let Some(max_mtu) = self.max_mtu {
-            builder = builder.mtu(max_mtu);
+    async fn build(&self) -> testing::Client {
+        let task = async {
+            let mut builder = testing::Client::builder();
+            if let Some(max_mtu) = self.max_mtu {
+                builder = builder.mtu(max_mtu);
+            }
+            builder.build()
+        };
+
+        if ::bach::is_active() {
+            task.group("client").await
+        } else {
+            task.await
         }
-        builder.build()
     }
 }
 
@@ -126,12 +137,20 @@ impl Default for Server {
 }
 
 impl Server {
-    fn build(&self, protocol: Protocol) -> testing::Server {
-        let mut builder = testing::Server::builder().protocol(protocol);
-        if let Some(max_mtu) = self.max_mtu {
-            builder = builder.mtu(max_mtu);
+    async fn build(&self, protocol: Protocol) -> testing::Server {
+        let task = async {
+            let mut builder = testing::Server::builder().protocol(protocol);
+            if let Some(max_mtu) = self.max_mtu {
+                builder = builder.mtu(max_mtu);
+            }
+            builder.build()
+        };
+
+        if ::bach::is_active() {
+            task.group("server").await
+        } else {
+            task.await
         }
-        builder.build()
     }
 }
 
@@ -164,13 +183,17 @@ async fn check_read(
     info!(reading = amount);
     let mut data = Data::new(amount as _);
     while !data.is_finished() {
-        let mut data = data.with_write_limit(max_read_len);
+        let offset = data.offset();
+        let capacity = data.buffered_len();
+        let mut data = data.with_write_limit(capacity.min(max_read_len));
+        tracing::info!(offset, capacity = data.remaining_capacity(), "read_into");
         let len = stream.read_into(&mut data).await?;
+        tracing::info!(len, "read_into_result");
         if len == 0 {
             break;
         }
     }
-    info!(read = data.offset());
+    info!(len = data.offset(), "read_into_finished");
     assert!(data.is_finished());
     Ok(())
 }
@@ -180,9 +203,15 @@ async fn check_write(stream: &mut Stream, delays: &Delays, amount: usize) -> io:
     info!(writing = amount);
     let mut data = Data::new(amount as _);
     while !data.is_finished() {
-        stream.write_from(&mut data).await?;
+        tracing::info!(
+            offset = data.offset(),
+            remaining = data.buffered_len(),
+            "write_from"
+        );
+        let len = stream.write_from(&mut data).await?;
+        tracing::info!(len, "write_from_result");
     }
-    info!(wrote = amount);
+    info!(amount, "write_from_finished");
     Ok(())
 }
 
@@ -272,8 +301,8 @@ async fn check_client(mut stream: Stream, client: Client, requests: Arc<[Request
 
 impl Harness {
     async fn run(self) {
-        let client = self.client.build();
-        let server = self.server.build(self.protocol);
+        let client = self.client.build().await;
+        let server = self.server.build(self.protocol).await;
         self.run_with(client, server).await;
     }
 
@@ -292,51 +321,44 @@ impl Harness {
         run_watch: testing::drop_handle::Receiver,
     ) {
         crate::testing::init_tracing();
+        let is_sim = ::bach::is_active();
+
+        info!(is_sim, test = ?self, "start");
 
         let requests: Arc<[Request]> = self.requests.into();
 
         for idx in 0..self.server.count {
-            spawn({
-                let config = self.server;
-                let server = server.clone();
-                let requests = requests.clone();
-                let task = async move {
-                    let mut idx = 0;
-                    loop {
-                        info!("accepting");
-                        let (stream, peer_addr) = server.accept().await.unwrap();
-                        info!(%peer_addr, local_addr = %stream.local_addr().unwrap());
+            let config = self.server;
+            let server = server.clone();
+            let requests = requests.clone();
+            let task = async move {
+                let mut idx = 0;
+                loop {
+                    info!("accepting");
+                    let (stream, peer_addr) = server.accept().await.unwrap();
+                    info!(%peer_addr, local_addr = %stream.local_addr().unwrap());
 
-                        spawn(
-                            check_server(stream, config, requests.clone())
-                                .instrument(info_span!("stream", stream = idx)),
-                        );
+                    spawn(
+                        check_server(stream, config, requests.clone())
+                            .instrument(info_span!("stream", stream = idx)),
+                    );
 
-                        idx += 1;
-                    }
+                    idx += 1;
                 }
-                .instrument(info_span!("server", server = idx));
+            }
+            .instrument(info_span!("server", server = idx));
 
-                run_watch.wrap(task)
-            });
+            if is_sim {
+                task.group(format!("server_{idx}")).spawn();
+            } else {
+                spawn(run_watch.wrap(task));
+            }
         }
 
-        let concurrency = tokio::sync::Semaphore::new(self.client.concurrency);
-        let concurrency = Arc::new(concurrency);
-        let mut application = tokio::task::JoinSet::new();
+        if is_sim {
+            // TODO limit concurrency
 
-        for idx in 0..self.client.count {
-            let permit = loop {
-                tokio::select! {
-                    permit = concurrency.clone().acquire_owned() => break permit.unwrap(),
-                    Some(res) = application.join_next() => {
-                        res.expect("task panic");
-                        continue;
-                    }
-                }
-            };
-
-            application.spawn({
+            for idx in 0..self.client.count {
                 let config = self.client;
                 let requests = requests.clone();
                 let client = client.clone();
@@ -347,17 +369,51 @@ impl Harness {
                     info!(peer_addr = %stream.peer_addr().unwrap(), local_addr = %stream.local_addr().unwrap());
 
                     check_client(stream, config, requests).await;
-
-                    drop(permit);
                 }
+                .group(format!("client_{idx}"))
                 .instrument(info_span!("client", client = idx));
 
-                run_watch.wrap(task)
-            });
-        }
+                task.primary().spawn();
+            }
+        } else {
+            let concurrency = tokio::sync::Semaphore::new(self.client.concurrency);
+            let concurrency = Arc::new(concurrency);
+            let mut application = tokio::task::JoinSet::new();
 
-        while let Some(res) = application.join_next().await {
-            res.expect("task panic");
+            for idx in 0..self.client.count {
+                let permit = loop {
+                    tokio::select! {
+                        permit = concurrency.clone().acquire_owned() => break permit.unwrap(),
+                        Some(res) = application.join_next() => {
+                            res.expect("task panic");
+                            continue;
+                        }
+                    }
+                };
+
+                application.spawn({
+                    let config = self.client;
+                    let requests = requests.clone();
+                    let client = client.clone();
+                    let server = server.clone();
+                    let task = async move {
+                        info!("connecting");
+                        let stream = client.connect_to(&server).await.unwrap();
+                        info!(peer_addr = %stream.peer_addr().unwrap(), local_addr = %stream.local_addr().unwrap());
+
+                        check_client(stream, config, requests).await;
+
+                        drop(permit);
+                    }
+                    .instrument(info_span!("client", client = idx));
+
+                    run_watch.wrap(task)
+                });
+            }
+
+            while let Some(res) = application.join_next().await {
+                res.expect("task panic");
+            }
         }
 
         drop(client);
@@ -382,8 +438,11 @@ impl Runtime {
         let _guard = rt.enter();
 
         let protocol = harness.protocol;
-        let client = harness.client.build();
-        let server = harness.server.build(protocol);
+        let (client, server) = rt.block_on(async {
+            let client = harness.client.build().await;
+            let server = harness.server.build(protocol).await;
+            (client, server)
+        });
 
         Self {
             rt,
@@ -408,15 +467,12 @@ impl Runtime {
 }
 
 macro_rules! tests {
-    () => {
-        #[tokio::test]
-        async fn no_delay_test() {
-            harness().run().await;
-        }
+    ($test:ident) => {
+        $test!(no_delay_test, harness());
 
         // limit the client's MTU to lower than the server's
-        #[tokio::test]
-        async fn client_small_mtu() {
+        $test!(
+            client_small_mtu,
             Harness {
                 requests: vec![Request {
                     count: 1,
@@ -429,13 +485,11 @@ macro_rules! tests {
                 },
                 ..harness()
             }
-            .run()
-            .await;
-        }
+        );
 
         // limit the server's MTU to lower than the client's
-        #[tokio::test]
-        async fn server_small_mtu() {
+        $test!(
+            server_small_mtu,
             Harness {
                 requests: vec![Request {
                     count: 1,
@@ -448,13 +502,11 @@ macro_rules! tests {
                 },
                 ..harness()
             }
-            .run()
-            .await;
-        }
+        );
 
         // limit the number of bytes that each side reads
-        #[tokio::test]
-        async fn small_read_test() {
+        $test!(
+            small_read_test,
             Harness {
                 requests: vec![Request {
                     count: 1,
@@ -471,12 +523,9 @@ macro_rules! tests {
                 },
                 ..harness()
             }
-            .run()
-            .await;
-        }
+        );
 
-        #[tokio::test]
-        async fn multi_request_test() {
+        $test!(multi_request_test, {
             let harness = harness();
 
             // TODO make this not flaky with UDP
@@ -497,12 +546,10 @@ macro_rules! tests {
                 },
                 ..harness
             }
-            .run()
-            .await;
-        }
+        });
 
-        #[tokio::test]
-        async fn client_delay_read_test() {
+        $test!(
+            client_delay_read_test,
             Harness {
                 client: Client {
                     delays: Delays {
@@ -513,12 +560,10 @@ macro_rules! tests {
                 },
                 ..harness()
             }
-            .run()
-            .await;
-        }
+        );
 
-        #[tokio::test]
-        async fn client_delayed_multi_request_test() {
+        $test!(
+            client_delayed_multi_request_test,
             Harness {
                 requests: vec![Request {
                     count: 2,
@@ -534,12 +579,10 @@ macro_rules! tests {
                 },
                 ..harness()
             }
-            .run()
-            .await;
-        }
+        );
 
-        #[tokio::test]
-        async fn server_delayed_multi_request_test() {
+        $test!(
+            server_delayed_multi_request_test,
             Harness {
                 requests: vec![Request {
                     count: 2,
@@ -555,12 +598,10 @@ macro_rules! tests {
                 },
                 ..harness()
             }
-            .run()
-            .await;
-        }
+        );
 
-        #[tokio::test]
-        async fn server_bulk_transfer_test() {
+        $test!(
+            server_bulk_transfer_test,
             Harness {
                 requests: vec![Request {
                     count: 1,
@@ -569,24 +610,33 @@ macro_rules! tests {
                 }],
                 ..harness()
             }
-            .run()
-            .await;
-        }
+        );
 
-        #[tokio::test]
-        async fn client_bulk_transfer_test() {
+        $test!(
+            client_bulk_transfer_test,
             Harness {
                 requests: vec![Request {
                     count: 1,
-                    request_size: 424_242_424,
+                    request_size: 424_242,
                     response_size: 1000,
                 }],
                 ..harness()
             }
-            .run()
-            .await;
-        }
+        );
+    };
+}
 
+macro_rules! tokio_test {
+    ($name:ident, $harness:expr) => {
+        #[tokio::test]
+        async fn $name() {
+            $harness.run().await;
+        }
+    };
+}
+
+macro_rules! tokio_fuzz_test {
+    () => {
         #[test]
         #[ignore = "TODO the CI currently doesn't like running these tests - need to figure out why"]
         fn fuzz_test() {
@@ -603,6 +653,23 @@ macro_rules! tests {
                         .run_with(client, server, requests);
                 });
         }
+    }
+}
+
+macro_rules! sim_test {
+    ($name:ident, $harness:expr) => {
+        #[test]
+        fn $name() {
+            sim(|| {
+                spawn_named($harness.run().primary(), "harness");
+
+                async {
+                    sleep(Duration::from_secs(120)).await;
+                    panic!("test timed out after {}", bach::time::Instant::now());
+                }
+                .spawn();
+            });
+        }
     };
 }
 
@@ -616,7 +683,8 @@ mod tcp {
         }
     }
 
-    tests!();
+    tests!(tokio_test);
+    tokio_fuzz_test!();
 }
 
 #[cfg(target_os = "linux")] // TODO linux is only working right now
@@ -630,5 +698,40 @@ mod udp {
         }
     }
 
-    tests!();
+    tests!(tokio_test);
+    tokio_fuzz_test!();
+}
+
+mod udp_sim {
+    use super::*;
+
+    fn harness() -> Harness {
+        Harness {
+            protocol: Protocol::Udp,
+            ..Default::default()
+        }
+    }
+
+    tests!(sim_test);
+
+    #[test]
+    fn fuzz_test() {
+        bolero::check!()
+            .with_generator((produce(), produce(), produce::<Vec<_>>().with().len(1..5)))
+            .cloned()
+            .with_test_time(Duration::from_secs(60))
+            .for_each(|(client, server, requests)| {
+                crate::testing::sim(|| {
+                    Harness {
+                        client,
+                        server,
+                        requests,
+                        ..harness()
+                    }
+                    .run()
+                    .primary()
+                    .spawn();
+                });
+            });
+    }
 }

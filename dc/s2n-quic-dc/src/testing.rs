@@ -8,19 +8,33 @@ pub use bach::{ext, rand};
 pub mod task {
     pub use bach::task::*;
     pub use tokio::task::yield_now;
-}
 
-pub fn spawn<F>(f: F)
-where
-    F: core::future::Future + Send + Sync + 'static,
-    F::Output: Send + 'static,
-{
-    if bach::is_active() {
-        bach::spawn(f);
-    } else {
-        tokio::spawn(f);
+    pub fn spawn<F>(f: F)
+    where
+        F: core::future::Future + Send + Sync + 'static,
+        F::Output: Send + 'static,
+    {
+        if bach::is_active() {
+            bach::spawn(f);
+        } else {
+            tokio::spawn(f);
+        }
+    }
+
+    pub fn spawn_named<F, N: core::fmt::Display>(f: F, name: N)
+    where
+        F: core::future::Future + Send + Sync + 'static,
+        F::Output: Send + 'static,
+    {
+        if bach::is_active() {
+            bach::task::spawn_named(f, name);
+        } else {
+            tokio::spawn(f);
+        }
     }
 }
+
+pub use task::spawn;
 
 pub async fn sleep(duration: Duration) {
     if bach::is_active() {
@@ -92,7 +106,13 @@ struct Uptime(tracing_subscriber::fmt::time::SystemTime);
 impl tracing_subscriber::fmt::time::FormatTime for Uptime {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
         if bach::is_active() {
-            write!(w, "{}", bach::time::Instant::now())
+            let thread = std::thread::current();
+            let name = thread.name().unwrap_or("");
+            if ["main", ""].contains(&name) {
+                write!(w, "{}", bach::time::Instant::now())
+            } else {
+                write!(w, "{} [{name}]", bach::time::Instant::now())
+            }
         } else {
             self.0.format_time(w)
         }
