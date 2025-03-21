@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    either::Either,
     event, msg,
     path::secret,
     stream::{
@@ -16,8 +17,11 @@ use std::{io, net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
 
 /// Connects using the UDP transport layer
+///
+/// Callers should send data immediately after calling this to ensure minimal
+/// credential reordering.
 #[inline]
-pub async fn connect_udp<H, Sub>(
+pub async fn connect_udp<H, Sub, P>(
     handshake: H,
     acceptor_addr: SocketAddr,
     env: &Environment<Sub>,
@@ -25,6 +29,7 @@ pub async fn connect_udp<H, Sub>(
 where
     H: core::future::Future<Output = io::Result<secret::map::Peer>>,
     Sub: event::Subscriber + Clone,
+    P: s2n_quic_core::buffer::reader::storage::Infallible,
 {
     // ensure we have a secret for the peer
     let entry = handshake.await?;
@@ -39,18 +44,19 @@ where
     };
 
     // build the stream inside the application context
-    let mut stream = stream.connect()?;
+    let stream = stream.connect()?;
 
     debug_assert_eq!(stream.protocol(), Protocol::Udp);
-
-    write_prelude(&mut stream).await?;
 
     Ok(stream)
 }
 
 /// Connects using the TCP transport layer
+///
+/// Callers should send data immediately after calling this to ensure minimal
+/// credential reordering.
 #[inline]
-pub async fn connect_tcp<H, Sub>(
+pub async fn connect_tcp<H, Sub, P>(
     handshake: H,
     acceptor_addr: SocketAddr,
     env: &Environment<Sub>,
@@ -59,6 +65,7 @@ pub async fn connect_tcp<H, Sub>(
 where
     H: core::future::Future<Output = io::Result<secret::map::Peer>>,
     Sub: event::Subscriber + Clone,
+    P: s2n_quic_core::buffer::reader::storage::Infallible,
 {
     // Race TCP handshake with the TLS handshake
     let (socket, entry) = tokio::try_join!(TcpStream::connect(acceptor_addr), handshake,)?;
@@ -89,28 +96,30 @@ where
     let stream = endpoint::open_stream(env, entry, peer, None)?;
 
     // build the stream inside the application context
-    let mut stream = stream.connect()?;
+    let stream = stream.connect()?;
 
     debug_assert_eq!(stream.protocol(), Protocol::Tcp);
-
-    write_prelude(&mut stream).await?;
 
     Ok(stream)
 }
 
 /// Connects with a pre-existing TCP stream
 ///
+/// Callers should send data immediately after calling this to ensure minimal
+/// credential reordering.
+///
 /// # Note
 ///
 /// The provided `map` must contain a shared secret for the `handshake_addr`
 #[inline]
-pub async fn connect_tcp_with<Sub>(
+pub async fn connect_tcp_with<Sub, P>(
     entry: secret::map::Peer,
     socket: TcpStream,
     env: &Environment<Sub>,
 ) -> io::Result<Stream<Sub>>
 where
     Sub: event::Subscriber + Clone,
+    P: s2n_quic_core::buffer::reader::storage::Infallible,
 {
     let local_port = socket.local_addr()?.port();
     let peer_addr = socket.peer_addr()?.into();
@@ -125,32 +134,16 @@ where
     let stream = endpoint::open_stream(env, entry, peer, None)?;
 
     // build the stream inside the application context
-    let mut stream = stream.connect()?;
+    let stream = stream.connect()?;
 
     debug_assert_eq!(stream.protocol(), Protocol::Tcp);
 
-    write_prelude(&mut stream).await?;
-
     Ok(stream)
-}
-
-#[inline]
-async fn write_prelude<Sub>(stream: &mut Stream<Sub>) -> io::Result<()>
-where
-    Sub: event::Subscriber,
-{
-    // TODO should we actually write the prelude here or should we do late sealer binding on
-    // the first packet to reduce secret reordering on the peer
-
-    stream
-        .write_from(&mut s2n_quic_core::buffer::reader::storage::Empty)
-        .await
-        .map(|_| ())
 }
 
 #[inline]
 fn recv_buffer() -> recv::shared::RecvBuffer {
     // TODO replace this with a parameter once everything is in place
     let recv_buffer = recv::buffer::Local::new(msg::recv::Message::new(9000), None);
-    recv::buffer::Either::A(recv_buffer)
+    Either::A(recv_buffer)
 }

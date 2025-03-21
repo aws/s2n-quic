@@ -8,6 +8,7 @@ use crate::{
     path::secret::{open, seal, stateless_reset},
     stream::TransportFeatures,
 };
+use core::fmt;
 pub use entry::ApplicationData;
 use s2n_quic_core::{dc, time};
 use std::{net::SocketAddr, sync::Arc};
@@ -50,6 +51,16 @@ pub(crate) use status::Dedup;
 #[derive(Clone)]
 pub struct Map {
     store: Arc<dyn Store>,
+}
+
+impl fmt::Debug for Map {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Map")
+            .field("secrets_len", &self.secrets_len())
+            .field("peers_len", &self.peers_len())
+            .field("secrets_capacity", &self.secrets_capacity())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Map {

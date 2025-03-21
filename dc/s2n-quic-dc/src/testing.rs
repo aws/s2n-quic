@@ -1,11 +1,44 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::time::Duration;
+
 pub use bach::{ext, rand};
 
 pub mod task {
     pub use bach::task::*;
     pub use tokio::task::yield_now;
+}
+
+pub fn spawn<F>(f: F)
+where
+    F: core::future::Future + Send + Sync + 'static,
+    F::Output: Send + 'static,
+{
+    if bach::is_active() {
+        bach::spawn(f);
+    } else {
+        tokio::spawn(f);
+    }
+}
+
+pub async fn sleep(duration: Duration) {
+    if bach::is_active() {
+        bach::time::sleep(duration).await;
+    } else {
+        tokio::time::sleep(duration).await;
+    }
+}
+
+pub async fn timeout<F>(duration: Duration, f: F) -> Result<F::Output, bach::time::error::Elapsed>
+where
+    F: core::future::Future,
+{
+    if bach::is_active() {
+        bach::time::timeout(duration, f).await
+    } else {
+        Ok(tokio::time::timeout(duration, f).await?)
+    }
 }
 
 pub fn assert_debug<T: core::fmt::Debug>(_v: &T) {}
@@ -70,5 +103,9 @@ impl tracing_subscriber::fmt::time::FormatTime for Uptime {
 pub fn sim(f: impl FnOnce()) {
     init_tracing();
 
-    bach::environment::default::Runtime::new().run(f);
+    // 1ms RTT
+    let net_delay = Duration::from_micros(500);
+    let queues = bach::environment::net::queue::Fixed::default().with_net_latency(net_delay);
+    let mut rt = bach::environment::default::Runtime::new().with_net_queues(Some(Box::new(queues)));
+    rt.run(f);
 }

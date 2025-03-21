@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    either::Either,
     event::{self, EndpointPublisher, IntoEvent, Subscriber},
     msg,
     path::secret,
@@ -112,7 +113,7 @@ where
             .create_connection_context(&meta, &info);
 
         let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
-        let recv_buffer = recv::buffer::Either::A(recv_buffer);
+        let recv_buffer = Either::A(recv_buffer);
 
         let peer = env::udp::Owned(remote_addr, recv_buffer);
 

@@ -13,6 +13,7 @@ use s2n_quic_core::varint::VarInt;
 
 pub mod accept;
 pub mod handshake;
+pub mod stats;
 pub mod tokio;
 pub mod udp;
 

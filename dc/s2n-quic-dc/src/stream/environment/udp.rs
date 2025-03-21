@@ -1,17 +1,67 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::{
-    environment::{Environment, Peer, SetupResult, SocketSet},
-    recv::{
-        buffer,
-        dispatch::{Control, Stream},
-        shared::RecvBuffer,
+use crate::{
+    path::secret::Map,
+    stream::{
+        environment::{Environment, Peer, SetupResult, SocketSet},
+        recv::{
+            buffer,
+            dispatch::{Control, Stream},
+            shared::RecvBuffer,
+        },
+        server::accept,
+        socket, TransportFeatures,
     },
-    socket, TransportFeatures,
+    sync::mpsc::Capacity,
 };
 use s2n_quic_core::inet::SocketAddress;
 use std::sync::Arc;
+
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct Config {
+    pub blocking: bool,
+    pub reuse_port: bool,
+    pub stream_queue: Capacity,
+    pub control_queue: Capacity,
+    pub max_packet_size: u16,
+    pub packet_count: usize,
+    pub accept_flavor: accept::Flavor,
+    /// The number of entries per worker that will be cached for queue_id lookup
+    pub credential_cache_size: u32,
+    pub workers: Option<usize>,
+    pub map: Map,
+}
+
+impl Config {
+    pub fn new(map: Map) -> Self {
+        Self {
+            blocking: false,
+            reuse_port: false,
+            // TODO tune these defaults
+            stream_queue: Capacity {
+                max: 4096,
+                initial: 256,
+            },
+
+            // set the control queue depth shallow, since we really only need the most recent ones
+            control_queue: Capacity { max: 8, initial: 8 },
+
+            // Allocate 1MB at a time
+            max_packet_size: u16::MAX,
+            packet_count: 16,
+
+            accept_flavor: accept::Flavor::default(),
+
+            // TODO tune these defaults
+            credential_cache_size: 8192,
+
+            workers: None,
+            map,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Pooled<S: socket::application::Application, W: socket::Socket> {

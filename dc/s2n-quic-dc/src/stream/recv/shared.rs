@@ -3,7 +3,9 @@
 
 use crate::{
     allocator::Allocator,
-    clock, event, msg,
+    clock,
+    either::Either,
+    event, msg,
     packet::{stream, Packet},
     stream::{
         recv::{self, buffer::Buffer as _},
@@ -30,7 +32,7 @@ use std::{
     },
 };
 
-pub type RecvBuffer = recv::buffer::Either<recv::buffer::Local, recv::buffer::Channel>;
+pub type RecvBuffer = Either<recv::buffer::Local, recv::buffer::Channel>;
 
 /// Who will send ACKs?
 #[derive(Clone, Copy, Debug, Default)]
@@ -94,7 +96,7 @@ impl State {
     ) -> Self {
         let receiver = recv::state::State::new(stream_id, params, features);
         let reassembler = Default::default();
-        let is_owned_socket = matches!(buffer, recv::buffer::Either::A(recv::buffer::Local { .. }));
+        let is_owned_socket = matches!(buffer, Either::A(recv::buffer::Local { .. }));
         let inner = Inner {
             receiver,
             reassembler,

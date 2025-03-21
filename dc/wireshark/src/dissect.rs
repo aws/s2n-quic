@@ -115,10 +115,13 @@ pub fn stream<T: Node>(
     let stream_offset = buffer.consume::<VarInt>()?;
     stream_offset.record(buffer, tree, fields.stream_offset);
 
-    if tag.has_final_offset() {
+    let final_offset = if tag.has_final_offset() {
         let final_offset = buffer.consume::<VarInt>()?;
         final_offset.record(buffer, tree, fields.final_offset);
-    }
+        Some(final_offset.value)
+    } else {
+        None
+    };
 
     let control_data_len = if tag.has_control_data() {
         let control_data_len = buffer.consume::<VarInt>()?;
@@ -153,13 +156,30 @@ pub fn stream<T: Node>(
     auth_tag.record(buffer, tree, fields.auth_tag);
 
     info.append_delim(" ");
+
     let space = if tag.packet_space().is_recovery() {
         ", SPACE=RECOVERY"
     } else {
         ""
     };
+
+    let fin = if let Some(final_offset) = final_offset {
+        let stream_end = stream_offset
+            .value
+            .checked_add(payload_len.value)
+            .unwrap_or(VarInt::MAX);
+
+        if final_offset == stream_end {
+            ", FIN"
+        } else {
+            ""
+        }
+    } else {
+        ""
+    };
+
     info.append(format_args!(
-        "Stream(ID={}{space}, PN={},{control_info} LEN={})",
+        "Stream(ID={}{space}, PN={},{control_info} LEN={}{fin})",
         key_id.value, packet_number.value, payload.len
     ));
 
