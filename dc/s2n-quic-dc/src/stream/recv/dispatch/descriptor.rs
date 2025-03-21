@@ -9,6 +9,7 @@ use super::{
 use crate::sync::ring_deque;
 use s2n_quic_core::{ensure, varint::VarInt};
 use std::{
+    cell::UnsafeCell,
     marker::PhantomData,
     ptr::NonNull,
     sync::{
@@ -22,14 +23,14 @@ use std::{
 /// Fundamentally, this is similar to something like `Arc<DescriptorInner>`. However,
 /// unlike [`Arc`] which frees back to the global allocator, a Descriptor deallocates into
 /// the backing [`FreeList`].
-pub(super) struct Descriptor<T> {
-    ptr: NonNull<DescriptorInner<T>>,
-    phantom: PhantomData<DescriptorInner<T>>,
+pub(super) struct Descriptor<T, Key> {
+    ptr: NonNull<DescriptorInner<T, Key>>,
+    phantom: PhantomData<DescriptorInner<T, Key>>,
 }
 
-impl<T: 'static> Descriptor<T> {
+impl<T: 'static, Key: 'static> Descriptor<T, Key> {
     #[inline]
-    pub(super) fn new(ptr: NonNull<DescriptorInner<T>>) -> Self {
+    pub(super) fn new(ptr: NonNull<DescriptorInner<T, Key>>) -> Self {
         Self {
             ptr,
             phantom: PhantomData,
@@ -42,7 +43,7 @@ impl<T: 'static> Descriptor<T> {
     /// the [`Self::drop_sender`] method should be used when the cloned descriptor is
     /// no longer needed.
     #[inline]
-    pub unsafe fn clone_for_sender(&self) -> Descriptor<T> {
+    pub unsafe fn clone_for_sender(&self) -> Descriptor<T, Key> {
         self.inner().senders.fetch_add(1, Ordering::Relaxed);
         Descriptor::new(self.ptr)
     }
@@ -86,8 +87,16 @@ impl<T: 'static> Descriptor<T> {
         &self.inner().control
     }
 
+    /// # Safety
+    ///
+    /// * The caller needs to guarantee the [`Descriptor`] is still allocated.
+    /// * The caller needs to have unique access to the [`Descriptor`].
+    pub unsafe fn take_key(&mut self) -> Option<Key> {
+        core::ptr::replace(self.inner().key.get(), None)
+    }
+
     #[inline]
-    fn inner(&self) -> &DescriptorInner<T> {
+    fn inner(&self) -> &DescriptorInner<T, Key> {
         unsafe { self.ptr.as_ref() }
     }
 
@@ -95,11 +104,15 @@ impl<T: 'static> Descriptor<T> {
     ///
     /// * The [`Descriptor`] needs to be marked as free of receivers
     #[inline]
-    pub unsafe fn into_receiver_pair(self) -> (Self, Self) {
+    pub unsafe fn into_receiver_pair(self, key: Option<Key>) -> (Self, Self) {
         let inner = self.inner();
 
         // open the queues back up for receiving
         inner.stream.open_receivers(&inner.control).unwrap();
+
+        // set the key on the descriptor
+        // SAFETY: the descriptor is fully owned by the caller
+        let _ = core::ptr::replace(inner.key.get(), key);
 
         probes::on_receiver_open(inner.id);
 
@@ -160,29 +173,31 @@ impl<T: 'static> Descriptor<T> {
     }
 }
 
-unsafe impl<T: Send> Send for Descriptor<T> {}
-unsafe impl<T: Sync> Sync for Descriptor<T> {}
+unsafe impl<T: Send, Key: Send> Send for Descriptor<T, Key> {}
+unsafe impl<T: Sync, Key: Sync> Sync for Descriptor<T, Key> {}
 
-pub(super) struct DescriptorInner<T> {
+pub(super) struct DescriptorInner<T, Key> {
     id: VarInt,
+    key: UnsafeCell<Option<Key>>,
     stream: Queue<T>,
     control: Queue<T>,
     /// A reference back to the free list
-    free_list: Arc<dyn FreeList<T>>,
+    free_list: Arc<dyn FreeList<T, Key>>,
     senders: AtomicUsize,
 }
 
-impl<T> DescriptorInner<T> {
+impl<T, Key> DescriptorInner<T, Key> {
     pub(super) fn new(
         id: VarInt,
         stream: ring_deque::Capacity,
         control: ring_deque::Capacity,
-        free_list: Arc<dyn FreeList<T>>,
+        free_list: Arc<dyn FreeList<T, Key>>,
     ) -> Self {
         let stream = Queue::new(stream, Half::Stream);
         let control = Queue::new(control, Half::Control);
         Self {
             id,
+            key: UnsafeCell::new(None),
             stream,
             control,
             senders: AtomicUsize::new(0),

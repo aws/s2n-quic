@@ -16,13 +16,13 @@ use std::collections::VecDeque;
 
 macro_rules! impl_recv {
     ($name:ident, $field:ident, $half:expr) => {
-        pub struct $name<T: 'static> {
-            descriptor: Descriptor<T>,
+        pub struct $name<T: 'static, Key: 'static> {
+            descriptor: Descriptor<T, Key>,
         }
 
-        impl<T: 'static> $name<T> {
+        impl<T: 'static, Key: 'static> $name<T, Key> {
             #[inline]
-            pub(super) fn new(descriptor: Descriptor<T>) -> Self {
+            pub(super) fn new(descriptor: Descriptor<T, Key>) -> Self {
                 Self { descriptor }
             }
 
@@ -101,7 +101,7 @@ macro_rules! impl_recv {
             }
         }
 
-        impl<T: 'static> fmt::Debug for $name<T> {
+        impl<T: 'static, Key: 'static> fmt::Debug for $name<T, Key> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.debug_struct(stringify!($name))
                     .field("queue_id", &self.queue_id())
@@ -109,7 +109,7 @@ macro_rules! impl_recv {
             }
         }
 
-        impl<T: 'static> Drop for $name<T> {
+        impl<T: 'static, Key: 'static> Drop for $name<T, Key> {
             #[inline]
             fn drop(&mut self) {
                 unsafe {
@@ -123,11 +123,11 @@ macro_rules! impl_recv {
 impl_recv!(Control, control_queue, Half::Control);
 impl_recv!(Stream, stream_queue, Half::Stream);
 
-pub struct Sender<T: 'static> {
-    descriptor: Descriptor<T>,
+pub struct Sender<T: 'static, Key: 'static> {
+    descriptor: Descriptor<T, Key>,
 }
 
-impl<T: 'static> Clone for Sender<T> {
+impl<T: 'static, Key: 'static> Clone for Sender<T, Key> {
     #[inline]
     fn clone(&self) -> Self {
         unsafe {
@@ -138,9 +138,9 @@ impl<T: 'static> Clone for Sender<T> {
     }
 }
 
-impl<T: 'static> Sender<T> {
+impl<T: 'static, Key: 'static> Sender<T, Key> {
     #[inline]
-    pub(super) fn new(descriptor: Descriptor<T>) -> Self {
+    pub(super) fn new(descriptor: Descriptor<T, Key>) -> Self {
         Self { descriptor }
     }
 
@@ -163,7 +163,7 @@ impl<T: 'static> Sender<T> {
     }
 }
 
-impl<T: 'static> Drop for Sender<T> {
+impl<T: 'static, Key: 'static> Drop for Sender<T, Key> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
