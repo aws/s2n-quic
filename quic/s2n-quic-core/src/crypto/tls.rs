@@ -132,7 +132,10 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
 
     /// Transfer application context from TLS connection to quic connection
     #[cfg(feature = "alloc")]
-    fn on_application_context(&mut self, _context: Option<Box<dyn Any + Send + Sync>>);
+    fn on_application_context(
+        &mut self,
+        _context: Option<alloc::boxed::Box<dyn Any + Send + Sync>>,
+    );
     fn on_tls_exporter_ready(
         &mut self,
         session: &impl TlsSession,
