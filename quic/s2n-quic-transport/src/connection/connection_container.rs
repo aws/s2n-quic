@@ -311,7 +311,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         self.api_read_call(|conn| Ok(conn.application_protocol()))
     }
     fn take_application_context(
-        &mut self,
+        &self,
     ) -> Result<Option<Box<dyn Any + Send + Sync>>, connection::Error> {
         self.api_write_call(|conn| Ok(conn.take_application_context()))
     }

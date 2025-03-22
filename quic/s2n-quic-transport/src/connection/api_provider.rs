@@ -60,7 +60,7 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
     fn application_protocol(&self) -> Result<Bytes, connection::Error>;
 
     fn take_application_context(
-        &mut self,
+        &self,
     ) -> Result<Option<Box<dyn Any + Send + Sync>>, connection::Error>;
 
     fn id(&self) -> u64;
