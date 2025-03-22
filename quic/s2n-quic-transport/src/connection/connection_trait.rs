@@ -15,7 +15,10 @@ use crate::{
     stream,
 };
 use bytes::Bytes;
-use core::task::{Context, Poll};
+use core::{
+    any::Any,
+    task::{Context, Poll},
+};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
@@ -516,6 +519,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             >,
             &path::Path<Self::Config>,
         );
+
+    fn take_application_context(&mut self) -> Option<Box<dyn Any + Send + Sync>>;
 }
 
 /// A lock that synchronizes connection state between the QUIC endpoint thread and application
