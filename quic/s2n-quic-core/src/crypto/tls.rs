@@ -3,10 +3,10 @@
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
-use std::any::Any;
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::fmt::Debug;
+use std::any::Any;
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
 
 mod error;

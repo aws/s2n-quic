@@ -16,7 +16,6 @@ use core::{
     ops::RangeInclusive,
     task::{Poll, Waker},
 };
-use std::any::Any;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application::ServerName,
@@ -35,6 +34,7 @@ use s2n_quic_core::{
     transport,
     varint::VarInt,
 };
+use std::any::Any;
 
 mod application;
 mod crypto_stream;
