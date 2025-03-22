@@ -28,8 +28,6 @@ pub struct Config {
     pub max_packet_size: u16,
     pub packet_count: usize,
     pub accept_flavor: accept::Flavor,
-    /// The number of entries per worker that will be cached for queue_id lookup
-    pub credential_cache_size: u32,
     pub workers: Option<usize>,
     pub map: Map,
 }
@@ -53,9 +51,6 @@ impl Config {
             packet_count: 16,
 
             accept_flavor: accept::Flavor::default(),
-
-            // TODO tune these defaults
-            credential_cache_size: 8192,
 
             workers: None,
             map,

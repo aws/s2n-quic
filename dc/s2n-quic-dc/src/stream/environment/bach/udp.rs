@@ -40,7 +40,9 @@ where
     ) -> SetupResult<Self::ReadWorkerSocket, Self::WriteWorkerSocket> {
         let peer_addr = self.0;
         let recv_pool = env.recv_pool.as_ref().expect("pool not configured");
-        let (control, stream, application_socket, worker_socket) = recv_pool.alloc();
+        // the client doesn't need to associate credentials since it's already chosen a queue_id
+        let credentials = None;
+        let (control, stream, application_socket, worker_socket) = recv_pool.alloc(credentials);
         crate::stream::environment::udp::Pooled {
             peer_addr,
             control,

@@ -3,6 +3,7 @@
 
 use core::{
     fmt,
+    hash::Hash,
     ops::{Deref, DerefMut},
 };
 use s2n_codec::{
@@ -87,6 +88,16 @@ zerocopy_value_codec!(Id);
 pub struct Credentials {
     pub id: Id,
     pub key_id: KeyId,
+}
+
+impl Hash for Credentials {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let mut v = self.id.to_hash() as u128;
+        v <<= 64;
+        v |= self.key_id.as_u64() as u128;
+        v.hash(state);
+    }
 }
 
 decoder_value!(

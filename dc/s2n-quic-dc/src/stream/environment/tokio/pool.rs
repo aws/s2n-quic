@@ -3,6 +3,7 @@
 
 use super::udp::{ApplicationSocket, RecvSocket, WorkerSocket};
 use crate::{
+    credentials::Credentials,
     event,
     socket::recv::{pool::Pool as Packets, router::Router, udp},
     stream::{
@@ -127,7 +128,6 @@ impl Pool {
                     queues.clone(),
                     app_socket,
                     worker_socket,
-                    config.credential_cache_size,
                 );
 
                 let router = queues.dispatcher().with_map(config.map.clone());
@@ -148,11 +148,14 @@ impl Pool {
         })
     }
 
-    pub fn alloc(&self) -> (Control, Stream, ApplicationSocket, WorkerSocket) {
+    pub fn alloc(
+        &self,
+        credentials: Option<&Credentials>,
+    ) -> (Control, Stream, ApplicationSocket, WorkerSocket) {
         let idx = self.current.fetch_add(1, Ordering::Relaxed);
         let idx = idx & self.mask;
         let socket = &self.sockets[idx];
-        let (control, stream) = socket.queue.lock().unwrap().alloc_or_grow();
+        let (control, stream) = socket.queue.lock().unwrap().alloc_or_grow(credentials);
         let app_socket = socket.application_socket.clone();
         let worker_socket = socket.worker_socket.clone();
 

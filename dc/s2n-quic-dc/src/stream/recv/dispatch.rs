@@ -1,13 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{credentials, packet, socket::recv::descriptor as desc, sync::ring_deque};
+use crate::{
+    credentials::{self, Credentials},
+    packet,
+    socket::recv::descriptor as desc,
+    sync::ring_deque,
+};
 use s2n_quic_core::{inet::SocketAddress, varint::VarInt};
 use tracing::debug;
 
 mod descriptor;
 mod free_list;
 mod handle;
+mod keys;
 mod pool;
 mod probes;
 mod queue;
@@ -23,14 +29,14 @@ mod tests;
 const PAGE_SIZE: usize = if cfg!(debug_assertions) { 8 } else { 256 };
 
 pub type Error = queue::Error;
-pub type Control = handle::Control<desc::Filled>;
-pub type Stream = handle::Stream<desc::Filled>;
+pub type Control = handle::Control<desc::Filled, Credentials>;
+pub type Stream = handle::Stream<desc::Filled, Credentials>;
 
 /// A queue allocator for registering a receiver to process packets
 /// for a given ID.
 #[derive(Clone)]
 pub struct Allocator {
-    pool: pool::Pool<desc::Filled, PAGE_SIZE>,
+    pool: pool::Pool<desc::Filled, Credentials, PAGE_SIZE>,
 }
 
 impl Allocator {
@@ -70,18 +76,19 @@ impl Allocator {
     pub fn dispatcher(&self) -> Dispatch {
         Dispatch {
             senders: self.pool.senders(),
+            keys: self.pool.keys(),
             is_open: true,
         }
     }
 
     #[inline]
-    pub fn alloc(&self) -> Option<(Control, Stream)> {
-        self.pool.alloc()
+    pub fn alloc(&self, key: Option<&Credentials>) -> Option<(Control, Stream)> {
+        self.pool.alloc(key)
     }
 
     #[inline]
-    pub fn alloc_or_grow(&mut self) -> (Control, Stream) {
-        self.pool.alloc_or_grow()
+    pub fn alloc_or_grow(&mut self, key: Option<&Credentials>) -> (Control, Stream) {
+        self.pool.alloc_or_grow(key)
     }
 }
 
@@ -89,7 +96,8 @@ impl Allocator {
 /// there is a registered receiver.
 #[derive(Clone)]
 pub struct Dispatch {
-    senders: sender::Senders<desc::Filled, PAGE_SIZE>,
+    senders: sender::Senders<desc::Filled, Credentials, PAGE_SIZE>,
+    keys: keys::Keys<Credentials>,
     is_open: bool,
 }
 
@@ -158,6 +166,11 @@ impl Dispatch {
         }
 
         res
+    }
+
+    #[inline]
+    pub fn queue_id_for_key(&self, key: &Credentials) -> Option<VarInt> {
+        self.keys.get(key)
     }
 }
 
