@@ -61,7 +61,8 @@ use s2n_quic_core::{
     time::{timer, Timestamp},
     transport,
 };
-use std::any::Any;
+
+use core::any::Any;
 
 /// Possible states for handing over a connection from the endpoint to the
 /// application.

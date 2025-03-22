@@ -11,6 +11,7 @@ use crate::{
 use alloc::sync::Arc;
 use bytes::Bytes;
 use core::{
+    any::Any,
     sync::atomic::AtomicUsize,
     task::{Context, Poll},
 };
@@ -21,7 +22,6 @@ use s2n_quic_core::{
     query::{Query, QueryMut},
     stream::{ops, StreamId, StreamType},
 };
-use std::any::Any;
 
 /// A dynamically dispatched connection API
 pub(crate) type ConnectionApi = Arc<dyn ConnectionApiProvider>;

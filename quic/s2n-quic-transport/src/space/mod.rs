@@ -12,6 +12,7 @@ use crate::{
 };
 use bytes::Bytes;
 use core::{
+    any::Any,
     fmt,
     ops::RangeInclusive,
     task::{Poll, Waker},
@@ -34,7 +35,6 @@ use s2n_quic_core::{
     transport,
     varint::VarInt,
 };
-use std::any::Any;
 
 mod application;
 mod crypto_stream;

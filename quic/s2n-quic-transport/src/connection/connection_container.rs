@@ -20,6 +20,7 @@ use crate::{
 use alloc::{collections::BTreeMap, sync::Arc};
 use bytes::Bytes;
 use core::{
+    any::Any,
     cell::Cell,
     marker::PhantomData,
     ops::Deref,
@@ -41,7 +42,6 @@ use s2n_quic_core::{
     transport,
 };
 use smallvec::SmallVec;
-use std::any::Any;
 
 // Intrusive list adapter for managing the list of `done` connections
 intrusive_adapter!(DoneConnectionsAdapter<C, L> = Arc<ConnectionNode<C, L>>: ConnectionNode<C, L> {
@@ -310,7 +310,6 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
     fn application_protocol(&self) -> Result<Bytes, connection::Error> {
         self.api_read_call(|conn| Ok(conn.application_protocol()))
     }
-
     fn take_application_context(
         &mut self,
     ) -> Result<Option<Box<dyn Any + Send + Sync>>, connection::Error> {

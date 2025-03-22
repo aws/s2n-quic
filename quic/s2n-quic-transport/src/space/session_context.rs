@@ -12,7 +12,7 @@ use crate::{
     stream,
 };
 use bytes::Bytes;
-use core::{ops::Not, task::Waker};
+use core::{any::Any, ops::Not, task::Waker};
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
@@ -46,7 +46,6 @@ use s2n_quic_core::{
         Error,
     },
 };
-use std::any::Any;
 
 pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPublisher> {
     pub now: Timestamp,

@@ -15,7 +15,10 @@ use crate::{
     stream,
 };
 use bytes::Bytes;
-use core::task::{Context, Poll};
+use core::{
+    any::Any,
+    task::{Context, Poll},
+};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
@@ -36,7 +39,6 @@ use s2n_quic_core::{
     query,
     time::Timestamp,
 };
-use std::any::Any;
 
 /// A trait which represents an internally used `Connection`
 pub trait ConnectionTrait: 'static + Send + Sized {
@@ -517,6 +519,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             >,
             &path::Path<Self::Config>,
         );
+
     fn take_application_context(&mut self) -> Option<Box<dyn Any + Send + Sync>>;
 }
 
