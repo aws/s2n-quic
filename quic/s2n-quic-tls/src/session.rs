@@ -3,7 +3,7 @@
 
 use crate::callback::{self, Callback};
 use bytes::BytesMut;
-use core::{any::Any, marker::PhantomData, task::Poll};
+use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
     crypto::{tls, tls::CipherSuite, CryptoSuite},

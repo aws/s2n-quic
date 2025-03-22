@@ -808,6 +808,6 @@ where
     fn waker(&self) -> &Waker {
         &self.waker
     }
-
+    #[cfg(feature = "alloc")]
     fn on_application_context(&mut self, _context: Option<Box<dyn core::any::Any + Send + Sync>>) {}
 }

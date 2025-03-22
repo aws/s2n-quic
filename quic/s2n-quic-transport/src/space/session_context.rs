@@ -720,6 +720,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
         Ok(())
     }
+
     fn on_application_context(&mut self, context: Option<Box<dyn Any + Send + Sync>>) {
         *self.application_context = context;
     }
