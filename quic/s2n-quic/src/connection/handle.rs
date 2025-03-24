@@ -169,6 +169,14 @@ macro_rules! impl_handle_api {
             self.0.application_protocol()
         }
 
+        /// Returns the application context the connection is using.
+        #[inline]
+        pub fn take_application_context(
+            &mut self,
+        ) -> $crate::connection::Result<Option<std::boxed::Box<dyn core::any::Any + Send + Sync>>> {
+            self.0.take_application_context()
+        }
+
         /// Returns the internal identifier for the [`Connection`](`crate::Connection`)
         ///
         /// Note: This internal identifier is not the same as the connection ID included in packet
