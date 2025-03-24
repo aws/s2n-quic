@@ -310,10 +310,10 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
     fn application_protocol(&self) -> Result<Bytes, connection::Error> {
         self.api_read_call(|conn| Ok(conn.application_protocol()))
     }
-    fn take_application_context(
-        &self,
-    ) -> Result<Option<Box<dyn Any + Send + Sync>>, connection::Error> {
-        self.api_write_call(|conn| Ok(conn.take_application_context()))
+    fn take_application_context(&self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.api_write_call(|conn| Ok::<_, connection::Error>(conn.take_application_context()))
+            .ok()
+            .flatten()
     }
 
     fn id(&self) -> u64 {

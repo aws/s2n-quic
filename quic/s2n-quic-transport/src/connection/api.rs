@@ -176,9 +176,7 @@ impl Connection {
         self.api.application_protocol()
     }
     #[inline]
-    pub fn take_application_context(
-        &self,
-    ) -> Result<Option<Box<dyn Any + Send + Sync>>, connection::Error> {
+    pub fn take_application_context(&self) -> Option<Box<dyn Any + Send + Sync>> {
         self.api.take_application_context()
     }
     #[inline]
