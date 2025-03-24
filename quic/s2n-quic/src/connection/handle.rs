@@ -173,7 +173,7 @@ macro_rules! impl_handle_api {
         #[inline]
         pub fn take_application_context(
             &mut self,
-        ) -> $crate::connection::Result<Option<std::boxed::Box<dyn core::any::Any + Send + Sync>>> {
+        ) -> Option<std::boxed::Box<dyn core::any::Any + Send + Sync>> {
             self.0.take_application_context()
         }
 
