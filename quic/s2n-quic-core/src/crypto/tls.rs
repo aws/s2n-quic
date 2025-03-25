@@ -24,6 +24,15 @@ pub struct ApplicationParameters<'a> {
     pub transport_parameters: &'a [u8],
 }
 
+/// Holds the named group used for key exchange in the TLS handshake.
+///
+/// `contains_kem` is `true` if the named group contains a key encapsulation mechanism.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NamedGroup {
+    pub group_name: &'static str,
+    pub contains_kem: bool,
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum TlsExportError {
@@ -121,6 +130,11 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     fn on_application_protocol(
         &mut self,
         application_protocol: Bytes,
+    ) -> Result<(), crate::transport::Error>;
+
+    fn on_key_exchange_group(
+        &mut self,
+        named_group: NamedGroup,
     ) -> Result<(), crate::transport::Error>;
 
     //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.1

@@ -165,9 +165,9 @@ static FIN: Bytes = Bytes::from_static(b"FIN");
 static NULL: Bytes = Bytes::from_static(b"NULL");
 
 pub mod client {
-    use core::marker::PhantomData;
-
     use super::*;
+    use crate::crypto::tls::NamedGroup;
+    use core::marker::PhantomData;
 
     #[derive(Debug)]
     pub enum Session<T> {
@@ -214,6 +214,10 @@ pub mod client {
                         }
 
                         context.on_application_protocol(NULL.clone())?;
+                        context.on_key_exchange_group(NamedGroup {
+                            group_name: "null_group",
+                            contains_kem: false,
+                        })?;
 
                         context.on_one_rtt_keys(
                             key::NoCrypto,
@@ -238,8 +242,8 @@ pub mod client {
 }
 
 pub mod server {
-
     use super::*;
+    use crate::crypto::tls::NamedGroup;
 
     #[derive(Debug)]
     pub enum TlsSession<T> {
@@ -273,6 +277,10 @@ pub mod server {
                         context.send_handshake(FIN.clone());
 
                         context.on_application_protocol(NULL.clone())?;
+                        context.on_key_exchange_group(NamedGroup {
+                            group_name: "null_group",
+                            contains_kem: false,
+                        })?;
                         // We just clone and set it, in real user case, you can put anything you want.
                         if let Some(ctx) = ctx {
                             context.on_tls_context(
