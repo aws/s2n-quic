@@ -19,7 +19,7 @@ use bytes::Bytes;
 use core::{mem::size_of, task::Poll};
 
 #[derive(Debug)]
-pub struct Endpoint(());
+pub struct Endpoint(pub UserProvidedTlsContext);
 
 impl Default for Endpoint {
     #[track_caller]
@@ -73,7 +73,7 @@ impl Default for Endpoint {
             eprintln!("                  ==============================");
         }
 
-        Self(())
+        Self(UserProvidedTlsContext::default())
     }
 }
 
@@ -86,8 +86,11 @@ impl crypto::tls::Endpoint for Endpoint {
         transport_parameters: &Params,
     ) -> Self::Session {
         let params = transport_parameters.encode_to_vec().into();
-        Session::Server(server::Session::Init {
-            transport_parameters: params,
+        Session::Server(server::TlsSession {
+            inner: server::TlsServerSession::Init {
+                transport_parameters: params,
+            },
+            ctx: self.0.clone(),
         })
     }
 
@@ -114,7 +117,7 @@ impl crypto::tls::Endpoint for Endpoint {
 #[derive(Debug)]
 pub enum Session {
     Client(client::Session),
-    Server(server::Session),
+    Server(server::TlsSession),
 }
 
 impl crypto::CryptoSuite for Session {
@@ -227,25 +230,48 @@ pub mod client {
         }
     }
 }
+#[derive(Debug, Default, Clone)]
+pub struct UserProvidedTlsContext {
+    pub conf: String,
+}
 pub mod server {
+    use core::ops::{Deref, DerefMut};
+
     use super::*;
 
     #[derive(Debug)]
-    pub enum Session {
+    pub struct TlsSession {
+        pub inner: TlsServerSession,
+        pub ctx: UserProvidedTlsContext,
+    }
+    impl Deref for TlsSession {
+        type Target = TlsServerSession;
+
+        fn deref(&self) -> &Self::Target {
+            &self.inner
+        }
+    }
+    impl DerefMut for TlsSession {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.inner
+        }
+    }
+    #[derive(Debug)]
+    pub enum TlsServerSession {
         Init { transport_parameters: Bytes },
         WaitingComplete,
         Complete,
     }
 
-    impl Session {
+    impl TlsSession {
         #[inline]
         pub fn poll<C: tls::Context<super::Session>>(
             &mut self,
             context: &mut C,
         ) -> Poll<Result<(), transport::Error>> {
             loop {
-                match self {
-                    Self::Init {
+                match &mut self.inner {
+                    TlsServerSession::Init {
                         ref mut transport_parameters,
                     } => {
                         let client_params = match context.receive_initial(None) {
@@ -258,6 +284,8 @@ pub mod server {
                         context.send_handshake(FIN.clone());
 
                         context.on_application_protocol(NULL.clone())?;
+                        // We just clone and set it, in real user case, you can put anything you want.
+                        context.on_tls_context(Some(Box::new(self.ctx.clone())));
 
                         context.on_one_rtt_keys(
                             key::NoCrypto,
@@ -269,19 +297,19 @@ pub mod server {
 
                         context.on_server_name(LOCALHOST.clone())?;
 
-                        *self = Self::WaitingComplete;
+                        self.inner = TlsServerSession::WaitingComplete;
                     }
-                    Self::WaitingComplete => {
+                    TlsServerSession::WaitingComplete => {
                         if context.receive_handshake(None).is_none() {
                             return core::task::Poll::Pending;
                         }
 
-                        *self = Self::Complete;
+                        self.inner = TlsServerSession::Complete;
                         context.on_handshake_complete()?;
 
                         return Ok(()).into();
                     }
-                    Self::Complete => return Ok(()).into(),
+                    TlsServerSession::Complete => return Ok(()).into(),
                 }
             }
         }
