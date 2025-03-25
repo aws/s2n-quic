@@ -1959,7 +1959,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     }
 
     fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send + Sync>> {
-        self.space_manager.application_context.take()
+        self.space_manager.tls_context.take()
     }
 
     fn ping(&mut self) -> Result<(), connection::Error> {
