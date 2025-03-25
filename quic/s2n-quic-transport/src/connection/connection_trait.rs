@@ -519,20 +519,13 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             >,
             &path::Path<Self::Config>,
         );
-    /// Take TLS context came from TLS layer to application layer.
-    ///
-    /// Calling it a second time will always return None so applications should store it somewhere.
-    ///
-    /// # Example
-    /// It's useful when you implement your own TLS provider. Some HTTP/3 server need more
-    /// information from TLS layer to decide which configuration to apply, So you can
-    ///
-    /// 1. Create own TLS provider, in that, parse TLS manually, set tls context by
-    /// `context.on_tls_context(Box::new(MyContext{}))`
-    /// 2. After `let connection = server.accept().await` returned, take
-    /// context by `connection.take_tls_context()`.
-    ///
-    /// And then do your rest works. For more usage, see `tests/tls_context.rs`
+    /// Takes the context provided by the TLS provider.  
+    ///  
+    /// This functionality is useful when you need to pass information from the TLS provider to the  
+    /// application. This could include things like certificate information or application-specific data.  
+    ///  
+    /// Calling this function a second time will always return `None` so applications should
+    /// store the context elsewhere if it is needed in multiple locations.  
     fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send>>;
 }
 

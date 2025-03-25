@@ -19,8 +19,12 @@ use bytes::Bytes;
 use core::{any::Any, mem::size_of, task::Poll};
 
 #[derive(Debug)]
-pub struct Endpoint<T = ()>(pub Option<T>);
-
+pub struct Endpoint<T = ()>(Option<T>);
+impl<T> Endpoint<T> {
+    pub fn new(ctx: Option<T>) -> Self {
+        Endpoint(ctx)
+    }
+}
 impl<T> Default for Endpoint<T> {
     #[track_caller]
     fn default() -> Self {
@@ -232,10 +236,7 @@ pub mod client {
         }
     }
 }
-#[derive(Debug, Default, Clone)]
-pub struct UserProvidedTlsContext {
-    pub conf: String,
-}
+
 pub mod server {
 
     use super::*;
@@ -273,10 +274,11 @@ pub mod server {
 
                         context.on_application_protocol(NULL.clone())?;
                         // We just clone and set it, in real user case, you can put anything you want.
-                        context.on_tls_context(
-                            ctx.as_ref()
-                                .map(|f| Box::new(f.clone()) as Box<dyn Any + Send + 'static>),
-                        );
+                        if let Some(ctx) = ctx {
+                            context.on_tls_context(
+                                Box::new(ctx.clone()) as Box<dyn Any + Send + 'static>
+                            );
+                        }
 
                         context.on_one_rtt_keys(
                             key::NoCrypto,

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic_core::crypto::tls::null::{self, UserProvidedTlsContext};
+use s2n_quic_core::crypto::tls::null;
 
 use super::*;
 use crate::{provider::tls::Provider, stream::PeerStream};
@@ -22,12 +22,16 @@ impl Provider for NoTlsProvider {
     type Error = String;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
-        Ok(null::Endpoint(Some(self.ctx.clone())))
+        Ok(Self::Server::new(Some(self.ctx.clone())))
     }
 
     fn start_client(self) -> Result<Self::Client, Self::Error> {
         Ok(Self::Client::default())
     }
+}
+#[derive(Debug, Default, Clone)]
+pub struct UserProvidedTlsContext {
+    pub conf: String,
 }
 
 #[test]

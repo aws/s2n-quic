@@ -169,20 +169,13 @@ macro_rules! impl_handle_api {
             self.0.application_protocol()
         }
 
-        /// Take TLS context came from TLS layer to application layer.
+        /// Takes the context provided by the TLS provider.
         ///
-        /// Calling it a second time will always return None so applications should store it somewhere.
+        /// This functionality is useful when you need to pass information from the TLS provider to the
+        /// application. This could include things like certificate information or application-specific data.
         ///
-        /// # Example
-        /// It's useful when you implement your own TLS provider. Some HTTP/3 server need more
-        /// information from TLS layer to decide which configuration to apply, So you can
-        ///
-        /// 1. Create own TLS provider, in that, parse TLS manually, set tls context by
-        /// `context.on_tls_context(Box::new(MyContext{}))`
-        /// 2. After `let connection = server.accept().await` returned, take
-        /// context by `connection.take_tls_context()`.
-        ///
-        /// And then do your rest works. For more usage, see `tests/tls_context.rs`
+        /// Calling this function a second time will always return `None` so applications should
+        /// store the context elsewhere if it is needed in multiple locations.
         #[inline]
         pub fn take_tls_context(&mut self) -> Option<std::boxed::Box<dyn core::any::Any + Send>> {
             self.0.take_tls_context()

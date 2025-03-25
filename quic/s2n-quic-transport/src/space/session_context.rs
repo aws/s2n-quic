@@ -721,7 +721,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         Ok(())
     }
 
-    fn on_tls_context(&mut self, context: Option<Box<dyn Any + Send>>) {
-        *self.tls_context = context;
+    fn on_tls_context(&mut self, context: Box<dyn Any + Send>) {
+        *self.tls_context = Some(context);
     }
 }
