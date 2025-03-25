@@ -40,6 +40,7 @@ mod platform_events;
 mod pto;
 mod self_test;
 mod skip_packets;
+mod tls_context;
 
 // TODO: https://github.com/aws/s2n-quic/issues/1726
 //

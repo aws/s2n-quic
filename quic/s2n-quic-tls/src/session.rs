@@ -157,8 +157,8 @@ impl tls::Session for Session {
                 }
                 // TODO Add new s2n-tls new api, take and put in quic::connection
                 // let ctx: Option<Box<dyn Any + Send + Sync>> =
-                //     self.connection.take_application_context();
-                // context.on_application_context(ctx);
+                //     self.connection.take_tls_context();
+                // context.on_tls_context(ctx);
                 Poll::Ready(Ok(()))
             }
             Poll::Ready(Err(e)) => Poll::Ready(Err(e

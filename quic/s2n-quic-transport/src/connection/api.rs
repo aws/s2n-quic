@@ -176,8 +176,8 @@ impl Connection {
         self.api.application_protocol()
     }
     #[inline]
-    pub fn take_application_context(&self) -> Option<Box<dyn Any + Send + Sync>> {
-        self.api.take_application_context()
+    pub fn take_tls_context(&self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.api.take_tls_context()
     }
     #[inline]
     pub fn id(&self) -> u64 {

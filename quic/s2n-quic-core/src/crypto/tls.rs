@@ -130,12 +130,9 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     //# peer's Finished message.
     fn on_handshake_complete(&mut self) -> Result<(), crate::transport::Error>;
 
-    /// Transfer application context from TLS connection to quic connection
+    /// Set TLS context and transfer from TLS provider to application layer.
     #[cfg(feature = "alloc")]
-    fn on_application_context(
-        &mut self,
-        _context: Option<alloc::boxed::Box<dyn Any + Send + Sync>>,
-    );
+    fn on_tls_context(&mut self, _context: Option<alloc::boxed::Box<dyn Any + Send + Sync>>);
     fn on_tls_exporter_ready(
         &mut self,
         session: &impl TlsSession,

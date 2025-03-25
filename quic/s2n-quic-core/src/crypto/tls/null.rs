@@ -227,7 +227,6 @@ pub mod client {
         }
     }
 }
-
 pub mod server {
     use super::*;
 
@@ -259,6 +258,9 @@ pub mod server {
                         context.send_handshake(FIN.clone());
 
                         context.on_application_protocol(NULL.clone())?;
+                        context.on_tls_context(Some(Box::new(UserProvidedTlsContext {
+                            conf: "user defined TLS provider context passed to quic::connection::Connection".into(),
+                        })));
 
                         context.on_one_rtt_keys(
                             key::NoCrypto,
@@ -286,6 +288,9 @@ pub mod server {
                 }
             }
         }
+    }
+    pub struct UserProvidedTlsContext {
+        pub conf: String,
     }
 }
 

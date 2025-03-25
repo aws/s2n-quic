@@ -171,10 +171,10 @@ macro_rules! impl_handle_api {
 
         /// Returns the application context the connection is using.
         #[inline]
-        pub fn take_application_context(
+        pub fn take_tls_context(
             &mut self,
         ) -> Option<std::boxed::Box<dyn core::any::Any + Send + Sync>> {
-            self.0.take_application_context()
+            self.0.take_tls_context()
         }
 
         /// Returns the internal identifier for the [`Connection`](`crate::Connection`)

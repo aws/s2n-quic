@@ -63,7 +63,7 @@ impl connection::Trait for TestConnection {
     fn new(_params: connection::Parameters<Self::Config>) -> Result<Self, connection::Error> {
         Ok(Self::default())
     }
-    fn take_application_context(&mut self) -> Option<Box<dyn Any + Send + Sync>> {
+    fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send + Sync>> {
         todo!()
     }
     fn internal_connection_id(&self) -> InternalConnectionId {
