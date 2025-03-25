@@ -186,7 +186,7 @@ macro_rules! impl_handle_api {
         #[inline]
         pub fn take_tls_context(
             &mut self,
-        ) -> Option<std::boxed::Box<dyn core::any::Any + Send + Sync>> {
+        ) -> Option<std::boxed::Box<dyn core::any::Any + Send>> {
             self.0.take_tls_context()
         }
 

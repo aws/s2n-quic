@@ -68,7 +68,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub datagram: &'a mut Config::DatagramEndpoint,
     pub dc: &'a mut Config::DcEndpoint,
     pub limits_endpoint: &'a mut Config::ConnectionLimits,
-    pub tls_context: &'a mut Option<Box<dyn Any + Send + Sync>>,
+    pub tls_context: &'a mut Option<Box<dyn Any + Send>>,
 }
 
 impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'_, Config, Pub> {
@@ -721,7 +721,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         Ok(())
     }
 
-    fn on_tls_context(&mut self, context: Option<Box<dyn Any + Send + Sync>>) {
+    fn on_tls_context(&mut self, context: Option<Box<dyn Any + Send>>) {
         *self.tls_context = context;
     }
 }

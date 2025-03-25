@@ -132,7 +132,7 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
 
     /// Set TLS context and transfer from TLS provider to application layer.
     #[cfg(feature = "alloc")]
-    fn on_tls_context(&mut self, _context: Option<alloc::boxed::Box<dyn Any + Send + Sync>>);
+    fn on_tls_context(&mut self, _context: Option<alloc::boxed::Box<dyn Any + Send>>);
     fn on_tls_exporter_ready(
         &mut self,
         session: &impl TlsSession,

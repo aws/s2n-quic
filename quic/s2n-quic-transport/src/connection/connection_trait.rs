@@ -533,7 +533,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     /// context by `connection.take_tls_context()`.
     ///
     /// And then do your rest works. For more usage, see `tests/tls_context.rs`
-    fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send + Sync>>;
+    fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send>>;
 }
 
 /// A lock that synchronizes connection state between the QUIC endpoint thread and application

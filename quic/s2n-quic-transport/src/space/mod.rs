@@ -64,7 +64,7 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     retry_cid: Option<Box<PeerId>>,
     initial: Option<Box<InitialSpace<Config>>>,
     handshake: Option<Box<HandshakeSpace<Config>>>,
-    pub tls_context: Option<Box<dyn Any + Send + Sync>>,
+    pub tls_context: Option<Box<dyn Any + Send>>,
     application: Option<Box<ApplicationSpace<Config>>>,
     zero_rtt_crypto:
         Option<Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>>,

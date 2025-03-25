@@ -1958,7 +1958,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.space_manager.application_protocol.clone()
     }
 
-    fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send + Sync>> {
+    fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send>> {
         self.space_manager.tls_context.take()
     }
 
