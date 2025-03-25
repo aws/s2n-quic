@@ -15,7 +15,10 @@ use crate::{
     stream,
 };
 use bytes::Bytes;
-use core::task::{Context, Poll};
+use core::{
+    any::Any,
+    task::{Context, Poll},
+};
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
     application,
@@ -516,6 +519,14 @@ pub trait ConnectionTrait: 'static + Send + Sized {
             >,
             &path::Path<Self::Config>,
         );
+    /// Takes the context provided by the TLS provider.  
+    ///  
+    /// This functionality is useful when you need to pass information from the TLS provider to the  
+    /// application. This could include things like certificate information or application-specific data.  
+    ///  
+    /// Calling this function a second time will always return `None` so applications should
+    /// store the context elsewhere if it is needed in multiple locations.  
+    fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send>>;
 }
 
 /// A lock that synchronizes connection state between the QUIC endpoint thread and application

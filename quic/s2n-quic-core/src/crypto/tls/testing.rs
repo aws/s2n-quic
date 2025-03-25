@@ -808,4 +808,7 @@ where
     fn waker(&self) -> &Waker {
         &self.waker
     }
+    /// Set tls context to [`quic::connection::Connection`]
+    #[cfg(feature = "alloc")]
+    fn on_tls_context(&mut self, _context: Box<dyn core::any::Any + Send>) {}
 }

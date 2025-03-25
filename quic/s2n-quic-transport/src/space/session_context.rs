@@ -12,7 +12,7 @@ use crate::{
     stream,
 };
 use bytes::Bytes;
-use core::{ops::Not, task::Waker};
+use core::{any::Any, ops::Not, task::Waker};
 use s2n_codec::{DecoderBuffer, DecoderValue};
 use s2n_quic_core::{
     ack,
@@ -68,6 +68,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub datagram: &'a mut Config::DatagramEndpoint,
     pub dc: &'a mut Config::DcEndpoint,
     pub limits_endpoint: &'a mut Config::ConnectionLimits,
+    pub tls_context: &'a mut Option<Box<dyn Any + Send>>,
 }
 
 impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'_, Config, Pub> {
@@ -718,5 +719,9 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         }
 
         Ok(())
+    }
+
+    fn on_tls_context(&mut self, context: Box<dyn Any + Send>) {
+        *self.tls_context = Some(context);
     }
 }

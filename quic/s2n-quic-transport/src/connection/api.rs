@@ -9,6 +9,7 @@ use crate::{
 };
 use bytes::Bytes;
 use core::{
+    any::Any,
     fmt,
     sync::atomic::{self, Ordering},
     task::{Context, Poll},
@@ -174,7 +175,10 @@ impl Connection {
     pub fn application_protocol(&self) -> Result<Bytes, connection::Error> {
         self.api.application_protocol()
     }
-
+    #[inline]
+    pub fn take_tls_context(&self) -> Option<Box<dyn Any + Send>> {
+        self.api.take_tls_context()
+    }
     #[inline]
     pub fn id(&self) -> u64 {
         self.api.id()

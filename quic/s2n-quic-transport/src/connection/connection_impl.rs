@@ -62,6 +62,8 @@ use s2n_quic_core::{
     transport,
 };
 
+use core::any::Any;
+
 /// Possible states for handing over a connection from the endpoint to the
 /// application.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -1954,6 +1956,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     fn application_protocol(&self) -> Bytes {
         self.space_manager.application_protocol.clone()
+    }
+
+    fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send>> {
+        self.space_manager.tls_context.take()
     }
 
     fn ping(&mut self) -> Result<(), connection::Error> {

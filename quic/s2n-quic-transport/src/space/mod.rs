@@ -12,6 +12,7 @@ use crate::{
 };
 use bytes::Bytes;
 use core::{
+    any::Any,
     fmt,
     ops::RangeInclusive,
     task::{Poll, Waker},
@@ -63,6 +64,7 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     retry_cid: Option<Box<PeerId>>,
     initial: Option<Box<InitialSpace<Config>>>,
     handshake: Option<Box<HandshakeSpace<Config>>>,
+    pub tls_context: Option<Box<dyn Any + Send>>,
     application: Option<Box<ApplicationSpace<Config>>>,
     zero_rtt_crypto:
         Option<Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>>,
@@ -124,6 +126,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 session,
                 initial_cid,
             }),
+            tls_context: None,
             retry_cid: None,
             initial: Some(Box::new(InitialSpace::new(
                 initial_key,
@@ -259,6 +262,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake: &mut self.handshake,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
+                tls_context: &mut self.tls_context,
                 path_manager,
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
@@ -306,6 +310,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 retry_cid: self.retry_cid.as_deref(),
                 initial: &mut self.initial,
                 handshake: &mut self.handshake,
+                tls_context: &mut self.tls_context,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
                 path_manager,
