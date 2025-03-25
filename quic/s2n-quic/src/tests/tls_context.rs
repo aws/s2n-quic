@@ -17,12 +17,12 @@ impl NoTlsProvider {
     }
 }
 impl Provider for NoTlsProvider {
-    type Server = null::Endpoint;
-    type Client = null::Endpoint;
+    type Server = null::Endpoint<UserProvidedTlsContext>;
+    type Client = null::Endpoint<UserProvidedTlsContext>;
     type Error = String;
 
     fn start_server(self) -> Result<Self::Server, Self::Error> {
-        Ok(null::Endpoint(self.ctx.clone()))
+        Ok(null::Endpoint(Some(self.ctx.clone())))
     }
 
     fn start_client(self) -> Result<Self::Client, Self::Error> {

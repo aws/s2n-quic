@@ -16,12 +16,12 @@ use crate::{
     transport,
 };
 use bytes::Bytes;
-use core::{mem::size_of, task::Poll};
+use core::{any::Any, mem::size_of, task::Poll};
 
 #[derive(Debug)]
-pub struct Endpoint(pub UserProvidedTlsContext);
+pub struct Endpoint<T = ()>(pub Option<T>);
 
-impl Default for Endpoint {
+impl<T> Default for Endpoint<T> {
     #[track_caller]
     fn default() -> Self {
         #[cfg(feature = "std")]
@@ -73,12 +73,12 @@ impl Default for Endpoint {
             eprintln!("                  ==============================");
         }
 
-        Self(UserProvidedTlsContext::default())
+        Self(None)
     }
 }
 
-impl crypto::tls::Endpoint for Endpoint {
-    type Session = Session;
+impl<T: Send + Clone + 'static + std::fmt::Debug> crypto::tls::Endpoint for Endpoint<T> {
+    type Session = Session<T>;
 
     #[inline]
     fn new_server_session<Params: s2n_codec::EncoderValue>(
@@ -115,12 +115,12 @@ impl crypto::tls::Endpoint for Endpoint {
 }
 
 #[derive(Debug)]
-pub enum Session {
-    Client(client::Session),
-    Server(server::TlsSession),
+pub enum Session<T> {
+    Client(client::Session<T>),
+    Server(server::TlsSession<T>),
 }
 
-impl crypto::CryptoSuite for Session {
+impl<T> crypto::CryptoSuite for Session<T> {
     type HandshakeKey = key::NoCrypto;
     type HandshakeHeaderKey = key::NoCrypto;
     type InitialKey = key::NoCrypto;
@@ -132,7 +132,7 @@ impl crypto::CryptoSuite for Session {
     type RetryKey = key::NoCrypto;
 }
 
-impl tls::Session for Session {
+impl<T: std::fmt::Debug + Send + Clone + 'static> tls::Session for Session<T> {
     #[inline]
     fn poll<C: tls::Context<Self>>(
         &mut self,
@@ -163,19 +163,22 @@ static FIN: Bytes = Bytes::from_static(b"FIN");
 static NULL: Bytes = Bytes::from_static(b"NULL");
 
 pub mod client {
+    use core::marker::PhantomData;
+
     use super::*;
 
     #[derive(Debug)]
-    pub enum Session {
+    pub enum Session<T> {
         Init { transport_parameters: Bytes },
         WaitingInitial {},
         WaitingHandshake { params: Bytes },
         Complete,
+        _PH(PhantomData<T>),
     }
 
-    impl Session {
+    impl<T> Session<T> {
         #[inline]
-        pub fn poll<C: tls::Context<super::Session>>(
+        pub fn poll<C: tls::Context<super::Session<T>>>(
             &mut self,
             context: &mut C,
         ) -> Poll<Result<(), transport::Error>> {
@@ -225,6 +228,7 @@ pub mod client {
                         return Ok(()).into();
                     }
                     Self::Complete => return Ok(()).into(),
+                    _ => unreachable!(),
                 }
             }
         }
@@ -240,18 +244,18 @@ pub mod server {
     use super::*;
 
     #[derive(Debug)]
-    pub struct TlsSession {
+    pub struct TlsSession<T> {
         pub inner: TlsServerSession,
-        pub ctx: UserProvidedTlsContext,
+        pub ctx: Option<T>,
     }
-    impl Deref for TlsSession {
+    impl<T> Deref for TlsSession<T> {
         type Target = TlsServerSession;
 
         fn deref(&self) -> &Self::Target {
             &self.inner
         }
     }
-    impl DerefMut for TlsSession {
+    impl<T> DerefMut for TlsSession<T> {
         fn deref_mut(&mut self) -> &mut Self::Target {
             &mut self.inner
         }
@@ -263,9 +267,9 @@ pub mod server {
         Complete,
     }
 
-    impl TlsSession {
+    impl<T: Send + Clone + 'static> TlsSession<T> {
         #[inline]
-        pub fn poll<C: tls::Context<super::Session>>(
+        pub fn poll<C: tls::Context<super::Session<T>>>(
             &mut self,
             context: &mut C,
         ) -> Poll<Result<(), transport::Error>> {
@@ -285,7 +289,11 @@ pub mod server {
 
                         context.on_application_protocol(NULL.clone())?;
                         // We just clone and set it, in real user case, you can put anything you want.
-                        context.on_tls_context(Some(Box::new(self.ctx.clone())));
+                        context.on_tls_context(
+                            self.ctx
+                                .as_ref()
+                                .map(|f| Box::new(f.clone()) as Box<dyn Any + Send + 'static>),
+                        );
 
                         context.on_one_rtt_keys(
                             key::NoCrypto,
@@ -455,8 +463,8 @@ mod tests {
 
     #[test]
     fn null_test() {
-        let mut server = Endpoint::default();
-        let mut client = Endpoint::default();
+        let mut server = Endpoint::<()>::default();
+        let mut client = Endpoint::<()>::default();
 
         let mut pair = Pair::new(&mut server, &mut client, LOCALHOST.clone());
 
@@ -469,8 +477,8 @@ mod tests {
 
     #[test]
     fn fuzz_test() {
-        let mut server = Endpoint::default();
-        let mut client = Endpoint::default();
+        let mut server = Endpoint::<()>::default();
+        let mut client = Endpoint::<()>::default();
 
         check!().for_each(|mut bytes| {
             // replaces a single buffer with fuzz bytes
