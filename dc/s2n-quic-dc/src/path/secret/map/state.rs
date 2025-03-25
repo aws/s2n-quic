@@ -206,6 +206,9 @@ where
     // We use a PeerMap to save memory -- an Arc is 8 bytes, SocketAddr is 32 bytes.
     pub(super) cleaner_peer_seen: PeerMap,
 
+    // Lock is acquired only in Cleaner.
+    pub(super) rehandshake: Mutex<super::rehandshake::RehandshakeState>,
+
     init_time: Timestamp,
 
     clock: C,
@@ -263,16 +266,21 @@ where
 
         let init_time = clock.get_time();
 
-        let state = Self {
+        // FIXME: Allow configuring the rehandshake_period.
+        let rehandshake_period = Duration::from_secs(3600 * 24);
+
+        let mut state = Self {
             // This is around 500MB with current entry size.
             max_capacity: capacity,
-            // FIXME: Allow configuring the rehandshake_period.
-            rehandshake_period: Duration::from_secs(3600 * 24),
+            rehandshake_period,
             peers: Default::default(),
             ids: Default::default(),
             eviction_queue: Default::default(),
             cleaner_peer_seen: Default::default(),
             cleaner: Cleaner::new(),
+            rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
+                rehandshake_period,
+            )),
             signer,
             control_socket,
             init_time,
@@ -292,6 +300,11 @@ where
         state.peers.reserve(2 * state.max_capacity);
         state.ids.reserve(2 * state.max_capacity);
         state.cleaner_peer_seen.reserve(2 * state.max_capacity);
+        state
+            .rehandshake
+            .get_mut()
+            .unwrap()
+            .reserve(state.max_capacity);
 
         let state = Arc::new(state);
 
@@ -634,8 +647,6 @@ where
             assert_ne!(prev_id, id, "duplicate path secret id");
 
             prev.retire(self.cleaner.epoch());
-
-            entry.inherit_rehandshake(&prev);
 
             self.subscriber().on_path_secret_map_entry_replaced(
                 event::builder::PathSecretMapEntryReplaced {

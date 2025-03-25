@@ -17,6 +17,7 @@ mod cleaner;
 mod entry;
 mod handshake;
 mod peer;
+mod rehandshake;
 mod size_of;
 mod state;
 mod status;

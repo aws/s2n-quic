@@ -16,7 +16,6 @@ use crate::{
     },
     stream::TransportFeatures,
 };
-use rand::Rng as _;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, varint::VarInt};
 use std::{
@@ -37,7 +36,6 @@ pub type ApplicationData = Arc<dyn Any + Send + Sync>;
 #[derive(Debug)]
 pub struct Entry {
     creation_time: Instant,
-    rehandshake_delta_secs: AtomicU32,
     peer: SocketAddr,
     secret: schedule::Secret,
     retired: IsRetired,
@@ -54,7 +52,6 @@ impl SizeOf for Entry {
     fn size(&self) -> usize {
         let Entry {
             creation_time,
-            rehandshake_delta_secs,
             peer,
             secret,
             retired,
@@ -65,7 +62,6 @@ impl SizeOf for Entry {
             application_data,
         } = self;
         creation_time.size()
-            + rehandshake_delta_secs.size()
             + peer.size()
             + secret.size()
             + retired.size()
@@ -93,7 +89,8 @@ impl Entry {
         sender: sender::State,
         receiver: receiver::State,
         parameters: dc::ApplicationParams,
-        rehandshake_time: Duration,
+        // FIXME: remove unused parameter
+        _: Duration,
         application_data: ApplicationData,
     ) -> Self {
         // clamp max datagram size to a well-known value
@@ -101,10 +98,8 @@ impl Entry {
             .max_datagram_size
             .fetch_min(crate::stream::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
 
-        assert!(rehandshake_time.as_secs() <= u32::MAX as u64);
-        let entry = Self {
+        Self {
             creation_time: Instant::now(),
-            rehandshake_delta_secs: AtomicU32::new(0),
             peer,
             secret,
             retired: Default::default(),
@@ -113,9 +108,7 @@ impl Entry {
             parameters,
             accessed: AtomicU8::new(0),
             application_data,
-        };
-        entry.rehandshake_time_reschedule(rehandshake_time);
-        entry
+        }
     }
 
     #[cfg(any(test, feature = "testing"))]
@@ -258,60 +251,6 @@ impl Entry {
         self.parameters
             .max_datagram_size
             .store(mtu, Ordering::Relaxed);
-    }
-
-    pub fn rehandshake_time(&self) -> Instant {
-        self.creation_time
-            + Duration::from_secs(u64::from(
-                self.rehandshake_delta_secs.load(Ordering::Relaxed),
-            ))
-    }
-
-    /// Reschedule the handshake some time into the future.
-    pub fn rehandshake_time_reschedule(&self, rehandshake_period: Duration) {
-        // The goal of rescheduling is to avoid continuously re-handshaking for N (possibly stale)
-        // peers every cleaner loop, instead we defer handshakes out again. This effectively acts
-        // as a (slow) retry mechanism.
-        let delta = rand::rng().random_range(
-            std::cmp::min(rehandshake_period.as_secs(), 360)..rehandshake_period.as_secs(),
-        ) as u32;
-        self.rehandshake_delta_secs
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |previous| {
-                if previous == 0 {
-                    Some(delta)
-                } else {
-                    let previous_delta = previous % rehandshake_period.as_secs() as u32;
-                    let complement = rehandshake_period.as_secs() as u32 - previous_delta;
-                    let new = previous + complement + delta;
-                    Some(new)
-                }
-            })
-            .expect("always returns Some");
-    }
-
-    /// Inherit rehandshaking delta from a previous entry for the same IP.
-    pub(crate) fn inherit_rehandshake(&self, previous: &Entry) {
-        if let Some(delta) = previous
-            .rehandshake_time()
-            .checked_duration_since(self.creation_time)
-        {
-            // Explicitly *store* here, rather than fetch_add, because in theory this could run
-            // more than once for the same or different entry pairs (we don't have any lock
-            // guaranteeing otherwise). We don't care much which entry the result is pulled from
-            // (it might cause us to fall into the else case implicitly if we pull before this code
-            // inherits, but that's very unlikely in practice).
-            self.rehandshake_delta_secs
-                .store(delta.as_secs() as u32, Ordering::Relaxed);
-        } else {
-            // If the next handshake for the previous entry was already supposed to have occurred,
-            // something has gone wrong -- it should have been rescheduled at least 5 minutes in
-            // the future (360 seconds minimum result from above) and handshakes only last ~10ish
-            // seconds at most.
-            //
-            // Just leave in place the randomly rolled rehandshake_delta_secs from initial entry
-            // creation. If this happens repeatedly we might see ~2x more handshakes than expected,
-            // but that's (for now) an acceptable outcome.
-        }
     }
 
     pub fn age(&self) -> Duration {
