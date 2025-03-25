@@ -86,10 +86,8 @@ impl<T: Send + Clone + 'static + std::fmt::Debug> crypto::tls::Endpoint for Endp
         transport_parameters: &Params,
     ) -> Self::Session {
         let params = transport_parameters.encode_to_vec().into();
-        Session::Server(server::TlsSession {
-            inner: server::TlsServerSession::Init {
-                transport_parameters: params,
-            },
+        Session::Server(server::TlsSession::Init {
+            transport_parameters: params,
             ctx: self.0.clone(),
         })
     }
@@ -239,30 +237,15 @@ pub struct UserProvidedTlsContext {
     pub conf: String,
 }
 pub mod server {
-    use core::ops::{Deref, DerefMut};
 
     use super::*;
 
     #[derive(Debug)]
-    pub struct TlsSession<T> {
-        pub inner: TlsServerSession,
-        pub ctx: Option<T>,
-    }
-    impl<T> Deref for TlsSession<T> {
-        type Target = TlsServerSession;
-
-        fn deref(&self) -> &Self::Target {
-            &self.inner
-        }
-    }
-    impl<T> DerefMut for TlsSession<T> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            &mut self.inner
-        }
-    }
-    #[derive(Debug)]
-    pub enum TlsServerSession {
-        Init { transport_parameters: Bytes },
+    pub enum TlsSession<T> {
+        Init {
+            transport_parameters: Bytes,
+            ctx: Option<T>,
+        },
         WaitingComplete,
         Complete,
     }
@@ -274,9 +257,10 @@ pub mod server {
             context: &mut C,
         ) -> Poll<Result<(), transport::Error>> {
             loop {
-                match &mut self.inner {
-                    TlsServerSession::Init {
+                match self {
+                    Self::Init {
                         ref mut transport_parameters,
+                        ref mut ctx,
                     } => {
                         let client_params = match context.receive_initial(None) {
                             Some(data) => data,
@@ -290,8 +274,7 @@ pub mod server {
                         context.on_application_protocol(NULL.clone())?;
                         // We just clone and set it, in real user case, you can put anything you want.
                         context.on_tls_context(
-                            self.ctx
-                                .as_ref()
+                            ctx.as_ref()
                                 .map(|f| Box::new(f.clone()) as Box<dyn Any + Send + 'static>),
                         );
 
@@ -305,19 +288,19 @@ pub mod server {
 
                         context.on_server_name(LOCALHOST.clone())?;
 
-                        self.inner = TlsServerSession::WaitingComplete;
+                        *self = Self::WaitingComplete;
                     }
-                    TlsServerSession::WaitingComplete => {
+                    Self::WaitingComplete => {
                         if context.receive_handshake(None).is_none() {
                             return core::task::Poll::Pending;
                         }
 
-                        self.inner = TlsServerSession::Complete;
+                        *self = Self::Complete;
                         context.on_handshake_complete()?;
 
                         return Ok(()).into();
                     }
-                    TlsServerSession::Complete => return Ok(()).into(),
+                    Self::Complete => return Ok(()).into(),
                 }
             }
         }
