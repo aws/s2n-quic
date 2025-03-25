@@ -184,9 +184,7 @@ macro_rules! impl_handle_api {
         ///
         /// And then do your rest works. For more usage, see `tests/tls_context.rs`
         #[inline]
-        pub fn take_tls_context(
-            &mut self,
-        ) -> Option<std::boxed::Box<dyn core::any::Any + Send>> {
+        pub fn take_tls_context(&mut self) -> Option<std::boxed::Box<dyn core::any::Any + Send>> {
             self.0.take_tls_context()
         }
 
