@@ -169,7 +169,20 @@ macro_rules! impl_handle_api {
             self.0.application_protocol()
         }
 
-        /// Returns the application context the connection is using.
+        /// Take TLS context came from TLS layer to application layer.
+        ///
+        /// Calling it a second time will always return None so applications should store it somewhere.
+        ///
+        /// # Example
+        /// It's useful when you implement your own TLS provider. Some HTTP/3 server need more
+        /// information from TLS layer to decide which configuration to apply, So you can
+        ///
+        /// 1. Create own TLS provider, in that, parse TLS manually, set tls context by
+        /// `context.on_tls_context(Box::new(MyContext{}))`
+        /// 2. After `let connection = server.accept().await` returned, take
+        /// context by `connection.take_tls_context()`.
+        ///
+        /// And then do your rest works. For more usage, see `tests/tls_context.rs`
         #[inline]
         pub fn take_tls_context(
             &mut self,

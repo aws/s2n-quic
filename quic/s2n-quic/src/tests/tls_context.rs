@@ -32,6 +32,7 @@ impl Provider for NoTlsProvider {
 #[test]
 fn no_tls_test() {
     let model = Model::default();
+    // Before create tls provider, put our custom data to it.
     let ctx = UserProvidedTlsContext { conf: "foo".into() };
     test(model, |handle| {
         let server = Server::builder()
