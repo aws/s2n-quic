@@ -71,8 +71,8 @@ impl Client {
         server: &S,
     ) -> io::Result<secret::map::Peer> {
         let server = server.as_ref();
-        let peer = server.local_addr;
-        if let Some(peer) = self.map.get_tracked(peer) {
+        let server_addr = server.local_addr;
+        if let Some(peer) = self.map.get_tracked(server_addr) {
             return Ok(peer);
         }
 
@@ -81,12 +81,12 @@ impl Client {
             local_addr,
             Some(self.params()),
             &server.map,
-            server.local_addr,
+            server_addr,
             Some(server.params()),
         );
 
         // cache hit already tracked above
-        self.map.get_untracked(peer).ok_or_else(|| {
+        self.map.get_untracked(server_addr).ok_or_else(|| {
             io::Error::new(io::ErrorKind::AddrNotAvailable, "path secret not available")
         })
     }
@@ -125,20 +125,21 @@ impl Client {
     }
 
     async fn open(&self, server: &server::Handle) -> io::Result<Stream> {
+        let server_addr = server.local_addr;
         let handshake = core::future::ready(self.handshake_with(server));
 
         match (server.protocol, &self.env) {
             (Protocol::Tcp, Either::A(env)) => {
-                stream_client::tokio::connect_tcp(handshake, server.local_addr, env, None).await
+                stream_client::tokio::connect_tcp(handshake, server_addr, env, None).await
             }
             (Protocol::Tcp, Either::B(_env)) => {
                 todo!("tcp is not implemented in bach yet");
             }
             (Protocol::Udp, Either::A(env)) => {
-                stream_client::tokio::connect_udp(handshake, server.local_addr, env).await
+                stream_client::tokio::connect_udp(handshake, server_addr, env).await
             }
             (Protocol::Udp, Either::B(env)) => {
-                stream_client::bach::connect_udp(handshake, server.local_addr, env).await
+                stream_client::bach::connect_udp(handshake, server_addr, env).await
             }
             (Protocol::Other(name), _) => {
                 todo!("protocol {name:?} not implemented")
@@ -255,9 +256,11 @@ pub struct Server {
     handle: server::Handle,
     receiver: accept::Receiver<Subscriber>,
     stats: stats::Sender,
+    subscriber: Arc<event::testing::Subscriber>,
     #[allow(dead_code)]
     drop_handle: drop_handle::Sender,
-    subscriber: Arc<event::testing::Subscriber>,
+    #[allow(dead_code)]
+    addr_reservation: Arc<server::AddrReservation>,
 }
 
 impl Default for Server {
@@ -323,7 +326,9 @@ pub(crate) mod drop_handle {
             async move {
                 tokio::select! {
                     _ = other => {}
-                    _ = watch.changed() => {}
+                    _ = watch.changed() => {
+                        tracing::trace!("handle dropped - cancelling task");
+                    }
                 }
             }
         }
@@ -357,6 +362,24 @@ pub mod server {
     impl AsRef<Handle> for Handle {
         fn as_ref(&self) -> &Handle {
             self
+        }
+    }
+
+    pub(super) struct AddrReservation {
+        local_addr: SocketAddr,
+    }
+
+    impl core::ops::Deref for AddrReservation {
+        type Target = SocketAddr;
+
+        fn deref(&self) -> &Self::Target {
+            &self.local_addr
+        }
+    }
+
+    impl Drop for AddrReservation {
+        fn drop(&mut self) {
+            SERVERS.with(|servers| servers.borrow_mut().remove(&self.local_addr));
         }
     }
 
@@ -571,6 +594,7 @@ pub mod server {
                 stats: stats_sender,
                 drop_handle: drop_handle_sender,
                 subscriber: test_subscriber,
+                addr_reservation: Arc::new(AddrReservation { local_addr }),
             }
         }
     }

@@ -94,7 +94,8 @@ pub fn client(
 
                     <s2n_quic::stream::Result<()>>::Ok(())
                 })
-                .await?;
+                .await
+                .unwrap()?;
             }
 
             <s2n_quic::stream::Result<()>>::Ok(())

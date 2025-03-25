@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bach::{environment::Macrostep, time::scheduler};
-use core::task::Poll;
 use s2n_quic_core::{
     endpoint::Endpoint, inet::SocketAddress, io::event_loop::EventLoop, path::mtu,
 };
@@ -25,7 +24,7 @@ pub use bach::task::{self, primary, spawn};
 
 // returns `true` if the caller is being executed in a testing environment
 pub fn is_in_env() -> bool {
-    bach::task::scope::try_borrow_with(|scope| scope.is_some())
+    ::bach::is_active()
 }
 
 pub mod rand {
@@ -90,7 +89,7 @@ impl<N: Network> Executor<N> {
     }
 
     pub fn enter<F: FnOnce() -> O, O>(&mut self, f: F) -> O {
-        bach::environment::Environment::enter(self.executor.environment(), f)
+        bach::environment::Environment::enter(self.executor.environment(), |_| f())
     }
 
     pub fn run(&mut self) {
@@ -131,7 +130,7 @@ impl<N> Env<N> {
         handle.enter(|| {
             rand.enter(|| {
                 time.close();
-                time.enter(|| {
+                time.enter(|_| {
                     buffers.close();
                     f();
                 });
@@ -141,17 +140,11 @@ impl<N> Env<N> {
 }
 
 impl<N: Network> bach::environment::Environment for Env<N> {
-    fn enter<F: FnOnce() -> O, O>(&mut self, f: F) -> O {
-        self.handle.enter(|| self.time.enter(|| self.rand.enter(f)))
+    fn enter<F: FnOnce(u64) -> O, O>(&mut self, f: F) -> O {
+        self.handle.enter(|| self.rand.enter(|| self.time.enter(f)))
     }
 
-    fn run<Tasks, R>(&mut self, tasks: Tasks) -> Poll<()>
-    where
-        Tasks: IntoIterator<Item = R>,
-        R: bach::environment::Runnable,
-    {
-        let mut is_ready = true;
-
+    fn on_microsteps<F: FnMut(u64) -> usize>(&mut self, mut f: F) {
         let Self {
             handle,
             time,
@@ -162,21 +155,16 @@ impl<N: Network> bach::environment::Environment for Env<N> {
         } = self;
 
         handle.enter(|| {
-            time.enter(|| {
-                rand.enter(|| {
-                    for task in tasks {
-                        is_ready &= task.run().is_ready();
+            rand.enter(|| {
+                time.enter(|current_tick| loop {
+                    let mut count = f(current_tick);
+                    count += network.execute(buffers);
+                    if count == 0 {
+                        break;
                     }
-                    network.execute(buffers);
                 })
             })
         });
-
-        if is_ready {
-            Poll::Ready(())
-        } else {
-            Poll::Pending
-        }
     }
 
     fn on_macrostep(&mut self, macrostep: Macrostep) -> Macrostep {

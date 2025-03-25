@@ -75,6 +75,9 @@ where
 
             stream.finish().unwrap();
 
+            // yield for a microsecond to make sure all of the scheduled tasks execute
+            delay(Duration::from_micros(1)).await;
+
             let chunk = stream
                 .receive()
                 .await
