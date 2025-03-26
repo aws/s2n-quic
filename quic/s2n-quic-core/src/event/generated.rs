@@ -1807,6 +1807,28 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Key Exchange Group was negotiated for the connection"]
+    #[doc = ""]
+    #[doc = " `contains_kem` is `true` if the `chosen_group_name`"]
+    #[doc = " contains a key encapsulation mechanism"]
+    pub struct KeyExchangeGroup<'a> {
+        pub chosen_group_name: &'a str,
+        pub contains_kem: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for KeyExchangeGroup<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("KeyExchangeGroup");
+            fmt.field("chosen_group_name", &self.chosen_group_name);
+            fmt.field("contains_kem", &self.contains_kem);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for KeyExchangeGroup<'a> {
+        const NAME: &'static str = "transport:key_exchange_group";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Packet was skipped with a given reason"]
     pub struct PacketSkipped {
         pub number: u64,
@@ -3636,6 +3658,20 @@ pub mod tracing {
             let id = context.id();
             let api::ServerNameInformation { chosen_server_name } = event;
             tracing :: event ! (target : "server_name_information" , parent : id , tracing :: Level :: DEBUG , { chosen_server_name = tracing :: field :: debug (chosen_server_name) });
+        }
+        #[inline]
+        fn on_key_exchange_group(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::KeyExchangeGroup,
+        ) {
+            let id = context.id();
+            let api::KeyExchangeGroup {
+                chosen_group_name,
+                contains_kem,
+            } = event;
+            tracing :: event ! (target : "key_exchange_group" , parent : id , tracing :: Level :: DEBUG , { chosen_group_name = tracing :: field :: debug (chosen_group_name) , contains_kem = tracing :: field :: debug (contains_kem) });
         }
         #[inline]
         fn on_packet_skipped(
@@ -5553,6 +5589,28 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Key Exchange Group was negotiated for the connection"]
+    #[doc = ""]
+    #[doc = " `contains_kem` is `true` if the `chosen_group_name`"]
+    #[doc = " contains a key encapsulation mechanism"]
+    pub struct KeyExchangeGroup<'a> {
+        pub chosen_group_name: &'a str,
+        pub contains_kem: bool,
+    }
+    impl<'a> IntoEvent<api::KeyExchangeGroup<'a>> for KeyExchangeGroup<'a> {
+        #[inline]
+        fn into_event(self) -> api::KeyExchangeGroup<'a> {
+            let KeyExchangeGroup {
+                chosen_group_name,
+                contains_kem,
+            } = self;
+            api::KeyExchangeGroup {
+                chosen_group_name: chosen_group_name.into_event(),
+                contains_kem: contains_kem.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Packet was skipped with a given reason"]
     pub struct PacketSkipped {
         pub number: u64,
@@ -6901,6 +6959,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `KeyExchangeGroup` event is triggered"]
+        #[inline]
+        fn on_key_exchange_group(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::KeyExchangeGroup,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PacketSkipped` event is triggered"]
         #[inline]
         fn on_packet_skipped(
@@ -7684,6 +7754,16 @@ mod traits {
             (self.1).on_server_name_information(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_key_exchange_group(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::KeyExchangeGroup,
+        ) {
+            (self.0).on_key_exchange_group(&mut context.0, meta, event);
+            (self.1).on_key_exchange_group(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_packet_skipped(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -8459,6 +8539,8 @@ mod traits {
         );
         #[doc = "Publishes a `ServerNameInformation` event to the publisher's subscriber"]
         fn on_server_name_information(&mut self, event: builder::ServerNameInformation);
+        #[doc = "Publishes a `KeyExchangeGroup` event to the publisher's subscriber"]
+        fn on_key_exchange_group(&mut self, event: builder::KeyExchangeGroup);
         #[doc = "Publishes a `PacketSkipped` event to the publisher's subscriber"]
         fn on_packet_skipped(&mut self, event: builder::PacketSkipped);
         #[doc = "Publishes a `PacketSent` event to the publisher's subscriber"]
@@ -8606,6 +8688,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_server_name_information(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_key_exchange_group(&mut self, event: builder::KeyExchangeGroup) {
+            let event = event.into_event();
+            self.subscriber
+                .on_key_exchange_group(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -9275,6 +9366,7 @@ pub mod testing {
         output: Vec<String>,
         pub application_protocol_information: u64,
         pub server_name_information: u64,
+        pub key_exchange_group: u64,
         pub packet_skipped: u64,
         pub packet_sent: u64,
         pub packet_received: u64,
@@ -9367,6 +9459,7 @@ pub mod testing {
                 output: Default::default(),
                 application_protocol_information: 0,
                 server_name_information: 0,
+                key_exchange_group: 0,
                 packet_skipped: 0,
                 packet_sent: 0,
                 packet_received: 0,
@@ -9458,6 +9551,20 @@ pub mod testing {
             event: &api::ServerNameInformation,
         ) {
             self.server_name_information += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_key_exchange_group(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::KeyExchangeGroup,
+        ) {
+            self.key_exchange_group += 1;
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -10238,6 +10345,7 @@ pub mod testing {
         output: Vec<String>,
         pub application_protocol_information: u64,
         pub server_name_information: u64,
+        pub key_exchange_group: u64,
         pub packet_skipped: u64,
         pub packet_sent: u64,
         pub packet_received: u64,
@@ -10320,6 +10428,7 @@ pub mod testing {
                 output: Default::default(),
                 application_protocol_information: 0,
                 server_name_information: 0,
+                key_exchange_group: 0,
                 packet_skipped: 0,
                 packet_sent: 0,
                 packet_received: 0,
@@ -10510,6 +10619,15 @@ pub mod testing {
         }
         fn on_server_name_information(&mut self, event: builder::ServerNameInformation) {
             self.server_name_information += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_key_exchange_group(&mut self, event: builder::KeyExchangeGroup) {
+            self.key_exchange_group += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

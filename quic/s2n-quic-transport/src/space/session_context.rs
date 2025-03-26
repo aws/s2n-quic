@@ -23,7 +23,7 @@ use s2n_quic_core::{
     },
     crypto::{
         self,
-        tls::{self, ApplicationParameters},
+        tls::{self, ApplicationParameters, NamedGroup},
         CryptoSuite, Key,
     },
     ct::ConstantTimeEq,
@@ -535,6 +535,16 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             },
         );
         *self.application_protocol = application_protocol;
+
+        Ok(())
+    }
+
+    fn on_key_exchange_group(&mut self, named_group: NamedGroup) -> Result<(), transport::Error> {
+        self.publisher
+            .on_key_exchange_group(event::builder::KeyExchangeGroup {
+                chosen_group_name: named_group.group_name,
+                contains_kem: named_group.contains_kem,
+            });
 
         Ok(())
     }

@@ -557,6 +557,7 @@ count#key_update.key_type|HANDSHAKE=1
 count#key_update.cipher_suite|TLS_AES_128_GCM_SHA256=1
 count#application_protocol_information=1
 count#server_name_information=1
+count#key_exchange_group=1
 count#transport_parameters_received=1
 timer#transport_parameters_received.latency=1µs
 count#key_update=1

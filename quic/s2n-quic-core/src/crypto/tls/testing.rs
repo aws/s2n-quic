@@ -8,7 +8,7 @@ use crate::{
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
         scatter, tls,
-        tls::{ApplicationParameters, CipherSuite, TlsExportError, TlsSession},
+        tls::{ApplicationParameters, CipherSuite, NamedGroup, TlsExportError, TlsSession},
         CryptoSuite, HeaderKey, Key,
     },
     endpoint, transport,
@@ -402,6 +402,7 @@ where
     pub handshake_complete: bool,
     pub server_name: Option<Bytes>,
     pub application_protocol: Option<Bytes>,
+    pub key_exchange_group: Option<NamedGroup>,
     pub transport_parameters: Option<Bytes>,
     endpoint: endpoint::Type,
     pub state: State,
@@ -422,6 +423,7 @@ where
             .field("handshake_complete", &self.handshake_complete)
             .field("sni", &self.server_name)
             .field("application_protocol", &self.application_protocol)
+            .field("key_exchange_group", &self.key_exchange_group)
             .field("transport_parameters", &self.transport_parameters)
             .field("endpoint", &self.endpoint)
             .finish()
@@ -442,6 +444,7 @@ where
             handshake_complete: false,
             server_name: None,
             application_protocol: None,
+            key_exchange_group: None,
             transport_parameters: None,
             endpoint,
             state,
@@ -476,6 +479,10 @@ where
             self.application_protocol, other.application_protocol,
             "application_protocol is not consistent between endpoints"
         );
+        assert_eq!(
+            self.key_exchange_group, other.key_exchange_group,
+            "key_exchange_group is not consistent between endpoints"
+        );
 
         assert_eq!(
             self.zero_rtt_crypto.is_some(),
@@ -497,6 +504,7 @@ where
         );
         assert!(self.handshake_complete);
         assert!(self.application_protocol.is_some());
+        assert!(self.key_exchange_group.is_some());
         assert!(self.transport_parameters.is_some());
     }
 
@@ -734,6 +742,15 @@ where
         Ok(())
     }
 
+    fn on_key_exchange_group(
+        &mut self,
+        named_group: NamedGroup,
+    ) -> Result<(), crate::transport::Error> {
+        self.log("key exchange group");
+        self.key_exchange_group = Some(named_group);
+        Ok(())
+    }
+
     fn on_handshake_complete(&mut self) -> Result<(), transport::Error> {
         assert!(
             !self.handshake_complete,
@@ -742,6 +759,10 @@ where
         assert!(
             !self.application_protocol.as_ref().unwrap().is_empty(),
             "application_protocol is empty at handshake complete"
+        );
+        assert!(
+            self.key_exchange_group.is_some(),
+            "key_exchange_group is empty at handshake complete"
         );
         self.handshake_complete = true;
         self.log("handshake complete");
