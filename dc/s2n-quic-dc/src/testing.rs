@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::time::Duration;
+use std::{sync::OnceLock, time::Duration};
 
 pub use bach::{ext, rand};
 
@@ -79,7 +79,10 @@ pub fn init_tracing() {
             .with_timer(Uptime::default())
             .compact(); // Use a less verbose output format.
 
-        let default_level = if cfg!(debug_assertions) {
+        let default_level = if std::env::var("CI").is_ok() {
+            // The CI runs out of memory if we log too much tracing data
+            tracing::Level::INFO
+        } else if cfg!(debug_assertions) {
             tracing::Level::DEBUG
         } else {
             tracing::Level::WARN
@@ -97,6 +100,20 @@ pub fn init_tracing() {
             .with_test_writer()
             .init();
     });
+}
+
+pub fn without_tracing<F: FnOnce() -> T, T>(f: F) -> T {
+    // make sure the global subscriber is initialized before setting a local one
+    init_tracing();
+
+    static FORCED: OnceLock<bool> = OnceLock::new();
+
+    // add the option to get logs with `S2N_LOG_FORCED=1`
+    if *FORCED.get_or_init(|| std::env::var("S2N_LOG_FORCED").is_ok()) {
+        return f();
+    }
+
+    tracing::subscriber::with_default(tracing::subscriber::NoSubscriber::new(), f)
 }
 
 #[derive(Default)]

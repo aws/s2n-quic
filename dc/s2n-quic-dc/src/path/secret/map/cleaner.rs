@@ -60,6 +60,12 @@ impl Cleaner {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
+        // check to see if we're in a simulation before spawning a thread
+        #[cfg(any(test, feature = "testing"))]
+        if bach::is_active() {
+            return;
+        }
+
         let state = Arc::downgrade(&state);
         let handle = std::thread::Builder::new()
             .name("dc_quic::cleaner".into())

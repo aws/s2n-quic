@@ -34,8 +34,7 @@ pub type Stream = application::Stream<Subscriber>;
 pub type Writer = send::application::Writer<Subscriber>;
 pub type Reader = recv::application::Reader<Subscriber>;
 
-// TODO enable this once ready
-const DEFAULT_POOLED: bool = false;
+const DEFAULT_POOLED: bool = true;
 
 // limit the number of threads used in testing to reduce costs of harnesses
 const TEST_THREADS: usize = 2;
@@ -398,7 +397,7 @@ pub mod server {
     impl Default for Builder {
         fn default() -> Self {
             Self {
-                backlog: 16,
+                backlog: 4096,
                 flavor: accept::Flavor::default(),
                 protocol: Protocol::Tcp,
                 map_capacity: 16,
