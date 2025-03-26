@@ -27,10 +27,20 @@ pub struct ApplicationParameters<'a> {
 /// Holds the named group used for key exchange in the TLS handshake.
 ///
 /// `contains_kem` is `true` if the named group contains a key encapsulation mechanism.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq)]
 pub struct NamedGroup {
     pub group_name: &'static str,
     pub contains_kem: bool,
+}
+
+// Some TLS implementations do not follow the capitalization in the
+// IANA specification so we ignore capitalization of the group name
+// when comparing `NamedGroup`s
+impl PartialEq for NamedGroup {
+    fn eq(&self, other: &Self) -> bool {
+        self.group_name.eq_ignore_ascii_case(other.group_name)
+            && self.contains_kem == other.contains_kem
+    }
 }
 
 #[derive(Debug)]
