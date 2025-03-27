@@ -1141,6 +1141,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         // check if crypto progress can be made
         self.update_crypto_state(timestamp, subscriber, datagram, dc, conn_limits)?;
 
+        if self.space_manager.handshake().is_some() && self.space_manager.is_handshake_confirmed() {
+            let mut publisher = self.event_context.publisher(timestamp, subscriber);
+
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.2
+            //# An endpoint MUST discard its handshake keys when the TLS handshake is
+            //# confirmed (Section 4.1.2).
+            self.space_manager
+                .discard_handshake(&mut self.path_manager, &mut publisher);
+        }
+
         // return an error if the application set one
         self.error?;
 
