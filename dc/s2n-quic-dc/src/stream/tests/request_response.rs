@@ -6,7 +6,7 @@ use crate::{
         socket::Protocol,
         testing::{self, Stream, MAX_DATAGRAM_SIZE},
     },
-    testing::{ext::*, sim, sleep, spawn, task::spawn_named, timeout},
+    testing::{ext::*, sim, sleep, spawn, task::spawn_named, timeout, without_tracing},
 };
 use bolero::{produce, TypeGenerator, ValueGenerator as _};
 use core::time::Duration;
@@ -186,9 +186,9 @@ async fn check_read(
         let offset = data.offset();
         let capacity = data.buffered_len();
         let mut data = data.with_write_limit(capacity.min(max_read_len));
-        tracing::info!(offset, capacity = data.remaining_capacity(), "read_into");
+        tracing::debug!(offset, capacity = data.remaining_capacity(), "read_into");
         let len = stream.read_into(&mut data).await?;
-        tracing::info!(len, "read_into_result");
+        tracing::debug!(len, "read_into_result");
         if len == 0 {
             break;
         }
@@ -203,13 +203,13 @@ async fn check_write(stream: &mut Stream, delays: &Delays, amount: usize) -> io:
     info!(writing = amount);
     let mut data = Data::new(amount as _);
     while !data.is_finished() {
-        tracing::info!(
+        tracing::debug!(
             offset = data.offset(),
             remaining = data.buffered_len(),
             "write_from"
         );
         let len = stream.write_from(&mut data).await?;
-        tracing::info!(len, "write_from_result");
+        tracing::debug!(len, "write_from_result");
     }
     info!(amount, "write_from_finished");
     Ok(())
@@ -356,7 +356,7 @@ impl Harness {
         }
 
         if is_sim {
-            // TODO limit concurrency
+            // TODO limit concurrency - for now we just stagger clients
 
             for idx in 0..self.client.count {
                 let config = self.client;
@@ -364,7 +364,11 @@ impl Harness {
                 let client = client.clone();
                 let server = server.clone();
                 let task = async move {
+                    // delay connecting by 1us per client
+                    (1.us() * idx as u32).sleep().await;
+
                     info!("connecting");
+
                     let stream = client.connect_to(&server).await.unwrap();
                     info!(peer_addr = %stream.peer_addr().unwrap(), local_addr = %stream.local_addr().unwrap());
 
@@ -429,8 +433,8 @@ struct Runtime {
 }
 
 impl Runtime {
-    fn new(harness: Harness) -> Self {
-        let rt = tokio::runtime::Builder::new_multi_thread()
+    fn new(harness: &Harness) -> Self {
+        let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
@@ -450,6 +454,10 @@ impl Runtime {
             server,
             protocol,
         }
+    }
+
+    fn run(&self, harness: Harness) {
+        self.rt.block_on(harness.run());
     }
 
     fn run_with(&self, client: Client, server: Server, requests: Vec<Request>) {
@@ -527,11 +535,6 @@ macro_rules! tests {
 
         $test!(multi_request_test, {
             let harness = harness();
-
-            // TODO make this not flaky with UDP
-            if harness.protocol.is_udp() {
-                return;
-            }
 
             Harness {
                 requests: vec![Request {
@@ -628,9 +631,12 @@ macro_rules! tests {
 
 macro_rules! tokio_test {
     ($name:ident, $harness:expr) => {
-        #[tokio::test]
-        async fn $name() {
-            $harness.run().await;
+        #[test]
+        fn $name() {
+            let harness = $harness;
+            without_tracing(|| {
+                Runtime::new(&harness).run(harness);
+            });
         }
     };
 }
@@ -638,36 +644,41 @@ macro_rules! tokio_test {
 macro_rules! tokio_fuzz_test {
     () => {
         #[test]
-        #[ignore = "TODO the CI currently doesn't like running these tests - need to figure out why"]
         fn fuzz_test() {
-            use std::sync::OnceLock;
+            without_tracing(|| {
+                use std::sync::OnceLock;
 
-            bolero::check!()
-                .with_generator((produce(), produce(), produce::<Vec<_>>().with().len(1..5)))
-                .cloned()
-                .with_test_time(Duration::from_secs(45))
-                .for_each(|(client, server, requests)| {
-                    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-                    RUNTIME
-                        .get_or_init(|| Runtime::new(harness()))
-                        .run_with(client, server, requests);
-                });
+                bolero::check!()
+                    .with_generator((produce(), produce(), produce::<Vec<_>>().with().len(1..5)))
+                    .cloned()
+                    // limit the amount of time in tests since they can produce a log of tracing data
+                    .with_test_time(Duration::from_secs(10))
+                    .for_each(|(client, server, requests)| {
+                        static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+                        RUNTIME
+                            .get_or_init(|| Runtime::new(&harness()))
+                            .run_with(client, server, requests);
+                    });
+            });
         }
-    }
+    };
 }
 
 macro_rules! sim_test {
     ($name:ident, $harness:expr) => {
         #[test]
         fn $name() {
-            sim(|| {
-                spawn_named($harness.run().primary(), "harness");
+            // The tracing logs end up consuming a bunch of memory and failing the tests
+            without_tracing(|| {
+                sim(|| {
+                    spawn_named($harness.run().primary(), "harness");
 
-                async {
-                    sleep(Duration::from_secs(120)).await;
-                    panic!("test timed out after {}", bach::time::Instant::now());
-                }
-                .spawn();
+                    async {
+                        sleep(Duration::from_secs(120)).await;
+                        panic!("test timed out after {}", bach::time::Instant::now());
+                    }
+                    .spawn();
+                });
             });
         }
     };
@@ -715,24 +726,26 @@ mod udp_sim {
     tests!(sim_test);
 
     #[test]
-    #[ignore = "TODO the CI currently doesn't like running these tests - need to figure out why"]
     fn fuzz_test() {
-        bolero::check!()
-            .with_generator((produce(), produce(), produce::<Vec<_>>().with().len(1..5)))
-            .cloned()
-            .with_test_time(Duration::from_secs(60))
-            .for_each(|(client, server, requests)| {
-                crate::testing::sim(|| {
-                    Harness {
-                        client,
-                        server,
-                        requests,
-                        ..harness()
-                    }
-                    .run()
-                    .primary()
-                    .spawn();
-                });
-            });
+        // The tracing logs end up consuming a bunch of memory and failing the tests
+        without_tracing(|| {
+            bolero::check!()
+                .with_generator((produce(), produce(), produce::<Vec<_>>().with().len(1..5)))
+                .cloned()
+                .with_test_time(Duration::from_secs(60))
+                .for_each(|(client, server, requests)| {
+                    crate::testing::sim(|| {
+                        Harness {
+                            client,
+                            server,
+                            requests,
+                            ..harness()
+                        }
+                        .run()
+                        .primary()
+                        .spawn();
+                    });
+                })
+        });
     }
 }

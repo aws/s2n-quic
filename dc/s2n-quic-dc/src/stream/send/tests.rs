@@ -270,9 +270,15 @@ macro_rules! negative_suite {
 
 macro_rules! current_thread {
     ($name:ident, $protocol:expr, $buffer_len:expr, $iterations:expr, $features:expr) => {
-        #[tokio::test]
-        async fn $name() {
-            run($protocol, $buffer_len, $iterations, $features).await;
+        #[test]
+        fn $name() {
+            crate::testing::without_tracing(|| {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(run($protocol, $buffer_len, $iterations, $features));
+            });
         }
     };
 }
@@ -281,6 +287,8 @@ macro_rules! multi_thread {
     ($name:ident, $protocol:expr, $buffer_len:expr, $iterations:expr, $features:expr) => {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn $name() {
+            // Since these run different threads, it's not super easy to use the `without_tracing` function.
+            // Hopefully that will be ok for the CI with limited memory.
             run($protocol, $buffer_len, $iterations, $features).await;
         }
     };
@@ -290,12 +298,14 @@ macro_rules! sim {
     ($name:ident, $protocol:expr, $buffer_len:expr, $iterations:expr, $features:expr) => {
         #[test]
         fn $name() {
-            crate::testing::sim(|| {
-                async {
-                    run($protocol, $buffer_len, $iterations, $features).await;
-                }
-                .primary()
-                .spawn();
+            crate::testing::without_tracing(|| {
+                crate::testing::sim(|| {
+                    async {
+                        run($protocol, $buffer_len, $iterations, $features).await;
+                    }
+                    .primary()
+                    .spawn();
+                });
             });
         }
     };
