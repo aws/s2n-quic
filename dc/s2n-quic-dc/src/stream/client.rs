@@ -3,5 +3,6 @@
 
 #[cfg(any(test, feature = "testing"))]
 pub mod bach;
+pub mod rpc;
 #[cfg(feature = "tokio")]
 pub mod tokio;
