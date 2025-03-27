@@ -197,10 +197,7 @@ impl State {
 
     #[inline]
     pub fn send_quantum_packets(&self) -> u8 {
-        // TODO use div_ceil when we're on 1.73+ MSRV
-        // https://doc.rust-lang.org/std/primitive.u64.html#method.div_ceil
-        let send_quantum = (self.cca.send_quantum() as u64 + self.max_datagram_size as u64 - 1)
-            / self.max_datagram_size as u64;
+        let send_quantum = (self.cca.send_quantum() as u64).div_ceil(self.max_datagram_size as u64);
         send_quantum.try_into().unwrap_or(u8::MAX)
     }
 
@@ -413,18 +410,23 @@ impl State {
         self.on_peer_activity(newly_acked);
 
         // try to transition to the final state if we've sent all of the data
-        if self.unacked_ranges.is_empty()
-            && self.error.is_none()
-            && self.state.on_recv_all_acks().is_ok()
-        {
-            self.clean_up();
-            // transmit one more PTO packet so we can ACK the peer's
-            // CONNECTION_CLOSE frame and they can shutdown quickly. Otherwise,
-            // they'll need to hang around to respond to potential loss.
-            self.pto.force_transmit();
-        }
+        self.try_finish();
 
         Ok(None)
+    }
+
+    #[inline]
+    fn try_finish(&mut self) {
+        // check if we still have pending data
+        ensure!(self.unacked_ranges.is_empty());
+
+        // check if we are still ok
+        ensure!(self.error.is_none());
+
+        // try to transition to the final state if it's a valid transition
+        ensure!(self.state.on_recv_all_acks().is_ok());
+
+        self.clean_up();
     }
 
     #[inline]

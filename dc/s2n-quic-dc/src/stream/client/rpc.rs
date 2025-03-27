@@ -23,6 +23,8 @@ where
             writer.write_from_fin(&mut request).await?;
         }
 
+        writer.shutdown()?;
+
         Ok(())
     };
 

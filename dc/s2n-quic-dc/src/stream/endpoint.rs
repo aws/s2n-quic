@@ -176,7 +176,8 @@ where
     let source_queue_id = sockets.source_queue_id;
 
     // construct shared reader state
-    let reader = recv::shared::State::new(stream_id, &parameters, features, recv_buffer);
+    let reader =
+        recv::shared::State::new(stream_id, &parameters, features, recv_buffer, endpoint_type);
 
     let writer = {
         let worker = sockets
