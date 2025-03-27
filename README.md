@@ -28,7 +28,7 @@ s2n-quic = "1"
 ```
 
 **NOTE**: On unix-like systems, [`s2n-tls`](https://github.com/aws/s2n-tls) will be used as the default TLS provider.
-On linux systems,  [`aws-lc-rs`](https://github.com/awslabs/aws-lc-rs) will be used for cryptographic
+On linux systems, [`aws-lc-rs`](https://github.com/awslabs/aws-lc-rs) will be used for cryptographic
 operations. A C compiler and CMake may be required on these systems for installation.
 
 ## Example
@@ -111,7 +111,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 `s2n-quic` will maintain a rolling MSRV (minimum supported rust version) policy of at least 6 months. The current s2n-quic version is not guaranteed to build on Rust versions earlier than the MSRV.
 
-The current MSRV is [1.71.0][msrv-url].
+The current MSRV is [1.75.0][msrv-url].
 
 ## Security issue notifications
 
@@ -134,5 +134,5 @@ This project is licensed under the [Apache-2.0 License][license-url].
 [docs-url]: https://docs.rs/s2n-quic
 [dependencies-badge]: https://img.shields.io/librariesio/release/cargo/s2n-quic.svg
 [dependencies-url]: https://crates.io/crates/s2n-quic/dependencies
-[msrv-badge]: https://img.shields.io/badge/MSRV-1.71.0-green
-[msrv-url]: https://blog.rust-lang.org/2023/07/13/Rust-1.71.0.html
+[msrv-badge]: https://img.shields.io/badge/MSRV-1.75.0-green
+[msrv-url]: https://blog.rust-lang.org/2023/12/28/Rust-1.75.0.html
