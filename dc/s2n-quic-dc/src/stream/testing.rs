@@ -96,7 +96,53 @@ impl Client {
         params
     }
 
-    pub async fn connect<Addr>(&self, addr: Addr) -> io::Result<Stream>
+    pub async fn connect_to<S: AsRef<server::Handle>>(&self, server: &S) -> io::Result<Stream> {
+        // write an empty prelude
+        let mut prelude = s2n_quic_core::buffer::reader::storage::Empty;
+        let mut stream = self.open(server.as_ref()).await?;
+        stream.write_from(&mut prelude).await?;
+        Ok(stream)
+    }
+
+    pub async fn connect_sim<Addr>(&self, addr: Addr) -> io::Result<Stream>
+    where
+        Addr: ::bach::net::ToSocketAddrs,
+    {
+        let server = Self::lookup_sim_server(addr).await?;
+        self.connect_to(&server).await
+    }
+
+    pub async fn rpc_to<S, Req, Res>(
+        &self,
+        server: &S,
+        request: Req,
+        response: Res,
+    ) -> io::Result<Res::Output>
+    where
+        S: AsRef<server::Handle>,
+        Req: crate::stream::client::rpc::Request,
+        Res: crate::stream::client::rpc::Response,
+    {
+        let stream = self.open(server.as_ref()).await?;
+        crate::stream::client::rpc::from_stream(stream, request, response).await
+    }
+
+    pub async fn rpc_sim<Addr, Req, Res>(
+        &self,
+        addr: Addr,
+        request: Req,
+        response: Res,
+    ) -> io::Result<Res::Output>
+    where
+        Addr: ::bach::net::ToSocketAddrs,
+        Req: crate::stream::client::rpc::Request,
+        Res: crate::stream::client::rpc::Response,
+    {
+        let server = Self::lookup_sim_server(addr).await?;
+        self.rpc_to(&server, request, response).await
+    }
+
+    async fn lookup_sim_server<Addr>(addr: Addr) -> io::Result<server::Handle>
     where
         Addr: ::bach::net::ToSocketAddrs,
     {
@@ -112,15 +158,7 @@ impl Client {
         let server = server
             .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "server not found"))?;
 
-        self.connect_to(&server).await
-    }
-
-    pub async fn connect_to<S: AsRef<server::Handle>>(&self, server: &S) -> io::Result<Stream> {
-        // write an empty prelude
-        let mut prelude = s2n_quic_core::buffer::reader::storage::Empty;
-        let mut stream = self.open(server.as_ref()).await?;
-        stream.write_from(&mut prelude).await?;
-        Ok(stream)
+        Ok(server)
     }
 
     async fn open(&self, server: &server::Handle) -> io::Result<Stream> {

@@ -39,8 +39,16 @@ where
     sockets: socket::ArcApplication,
     queue: queue::Queue,
     pacer: pacer::Naive,
-    open: bool,
+    status: Status,
     runtime: runtime::ArcHandle<Sub>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Status {
+    #[default]
+    Open,
+    WroteFin,
+    Shutdown,
 }
 
 impl<Sub> fmt::Debug for Writer<Sub>
@@ -113,15 +121,6 @@ where
         let provided_len = buf.buffered_len();
 
         let res = waker::debug_assert_contract(cx, |cx| {
-            // if we've already shut down the stream then return early
-            if !self.0.open {
-                ensure!(
-                    buf.buffer_is_empty() && is_fin,
-                    Err(io::Error::from(io::ErrorKind::BrokenPipe)).into()
-                );
-                return Ok(0).into();
-            }
-
             let res = ready!(self.0.poll_write_from(cx, buf, is_fin));
 
             // if we got an error then shut down the stream if needed
@@ -168,6 +167,15 @@ where
         // bytes to buffer
         ensure!(flushed_len == 0, Ok(flushed_len).into());
 
+        // if we're not open, then make sure this is an empty write
+        if !matches!(self.status, Status::Open) {
+            ensure!(
+                buf.buffer_is_empty() && is_fin,
+                Err(io::Error::from(io::ErrorKind::BrokenPipe)).into()
+            );
+            return Ok(0).into();
+        }
+
         // make sure the queue is drained before continuing
         ensure!(self.queue.is_empty(), Ok(flushed_len).into());
 
@@ -194,6 +202,11 @@ where
 
         // acquire flow credits from the worker
         let credits = ready!(self.shared.sender.flow.poll_acquire(cx, request, &features))?;
+
+        // update the status if this write included the final offset
+        if credits.is_fin {
+            self.status = Status::WroteFin;
+        }
 
         trace!(?credits);
 
@@ -289,7 +302,7 @@ where
     fn shutdown(&mut self, ty: ShutdownType) -> io::Result<()> {
         // make sure we haven't already shut down
         ensure!(
-            self.open,
+            self.status != Status::Shutdown,
             // macos returns an error after the stream has already shut down
             if cfg!(target_os = "macos") {
                 Err(io::ErrorKind::NotConnected.into())
@@ -307,7 +320,7 @@ where
             let _ = self.poll_write_from(&mut cx, &mut buffer::reader::storage::Empty, true);
         }
 
-        self.open = false;
+        self.status = Status::Shutdown;
         self.shared
             .common
             .closed_halves

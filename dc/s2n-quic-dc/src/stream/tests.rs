@@ -5,3 +5,4 @@ mod accept_queue;
 mod deterministic;
 mod key_update;
 mod request_response;
+mod rpc;

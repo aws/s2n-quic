@@ -1,0 +1,115 @@
+---
+source: dc/s2n-quic-dc/src/stream/shared/handshake.rs
+expression: "State::test_transitions()"
+---
+{
+    ClientInit: {
+        on_stream_packet: Ok(
+            ClientQueueIdObserved,
+        ),
+        on_control_packet: Ok(
+            ClientQueueIdObserved,
+        ),
+        on_non_zero_next_expected_control_packet: Err(
+            InvalidTransition {
+                current: ClientInit,
+                event: "on_non_zero_next_expected_control_packet",
+            },
+        ),
+        on_observation_finished: Err(
+            InvalidTransition {
+                current: ClientInit,
+                event: "on_observation_finished",
+            },
+        ),
+    },
+    ClientQueueIdObserved: {
+        on_stream_packet: Err(
+            NoOp {
+                current: ClientQueueIdObserved,
+            },
+        ),
+        on_control_packet: Err(
+            InvalidTransition {
+                current: ClientQueueIdObserved,
+                event: "on_control_packet",
+            },
+        ),
+        on_non_zero_next_expected_control_packet: Err(
+            InvalidTransition {
+                current: ClientQueueIdObserved,
+                event: "on_non_zero_next_expected_control_packet",
+            },
+        ),
+        on_observation_finished: Ok(
+            Finished,
+        ),
+    },
+    Finished: {
+        on_stream_packet: Err(
+            InvalidTransition {
+                current: Finished,
+                event: "on_stream_packet",
+            },
+        ),
+        on_control_packet: Err(
+            InvalidTransition {
+                current: Finished,
+                event: "on_control_packet",
+            },
+        ),
+        on_non_zero_next_expected_control_packet: Err(
+            InvalidTransition {
+                current: Finished,
+                event: "on_non_zero_next_expected_control_packet",
+            },
+        ),
+        on_observation_finished: Err(
+            NoOp {
+                current: Finished,
+            },
+        ),
+    },
+    ServerInit: {
+        on_stream_packet: Err(
+            InvalidTransition {
+                current: ServerInit,
+                event: "on_stream_packet",
+            },
+        ),
+        on_control_packet: Ok(
+            ServerQueueIdObserved,
+        ),
+        on_non_zero_next_expected_control_packet: Ok(
+            ServerQueueIdObserved,
+        ),
+        on_observation_finished: Err(
+            InvalidTransition {
+                current: ServerInit,
+                event: "on_observation_finished",
+            },
+        ),
+    },
+    ServerQueueIdObserved: {
+        on_stream_packet: Err(
+            InvalidTransition {
+                current: ServerQueueIdObserved,
+                event: "on_stream_packet",
+            },
+        ),
+        on_control_packet: Err(
+            InvalidTransition {
+                current: ServerQueueIdObserved,
+                event: "on_control_packet",
+            },
+        ),
+        on_non_zero_next_expected_control_packet: Err(
+            NoOp {
+                current: ServerQueueIdObserved,
+            },
+        ),
+        on_observation_finished: Ok(
+            Finished,
+        ),
+    },
+}

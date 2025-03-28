@@ -12,7 +12,7 @@ fn request_response() {
     sim(|| {
         async move {
             let client = Client::builder().build();
-            let mut stream = client.connect("server:443").await.unwrap();
+            let mut stream = client.connect_sim("server:443").await.unwrap();
 
             let request = vec![42; 100_000];
             stream.write_all(&request).await.unwrap();
