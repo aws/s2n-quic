@@ -1,26 +1,23 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use rand::seq::SliceRandom;
+use s2n_quic_core::inet::{SocketAddress, SocketAddressV6};
 use std::{
+    collections::hash_map::RandomState,
+    hash::BuildHasher,
     net::SocketAddr,
     time::{Duration, Instant},
 };
 
 pub(super) struct RehandshakeState {
-    // FIXME: This is larger than it needs to be because SocketAddr is 32 bytes. We should consider
-    // some other storage form, since IPv4 is 6 bytes and IPv6 is 28 bytes (18 bytes if we ignore
-    // scope ID), almost anything would be smaller than this. But this is cheaper to implement and
-    // we can revisit memory impact separately.
-    //
-    // Splitting IPv4 and IPv6 would help, but it would also mean that we scan one and then the
-    // other, which is probably bad idea long-term -- we want to visit peers randomly.
-    queue: Vec<SocketAddr>,
+    queue: Vec<SocketAddressV6>,
     handshake_at: Option<Instant>,
     schedule_handshake_at: Instant,
 
     // Duplicated in map State for lock-free access too.
     rehandshake_period: Duration,
+
+    hasher: RandomState,
 }
 
 impl RehandshakeState {
@@ -30,6 +27,10 @@ impl RehandshakeState {
             handshake_at: Default::default(),
             schedule_handshake_at: Instant::now(),
             rehandshake_period,
+
+            // Initializes the hasher with random keys, ensuring we handshake with peers in a
+            // different, random order from different hosts.
+            hasher: RandomState::new(),
         }
     }
 
@@ -38,20 +39,16 @@ impl RehandshakeState {
     }
 
     pub(super) fn push(&mut self, peer: SocketAddr) {
-        self.queue.push(peer);
+        self.queue.push(SocketAddress::from(peer).to_ipv6_mapped());
     }
 
     pub(super) fn adjust_post_refill(&mut self) {
-        self.queue.sort_unstable();
+        // Sort by hash, and if hashes are the same, by the SocketAddr. We need to include both in
+        // the comparison key to ensure that we find duplicate entries correctly (just by hash
+        // might have different addresses interleave).
+        self.queue
+            .sort_unstable_by_key(|peer| (self.hasher.hash_one(peer), *peer));
         self.queue.dedup();
-
-        // Shuffling each time we pull a new queue means that we have p100 re-handshake time
-        // double the expected handshake period, because the entry handshaked at p0 on the
-        // first pass might end up at p100 on the second pass. We're OK with that tradeoff --
-        // the randomization avoids thundering herds against the same host, and while we could
-        // remember an order it's harder to get diffing that order with new entries right.
-        let mut rng = rand::rng();
-        self.queue.shuffle(&mut rng);
     }
 
     pub(super) fn reserve(&mut self, capacity: usize) {
@@ -95,7 +92,7 @@ impl RehandshakeState {
                 break;
             };
 
-            request_handshake(entry);
+            request_handshake(entry.unmap().into());
 
             if idx % 25 == 0 && idx != 0 {
                 // Since we handshake in bursts of 25, this still allows 60*1000/50*25 = 30k
