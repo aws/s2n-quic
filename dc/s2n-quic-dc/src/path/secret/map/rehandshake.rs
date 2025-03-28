@@ -2,20 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use rand::seq::SliceRandom;
+use s2n_quic_core::inet::{SocketAddress, SocketAddressV6};
 use std::{
     net::SocketAddr,
     time::{Duration, Instant},
 };
 
 pub(super) struct RehandshakeState {
-    // FIXME: This is larger than it needs to be because SocketAddr is 32 bytes. We should consider
-    // some other storage form, since IPv4 is 6 bytes and IPv6 is 28 bytes (18 bytes if we ignore
-    // scope ID), almost anything would be smaller than this. But this is cheaper to implement and
-    // we can revisit memory impact separately.
-    //
-    // Splitting IPv4 and IPv6 would help, but it would also mean that we scan one and then the
-    // other, which is probably bad idea long-term -- we want to visit peers randomly.
-    queue: Vec<SocketAddr>,
+    queue: Vec<SocketAddressV6>,
     handshake_at: Option<Instant>,
     schedule_handshake_at: Instant,
 
@@ -38,7 +32,7 @@ impl RehandshakeState {
     }
 
     pub(super) fn push(&mut self, peer: SocketAddr) {
-        self.queue.push(peer);
+        self.queue.push(SocketAddress::from(peer).to_ipv6_mapped());
     }
 
     pub(super) fn adjust_post_refill(&mut self) {
@@ -95,7 +89,7 @@ impl RehandshakeState {
                 break;
             };
 
-            request_handshake(entry);
+            request_handshake(entry.unmap().into());
 
             if idx % 25 == 0 && idx != 0 {
                 // Since we handshake in bursts of 25, this still allows 60*1000/50*25 = 30k
