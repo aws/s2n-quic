@@ -76,6 +76,8 @@ impl Cleaner {
                 } else {
                     rand::rng().random_range(5..60)
                 };
+
+                let next_start = Instant::now() + Duration::from_secs(pause);
                 std::thread::park_timeout(Duration::from_secs(pause));
 
                 let Some(state) = state.upgrade() else {
@@ -85,8 +87,9 @@ impl Cleaner {
                     break;
                 }
                 state.cleaner().clean(&state, EVICTION_CYCLES);
+
                 // pause the rest of the time to run once a minute, not twice a minute
-                std::thread::park_timeout(Duration::from_secs(60 - pause));
+                std::thread::park_timeout(next_start.saturating_duration_since(Instant::now()));
             })
             .unwrap();
         *self.thread.lock().unwrap() = Some(handle);
@@ -99,7 +102,6 @@ impl Cleaner {
         S: event::Subscriber,
     {
         let current_epoch = self.epoch.fetch_add(1, Ordering::Relaxed);
-        let now = Instant::now();
 
         let utilization = |count: usize| (count as f32 / state.secrets_capacity() as f32) * 100.0;
 
@@ -109,7 +111,6 @@ impl Cleaner {
         let address_entries_initial = state.peers.len();
         let mut address_entries_retired = 0usize;
         let mut address_entries_active = 0usize;
-        let mut handshake_requests = 0usize;
 
         // We want to avoid taking long lived locks which affect gets on the maps (where we want
         // p100 latency to be in microseconds at most).
@@ -129,6 +130,9 @@ impl Cleaner {
         // This map is only accessed with queue lock held and in cleaner, so it is in practice
         // single threaded. No concurrent access is permitted.
         state.cleaner_peer_seen.clear();
+
+        let mut rehandshake = state.rehandshake.lock().unwrap();
+        let refill_rehandshakes = rehandshake.needs_refill();
 
         // FIXME: add metrics for queue depth?
         // These are sort of equivalent to the ID map -- so maybe not worth it for now unless we
@@ -150,6 +154,12 @@ impl Cleaner {
                 address_entries_active += 1;
             }
 
+            if refill_rehandshakes {
+                // We'll dedup after we fill, we preallocate for the max capacity so this shouldn't
+                // allocate in practice.
+                rehandshake.push(*entry.peer());
+            }
+
             let retained = if let Some(retired_at) = entry.retired_at() {
                 // retain if we aren't yet ready to evict.
                 current_epoch.saturating_sub(retired_at) < eviction_cycles
@@ -169,13 +179,6 @@ impl Cleaner {
                 return false;
             }
 
-            // Schedule re-handshaking
-            if entry.rehandshake_time() <= now {
-                handshake_requests += 1;
-                state.request_handshake(*entry.peer());
-                entry.rehandshake_time_reschedule(state.rehandshake_period());
-            }
-
             true
         });
 
@@ -183,6 +186,18 @@ impl Cleaner {
         state.cleaner_peer_seen.clear();
 
         drop(queue);
+
+        if refill_rehandshakes {
+            rehandshake.adjust_post_refill();
+        }
+
+        let mut handshake_requests = 0;
+        rehandshake.next_rehandshake_batch(state.peers.len(), |peer| {
+            handshake_requests += 1;
+            state.request_handshake(peer);
+        });
+
+        drop(rehandshake);
 
         let id_entries = state.ids.len();
         let address_entries = state.peers.len();
