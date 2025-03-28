@@ -66,51 +66,67 @@ fn no_loss() {
     sim(|| {
         hello_goodbye();
 
-        {
-            ::bach::net::monitor::on_socket_write(move |write| {
-                let count = COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-                assert!(count <= 4, "flow should only consume 4 packets\n{write:#?}");
-                tracing::info!(?write, "on_socket_write");
-                Ok(())
-            });
-        }
+        ::bach::net::monitor::on_packet_sent(move |packet| {
+            let count = COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            assert!(
+                count <= 4,
+                "flow should only consume 4 packets\n{packet:#?}"
+            );
+            tracing::info!(?packet, "on_packet_sent");
+            Default::default()
+        });
     });
 
     assert_eq!(COUNT.load(Ordering::Relaxed), 4);
 }
 
 // TODO use this with bach >= 0.0.13
-// Also - this test is broken... need to fix the impl
 #[cfg(todo)]
 #[test]
 fn packet_loss() {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
     check!()
         .exhaustive()
         .with_generator(0usize..=4)
         .cloned()
         .for_each(|loss_idx| {
+            let max_count = match loss_idx {
+                // the first two are Stream packets
+                0..=1 => 6,
+                // the next ones are Control packets, which cause 1 extra packet, since the
+                // sender also needs to transmit the Stream packet again.
+                2..=3 => 7,
+                // otherwise, it should only take 4
+                _ => 4,
+            };
+
+            static COUNT: AtomicUsize = AtomicUsize::new(0);
+
+            // reset the count back to 0
+            COUNT.store(0, Ordering::Relaxed);
+
             sim(|| {
                 hello_goodbye();
 
-                {
-                    let mut count = 0;
-                    ::bach::net::monitor::on_packet_sent(move |packet| {
-                        let idx = count;
-                        count += 1;
+                ::bach::net::monitor::on_packet_sent(move |packet| {
+                    let idx = COUNT.fetch_add(1, Ordering::Relaxed);
+                    let count = idx + 1;
 
-                        assert!(
-                            count <= 5,
-                            "flow should only consume 5 packets\n{packet:#?}"
-                        );
+                    assert!(
+                        count <= max_count,
+                        "flow should only consume {max_count} packets\n{packet:#?}"
+                    );
 
-                        if loss_idx == idx {
-                            return ::bach::net::monitor::Command::Drop;
-                        }
+                    if loss_idx == idx {
+                        return ::bach::net::monitor::Command::Drop;
+                    }
 
-                        Default::default()
-                    });
-                }
+                    Default::default()
+                });
             });
+
+            assert_eq!(COUNT.swap(0, Ordering::Relaxed), max_count);
         });
 }
 

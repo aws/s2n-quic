@@ -368,15 +368,9 @@ impl State {
 
                     // if there was no error and we transmitted everything then just shut the
                     // stream down
-                    if close.error_code == VarInt::ZERO
-                        && close.frame_type.is_some()
-                        && self.state.on_recv_all_acks().is_ok()
-                    {
-                        self.clean_up();
-                        // transmit one more PTO packet so we can ACK the peer's
-                        // CONNECTION_CLOSE frame and they can shutdown quickly. Otherwise,
-                        // they'll need to hang around to respond to potential loss.
-                        self.pto.force_transmit();
+                    if close.error_code == VarInt::ZERO && close.frame_type.is_some() {
+                        self.unacked_ranges.clear();
+                        self.try_finish();
                         return Ok(None);
                     }
 
@@ -605,27 +599,25 @@ impl State {
                     #[allow(clippy::redundant_closure_call)]
                     ($on_packet)(&packet);
 
-                    if let Some(segment) = packet.info.retransmission {
+                    if let Some((segment, retransmission)) = packet.info.retransmit_copy() {
+                        // the stream segment was cleaned up so no need to retransmit
+                        if !self.stream_packet_buffers.contains_key(segment) {
+                            continue;
+                        }
+
                         // update our local packet number to be at least 1 more than the largest lost
                         // packet number
                         let min_recovery_packet_number = num.as_u64() + 1;
                         self.recovery_packet_number =
                             self.recovery_packet_number.max(min_recovery_packet_number);
 
-                        let retransmission = retransmission::Segment {
-                            segment,
-                            stream_offset: packet.info.stream_offset,
-                            payload_len: packet.info.payload_len,
-                            ty: TransmissionType::Stream,
-                            included_fin: packet.info.included_fin,
-                        };
                         self.retransmissions.push(retransmission);
                     } else {
                         // we can only recover reliable streams
                         is_unrecoverable |= packet.info.payload_len > 0 && !self.is_reliable;
                     }
-                }}
-            }
+                }
+            }}
         }
 
         match packet_space {
@@ -647,6 +639,48 @@ impl State {
         self.invariants();
 
         Ok(())
+    }
+
+    /// Takes the oldest stream packets and tries to make them into PTO packets
+    ///
+    /// This ensures that we're not wasting resources by sending empty payloads, especially
+    /// when there's outstanding data waiting to be ACK'd.
+    fn make_stream_packets_as_pto_probes(&mut self) {
+        // check to see if we have in-flight stream segments
+        ensure!(!self.sent_stream_packets.is_empty());
+        // only reliable streams store segments
+        ensure!(self.is_reliable);
+
+        let pto = self.pto.transmissions() as usize;
+
+        // check if we already have retransmissions scheduled
+        let Some(mut remaining) = pto.checked_sub(self.retransmissions.len()) else {
+            return;
+        };
+
+        // iterate until remaining is 0.
+        //
+        // This nested loop a bit weird but it's intentional - if we have `remaining == 2` but only have a single
+        // in-flight stream segment then we want to transmit that segment `remaining` times.
+        while remaining > 0 {
+            for (num, packet) in self.sent_stream_packets.iter().take(remaining) {
+                let Some((_segment, retransmission)) = packet.info.retransmit_copy() else {
+                    // unreliable streams don't store segments so bail early - this was checked above
+                    return;
+                };
+
+                // update our local packet number to be at least 1 more than the largest lost
+                // packet number
+                let min_recovery_packet_number = num.as_u64() + 1;
+                self.recovery_packet_number =
+                    self.recovery_packet_number.max(min_recovery_packet_number);
+
+                self.retransmissions.push(retransmission);
+
+                // consider this as a PTO
+                remaining -= 1;
+            }
+        }
     }
 
     #[inline]
@@ -894,6 +928,10 @@ impl State {
         // try to transition to start sending
         let _ = self.state.on_send_stream();
         if info.included_fin {
+            // clear out the unacked ranges that we're no longer tracking
+            let final_offset = info.end_offset();
+            let _ = self.unacked_ranges.remove(final_offset..);
+
             // if the transmission included the final offset, then transition to that state
             let _ = self.state.on_send_fin();
         }
@@ -960,6 +998,9 @@ impl State {
         // skip a packet number if we're probing
         if self.pto.transmissions() > 0 {
             self.recovery_packet_number += 1;
+
+            // Try making some existing stream packets as probes instead of transmitting empty ones
+            self.make_stream_packets_as_pto_probes();
         }
 
         self.try_transmit_retransmissions(control_key, credentials, clock)?;
@@ -983,17 +1024,28 @@ impl State {
         ensure!(self.is_reliable, Ok(()));
 
         while let Some(retransmission) = self.retransmissions.peek() {
-            // make sure we fit in the current congestion window
-            let remaining_cca_window = self
-                .cca
-                .congestion_window()
-                .saturating_sub(self.cca.bytes_in_flight());
-            ensure!(
-                retransmission.payload_len as u32 <= remaining_cca_window,
-                break
-            );
+            // If the CCA is requesting fast retransmission we can bypass the CWND check
+            if !self.cca.requires_fast_retransmission() {
+                // make sure we fit in the current congestion window
+                let remaining_cca_window = self
+                    .cca
+                    .congestion_window()
+                    .saturating_sub(self.cca.bytes_in_flight());
+                ensure!(
+                    retransmission.payload_len as u32 <= remaining_cca_window,
+                    break
+                );
+            }
 
-            let buffer = self.stream_packet_buffers[retransmission.segment].make_mut();
+            let Some(buffer) = self.stream_packet_buffers.get_mut(retransmission.segment) else {
+                // the segment was acknowledged by another packet so remove it
+                let _ = self
+                    .retransmissions
+                    .pop()
+                    .expect("retransmission should be available");
+                continue;
+            };
+            let buffer = buffer.make_mut();
 
             debug_assert!(!buffer.is_empty(), "empty retransmission buffer submitted");
 
