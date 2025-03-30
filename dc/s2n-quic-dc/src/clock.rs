@@ -100,7 +100,7 @@ impl Timer {
         self.target = None;
     }
 
-    pub async fn sleep(&mut self, target: Timestamp) {
+    pub async fn sleep_until(&mut self, target: Timestamp) {
         use time::clock::Timer;
         self.update(target);
         core::future::poll_fn(|cx| self.poll_ready(cx)).await

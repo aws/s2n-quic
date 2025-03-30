@@ -1,36 +1,42 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic_core::inet::{SocketAddress, SocketAddressV6};
+use crate::clock::{Clock, Timer};
+use s2n_quic_core::{
+    inet::{SocketAddress, SocketAddressV6},
+    time::Timestamp,
+};
 use std::{
-    collections::hash_map::RandomState,
-    hash::BuildHasher,
-    net::SocketAddr,
-    time::{Duration, Instant},
+    collections::hash_map::RandomState, hash::BuildHasher, marker::PhantomData, net::SocketAddr,
+    time::Duration,
 };
 
-pub(super) struct RehandshakeState {
+pub(super) struct RehandshakeState<Clk> {
     queue: Vec<SocketAddressV6>,
-    handshake_at: Option<Instant>,
-    schedule_handshake_at: Instant,
+    handshake_at: Option<Timestamp>,
+    schedule_handshake_at: Timestamp,
+    burst_timer: Timer,
 
     // Duplicated in map State for lock-free access too.
     rehandshake_period: Duration,
 
     hasher: RandomState,
+    clock: PhantomData<Clk>,
 }
 
-impl RehandshakeState {
-    pub(super) fn new(rehandshake_period: Duration) -> Self {
+impl<Clk: Clock> RehandshakeState<Clk> {
+    pub(super) fn new(rehandshake_period: Duration, clock: &Clk) -> Self {
         Self {
             queue: Default::default(),
-            handshake_at: Default::default(),
-            schedule_handshake_at: Instant::now(),
+            handshake_at: None,
+            schedule_handshake_at: clock.get_time(),
+            burst_timer: clock.timer(),
             rehandshake_period,
 
             // Initializes the hasher with random keys, ensuring we handshake with peers in a
             // different, random order from different hosts.
             hasher: RandomState::new(),
+            clock: PhantomData,
         }
     }
 
@@ -55,9 +61,10 @@ impl RehandshakeState {
         self.queue.reserve(capacity);
     }
 
-    pub(super) fn next_rehandshake_batch(
+    pub(super) async fn next_rehandshake_batch(
         &mut self,
         peer_count: usize,
+        clock: &Clk,
         mut request_handshake: impl FnMut(SocketAddr),
     ) {
         // Get the number of handshakes we should run during each minute.
@@ -70,21 +77,22 @@ impl RehandshakeState {
         let mut max_delay =
             (self.rehandshake_period.as_secs() as f64 / peer_count as f64).ceil() as u64;
 
-        // Schedule when we're going to add the one handshake.
-        if self.handshake_at.is_none()
-            && max_delay > 0
-            && self.schedule_handshake_at <= Instant::now()
         {
-            max_delay = max_delay.clamp(0, self.rehandshake_period.as_secs());
-            let delta = rand::random_range(0..max_delay);
-            self.handshake_at = Some(Instant::now() + Duration::from_secs(delta));
-            self.schedule_handshake_at = Instant::now() + Duration::from_secs(max_delay);
-        }
+            let now = clock.get_time();
 
-        // If the time when we should add the single handshake, then add it.
-        if self.handshake_at.is_some_and(|t| t <= Instant::now()) {
-            to_select += 1;
-            self.handshake_at = None;
+            // Schedule when we're going to add the one handshake.
+            if self.handshake_at.is_none() && max_delay > 0 && self.schedule_handshake_at <= now {
+                max_delay = max_delay.clamp(0, self.rehandshake_period.as_secs());
+                let delta = rand::random_range(0..max_delay);
+                self.handshake_at = Some(now + Duration::from_secs(delta));
+                self.schedule_handshake_at = now + Duration::from_secs(max_delay);
+            }
+
+            // If the time when we should add the single handshake, then add it.
+            if self.handshake_at.is_some_and(|t| t <= now) {
+                to_select += 1;
+                self.handshake_at = None;
+            }
         }
 
         for idx in 0..to_select {
@@ -98,7 +106,10 @@ impl RehandshakeState {
                 // Since we handshake in bursts of 25, this still allows 60*1000/50*25 = 30k
                 // handshakes/minute, which is orders of magnitude more than we should ever have. At
                 // 500k peers with a 24 hour handshake period means ~348 handshakes/minute.
-                std::thread::sleep(Duration::from_millis(50));
+                let target = clock.get_time();
+                self.burst_timer
+                    .sleep_until(target + Duration::from_millis(50))
+                    .await;
             }
         }
     }

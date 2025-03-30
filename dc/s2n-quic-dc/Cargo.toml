@@ -66,6 +66,7 @@ bach = { version = "0.0.12", features = ["net", "tokio-compat"] }
 bolero = "0.13"
 bolero-generator = "0.13"
 insta = "1"
+mimalloc = { version = "0.1", default-features = false }
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = [

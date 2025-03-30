@@ -1,19 +1,9 @@
 [workspace]
-members = [
-    "common/s2n-*",
-    "quic/s2n-*",
-    "dc/s2n-*",
-]
-default-members = [
-    "common/s2n-*",
-    "quic/s2n-*",
-]
+members = ["common/s2n-*", "quic/s2n-*", "dc/s2n-*"]
+default-members = ["common/s2n-*", "quic/s2n-*"]
 resolver = "2"
 # don't include any workspaces outside of the main project
-exclude = [
-    "examples",
-    "tools",
-]
+exclude = ["examples", "tools"]
 
 [profile.release-debug]
 inherits = "dev"
@@ -31,3 +21,6 @@ inherits = "dev"
 opt-level = 3
 incremental = false
 codegen-units = 1
+
+[patch.crates-io]
+bach = { path = "../../camshaft/bach/bach" }

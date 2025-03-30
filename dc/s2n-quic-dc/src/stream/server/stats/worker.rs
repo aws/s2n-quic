@@ -39,7 +39,7 @@ impl Worker {
             );
 
             // allow some more samples to come through
-            timer.sleep(clock.get_time() + debounce).await;
+            timer.sleep_until(clock.get_time() + debounce).await;
 
             while let Ok(Some(sample)) = self.queue.try_recv_back() {
                 rtt_estimator.update_rtt(
@@ -54,7 +54,7 @@ impl Worker {
             self.stats.update(&rtt_estimator);
 
             // wait before taking a new sample to avoid spinning
-            timer.sleep(clock.get_time() + timeout).await;
+            timer.sleep_until(clock.get_time() + timeout).await;
         }
     }
 }

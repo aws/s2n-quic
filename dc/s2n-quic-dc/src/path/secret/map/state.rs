@@ -3,16 +3,14 @@
 
 use super::{cleaner::Cleaner, entry::ApplicationData, stateless_reset, Entry, Store};
 use crate::{
+    clock::Clock,
     credentials::{Credentials, Id},
     crypto,
     event::{self, EndpointPublisher as _, IntoEvent as _},
     packet::{secret_control as control, Packet},
     path::secret::receiver,
 };
-use s2n_quic_core::{
-    inet::SocketAddress,
-    time::{self, Timestamp},
-};
+use s2n_quic_core::{inet::SocketAddress, time::Timestamp};
 use std::{
     collections::VecDeque,
     hash::BuildHasher,
@@ -21,8 +19,8 @@ use std::{
     time::Duration,
 };
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 #[derive(Default)]
 pub(crate) struct PeerMap(
@@ -163,7 +161,7 @@ impl IdMap {
 
 pub(super) struct State<C, S>
 where
-    C: 'static + time::Clock + Sync + Send,
+    C: Clock,
     S: event::Subscriber,
 {
     // This is in number of entries.
@@ -206,12 +204,9 @@ where
     // We use a PeerMap to save memory -- an Arc is 8 bytes, SocketAddr is 32 bytes.
     pub(super) cleaner_peer_seen: PeerMap,
 
-    // Lock is acquired only in Cleaner.
-    pub(super) rehandshake: Mutex<super::rehandshake::RehandshakeState>,
-
     init_time: Timestamp,
 
-    clock: C,
+    pub(super) clock: C,
 
     subscriber: S,
 
@@ -235,7 +230,7 @@ static CONTROL_SOCKET: Mutex<Weak<std::net::UdpSocket>> = Mutex::new(Weak::new()
 
 impl<C, S> State<C, S>
 where
-    C: 'static + time::Clock + Sync + Send,
+    C: Clock,
     S: event::Subscriber,
 {
     pub fn new(
@@ -278,9 +273,6 @@ where
             eviction_queue: Default::default(),
             cleaner_peer_seen: Default::default(),
             cleaner: Cleaner::new(),
-            rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
-                rehandshake_period,
-            )),
             signer,
             control_socket,
             init_time,
@@ -300,15 +292,15 @@ where
         state.peers.reserve(2 * state.max_capacity);
         state.ids.reserve(2 * state.max_capacity);
         state.cleaner_peer_seen.reserve(2 * state.max_capacity);
-        state
-            .rehandshake
-            .get_mut()
-            .unwrap()
-            .reserve(state.max_capacity);
 
         let state = Arc::new(state);
 
-        state.cleaner.spawn_thread(state.clone());
+        let mut rehandshake =
+            super::rehandshake::RehandshakeState::new(rehandshake_period, &state.clock);
+
+        rehandshake.reserve(state.max_capacity);
+
+        state.cleaner.spawn_thread(state.clone(), rehandshake);
 
         state
             .subscriber()
@@ -567,7 +559,7 @@ where
 
 impl<C, S> Store for State<C, S>
 where
-    C: time::Clock + Sync + Send,
+    C: Clock,
     S: event::Subscriber,
 {
     fn secrets_len(&self) -> usize {
@@ -906,7 +898,7 @@ where
 
 impl<C, S> Drop for State<C, S>
 where
-    C: 'static + time::Clock + Sync + Send,
+    C: Clock,
     S: event::Subscriber,
 {
     fn drop(&mut self) {

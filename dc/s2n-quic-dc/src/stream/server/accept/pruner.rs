@@ -62,7 +62,7 @@ impl Pruner {
 
         let clock = env.clock().clone();
         let mut timer = clock.timer();
-        timer.sleep(clock.get_time() + min_sleep_time).await;
+        timer.sleep_until(clock.get_time() + min_sleep_time).await;
 
         loop {
             let now = clock.get_time();
@@ -72,7 +72,7 @@ impl Pruner {
             let Some(queue_time_threshold) = now.checked_sub(
                 (smoothed_sojourn_time * sojourn_multiplier).clamp(min_threshold, max_threshold),
             ) else {
-                timer.sleep(now + min_sleep_time).await;
+                timer.sleep_until(now + min_sleep_time).await;
                 continue;
             };
 
@@ -105,7 +105,7 @@ impl Pruner {
             // wake up later based on the smoothed sojourn time
             let target = smoothed_sojourn_time.clamp(min_sleep_time, max_sleep_time);
             let target = clock.get_time() + target;
-            timer.sleep(target).await;
+            timer.sleep_until(target).await;
         }
     }
 }
