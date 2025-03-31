@@ -29,8 +29,7 @@ pub(super) struct Pool {
     sockets: Box<[Socket]>,
     current: AtomicUsize,
     mask: usize,
-    /// The local address if `reuse_port` was enabled
-    local_addr: Option<SocketAddr>,
+    local_addr: SocketAddr,
 }
 
 struct Socket {
@@ -87,17 +86,12 @@ impl Pool {
         }
         let sockets = Self::create_workers(options, &config)?;
 
-        let local_addr = if config.reuse_port {
-            let addr = sockets[0].recv_socket.local_addr()?;
-            if cfg!(debug_assertions) {
-                for socket in sockets.iter().skip(1) {
-                    debug_assert_eq!(addr, socket.recv_socket.local_addr()?);
-                }
+        let local_addr = sockets[0].recv_socket.local_addr()?;
+        if cfg!(debug_assertions) && config.reuse_port {
+            for socket in sockets.iter().skip(1) {
+                debug_assert_eq!(local_addr, socket.recv_socket.local_addr()?);
             }
-            Some(addr)
-        } else {
-            None
-        };
+        }
 
         let max_packet_size = config.max_packet_size;
         let packet_count = config.packet_count;
@@ -162,7 +156,7 @@ impl Pool {
         (control, stream, app_socket, worker_socket)
     }
 
-    pub fn local_addr(&self) -> Option<SocketAddr> {
+    pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
     }
 
