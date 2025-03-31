@@ -77,7 +77,7 @@ impl Cleaner {
                     rand::rng().random_range(5..60)
                 };
 
-                let next_start = Instant::now() + Duration::from_secs(pause);
+                let next_start = Instant::now() + Duration::from_secs(60);
                 std::thread::park_timeout(Duration::from_secs(pause));
 
                 let Some(state) = state.upgrade() else {
