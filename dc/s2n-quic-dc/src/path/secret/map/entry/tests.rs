@@ -13,8 +13,9 @@ fn entry_size() {
 
     // This gates to running only on specific GHA to reduce false positives.
     if should_check {
+        let clock = s2n_quic_core::time::NoopClock::default();
         assert_eq!(
-            Entry::fake((std::net::Ipv4Addr::LOCALHOST, 0).into(), None).size(),
+            Entry::fake((std::net::Ipv4Addr::LOCALHOST, 0).into(), None, &clock).size(),
             307
         );
     }

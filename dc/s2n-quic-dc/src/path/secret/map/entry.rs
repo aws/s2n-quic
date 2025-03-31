@@ -17,7 +17,11 @@ use crate::{
     stream::TransportFeatures,
 };
 use s2n_codec::EncoderBuffer;
-use s2n_quic_core::{dc, varint::VarInt};
+use s2n_quic_core::{
+    dc,
+    time::{Clock, Timestamp},
+    varint::VarInt,
+};
 use std::{
     any::Any,
     net::SocketAddr,
@@ -25,7 +29,7 @@ use std::{
         atomic::{AtomicU32, AtomicU8, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 #[cfg(test)]
@@ -35,7 +39,7 @@ pub type ApplicationData = Arc<dyn Any + Send + Sync>;
 
 #[derive(Debug)]
 pub struct Entry {
-    creation_time: Instant,
+    creation_time: Timestamp,
     peer: SocketAddr,
     secret: schedule::Secret,
     retired: IsRetired,
@@ -83,7 +87,7 @@ impl SizeOf for AtomicU8 {}
 impl SizeOf for AtomicU32 {}
 
 impl Entry {
-    pub fn new(
+    pub fn new<C: Clock + ?Sized>(
         peer: SocketAddr,
         secret: schedule::Secret,
         sender: sender::State,
@@ -92,6 +96,7 @@ impl Entry {
         // FIXME: remove unused parameter
         _: Duration,
         application_data: ApplicationData,
+        clock: &C,
     ) -> Self {
         // clamp max datagram size to a well-known value
         parameters
@@ -99,7 +104,7 @@ impl Entry {
             .fetch_min(crate::stream::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
 
         Self {
-            creation_time: Instant::now(),
+            creation_time: clock.get_time(),
             peer,
             secret,
             retired: Default::default(),
@@ -112,7 +117,11 @@ impl Entry {
     }
 
     #[cfg(any(test, feature = "testing"))]
-    pub fn fake(peer: SocketAddr, receiver: Option<receiver::State>) -> Arc<Entry> {
+    pub fn fake<C: Clock + ?Sized>(
+        peer: SocketAddr,
+        receiver: Option<receiver::State>,
+        clock: &C,
+    ) -> Arc<Entry> {
         let receiver = receiver.unwrap_or_default();
 
         let mut secret = [0; 32];
@@ -131,6 +140,7 @@ impl Entry {
             dc::testing::TEST_APPLICATION_PARAMS,
             dc::testing::TEST_REHANDSHAKE_PERIOD,
             Arc::new(()),
+            clock,
         ))
     }
 
@@ -253,8 +263,10 @@ impl Entry {
             .store(mtu, Ordering::Relaxed);
     }
 
-    pub fn age(&self) -> Duration {
-        self.creation_time.elapsed()
+    pub fn age<C: Clock>(&self, clock: &C) -> Duration {
+        clock
+            .get_time()
+            .saturating_duration_since(self.creation_time)
     }
 
     pub fn receiver(&self) -> &receiver::State {

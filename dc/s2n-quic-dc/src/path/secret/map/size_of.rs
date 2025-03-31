@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::status::IsRetired;
-use s2n_quic_core::dc;
-use std::{net::SocketAddr, sync::atomic::AtomicU64, time::Instant};
+use s2n_quic_core::{dc, time::Timestamp};
+use std::{net::SocketAddr, sync::atomic::AtomicU64};
 
 /// Provide an approximation of the size of Self, including any heap indirection (e.g., a vec
 /// backed by a megabyte is a megabyte in `size`, not 24 bytes).
@@ -24,10 +24,10 @@ pub(crate) trait SizeOf: Sized {
     }
 }
 
-impl SizeOf for Instant {}
 impl SizeOf for u32 {}
 impl SizeOf for SocketAddr {}
 impl SizeOf for AtomicU64 {}
+impl SizeOf for Timestamp {}
 
 impl SizeOf for IsRetired {}
 impl SizeOf for dc::ApplicationParams {}

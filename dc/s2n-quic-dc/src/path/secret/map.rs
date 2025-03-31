@@ -218,6 +218,7 @@ impl Map {
                 dc::testing::TEST_APPLICATION_PARAMS,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
                 Arc::new(()),
+                &*provider.store,
             );
             let entry = Arc::new(entry);
             provider.store.test_insert(entry);
@@ -236,7 +237,7 @@ impl Map {
     #[cfg(any(test, feature = "testing"))]
     pub fn test_insert(&self, peer: SocketAddr) {
         let receiver = super::receiver::State::new();
-        let entry = Entry::fake(peer, Some(receiver));
+        let entry = Entry::fake(peer, Some(receiver), &*self.store);
         self.store.test_insert(entry);
     }
 
@@ -280,6 +281,7 @@ impl Map {
                 params,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
                 Arc::new(()),
+                &*self.store,
             );
             let entry = Arc::new(entry);
             map.store.test_insert(entry);

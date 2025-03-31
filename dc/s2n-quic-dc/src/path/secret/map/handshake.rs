@@ -139,6 +139,7 @@ impl dc::Path for HandshakingPath {
             self.parameters.clone(),
             self.map.store.rehandshake_period(),
             self.application_data.take().unwrap(),
+            &*self.map.store,
         );
         let entry = Arc::new(entry);
         self.entry = Some(entry.clone());

@@ -61,8 +61,9 @@ where
         let addr = u32::from_be_bytes([10, 0, 0, 0]) + idx as u32;
         let addr = SocketAddr::new(addr.to_be_bytes().into(), 443);
         let map = map.clone();
+        let sleep_time = (1..10 * 60).any().s();
         async move {
-            (1..10).any().s().sleep().await;
+            sleep_time.sleep().await;
             map.test_insert(addr);
         }
         .spawn();
@@ -97,7 +98,7 @@ fn rehandshake_sim() {
     let log = Arc::new(Mutex::new(log));
 
     let one_hour = Duration::from_secs(60 * 60);
-    let hours = 36;
+    let hours = 24 * 7;
     let total_time = one_hour * hours;
 
     without_tracing(|| {

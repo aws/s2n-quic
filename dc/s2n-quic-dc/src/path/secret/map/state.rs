@@ -322,7 +322,7 @@ where
                 event::builder::PathSecretMapIdEntryEvicted {
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
-                    age: evicted.age(),
+                    age: evicted.age(self),
                 },
             );
         }
@@ -339,7 +339,7 @@ where
                 event::builder::PathSecretMapAddressEntryEvicted {
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
-                    age: evicted.age(),
+                    age: evicted.age(self),
                 },
             );
         }
@@ -557,6 +557,17 @@ where
     }
 }
 
+impl<C, S> s2n_quic_core::time::Clock for State<C, S>
+where
+    C: Clock,
+    S: event::Subscriber,
+{
+    #[inline]
+    fn get_time(&self) -> Timestamp {
+        self.clock.get_time()
+    }
+}
+
 impl<C, S> Store for State<C, S>
 where
     C: Clock,
@@ -699,7 +710,7 @@ where
                 .on_path_secret_map_address_cache_accessed_hit(
                     event::builder::PathSecretMapAddressCacheAccessedHit {
                         peer_address: SocketAddress::from(*peer).into_event(),
-                        age: entry.age(),
+                        age: entry.age(self),
                     },
                 );
         }
@@ -726,7 +737,7 @@ where
             self.subscriber().on_path_secret_map_id_cache_accessed_hit(
                 event::builder::PathSecretMapIdCacheAccessedHit {
                     credential_id: id.into_event(),
-                    age: entry.age(),
+                    age: entry.age(self),
                 },
             );
         }

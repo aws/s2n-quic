@@ -16,10 +16,11 @@ pub struct StdClock {
 }
 
 impl Default for StdClock {
+    // this is the only usage of `Instant::now` since it implements the clock abstraction
+    #[allow(clippy::disallowed_methods)]
     fn default() -> Self {
-        Self {
-            epoch: Instant::now(),
-        }
+        let epoch = Instant::now();
+        Self { epoch }
     }
 }
 
@@ -31,6 +32,8 @@ impl StdClock {
 }
 
 impl Clock for StdClock {
+    // this is the only usage of `Instant::elapsed` since it implements the clock abstraction
+    #[allow(clippy::disallowed_methods)]
     fn get_time(&self) -> Timestamp {
         unsafe { Timestamp::from_duration(self.epoch.elapsed()) }
     }

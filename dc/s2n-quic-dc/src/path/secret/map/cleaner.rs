@@ -91,12 +91,13 @@ impl Cleaner {
         C: Clock,
         S: event::Subscriber,
     {
+        use ::bach::{ext::*, time::*};
+
         let state = Arc::downgrade(&state);
 
         let fut = async move {
-            use ::bach::{ext::*, time::*};
             loop {
-                let pause = (5..60).any();
+                let pause = ::rand::rng().random_range(5..60);
                 let pause = Duration::from_secs(pause);
 
                 let next_start = Instant::now() + Duration::from_secs(60);

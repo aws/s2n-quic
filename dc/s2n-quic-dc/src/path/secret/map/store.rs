@@ -9,9 +9,10 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_codec::EncoderBuffer;
+use s2n_quic_core::time::Clock;
 use std::{net::SocketAddr, sync::Arc};
 
-pub trait Store: 'static + Send + Sync {
+pub trait Store: 'static + Clock + Send + Sync {
     fn secrets_len(&self) -> usize;
 
     fn peers_len(&self) -> usize;
