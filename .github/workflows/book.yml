@@ -10,6 +10,7 @@ name: book
 
 env:
   CDN: https://dnglbrstg7yg.cloudfront.net
+  USE_CACHE: false
 
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
@@ -36,6 +37,7 @@ jobs:
       - uses: camshaft/install@v1
         with:
           crate: mdbook
+          use-cache: ${{env.USE_CACHE}}
 
       - name: Build book
         run: ./scripts/book
