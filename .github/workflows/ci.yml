@@ -20,6 +20,7 @@ env:
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
   S2N_UNSTABLE_CRYPTO_OPT_RX: 100
+  CMAKE_URL: https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz
 
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
@@ -113,6 +114,16 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
+      # The Ubuntu Github runners automatically use CMake 4, which isn't supported by
+      # aws-lc-fips-sys yet. The CMake version is pinned until support is added.
+      # https://github.com/aws/s2n-quic/issues/2580
+      - name: Install CMake
+        run: |
+          wget -O cmake.tar.gz ${{env.CMAKE_URL}}
+          mkdir cmake-3.31
+          tar xf cmake.tar.gz -C cmake-3.31 --strip-components=1
+          echo PATH="`pwd`/cmake-3.31/bin:$PATH" >> $GITHUB_ENV
+
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy
         run: |
@@ -161,6 +172,16 @@ jobs:
           rustup toolchain install nightly --profile minimal
 
       - uses: camshaft/rust-cache@v1
+
+      # The Ubuntu Github runners automatically use CMake 4, which isn't supported by
+      # aws-lc-fips-sys yet. The CMake version is pinned until support is added.
+      # https://github.com/aws/s2n-quic/issues/2580
+      - name: Install CMake
+        run: |
+          wget -O cmake.tar.gz ${{env.CMAKE_URL}}
+          mkdir cmake-3.31
+          tar xf cmake.tar.gz -C cmake-3.31 --strip-components=1
+          echo PATH="`pwd`/cmake-3.31/bin:$PATH" >> $GITHUB_ENV
 
       - name: Run cargo doc
         run: cargo +nightly doc --all-features --no-deps --workspace --exclude s2n-quic-qns
@@ -329,6 +350,16 @@ jobs:
           rustup override set stable
 
       - uses: camshaft/rust-cache@v1
+
+      # The Ubuntu Github runners automatically use CMake 4, which isn't supported by
+      # aws-lc-fips-sys yet. The CMake version is pinned until support is added.
+      # https://github.com/aws/s2n-quic/issues/2580
+      - name: Install CMake
+        run: |
+          wget -O cmake.tar.gz ${{env.CMAKE_URL}}
+          mkdir cmake-3.31
+          tar xf cmake.tar.gz -C cmake-3.31 --strip-components=1
+          echo PATH="`pwd`/cmake-3.31/bin:$PATH" >> $GITHUB_ENV
 
       - name: Run test (rustls)
         run: |
