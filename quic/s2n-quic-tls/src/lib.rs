@@ -49,7 +49,7 @@ impl ConfigLoader for Box<dyn ConfigLoader> {
 mod callback;
 mod keylog;
 mod params;
-mod session;
+pub mod session;
 
 pub mod certificate;
 pub mod client;
