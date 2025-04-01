@@ -28,8 +28,7 @@ pub(super) struct Pool {
     sockets: Box<[Socket]>,
     current: AtomicUsize,
     mask: usize,
-    /// The local address if `reuse_port` was enabled
-    local_addr: Option<SocketAddr>,
+    local_addr: SocketAddr,
 }
 
 struct Socket {
@@ -132,7 +131,7 @@ impl Pool {
             sockets: sockets.into(),
             current: AtomicUsize::new(0),
             mask,
-            local_addr: Some(local_addr),
+            local_addr,
         })
     }
 
@@ -150,7 +149,7 @@ impl Pool {
         (control, stream, app_socket, worker_socket)
     }
 
-    pub fn local_addr(&self) -> Option<SocketAddr> {
+    pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
     }
 

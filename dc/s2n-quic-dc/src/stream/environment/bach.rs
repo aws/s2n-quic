@@ -156,7 +156,7 @@ where
 
     #[inline]
     pub fn pool_addr(&self) -> Option<SocketAddr> {
-        self.recv_pool.as_ref().and_then(|v| v.local_addr())
+        self.recv_pool.as_ref().map(|v| v.local_addr())
     }
 }
 
