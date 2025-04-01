@@ -237,12 +237,12 @@ impl tls::Session for Session {
 // This is used to assert that our code is correct in the event of any
 // random pendings/wakeups that might occur when negotiating TLS.
 #[derive(Debug)]
-struct SlowSession {
+struct SlowSession<S: tls::Session> {
     defer: u8,
-    inner_session: Session,
+    inner_session: S,
 }
 
-impl tls::Session for SlowSession {
+impl<S: tls::Session> tls::Session for SlowSession<S> {
     #[inline]
     fn poll<W>(&mut self, context: &mut W) -> Poll<Result<(), transport::Error>>
     where
@@ -263,23 +263,23 @@ impl tls::Session for SlowSession {
     }
 }
 
-impl CryptoSuite for SlowSession {
-    type HandshakeKey = <Session as CryptoSuite>::HandshakeKey;
-    type HandshakeHeaderKey = <Session as CryptoSuite>::HandshakeHeaderKey;
-    type InitialKey = <Session as CryptoSuite>::InitialKey;
-    type InitialHeaderKey = <Session as CryptoSuite>::InitialHeaderKey;
-    type ZeroRttKey = <Session as CryptoSuite>::ZeroRttKey;
-    type ZeroRttHeaderKey = <Session as CryptoSuite>::ZeroRttHeaderKey;
-    type OneRttKey = <Session as CryptoSuite>::OneRttKey;
-    type OneRttHeaderKey = <Session as CryptoSuite>::OneRttHeaderKey;
-    type RetryKey = <Session as CryptoSuite>::RetryKey;
+impl<S: tls::Session> CryptoSuite for SlowSession<S> {
+    type HandshakeKey = <S as CryptoSuite>::HandshakeKey;
+    type HandshakeHeaderKey = <S as CryptoSuite>::HandshakeHeaderKey;
+    type InitialKey = <S as CryptoSuite>::InitialKey;
+    type InitialHeaderKey = <S as CryptoSuite>::InitialHeaderKey;
+    type ZeroRttKey = <S as CryptoSuite>::ZeroRttKey;
+    type ZeroRttHeaderKey = <S as CryptoSuite>::ZeroRttHeaderKey;
+    type OneRttKey = <S as CryptoSuite>::OneRttKey;
+    type OneRttHeaderKey = <S as CryptoSuite>::OneRttHeaderKey;
+    type RetryKey = <S as CryptoSuite>::RetryKey;
 }
 
 struct SlowContext<'a, Inner>(&'a mut Inner);
 
-impl<I> tls::Context<Session> for SlowContext<'_, I>
+impl<I, S: tls::Session> tls::Context<S> for SlowContext<'_, I>
 where
-    I: tls::Context<SlowSession>,
+    I: tls::Context<SlowSession<S>>,
 {
     fn on_client_application_params(
         &mut self,
@@ -292,16 +292,16 @@ where
 
     fn on_handshake_keys(
         &mut self,
-        key: <Session as CryptoSuite>::HandshakeKey,
-        header_key: <Session as CryptoSuite>::HandshakeHeaderKey,
+        key: <S as CryptoSuite>::HandshakeKey,
+        header_key: <S as CryptoSuite>::HandshakeHeaderKey,
     ) -> Result<(), s2n_quic_core::transport::Error> {
         self.0.on_handshake_keys(key, header_key)
     }
 
     fn on_zero_rtt_keys(
         &mut self,
-        key: <Session as CryptoSuite>::ZeroRttKey,
-        header_key: <Session as CryptoSuite>::ZeroRttHeaderKey,
+        key: <S>::ZeroRttKey,
+        header_key: <S>::ZeroRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
     ) -> Result<(), s2n_quic_core::transport::Error> {
         self.0
@@ -310,8 +310,8 @@ where
 
     fn on_one_rtt_keys(
         &mut self,
-        key: <Session as CryptoSuite>::OneRttKey,
-        header_key: <Session as CryptoSuite>::OneRttHeaderKey,
+        key: <S>::OneRttKey,
+        header_key: <S>::OneRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
     ) -> Result<(), s2n_quic_core::transport::Error> {
         self.0
