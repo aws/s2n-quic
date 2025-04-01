@@ -46,6 +46,7 @@ runs:
       with:
         crate: duvet
         version: ${{ inputs.duvet-version }}
+        use-cache: false
 
     - name: Generate Duvet report
       shell: bash
