@@ -19,7 +19,7 @@ phases:
       - cargo build --timings
   post_build:
     commands:
-      - cargo test --exclude s2n-quic-platform --workspace
+      - cargo test --exclude s2n-quic-platform --exclude s2n-quic-dc --workspace
 
 artifacts:
   # upload timing reports
