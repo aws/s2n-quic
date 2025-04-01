@@ -232,12 +232,59 @@ impl tls::Session for Session {
     }
 }
 
+#[derive(Default)]
+pub struct SlowEndpoint;
+
+impl tls::Endpoint for SlowEndpoint {
+    type Session = SlowSession<Session>;
+
+    fn new_server_session<Params: s2n_codec::EncoderValue>(
+        &mut self,
+        transport_parameters: &Params,
+    ) -> Self::Session {
+        let mut server_endpoint = crate::server::Builder::default()
+            .with_certificate(
+                tls::testing::certificates::CERT_PEM,
+                tls::testing::certificates::KEY_PEM,
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        let inner_session = server_endpoint.new_server_session(transport_parameters);
+        SlowSession {
+            defer: 10,
+            inner_session,
+        }
+    }
+
+    fn new_client_session<Params: s2n_codec::EncoderValue>(
+        &mut self,
+        transport_parameters: &Params,
+        server_name: s2n_quic_core::application::ServerName,
+    ) -> Self::Session {
+        let mut client_endpoint = crate::client::Builder::default()
+            .with_certificate(tls::testing::certificates::CERT_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
+        let inner_session = client_endpoint.new_client_session(transport_parameters, server_name);
+        SlowSession {
+            defer: 10,
+            inner_session,
+        }
+    }
+
+    fn max_tag_length(&self) -> usize {
+        todo!()
+    }
+}
+
 // SlowSession is a test TLS provider that is slow, namely, for each call to poll,
 // it returns Poll::Pending three times before actually polling the real TLS library.
-// This is used to assert that our code is correct in the event of any
-// random pendings/wakeups that might occur when negotiating TLS.
+// This is used in an integration test to assert that our code is correct in the event
+// of any random pendings/wakeups that might occur when negotiating TLS.
 #[derive(Debug)]
-struct SlowSession<S: tls::Session> {
+pub struct SlowSession<S: tls::Session> {
     defer: u8,
     inner_session: S,
 }
