@@ -231,3 +231,155 @@ impl tls::Session for Session {
         self.received_ticket
     }
 }
+
+// SlowSession is a test TLS provider that is slow, namely, for each call to poll,
+// it returns Poll::Pending three times before actually polling the real TLS library.
+// This is used to assert that our code is correct in the event of any
+// random pendings/wakeups that might occur when negotiating TLS.
+#[derive(Debug)]
+struct SlowSession {
+    defer: u8,
+    inner_session: Session,
+}
+
+impl tls::Session for SlowSession {
+    #[inline]
+    fn poll<W>(&mut self, context: &mut W) -> Poll<Result<(), transport::Error>>
+    where
+        W: tls::Context<Self>,
+    {
+        // Self-wake and return Pending if defer is non-zero
+        if let Some(d) = self.defer.checked_sub(1) {
+            self.defer = d;
+            context.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+
+        // Otherwise we'll call the function to actually make progress
+        // in the TLS handshake and set up to defer again the next time
+        // we're here.
+        self.defer = 3;
+        self.inner_session.poll(&mut SlowContext(context))
+    }
+}
+
+impl CryptoSuite for SlowSession {
+    type HandshakeKey = <Session as CryptoSuite>::HandshakeKey;
+    type HandshakeHeaderKey = <Session as CryptoSuite>::HandshakeHeaderKey;
+    type InitialKey = <Session as CryptoSuite>::InitialKey;
+    type InitialHeaderKey = <Session as CryptoSuite>::InitialHeaderKey;
+    type ZeroRttKey = <Session as CryptoSuite>::ZeroRttKey;
+    type ZeroRttHeaderKey = <Session as CryptoSuite>::ZeroRttHeaderKey;
+    type OneRttKey = <Session as CryptoSuite>::OneRttKey;
+    type OneRttHeaderKey = <Session as CryptoSuite>::OneRttHeaderKey;
+    type RetryKey = <Session as CryptoSuite>::RetryKey;
+}
+
+struct SlowContext<'a, Inner>(&'a mut Inner);
+
+impl<I> tls::Context<Session> for SlowContext<'_, I>
+where
+    I: tls::Context<SlowSession>,
+{
+    fn on_client_application_params(
+        &mut self,
+        client_params: tls::ApplicationParameters,
+        server_params: &mut Vec<u8>,
+    ) -> Result<(), s2n_quic_core::transport::Error> {
+        self.0
+            .on_client_application_params(client_params, server_params)
+    }
+
+    fn on_handshake_keys(
+        &mut self,
+        key: <Session as CryptoSuite>::HandshakeKey,
+        header_key: <Session as CryptoSuite>::HandshakeHeaderKey,
+    ) -> Result<(), s2n_quic_core::transport::Error> {
+        self.0.on_handshake_keys(key, header_key)
+    }
+
+    fn on_zero_rtt_keys(
+        &mut self,
+        key: <Session as CryptoSuite>::ZeroRttKey,
+        header_key: <Session as CryptoSuite>::ZeroRttHeaderKey,
+        application_parameters: tls::ApplicationParameters,
+    ) -> Result<(), s2n_quic_core::transport::Error> {
+        self.0
+            .on_zero_rtt_keys(key, header_key, application_parameters)
+    }
+
+    fn on_one_rtt_keys(
+        &mut self,
+        key: <Session as CryptoSuite>::OneRttKey,
+        header_key: <Session as CryptoSuite>::OneRttHeaderKey,
+        application_parameters: tls::ApplicationParameters,
+    ) -> Result<(), s2n_quic_core::transport::Error> {
+        self.0
+            .on_one_rtt_keys(key, header_key, application_parameters)
+    }
+
+    fn on_server_name(
+        &mut self,
+        server_name: s2n_quic_core::application::ServerName,
+    ) -> Result<(), s2n_quic_core::transport::Error> {
+        self.0.on_server_name(server_name)
+    }
+
+    fn on_application_protocol(
+        &mut self,
+        application_protocol: tls::Bytes,
+    ) -> Result<(), s2n_quic_core::transport::Error> {
+        self.0.on_application_protocol(application_protocol)
+    }
+
+    fn on_handshake_complete(&mut self) -> Result<(), s2n_quic_core::transport::Error> {
+        self.0.on_handshake_complete()
+    }
+
+    fn on_tls_exporter_ready(
+        &mut self,
+        session: &impl tls::TlsSession,
+    ) -> Result<(), s2n_quic_core::transport::Error> {
+        self.0.on_tls_exporter_ready(session)
+    }
+
+    fn receive_initial(&mut self, max_len: Option<usize>) -> Option<tls::Bytes> {
+        self.0.receive_initial(max_len)
+    }
+
+    fn receive_handshake(&mut self, max_len: Option<usize>) -> Option<tls::Bytes> {
+        self.0.receive_handshake(max_len)
+    }
+
+    fn receive_application(&mut self, max_len: Option<usize>) -> Option<tls::Bytes> {
+        self.0.receive_application(max_len)
+    }
+
+    fn can_send_initial(&self) -> bool {
+        self.0.can_send_initial()
+    }
+
+    fn send_initial(&mut self, transmission: tls::Bytes) {
+        self.0.send_initial(transmission);
+    }
+
+    fn can_send_handshake(&self) -> bool {
+        self.0.can_send_handshake()
+    }
+
+    fn send_handshake(&mut self, transmission: tls::Bytes) {
+        self.0.send_handshake(transmission);
+    }
+
+    fn can_send_application(&self) -> bool {
+        self.0.can_send_application()
+    }
+
+    fn send_application(&mut self, transmission: tls::Bytes) {
+        self.0.send_application(transmission)
+    }
+
+    fn waker(&self) -> &core::task::Waker {
+        self.0.waker()
+    }
+}
