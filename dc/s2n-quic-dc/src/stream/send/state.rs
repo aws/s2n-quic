@@ -57,9 +57,9 @@ slotmap::new_key_type! {
     pub struct BufferIndex;
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum TransmitIndex {
-    Stream(BufferIndex),
+    Stream(BufferIndex, buffer::Segment),
     Recovery(BufferIndex),
 }
 
@@ -1037,7 +1037,7 @@ impl State {
                 );
             }
 
-            let Some(buffer) = self.stream_packet_buffers.get_mut(retransmission.segment) else {
+            let Some(segment) = self.stream_packet_buffers.get_mut(retransmission.segment) else {
                 // the segment was acknowledged by another packet so remove it
                 let _ = self
                     .retransmissions
@@ -1045,7 +1045,7 @@ impl State {
                     .expect("retransmission should be available");
                 continue;
             };
-            let buffer = buffer.make_mut();
+            let buffer = segment.make_mut();
 
             debug_assert!(!buffer.is_empty(), "empty retransmission buffer submitted");
 
@@ -1081,7 +1081,7 @@ impl State {
 
                 // enqueue the transmission
                 self.transmit_queue
-                    .push_back(TransmitIndex::Stream(info.segment));
+                    .push_back(TransmitIndex::Stream(info.segment, segment.clone()));
 
                 let stream_offset = info.stream_offset;
                 let payload_len = info.payload_len;
@@ -1234,13 +1234,12 @@ impl State {
         let ecn = self
             .ecn
             .ecn(s2n_quic_core::transmission::Mode::Normal, clock.get_time());
-        let stream_packet_buffers = &self.stream_packet_buffers;
         let recovery_packet_buffers = &self.recovery_packet_buffers;
 
         self.transmit_queue.iter().filter_map(move |index| {
-            let buf = match *index {
-                TransmitIndex::Stream(index) => stream_packet_buffers.get(index)?.as_slice(),
-                TransmitIndex::Recovery(index) => recovery_packet_buffers.get(index)?,
+            let buf = match index {
+                TransmitIndex::Stream(_index, segment) => segment.as_slice(),
+                TransmitIndex::Recovery(index) => recovery_packet_buffers.get(*index)?,
             };
 
             Some((ecn, buf))
@@ -1251,7 +1250,7 @@ impl State {
     pub fn on_transmit_queue(&mut self, count: usize) {
         for transmission in self.transmit_queue.drain(..count) {
             match transmission {
-                TransmitIndex::Stream(index) => {
+                TransmitIndex::Stream(index, _segment) => {
                     // make sure the packet wasn't freed between when we wanted to transmit and
                     // when we actually did
                     ensure!(self.stream_packet_buffers.get(index).is_some(), continue);
