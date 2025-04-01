@@ -339,9 +339,8 @@ jobs:
           cargo test --no-default-features --features "provider-tls-fips provider-tls-s2n"
 
   miri:
-    # miri needs quite a bit of memory so use a larger instance
     runs-on:
-      labels: s2n_ubuntu-20.04_8-core
+      labels: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
