@@ -42,7 +42,7 @@ runs:
 
     - uses: camshaft/rust-cache@v1
 
-    - uses: camshaft/install@v1
+    - uses: goatgoose/install@update-cache-dep
       with:
         crate: duvet
         version: ${{ inputs.duvet-version }}

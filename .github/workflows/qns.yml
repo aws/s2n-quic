@@ -389,13 +389,13 @@ jobs:
           sudo apt-get install -y linux-tools-$(uname -r) linux-tools-generic
 
       - name: Install inferno
-        uses: camshaft/install@v1
+        uses: goatgoose/install@update-cache-dep
         with:
           crate: inferno
           bins: inferno-collapse-perf,inferno-flamegraph
 
       - name: Install ultraman
-        uses: camshaft/install@v1
+        uses: goatgoose/install@update-cache-dep
         with:
           crate: ultraman
 
