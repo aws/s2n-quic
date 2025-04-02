@@ -429,4 +429,15 @@ where
     fn waker(&self) -> &core::task::Waker {
         self.0.waker()
     }
+
+    fn on_key_exchange_group(
+        &mut self,
+        named_group: tls::NamedGroup,
+    ) -> Result<(), s2n_quic_core::transport::Error> {
+        self.0.on_key_exchange_group(named_group)
+    }
+
+    fn on_tls_context(&mut self, context: Box<dyn std::any::Any + Send>) {
+        self.0.on_tls_context(context)
+    }
 }
