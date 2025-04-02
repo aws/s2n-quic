@@ -232,8 +232,36 @@ impl tls::Session for Session {
     }
 }
 
-#[derive(Default)]
-pub struct SlowEndpoint;
+pub struct SlowEndpoint {
+    server_endpoint: Option<crate::Server>,
+    client_endpoint: Option<crate::Client>,
+}
+
+impl SlowEndpoint {
+    pub fn new_server(cert_pem: &str, key_pem: &str) -> Self {
+        let server_endpoint = crate::server::Builder::default()
+            .with_certificate(cert_pem, key_pem)
+            .unwrap()
+            .build()
+            .unwrap();
+        Self {
+            server_endpoint: Some(server_endpoint),
+            client_endpoint: None,
+        }
+    }
+
+    pub fn new_client(cert_pem: &str) -> Self {
+        let client_endpoint = crate::client::Builder::default()
+            .with_certificate(cert_pem)
+            .unwrap()
+            .build()
+            .unwrap();
+        Self {
+            server_endpoint: None,
+            client_endpoint: Some(client_endpoint),
+        }
+    }
+}
 
 impl tls::Endpoint for SlowEndpoint {
     type Session = SlowSession<Session>;
@@ -242,15 +270,11 @@ impl tls::Endpoint for SlowEndpoint {
         &mut self,
         transport_parameters: &Params,
     ) -> Self::Session {
-        let mut server_endpoint = crate::server::Builder::default()
-            .with_certificate(
-                tls::testing::certificates::CERT_PEM,
-                tls::testing::certificates::KEY_PEM,
-            )
-            .unwrap()
-            .build()
-            .unwrap();
-        let inner_session = server_endpoint.new_server_session(transport_parameters);
+        let inner_session = self
+            .server_endpoint
+            .take()
+            .expect("Server should exist")
+            .new_server_session(transport_parameters);
         SlowSession {
             defer: 10,
             inner_session,
@@ -262,12 +286,11 @@ impl tls::Endpoint for SlowEndpoint {
         transport_parameters: &Params,
         server_name: s2n_quic_core::application::ServerName,
     ) -> Self::Session {
-        let mut client_endpoint = crate::client::Builder::default()
-            .with_certificate(tls::testing::certificates::CERT_PEM)
-            .unwrap()
-            .build()
-            .unwrap();
-        let inner_session = client_endpoint.new_client_session(transport_parameters, server_name);
+        let inner_session = self
+            .client_endpoint
+            .take()
+            .expect("Client should exist")
+            .new_client_session(transport_parameters, server_name);
         SlowSession {
             defer: 10,
             inner_session,
@@ -305,7 +328,7 @@ impl<S: tls::Session> tls::Session for SlowSession<S> {
         // Otherwise we'll call the function to actually make progress
         // in the TLS handshake and set up to defer again the next time
         // we're here.
-        self.defer = 3;
+        self.defer = 10;
         self.inner_session.poll(&mut SlowContext(context))
     }
 }
