@@ -15,7 +15,7 @@ use crate::{
     },
     sync::mpsc::Capacity,
 };
-use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_core::inet::{IpAddress, IpV4Address, IpV6Address, SocketAddress, Unspecified};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -83,14 +83,49 @@ where
 
     #[inline]
     fn setup(self, _env: &E) -> SetupResult<Self::ReadWorkerSocket, Self::WriteWorkerSocket> {
-        let remote_addr = self.peer_addr;
+        let mut remote_addr = self.peer_addr;
         let control = self.control;
         let stream = self.stream;
         let queue_id = control.queue_id();
 
+        let local_addr: SocketAddress = self.worker_socket.local_addr()?.into();
         let application = Box::new(self.application_socket);
         let read_worker = Some(self.worker_socket.clone());
         let write_worker = Some((self.worker_socket, buffer::Channel::new(control)));
+
+        #[inline]
+        fn ipv6_loopback() -> IpV6Address {
+            std::net::Ipv6Addr::LOCALHOST.into()
+        }
+
+        match (remote_addr.ip(), local_addr.ip()) {
+            (IpAddress::Ipv4(v4), IpAddress::Ipv4(_)) if v4.is_unspecified() => {
+                // if remote addr is unspecified then it needs to be localhost instead
+                remote_addr = IpV4Address::new([127, 0, 0, 1])
+                    .with_port(remote_addr.port())
+                    .into();
+            }
+            (IpAddress::Ipv4(v4), IpAddress::Ipv6(_)) if v4.is_unspecified() => {
+                // if v4 is unspecified then use v6 loopback
+                remote_addr = ipv6_loopback().with_port(remote_addr.port()).into();
+            }
+            (IpAddress::Ipv6(v6), IpAddress::Ipv6(_)) if v6.is_unspecified() => {
+                // if v6 is unspecified then use v6 loopback
+                remote_addr = ipv6_loopback().with_port(remote_addr.port()).into();
+            }
+            (IpAddress::Ipv4(_), IpAddress::Ipv4(_)) => {}
+            (IpAddress::Ipv4(v4), IpAddress::Ipv6(_)) => {
+                // use an IPv6-mapped addr if we're listening on a V6 socket
+                remote_addr = v4.to_ipv6_mapped().with_port(remote_addr.port()).into();
+            }
+            (IpAddress::Ipv6(_), IpAddress::Ipv4(_)) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "IPv6 not supported on a IPv4 socket",
+                ))
+            }
+            (IpAddress::Ipv6(_), IpAddress::Ipv6(_)) => {}
+        }
 
         let socket = SocketSet {
             application,
