@@ -93,10 +93,9 @@ where
         let read_worker = Some(self.worker_socket.clone());
         let write_worker = Some((self.worker_socket, buffer::Channel::new(control)));
 
+        #[inline]
         fn ipv6_loopback() -> IpV6Address {
-            let mut octets = [0; 16];
-            octets[15] = 1;
-            IpV6Address::new(octets)
+            std::net::Ipv6Addr::LOCALHOST.into()
         }
 
         match (remote_addr.ip(), local_addr.ip()) {
