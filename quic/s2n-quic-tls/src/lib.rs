@@ -49,11 +49,11 @@ impl ConfigLoader for Box<dyn ConfigLoader> {
 mod callback;
 mod keylog;
 mod params;
-pub mod session;
 
 pub mod certificate;
 pub mod client;
 pub mod server;
+pub mod session;
 
 pub use client::Client;
 pub use s2n_tls::*;
