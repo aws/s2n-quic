@@ -5,8 +5,8 @@ use crate::{
     crypto::{tls, CryptoSuite},
     transport,
 };
-use core::task::Poll;
-
+use alloc::{boxed::Box, vec::Vec};
+use core::{any::Any, task::Poll};
 pub struct SlowEndpoint<E: tls::Endpoint> {
     pub server_endpoint: Option<E>,
     pub client_endpoint: Option<E>,
@@ -209,7 +209,7 @@ where
         self.0.on_key_exchange_group(named_group)
     }
 
-    fn on_tls_context(&mut self, context: Box<dyn std::any::Any + Send>) {
+    fn on_tls_context(&mut self, context: Box<dyn Any + Send>) {
         self.0.on_tls_context(context)
     }
 }
