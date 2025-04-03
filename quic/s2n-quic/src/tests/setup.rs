@@ -242,29 +242,31 @@ mod mtls {
     }
 }
 
-#[cfg(feature = "s2n-quic-tls")]
 mod slow_tls {
-    use crate::{
-        provider::tls::{s2n_tls::session::SlowEndpoint, Provider},
-        tests::certificates,
-    };
-    #[derive(Default)]
-    pub struct SlowTlsProvider {}
+    use crate::provider::tls::Provider;
+    use s2n_quic_core::crypto::tls::{slow_tls::SlowEndpoint, Endpoint};
+    pub struct SlowTlsProvider<E: Endpoint> {
+        pub server_endpoint: Option<E>,
+        pub client_endpoint: Option<E>,
+    }
 
-    impl Provider for SlowTlsProvider {
-        type Server = SlowEndpoint;
-        type Client = SlowEndpoint;
+    impl<E: Endpoint> Provider for SlowTlsProvider<E> {
+        type Server = SlowEndpoint<E>;
+        type Client = SlowEndpoint<E>;
         type Error = String;
 
         fn start_server(self) -> Result<Self::Server, Self::Error> {
-            Ok(Self::Server::new_server(
-                certificates::CERT_PEM,
-                certificates::KEY_PEM,
-            ))
+            Ok(SlowEndpoint {
+                server_endpoint: self.server_endpoint,
+                client_endpoint: self.client_endpoint,
+            })
         }
 
         fn start_client(self) -> Result<Self::Client, Self::Error> {
-            Ok(Self::Client::new_client(certificates::CERT_PEM))
+            Ok(SlowEndpoint {
+                server_endpoint: self.server_endpoint,
+                client_endpoint: self.client_endpoint,
+            })
         }
     }
 }

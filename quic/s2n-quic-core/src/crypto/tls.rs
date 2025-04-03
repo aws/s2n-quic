@@ -9,6 +9,7 @@ use core::{any::Any, fmt::Debug};
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
 
 mod error;
+pub mod slow_tls;
 pub use error::Error;
 
 #[cfg(any(test, feature = "testing"))]
