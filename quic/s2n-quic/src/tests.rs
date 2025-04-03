@@ -30,6 +30,14 @@ mod setup;
 use setup::*;
 
 mod blackhole;
+// S2N-TLS and Rustls have different set
+// up for client and server. They also result in
+// different error code when a gaint Client Hello is
+// received by the server.
+#[cfg(all(feature = "s2n-quic-tls", not(feature = "provider-tls-fips")))]
+mod buffer_limit_rustls;
+#[cfg(feature = "s2n-quic-tls")]
+mod buffer_limit_s2n_tls;
 mod connection_migration;
 mod deduplicate;
 mod handshake_cid_rotation;
