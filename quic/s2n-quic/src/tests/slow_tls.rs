@@ -52,8 +52,7 @@ fn slow_tls() {
 #[test]
 fn slow_rustls() {
     use super::*;
-    use crate::provider::tls::rustls;
-    use crate::tests::SlowTlsProvider;
+    use crate::{provider::tls::rustls, tests::SlowTlsProvider};
     use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
 
     let model = Model::default();

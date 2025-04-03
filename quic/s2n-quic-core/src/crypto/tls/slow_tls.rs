@@ -5,8 +5,8 @@ use crate::{
     crypto::{tls, CryptoSuite},
     transport,
 };
-use alloc::{boxed::Box, vec::Vec};
 use core::{any::Any, task::Poll};
+
 pub struct SlowEndpoint<E: tls::Endpoint> {
     pub server_endpoint: Option<E>,
     pub client_endpoint: Option<E>,
