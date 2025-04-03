@@ -698,7 +698,6 @@ mod tcp {
     tokio_fuzz_test!();
 }
 
-#[cfg(target_os = "linux")] // TODO linux is only working right now
 mod udp {
     use super::*;
 
