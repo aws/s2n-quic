@@ -9,7 +9,6 @@ use core::{any::Any, fmt::Debug};
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
 
 mod error;
-pub mod slow_tls;
 pub use error::Error;
 
 #[cfg(any(test, feature = "testing"))]
@@ -17,6 +16,9 @@ pub mod testing;
 
 #[cfg(all(feature = "alloc", any(test, feature = "testing")))]
 pub mod null;
+
+#[cfg(all(feature = "alloc"))]
+pub mod slow_tls;
 
 /// Holds all application parameters which are exchanged within the TLS handshake.
 #[derive(Debug)]
