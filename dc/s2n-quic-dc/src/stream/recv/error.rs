@@ -214,7 +214,7 @@ impl From<Kind> for std::io::ErrorKind {
             Kind::TruncatedTransport => ErrorKind::UnexpectedEof,
             Kind::OutOfRange => ErrorKind::ConnectionAborted,
             Kind::OutOfOrder { .. } => ErrorKind::InvalidData,
-            Kind::UnexpectedRetransmission { .. } => ErrorKind::InvalidData,
+            Kind::UnexpectedRetransmission => ErrorKind::InvalidData,
             Kind::IdleTimeout => ErrorKind::TimedOut,
             Kind::KeyReplayPrevented => ErrorKind::PermissionDenied,
             Kind::KeyReplayMaybePrevented { .. } => ErrorKind::PermissionDenied,
