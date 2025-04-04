@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(feature = "s2n-quic-tls")]
+#[cfg(not(feature = "provider-tls-fips"))]
 #[test]
-fn slow_tls() {
+fn slow_s2n_tls() {
     use super::*;
     use crate::provider::tls::s2n_tls;
     use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
@@ -49,6 +50,7 @@ fn slow_tls() {
 }
 
 #[cfg(feature = "s2n-quic-rustls")]
+#[cfg(not(feature = "provider-tls-fips"))]
 #[test]
 fn slow_rustls() {
     use super::*;
