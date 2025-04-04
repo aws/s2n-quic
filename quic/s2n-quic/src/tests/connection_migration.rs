@@ -249,8 +249,8 @@ impl Interceptor for RebindPortBeforeHandshakeConfirmed {
     }
 }
 
-/// Ensures that a datagram received from a client that changes
-/// its port before the handshake is confirmed is dropped.
+/// Ensures that a datagram is not dropped when received from a client
+/// that changes its port before the handshake is confirmed
 #[test]
 fn rebind_before_handshake_confirmed() {
     let model = Model::default();
