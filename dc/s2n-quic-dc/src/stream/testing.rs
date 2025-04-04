@@ -15,13 +15,7 @@ use crate::{
 };
 use s2n_quic_core::dc::{self, ApplicationParams};
 use s2n_quic_platform::socket;
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    io,
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
-};
+use std::{cell::RefCell, collections::HashMap, io, net::SocketAddr, sync::Arc};
 use tracing::Instrument;
 
 thread_local! {
@@ -219,6 +213,7 @@ pub mod client {
         mtu: Option<u16>,
         subscriber: event::testing::Subscriber,
         pooled: bool,
+        local_addr: Option<SocketAddr>,
     }
 
     impl Default for Builder {
@@ -228,6 +223,7 @@ pub mod client {
                 mtu: None,
                 subscriber: event::testing::Subscriber::no_snapshot(),
                 pooled: DEFAULT_POOLED,
+                local_addr: None,
             }
         }
     }
@@ -248,12 +244,18 @@ pub mod client {
             self
         }
 
+        pub fn local_addr(mut self, local_addr: SocketAddr) -> Self {
+            self.local_addr = Some(local_addr);
+            self
+        }
+
         pub fn build(self) -> Client {
             let Self {
                 map_capacity,
                 mtu,
                 subscriber,
                 pooled,
+                local_addr,
             } = self;
             let _span = tracing::info_span!("client").entered();
             let map = secret::map::testing::new(map_capacity);
@@ -262,7 +264,8 @@ pub mod client {
 
             macro_rules! build {
                 ($krate:ident, $pooled:expr, $addr:expr) => {{
-                    let options = socket::options::Options::new($addr.parse().unwrap());
+                    let local_addr = local_addr.unwrap_or_else(|| $addr.parse().unwrap());
+                    let options = socket::options::Options::new(local_addr);
 
                     let mut env = $krate::Builder::new(subscriber)
                         .with_threads(TEST_THREADS)
@@ -429,7 +432,7 @@ pub mod server {
         mtu: Option<u16>,
         subscriber: event::testing::Subscriber,
         pooled: bool,
-        port: u16,
+        local_addr: Option<SocketAddr>,
     }
 
     impl Default for Builder {
@@ -443,7 +446,7 @@ pub mod server {
                 mtu: None,
                 subscriber: event::testing::Subscriber::no_snapshot(),
                 pooled: DEFAULT_POOLED,
-                port: 0,
+                local_addr: None,
             }
         }
     }
@@ -456,11 +459,6 @@ pub mod server {
 
         pub fn udp(mut self) -> Self {
             self.protocol = Protocol::Udp;
-            self
-        }
-
-        pub fn port(mut self, port: u16) -> Self {
-            self.port = port;
             self
         }
 
@@ -499,6 +497,16 @@ pub mod server {
             self
         }
 
+        pub fn local_addr(mut self, local_addr: SocketAddr) -> Self {
+            self.local_addr = Some(local_addr);
+            self
+        }
+
+        pub fn port(mut self, port: u16) -> Self {
+            self.local_addr = Some(SocketAddr::new("127.0.0.1".parse().unwrap(), port));
+            self
+        }
+
         pub fn build(self) -> super::Server {
             let Self {
                 backlog,
@@ -509,7 +517,7 @@ pub mod server {
                 mtu,
                 subscriber,
                 pooled,
-                port,
+                local_addr,
             } = self;
 
             let _span = tracing::info_span!("server").entered();
@@ -524,8 +532,8 @@ pub mod server {
 
             macro_rules! build {
                 ($krate:ident, $pooled:expr) => {{
-                    let ip: IpAddr = "127.0.0.1".parse().unwrap();
-                    let options = crate::socket::Options::new((ip, port).into());
+                    let local_addr = local_addr.unwrap_or_else(|| "127.0.0.1:0".parse().unwrap());
+                    let options = crate::socket::Options::new(local_addr);
 
                     let mut env = $krate::Builder::new(subscriber)
                         .with_threads(TEST_THREADS)
