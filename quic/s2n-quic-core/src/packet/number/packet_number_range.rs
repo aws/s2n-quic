@@ -160,10 +160,10 @@ mod test {
         let start = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(1));
         let end = PacketNumberSpace::Handshake.new_packet_number(VarInt::from_u8(1));
 
-        let range = PacketNumberRange::new(start, end);
+        let mut range = PacketNumberRange::new(start, end);
 
         assert_eq!(1, range.count());
-        assert_eq!(start, range.last().unwrap());
+        assert_eq!(start, range.next_back().unwrap());
     }
 
     #[test]
