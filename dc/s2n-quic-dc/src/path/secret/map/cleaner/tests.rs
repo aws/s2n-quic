@@ -161,20 +161,24 @@ fn rehandshake_sim() {
 static SQL_SCRIPT: &str = r#"
 COPY (
     SELECT
-        TRUNC(time / 60) * 60 AS time,
-        AVG(age) AS avg_age
+        TRUNC(time / 60) / 60 AS time,
+        AVG(age) / 60 / 60 AS average,
+        MAX(age) / 60 / 60 AS max,
+        MIN(age) / 60 / 60 AS min
     FROM 'events.csv'
     GROUP BY TRUNC(time / 60)
     ORDER BY TRUNC(time / 60)
-) TO 'averages.csv' (HEADER, DELIMITER ',');
+) TO 'stats.csv' (HEADER, DELIMITER ',');
 "#;
 
 static PLOT_SCRIPT: &str = r#"
 set datafile separator ','
 set terminal png
 set output "eviction-age.png"
-set xlabel "time (seconds)
-set ylabel "age"
-set title "Average Eviction Age"
-plot "averages.csv" using 1:2 with lines
+set xlabel "time (hours)
+set ylabel "age (hours)"
+set title "Eviction Age"
+plot "stats.csv" using 1:2 title 'Average' with lines, \
+     "stats.csv" using 1:3 title 'p100' with lines, \
+     "stats.csv" using 1:4 title 'p0' with lines
 "#;
