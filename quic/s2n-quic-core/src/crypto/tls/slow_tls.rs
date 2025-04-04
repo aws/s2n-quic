@@ -53,7 +53,7 @@ impl<E: tls::Endpoint> tls::Endpoint for SlowEndpoint<E> {
 }
 
 // SlowSession is a test TLS provider that is slow, namely, for each call to poll,
-// it returns Poll::Pending three times before actually polling the real TLS library.
+// it returns Poll::Pending ten times before actually polling the real TLS library.
 // This is used in an integration test to assert that our code is correct in the event
 // of any random pendings/wakeups that might occur when negotiating TLS.
 #[derive(Debug)]
