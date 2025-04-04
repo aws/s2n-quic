@@ -242,6 +242,35 @@ mod mtls {
     }
 }
 
+mod slow_tls {
+    use crate::provider::tls::Provider;
+    use s2n_quic_core::crypto::tls::{slow_tls::SlowEndpoint, Endpoint};
+    pub struct SlowTlsProvider<E: Endpoint> {
+        pub server_endpoint: Option<E>,
+        pub client_endpoint: Option<E>,
+    }
+
+    impl<E: Endpoint> Provider for SlowTlsProvider<E> {
+        type Server = SlowEndpoint<E>;
+        type Client = SlowEndpoint<E>;
+        type Error = String;
+
+        fn start_server(self) -> Result<Self::Server, Self::Error> {
+            Ok(SlowEndpoint {
+                server_endpoint: self.server_endpoint,
+                client_endpoint: self.client_endpoint,
+            })
+        }
+
+        fn start_client(self) -> Result<Self::Client, Self::Error> {
+            Ok(SlowEndpoint {
+                server_endpoint: self.server_endpoint,
+                client_endpoint: self.client_endpoint,
+            })
+        }
+    }
+}
+
 #[cfg(feature = "s2n-quic-tls")]
 mod resumption {
     use super::*;
@@ -326,3 +355,5 @@ pub use mtls::*;
 
 #[cfg(feature = "s2n-quic-tls")]
 pub use resumption::*;
+
+pub use slow_tls::SlowTlsProvider;
