@@ -139,10 +139,12 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      - uses: camshaft/install@v1
-        with:
-          crate: cargo-udeps
-          use-cache: ${{ env.USE_CACHE }}
+      # Ideally this would use the camshaft/install action to install cargo-udeps. However,
+      # the --locked flag can't currently be provided to camshaft/install. After support for this
+      # is added, camshaft/install should be used here instead:
+      # https://github.com/aws/s2n-quic/issues/2593
+      - name: Install cargo-udeps
+        run: cargo install cargo-udeps --locked
 
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
