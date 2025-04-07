@@ -4,14 +4,14 @@
 use super::*;
 use crate::{
     connection::Error,
-    provider::tls::rustls::{self as tls},
+    provider::tls::default::{self as tls},
 };
 use s2n_quic_core::{crypto::tls::Error as TlsError, transport};
 
 // It helps to expand the Client Hello size to excced 64 KB, by filling
 // the alpn extension in Client Hello with 65310 bytes.
 static FAKE_PROTOCOL_COUNT: u16 = 4665;
-// Maximum handshake message size is 64KB in Rustls.
+// Maximum handshake message size is 64KB in S2N-TLS.
 static MAXIMUM_HANDSHAKE_MESSAGE_SIZE: usize = 65536;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
@@ -21,7 +21,7 @@ static MAXIMUM_HANDSHAKE_MESSAGE_SIZE: usize = 65536;
 /// This test shows that the default TLS provider already provides
 /// limits for buffering. The server will drop a giant Client Hello.
 #[test]
-fn buffer_limit_rustls_test() {
+fn buffer_limit_test() {
     let model = Model::default();
 
     let connection_closed_subscriber = recorder::ConnectionClosed::new();
@@ -94,5 +94,13 @@ fn buffer_limit_rustls_test() {
     let Error::Transport { code, .. } = connection_closed_handle[0] else {
         panic!("Unexpected error type")
     };
-    assert_eq!(code, transport::Error::from(TlsError::INTERNAL_ERROR).code);
+
+    // Rustls emits INTERNAL_ERROR and S2N-TLS emits UNEXPECTED_MESSAGE error
+    // when the server close the connection due to large Client Hello.
+    let expected_error = if cfg!(target_os = "windows") {
+        TlsError::INTERNAL_ERROR
+    } else {
+        TlsError::UNEXPECTED_MESSAGE
+    };
+    assert_eq!(code, transport::Error::from(expected_error).code);
 }
