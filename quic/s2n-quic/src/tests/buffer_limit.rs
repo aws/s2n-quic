@@ -11,7 +11,7 @@ use s2n_quic_core::{crypto::tls::Error as TlsError, transport};
 // It helps to expand the Client Hello size to excced 64 KB, by filling
 // the alpn extension in Client Hello with 65310 bytes.
 static FAKE_PROTOCOL_COUNT: u16 = 4665;
-// Maximum handshake message size is 64KB in S2N-TLS.
+// Maximum handshake message size is 64KB in S2N-TLS and Rustls.
 static MAXIMUM_HANDSHAKE_MESSAGE_SIZE: usize = 65536;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
