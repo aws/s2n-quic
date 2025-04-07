@@ -20,7 +20,6 @@ env:
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
   S2N_UNSTABLE_CRYPTO_OPT_RX: 100
-  USE_CACHE: false
 
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
@@ -258,7 +257,6 @@ jobs:
         uses: camshaft/install@v1
         with:
           crate: cross
-          use-cache: ${{ env.USE_CACHE }}
 
       - uses: camshaft/rust-cache@v1
         with:
@@ -664,7 +662,6 @@ jobs:
         uses: camshaft/install@v1
         with:
           crate: cargo-insta
-          use-cache: ${{ env.USE_CACHE }}
 
       - uses: camshaft/rust-cache@v1
 
@@ -737,7 +734,6 @@ jobs:
         with:
           crate: typos-cli
           bins: typos
-          use-cache: ${{ env.USE_CACHE }}
 
       - name: Run typos
         run: |
@@ -859,7 +855,6 @@ jobs:
       - uses: camshaft/install@v1
         with:
           crate: bpf-linker
-          use-cache: ${{ env.USE_CACHE }}
 
       - uses: camshaft/rust-cache@v1
 
@@ -894,7 +889,6 @@ jobs:
         with:
           crate: bindgen-cli
           bins: bindgen
-          use-cache: ${{ env.USE_CACHE }}
 
       - uses: camshaft/rust-cache@v1
 

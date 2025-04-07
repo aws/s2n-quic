@@ -22,7 +22,6 @@ env:
   WIRESHARK_VERSION: 4.4.2
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
-  USE_CACHE: false
 
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
@@ -394,13 +393,11 @@ jobs:
         with:
           crate: inferno
           bins: inferno-collapse-perf,inferno-flamegraph
-          use-cache: ${{ env.USE_CACHE }}
 
       - name: Install ultraman
         uses: camshaft/install@v1
         with:
           crate: ultraman
-          use-cache: ${{ env.USE_CACHE }}
 
       - uses: actions/download-artifact@v4
         with:
