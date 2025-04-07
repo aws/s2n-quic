@@ -15,6 +15,7 @@ static FAKE_PROTOCOL_COUNT: u16 = 4665;
 static MAXIMUM_HANDSHAKE_MESSAGE_SIZE: usize = 65536;
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-4
+//= type=implication
 //# To avoid excessive buffering at multiple layers, QUIC implementations
 //# SHOULD provide an interface for the cryptographic protocol
 //# implementation to communicate its buffering limits.
