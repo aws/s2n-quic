@@ -84,12 +84,6 @@ pub trait TlsSession: Send {
     fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError>;
 }
 
-//= https://www.rfc-editor.org/rfc/rfc9000#section-4
-//= type=TODO
-//= tracking-issue=332
-//# To avoid excessive buffering at multiple layers, QUIC implementations
-//# SHOULD provide an interface for the cryptographic protocol
-//# implementation to communicate its buffering limits.
 #[cfg(feature = "alloc")]
 pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     /// Called when the client's application parameters are available, prior

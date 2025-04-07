@@ -109,6 +109,26 @@ event_recorder!(
     }
 );
 
+event_recorder!(
+    ConnectionClosed,
+    ConnectionClosed,
+    on_connection_closed,
+    crate::connection::Error,
+    |event: &events::ConnectionClosed, storage: &mut Vec<crate::connection::Error>| {
+        storage.push(event.error);
+    }
+);
+
+event_recorder!(
+    TlsClientHello,
+    TlsClientHello,
+    on_tls_client_hello,
+    usize,
+    |event: &events::TlsClientHello, storage: &mut Vec<usize>| {
+        storage.push(event.payload.iter().map(|slice| slice.len()).sum());
+    }
+);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PacketDropReason {
     ConnectionError,
