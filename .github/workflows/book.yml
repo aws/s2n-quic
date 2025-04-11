@@ -5,6 +5,7 @@ on:
   pull_request:
     branches:
       - main
+      - automate-latest
 
 name: book
 
@@ -57,9 +58,11 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/book"
-          aws s3 sync target/book "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
+          TARGET_SHA="${{ github.sha }}/book"
+          TARGET_LATEST="latest/book"
+          aws s3 sync target/book "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/book "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
