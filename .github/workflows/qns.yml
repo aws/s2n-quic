@@ -229,9 +229,13 @@ jobs:
         working-directory: quic-interop-runner
         run: |
           TARGET_SHA="${{ github.sha }}/interop/logs/latest"
-          TARGET_LATEST="latest/interop/logs/latest"
           aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
-          aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+
+          # Only load to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/interop/logs/latest"
+            aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -324,11 +328,15 @@ jobs:
           cp .github/interop/*.html web/
           cp .github/interop/*.js web/
           TARGET_SHA="${{ github.sha }}/interop"
-          TARGET_LATEST="latest/interop"
           aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
-          aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
+
+          # Only load to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/interop"
+            aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+          fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -476,11 +484,15 @@ jobs:
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/perf"
-          TARGET_LATEST="latest/perf"
           aws s3 sync perf-results "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
-          aws s3 sync perf-results "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
+
+          # Only load to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/perf"
+            aws s3 sync perf-results "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+          fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
