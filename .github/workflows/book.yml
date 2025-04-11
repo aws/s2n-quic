@@ -62,7 +62,7 @@ jobs:
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
-          # Only load to latest if the event is push to main
+          # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/book"
             aws s3 sync target/book "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
