@@ -5,6 +5,7 @@ on:
   pull_request:
     branches:
       - main
+      - automate-latest
 
 name: ci
 
@@ -181,9 +182,11 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/doc"
-          aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/s2n_quic/index.html"
+          TARGET_SHA="${{ github.sha }}/doc"
+          TARGET_LATEST="${{ github.sha }}/doc"
+          aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/s2n_quic/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -441,9 +444,11 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/coverage"
-          aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
+          TARGET_SHA="${{ github.sha }}/coverage"
+          TARGET_LATEST="latest/coverage"
+          aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -553,9 +558,11 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/recovery-simulations"
-          aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
+          TARGET_SHA="${{ github.sha }}/recovery-simulations"
+          TARGET_LATESET="latest/recovery-simulations"
+          aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -598,9 +605,11 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/sim"
-          aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
+          TARGET_SHA="${{ github.sha }}/sim"
+          TARGET_LATEST="latest/sim"
+          aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -705,9 +714,11 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/timing/index.html"
-          aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET"
+          TARGET_SHA="${{ github.sha }}/timing/index.html"
+          TARGET_LATEST="latest/timing/index.html"
+          aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -801,9 +812,11 @@ jobs:
         id: s3
         working-directory: tools/memory-report
         run: |
-          TARGET="${{ github.sha }}/dhat"
-          aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/dhat/dh_view.html?url=/$TARGET/dhat-heap.json"
+          TARGET_SHA="${{ github.sha }}/dhat"
+          TARGET_LATEST="latest/dhat"
+          aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+          URL="$CDN/dhat/dh_view.html?url=/$TARGET_SHA/dhat-heap.json"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
