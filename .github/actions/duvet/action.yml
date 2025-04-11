@@ -69,15 +69,17 @@ runs:
           REPORT_PATH=$(dirname "${{ inputs.report-script }}")/report.html
         fi
 
-        TARGET="${{ github.sha }}/compliance.html"
-        aws s3 cp "$REPORT_PATH" "s3://${{ inputs.aws-s3-bucket-name }}/$TARGET" --acl private --follow-symlinks
+        TARGET_SHA="${{ github.sha }}/compliance.html"
+        TARGET_LATEST="latest/compliance.html"
+        aws s3 cp "$REPORT_PATH" "s3://${{ inputs.aws-s3-bucket-name }}/$TARGET_SHA" --acl private --follow-symlinks
+        aws s3 cp "$REPORT_PATH" "s3://${{ inputs.aws-s3-bucket-name }}/$TARGET_LATEST" --acl private --follow-symlinks
 
         if [ -n "${{ inputs.cdn }}" ]; then
           PREFIX="${{ inputs.cdn }}"
         else
           PREFIX="https://${{ inputs.aws-s3-bucket-name }}.s3.amazonaws.com"
         fi
-        URL="$PREFIX/$TARGET"
+        URL="$PREFIX/$TARGET_SHA"
 
         echo "::set-output name=URL::$URL"
 

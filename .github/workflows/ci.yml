@@ -5,7 +5,7 @@ on:
   pull_request:
     branches:
       - main
-      - automate-latest
+      - boquan-fang/automate-doc
 
 name: ci
 
@@ -183,9 +183,9 @@ jobs:
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/doc"
-          TARGET_LATEST="${{ github.sha }}/doc"
+          TARGET_LATEST="latest/doc"
           aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
-          aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/s2n_quic/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
@@ -559,7 +559,7 @@ jobs:
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/recovery-simulations"
-          TARGET_LATESET="latest/recovery-simulations"
+          TARGET_LATEST="latest/recovery-simulations"
           aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
           aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/index.html"
