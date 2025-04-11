@@ -186,7 +186,7 @@ jobs:
           URL="$CDN/$TARGET_SHA/s2n_quic/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
-          # Only load to latest if the event is push to main
+          # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/doc"
             aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
@@ -452,7 +452,7 @@ jobs:
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
-          # Only load to latest if the event is push to main
+          # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/coverage"
             aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
@@ -570,7 +570,7 @@ jobs:
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
-          # Only load to latest if the event is push to main
+          # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/recovery-simulations"
             aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
@@ -621,7 +621,7 @@ jobs:
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
-          # Only load to latest if the event is push to main
+          # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/sim"
             aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
@@ -734,7 +734,7 @@ jobs:
           URL="$CDN/$TARGET_SHA"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
-          # Only load to latest if the event is push to main
+          # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/timing/index.html"
             aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
@@ -836,7 +836,7 @@ jobs:
           URL="$CDN/dhat/dh_view.html?url=/$TARGET_SHA/dhat-heap.json"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
-          # Only load to latest if the event is push to main
+          # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/dhat"
             aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
