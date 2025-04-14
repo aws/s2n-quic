@@ -22,6 +22,7 @@ env:
   WIRESHARK_VERSION: 4.4.2
   CDN: https://dnglbrstg7yg.cloudfront.net
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
+  CI_ARTIFACTS_BUCKET: s2n-quic-ci-artifacts
 
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
@@ -229,12 +230,12 @@ jobs:
         working-directory: quic-interop-runner
         run: |
           TARGET_SHA="${{ github.sha }}/interop/logs/latest"
-          aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync results/logs "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
 
           # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/interop/logs/latest"
-            aws s3 sync results/logs "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
           fi
 
       - uses: actions/upload-artifact@v4
@@ -328,14 +329,14 @@ jobs:
           cp .github/interop/*.html web/
           cp .github/interop/*.js web/
           TARGET_SHA="${{ github.sha }}/interop"
-          aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync web "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
           # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/interop"
-            aws s3 sync web "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --recursive
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -484,14 +485,14 @@ jobs:
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/perf"
-          aws s3 sync perf-results "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync perf-results "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
           # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/perf"
-            aws s3 sync perf-results "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --recursive
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2

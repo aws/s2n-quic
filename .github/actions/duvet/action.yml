@@ -75,7 +75,7 @@ runs:
         # Only upload to latest if the event is push to main
         if [ "${{ github.event_name }}" == "push" ]; then
           TARGET_LATEST="latest/compliance.html"
-          aws s3 cp "$REPORT_PATH" "s3://${{ inputs.aws-s3-bucket-name }}/$TARGET_LATEST" --acl private --follow-symlinks
+          aws s3 cp "s3://${{ inputs.aws-s3-bucket-name }}/$TARGET_SHA" "s3://${{ inputs.aws-s3-bucket-name }}/$TARGET_LATEST"
         fi
 
         if [ -n "${{ inputs.cdn }}" ]; then

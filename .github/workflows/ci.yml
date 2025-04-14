@@ -20,6 +20,7 @@ env:
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
   S2N_UNSTABLE_CRYPTO_OPT_RX: 100
+  CI_ARTIFACTS_BUCKET: s2n-quic-ci-artifacts
 
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
@@ -182,14 +183,14 @@ jobs:
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/doc"
-          aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/doc "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/s2n_quic/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
           # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/doc"
-            aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -407,7 +408,7 @@ jobs:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-s3-region: us-west-2
-          aws-s3-bucket-name: s2n-quic-ci-artifacts
+          aws-s3-bucket-name: ${{ env.CI_ARTIFACTS_BUCKET }}
           cdn: $CDN
 
   coverage:
@@ -448,14 +449,14 @@ jobs:
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/coverage"
-          aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/llvm-cov/html "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
           # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/coverage"
-            aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -566,14 +567,14 @@ jobs:
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/recovery-simulations"
-          aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/recovery-sim "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
           # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/recovery-simulations"
-            aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -617,14 +618,14 @@ jobs:
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/sim"
-          aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/s2n-quic-sim "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
           # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/sim"
-            aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -730,14 +731,14 @@ jobs:
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/timing/index.html"
-          aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
           URL="$CDN/$TARGET_SHA"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
           # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/timing/index.html"
-            aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST"
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
@@ -832,14 +833,14 @@ jobs:
         working-directory: tools/memory-report
         run: |
           TARGET_SHA="${{ github.sha }}/dhat"
-          aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET_SHA" --acl private --follow-symlinks
+          aws s3 sync target/report "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
           URL="$CDN/dhat/dh_view.html?url=/$TARGET_SHA/dhat-heap.json"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 
           # Only upload to latest if the event is push to main
           if [ "${{ github.event_name }}" == "push" ]; then
             TARGET_LATEST="latest/dhat"
-            aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET_LATEST" --acl private --follow-symlinks
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
