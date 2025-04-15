@@ -96,7 +96,6 @@ pub struct State {
     pub ecn: ecn::Controller,
     pub pto: Pto,
     pub pto_backoff: u32,
-    pub inflight_timer: Timer,
     pub idle_timer: Timer,
     pub idle_timeout: Duration,
     pub error: Option<Error>,
@@ -148,7 +147,6 @@ impl State {
             retransmissions: Default::default(),
             pto: Pto::default(),
             pto_backoff: INITIAL_PTO_BACKOFF,
-            inflight_timer: Default::default(),
             idle_timer: Default::default(),
             idle_timeout: params.max_idle_timeout().unwrap_or(DEFAULT_IDLE_TIMEOUT),
             error: None,
@@ -700,7 +698,6 @@ impl State {
 
         // make sure our timers are armed
         self.update_idle_timer(clock);
-        self.update_inflight_timer(clock);
         self.update_pto_timer(clock);
 
         trace!(
@@ -709,7 +706,6 @@ impl State {
             stream_packets_in_flight = self.sent_stream_packets.iter().count(),
             recovery_packets_in_flight = self.sent_recovery_packets.iter().count(),
             pto_timer = ?self.pto.next_expiration(),
-            inflight_timer = ?self.inflight_timer.next_expiration(),
             idle_timer = ?self.idle_timer.next_expiration(),
         );
     }
@@ -736,7 +732,6 @@ impl State {
         // re-arm the idle timer as long as we're not in terminal state
         if !self.state.is_terminal() {
             self.idle_timer.cancel();
-            self.inflight_timer.cancel();
         }
     }
 
@@ -751,15 +746,6 @@ impl State {
             // we don't actually want to send any packets on idle timeout
             let _ = self.state.on_send_reset();
             let _ = self.state.on_recv_reset_ack();
-            return;
-        }
-
-        if self
-            .inflight_timer
-            .poll_expiration(clock.get_time())
-            .is_ready()
-        {
-            self.on_error(error::Kind::IdleTimeout);
             return;
         }
 
@@ -810,20 +796,6 @@ impl State {
 
         let now = clock.get_time();
         self.idle_timer.set(now + self.idle_timeout);
-    }
-
-    #[inline]
-    fn update_inflight_timer(&mut self, clock: &impl Clock) {
-        // TODO make this configurable
-        let inflight_timeout = crate::stream::DEFAULT_INFLIGHT_TIMEOUT;
-
-        if self.has_inflight_packets() {
-            if !self.inflight_timer.is_armed() {
-                self.inflight_timer.set(clock.get_time() + inflight_timeout);
-            }
-        } else {
-            self.inflight_timer.cancel();
-        }
     }
 
     #[inline]
@@ -1291,7 +1263,6 @@ impl State {
         let _ = self.sent_recovery_packets.remove_range(range);
 
         self.idle_timer.cancel();
-        self.inflight_timer.cancel();
         self.pto.cancel();
         self.unacked_ranges.clear();
 
