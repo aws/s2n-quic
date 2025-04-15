@@ -52,7 +52,8 @@ where
     let mut reader = core::pin::pin!(reader);
 
     poll_fn(|cx| {
-        // Poll the `writer` as long as it hasn't completed or the `reader` is still being polled
+        // Poll the `writer` as long as it hasn't completed or the `reader` is still being polled.
+        // Writer polling will get deferred to a background task if the reader ends earlier than the writer.
         if !writer_finished {
             writer_finished = writer.as_mut().poll(cx)?.is_ready();
         }
