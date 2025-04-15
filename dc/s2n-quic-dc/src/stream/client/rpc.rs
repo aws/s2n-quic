@@ -3,7 +3,10 @@
 
 use crate::{event, stream::application::Stream};
 use s2n_quic_core::buffer::{self, writer::Storage};
-use std::{future::Future, io};
+use std::{
+    future::{poll_fn, Future},
+    io,
+};
 
 pub async fn from_stream<Sub, Req, Res>(
     stream: Stream<Sub>,
@@ -18,17 +21,19 @@ where
     let (mut reader, mut writer) = stream.into_split();
 
     // TODO if the request is large enough, should we spawn a task for it?
-    let writer = async move {
+    let mut writer = async move {
         while !request.buffer_is_empty() {
             writer.write_from_fin(&mut request).await?;
         }
 
         writer.shutdown()?;
 
-        Ok(())
+        <io::Result<_>>::Ok(())
     };
+    let mut writer = core::pin::pin!(writer);
+    let mut writer_finished = false;
 
-    let reader = async move {
+    let mut reader = async move {
         loop {
             let storage = response.provide_storage().await?;
 
@@ -44,10 +49,20 @@ where
             }
         }
     };
+    let mut reader = core::pin::pin!(reader);
 
-    let (_, out) = ::tokio::try_join!(writer, reader)?;
+    poll_fn(|cx| {
+        // Poll the `writer` as long as it hasn't completed or the `reader` is still being polled
+        if !writer_finished {
+            writer_finished = writer.as_mut().poll(cx)?.is_ready();
+        }
 
-    Ok(out)
+        // We only actively poll the `reader` since that contains the response. The assumption
+        // is that if the server has finished sending the response, then it received the request,
+        // which means we're done polling the `writer`.
+        reader.as_mut().poll(cx)
+    })
+    .await
 }
 
 pub trait Request: 'static + Send + buffer::reader::storage::Infallible {}
