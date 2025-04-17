@@ -349,4 +349,5 @@ pub use mtls::*;
 #[cfg(feature = "s2n-quic-tls")]
 pub use resumption::*;
 
+#[cfg(not(feature = "provider-tls-fips"))]
 pub use slow_tls::SlowTlsProvider;
