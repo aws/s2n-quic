@@ -94,6 +94,7 @@ fn slow_rustls() {
 }
 
 #[test]
+#[cfg(not(feature = "provider-tls-fips"))]
 fn slow_default_tls() {
     use super::*;
     use crate::provider::tls::default;
