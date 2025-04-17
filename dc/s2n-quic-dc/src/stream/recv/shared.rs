@@ -89,14 +89,18 @@ pub struct State {
 
 impl State {
     #[inline]
-    pub fn new(
+    pub fn new<C>(
         stream_id: stream::Id,
         params: &dc::ApplicationParams,
         features: TransportFeatures,
         buffer: RecvBuffer,
         endpoint: endpoint::Type,
-    ) -> Self {
-        let receiver = recv::state::State::new(stream_id, params, features);
+        clock: &C,
+    ) -> Self
+    where
+        C: Clock + ?Sized,
+    {
+        let receiver = recv::state::State::new(stream_id, params, features, clock);
         let reassembler = Default::default();
         let is_owned_socket = matches!(buffer, Either::A(recv::buffer::Local { .. }));
         let inner = Inner {

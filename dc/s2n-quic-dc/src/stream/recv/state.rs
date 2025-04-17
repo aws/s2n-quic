@@ -56,12 +56,26 @@ pub struct State {
 
 impl State {
     #[inline]
-    pub fn new(
+    pub fn new<C>(
         stream_id: stream::Id,
         params: &ApplicationParams,
         features: TransportFeatures,
-    ) -> Self {
+        clock: &C,
+    ) -> Self
+    where
+        C: Clock + ?Sized,
+    {
         let initial_max_data = params.local_recv_max_data;
+
+        // set up the idle timer in case we never read anything
+        let now = clock.get_time();
+        let idle_timeout = params.max_idle_timeout().unwrap_or(DEFAULT_IDLE_TIMEOUT);
+        let mut idle_timer = Timer::default();
+        idle_timer.set(now + idle_timeout);
+
+        // the tick timer just inherits the idle timer since that's the current stable target
+        let tick_timer = idle_timer.clone();
+
         Self {
             is_reliable: stream_id.is_reliable,
             ecn_counts: Default::default(),
@@ -69,9 +83,9 @@ impl State {
             stream_ack: Default::default(),
             recovery_ack: Default::default(),
             state: Default::default(),
-            idle_timer: Default::default(),
-            idle_timeout: params.max_idle_timeout().unwrap_or(DEFAULT_IDLE_TIMEOUT),
-            tick_timer: Default::default(),
+            idle_timer,
+            idle_timeout,
+            tick_timer,
             _should_transmit: false,
             max_data: initial_max_data,
             max_data_window: initial_max_data,
