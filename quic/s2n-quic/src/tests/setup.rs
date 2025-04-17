@@ -246,8 +246,7 @@ mod slow_tls {
     use crate::provider::tls::Provider;
     use s2n_quic_core::crypto::tls::{slow_tls::SlowEndpoint, Endpoint};
     pub struct SlowTlsProvider<E: Endpoint> {
-        pub server_endpoint: Option<E>,
-        pub client_endpoint: Option<E>,
+        pub endpoint: E,
     }
 
     impl<E: Endpoint> Provider for SlowTlsProvider<E> {
@@ -256,17 +255,11 @@ mod slow_tls {
         type Error = String;
 
         fn start_server(self) -> Result<Self::Server, Self::Error> {
-            Ok(SlowEndpoint {
-                server_endpoint: self.server_endpoint,
-                client_endpoint: self.client_endpoint,
-            })
+            Ok(SlowEndpoint::new(self.endpoint))
         }
 
         fn start_client(self) -> Result<Self::Client, Self::Error> {
-            Ok(SlowEndpoint {
-                server_endpoint: self.server_endpoint,
-                client_endpoint: self.client_endpoint,
-            })
+            Ok(SlowEndpoint::new(self.endpoint))
         }
     }
 }

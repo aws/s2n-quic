@@ -8,9 +8,16 @@ use crate::{
 use alloc::{boxed::Box, vec::Vec};
 use core::{any::Any, task::Poll};
 
+const DEFER_COUNT: u8 = 3;
+
 pub struct SlowEndpoint<E: tls::Endpoint> {
-    pub server_endpoint: Option<E>,
-    pub client_endpoint: Option<E>,
+    endpoint: E,
+}
+
+impl<E: tls::Endpoint> SlowEndpoint<E> {
+    pub fn new(endpoint: E) -> Self {
+        SlowEndpoint { endpoint }
+    }
 }
 
 impl<E: tls::Endpoint> tls::Endpoint for SlowEndpoint<E> {
@@ -20,13 +27,9 @@ impl<E: tls::Endpoint> tls::Endpoint for SlowEndpoint<E> {
         &mut self,
         transport_parameters: &Params,
     ) -> Self::Session {
-        let inner_session = self
-            .server_endpoint
-            .take()
-            .expect("Server should exist")
-            .new_server_session(transport_parameters);
+        let inner_session = self.endpoint.new_server_session(transport_parameters);
         SlowSession {
-            defer: 10,
+            defer: DEFER_COUNT,
             inner_session,
         }
     }
@@ -37,23 +40,21 @@ impl<E: tls::Endpoint> tls::Endpoint for SlowEndpoint<E> {
         server_name: application::ServerName,
     ) -> Self::Session {
         let inner_session = self
-            .client_endpoint
-            .take()
-            .expect("Client should exist")
+            .endpoint
             .new_client_session(transport_parameters, server_name);
         SlowSession {
-            defer: 10,
+            defer: DEFER_COUNT,
             inner_session,
         }
     }
 
     fn max_tag_length(&self) -> usize {
-        todo!()
+        self.endpoint.max_tag_length()
     }
 }
 
 // SlowSession is a test TLS provider that is slow, namely, for each call to poll,
-// it returns Poll::Pending ten times before actually polling the real TLS library.
+// it returns Poll::Pending several times before actually polling the real TLS library.
 // This is used in an integration test to assert that our code is correct in the event
 // of any random pendings/wakeups that might occur when negotiating TLS.
 #[derive(Debug)]
@@ -78,7 +79,7 @@ impl<S: tls::Session> tls::Session for SlowSession<S> {
         // Otherwise we'll call the function to actually make progress
         // in the TLS handshake and set up to defer again the next time
         // we're here.
-        self.defer = 10;
+        self.defer = DEFER_COUNT;
         self.inner_session.poll(&mut SlowContext(context))
     }
 }

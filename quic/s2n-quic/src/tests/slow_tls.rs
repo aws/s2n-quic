@@ -17,8 +17,7 @@ fn slow_s2n_tls() {
         .build()
         .unwrap();
     let slow_server = SlowTlsProvider {
-        server_endpoint: Some(server_endpoint),
-        client_endpoint: None,
+        endpoint: server_endpoint,
     };
 
     let client_endpoint = s2n_tls::Client::builder()
@@ -27,8 +26,7 @@ fn slow_s2n_tls() {
         .build()
         .unwrap();
     let slow_client = SlowTlsProvider {
-        client_endpoint: Some(client_endpoint),
-        server_endpoint: None,
+        endpoint: client_endpoint,
     };
 
     test(model, |handle| {
@@ -65,8 +63,7 @@ fn slow_rustls() {
         .build()
         .unwrap();
     let slow_server = SlowTlsProvider {
-        server_endpoint: Some(server_endpoint),
-        client_endpoint: None,
+        endpoint: server_endpoint,
     };
 
     let client_endpoint = rustls::Client::builder()
@@ -75,8 +72,51 @@ fn slow_rustls() {
         .build()
         .unwrap();
     let slow_client = SlowTlsProvider {
-        client_endpoint: Some(client_endpoint),
-        server_endpoint: None,
+        endpoint: client_endpoint,
+    };
+
+    test(model, |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(slow_server)?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build().unwrap())?
+            .with_tls(slow_client)?
+            .start()?;
+        let addr = start_server(server)?;
+        start_client(client, addr, Data::new(1000))?;
+
+        Ok(addr)
+    })
+    .unwrap();
+}
+
+#[test]
+fn slow_default_tls() {
+    use super::*;
+    use crate::provider::tls::default;
+    use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
+
+    let model = Model::default();
+
+    let server_endpoint = default::Server::builder()
+        .with_certificate(CERT_PEM, KEY_PEM)
+        .unwrap()
+        .build()
+        .unwrap();
+    let slow_server = SlowTlsProvider {
+        endpoint: server_endpoint,
+    };
+
+    let client_endpoint = default::Client::builder()
+        .with_certificate(CERT_PEM)
+        .unwrap()
+        .build()
+        .unwrap();
+    let slow_client = SlowTlsProvider {
+        endpoint: client_endpoint,
     };
 
     test(model, |handle| {
