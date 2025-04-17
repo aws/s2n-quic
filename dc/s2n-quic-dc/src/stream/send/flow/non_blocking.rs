@@ -93,7 +93,7 @@ impl State {
     #[inline]
     pub fn set_error(&self, error: Error) {
         let _ = self.stream_error.set(error);
-        self.flow_offset.fetch_and(ERROR_MASK, Ordering::Relaxed);
+        self.stream_offset.fetch_or(ERROR_MASK, Ordering::Relaxed);
         self.poll_waker.wake();
     }
 
@@ -214,6 +214,8 @@ impl State {
 
 #[cfg(test)]
 mod tests {
+    use bolero::check;
+
     use super::*;
     use crate::stream::send::path;
     use std::sync::Arc;
@@ -316,5 +318,26 @@ mod tests {
             at_least_one_write,
             "all workers need to write at least one byte"
         );
+    }
+
+    #[test]
+    fn error_test() {
+        check!()
+            .with_type::<(u8, u8, bool)>()
+            .cloned()
+            .for_each(|(initial_offset, len, is_fin)| {
+                let state = Arc::new(State::new(VarInt::from_u8(initial_offset)));
+
+                state.set_error(Error::new(error::Kind::FatalError));
+
+                let len = len as _;
+                let request = flow::Request {
+                    len,
+                    initial_len: len,
+                    is_fin,
+                };
+
+                state.acquire_offset(&request).unwrap_err();
+            })
     }
 }
