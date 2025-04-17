@@ -238,6 +238,8 @@ pub fn encrypt<'a, K: Key>(
     let mut body = EncoderBuffer::new(body);
     body.advance_position(inline_len);
     let mut body = scatter::Buffer::new_with_extra(body, extra);
+    println!("ABOUT TO ENCRYPT");
+    println!("packet_number {:?}", packet_number);
     key.encrypt(packet_number.as_crypto_nonce(), header, &mut body)?;
 
     let encrypted_payload = EncryptedPayload::new(header_len, packet_number_len, payload);
