@@ -3157,7 +3157,7 @@ pub mod api {
         }
     }
     macro_rules! impl_conn_id {
-        ($ name : ident) => {
+        ($name:ident) => {
             impl<'a> IntoEvent<builder::ConnectionId<'a>> for &'a crate::connection::id::$name {
                 #[inline]
                 fn into_event(self) -> builder::ConnectionId<'a> {
@@ -6869,8 +6869,7 @@ pub mod supervisor {
 pub use traits::*;
 mod traits {
     use super::*;
-    use crate::event::Meta;
-    use crate::query;
+    use crate::{event::Meta, query};
     use core::fmt;
     #[doc = r" Allows for events to be subscribed to"]
     pub trait Subscriber: 'static + Send {
