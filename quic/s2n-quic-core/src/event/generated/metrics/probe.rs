@@ -5,12 +5,10 @@
 // This file was generated with the `s2n-quic-events` crate and any required
 // changes should be made there.
 
-use crate::{
-    event::metrics::aggregate::{
-        self, info, BoolRecorder, Info, NominalRecorder, Recorder as MetricRecorder,
-    },
-    probe::define,
+use crate::event::metrics::aggregate::{
+    self, info, BoolRecorder, Info, NominalRecorder, Recorder as MetricRecorder,
 };
+use crate::probe::define;
 mod counter {
     #![allow(non_snake_case)]
     use super::*;

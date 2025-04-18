@@ -1110,6 +1110,12 @@ pub mod api {
             path: Path<'a>,
             packet_type: PacketType,
         },
+        #[non_exhaustive]
+        #[doc = " The packet space for a received packet did not exist"]
+        PacketSpaceDoesNotExist {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
     }
     impl<'a> aggregate::AsVariant for PacketDropReason<'a> {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
@@ -1168,6 +1174,11 @@ pub mod api {
                 id: 10usize,
             }
             .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("PACKET_SPACE_DOES_NOT_EXIST\0"),
+                id: 11usize,
+            }
+            .build(),
         ];
         #[inline]
         fn variant_idx(&self) -> usize {
@@ -1183,6 +1194,7 @@ pub mod api {
                 Self::RetryDiscarded { .. } => 8usize,
                 Self::UndersizedInitialPacket { .. } => 9usize,
                 Self::InitialConnectionIdInvalidSpace { .. } => 10usize,
+                Self::PacketSpaceDoesNotExist { .. } => 11usize,
             }
         }
     }
@@ -3145,7 +3157,7 @@ pub mod api {
         }
     }
     macro_rules! impl_conn_id {
-        ($name:ident) => {
+        ($ name : ident) => {
             impl<'a> IntoEvent<builder::ConnectionId<'a>> for &'a crate::connection::id::$name {
                 #[inline]
                 fn into_event(self) -> builder::ConnectionId<'a> {
@@ -5211,6 +5223,11 @@ pub mod builder {
             path: Path<'a>,
             packet_type: PacketType,
         },
+        #[doc = " The packet space for a received packet did not exist"]
+        PacketSpaceDoesNotExist {
+            path: Path<'a>,
+            packet_type: PacketType,
+        },
     }
     impl<'a> IntoEvent<api::PacketDropReason<'a>> for PacketDropReason<'a> {
         #[inline]
@@ -5261,6 +5278,10 @@ pub mod builder {
                         packet_type: packet_type.into_event(),
                     }
                 }
+                Self::PacketSpaceDoesNotExist { path, packet_type } => PacketSpaceDoesNotExist {
+                    path: path.into_event(),
+                    packet_type: packet_type.into_event(),
+                },
             }
         }
     }
@@ -6848,7 +6869,8 @@ pub mod supervisor {
 pub use traits::*;
 mod traits {
     use super::*;
-    use crate::{event::Meta, query};
+    use crate::event::Meta;
+    use crate::query;
     use core::fmt;
     #[doc = r" Allows for events to be subscribed to"]
     pub trait Subscriber: 'static + Send {
