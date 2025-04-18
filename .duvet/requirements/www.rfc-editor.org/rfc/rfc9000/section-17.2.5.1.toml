@@ -1,0 +1,61 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1"
+
+# Sending a Retry Packet
+#
+#    The server populates the Destination Connection ID with the
+#    connection ID that the client included in the Source Connection ID of
+#    the Initial packet.
+# 
+#    The server includes a connection ID of its choice in the Source
+#    Connection ID field.  This value MUST NOT be equal to the Destination
+#    Connection ID field of the packet sent by the client.  A client MUST
+#    discard a Retry packet that contains a Source Connection ID field
+#    that is identical to the Destination Connection ID field of its
+#    Initial packet.  The client MUST use the value from the Source
+#    Connection ID field of the Retry packet in the Destination Connection
+#    ID field of subsequent packets that it sends.
+# 
+#    A server MAY send Retry packets in response to Initial and 0-RTT
+#    packets.  A server can either discard or buffer 0-RTT packets that it
+#    receives.  A server can send multiple Retry packets as it receives
+#    Initial or 0-RTT packets.  A server MUST NOT send more than one Retry
+#    packet in response to a single UDP datagram.
+
+[[spec]]
+level = "MUST"
+quote = '''
+This value MUST NOT be equal to the Destination
+Connection ID field of the packet sent by the client.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST
+discard a Retry packet that contains a Source Connection ID field
+that is identical to the Destination Connection ID field of its
+Initial packet.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The client MUST use the value from the Source
+Connection ID field of the Retry packet in the Destination Connection
+ID field of subsequent packets that it sends.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY send Retry packets in response to Initial and 0-RTT
+packets.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT send more than one Retry
+packet in response to a single UDP datagram.
+'''
+
