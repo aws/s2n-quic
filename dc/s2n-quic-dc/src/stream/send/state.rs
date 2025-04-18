@@ -782,12 +782,10 @@ impl State {
         Poll::Ready(())
     }
 
+    /// Returns `true` if there are any outstanding stream segments
     #[inline]
     fn has_inflight_packets(&self) -> bool {
-        !self.sent_stream_packets.is_empty()
-            || !self.sent_recovery_packets.is_empty()
-            || !self.retransmissions.is_empty()
-            || !self.transmit_queue.is_empty()
+        !self.stream_packet_buffers.is_empty()
     }
 
     #[inline]
@@ -802,10 +800,8 @@ impl State {
     fn update_pto_timer(&mut self, clock: &impl Clock) {
         ensure!(!self.pto.is_armed());
 
-        let mut should_arm = self.has_inflight_packets();
-
         // if we have stream packet buffers in flight then arm the PTO
-        should_arm |= !self.stream_packet_buffers.is_empty();
+        let mut should_arm = self.has_inflight_packets();
 
         // if we've sent all of the data/reset and are waiting to clean things up
         should_arm |= self.state.is_data_sent() || self.state.is_reset_sent();
@@ -817,9 +813,14 @@ impl State {
 
     #[inline]
     fn force_arm_pto_timer(&mut self, clock: &impl Clock) {
-        let pto_period = self
+        let mut pto_period = self
             .rtt_estimator
             .pto_period(self.pto_backoff, PacketNumberSpace::Initial);
+
+        // the `Timestamp::elapsed` function rounds up to the nearest 1ms so we need to set a min value
+        // otherwise we'll prematurely trigger a PTO
+        pto_period = pto_period.max(Duration::from_millis(2));
+
         self.pto.update(clock.get_time(), pto_period);
     }
 
