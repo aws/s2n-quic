@@ -14,6 +14,14 @@ pub struct Segment<S> {
     pub included_fin: bool,
 }
 
+impl<S> Segment<S> {
+    pub fn range(&self) -> core::ops::Range<VarInt> {
+        let start = self.stream_offset;
+        let end = start + VarInt::from_u16(self.payload_len);
+        start..end
+    }
+}
+
 impl<S> PartialEq for Segment<S> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {

@@ -173,10 +173,15 @@ impl State {
     #[inline]
     pub fn flow_offset(&self) -> VarInt {
         let cca_offset = {
-            let extra_window = self
+            let mut extra_window = self
                 .cca
                 .congestion_window()
                 .saturating_sub(self.cca.bytes_in_flight());
+
+            // only give CCA credits to the application if we were able to retransmit everything considered lost
+            if !self.retransmissions.is_empty() {
+                extra_window = 0;
+            }
 
             self.max_sent_offset + extra_window as usize
         };
@@ -1283,7 +1288,39 @@ impl State {
     #[cfg(debug_assertions)]
     #[inline]
     fn invariants(&self) {
-        // TODO
+        if !self.unacked_ranges.is_empty() {
+            let mut unacked_ranges = self.unacked_ranges.clone();
+            let last = unacked_ranges.inclusive_ranges().next_back().unwrap();
+            unacked_ranges.remove(last).unwrap();
+
+            for (_pn, packet) in self.sent_stream_packets.iter() {
+                if packet.info.payload_len == 0 {
+                    continue;
+                }
+
+                unacked_ranges.remove(packet.info.range()).unwrap();
+            }
+
+            for (_pn, packet) in self.sent_recovery_packets.iter() {
+                if packet.info.payload_len == 0 {
+                    continue;
+                }
+
+                unacked_ranges.remove(packet.info.range()).unwrap();
+            }
+
+            for v in self.retransmissions.iter() {
+                if v.payload_len == 0 {
+                    continue;
+                }
+                unacked_ranges.remove(v.range()).unwrap();
+            }
+
+            assert!(
+                unacked_ranges.is_empty(),
+                "unacked ranges should be empty: {unacked_ranges:?}\n state\n {self:#?}"
+            );
+        }
     }
 
     #[cfg(not(debug_assertions))]

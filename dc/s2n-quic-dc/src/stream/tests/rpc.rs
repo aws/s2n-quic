@@ -8,7 +8,7 @@ use crate::{
     },
     testing::{ext::*, sim, without_tracing},
 };
-use bolero::check;
+use bolero::{check, TypeGenerator};
 use bytes::BytesMut;
 use s2n_quic_core::stream::testing::Data;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -171,5 +171,132 @@ fn echo_stream() {
                 .spawn();
             })
         })
+    });
+}
+
+const MAX_LEN: u64 = 512_000;
+
+#[derive(Clone, Copy, Debug, TypeGenerator)]
+struct Harness {
+    #[generator(1..=64)]
+    num_clients: usize,
+    #[generator(1..=64)]
+    num_requests: usize,
+    #[generator(0..=MAX_LEN)]
+    req_size: u64,
+    #[generator(0..=MAX_LEN)]
+    res_size: u64,
+    server_pause: u16,
+    server_include_fin: bool,
+}
+
+impl Harness {
+    fn run(self) {
+        eprintln!("{self:?}");
+        let Harness {
+            num_clients,
+            num_requests,
+            req_size,
+            res_size,
+            server_pause,
+            server_include_fin,
+        } = self;
+
+        for client in 0..num_clients {
+            async move {
+                (client as u64).us().sleep().await;
+
+                let client = Client::builder().build();
+                for _ in 0..num_requests {
+                    let req = Data::new(req_size);
+                    let response = rpc::InMemoryResponse::from(Data::new(res_size));
+                    let response = client.rpc_sim("server:443", req, response).await.unwrap();
+
+                    assert!(response.is_finished());
+                }
+            }
+            .group("client")
+            .instrument(info_span!("client", client))
+            .primary()
+            .spawn();
+        }
+
+        async move {
+            let server = Server::udp()
+                .port(443)
+                .map_capacity(num_clients * 2)
+                .build();
+
+            while let Ok((mut stream, _addr)) = server.accept().await {
+                async move {
+                    let mut req = Data::new(req_size);
+                    loop {
+                        let Ok(len) = stream.read_into(&mut req).await else {
+                            return;
+                        };
+                        if len == 0 {
+                            break;
+                        }
+                    }
+
+                    tracing::info!(?req, "received request");
+
+                    (server_pause as u64).us().sleep().await;
+
+                    let mut res = Data::new(res_size);
+
+                    while !res.is_finished() {
+                        if server_include_fin {
+                            stream.write_from_fin(&mut res).await.unwrap();
+                        } else {
+                            stream.write_from(&mut res).await.unwrap();
+                        }
+                    }
+
+                    tracing::info!(?res, "sent response");
+                }
+                .instrument(info_span!("stream"))
+                .primary()
+                .spawn();
+            }
+        }
+        .group("server")
+        .instrument(info_span!("server"))
+        .spawn();
+    }
+}
+
+#[test]
+fn large_transfer() {
+    sim(|| {
+        // TODO use once bach 0.1 is released
+        #[cfg(todo)]
+        bach::net::monitor::on_packet_sent(|packet| {
+            use bach::net::monitor::Command;
+
+            // 25% chance of dropping a packet
+            *bach::rand::pick(&[Command::Pass, Command::Pass, Command::Pass, Command::Drop])
+        });
+
+        Harness {
+            num_clients: 1,
+            num_requests: 1,
+            req_size: 1_000_000_000,
+            res_size: 10,
+            server_pause: 1,
+            server_include_fin: true,
+        }
+        .run();
+    });
+}
+
+#[test]
+fn fuzz_test() {
+    without_tracing(|| {
+        check!()
+            .with_type::<Harness>()
+            .cloned()
+            .with_test_time(30.s())
+            .for_each(|harness| sim(|| harness.run()))
     });
 }
