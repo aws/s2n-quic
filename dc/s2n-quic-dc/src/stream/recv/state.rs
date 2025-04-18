@@ -715,15 +715,18 @@ impl State {
         };
         let max_data_encoding_size: VarInt = max_data.encoding_size().try_into().unwrap();
 
+        // compute the recovery ACKs first so we have enough space for those - if we run out, the sender will
+        // convert the stream PNs anyway
+        let (recovery_ack, max_data_encoding_size) =
+            self.recovery_ack
+                .encoding(max_data_encoding_size, ack_delay, None, mtu);
+
         let (stream_ack, max_data_encoding_size) = self.stream_ack.encoding(
             max_data_encoding_size,
             ack_delay,
             Some(self.ecn_counts),
             mtu,
         );
-        let (recovery_ack, max_data_encoding_size) =
-            self.recovery_ack
-                .encoding(max_data_encoding_size, ack_delay, None, mtu);
 
         let encoding_size = max_data_encoding_size;
 
@@ -751,8 +754,52 @@ impl State {
             }
             packet_len => {
                 buffer.truncate(packet_len);
-                // TODO duplicate the transmission in case we have a lot of gaps in packets
+
+                // get how many intervals we're tracking - the more there are, the more loss the network
+                // is experiencing
+                let intervals = self.stream_ack.packets.interval_len()
+                    + self.recovery_ack.packets.interval_len();
+
+                let mut duplicate_threshold = 20;
+
+                let mut should_duplicate = false;
+
+                // if the number of intervals is large then we should duplicate the ACKs to try and recover
+                should_duplicate |= intervals > duplicate_threshold;
+
+                // if we have recovery packets then the network is likely lossy so we duplicate the ACKs to increase the
+                // likelihood that the sender will recover
+                should_duplicate |= !self.recovery_ack.packets.is_empty();
+
+                let duplicate = if should_duplicate {
+                    Some(buffer.clone())
+                } else {
+                    None
+                };
+
                 output.push(segment);
+
+                if let Some(buffer) = duplicate {
+                    loop {
+                        let Some(segment) = output.alloc() else {
+                            break;
+                        };
+                        let buf = output.get_mut(&segment);
+                        if intervals > duplicate_threshold {
+                            buf.extend_from_slice(&buffer);
+                            output.push(segment);
+
+                            // exponentially increase the threshold
+                            duplicate_threshold *= 2;
+
+                            continue;
+                        } else {
+                            *buf = buffer;
+                            output.push(segment);
+                            break;
+                        }
+                    }
+                }
             }
         }
 
