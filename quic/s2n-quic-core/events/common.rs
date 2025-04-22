@@ -879,6 +879,11 @@ enum PacketDropReason<'a> {
         path: Path<'a>,
         packet_type: PacketType,
     },
+    /// The packet space for a received packet did not exist
+    PacketSpaceDoesNotExist {
+        path: Path<'a>,
+        packet_type: PacketType,
+    },
 }
 
 #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
