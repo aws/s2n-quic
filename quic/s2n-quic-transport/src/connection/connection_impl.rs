@@ -1243,15 +1243,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# they MUST be discarded.
 
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-        if self.space_manager.initial_mut().is_none() {
-            let path = &self.path_manager[path_id];
-            publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
-                    path: path_event!(path, path_id),
-                    packet_type: event::builder::PacketType::Initial,
-                },
-            });
-        }
 
         if let Some((space, _status)) = self.space_manager.initial_mut() {
             let packet = space.validate_and_decrypt_packet(
@@ -1279,6 +1270,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 dc_endpoint,
                 connection_limits_endpoint,
             )?;
+        } else {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::Initial,
+                },
+            });
         }
 
         Ok(())
@@ -1298,15 +1297,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         connection_limits_endpoint: &mut Config::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-        if self.space_manager.initial_mut().is_none() {
-            let path = &self.path_manager[path_id];
-            publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
-                    path: path_event!(path, path_id),
-                    packet_type: event::builder::PacketType::Initial,
-                },
-            });
-        }
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
             //# A server MUST discard an Initial packet that is carried
@@ -1370,6 +1360,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
+        } else {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::Initial,
+                },
+            });
         }
 
         Ok(())
@@ -1419,16 +1417,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 },
             });
             return Err(ProcessingError::Other);
-        }
-
-        if self.space_manager.handshake().is_none() {
-            let path = &self.path_manager[path_id];
-            publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
-                    path: path_event!(path, path_id),
-                    packet_type: event::builder::PacketType::Handshake,
-                },
-            });
         }
 
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
@@ -1487,6 +1475,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
+        } else {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::Handshake,
+                },
+            });
         }
 
         Ok(())
@@ -1550,16 +1546,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             return Err(ProcessingError::Other);
         }
 
-        if self.space_manager.application_mut().is_none() {
-            let path = &self.path_manager[path_id];
-            publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
-                    path: path_event!(path, path_id),
-                    packet_type: event::builder::PacketType::OneRtt,
-                },
-            });
-        }
-
         if let Some((space, handshake_status)) = self.space_manager.application_mut() {
             let packet = space.validate_and_decrypt_packet(
                 packet,
@@ -1616,6 +1602,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
+        } else {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::OneRtt,
+                },
+            });
         }
 
         Ok(())
