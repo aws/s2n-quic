@@ -181,7 +181,6 @@ measure#recovery_metrics.pto_count=1
 measure#recovery_metrics.congestion_window=12000
 measure#recovery_metrics.bytes_in_flight=[REDACTED]
 count#recovery_metrics.congestion_limited=false
-count#packet_skipped=1
 count#frame_sent=1
 count#frame_sent.packet|HANDSHAKE=1
 count#frame_sent.frame|PING=1
