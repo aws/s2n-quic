@@ -108,7 +108,7 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
     ) -> Result<(transmission::Outcome, EncoderBuffer<'a>), PacketEncodingError<'a>> {
         let mut packet_number = self.tx_packet_numbers.next();
 
-        if self.recovery_manager.requires_probe() {
+        if self.recovery_manager.requires_probe() && packet_number.as_u64() != 0 {
             context
                 .publisher
                 .on_packet_skipped(event::builder::PacketSkipped {
