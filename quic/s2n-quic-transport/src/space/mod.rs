@@ -353,12 +353,17 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
         publisher: &mut Pub,
-    ) {
+    ) -> Result<(), connection::Error> {
         let path_id = path_manager.active_path_id();
         let path = path_manager.active_path();
 
         // ensure the backoff doesn't grow too quickly
-        let max_backoff = path.pto_backoff * 2;
+        let max_backoff = match path.pto_backoff.checked_mul(2) {
+            Some(value) => value,
+            None => {
+                return Err(connection::Error::immediate_close("PTO Overflows"));
+            }
+        };
 
         if let Some((space, handshake_status)) = self.initial_mut() {
             space.on_timeout(
@@ -395,6 +400,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         }
 
         debug_assert!(path_manager.active_path().pto_backoff <= max_backoff);
+        Ok(())
     }
 
     /// Signals the connection was previously blocked by anti-amplification limits

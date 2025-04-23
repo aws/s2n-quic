@@ -1066,7 +1066,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             random_generator,
             timestamp,
             &mut publisher,
-        );
+        )?;
 
         if self
             .timers
