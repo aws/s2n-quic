@@ -27,6 +27,7 @@ mod recorder;
 mod connection_limits;
 mod resumption;
 mod setup;
+mod slow_tls;
 use setup::*;
 
 mod blackhole;
