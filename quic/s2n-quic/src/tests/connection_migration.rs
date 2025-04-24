@@ -296,7 +296,7 @@ fn rebind_before_handshake_confirmed() {
     }
 }
 
-// Changes the port for every datagrams after the second received datagram
+// Changes the port for every datagram after the second received datagram
 #[derive(Default)]
 struct RebindPortAfterTheFirstDatagram {
     datagram_count: usize,
@@ -320,9 +320,9 @@ impl Interceptor for RebindPortAfterTheFirstDatagram {
     }
 }
 
-/// Ensures pto overflow will close the connection instead of panicking
+/// Ensures when the PTO backoff multiplier exceeds the maximum value, the connection is closed and the endpoint does not panic
 #[test]
-fn rebind_triggers_pto_overflow() {
+fn pto_backoff_exceeding_max_value_closes_connection() {
     let model = Model::default();
     let subscriber_closed = recorder::ConnectionClosed::new();
     let connection_closed_events = subscriber_closed.events();
@@ -389,11 +389,11 @@ fn rebind_triggers_pto_overflow() {
     let connection_closed_events = connection_closed_events.lock().unwrap();
     assert_eq!(connection_closed_events.len(), 1);
 
-    // The connection is closed because of PTO Overflows
+    // The connection is closed because of PTO backoff multiplier exceeded maximum value
     assert!(matches!(
         connection_closed_events[0],
         s2n_quic_core::connection::Error::ImmediateClose { reason, .. }
-        if reason == "PTO Overflows"
+        if reason == "PTO backoff multiplier exceeded maximum value"
     ));
 }
 

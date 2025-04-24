@@ -358,12 +358,9 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         let path = path_manager.active_path();
 
         // ensure the backoff doesn't grow too quickly
-        let max_backoff = match path.pto_backoff.checked_mul(2) {
-            Some(value) => value,
-            None => {
-                return Err(connection::Error::immediate_close("PTO Overflows"));
-            }
-        };
+        let max_backoff = path.pto_backoff.checked_mul(2).ok_or_else(|| {
+            connection::Error::immediate_close("PTO backoff multiplier exceeded maximum value")
+        })?;
 
         if let Some((space, handshake_status)) = self.initial_mut() {
             space.on_timeout(
