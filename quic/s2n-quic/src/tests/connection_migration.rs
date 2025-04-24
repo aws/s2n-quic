@@ -296,6 +296,107 @@ fn rebind_before_handshake_confirmed() {
     }
 }
 
+// Changes the port for every datagram after the second received datagram
+#[derive(Default)]
+struct RebindPortAfterTheFirstDatagram {
+    datagram_count: usize,
+}
+
+impl Interceptor for RebindPortAfterTheFirstDatagram {
+    fn intercept_rx_remote_address(&mut self, _subject: &Subject, addr: &mut RemoteAddress) {
+        if self.datagram_count >= 1 {
+            addr.set_port(REBIND_PORT);
+        }
+    }
+
+    fn intercept_rx_datagram<'a>(
+        &mut self,
+        _subject: &Subject,
+        _datagram: &Datagram,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        self.datagram_count += 1;
+        payload
+    }
+}
+
+/// Ensures when the PTO backoff multiplier exceeds the maximum value, the connection is closed and the endpoint does not panic
+#[test]
+fn pto_backoff_exceeding_max_value_closes_connection() {
+    let model = Model::default();
+    let subscriber_closed = recorder::ConnectionClosed::new();
+    let connection_closed_events = subscriber_closed.events();
+
+    test(model, move |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event((tracing_events(), subscriber_closed))?
+            .with_random(Random::with_seed(456))?
+            .with_packet_interceptor(RebindPortAfterTheFirstDatagram::default())?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(tracing_events())?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let server_addr = start_server(server)?;
+        let data = Data::new(1000);
+        primary::spawn(async move {
+            let connect = Connect::new(server_addr).with_server_name("localhost");
+            let mut connection = client.connect(connect).await.unwrap();
+
+            let stream = connection.open_bidirectional_stream().await.unwrap();
+
+            let (mut recv, mut send) = stream.split();
+
+            let mut send_data = data;
+            let mut recv_data = data;
+
+            // Client receive will error when PTO overflows
+            primary::spawn(async move {
+                // Use this loop to capture PtoOverflow errors
+                loop {
+                    match recv.receive().await {
+                        Ok(Some(chunk)) => {
+                            recv_data.receive(&[chunk]);
+                        }
+                        // The test will not branch into this block.
+                        // PTO will overflow while client is receiving data.
+                        // That error will be captured by the Err block.
+                        Ok(None) => {
+                            break;
+                        }
+                        Err(_) => {
+                            break;
+                        }
+                    }
+                }
+            });
+
+            while let Some(chunk) = send_data.send_one(usize::MAX) {
+                send.send(chunk).await.unwrap();
+            }
+        });
+        Ok(server_addr)
+    })
+    .unwrap();
+
+    // The connection should only be closed once
+    let connection_closed_events = connection_closed_events.lock().unwrap();
+    assert_eq!(connection_closed_events.len(), 1);
+
+    // The connection is closed because of PTO backoff multiplier exceeded maximum value
+    assert!(matches!(
+        connection_closed_events[0],
+        s2n_quic_core::connection::Error::ImmediateClose { reason, .. }
+        if reason == "PTO backoff multiplier exceeded maximum value"
+    ));
+}
+
 // Changes the remote address to ipv4-mapped after the first packet
 #[derive(Default)]
 struct RebindMappedAddrBeforeHandshakeConfirmed {
