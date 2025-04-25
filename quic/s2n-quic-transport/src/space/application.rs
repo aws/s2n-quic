@@ -166,7 +166,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         // necessary) and record only if a packet is transmitted.
         let mut skipped_packet_number = SkippedPacketNumber::default();
 
-        if self.recovery_manager.requires_probe() {
+        if self.recovery_manager.requires_probe() && packet_number.as_u64() != 0 {
             skipped_packet_number.pto = Some(packet_number);
             //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.4
             //# If the sender wants to elicit a faster acknowledgement on PTO, it can

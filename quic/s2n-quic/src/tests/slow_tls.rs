@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[test]
-#[cfg(not(feature = "provider-tls-fips"))]
-fn slow_default_tls() {
+fn slow_tls() {
     use super::*;
     use crate::provider::tls::default;
     use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
