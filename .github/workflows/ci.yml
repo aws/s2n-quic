@@ -5,6 +5,9 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    # Run daily job at 8:00 PM PT
+    - cron: '0 3 * * *'
 
 name: ci
 
