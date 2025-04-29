@@ -33,6 +33,7 @@ env:
 permissions:
   statuses: write
   id-token: write # This is required for requesting the JWT/OIDC
+  contents: read
 
 jobs:
   env:
@@ -956,8 +957,6 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ always() }}
     needs: env
-    permissions:
-      id-token: write
     steps:
       - uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
