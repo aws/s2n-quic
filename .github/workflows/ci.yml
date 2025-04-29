@@ -953,7 +953,7 @@ jobs:
         run: cargo xtask build
 
   scheduled-ci-status-report:
-    if: ${{ always() }} && github.event_name == 'schedule'
+    if: ${{ always() }}
     needs: [env, test, asan]
     steps:
       - name: Report daily CI run to CloudWatch
@@ -963,5 +963,7 @@ jobs:
           role-session-name: S2nQuicGHASession
           aws-region: us-west-2
         run: |
-          METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
-          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
+            aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
+          fi
