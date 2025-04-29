@@ -956,6 +956,8 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ always() }}
     needs: env
+    permissions:
+      id-token: write
     steps:
       - uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
