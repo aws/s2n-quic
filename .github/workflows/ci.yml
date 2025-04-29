@@ -954,7 +954,7 @@ jobs:
 
   scheduled-ci-status-report:
     if: ${{ always() }}
-    needs: [env, test]
+    needs: env
     steps:
       - name: Report daily CI run to CloudWatch
         uses: aws-actions/configure-aws-credentials@v4.1.0
