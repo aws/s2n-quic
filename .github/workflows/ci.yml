@@ -954,7 +954,7 @@ jobs:
 
   scheduled-ci-status-report:
     if: ${{ always() }}
-    needs: [env, test, asan]
+    needs: [env, test]
     steps:
       - name: Report daily CI run to CloudWatch
         uses: aws-actions/configure-aws-credentials@v4.1.0
@@ -964,5 +964,6 @@ jobs:
           aws-region: us-west-2
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
-            aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value 0 --dimensions Initiator=scheduled --timestamp $(date +%s)
+            METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
+            aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
           fi
