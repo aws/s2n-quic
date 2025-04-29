@@ -954,6 +954,8 @@ jobs:
 
   scheduled-ci-status-report:
     runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: env
     steps:
       - uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
