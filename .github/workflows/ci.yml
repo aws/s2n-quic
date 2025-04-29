@@ -951,3 +951,17 @@ jobs:
       - name: Run build
         working-directory: dc/wireshark
         run: cargo xtask build
+
+  scheduled-ci-status-report:
+    if: ${{ always() }} && github.event_name == 'schedule'
+    needs: [env, test, asan]
+    steps:
+      - name: Report daily CI run to CloudWatch
+        uses: aws-actions/configure-aws-credentials@v4.1.0
+        with:
+          role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHASession
+          aws-region: us-west-2
+        run: |
+          METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
+          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
