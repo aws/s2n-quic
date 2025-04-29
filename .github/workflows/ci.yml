@@ -953,7 +953,7 @@ jobs:
         run: cargo xtask build
 
   scheduled-ci-status-report:
-    needs: env
+    runs-on: ubuntu-latest
     steps:
       - uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
