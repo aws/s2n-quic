@@ -954,12 +954,9 @@ jobs:
 
   scheduled-ci-status-report:
     runs-on: ubuntu-latest
-    if: ${{ always() }} || github.repository == github.event.pull_request.head.repo.full_name
+    if: ${{ always() }}
     needs: env
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
