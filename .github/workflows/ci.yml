@@ -963,7 +963,7 @@ jobs:
           submodules: true
       - uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
-          role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
+          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHASession
           aws-region: us-west-2
       - name: Report daily CI run to CloudWatch
