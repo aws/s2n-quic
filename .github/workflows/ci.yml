@@ -953,10 +953,10 @@ jobs:
         run: cargo xtask build
 
   scheduled-ci-status-report:
-    runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
+    runs-on: ubuntu-latest
     if: ${{ always() }}
     needs: env
     steps:
