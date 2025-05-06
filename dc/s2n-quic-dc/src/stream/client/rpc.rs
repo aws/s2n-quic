@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{event, stream::application::Stream};
+use crate::{
+    event,
+    stream::{application::Stream, recv::application::ReadMode},
+};
 use s2n_quic_core::buffer::{self, writer::Storage};
 use std::{
     future::{poll_fn, Future},
@@ -19,6 +22,9 @@ where
     Res: Response,
 {
     let (mut reader, mut writer) = stream.into_split();
+
+    // prefer draining all of the packets before sending an ACK
+    reader.set_read_mode(ReadMode::UntilFull);
 
     // TODO if the request is large enough, should we spawn a task for it?
     let mut writer = async move {

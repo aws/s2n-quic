@@ -14,6 +14,8 @@ use crate::{
 use core::mem::ManuallyDrop;
 use s2n_quic_core::endpoint;
 
+use super::ReadMode;
+
 pub struct Builder<Sub> {
     endpoint: endpoint::Type,
     runtime: runtime::ArcHandle<Sub>,
@@ -44,7 +46,14 @@ where
         };
         let gso = shared.gso.clone();
         let send_buffer = msg::send::Message::new(remote_addr, gso);
-        let read_mode = Default::default();
+        // If the transport is reliable then it's handling ACKs. Otherwise, the application is sending
+        // ACKs so we want to do a little more compute per `read` call, if the application buffer allows
+        // for it.
+        let read_mode = if is_reliable {
+            ReadMode::Once
+        } else {
+            ReadMode::UntilFull
+        };
         let ack_mode = Default::default();
         let local_state = match endpoint {
             // reliable transports on the client need to read at least one packet in order to

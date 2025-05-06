@@ -151,6 +151,18 @@ where
     }
 
     #[inline]
+    pub fn set_read_mode(&mut self, read_mode: recv::ReadMode) -> &mut Self {
+        self.read.set_read_mode(read_mode);
+        self
+    }
+
+    #[inline]
+    pub fn set_ack_mode(&mut self, ack_mode: recv::AckMode) -> &mut Self {
+        self.read.set_ack_mode(ack_mode);
+        self
+    }
+
+    #[inline]
     pub async fn write_from(
         &mut self,
         buf: &mut impl buffer::reader::storage::Infallible,
