@@ -51,9 +51,10 @@ where
         let recv = match ready!(self.recv_acceptor.poll_accept_receive_stream(cx)) {
             Ok(Some(x)) => x,
             Ok(None) => {
+                // This happens when the connection is closed without an error
                 return Poll::Ready(Err(ConnectionErrorIncoming::InternalError(
                     "connection closed".to_string(),
-                )))
+                )));
             }
             Err(e) => {
                 return Poll::Ready(Err(convert_connection_error(e)));
@@ -71,9 +72,10 @@ where
         let (recv, send) = match ready!(self.bidi_acceptor.poll_accept_bidirectional_stream(cx)) {
             Ok(Some(x)) => x.split(),
             Ok(None) => {
+                // This happens when the connection is closed without an error
                 return Poll::Ready(Err(ConnectionErrorIncoming::InternalError(
                     "connection closed".to_string(),
-                )))
+                )));
             }
             Err(e) => {
                 return Poll::Ready(Err(convert_connection_error(e)));
@@ -102,8 +104,12 @@ fn convert_connection_error(e: s2n_quic::connection::Error) -> h3::quic::Connect
         }
         s2n_quic::connection::Error::IdleTimerExpired { .. } => ConnectionErrorIncoming::Timeout,
 
-        error @ s2n_quic::connection::Error::Closed { .. }
-        | error @ s2n_quic::connection::Error::Transport { .. }
+        s2n_quic::connection::Error::Closed { .. } => {
+            // This happens when the connection is closed without an error
+            ConnectionErrorIncoming::InternalError("connection closed".to_string())
+        }
+
+        error @ s2n_quic::connection::Error::Transport { .. }
         | error @ s2n_quic::connection::Error::StatelessReset { .. }
         | error @ s2n_quic::connection::Error::NoValidPath { .. }
         | error @ s2n_quic::connection::Error::StreamIdExhausted { .. }
