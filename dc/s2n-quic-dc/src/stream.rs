@@ -5,8 +5,6 @@ use core::time::Duration;
 
 /// The maximum time a stream will be open without activity from the peer
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
-/// The maximum time a send stream will wait for ACKs from inflight packets
-pub const DEFAULT_INFLIGHT_TIMEOUT: Duration = Duration::from_secs(5);
 /// The maximum length of a single packet written to a stream
 pub const MAX_DATAGRAM_SIZE: usize = 1 << 15; // 32k
 

@@ -79,7 +79,7 @@ decoder_value!(
                     Ok((Self::UnknownPathSecret(tag), buffer))
                 }
                 // reserve this range for other packet types
-                0b0110_0000..=0b0111_1111 => Err(s2n_codec::DecoderError::InvariantViolation(
+                0b0110_0011..=0b0111_1111 => Err(s2n_codec::DecoderError::InvariantViolation(
                     "unexpected packet tag",
                 )),
                 0b1000_0000..=0b1111_1111 => Err(s2n_codec::DecoderError::InvariantViolation(

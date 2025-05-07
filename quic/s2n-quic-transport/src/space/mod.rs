@@ -12,6 +12,7 @@ use crate::{
 };
 use bytes::Bytes;
 use core::{
+    any::Any,
     fmt,
     ops::RangeInclusive,
     task::{Poll, Waker},
@@ -63,6 +64,7 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     retry_cid: Option<Box<PeerId>>,
     initial: Option<Box<InitialSpace<Config>>>,
     handshake: Option<Box<HandshakeSpace<Config>>>,
+    pub tls_context: Option<Box<dyn Any + Send>>,
     application: Option<Box<ApplicationSpace<Config>>>,
     zero_rtt_crypto:
         Option<Box<<<Config::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::ZeroRttKey>>,
@@ -124,6 +126,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 session,
                 initial_cid,
             }),
+            tls_context: None,
             retry_cid: None,
             initial: Some(Box::new(InitialSpace::new(
                 initial_key,
@@ -259,6 +262,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 handshake: &mut self.handshake,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
+                tls_context: &mut self.tls_context,
                 path_manager,
                 handshake_status: &mut self.handshake_status,
                 local_id_registry,
@@ -306,6 +310,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 retry_cid: self.retry_cid.as_deref(),
                 initial: &mut self.initial,
                 handshake: &mut self.handshake,
+                tls_context: &mut self.tls_context,
                 application: &mut self.application,
                 zero_rtt_crypto: &mut self.zero_rtt_crypto,
                 path_manager,
@@ -348,12 +353,14 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
         publisher: &mut Pub,
-    ) {
+    ) -> Result<(), connection::Error> {
         let path_id = path_manager.active_path_id();
         let path = path_manager.active_path();
 
         // ensure the backoff doesn't grow too quickly
-        let max_backoff = path.pto_backoff * 2;
+        let max_backoff = path.pto_backoff.checked_mul(2).ok_or_else(|| {
+            connection::Error::immediate_close("PTO backoff multiplier exceeded maximum value")
+        })?;
 
         if let Some((space, handshake_status)) = self.initial_mut() {
             space.on_timeout(
@@ -390,6 +397,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         }
 
         debug_assert!(path_manager.active_path().pto_backoff <= max_backoff);
+        Ok(())
     }
 
     /// Signals the connection was previously blocked by anti-amplification limits

@@ -191,9 +191,7 @@ mod tests {
         let (header, _) = decoder.decode::<&Header>().unwrap();
         insta::assert_debug_snapshot!("snapshot_test", header);
 
-        for byte in &mut buffer {
-            *byte = 255;
-        }
+        buffer.fill(255);
         let decoder = DecoderBuffer::new(&buffer);
         let (header, _) = decoder.decode::<&Header>().unwrap();
         insta::assert_debug_snapshot!("snapshot_filled_test", header);

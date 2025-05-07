@@ -5,35 +5,35 @@ use super::{
     descriptor::{Descriptor, DescriptorInner},
     free_list::{self, FreeVec},
     handle::{Control, Sender, Stream},
-    sender::{SenderPages, Senders},
+    keys::Keys,
+    sender::{self, Senders},
 };
 use crate::sync::ring_deque::Capacity;
 use s2n_quic_core::varint::VarInt;
-use std::{
-    alloc::Layout,
-    marker::PhantomData,
-    ptr::NonNull,
-    sync::{Arc, RwLock},
-};
+use std::{alloc::Layout, hash::Hash, marker::PhantomData, ptr::NonNull, sync::Arc};
 
-pub struct Pool<T: 'static + Send, const PAGE_SIZE: usize> {
-    senders: Arc<RwLock<SenderPages<T>>>,
-    free: Arc<FreeVec<T>>,
+pub struct Pool<T: 'static + Send, Key: 'static + Send, const PAGE_SIZE: usize> {
+    senders: Arc<sender::State<T, Key>>,
+    keys: Keys<Key>,
+    free: Arc<FreeVec<T, Key>>,
     /// Holds the backing memory allocated as long as there's at least one reference
-    memory_handle: Arc<free_list::Memory<T>>,
+    memory_handle: Arc<free_list::Memory<T, Key>>,
     stream_capacity: Capacity,
     control_capacity: Capacity,
     epoch: VarInt,
     base: VarInt,
 }
 
-impl<T: 'static + Send, const PAGE_SIZE: usize> Clone for Pool<T, PAGE_SIZE> {
+impl<T: 'static + Send, Key: 'static + Send, const PAGE_SIZE: usize> Clone
+    for Pool<T, Key, PAGE_SIZE>
+{
     #[inline]
     fn clone(&self) -> Self {
         Self {
             free: self.free.clone(),
             memory_handle: self.memory_handle.clone(),
             senders: self.senders.clone(),
+            keys: self.keys.clone(),
             stream_capacity: self.stream_capacity,
             control_capacity: self.control_capacity,
             epoch: self.epoch,
@@ -42,11 +42,16 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Clone for Pool<T, PAGE_SIZE> {
     }
 }
 
-impl<T: 'static + Send, const PAGE_SIZE: usize> Pool<T, PAGE_SIZE> {
+impl<T, Key, const PAGE_SIZE: usize> Pool<T, Key, PAGE_SIZE>
+where
+    T: 'static + Send + Sync,
+    Key: 'static + Send + Sync + Copy + Eq + Hash,
+{
     #[inline]
     pub fn new(epoch: VarInt, stream_capacity: Capacity, control_capacity: Capacity) -> Self {
-        let (free, memory_handle) = FreeVec::new(PAGE_SIZE);
-        let senders = Arc::new(RwLock::new(SenderPages::new(epoch)));
+        let keys = Keys::new(PAGE_SIZE);
+        let senders = sender::State::new(epoch);
+        let (free, memory_handle) = FreeVec::new(PAGE_SIZE, keys.clone());
         let mut pool = Pool {
             free,
             memory_handle,
@@ -54,6 +59,7 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Pool<T, PAGE_SIZE> {
             stream_capacity,
             control_capacity,
             epoch,
+            keys,
             base: epoch,
         };
         pool.grow();
@@ -61,9 +67,9 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Pool<T, PAGE_SIZE> {
     }
 
     #[inline]
-    pub fn senders(&self) -> Senders<T, PAGE_SIZE> {
+    pub fn senders(&self) -> Senders<T, Key, PAGE_SIZE> {
         Senders {
-            senders: self.senders.clone(),
+            state: self.senders.clone(),
             // make sure the memory lives as long as this sender is alive
             memory_handle: self.memory_handle.clone(),
             local: Default::default(),
@@ -71,15 +77,19 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Pool<T, PAGE_SIZE> {
         }
     }
 
-    #[inline]
-    pub fn alloc(&self) -> Option<(Control<T>, Stream<T>)> {
-        self.free.alloc()
+    pub fn keys(&self) -> Keys<Key> {
+        self.keys.clone()
     }
 
     #[inline]
-    pub fn alloc_or_grow(&mut self) -> (Control<T>, Stream<T>) {
+    pub fn alloc(&self, key: Option<&Key>) -> Option<(Control<T, Key>, Stream<T, Key>)> {
+        self.free.alloc(key)
+    }
+
+    #[inline]
+    pub fn alloc_or_grow(&mut self, key: Option<&Key>) -> (Control<T, Key>, Stream<T, Key>) {
         loop {
-            if let Some(descriptor) = self.alloc() {
+            if let Some(descriptor) = self.alloc(key) {
                 return descriptor;
             }
             self.grow();
@@ -99,7 +109,7 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Pool<T, PAGE_SIZE> {
             let offset = layout.size() * idx;
 
             unsafe {
-                let descriptor = ptr.as_ptr().add(offset).cast::<DescriptorInner<T>>();
+                let descriptor = ptr.as_ptr().add(offset).cast::<DescriptorInner<T, Key>>();
 
                 // Give the descriptor a non-`Strong` reference to the free list, since this will be the
                 // last reference to get dropped.
@@ -127,7 +137,7 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Pool<T, PAGE_SIZE> {
 
         let pending_senders: Arc<[_]> = pending_senders.into();
 
-        let mut senders = self.senders.write().unwrap();
+        let mut senders = self.senders.pages.write().unwrap();
 
         // check if another pool instance already updated the senders list
         if senders.epoch != self.epoch {
@@ -160,22 +170,22 @@ impl<T: 'static + Send, const PAGE_SIZE: usize> Pool<T, PAGE_SIZE> {
     }
 }
 
-pub(super) struct Region<T: 'static> {
+pub(super) struct Region<T: 'static, Key: 'static> {
     ptr: NonNull<u8>,
     layout: Layout,
-    phantom: PhantomData<T>,
+    phantom: PhantomData<(T, Key)>,
 }
 
-unsafe impl<T: Send> Send for Region<T> {}
-unsafe impl<T: Sync> Sync for Region<T> {}
+unsafe impl<T: Send, Key: Send> Send for Region<T, Key> {}
+unsafe impl<T: Sync, Key: Sync> Sync for Region<T, Key> {}
 
-impl<T: 'static> Region<T> {
+impl<T: 'static, Key: 'static> Region<T, Key> {
     #[inline]
     fn alloc(page_size: usize) -> (Self, Layout) {
         debug_assert!(page_size > 0, "need at least 1 entry in page");
 
         // first create the descriptor layout
-        let descriptor = Layout::new::<DescriptorInner<T>>().pad_to_align();
+        let descriptor = Layout::new::<DescriptorInner<T, Key>>().pad_to_align();
 
         let descriptors = {
             // TODO use `descriptor.repeat(page_size)` once stable
@@ -205,7 +215,7 @@ impl<T: 'static> Region<T> {
     }
 }
 
-impl<T> Drop for Region<T> {
+impl<T, Key> Drop for Region<T, Key> {
     #[inline]
     fn drop(&mut self) {
         unsafe {

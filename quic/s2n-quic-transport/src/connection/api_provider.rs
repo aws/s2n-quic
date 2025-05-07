@@ -11,6 +11,7 @@ use crate::{
 use alloc::sync::Arc;
 use bytes::Bytes;
 use core::{
+    any::Any,
     sync::atomic::AtomicUsize,
     task::{Context, Poll},
 };
@@ -57,6 +58,8 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
     fn server_name(&self) -> Result<Option<ServerName>, connection::Error>;
 
     fn application_protocol(&self) -> Result<Bytes, connection::Error>;
+
+    fn take_tls_context(&self) -> Option<Box<dyn Any + Send>>;
 
     fn id(&self) -> u64;
 

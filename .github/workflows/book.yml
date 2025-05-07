@@ -10,6 +10,7 @@ name: book
 
 env:
   CDN: https://dnglbrstg7yg.cloudfront.net
+  CI_ARTIFACTS_BUCKET: s2n-quic-ci-artifacts
 
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
@@ -57,10 +58,16 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/book"
-          aws s3 sync target/book "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
+          TARGET_SHA="${{ github.sha }}/book"
+          aws s3 sync target/book "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
+
+          # Only upload to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/book"
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
+          fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name

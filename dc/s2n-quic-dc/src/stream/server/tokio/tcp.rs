@@ -1,11 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::accept;
 use crate::{
     event::{self, EndpointPublisher, IntoEvent, Subscriber},
     path::secret,
-    stream::environment::{tokio::Environment, Environment as _},
+    stream::{
+        environment::{tokio::Environment, Environment as _},
+        server::accept,
+    },
 };
 use core::{future::poll_fn, task::Poll};
 use s2n_quic_core::{inet::SocketAddress, time::Clock};
@@ -28,7 +30,6 @@ where
     backlog: usize,
     accept_flavor: accept::Flavor,
     linger: Option<Duration>,
-    subscriber: Sub,
 }
 
 impl<Sub> Acceptor<Sub>
@@ -45,7 +46,6 @@ where
         backlog: usize,
         accept_flavor: accept::Flavor,
         linger: Option<Duration>,
-        subscriber: Sub,
     ) -> Self {
         let acceptor = Self {
             sender: sender.clone(),
@@ -55,18 +55,17 @@ where
             backlog,
             accept_flavor,
             linger,
-            subscriber,
         };
 
         if let Ok(addr) = acceptor.socket.local_addr() {
             let local_address: SocketAddress = addr.into();
-            acceptor
-                .publisher()
-                .on_acceptor_tcp_started(event::builder::AcceptorTcpStarted {
+            acceptor.env.endpoint_publisher().on_acceptor_tcp_started(
+                event::builder::AcceptorTcpStarted {
                     id,
                     local_address: &local_address,
                     backlog,
-                });
+                },
+            );
         }
 
         acceptor
@@ -86,7 +85,7 @@ where
             workers.poll_start(cx);
 
             let now = self.env.clock().get_time();
-            let publisher = publisher(&self.subscriber, &now);
+            let publisher = self.env.endpoint_publisher_with_time(now);
 
             fresh.fill(cx, &mut self.socket, &publisher);
 
@@ -97,7 +96,10 @@ where
                 };
                 let info = event::api::ConnectionInfo {};
 
-                let subscriber_ctx = self.subscriber.create_connection_context(&meta, &info);
+                let subscriber_ctx = self
+                    .env
+                    .subscriber()
+                    .create_connection_context(&meta, &info);
 
                 workers.insert(
                     remote_address,
@@ -133,23 +135,6 @@ where
 
         drop(drop_guard);
     }
-
-    fn publisher(&self) -> event::EndpointPublisherSubscriber<Sub> {
-        publisher(&self.subscriber, self.env.clock())
-    }
-}
-
-fn publisher<'a, Sub: Subscriber, C: Clock>(
-    subscriber: &'a Sub,
-    clock: &C,
-) -> event::EndpointPublisherSubscriber<'a, Sub> {
-    let timestamp = clock.get_time().into_event();
-
-    event::EndpointPublisherSubscriber::new(
-        event::builder::EndpointMeta { timestamp },
-        None,
-        subscriber,
-    )
 }
 
 struct DropLog;

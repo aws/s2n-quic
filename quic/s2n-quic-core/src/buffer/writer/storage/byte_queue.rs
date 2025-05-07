@@ -58,8 +58,8 @@ macro_rules! impl_queue {
 
             #[inline]
             fn put_bytes(&mut self, bytes: Bytes) {
-                // we can't convert Bytes into BytesMut so we'll need to copy it
-                self.put_slice(&bytes);
+                // This is a zero-copy conversion if we're unique.
+                self.$push(BytesMut::from(bytes));
             }
 
             #[inline]

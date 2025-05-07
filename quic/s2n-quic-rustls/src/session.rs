@@ -9,7 +9,10 @@ use core::{fmt, fmt::Debug, task::Poll};
 use rustls::quic::{self, Connection};
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{self, tls, tls::CipherSuite},
+    crypto::{
+        self, tls,
+        tls::{CipherSuite, NamedGroup},
+    },
     transport,
 };
 
@@ -21,6 +24,7 @@ pub struct Session {
     emitted_handshake_complete: bool,
     emitted_server_name: bool,
     emitted_application_protocol: bool,
+    emitted_key_exchange_group: bool,
     server_name: Option<ServerName>,
 }
 
@@ -90,6 +94,7 @@ impl Session {
             emitted_handshake_complete: false,
             emitted_server_name: false,
             emitted_application_protocol: false,
+            emitted_key_exchange_group: false,
             server_name,
         }
     }
@@ -169,6 +174,20 @@ impl Session {
                 server.server_name().map(|server_name| server_name.into())
             }
         }
+    }
+
+    fn key_exchange_group(&self) -> Option<NamedGroup> {
+        let group = self
+            .connection
+            .negotiated_key_exchange_group()
+            .and_then(|group| group.name().as_str())?;
+
+        let contains_kem = group.to_lowercase().contains("kem");
+
+        Some(NamedGroup {
+            group_name: group,
+            contains_kem,
+        })
     }
 
     fn zero_rtt_keys(&mut self) -> Option<quic::DirectionalKeys> {
@@ -331,6 +350,12 @@ impl Session {
                 let application_protocol = Bytes::copy_from_slice(application_protocol);
                 context.on_application_protocol(application_protocol)?;
                 self.emitted_application_protocol = true;
+            }
+        }
+        if !self.emitted_key_exchange_group {
+            if let Some(key_exchange_group) = self.key_exchange_group() {
+                context.on_key_exchange_group(key_exchange_group)?;
+                self.emitted_key_exchange_group = true;
             }
         }
 

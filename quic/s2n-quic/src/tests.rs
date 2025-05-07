@@ -27,9 +27,11 @@ mod recorder;
 mod connection_limits;
 mod resumption;
 mod setup;
+mod slow_tls;
 use setup::*;
 
 mod blackhole;
+mod buffer_limit;
 mod connection_migration;
 mod deduplicate;
 mod handshake_cid_rotation;
@@ -40,6 +42,7 @@ mod platform_events;
 mod pto;
 mod self_test;
 mod skip_packets;
+mod tls_context;
 
 // TODO: https://github.com/aws/s2n-quic/issues/1726
 //

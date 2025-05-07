@@ -35,7 +35,7 @@ where
             sockets,
             queue: Default::default(),
             pacer: Default::default(),
-            open: true,
+            status: Default::default(),
             runtime,
         }))
     }

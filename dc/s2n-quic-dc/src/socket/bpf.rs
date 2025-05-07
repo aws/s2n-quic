@@ -101,7 +101,20 @@ mod tests {
         let mut options = Options::new("127.0.0.1:0".parse().unwrap());
         options.blocking = true;
 
-        let Pair { writer, reader } = Pair::open(options).unwrap();
+        let Pair { writer, reader } = match Pair::open(options) {
+            Ok(pair) => pair,
+            Err(err)
+                if [
+                    io::ErrorKind::PermissionDenied,
+                    io::ErrorKind::AddrNotAvailable,
+                ]
+                .contains(&err.kind()) =>
+            {
+                eprintln!("skipping test due to insufficient permissions");
+                return;
+            }
+            Err(err) => panic!("{err}"),
+        };
 
         let timeout = Some(Duration::from_millis(100));
         writer.set_read_timeout(timeout).unwrap();

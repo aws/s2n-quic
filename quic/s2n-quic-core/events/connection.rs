@@ -16,6 +16,16 @@ struct ServerNameInformation<'a> {
     chosen_server_name: &'a str,
 }
 
+#[event("transport:key_exchange_group")]
+/// Key Exchange Group was negotiated for the connection
+///
+/// `contains_kem` is `true` if the `chosen_group_name`
+/// contains a key encapsulation mechanism
+struct KeyExchangeGroup<'a> {
+    chosen_group_name: &'a str,
+    contains_kem: bool,
+}
+
 #[event("transport:packet_skipped")]
 /// Packet was skipped with a given reason
 struct PacketSkipped {

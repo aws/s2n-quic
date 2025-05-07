@@ -4,6 +4,8 @@
 use super::TransportFeatures;
 
 pub mod application;
+#[cfg(any(test, feature = "testing"))]
+mod bach;
 pub mod fd;
 mod handle;
 mod send_only;

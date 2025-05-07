@@ -56,12 +56,26 @@ pub struct State {
 
 impl State {
     #[inline]
-    pub fn new(
+    pub fn new<C>(
         stream_id: stream::Id,
         params: &ApplicationParams,
         features: TransportFeatures,
-    ) -> Self {
+        clock: &C,
+    ) -> Self
+    where
+        C: Clock + ?Sized,
+    {
         let initial_max_data = params.local_recv_max_data;
+
+        // set up the idle timer in case we never read anything
+        let now = clock.get_time();
+        let idle_timeout = params.max_idle_timeout().unwrap_or(DEFAULT_IDLE_TIMEOUT);
+        let mut idle_timer = Timer::default();
+        idle_timer.set(now + idle_timeout);
+
+        // the tick timer just inherits the idle timer since that's the current stable target
+        let tick_timer = idle_timer.clone();
+
         Self {
             is_reliable: stream_id.is_reliable,
             ecn_counts: Default::default(),
@@ -69,9 +83,9 @@ impl State {
             stream_ack: Default::default(),
             recovery_ack: Default::default(),
             state: Default::default(),
-            idle_timer: Default::default(),
-            idle_timeout: params.max_idle_timeout().unwrap_or(DEFAULT_IDLE_TIMEOUT),
-            tick_timer: Default::default(),
+            idle_timer,
+            idle_timeout,
+            tick_timer,
             _should_transmit: false,
             max_data: initial_max_data,
             max_data_window: initial_max_data,
@@ -701,15 +715,18 @@ impl State {
         };
         let max_data_encoding_size: VarInt = max_data.encoding_size().try_into().unwrap();
 
+        // compute the recovery ACKs first so we have enough space for those - if we run out, the sender will
+        // convert the stream PNs anyway
+        let (recovery_ack, max_data_encoding_size) =
+            self.recovery_ack
+                .encoding(max_data_encoding_size, ack_delay, None, mtu);
+
         let (stream_ack, max_data_encoding_size) = self.stream_ack.encoding(
             max_data_encoding_size,
             ack_delay,
             Some(self.ecn_counts),
             mtu,
         );
-        let (recovery_ack, max_data_encoding_size) =
-            self.recovery_ack
-                .encoding(max_data_encoding_size, ack_delay, None, mtu);
 
         let encoding_size = max_data_encoding_size;
 
@@ -737,8 +754,55 @@ impl State {
             }
             packet_len => {
                 buffer.truncate(packet_len);
-                // TODO duplicate the transmission in case we have a lot of gaps in packets
+
+                // get how many intervals we're tracking - the more there are, the more loss the network
+                // is experiencing
+                let intervals = self.stream_ack.packets.interval_len()
+                    + self.recovery_ack.packets.interval_len();
+
+                // The value of `20` is somewhat arbitrary but doing some worst-case math the ACK ranges with
+                // 20 segments would consume about 20-25% of the packet this is a good starting point.
+                // We dont't want to go too much lower otherwise we end up spamming ACKs.
+                let mut duplicate_threshold = 20;
+
+                let mut should_duplicate = false;
+
+                // if the number of intervals is large then we should duplicate the ACKs to try and recover
+                should_duplicate |= intervals > duplicate_threshold;
+
+                // if we have recovery packets then the network is likely lossy so we duplicate the ACKs to increase the
+                // likelihood that the sender will recover
+                should_duplicate |= !self.recovery_ack.packets.is_empty();
+
+                let duplicate = if should_duplicate {
+                    Some(buffer.clone())
+                } else {
+                    None
+                };
+
                 output.push(segment);
+
+                if let Some(buffer) = duplicate {
+                    loop {
+                        let Some(segment) = output.alloc() else {
+                            break;
+                        };
+                        let buf = output.get_mut(&segment);
+                        if intervals > duplicate_threshold {
+                            buf.extend_from_slice(&buffer);
+                            output.push(segment);
+
+                            // exponentially increase the threshold
+                            duplicate_threshold *= 2;
+
+                            continue;
+                        } else {
+                            *buf = buffer;
+                            output.push(segment);
+                            break;
+                        }
+                    }
+                }
             }
         }
 

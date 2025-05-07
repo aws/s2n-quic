@@ -62,6 +62,8 @@ use s2n_quic_core::{
     transport,
 };
 
+use core::any::Any;
+
 /// Possible states for handing over a connection from the endpoint to the
 /// application.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -1064,7 +1066,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             random_generator,
             timestamp,
             &mut publisher,
-        );
+        )?;
 
         if self
             .timers
@@ -1138,6 +1140,16 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         // check if crypto progress can be made
         self.update_crypto_state(timestamp, subscriber, datagram, dc, conn_limits)?;
+
+        if self.space_manager.handshake().is_some() && self.space_manager.is_handshake_confirmed() {
+            let mut publisher = self.event_context.publisher(timestamp, subscriber);
+
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.9.2
+            //# An endpoint MUST discard its handshake keys when the TLS handshake is
+            //# confirmed (Section 4.1.2).
+            self.space_manager
+                .discard_handshake(&mut self.path_manager, &mut publisher);
+        }
 
         // return an error if the application set one
         self.error?;
@@ -1240,9 +1252,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# subsequent Initial packets include a different Source Connection ID,
         //# they MUST be discarded.
 
-        if let Some((space, _status)) = self.space_manager.initial_mut() {
-            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
+        if let Some((space, _status)) = self.space_manager.initial_mut() {
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
@@ -1268,6 +1280,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 dc_endpoint,
                 connection_limits_endpoint,
             )?;
+        } else {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::Initial,
+                },
+            });
         }
 
         Ok(())
@@ -1286,9 +1306,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         dc_endpoint: &mut Config::DcEndpoint,
         connection_limits_endpoint: &mut Config::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
+        let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
-            let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
-
             //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
             //# A server MUST discard an Initial packet that is carried
             //# in a UDP datagram with a payload that is smaller than the
@@ -1351,6 +1370,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
+        } else {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::Initial,
+                },
+            });
         }
 
         Ok(())
@@ -1458,6 +1485,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
+        } else {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::Handshake,
+                },
+            });
         }
 
         Ok(())
@@ -1577,6 +1612,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             }
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
+        } else {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::OneRtt,
+                },
+            });
         }
 
         Ok(())
@@ -1954,6 +1997,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
     fn application_protocol(&self) -> Bytes {
         self.space_manager.application_protocol.clone()
+    }
+
+    fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send>> {
+        self.space_manager.tls_context.take()
     }
 
     fn ping(&mut self) -> Result<(), connection::Error> {

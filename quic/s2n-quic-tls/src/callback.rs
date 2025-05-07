@@ -5,7 +5,11 @@ use bytes::{Bytes, BytesMut};
 use core::{ffi::c_void, marker::PhantomData};
 use s2n_quic_core::{
     application::ServerName,
-    crypto::{tls, tls::CipherSuite, CryptoSuite},
+    crypto::{
+        tls,
+        tls::{CipherSuite, NamedGroup},
+        CryptoSuite,
+    },
     endpoint, transport,
 };
 use s2n_quic_crypto::{
@@ -262,6 +266,10 @@ where
                                 if let Some(server_name) = get_server_name(conn) {
                                     self.context.on_server_name(server_name)?;
                                 }
+                            }
+
+                            if let Some(named_group) = get_key_exchange_group(conn) {
+                                self.context.on_key_exchange_group(named_group)?;
                             }
 
                             get_application_params(conn)?
@@ -537,6 +545,35 @@ unsafe fn get_server_name(connection: *mut s2n_connection) -> Option<ServerName>
     // validate sni is a valid UTF-8 string
     let string = core::str::from_utf8(data).ok()?;
     Some(string.into())
+}
+
+unsafe fn get_key_exchange_group(connection: *mut s2n_connection) -> Option<NamedGroup> {
+    let mut group_name = core::ptr::null();
+    s2n_connection_get_key_exchange_group(connection, &mut group_name)
+        .into_result()
+        .ok()?;
+    let group_name = get_cstr_slice(group_name)?;
+    let group_name = core::str::from_utf8(group_name).ok()?;
+
+    let contains_kem = get_kem_group_name(connection).is_some();
+
+    Some(NamedGroup {
+        group_name,
+        contains_kem,
+    })
+}
+
+unsafe fn get_kem_group_name(connection: *mut s2n_connection) -> Option<&'static str> {
+    let ptr = s2n_connection_get_kem_group_name(connection)
+        .into_result()
+        .ok()?;
+    let data = get_cstr_slice(ptr)?;
+    let string = core::str::from_utf8(data).ok()?;
+
+    if string == "NONE" {
+        return None;
+    }
+    Some(string)
 }
 
 unsafe fn get_transport_parameters<'a>(connection: *mut s2n_connection) -> Option<&'a [u8]> {

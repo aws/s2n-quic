@@ -5,10 +5,12 @@ use crate::{
     stream::Actor,
     sync::ring_deque::{Capacity, Closed, RecvWaker},
 };
-use core::task::{Context, Poll};
+use core::{
+    fmt,
+    task::{Context, Poll},
+};
 use s2n_quic_core::ensure;
-use std::{collections::VecDeque, sync::Mutex, task::Waker};
-use tracing::trace;
+use std::{collections::VecDeque, ops::ControlFlow, sync::Mutex, task::Waker};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -16,6 +18,22 @@ pub enum Error {
     Unallocated,
     /// The queue has been closed and won't reopen
     Closed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Half {
+    Stream,
+    Control,
+}
+
+impl s2n_quic_core::probe::Arg for Half {
+    #[inline]
+    fn into_usdt(self) -> isize {
+        match self {
+            Half::Stream => 0,
+            Half::Control => 1,
+        }
+    }
 }
 
 impl From<Closed> for Error {
@@ -35,7 +53,7 @@ struct Inner<T> {
 }
 
 impl<T> Inner<T> {
-    fn wake_all(&mut self) -> Wakers {
+    fn take_wakers(&mut self) -> Wakers {
         Wakers {
             app_waker: self.app_waker.take(),
             worker_waker: self.worker_waker.take(),
@@ -43,13 +61,29 @@ impl<T> Inner<T> {
     }
 }
 
+impl<T> fmt::Debug for Inner<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Inner")
+            .field("queue_len", &self.queue.len())
+            .field("capacity", &self.capacity)
+            .field("is_open", &self.is_open)
+            .field("has_receiver", &self.has_receiver)
+            .field("app_waker", &self.app_waker.is_some())
+            .field("worker_waker", &self.worker_waker.is_some())
+            .finish()
+    }
+}
+
 pub struct Queue<T> {
     inner: Mutex<Inner<T>>,
+    #[cfg(debug_assertions)]
+    half: Half,
 }
 
 impl<T> Queue<T> {
     #[inline]
-    pub fn new(capacity: Capacity) -> Self {
+    pub fn new(capacity: Capacity, half: Half) -> Self {
+        let _ = half;
         Self {
             inner: Mutex::new(Inner {
                 queue: VecDeque::with_capacity(capacity.initial),
@@ -59,6 +93,8 @@ impl<T> Queue<T> {
                 app_waker: None,
                 worker_waker: None,
             }),
+            #[cfg(debug_assertions)]
+            half,
         }
     }
 
@@ -76,11 +112,10 @@ impl<T> Queue<T> {
             None
         };
 
-        trace!(has_overflow = prev.is_some(), "push");
-
         inner.queue.push_back(value);
-        let _wakers = inner.wake_all();
+        let wakers = inner.take_wakers();
         drop(inner);
+        drop(wakers);
 
         Ok(prev)
     }
@@ -98,11 +133,10 @@ impl<T> Queue<T> {
             None
         };
 
-        trace!(has_overflow = prev.is_some(), "push");
-
         inner.queue.push_back(value);
-        let _wakers = inner.wake_all();
+        let wakers = inner.take_wakers();
         drop(inner);
+        drop(wakers);
 
         prev
     }
@@ -110,30 +144,30 @@ impl<T> Queue<T> {
     #[inline]
     pub fn pop(&self) -> Result<Option<T>, Closed> {
         let mut inner = self.lock()?;
-        trace!(has_items = !inner.queue.is_empty(), "pop");
         if let Some(item) = inner.queue.pop_front() {
-            Ok(Some(item))
-        } else {
-            ensure!(inner.is_open, Err(Closed));
-            Ok(None)
+            return Ok(Some(item));
         }
+
+        ensure!(inner.is_open, Err(Closed));
+        Ok(None)
     }
 
     #[inline]
     pub fn poll_pop(&self, cx: &mut Context, actor: Actor) -> Poll<Result<T, Closed>> {
         let mut inner = self.lock()?;
-        trace!(has_items = !inner.queue.is_empty(), ?actor, "poll_pop");
         if let Some(item) = inner.queue.pop_front() {
-            Ok(item).into()
-        } else {
-            ensure!(inner.is_open, Err(Closed).into());
-            match actor {
-                Actor::Application => &mut inner.app_waker,
-                Actor::Worker => &mut inner.worker_waker,
-            }
-            .update(cx);
-            Poll::Pending
+            return Ok(item).into();
         }
+
+        ensure!(inner.is_open, Err(Closed).into());
+
+        match actor {
+            Actor::Application => &mut inner.app_waker,
+            Actor::Worker => &mut inner.worker_waker,
+        }
+        .update(cx);
+
+        Poll::Pending
     }
 
     #[inline]
@@ -148,45 +182,106 @@ impl<T> Queue<T> {
         let mut inner = self.lock()?;
         if inner.queue.is_empty() {
             ensure!(inner.is_open, Err(Closed).into());
+
             match actor {
                 Actor::Application => &mut inner.app_waker,
                 Actor::Worker => &mut inner.worker_waker,
             }
             .update(cx);
-            drop(inner);
-            trace!(items = 0, ?actor, "poll_swap");
+
             return Poll::Pending;
         }
+
         core::mem::swap(items, &mut inner.queue);
-        drop(inner);
-        trace!(items = items.len(), ?actor, "poll_swap");
         Ok(()).into()
     }
 
     #[inline]
-    pub fn has_receiver(&self) -> bool {
-        self.lock().map(|inner| inner.has_receiver).unwrap_or(false)
+    pub fn open_receivers(&self, control: &Self) -> Result<(), Closed> {
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(self.half, Half::Stream);
+            assert_eq!(control.half, Half::Control);
+        }
+
+        // perform locks in the same order to avoid deadlocks
+        let Ok(mut stream_inner) = self.lock() else {
+            return Err(Closed);
+        };
+        let Ok(mut control_inner) = control.lock() else {
+            return Err(Closed);
+        };
+
+        // make sure the stream hasn't been permanently closed
+        ensure!(stream_inner.is_open, Err(Closed));
+        ensure!(control_inner.is_open, Err(Closed));
+
+        debug_assert!(
+            !stream_inner.has_receiver && !control_inner.has_receiver,
+            "receiver already open!\n stream: {stream_inner:?}\ncontrol: {control_inner:?}"
+        );
+
+        stream_inner.has_receiver = true;
+        control_inner.has_receiver = true;
+
+        Ok(())
     }
 
     #[inline]
-    pub fn open_receiver(&self) {
-        let Ok(mut inner) = self.lock() else {
-            return;
-        };
-        trace!("opening receiver");
-        inner.has_receiver = true;
-    }
+    pub fn close_receiver(&self, control: &Self, half: Half) -> ControlFlow<()> {
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(self.half, Half::Stream);
+            assert_eq!(control.half, Half::Control);
+        }
 
-    #[inline]
-    pub fn close_receiver(&self) {
-        let Ok(mut inner) = self.lock() else {
-            return;
+        // the Control half owns freeing in the case of poisoning
+        let on_poisoned = if matches!(half, Half::Control) {
+            ControlFlow::Continue(())
+        } else {
+            ControlFlow::Break(())
         };
-        trace!("closing receiver");
+
+        // acquire both locks in the same order to avoid deadlocks or races
+        let Ok(stream_inner) = self.lock() else {
+            return on_poisoned;
+        };
+        let Ok(control_inner) = control.lock() else {
+            return on_poisoned;
+        };
+
+        let (mut inner, other) = match half {
+            Half::Stream => (stream_inner, control_inner),
+            Half::Control => (control_inner, stream_inner),
+        };
+
+        debug_assert!(
+            inner.has_receiver,
+            "receiver already closed:\n{inner:?}\nother: {other:?}"
+        );
+
+        // observe the other half receiver status before dropping the `other` lock
+        let has_other_receiver = other.has_receiver;
+        drop(other);
+
+        let wakers = inner.take_wakers();
         inner.has_receiver = false;
-        inner.app_waker = None;
-        inner.worker_waker = None;
-        inner.queue.clear();
+        // take the queue items out of the lock to avoid mutex poisoning.
+        // note that most of the time this should be empty, which would be a no-op
+        let mut queue = VecDeque::new();
+        queue.append(&mut inner.queue);
+        drop(inner);
+
+        // drop wakers after the lock to avoid potential mutex poisoning
+        wakers.dont_wake();
+
+        if has_other_receiver {
+            // the other queue still has the receiver don't put it back yet
+            ControlFlow::Break(())
+        } else {
+            // we're the last receiver so free the queue
+            ControlFlow::Continue(())
+        }
     }
 
     #[inline]
@@ -194,12 +289,13 @@ impl<T> Queue<T> {
         let Ok(mut inner) = self.lock() else {
             return;
         };
-        trace!("close queue");
         inner.is_open = false;
         // Leave the remaining items in the queue in case the receiver wants them.
 
         // Notify the receiver that the queue is now closed
-        let _wakers = inner.wake_all();
+        let wakers = inner.take_wakers();
+        drop(inner);
+        drop(wakers);
     }
 
     #[inline]
@@ -211,6 +307,14 @@ impl<T> Queue<T> {
 struct Wakers {
     app_waker: Option<Waker>,
     worker_waker: Option<Waker>,
+}
+
+impl Wakers {
+    #[inline]
+    fn dont_wake(mut self) {
+        self.app_waker = None;
+        self.worker_waker = None;
+    }
 }
 
 impl Drop for Wakers {

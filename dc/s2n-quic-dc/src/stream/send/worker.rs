@@ -15,7 +15,7 @@ use crate::{
             shared::Event,
             state::State,
         },
-        shared,
+        shared::{self, handshake},
         socket::Socket,
         Actor, TransportFeatures,
     },
@@ -78,7 +78,7 @@ where
     application_queue: Queue,
     pacer: pacer::Naive,
     socket: S,
-    is_handshaking: bool,
+    handshake: handshake::State,
 }
 
 #[derive(Debug)]
@@ -110,8 +110,7 @@ impl Snapshot {
         }
 
         if initial.send_quantum != self.send_quantum {
-            let send_quantum = (self.send_quantum as u64 + self.max_datagram_size as u64 - 1)
-                / self.max_datagram_size as u64;
+            let send_quantum = (self.send_quantum as u64).div_ceil(self.max_datagram_size as u64);
             let send_quantum = send_quantum.try_into().unwrap_or(u8::MAX);
             shared
                 .sender
@@ -163,6 +162,11 @@ where
             sender.init_client(&shared.clock);
         }
 
+        let handshake = match endpoint {
+            endpoint::Type::Client => handshake::State::ClientInit,
+            endpoint::Type::Server => handshake::State::ServerInit,
+        };
+
         Self {
             shared,
             sender,
@@ -173,7 +177,7 @@ where
             application_queue: Default::default(),
             pacer: Default::default(),
             socket,
-            is_handshaking: true,
+            handshake,
         }
     }
 
@@ -184,6 +188,11 @@ where
 
     #[inline]
     pub fn poll(&mut self, cx: &mut Context) -> Poll<()> {
+        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| self.poll_impl(cx))
+    }
+
+    #[inline]
+    fn poll_impl(&mut self, cx: &mut Context) -> Poll<()> {
         let initial = self.snapshot();
 
         let is_initial = self.sender.state.is_ready();
@@ -289,10 +298,23 @@ where
         loop {
             let mut publisher = self.shared.publisher();
             // try to receive until we get blocked
-            let _ =
+            let res =
                 ready!(self
                     .recv_buffer
                     .poll_fill(cx, Actor::Worker, &self.socket, &mut publisher));
+
+            if let Err(err) = res {
+                // the error is fatal so shut down
+                if !matches!(
+                    err.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                ) {
+                    let _ = self.state.on_finished();
+                }
+
+                return Poll::Ready(());
+            }
+
             self.process_recv_buffer();
         }
     }
@@ -318,7 +340,7 @@ where
             remote_addr: Default::default(),
             remote_queue_id: None,
             any_valid_packets: false,
-            is_handshaking: &mut self.is_handshaking,
+            handshake: &mut self.handshake,
         };
 
         let _ = self
@@ -490,7 +512,7 @@ where
     remote_queue_id: Option<VarInt>,
     random: &'a mut R,
     any_valid_packets: bool,
-    is_handshaking: &'a mut bool,
+    handshake: &'a mut handshake::State,
 }
 
 impl<Sub, C, R> buffer::Dispatch for Router<'_, Sub, C, R>
@@ -526,6 +548,7 @@ where
                 if res.is_ok() {
                     self.any_valid_packets = true;
                     self.remote_addr = *remote_addr;
+                    let _ = self.handshake.on_control_packet();
                     if remote_queue_id.is_some() {
                         self.remote_queue_id = remote_queue_id;
                     }
@@ -552,13 +575,7 @@ where
     fn drop(&mut self) {
         ensure!(self.any_valid_packets);
 
-        // if we saw any valid packets then we're done handshaking
-        let did_complete_handshake = core::mem::take(self.is_handshaking);
-
-        self.shared.on_valid_packet(
-            &self.remote_addr,
-            self.remote_queue_id,
-            did_complete_handshake,
-        );
+        self.shared
+            .on_valid_packet(&self.remote_addr, self.remote_queue_id, self.handshake);
     }
 }

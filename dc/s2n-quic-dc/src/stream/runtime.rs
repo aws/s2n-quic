@@ -7,6 +7,8 @@ use crate::{
 };
 use std::sync::Arc;
 
+#[cfg(any(feature = "testing", test))]
+pub mod bach;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 

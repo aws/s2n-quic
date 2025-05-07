@@ -65,8 +65,31 @@ impl<Retransmission> Info<Retransmission> {
         (start, end)
     }
 
+    /// Non-inclusive offset
     #[inline]
     pub fn end_offset(&self) -> VarInt {
         self.stream_offset + VarInt::from_u16(self.payload_len)
+    }
+}
+
+impl<Retransmission: Copy> Info<Retransmission> {
+    #[inline]
+    pub fn retransmit_copy(
+        &self,
+    ) -> Option<(
+        Retransmission,
+        super::retransmission::Segment<Retransmission>,
+    )> {
+        let segment = self.retransmission?;
+
+        let retransmission = super::retransmission::Segment {
+            segment,
+            stream_offset: self.stream_offset,
+            payload_len: self.payload_len,
+            ty: super::TransmissionType::Stream,
+            included_fin: self.included_fin,
+        };
+
+        Some((segment, retransmission))
     }
 }

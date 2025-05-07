@@ -3,21 +3,20 @@
 
 use super::udp::{ApplicationSocket, RecvSocket, WorkerSocket};
 use crate::{
+    credentials::Credentials,
     event,
-    path::secret::Map,
     socket::recv::{pool::Pool as Packets, router::Router, udp},
     stream::{
-        environment::tokio::Environment,
+        environment::{tokio::Environment, udp::Config},
         recv::dispatch::{Allocator as Queues, Control, Stream},
+        server::{accept, udp::Acceptor},
         socket::{application::Single, fd::udp::CachedAddr, SendOnly, Tracing},
     },
-    sync::ring_deque::Capacity,
 };
 use s2n_quic_platform::socket::options::{Options, ReusePort};
 use std::{
-    io,
-    io::Result,
-    net::UdpSocket,
+    io::{self, Result},
+    net::{SocketAddr, UdpSocket},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
@@ -26,47 +25,11 @@ use std::{
 use tokio::io::unix::AsyncFd;
 use tracing::Instrument;
 
-#[derive(Clone)]
-#[non_exhaustive]
-pub struct Config {
-    pub blocking: bool,
-    pub reuse_port: bool,
-    pub stream_queue: Capacity,
-    pub control_queue: Capacity,
-    pub max_packet_size: u16,
-    pub packet_count: usize,
-    pub workers: Option<usize>,
-    pub map: Map,
-}
-
-impl Config {
-    pub fn new(map: Map) -> Self {
-        Self {
-            blocking: false,
-            reuse_port: false,
-            // TODO tune these defaults
-            stream_queue: Capacity {
-                max: 4096,
-                initial: 256,
-            },
-
-            // set the control queue depth shallow, since we really only need the most recent ones
-            control_queue: Capacity { max: 8, initial: 8 },
-
-            // Allocate 1MB at a time
-            max_packet_size: u16::MAX,
-            packet_count: 16,
-
-            workers: None,
-            map,
-        }
-    }
-}
-
 pub(super) struct Pool {
     sockets: Box<[Socket]>,
     current: AtomicUsize,
     mask: usize,
+    local_addr: SocketAddr,
 }
 
 struct Socket {
@@ -98,13 +61,21 @@ impl Socket {
 }
 
 impl Pool {
-    pub fn new<Sub>(env: &Environment<Sub>, workers: usize, mut config: Config) -> Result<Self>
+    pub fn new<Sub>(
+        env: &Environment<Sub>,
+        mut workers: usize,
+        mut config: Config,
+        acceptor: Option<accept::Sender<Sub>>,
+    ) -> Result<Self>
     where
-        Sub: event::Subscriber,
+        Sub: event::Subscriber + Clone,
     {
         debug_assert_ne!(workers, 0);
 
-        let workers = workers.next_power_of_two();
+        if workers > 1 {
+            workers = workers.next_power_of_two();
+        }
+
         let mask = workers - 1;
 
         let mut options = env.socket_options.clone();
@@ -115,62 +86,114 @@ impl Pool {
         }
         let sockets = Self::create_workers(options, &config)?;
 
+        let local_addr = sockets[0].recv_socket.local_addr()?;
+        if cfg!(debug_assertions) && config.reuse_port {
+            for socket in sockets.iter().skip(1) {
+                debug_assert_eq!(local_addr, socket.recv_socket.local_addr()?);
+            }
+        }
+
         let max_packet_size = config.max_packet_size;
         let packet_count = config.packet_count;
         let create_packets = || Packets::new(max_packet_size, packet_count);
 
-        if config.blocking {
-            Self::spawn_blocking(&config.map, &sockets, create_packets)
+        macro_rules! spawn {
+            ($create_router:expr) => {
+                if config.blocking {
+                    Self::spawn_blocking(&sockets, create_packets, $create_router)
+                } else {
+                    let _rt = env.reader_rt.enter();
+                    Self::spawn_non_blocking(&sockets, create_packets, $create_router)?;
+                }
+            };
+        }
+
+        if let Some(sender) = acceptor {
+            spawn!(|_packets: &Packets, socket: &Socket| {
+                let queues = socket.queue.lock().unwrap();
+                let app_socket = socket.application_socket.clone();
+                let worker_socket = socket.worker_socket.clone();
+
+                let acceptor = Acceptor::new(
+                    env.clone(),
+                    sender.clone(),
+                    config.map.clone(),
+                    config.accept_flavor,
+                    queues.clone(),
+                    app_socket,
+                    worker_socket,
+                );
+
+                let router = queues.dispatcher().with_map(config.map.clone());
+                router.with_zero_router(acceptor)
+            });
         } else {
-            let _rt = env.reader_rt.enter();
-            Self::spawn_non_blocking(&config.map, &sockets, create_packets)?;
+            spawn!(|_packets: &Packets, socket: &Socket| {
+                let dispatch = socket.queue.lock().unwrap().dispatcher();
+                dispatch.with_map(config.map.clone())
+            });
         }
 
         Ok(Self {
             sockets: sockets.into(),
             current: AtomicUsize::new(0),
             mask,
+            local_addr,
         })
     }
 
-    pub fn alloc(&self) -> (Control, Stream, ApplicationSocket, WorkerSocket) {
+    pub fn alloc(
+        &self,
+        credentials: Option<&Credentials>,
+    ) -> (Control, Stream, ApplicationSocket, WorkerSocket) {
         let idx = self.current.fetch_add(1, Ordering::Relaxed);
         let idx = idx & self.mask;
         let socket = &self.sockets[idx];
-        let (control, stream) = socket.queue.lock().unwrap().alloc_or_grow();
+        let (control, stream) = socket.queue.lock().unwrap().alloc_or_grow(credentials);
         let app_socket = socket.application_socket.clone();
         let worker_socket = socket.worker_socket.clone();
 
         (control, stream, app_socket, worker_socket)
     }
 
-    fn spawn_blocking(map: &Map, sockets: &[Socket], create_packets: impl Fn() -> Packets) {
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    fn spawn_blocking<R>(
+        sockets: &[Socket],
+        create_packets: impl Fn() -> Packets,
+        create_router: impl Fn(&Packets, &Socket) -> R,
+    ) where
+        R: 'static + Send + Router,
+    {
         for (udp_socket_worker, socket) in sockets.iter().enumerate() {
-            let dispatch = socket.queue.lock().unwrap().dispatcher();
-            let dispatch = dispatch.with_map(map.clone());
-            let socket = socket.recv_socket.clone();
             let packets = create_packets();
+            let router = create_router(&packets, socket);
+            let recv_socket = socket.recv_socket.clone();
             let span = tracing::trace_span!("udp_socket_worker", udp_socket_worker);
             std::thread::spawn(move || {
                 let _span = span.entered();
-                udp::blocking(socket, packets, dispatch);
+                udp::blocking(recv_socket, packets, router);
             });
         }
     }
 
-    fn spawn_non_blocking(
-        map: &Map,
+    fn spawn_non_blocking<R>(
         sockets: &[Socket],
         create_packets: impl Fn() -> Packets,
-    ) -> Result<()> {
+        create_router: impl Fn(&Packets, &Socket) -> R,
+    ) -> Result<()>
+    where
+        R: 'static + Send + Router,
+    {
         for (udp_socket_worker, socket) in sockets.iter().enumerate() {
-            let dispatch = socket.queue.lock().unwrap().dispatcher();
-            let dispatch = dispatch.with_map(map.clone());
-            let socket = AsyncFd::new(socket.recv_socket.clone())?;
             let packets = create_packets();
+            let router = create_router(&packets, socket);
+            let recv_socket = AsyncFd::new(socket.recv_socket.clone())?;
             let span = tracing::trace_span!("udp_socket_worker", udp_socket_worker);
             let task = async move {
-                udp::non_blocking(socket, packets, dispatch).await;
+                udp::non_blocking(recv_socket, packets, router).await;
             };
             if span.is_disabled() {
                 tokio::spawn(task);

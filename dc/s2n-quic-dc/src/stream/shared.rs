@@ -26,6 +26,8 @@ use s2n_quic_core::{
 use s2n_quic_platform::features;
 use std::sync::{atomic::AtomicU16, Arc};
 
+pub mod handshake;
+
 pub use crate::stream::crypto::Crypto;
 
 #[derive(Clone, Copy, Debug)]
@@ -57,19 +59,33 @@ where
         &self,
         remote_addr: &SocketAddress,
         remote_queue_id: Option<VarInt>,
-        did_complete_handshake: bool,
+        handshake: &mut handshake::State,
     ) {
-        if did_complete_handshake {
-            self.remote_port
-                .store(remote_addr.port(), Ordering::Relaxed);
+        match handshake {
+            handshake::State::ClientQueueIdObserved => {
+                // stop sending our `queue_id` since the server has observed it
+                self.local_queue_id.store(u64::MAX, Ordering::Relaxed);
 
-            if let Some(queue_id) = remote_queue_id {
-                self.remote_queue_id
-                    .store(queue_id.as_u64(), Ordering::Relaxed);
+                // allow the server to pick a different port on the first response
+                self.remote_port
+                    .store(remote_addr.port(), Ordering::Relaxed);
+
+                // transition to steady state once the server provided its chosen `queue_id`
+                if let Some(server_queue_id) = remote_queue_id {
+                    self.remote_queue_id
+                        .store(server_queue_id.as_u64(), Ordering::Relaxed);
+
+                    let _ = handshake.on_observation_finished();
+                }
             }
+            handshake::State::ServerQueueIdObserved => {
+                // stop sending our `queue_id` since the client has observed it
+                self.local_queue_id.store(u64::MAX, Ordering::Relaxed);
 
-            // no need to keep sending the local queue id once the peer has seen a full round trip
-            self.local_queue_id.store(u64::MAX, Ordering::Relaxed);
+                // no need to update the remote_queue_id value since we saw it on the first packet
+                let _ = handshake.on_observation_finished();
+            }
+            _ => {}
         }
 
         // update the last time we've seen peer activity

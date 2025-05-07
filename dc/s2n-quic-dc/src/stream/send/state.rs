@@ -57,9 +57,9 @@ slotmap::new_key_type! {
     pub struct BufferIndex;
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum TransmitIndex {
-    Stream(BufferIndex),
+    Stream(BufferIndex, buffer::Segment),
     Recovery(BufferIndex),
 }
 
@@ -96,7 +96,6 @@ pub struct State {
     pub ecn: ecn::Controller,
     pub pto: Pto,
     pub pto_backoff: u32,
-    pub inflight_timer: Timer,
     pub idle_timer: Timer,
     pub idle_timeout: Duration,
     pub error: Option<Error>,
@@ -148,7 +147,6 @@ impl State {
             retransmissions: Default::default(),
             pto: Pto::default(),
             pto_backoff: INITIAL_PTO_BACKOFF,
-            inflight_timer: Default::default(),
             idle_timer: Default::default(),
             idle_timeout: params.max_idle_timeout().unwrap_or(DEFAULT_IDLE_TIMEOUT),
             error: None,
@@ -175,10 +173,15 @@ impl State {
     #[inline]
     pub fn flow_offset(&self) -> VarInt {
         let cca_offset = {
-            let extra_window = self
+            let mut extra_window = self
                 .cca
                 .congestion_window()
                 .saturating_sub(self.cca.bytes_in_flight());
+
+            // only give CCA credits to the application if we were able to retransmit everything considered lost
+            if !self.retransmissions.is_empty() {
+                extra_window = 0;
+            }
 
             self.max_sent_offset + extra_window as usize
         };
@@ -197,10 +200,7 @@ impl State {
 
     #[inline]
     pub fn send_quantum_packets(&self) -> u8 {
-        // TODO use div_ceil when we're on 1.73+ MSRV
-        // https://doc.rust-lang.org/std/primitive.u64.html#method.div_ceil
-        let send_quantum = (self.cca.send_quantum() as u64 + self.max_datagram_size as u64 - 1)
-            / self.max_datagram_size as u64;
+        let send_quantum = (self.cca.send_quantum() as u64).div_ceil(self.max_datagram_size as u64);
         send_quantum.try_into().unwrap_or(u8::MAX)
     }
 
@@ -371,15 +371,9 @@ impl State {
 
                     // if there was no error and we transmitted everything then just shut the
                     // stream down
-                    if close.error_code == VarInt::ZERO
-                        && close.frame_type.is_some()
-                        && self.state.on_recv_all_acks().is_ok()
-                    {
-                        self.clean_up();
-                        // transmit one more PTO packet so we can ACK the peer's
-                        // CONNECTION_CLOSE frame and they can shutdown quickly. Otherwise,
-                        // they'll need to hang around to respond to potential loss.
-                        self.pto.force_transmit();
+                    if close.error_code == VarInt::ZERO && close.frame_type.is_some() {
+                        self.unacked_ranges.clear();
+                        self.try_finish();
                         return Ok(None);
                     }
 
@@ -413,18 +407,23 @@ impl State {
         self.on_peer_activity(newly_acked);
 
         // try to transition to the final state if we've sent all of the data
-        if self.unacked_ranges.is_empty()
-            && self.error.is_none()
-            && self.state.on_recv_all_acks().is_ok()
-        {
-            self.clean_up();
-            // transmit one more PTO packet so we can ACK the peer's
-            // CONNECTION_CLOSE frame and they can shutdown quickly. Otherwise,
-            // they'll need to hang around to respond to potential loss.
-            self.pto.force_transmit();
-        }
+        self.try_finish();
 
         Ok(None)
+    }
+
+    #[inline]
+    fn try_finish(&mut self) {
+        // check if we still have pending data
+        ensure!(self.unacked_ranges.is_empty());
+
+        // check if we are still ok
+        ensure!(self.error.is_none());
+
+        // try to transition to the final state if it's a valid transition
+        ensure!(self.state.on_recv_all_acks().is_ok());
+
+        self.clean_up();
     }
 
     #[inline]
@@ -603,27 +602,25 @@ impl State {
                     #[allow(clippy::redundant_closure_call)]
                     ($on_packet)(&packet);
 
-                    if let Some(segment) = packet.info.retransmission {
+                    if let Some((segment, retransmission)) = packet.info.retransmit_copy() {
+                        // the stream segment was cleaned up so no need to retransmit
+                        if !self.stream_packet_buffers.contains_key(segment) {
+                            continue;
+                        }
+
                         // update our local packet number to be at least 1 more than the largest lost
                         // packet number
                         let min_recovery_packet_number = num.as_u64() + 1;
                         self.recovery_packet_number =
                             self.recovery_packet_number.max(min_recovery_packet_number);
 
-                        let retransmission = retransmission::Segment {
-                            segment,
-                            stream_offset: packet.info.stream_offset,
-                            payload_len: packet.info.payload_len,
-                            ty: TransmissionType::Stream,
-                            included_fin: packet.info.included_fin,
-                        };
                         self.retransmissions.push(retransmission);
                     } else {
                         // we can only recover reliable streams
                         is_unrecoverable |= packet.info.payload_len > 0 && !self.is_reliable;
                     }
-                }}
-            }
+                }
+            }}
         }
 
         match packet_space {
@@ -647,6 +644,48 @@ impl State {
         Ok(())
     }
 
+    /// Takes the oldest stream packets and tries to make them into PTO packets
+    ///
+    /// This ensures that we're not wasting resources by sending empty payloads, especially
+    /// when there's outstanding data waiting to be ACK'd.
+    fn make_stream_packets_as_pto_probes(&mut self) {
+        // check to see if we have in-flight stream segments
+        ensure!(!self.sent_stream_packets.is_empty());
+        // only reliable streams store segments
+        ensure!(self.is_reliable);
+
+        let pto = self.pto.transmissions() as usize;
+
+        // check if we already have retransmissions scheduled
+        let Some(mut remaining) = pto.checked_sub(self.retransmissions.len()) else {
+            return;
+        };
+
+        // iterate until remaining is 0.
+        //
+        // This nested loop a bit weird but it's intentional - if we have `remaining == 2` but only have a single
+        // in-flight stream segment then we want to transmit that segment `remaining` times.
+        while remaining > 0 {
+            for (num, packet) in self.sent_stream_packets.iter().take(remaining) {
+                let Some((_segment, retransmission)) = packet.info.retransmit_copy() else {
+                    // unreliable streams don't store segments so bail early - this was checked above
+                    return;
+                };
+
+                // update our local packet number to be at least 1 more than the largest lost
+                // packet number
+                let min_recovery_packet_number = num.as_u64() + 1;
+                self.recovery_packet_number =
+                    self.recovery_packet_number.max(min_recovery_packet_number);
+
+                self.retransmissions.push(retransmission);
+
+                // consider this as a PTO
+                remaining -= 1;
+            }
+        }
+    }
+
     #[inline]
     fn on_peer_activity(&mut self, newly_acked_packets: bool) {
         if let Some(prev) = self.peer_activity.as_mut() {
@@ -664,7 +703,6 @@ impl State {
 
         // make sure our timers are armed
         self.update_idle_timer(clock);
-        self.update_inflight_timer(clock);
         self.update_pto_timer(clock);
 
         trace!(
@@ -673,7 +711,6 @@ impl State {
             stream_packets_in_flight = self.sent_stream_packets.iter().count(),
             recovery_packets_in_flight = self.sent_recovery_packets.iter().count(),
             pto_timer = ?self.pto.next_expiration(),
-            inflight_timer = ?self.inflight_timer.next_expiration(),
             idle_timer = ?self.idle_timer.next_expiration(),
         );
     }
@@ -700,7 +737,6 @@ impl State {
         // re-arm the idle timer as long as we're not in terminal state
         if !self.state.is_terminal() {
             self.idle_timer.cancel();
-            self.inflight_timer.cancel();
         }
     }
 
@@ -715,15 +751,6 @@ impl State {
             // we don't actually want to send any packets on idle timeout
             let _ = self.state.on_send_reset();
             let _ = self.state.on_recv_reset_ack();
-            return;
-        }
-
-        if self
-            .inflight_timer
-            .poll_expiration(clock.get_time())
-            .is_ready()
-        {
-            self.on_error(error::Kind::IdleTimeout);
             return;
         }
 
@@ -760,12 +787,10 @@ impl State {
         Poll::Ready(())
     }
 
+    /// Returns `true` if there are any outstanding stream segments
     #[inline]
     fn has_inflight_packets(&self) -> bool {
-        !self.sent_stream_packets.is_empty()
-            || !self.sent_recovery_packets.is_empty()
-            || !self.retransmissions.is_empty()
-            || !self.transmit_queue.is_empty()
+        !self.stream_packet_buffers.is_empty()
     }
 
     #[inline]
@@ -777,27 +802,11 @@ impl State {
     }
 
     #[inline]
-    fn update_inflight_timer(&mut self, clock: &impl Clock) {
-        // TODO make this configurable
-        let inflight_timeout = crate::stream::DEFAULT_INFLIGHT_TIMEOUT;
-
-        if self.has_inflight_packets() {
-            if !self.inflight_timer.is_armed() {
-                self.inflight_timer.set(clock.get_time() + inflight_timeout);
-            }
-        } else {
-            self.inflight_timer.cancel();
-        }
-    }
-
-    #[inline]
     fn update_pto_timer(&mut self, clock: &impl Clock) {
         ensure!(!self.pto.is_armed());
 
-        let mut should_arm = self.has_inflight_packets();
-
         // if we have stream packet buffers in flight then arm the PTO
-        should_arm |= !self.stream_packet_buffers.is_empty();
+        let mut should_arm = self.has_inflight_packets();
 
         // if we've sent all of the data/reset and are waiting to clean things up
         should_arm |= self.state.is_data_sent() || self.state.is_reset_sent();
@@ -809,9 +818,14 @@ impl State {
 
     #[inline]
     fn force_arm_pto_timer(&mut self, clock: &impl Clock) {
-        let pto_period = self
+        let mut pto_period = self
             .rtt_estimator
             .pto_period(self.pto_backoff, PacketNumberSpace::Initial);
+
+        // the `Timestamp::elapsed` function rounds up to the nearest 1ms so we need to set a min value
+        // otherwise we'll prematurely trigger a PTO
+        pto_period = pto_period.max(Duration::from_millis(2));
+
         self.pto.update(clock.get_time(), pto_period);
     }
 
@@ -892,6 +906,10 @@ impl State {
         // try to transition to start sending
         let _ = self.state.on_send_stream();
         if info.included_fin {
+            // clear out the unacked ranges that we're no longer tracking
+            let final_offset = info.end_offset();
+            let _ = self.unacked_ranges.remove(final_offset..);
+
             // if the transmission included the final offset, then transition to that state
             let _ = self.state.on_send_fin();
         }
@@ -958,6 +976,9 @@ impl State {
         // skip a packet number if we're probing
         if self.pto.transmissions() > 0 {
             self.recovery_packet_number += 1;
+
+            // Try making some existing stream packets as probes instead of transmitting empty ones
+            self.make_stream_packets_as_pto_probes();
         }
 
         self.try_transmit_retransmissions(control_key, credentials, clock)?;
@@ -981,17 +1002,28 @@ impl State {
         ensure!(self.is_reliable, Ok(()));
 
         while let Some(retransmission) = self.retransmissions.peek() {
-            // make sure we fit in the current congestion window
-            let remaining_cca_window = self
-                .cca
-                .congestion_window()
-                .saturating_sub(self.cca.bytes_in_flight());
-            ensure!(
-                retransmission.payload_len as u32 <= remaining_cca_window,
-                break
-            );
+            // If the CCA is requesting fast retransmission we can bypass the CWND check
+            if !self.cca.requires_fast_retransmission() {
+                // make sure we fit in the current congestion window
+                let remaining_cca_window = self
+                    .cca
+                    .congestion_window()
+                    .saturating_sub(self.cca.bytes_in_flight());
+                ensure!(
+                    retransmission.payload_len as u32 <= remaining_cca_window,
+                    break
+                );
+            }
 
-            let buffer = self.stream_packet_buffers[retransmission.segment].make_mut();
+            let Some(segment) = self.stream_packet_buffers.get_mut(retransmission.segment) else {
+                // the segment was acknowledged by another packet so remove it
+                let _ = self
+                    .retransmissions
+                    .pop()
+                    .expect("retransmission should be available");
+                continue;
+            };
+            let buffer = segment.make_mut();
 
             debug_assert!(!buffer.is_empty(), "empty retransmission buffer submitted");
 
@@ -1027,7 +1059,7 @@ impl State {
 
                 // enqueue the transmission
                 self.transmit_queue
-                    .push_back(TransmitIndex::Stream(info.segment));
+                    .push_back(TransmitIndex::Stream(info.segment, segment.clone()));
 
                 let stream_offset = info.stream_offset;
                 let payload_len = info.payload_len;
@@ -1180,13 +1212,12 @@ impl State {
         let ecn = self
             .ecn
             .ecn(s2n_quic_core::transmission::Mode::Normal, clock.get_time());
-        let stream_packet_buffers = &self.stream_packet_buffers;
         let recovery_packet_buffers = &self.recovery_packet_buffers;
 
         self.transmit_queue.iter().filter_map(move |index| {
-            let buf = match *index {
-                TransmitIndex::Stream(index) => stream_packet_buffers.get(index)?.as_slice(),
-                TransmitIndex::Recovery(index) => recovery_packet_buffers.get(index)?,
+            let buf = match index {
+                TransmitIndex::Stream(_index, segment) => segment.as_slice(),
+                TransmitIndex::Recovery(index) => recovery_packet_buffers.get(*index)?,
             };
 
             Some((ecn, buf))
@@ -1197,7 +1228,7 @@ impl State {
     pub fn on_transmit_queue(&mut self, count: usize) {
         for transmission in self.transmit_queue.drain(..count) {
             match transmission {
-                TransmitIndex::Stream(index) => {
+                TransmitIndex::Stream(index, _segment) => {
                     // make sure the packet wasn't freed between when we wanted to transmit and
                     // when we actually did
                     ensure!(self.stream_packet_buffers.get(index).is_some(), continue);
@@ -1238,7 +1269,6 @@ impl State {
         let _ = self.sent_recovery_packets.remove_range(range);
 
         self.idle_timer.cancel();
-        self.inflight_timer.cancel();
         self.pto.cancel();
         self.unacked_ranges.clear();
 
@@ -1258,7 +1288,39 @@ impl State {
     #[cfg(debug_assertions)]
     #[inline]
     fn invariants(&self) {
-        // TODO
+        if !self.unacked_ranges.is_empty() {
+            let mut unacked_ranges = self.unacked_ranges.clone();
+            let last = unacked_ranges.inclusive_ranges().next_back().unwrap();
+            unacked_ranges.remove(last).unwrap();
+
+            for (_pn, packet) in self.sent_stream_packets.iter() {
+                if packet.info.payload_len == 0 {
+                    continue;
+                }
+
+                unacked_ranges.remove(packet.info.range()).unwrap();
+            }
+
+            for (_pn, packet) in self.sent_recovery_packets.iter() {
+                if packet.info.payload_len == 0 {
+                    continue;
+                }
+
+                unacked_ranges.remove(packet.info.range()).unwrap();
+            }
+
+            for v in self.retransmissions.iter() {
+                if v.payload_len == 0 {
+                    continue;
+                }
+                unacked_ranges.remove(v.range()).unwrap();
+            }
+
+            assert!(
+                unacked_ranges.is_empty(),
+                "unacked ranges should be empty: {unacked_ranges:?}\n state\n {self:#?}"
+            );
+        }
     }
 
     #[cfg(not(debug_assertions))]

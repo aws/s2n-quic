@@ -1,23 +1,32 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{server::tokio::stats, socket::Protocol};
 use crate::{
-    event,
-    event::testing,
+    either::Either,
+    event::{self, testing},
     path::secret,
     stream::{
-        application,
-        client::tokio as stream_client,
-        environment::{tokio as env, Environment as _},
+        application, client as stream_client,
+        environment::{bach, tokio, udp, Environment},
         recv, send,
-        server::{tokio as stream_server, tokio::accept},
+        server::{self as stream_server, accept, stats},
+        socket::Protocol,
     },
 };
 use s2n_quic_core::dc::{self, ApplicationParams};
 use s2n_quic_platform::socket;
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    io,
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+};
 use tracing::Instrument;
+
+thread_local! {
+    static SERVERS: RefCell<HashMap<SocketAddr, server::Handle>> = Default::default();
+}
 
 pub type Subscriber = (Arc<event::testing::Subscriber>, event::tracing::Subscriber);
 
@@ -25,52 +34,44 @@ pub type Stream = application::Stream<Subscriber>;
 pub type Writer = send::application::Writer<Subscriber>;
 pub type Reader = recv::application::Reader<Subscriber>;
 
+const DEFAULT_POOLED: bool = true;
+
 // limit the number of threads used in testing to reduce costs of harnesses
 const TEST_THREADS: usize = 2;
 
-const MAX_DATAGRAM_SIZE: Option<u16> = if cfg!(target_os = "linux") {
-    Some(8950)
+pub(crate) const MAX_DATAGRAM_SIZE: u16 = if cfg!(target_os = "linux") {
+    8950
 } else {
-    None
+    1450
 };
+
+type Env = Either<tokio::Environment<Subscriber>, bach::Environment<Subscriber>>;
 
 #[derive(Clone)]
 pub struct Client {
     map: secret::Map,
-    env: env::Environment<Subscriber>,
-    subscriber: Arc<event::testing::Subscriber>,
+    env: Env,
     mtu: Option<u16>,
 }
 
 impl Default for Client {
     fn default() -> Self {
-        let _span = tracing::info_span!("client").entered();
-        let map = secret::map::testing::new(16);
-        let options = socket::options::Options::new("127.0.0.1:0".parse().unwrap());
-        let env = env::Environment::builder()
-            .with_threads(TEST_THREADS)
-            // TODO enable this once ready
-            // .with_pool(env::pool::Config::new(map.clone()))
-            .with_socket_options(options)
-            .build()
-            .unwrap();
-        Self {
-            map,
-            env,
-            subscriber: Arc::new(event::testing::Subscriber::no_snapshot()),
-            mtu: MAX_DATAGRAM_SIZE,
-        }
+        Self::builder().build()
     }
 }
 
 impl Client {
+    pub fn builder() -> client::Builder {
+        client::Builder::default()
+    }
+
     pub fn handshake_with<S: AsRef<server::Handle>>(
         &self,
         server: &S,
     ) -> io::Result<secret::map::Peer> {
         let server = server.as_ref();
-        let peer = server.local_addr;
-        if let Some(peer) = self.map.get_tracked(peer) {
+        let server_addr = server.local_addr;
+        if let Some(peer) = self.map.get_tracked(server_addr) {
             return Ok(peer);
         }
 
@@ -79,46 +80,105 @@ impl Client {
             local_addr,
             Some(self.params()),
             &server.map,
-            server.local_addr,
+            server_addr,
             Some(server.params()),
         );
 
         // cache hit already tracked above
-        self.map.get_untracked(peer).ok_or_else(|| {
+        self.map.get_untracked(server_addr).ok_or_else(|| {
             io::Error::new(io::ErrorKind::AddrNotAvailable, "path secret not available")
         })
     }
 
     fn params(&self) -> ApplicationParams {
         let mut params = dc::testing::TEST_APPLICATION_PARAMS;
-        if let Some(mtu) = self.mtu {
-            params.max_datagram_size = mtu.into();
-        }
+        params.max_datagram_size = self.mtu.unwrap_or(MAX_DATAGRAM_SIZE).into();
         params
     }
 
     pub async fn connect_to<S: AsRef<server::Handle>>(&self, server: &S) -> io::Result<Stream> {
-        let server = server.as_ref();
-        let handshake = async { self.handshake_with(server) };
+        // write an empty prelude
+        let mut prelude = s2n_quic_core::buffer::reader::storage::Empty;
+        let mut stream = self.open(server.as_ref()).await?;
+        stream.write_from(&mut prelude).await?;
+        Ok(stream)
+    }
 
-        let subscriber = (self.subscriber(), event::tracing::Subscriber::default());
+    pub async fn connect_sim<Addr>(&self, addr: Addr) -> io::Result<Stream>
+    where
+        Addr: ::bach::net::ToSocketAddrs,
+    {
+        let server = Self::lookup_sim_server(addr).await?;
+        self.connect_to(&server).await
+    }
 
-        match server.protocol {
-            Protocol::Tcp => {
-                stream_client::connect_tcp(
-                    handshake,
-                    server.local_addr,
-                    &self.env,
-                    subscriber,
-                    None,
-                )
-                .await
+    pub async fn rpc_to<S, Req, Res>(
+        &self,
+        server: &S,
+        request: Req,
+        response: Res,
+    ) -> io::Result<Res::Output>
+    where
+        S: AsRef<server::Handle>,
+        Req: crate::stream::client::rpc::Request,
+        Res: crate::stream::client::rpc::Response,
+    {
+        let stream = self.open(server.as_ref()).await?;
+        crate::stream::client::rpc::from_stream(stream, request, response).await
+    }
+
+    pub async fn rpc_sim<Addr, Req, Res>(
+        &self,
+        addr: Addr,
+        request: Req,
+        response: Res,
+    ) -> io::Result<Res::Output>
+    where
+        Addr: ::bach::net::ToSocketAddrs,
+        Req: crate::stream::client::rpc::Request,
+        Res: crate::stream::client::rpc::Response,
+    {
+        let server = Self::lookup_sim_server(addr).await?;
+        self.rpc_to(&server, request, response).await
+    }
+
+    async fn lookup_sim_server<Addr>(addr: Addr) -> io::Result<server::Handle>
+    where
+        Addr: ::bach::net::ToSocketAddrs,
+    {
+        assert!(::bach::is_active());
+
+        // yield before we look up the server's addr - it might not have run yet
+        ::bach::task::yield_now().await;
+
+        let addr = ::bach::net::lookup_host(addr).await?.next().unwrap();
+
+        let server = SERVERS.with(|servers| servers.borrow().get(&addr).cloned());
+
+        let server = server
+            .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "server not found"))?;
+
+        Ok(server)
+    }
+
+    async fn open(&self, server: &server::Handle) -> io::Result<Stream> {
+        let server_addr = server.local_addr;
+        let handshake = core::future::ready(self.handshake_with(server));
+
+        match (server.protocol, &self.env) {
+            (Protocol::Tcp, Either::A(env)) => {
+                stream_client::tokio::connect_tcp(handshake, server_addr, env, None).await
             }
-            Protocol::Udp => {
-                stream_client::connect_udp(handshake, server.local_addr, &self.env, subscriber)
-                    .await
+            (Protocol::Tcp, Either::B(_env)) => {
+                todo!("tcp is not implemented in bach yet");
             }
-            Protocol::Other(name) => {
+            (Protocol::Udp, Either::A(env)) => {
+                stream_client::tokio::connect_udp(handshake, server_addr, env).await
+            }
+            (Protocol::Udp, Either::B(env)) => {
+                stream_client::bach::connect_udp(handshake, server_addr, env).await
+            }
+            (Protocol::Other(name), _) => {
                 todo!("protocol {name:?} not implemented")
             }
         }
@@ -127,18 +187,104 @@ impl Client {
     pub async fn connect_tcp_with<S: AsRef<server::Handle>>(
         &self,
         server: &S,
-        stream: tokio::net::TcpStream,
+        stream: ::tokio::net::TcpStream,
     ) -> io::Result<Stream> {
         let server = server.as_ref();
-        let handshake = async { self.handshake_with(server) }.await?;
+        let handshake = self.handshake_with(server)?;
 
-        let subscriber = (self.subscriber(), event::tracing::Subscriber::default());
+        let mut stream = if let Either::A(env) = &self.env {
+            stream_client::tokio::connect_tcp_with(handshake, stream, env).await
+        } else {
+            todo!("Raw connect is only supported with tokio");
+        }?;
 
-        stream_client::connect_tcp_with(handshake, stream, &self.env, subscriber).await
+        // TODO accept these as parameters instead
+        let mut prelude = s2n_quic_core::buffer::reader::storage::Empty;
+
+        stream.write_from(&mut prelude).await?;
+
+        Ok(stream)
     }
 
     pub fn subscriber(&self) -> Arc<testing::Subscriber> {
-        self.subscriber.clone()
+        self.env.subscriber().0.clone()
+    }
+}
+
+pub mod client {
+    use super::*;
+
+    pub struct Builder {
+        map_capacity: usize,
+        mtu: Option<u16>,
+        subscriber: event::testing::Subscriber,
+        pooled: bool,
+    }
+
+    impl Default for Builder {
+        fn default() -> Self {
+            Self {
+                map_capacity: 16,
+                mtu: None,
+                subscriber: event::testing::Subscriber::no_snapshot(),
+                pooled: DEFAULT_POOLED,
+            }
+        }
+    }
+
+    impl Builder {
+        pub fn map_capacity(mut self, map_capacity: usize) -> Self {
+            self.map_capacity = map_capacity;
+            self
+        }
+
+        pub fn mtu(mut self, mtu: u16) -> Self {
+            self.mtu = Some(mtu);
+            self
+        }
+
+        pub fn subscriber(mut self, subscriber: event::testing::Subscriber) -> Self {
+            self.subscriber = subscriber;
+            self
+        }
+
+        pub fn build(self) -> Client {
+            let Self {
+                map_capacity,
+                mtu,
+                subscriber,
+                pooled,
+            } = self;
+            let _span = tracing::info_span!("client").entered();
+            let map = secret::map::testing::new(map_capacity);
+            let subscriber = Arc::new(subscriber);
+            let subscriber = (subscriber, event::tracing::Subscriber::default());
+
+            macro_rules! build {
+                ($krate:ident, $pooled:expr, $addr:expr) => {{
+                    let options = socket::options::Options::new($addr.parse().unwrap());
+
+                    let mut env = $krate::Builder::new(subscriber)
+                        .with_threads(TEST_THREADS)
+                        .with_socket_options(options);
+
+                    if $pooled {
+                        let pool = udp::Config::new(map.clone());
+                        env = env.with_pool(pool);
+                    }
+
+                    env.build().unwrap()
+                }};
+            }
+
+            let env = if ::bach::is_active() {
+                Either::B(build!(bach, true, "0.0.0.0:0"))
+            } else {
+                Either::A(build!(tokio, pooled, "127.0.0.1:0"))
+            };
+
+            Client { map, env, mtu }
+        }
     }
 }
 
@@ -147,9 +293,11 @@ pub struct Server {
     handle: server::Handle,
     receiver: accept::Receiver<Subscriber>,
     stats: stats::Sender,
+    subscriber: Arc<event::testing::Subscriber>,
     #[allow(dead_code)]
     drop_handle: drop_handle::Sender,
-    subscriber: Arc<event::testing::Subscriber>,
+    #[allow(dead_code)]
+    addr_reservation: Arc<server::AddrReservation>,
 }
 
 impl Default for Server {
@@ -186,7 +334,7 @@ impl Server {
     }
 
     pub async fn accept(&self) -> io::Result<(Stream, SocketAddr)> {
-        accept::accept(&self.receiver, &self.stats).await
+        stream_server::accept::accept(&self.receiver, &self.stats).await
     }
 
     pub fn subscriber(&self) -> Arc<testing::Subscriber> {
@@ -194,7 +342,7 @@ impl Server {
     }
 }
 
-mod drop_handle {
+pub(crate) mod drop_handle {
     use core::future::Future;
     use tokio::sync::watch;
 
@@ -215,7 +363,9 @@ mod drop_handle {
             async move {
                 tokio::select! {
                     _ = other => {}
-                    _ = watch.changed() => {}
+                    _ = watch.changed() => {
+                        tracing::trace!("handle dropped - cancelling task");
+                    }
                 }
             }
         }
@@ -241,9 +391,7 @@ pub mod server {
     impl Handle {
         pub(super) fn params(&self) -> ApplicationParams {
             let mut params = dc::testing::TEST_APPLICATION_PARAMS;
-            if let Some(mtu) = self.mtu {
-                params.max_datagram_size = mtu.into();
-            }
+            params.max_datagram_size = self.mtu.unwrap_or(MAX_DATAGRAM_SIZE).into();
             params
         }
     }
@@ -251,6 +399,24 @@ pub mod server {
     impl AsRef<Handle> for Handle {
         fn as_ref(&self) -> &Handle {
             self
+        }
+    }
+
+    pub(super) struct AddrReservation {
+        local_addr: SocketAddr,
+    }
+
+    impl core::ops::Deref for AddrReservation {
+        type Target = SocketAddr;
+
+        fn deref(&self) -> &Self::Target {
+            &self.local_addr
+        }
+    }
+
+    impl Drop for AddrReservation {
+        fn drop(&mut self) {
+            SERVERS.with(|servers| servers.borrow_mut().remove(&self.local_addr));
         }
     }
 
@@ -262,31 +428,27 @@ pub mod server {
         linger: Option<Duration>,
         mtu: Option<u16>,
         subscriber: event::testing::Subscriber,
+        pooled: bool,
+        port: u16,
     }
 
     impl Default for Builder {
         fn default() -> Self {
             Self {
-                backlog: 16,
+                backlog: 4096,
                 flavor: accept::Flavor::default(),
                 protocol: Protocol::Tcp,
                 map_capacity: 16,
                 linger: None,
                 mtu: None,
                 subscriber: event::testing::Subscriber::no_snapshot(),
+                pooled: DEFAULT_POOLED,
+                port: 0,
             }
         }
     }
 
     impl Builder {
-        pub fn build(self) -> Server {
-            if s2n_quic_platform::io::testing::is_in_env() {
-                todo!()
-            } else {
-                self.build_tokio()
-            }
-        }
-
         pub fn tcp(mut self) -> Self {
             self.protocol = Protocol::Tcp;
             self
@@ -294,6 +456,11 @@ pub mod server {
 
         pub fn udp(mut self) -> Self {
             self.protocol = Protocol::Udp;
+            self
+        }
+
+        pub fn port(mut self, port: u16) -> Self {
+            self.port = port;
             self
         }
 
@@ -332,7 +499,7 @@ pub mod server {
             self
         }
 
-        fn build_tokio(self) -> super::Server {
+        pub fn build(self) -> super::Server {
             let Self {
                 backlog,
                 flavor,
@@ -341,89 +508,122 @@ pub mod server {
                 linger,
                 mtu,
                 subscriber,
+                pooled,
+                port,
             } = self;
 
             let _span = tracing::info_span!("server").entered();
             let map = secret::map::testing::new(map_capacity);
             let (sender, receiver) = accept::channel(backlog);
 
-            let options = crate::socket::Options::new("127.0.0.1:0".parse().unwrap());
-
-            let env = env::Builder::default()
-                .with_threads(TEST_THREADS)
-                .with_socket_options(options.clone())
-                .build()
-                .unwrap();
-
             let test_subscriber = Arc::new(subscriber);
             let subscriber = (
                 test_subscriber.clone(),
                 event::tracing::Subscriber::default(),
             );
+
+            macro_rules! build {
+                ($krate:ident, $pooled:expr) => {{
+                    let ip: IpAddr = "127.0.0.1".parse().unwrap();
+                    let options = crate::socket::Options::new((ip, port).into());
+
+                    let mut env = $krate::Builder::new(subscriber)
+                        .with_threads(TEST_THREADS)
+                        .with_socket_options(options.clone());
+
+                    if $pooled {
+                        let mut pool = udp::Config::new(map.clone());
+                        pool.accept_flavor = flavor;
+                        pool.reuse_port = true;
+                        env = env.with_pool(pool).with_acceptor(sender.clone());
+                    }
+
+                    let env = env.build().unwrap();
+                    (env, options)
+                }};
+            }
+
             let (drop_handle_sender, drop_handle_receiver) = drop_handle::new();
-
-            let local_addr = match protocol {
-                Protocol::Tcp => {
-                    let socket = options.build_tcp_listener().unwrap();
-                    let local_addr = socket.local_addr().unwrap();
-                    let socket = tokio::net::TcpListener::from_std(socket).unwrap();
-
-                    let acceptor = stream_server::tcp::Acceptor::new(
-                        0, socket, &sender, &env, &map, backlog, flavor, linger, subscriber,
-                    );
-                    let acceptor = drop_handle_receiver.wrap(acceptor.run());
-                    let acceptor = acceptor.instrument(tracing::info_span!("tcp"));
-                    tokio::task::spawn(acceptor);
-
-                    local_addr
-                }
-                Protocol::Udp => {
-                    let socket = options.build_udp().unwrap();
-                    let local_addr = socket.local_addr().unwrap();
-
-                    let socket = tokio::io::unix::AsyncFd::new(socket).unwrap();
-
-                    let acceptor = stream_server::udp::Acceptor::new(
-                        0, socket, &sender, &env, &map, flavor, subscriber,
-                    );
-                    let acceptor = drop_handle_receiver.wrap(acceptor.run());
-                    let acceptor = acceptor.instrument(tracing::info_span!("udp"));
-                    tokio::task::spawn(acceptor);
-
-                    local_addr
-                }
-                Protocol::Other(name) => {
-                    todo!("protocol {name:?} not implemented")
-                }
-            };
-
             let (stats_sender, stats_worker, stats) = stats::channel();
 
-            {
-                let task = stats_worker.run(env.clock().clone());
-                let task = task.instrument(tracing::info_span!("stats"));
-                let task = drop_handle_receiver.wrap(task);
-                tokio::task::spawn(task);
-            }
+            let local_addr = if ::bach::is_active() {
+                assert_eq!(Protocol::Udp, protocol, "bach only supports UDP currently");
 
-            if matches!(flavor, accept::Flavor::Lifo) {
-                let channel = receiver.downgrade();
-                let task = accept::Pruner::default().run(env, channel, stats);
-                let task = task.instrument(tracing::info_span!("pruner"));
-                let task = drop_handle_receiver.wrap(task);
-                tokio::task::spawn(task);
-            }
+                let (env, _options) = build!(bach, true);
+
+                env.pool_addr().unwrap()
+            } else {
+                let (env, options) = build!(tokio, pooled);
+
+                let local_addr = match protocol {
+                    Protocol::Tcp => {
+                        let socket = options.build_tcp_listener().unwrap();
+                        let local_addr = socket.local_addr().unwrap();
+                        let socket = ::tokio::net::TcpListener::from_std(socket).unwrap();
+
+                        let acceptor = stream_server::tokio::tcp::Acceptor::new(
+                            0, socket, &sender, &env, &map, backlog, flavor, linger,
+                        );
+                        let acceptor = drop_handle_receiver.wrap(acceptor.run());
+                        let acceptor = acceptor.instrument(tracing::info_span!("tcp"));
+                        ::tokio::task::spawn(acceptor);
+
+                        local_addr
+                    }
+                    Protocol::Udp if pooled => {
+                        // acceptor configured in env
+                        env.pool_addr().unwrap()
+                    }
+                    Protocol::Udp => {
+                        let socket = options.build_udp().unwrap();
+                        let local_addr = socket.local_addr().unwrap();
+
+                        let socket = ::tokio::io::unix::AsyncFd::new(socket).unwrap();
+
+                        let acceptor = stream_server::tokio::udp::Acceptor::new(
+                            0, socket, &sender, &env, &map, flavor,
+                        );
+                        let acceptor = drop_handle_receiver.wrap(acceptor.run());
+                        let acceptor = acceptor.instrument(tracing::info_span!("udp"));
+                        ::tokio::task::spawn(acceptor);
+
+                        local_addr
+                    }
+                    Protocol::Other(name) => {
+                        todo!("protocol {name:?} not implemented")
+                    }
+                };
+
+                // TODO add support for bach
+                {
+                    let task = stats_worker.run(env.clock().clone());
+                    let task = task.instrument(tracing::info_span!("stats"));
+                    let task = drop_handle_receiver.wrap(task);
+                    env.spawn_reader(task);
+                }
+
+                if matches!(flavor, accept::Flavor::Lifo) {
+                    let channel = receiver.downgrade();
+                    let task =
+                        stream_server::accept::Pruner::default().run(env.clone(), channel, stats);
+                    let task = task.instrument(tracing::info_span!("pruner"));
+                    let task = drop_handle_receiver.wrap(task);
+                    env.spawn_reader(task);
+                }
+
+                local_addr
+            };
 
             let handle = server::Handle {
                 map,
                 protocol,
                 local_addr,
-                mtu: if let Some(mtu) = mtu {
-                    Some(mtu)
-                } else {
-                    MAX_DATAGRAM_SIZE
-                },
+                mtu,
             };
+
+            if ::bach::is_active() {
+                SERVERS.with(|servers| servers.borrow_mut().insert(local_addr, handle.clone()));
+            }
 
             super::Server {
                 handle,
@@ -431,6 +631,7 @@ pub mod server {
                 stats: stats_sender,
                 drop_handle: drop_handle_sender,
                 subscriber: test_subscriber,
+                addr_reservation: Arc::new(AddrReservation { local_addr }),
             }
         }
     }

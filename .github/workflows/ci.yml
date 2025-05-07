@@ -5,6 +5,9 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    # Run daily job at 8:00 PM PT
+    - cron: '0 3 * * *'
 
 name: ci
 
@@ -20,6 +23,7 @@ env:
   # enable unstable features for testing
   S2N_UNSTABLE_CRYPTO_OPT_TX: 100
   S2N_UNSTABLE_CRYPTO_OPT_RX: 100
+  CI_ARTIFACTS_BUCKET: s2n-quic-ci-artifacts
 
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
@@ -54,10 +58,15 @@ jobs:
       - name: Evaluate definitions
         id: definitions
         run: |
-          export MSRV=$(rustup show | awk 'NF' | awk 'END{print $2}')
+          rustup show active-toolchain
+          export MSRV=$(rustup show active-toolchain | awk -F'-' '{print $1}')
+          if [ -z "$MSRV" ]; then
+            echo "Error: MSRV did not parse correctly"
+            exit 1
+          fi
           echo "msrv=$MSRV"
           echo "msrv=$MSRV" >> $GITHUB_OUTPUT
-          export RAW_VERSIONS="stable beta $RUST_NIGHTLY_TOOLCHAIN $MSRV"
+          export RAW_VERSIONS="stable beta $MSRV"
           export VERSIONS=$(echo $RAW_VERSIONS | jq -scR 'rtrimstr("\n")|split(" ")|.')
           echo "versions=$VERSIONS"
           echo "versions=$VERSIONS" >> $GITHUB_OUTPUT
@@ -131,12 +140,14 @@ jobs:
           rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal
           rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
-
       - uses: camshaft/rust-cache@v1
 
-      - uses: camshaft/install@v1
-        with:
-          crate: cargo-udeps
+      # Ideally this would use the camshaft/install action to install cargo-udeps. However,
+      # the --locked flag can't currently be provided to camshaft/install. After support for this
+      # is added, camshaft/install should be used here instead:
+      # https://github.com/aws/s2n-quic/issues/2593
+      - name: Install cargo-udeps
+        run: cargo install cargo-udeps --locked
 
       - name: Run cargo udeps
         run: cargo udeps --workspace --all-targets
@@ -174,10 +185,16 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/doc"
-          aws s3 sync target/doc "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/s2n_quic/index.html"
+          TARGET_SHA="${{ github.sha }}/doc"
+          aws s3 sync target/doc "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/s2n_quic/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
+
+          # Only upload to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/doc"
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
+          fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -203,11 +220,13 @@ jobs:
           - rust: stable
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            # s2n-quic-dc doesn't currently build on aarch64
-            exclude: --exclude s2n-quic-dc  --exclude s2n-quic-dc-benches
+            # s2n-quic-dc tests are too slow to be emulated with QEMU
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
           - rust: stable
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
+            # s2n-quic-dc requires a large number of threads for testing, which isn't supported on i686
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
           - rust: stable
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
@@ -218,7 +237,7 @@ jobs:
             target: native
             env: S2N_QUIC_PLATFORM_FEATURES_OVERRIDE=""
             # s2n-quic-dc requires platform features
-            exclude: --exclude s2n-quic-dc  --exclude s2n-quic-dc-benches
+            exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches
           - rust: stable
             os: ubuntu-latest
             target: native
@@ -290,7 +309,7 @@ jobs:
       # multiple versioned binaries, like /usr/bin/llvm-symbolizer-13. This step
       # finds the latest symbolizer and use it as the "base" llvm-symbolizer binary.
       #
-      # llvm-symbolizer is necessary to get nice stack traces from asan errors. 
+      # llvm-symbolizer is necessary to get nice stack traces from asan errors.
       # Otherwise the stack trace just contains a hex address like "0x55bc6a28a9b6"
       - name: set llvm symbolizer
         run: |
@@ -300,7 +319,7 @@ jobs:
         env:
           RUSTDOCFLAGS: -Zsanitizer=address
           RUSTFLAGS: -Zsanitizer=address
-          # We got a few globals that aren't cleaned up. Need to 
+          # We got a few globals that aren't cleaned up. Need to
           # determine if we should reenable this in the future.
           ASAN_OPTIONS: detect_leaks=false
         run: |
@@ -333,9 +352,8 @@ jobs:
           cargo test --no-default-features --features "provider-tls-fips provider-tls-s2n"
 
   miri:
-    # miri needs quite a bit of memory so use a larger instance
     runs-on:
-      labels: s2n_ubuntu-20.04_8-core
+      labels: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -393,7 +411,7 @@ jobs:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-s3-region: us-west-2
-          aws-s3-bucket-name: s2n-quic-ci-artifacts
+          aws-s3-bucket-name: ${{ env.CI_ARTIFACTS_BUCKET }}
           cdn: $CDN
 
   coverage:
@@ -433,10 +451,16 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/coverage"
-          aws s3 sync target/llvm-cov/html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
+          TARGET_SHA="${{ github.sha }}/coverage"
+          aws s3 sync target/llvm-cov/html "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
+
+          # Only upload to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/coverage"
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
+          fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -545,10 +569,16 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/recovery-simulations"
-          aws s3 sync target/recovery-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
+          TARGET_SHA="${{ github.sha }}/recovery-simulations"
+          aws s3 sync target/recovery-sim "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
+
+          # Only upload to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/recovery-simulations"
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
+          fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -590,10 +620,16 @@ jobs:
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/sim"
-          aws s3 sync target/s2n-quic-sim "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET/index.html"
+          TARGET_SHA="${{ github.sha }}/sim"
+          aws s3 sync target/s2n-quic-sim "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
+
+          # Only upload to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/sim"
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
+          fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -693,15 +729,20 @@ jobs:
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
-
       - name: Upload to S3
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
-          TARGET="${{ github.sha }}/timing/index.html"
-          aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/$TARGET"
+          TARGET_SHA="${{ github.sha }}/timing/index.html"
+          aws s3 cp examples/echo/target/cargo-timings/cargo-timing.html "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
+          URL="$CDN/$TARGET_SHA"
           echo "URL=$URL" >> $GITHUB_OUTPUT
+
+          # Only upload to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/timing/index.html"
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST"
+          fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -794,10 +835,16 @@ jobs:
         id: s3
         working-directory: tools/memory-report
         run: |
-          TARGET="${{ github.sha }}/dhat"
-          aws s3 sync target/report "s3://s2n-quic-ci-artifacts/$TARGET" --acl private --follow-symlinks
-          URL="$CDN/dhat/dh_view.html?url=/$TARGET/dhat-heap.json"
+          TARGET_SHA="${{ github.sha }}/dhat"
+          aws s3 sync target/report "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
+          URL="$CDN/dhat/dh_view.html?url=/$TARGET_SHA/dhat-heap.json"
           echo "URL=$URL" >> $GITHUB_OUTPUT
+
+          # Only upload to latest if the event is push to main
+          if [ "${{ github.event_name }}" == "push" ]; then
+            TARGET_LATEST="latest/dhat"
+            aws s3 cp "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_LATEST" --recursive
+          fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -904,3 +951,20 @@ jobs:
       - name: Run build
         working-directory: dc/wireshark
         run: cargo xtask build
+
+  scheduled-ci-status-report:
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4.1.0
+        with:
+          role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHASession
+          aws-region: us-west-2
+      - name: Report daily CI run to CloudWatch
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
+            aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
+          fi

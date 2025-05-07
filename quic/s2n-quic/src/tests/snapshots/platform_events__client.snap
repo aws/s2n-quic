@@ -7,6 +7,7 @@ EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } Pla
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformRx { count: 0, syscalls: 1, blocked_syscalls: 1, total_errors: 0, dropped_errors: 0 }
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopSleep { timeout: None, processing_duration: 1µs }
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: false, tx_ready: false, application_wakeup: true }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformRx { count: 0, syscalls: 1, blocked_syscalls: 1, total_errors: 0, dropped_errors: 0 }
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopSleep { timeout: Some(999ms), processing_duration: 1µs }
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.100000) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: true, tx_ready: false, application_wakeup: false }
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.100000) } PlatformTx { count: 1, syscalls: 1, blocked_syscalls: 0, total_errors: 0, dropped_errors: 0 }
@@ -23,5 +24,5 @@ EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } Pla
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformTx { count: 2, syscalls: 1, blocked_syscalls: 0, total_errors: 0, dropped_errors: 0 }
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformEventLoopSleep { timeout: Some(274.995ms), processing_duration: 1µs }
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: true, tx_ready: false, application_wakeup: false }
-EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformTx { count: 0, syscalls: 1, blocked_syscalls: 1, total_errors: 0, dropped_errors: 0 }
+EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformTx { count: 1, syscalls: 1, blocked_syscalls: 0, total_errors: 0, dropped_errors: 0 }
 EndpointMeta { endpoint_type: Client, timestamp: Timestamp(0:00:00.200000) } PlatformRx { count: 0, syscalls: 1, blocked_syscalls: 1, total_errors: 0, dropped_errors: 0 }

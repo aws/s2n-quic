@@ -169,6 +169,18 @@ macro_rules! impl_handle_api {
             self.0.application_protocol()
         }
 
+        /// Takes the context provided by the TLS provider.
+        ///
+        /// This functionality is useful when you need to pass information from the TLS provider to the
+        /// application. This could include things like certificate information or application-specific data.
+        ///
+        /// Calling this function a second time will always return `None` so applications should
+        /// store the context elsewhere if it is needed in multiple locations.
+        #[inline]
+        pub fn take_tls_context(&mut self) -> Option<std::boxed::Box<dyn core::any::Any + Send>> {
+            self.0.take_tls_context()
+        }
+
         /// Returns the internal identifier for the [`Connection`](`crate::Connection`)
         ///
         /// Note: This internal identifier is not the same as the connection ID included in packet

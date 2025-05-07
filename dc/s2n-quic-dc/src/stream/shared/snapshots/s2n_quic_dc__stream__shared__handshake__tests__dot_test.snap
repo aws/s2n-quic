@@ -1,0 +1,18 @@
+---
+source: dc/s2n-quic-dc/src/stream/shared/handshake.rs
+expression: "State::dot()"
+---
+digraph {
+  label = "s2n_quic_dc::stream::shared::handshake::State";
+  ClientInit;
+  ClientQueueIdObserved;
+  Finished;
+  ServerInit;
+  ServerQueueIdObserved;
+  ClientInit -> ClientQueueIdObserved [label = "on_stream_packet"];
+  ClientInit -> ClientQueueIdObserved [label = "on_control_packet"];
+  ServerInit -> ServerQueueIdObserved [label = "on_control_packet"];
+  ServerInit -> ServerQueueIdObserved [label = "on_non_zero_next_expected_control_packet"];
+  ClientQueueIdObserved -> Finished [label = "on_observation_finished"];
+  ServerQueueIdObserved -> Finished [label = "on_observation_finished"];
+}

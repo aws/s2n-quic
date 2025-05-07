@@ -3,6 +3,7 @@
 
 use super::accept;
 use crate::{
+    either::Either,
     event::{self, EndpointPublisher, IntoEvent},
     msg,
     path::secret,
@@ -38,7 +39,6 @@ where
     env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
-    subscriber: Sub,
     local_port: u16,
 }
 
@@ -54,7 +54,6 @@ where
             env: acceptor.env.clone(),
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
-            subscriber: acceptor.subscriber.clone(),
             local_port: acceptor.socket.local_addr().unwrap().port(),
         }
     }
@@ -314,7 +313,7 @@ impl WorkerState {
             let (socket, remote_address) = stream.take().unwrap();
 
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
-            let recv_buffer = recv::buffer::Either::A(recv_buffer);
+            let recv_buffer = Either::A(recv_buffer);
 
             let peer = env::tcp::Reregistered {
                 socket,
@@ -329,7 +328,6 @@ impl WorkerState {
                 peer,
                 &initial_packet,
                 &context.secrets,
-                context.subscriber.clone(),
                 subscriber_ctx,
                 None,
             ) {

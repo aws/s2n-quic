@@ -207,7 +207,7 @@ impl Controller {
     ///
     /// * `newly_acked_ecn_counts` - total ECN counts that were sent on packets newly acknowledged by the peer
     /// * `sent_packet_ecn_counts` - total ECN counts for all outstanding packets, including those newly
-    ///                              acknowledged during this validation
+    ///   acknowledged during this validation
     /// * `baseline_ecn_counts` - the ECN counts present in the Ack frame the last time ECN counts were processed
     /// * `ack_frame_ecn_counts` - the ECN counts present in the current Ack frame (if any)
     /// * `now` - the time the Ack frame was received

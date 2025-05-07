@@ -115,7 +115,10 @@ fn recv_msghdr(
 
     let len = exec(&mut msg)?;
 
+    // make sure the CMSG has the correct length
     cmsg.with_msg(&msg);
+    // make sure the addr has the correct length
+    addr.update_with_msg(&msg);
 
     Ok(len)
 }

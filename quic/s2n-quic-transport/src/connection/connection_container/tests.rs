@@ -13,6 +13,7 @@ use crate::{
 use bolero::{check, generator::*};
 use bytes::Bytes;
 use core::{
+    any::Any,
     task::{Context, Poll},
     time::Duration,
 };
@@ -62,7 +63,9 @@ impl connection::Trait for TestConnection {
     fn new(_params: connection::Parameters<Self::Config>) -> Result<Self, connection::Error> {
         Ok(Self::default())
     }
-
+    fn take_tls_context(&mut self) -> Option<Box<dyn Any + Send>> {
+        todo!()
+    }
     fn internal_connection_id(&self) -> InternalConnectionId {
         todo!()
     }

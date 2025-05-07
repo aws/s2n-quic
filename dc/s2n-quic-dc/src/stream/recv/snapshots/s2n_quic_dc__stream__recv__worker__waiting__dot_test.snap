@@ -10,6 +10,7 @@ digraph {
   EpochTimeout;
   Finished;
   PeekPacket;
+  TimeWait;
   PeekPacket -> EpochTimeout [label = "on_peek_packet"];
   Cooldown -> PeekPacket [label = "on_cooldown_elapsed"];
   EpochTimeout -> PeekPacket [label = "on_epoch_unchanged"];
@@ -22,9 +23,12 @@ digraph {
   PeekPacket -> DataRecvd [label = "on_data_received"];
   EpochTimeout -> DataRecvd [label = "on_data_received"];
   Cooldown -> DataRecvd [label = "on_data_received"];
+  Detached -> TimeWait [label = "on_time_wait"];
+  DataRecvd -> TimeWait [label = "on_time_wait"];
   PeekPacket -> Finished [label = "on_finished"];
   EpochTimeout -> Finished [label = "on_finished"];
   Cooldown -> Finished [label = "on_finished"];
   Detached -> Finished [label = "on_finished"];
   DataRecvd -> Finished [label = "on_finished"];
+  TimeWait -> Finished [label = "on_finished"];
 }

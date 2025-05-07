@@ -14,7 +14,7 @@ pub fn new(capacity: usize) -> secret::Map {
         secret::Map::new(
             signer,
             capacity,
-            s2n_quic_platform::io::testing::time::Clock::default(),
+            crate::clock::bach::Clock::default(),
             subscriber,
         )
     } else {

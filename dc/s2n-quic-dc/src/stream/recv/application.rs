@@ -136,6 +136,18 @@ where
     }
 
     #[inline]
+    pub fn set_read_mode(&mut self, read_mode: ReadMode) -> &mut Self {
+        self.0.read_mode = read_mode;
+        self
+    }
+
+    #[inline]
+    pub fn set_ack_mode(&mut self, ack_mode: AckMode) -> &mut Self {
+        self.0.ack_mode = ack_mode;
+        self
+    }
+
+    #[inline]
     pub async fn read_into<S>(&mut self, out_buf: &mut S) -> io::Result<usize>
     where
         S: buffer::writer::Storage,

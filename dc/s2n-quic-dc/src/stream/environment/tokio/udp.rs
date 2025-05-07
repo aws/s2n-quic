@@ -32,7 +32,7 @@ pub struct Owned(pub SocketAddress, pub RecvBuffer);
 
 impl<Sub> Peer<Environment<Sub>> for Owned
 where
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     type ReadWorkerSocket = OwnedSocket;
     type WriteWorkerSocket = (OwnedSocket, buffer::Local);
@@ -124,7 +124,7 @@ pub struct Pooled(pub SocketAddress);
 
 impl<Sub> Peer<Environment<Sub>> for Pooled
 where
-    Sub: event::Subscriber,
+    Sub: event::Subscriber + Clone,
 {
     type ReadWorkerSocket = WorkerSocket;
     type WriteWorkerSocket = (WorkerSocket, buffer::Channel<Control>);
@@ -141,7 +141,9 @@ where
     ) -> SetupResult<Self::ReadWorkerSocket, Self::WriteWorkerSocket> {
         let peer_addr = self.0;
         let recv_pool = env.recv_pool.as_ref().expect("pool not configured");
-        let (control, stream, application_socket, worker_socket) = recv_pool.alloc();
+        // the client doesn't need to associate credentials since it's already chosen a queue_id
+        let credentials = None;
+        let (control, stream, application_socket, worker_socket) = recv_pool.alloc(credentials);
         crate::stream::environment::udp::Pooled {
             peer_addr,
             control,

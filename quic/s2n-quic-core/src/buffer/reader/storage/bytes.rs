@@ -47,7 +47,9 @@ impl Storage for BytesMut {
     {
         let watermark = self.len().min(dest.remaining_capacity());
 
-        if Dest::SPECIALIZES_BYTES_MUT {
+        let consumes_self = watermark == self.len();
+
+        if Dest::SPECIALIZES_BYTES_MUT || consumes_self {
             let Chunk::BytesMut(chunk) = self.infallible_read_chunk(watermark) else {
                 unsafe { assume!(false) }
             };
@@ -97,7 +99,9 @@ impl Storage for Bytes {
     {
         let watermark = self.len().min(dest.remaining_capacity());
 
-        if Dest::SPECIALIZES_BYTES {
+        let consumes_self = watermark == self.len();
+
+        if Dest::SPECIALIZES_BYTES || consumes_self {
             let Chunk::Bytes(chunk) = self.infallible_read_chunk(watermark) else {
                 unsafe { assume!(false) }
             };

@@ -83,7 +83,7 @@ impl Model {
         let Some(alloc) = self.alloc.as_mut() else {
             return;
         };
-        let (control, stream) = alloc.alloc_or_grow();
+        let (control, stream) = alloc.alloc_or_grow(None);
         self.oracle.on_alloc(control, stream);
     }
 
@@ -286,7 +286,7 @@ fn alloc_drop_notify() {
         let mut alloc = Allocator::new(stream_cap, control_cap);
 
         for _ in 0..2 {
-            let (stream, control) = alloc.alloc_or_grow();
+            let (stream, control) = alloc.alloc_or_grow(None);
 
             async move {
                 stream.recv(Actor::Application).await.unwrap_err();
@@ -307,5 +307,110 @@ fn alloc_drop_notify() {
             drop(alloc);
         }
         .spawn();
+    });
+}
+
+#[test]
+fn associated_credentials() {
+    check!().exhaustive().run(|| {
+        let mut alloc = Allocator::new(1, 1);
+        let alloc = &mut alloc;
+        let mut key_id = VarInt::ZERO;
+        let key_id = &mut key_id;
+
+        let mut alloc_one = move || {
+            let creds = Credentials {
+                id: credentials::Id::default(),
+                key_id: *key_id,
+            };
+            *key_id += 1;
+            let (stream, control) = alloc.alloc_or_grow(Some(&creds));
+            let keys = alloc.pool.keys();
+
+            move || {
+                assert_eq!(keys.get(&creds), Some(control.queue_id()));
+                assert_eq!(keys.get(&creds), Some(stream.queue_id()));
+
+                // interleave the order in which we drop channels
+                if bolero::any() {
+                    drop(stream);
+                    assert_eq!(
+                        keys.get(&creds),
+                        Some(control.queue_id()),
+                        "credentials should still match"
+                    );
+                    drop(control);
+                } else {
+                    drop(control);
+                    assert_eq!(
+                        keys.get(&creds),
+                        Some(stream.queue_id()),
+                        "credentials should still match"
+                    );
+                    drop(stream);
+                }
+
+                assert_eq!(keys.get(&creds), None, "credentials should be removed");
+            }
+        };
+
+        let mut channels = [alloc_one(), alloc_one()];
+        // change the order that channels are freed
+        channels.shuffle();
+
+        for channel in channels {
+            channel();
+        }
+    });
+}
+
+#[test]
+fn stress_test() {
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc::sync_channel as channel,
+        },
+        thread::{scope, sleep, yield_now},
+        time::Duration,
+    };
+
+    crate::testing::init_tracing();
+
+    let mut alloc = Allocator::new(1, 1);
+    let (stream_send, stream_recv) = channel(10);
+    let (control_send, control_recv) = channel(10);
+
+    scope(|s| {
+        static IS_OPEN: AtomicBool = AtomicBool::new(true);
+
+        s.spawn(|| {
+            sleep(Duration::from_secs(1));
+            IS_OPEN.store(false, Ordering::Relaxed);
+        });
+
+        let alloc = s.spawn(move || {
+            while IS_OPEN.load(Ordering::Relaxed) {
+                let (control, stream) = alloc.alloc_or_grow(None);
+                stream_send.send(stream).unwrap();
+                control_send.send(control).unwrap();
+            }
+        });
+
+        s.spawn(move || {
+            while let Ok(stream) = stream_recv.recv() {
+                yield_now();
+                drop(stream);
+            }
+        });
+
+        s.spawn(move || {
+            while let Ok(control) = control_recv.recv() {
+                yield_now();
+                drop(control);
+            }
+        });
+
+        alloc.join().unwrap();
     });
 }
