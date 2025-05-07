@@ -3,14 +3,13 @@
 
 use bytes::{Buf, Bytes};
 use core::task::ready;
-use h3::quic::{self, Error, StreamId, WriteBuf};
+use h3::quic::{self, ConnectionErrorIncoming, StreamErrorIncoming, StreamId, WriteBuf};
 use s2n_quic::{
     application,
     stream::{BidirectionalStream, ReceiveStream},
 };
 use std::{
     convert::TryInto,
-    fmt::{self, Display},
     sync::Arc,
     task::{self, Poll},
 };
@@ -37,69 +36,56 @@ impl Connection {
     }
 }
 
-#[derive(Debug)]
-pub struct ConnectionError(s2n_quic::connection::Error);
-
-impl std::error::Error for ConnectionError {}
-
-impl fmt::Display for ConnectionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl Error for ConnectionError {
-    fn is_timeout(&self) -> bool {
-        matches!(self.0, s2n_quic::connection::Error::IdleTimerExpired { .. })
-    }
-
-    fn err_code(&self) -> Option<u64> {
-        match self.0 {
-            s2n_quic::connection::Error::Application { error, .. } => Some(error.into()),
-            _ => None,
-        }
-    }
-}
-
-impl From<s2n_quic::connection::Error> for ConnectionError {
-    fn from(e: s2n_quic::connection::Error) -> Self {
-        Self(e)
-    }
-}
-
 impl<B> quic::Connection<B> for Connection
 where
     B: Buf,
 {
     type RecvStream = RecvStream;
     type OpenStreams = OpenStreams;
-    type AcceptError = ConnectionError;
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_accept_recv(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::RecvStream>, Self::AcceptError>> {
-        let recv = match ready!(self.recv_acceptor.poll_accept_receive_stream(cx))? {
-            Some(x) => x,
-            None => return Poll::Ready(Ok(None)),
+    ) -> Poll<Result<Self::RecvStream, ConnectionErrorIncoming>> {
+        let recv = match ready!(self.recv_acceptor.poll_accept_receive_stream(cx)) {
+            Ok(Some(x)) => x,
+            Ok(None) => {
+                // This happens when the connection is closed without an error
+                return Poll::Ready(Err(ConnectionErrorIncoming::InternalError(
+                    "connection closed".to_string(),
+                )));
+            }
+            Err(e) => {
+                return Poll::Ready(Err(convert_connection_error(e)));
+            }
         };
-        Poll::Ready(Ok(Some(Self::RecvStream::new(recv))))
+
+        Poll::Ready(Ok(Self::RecvStream::new(recv)))
     }
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_accept_bidi(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::BidiStream>, Self::AcceptError>> {
-        let (recv, send) = match ready!(self.bidi_acceptor.poll_accept_bidirectional_stream(cx))? {
-            Some(x) => x.split(),
-            None => return Poll::Ready(Ok(None)),
+    ) -> Poll<Result<Self::BidiStream, ConnectionErrorIncoming>> {
+        let (recv, send) = match ready!(self.bidi_acceptor.poll_accept_bidirectional_stream(cx)) {
+            Ok(Some(x)) => x.split(),
+            Ok(None) => {
+                // This happens when the connection is closed without an error
+                return Poll::Ready(Err(ConnectionErrorIncoming::InternalError(
+                    "connection closed".to_string(),
+                )));
+            }
+            Err(e) => {
+                return Poll::Ready(Err(convert_connection_error(e)));
+            }
         };
-        Poll::Ready(Ok(Some(Self::BidiStream {
+
+        Poll::Ready(Ok(Self::BidiStream {
             send: Self::SendStream::new(send),
             recv: Self::RecvStream::new(recv),
-        })))
+        }))
     }
 
     fn opener(&self) -> Self::OpenStreams {
@@ -109,30 +95,55 @@ where
     }
 }
 
+fn convert_connection_error(e: s2n_quic::connection::Error) -> h3::quic::ConnectionErrorIncoming {
+    match e {
+        s2n_quic::connection::Error::Application { error, .. } => {
+            ConnectionErrorIncoming::ApplicationClose {
+                error_code: error.into(),
+            }
+        }
+        s2n_quic::connection::Error::IdleTimerExpired { .. } => ConnectionErrorIncoming::Timeout,
+
+        s2n_quic::connection::Error::Closed { .. } => {
+            // This happens when the connection is closed without an error
+            ConnectionErrorIncoming::InternalError("connection closed".to_string())
+        }
+
+        error => ConnectionErrorIncoming::Undefined(Arc::new(error)),
+    }
+}
+
 impl<B> quic::OpenStreams<B> for Connection
 where
     B: Buf,
 {
     type BidiStream = BidiStream<B>;
     type SendStream = SendStream<B>;
-    type OpenError = ConnectionError;
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_open_bidi(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::BidiStream, Self::OpenError>> {
-        let stream = ready!(self.conn.poll_open_bidirectional_stream(cx))?;
-        Ok(stream.into()).into()
+    ) -> Poll<Result<Self::BidiStream, StreamErrorIncoming>> {
+        self.conn
+            .poll_open_bidirectional_stream(cx)
+            .map_ok(|stream| stream.into())
+            .map_err(|err| StreamErrorIncoming::ConnectionErrorIncoming {
+                connection_error: convert_connection_error(err),
+            })
     }
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_open_send(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::SendStream, Self::OpenError>> {
-        let stream = ready!(self.conn.poll_open_send_stream(cx))?;
-        Ok(stream.into()).into()
+    ) -> Poll<Result<Self::SendStream, StreamErrorIncoming>> {
+        self.conn
+            .poll_open_send_stream(cx)
+            .map_ok(|stream| stream.into())
+            .map_err(|err| StreamErrorIncoming::ConnectionErrorIncoming {
+                connection_error: convert_connection_error(err),
+            })
     }
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
@@ -155,24 +166,31 @@ where
 {
     type BidiStream = BidiStream<B>;
     type SendStream = SendStream<B>;
-    type OpenError = ConnectionError;
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_open_bidi(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::BidiStream, Self::OpenError>> {
-        let stream = ready!(self.conn.poll_open_bidirectional_stream(cx))?;
-        Ok(stream.into()).into()
+    ) -> Poll<Result<Self::BidiStream, StreamErrorIncoming>> {
+        self.conn
+            .poll_open_bidirectional_stream(cx)
+            .map_ok(|stream| stream.into())
+            .map_err(|err| StreamErrorIncoming::ConnectionErrorIncoming {
+                connection_error: convert_connection_error(err),
+            })
     }
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_open_send(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Self::SendStream, Self::OpenError>> {
-        let stream = ready!(self.conn.poll_open_send_stream(cx))?;
-        Ok(stream.into()).into()
+    ) -> Poll<Result<Self::SendStream, StreamErrorIncoming>> {
+        self.conn
+            .poll_open_send_stream(cx)
+            .map_ok(|stream| stream.into())
+            .map_err(|err| StreamErrorIncoming::ConnectionErrorIncoming {
+                connection_error: convert_connection_error(err),
+            })
     }
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
@@ -218,12 +236,11 @@ where
     B: Buf,
 {
     type Buf = Bytes;
-    type Error = ReadError;
 
     fn poll_data(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::Buf>, Self::Error>> {
+    ) -> Poll<Result<Option<Self::Buf>, StreamErrorIncoming>> {
         self.recv.poll_data(cx)
     }
 
@@ -240,13 +257,11 @@ impl<B> quic::SendStream<B> for BidiStream<B>
 where
     B: Buf,
 {
-    type Error = SendStreamError;
-
-    fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), StreamErrorIncoming>> {
         self.send.poll_ready(cx)
     }
 
-    fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), StreamErrorIncoming>> {
         self.send.poll_finish(cx)
     }
 
@@ -254,7 +269,7 @@ where
         self.send.reset(reset_code)
     }
 
-    fn send_data<D: Into<WriteBuf<B>>>(&mut self, data: D) -> Result<(), Self::Error> {
+    fn send_data<D: Into<WriteBuf<B>>>(&mut self, data: D) -> Result<(), StreamErrorIncoming> {
         self.send.send_data(data)
     }
 
@@ -288,15 +303,15 @@ impl RecvStream {
 
 impl quic::RecvStream for RecvStream {
     type Buf = Bytes;
-    type Error = ReadError;
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
     fn poll_data(
         &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<Option<Self::Buf>, Self::Error>> {
-        let buf = ready!(self.stream.poll_receive(cx))?;
-        Ok(buf).into()
+    ) -> Poll<Result<Option<Self::Buf>, StreamErrorIncoming>> {
+        self.stream
+            .poll_receive(cx)
+            .map_err(convert_stream_error_to_h3_stream_error_incoming)
     }
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
@@ -319,49 +334,22 @@ impl From<ReceiveStream> for RecvStream {
     }
 }
 
-#[derive(Debug)]
-pub struct ReadError(s2n_quic::stream::Error);
-
-impl std::error::Error for ReadError {}
-
-impl fmt::Display for ReadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl From<ReadError> for Arc<dyn Error> {
-    fn from(e: ReadError) -> Self {
-        Arc::new(e)
-    }
-}
-
-impl From<s2n_quic::stream::Error> for ReadError {
-    fn from(e: s2n_quic::stream::Error) -> Self {
-        Self(e)
-    }
-}
-
-impl Error for ReadError {
-    fn is_timeout(&self) -> bool {
-        matches!(
-            self.0,
-            s2n_quic::stream::Error::ConnectionError {
-                error: s2n_quic::connection::Error::IdleTimerExpired { .. },
-                ..
+fn convert_stream_error_to_h3_stream_error_incoming(
+    error: s2n_quic::stream::Error,
+) -> StreamErrorIncoming {
+    match error {
+        s2n_quic::stream::Error::StreamReset { error, .. } => {
+            StreamErrorIncoming::StreamTerminated {
+                error_code: error.into(),
             }
-        )
-    }
-
-    fn err_code(&self) -> Option<u64> {
-        match self.0 {
-            s2n_quic::stream::Error::ConnectionError {
-                error: s2n_quic::connection::Error::Application { error, .. },
-                ..
-            } => Some(error.into()),
-            s2n_quic::stream::Error::StreamReset { error, .. } => Some(error.into()),
-            _ => None,
         }
+        s2n_quic::stream::Error::ConnectionError { error, .. } => {
+            StreamErrorIncoming::ConnectionErrorIncoming {
+                connection_error: convert_connection_error(error),
+            }
+        }
+
+        error => StreamErrorIncoming::Unknown(Box::new(error)),
     }
 }
 
@@ -389,14 +377,13 @@ impl<B> quic::SendStream<B> for SendStream<B>
 where
     B: Buf,
 {
-    type Error = SendStreamError;
-
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
-    fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), StreamErrorIncoming>> {
         loop {
             // try to flush the current chunk if we have one
             if let Some(chunk) = self.chunk.as_mut() {
-                ready!(self.stream.poll_send(chunk, cx))?;
+                ready!(self.stream.poll_send(chunk, cx))
+                    .map_err(convert_stream_error_to_h3_stream_error_incoming)?;
 
                 // s2n-quic will take the whole chunk on send, even if it exceeds the limits
                 debug_assert!(chunk.is_empty());
@@ -433,9 +420,13 @@ where
     }
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
-    fn send_data<D: Into<WriteBuf<B>>>(&mut self, data: D) -> Result<(), Self::Error> {
+    fn send_data<D: Into<WriteBuf<B>>>(&mut self, data: D) -> Result<(), StreamErrorIncoming> {
         if self.buf.is_some() {
-            return Err(Self::Error::NotReady);
+            return Err(StreamErrorIncoming::ConnectionErrorIncoming {
+                connection_error: ConnectionErrorIncoming::InternalError(
+                    "internal error in the http stack".to_string(),
+                ),
+            });
         }
         self.buf = Some(data.into());
         Ok(())
@@ -452,10 +443,13 @@ where
     }
 
     #[cfg_attr(feature = "tracing", instrument(skip_all, level = "trace"))]
-    fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_finish(&mut self, cx: &mut task::Context<'_>) -> Poll<Result<(), StreamErrorIncoming>> {
         // ensure all chunks are flushed to the QUIC stream before finishing
         ready!(self.poll_ready(cx))?;
-        self.stream.finish()?;
+        self.stream
+            .finish()
+            .map_err(convert_stream_error_to_h3_stream_error_incoming)?;
+
         Ok(()).into()
     }
 
@@ -478,56 +472,5 @@ where
 {
     fn from(send: s2n_quic::stream::SendStream) -> Self {
         SendStream::new(send)
-    }
-}
-
-#[derive(Debug)]
-pub enum SendStreamError {
-    Write(s2n_quic::stream::Error),
-    NotReady,
-}
-
-impl std::error::Error for SendStreamError {}
-
-impl Display for SendStreamError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
-impl From<s2n_quic::stream::Error> for SendStreamError {
-    fn from(e: s2n_quic::stream::Error) -> Self {
-        Self::Write(e)
-    }
-}
-
-impl Error for SendStreamError {
-    fn is_timeout(&self) -> bool {
-        matches!(
-            self,
-            Self::Write(s2n_quic::stream::Error::ConnectionError {
-                error: s2n_quic::connection::Error::IdleTimerExpired { .. },
-                ..
-            })
-        )
-    }
-
-    fn err_code(&self) -> Option<u64> {
-        match self {
-            Self::Write(s2n_quic::stream::Error::StreamReset { error, .. }) => {
-                Some((*error).into())
-            }
-            Self::Write(s2n_quic::stream::Error::ConnectionError {
-                error: s2n_quic::connection::Error::Application { error, .. },
-                ..
-            }) => Some((*error).into()),
-            _ => None,
-        }
-    }
-}
-
-impl From<SendStreamError> for Arc<dyn Error> {
-    fn from(e: SendStreamError) -> Self {
-        Arc::new(e)
     }
 }
