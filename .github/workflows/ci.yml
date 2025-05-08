@@ -958,13 +958,13 @@ jobs:
     needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
     steps:
       - uses: aws-actions/configure-aws-credentials@v4.1.0
+        if: github.event_name == 'schedule'
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
           role-session-name: S2nQuicGHASession
           aws-region: us-west-2
       - name: Report daily CI run to CloudWatch
+        if: github.event_name == 'schedule'
         run: |
-          if [ "${{ github.event_name }}" == "schedule" ]; then
-            METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
-            aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
-          fi
+          METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
+          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
