@@ -21,6 +21,8 @@ cfg-if = "1"
 futures = "0.3"
 http = "1.0"
 humansize = "2"
+icu_normalizer = "=1.5.0" # newer versions require rust 1.82
+icu_properties_data = "=1.5.1" # newer versions require rust 1.82
 litemap = "=0.7.4" # newer versions require rust 1.81
 lru = "0.14"
 rand = "0.9"
