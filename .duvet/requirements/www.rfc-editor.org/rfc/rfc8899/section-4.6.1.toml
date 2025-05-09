@@ -1,0 +1,81 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-4.6.1"
+
+# Validation of PTB Messages
+#
+#    This section specifies utilization and validation of PTB messages.
+# 
+#    *  A simple implementation MAY ignore received PTB messages, and in
+#       this case, the PLPMTU is not updated when a PTB message is
+#       received.
+# 
+#    *  A PL that supports PTB messages MUST validate these messages
+#       before they are further processed.
+# 
+#    A PL that receives a PTB message from a router or middlebox performs
+#    ICMP validation (see Section 4 of [RFC8201] and Section 5.2 of
+#    [BCP145]).  Because DPLPMTUD operates at the PL, the PL needs to
+#    check that each received PTB message is received in response to a
+#    packet transmitted by the endpoint PL performing DPLPMTUD.
+# 
+#    The PL MUST check the protocol information in the quoted packet
+#    carried in an ICMP PTB message payload to validate the message
+#    originated from the sending node.  This validation includes
+#    determining that the combination of the IP addresses, the protocol,
+#    the source port, and destination port match those returned in the
+#    quoted packet -- this is also necessary for the PTB message to be
+#    passed to the corresponding PL.
+# 
+#    The validation SHOULD utilize information that is not simple for an
+#    off-path attacker to determine [BCP145].  For example, it could check
+#    the value of a protocol header field known only to the two PL
+#    endpoints.  A datagram application that uses well-known source and
+#    destination ports ought to also rely on other information to complete
+#    this validation.
+# 
+#    These checks are intended to provide protection from packets that
+#    originate from a node that is not on the network path.  A PTB message
+#    that does not complete the validation MUST NOT be further utilized by
+#    the DPLPMTUD method, as discussed in the Security Considerations
+#    section (Section 8).
+# 
+#    Section 4.6.2 describes this processing of PTB messages.
+
+[[spec]]
+level = "MAY"
+quote = '''
+*  A simple implementation MAY ignore received PTB messages, and in
+this case, the PLPMTU is not updated when a PTB message is
+received.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+*  A PL that supports PTB messages MUST validate these messages
+before they are further processed.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The PL MUST check the protocol information in the quoted packet
+carried in an ICMP PTB message payload to validate the message
+originated from the sending node.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The validation SHOULD utilize information that is not simple for an
+off-path attacker to determine [BCP145].
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A PTB message
+that does not complete the validation MUST NOT be further utilized by
+the DPLPMTUD method, as discussed in the Security Considerations
+section (Section 8).
+'''
+

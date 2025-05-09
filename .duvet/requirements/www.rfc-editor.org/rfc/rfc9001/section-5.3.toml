@@ -1,0 +1,74 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-5.3"
+
+# AEAD Usage
+#
+#    The Authenticated Encryption with Associated Data (AEAD) function
+#    (see [AEAD]) used for QUIC packet protection is the AEAD that is
+#    negotiated for use with the TLS connection.  For example, if TLS is
+#    using the TLS_AES_128_GCM_SHA256 cipher suite, the AEAD_AES_128_GCM
+#    function is used.
+# 
+#    QUIC can use any of the cipher suites defined in [TLS13] with the
+#    exception of TLS_AES_128_CCM_8_SHA256.  A cipher suite MUST NOT be
+#    negotiated unless a header protection scheme is defined for the
+#    cipher suite.  This document defines a header protection scheme for
+#    all cipher suites defined in [TLS13] aside from
+#    TLS_AES_128_CCM_8_SHA256.  These cipher suites have a 16-byte
+#    authentication tag and produce an output 16 bytes larger than their
+#    input.
+# 
+#    An endpoint MUST NOT reject a ClientHello that offers a cipher suite
+#    that it does not support, or it would be impossible to deploy a new
+#    cipher suite.  This also applies to TLS_AES_128_CCM_8_SHA256.
+# 
+#    When constructing packets, the AEAD function is applied prior to
+#    applying header protection; see Section 5.4.  The unprotected packet
+#    header is part of the associated data (A).  When processing packets,
+#    an endpoint first removes the header protection.
+# 
+#    The key and IV for the packet are computed as described in
+#    Section 5.1.  The nonce, N, is formed by combining the packet
+#    protection IV with the packet number.  The 62 bits of the
+#    reconstructed QUIC packet number in network byte order are left-
+#    padded with zeros to the size of the IV.  The exclusive OR of the
+#    padded packet number and the IV forms the AEAD nonce.
+# 
+#    The associated data, A, for the AEAD is the contents of the QUIC
+#    header, starting from the first byte of either the short or long
+#    header, up to and including the unprotected packet number.
+# 
+#    The input plaintext, P, for the AEAD is the payload of the QUIC
+#    packet, as described in [QUIC-TRANSPORT].
+# 
+#    The output ciphertext, C, of the AEAD is transmitted in place of P.
+# 
+#    Some AEAD functions have limits for how many packets can be encrypted
+#    under the same key and IV; see Section 6.6.  This might be lower than
+#    the packet number limit.  An endpoint MUST initiate a key update
+#    (Section 6) prior to exceeding any limit set for the AEAD that is in
+#    use.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A cipher suite MUST NOT be
+negotiated unless a header protection scheme is defined for the
+cipher suite.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST NOT reject a ClientHello that offers a cipher suite
+that it does not support, or it would be impossible to deploy a new
+cipher suite.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST initiate a key update
+(Section 6) prior to exceeding any limit set for the AEAD that is in
+use.
+'''
+
