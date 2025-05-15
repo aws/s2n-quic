@@ -23,7 +23,7 @@ impl ConfirmComplete {
     pub async fn wait_ready(conn: &mut Connection) -> io::Result<()> {
         let mut receiver = conn
             .query_event_context_mut(|context: &mut ConfirmContext| context.sender.subscribe())
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+            .map_err(io::Error::other)?;
 
         loop {
             match &*receiver.borrow_and_update() {
@@ -34,10 +34,7 @@ impl ConfirmComplete {
             }
 
             if receiver.changed().await.is_err() {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "never reached terminal state",
-                ));
+                return Err(io::Error::other("never reached terminal state"));
             }
         }
     }

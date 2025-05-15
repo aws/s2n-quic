@@ -119,10 +119,7 @@ where
                 remote_addr = v4.to_ipv6_mapped().with_port(remote_addr.port()).into();
             }
             (IpAddress::Ipv6(_), IpAddress::Ipv4(_)) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "IPv6 not supported on a IPv4 socket",
-                ))
+                return Err(std::io::Error::other("IPv6 not supported on a IPv4 socket"))
             }
             (IpAddress::Ipv6(_), IpAddress::Ipv6(_)) => {}
         }

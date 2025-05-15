@@ -74,7 +74,7 @@ impl Buffers {
         let lock = self
             .inner
             .lock()
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+            .map_err(|err| io::Error::other(err.to_string()))?;
 
         let entries = lock.host_to_addr.get(&host).ok_or_else(|| {
             io::Error::new(
@@ -125,7 +125,7 @@ impl Buffers {
         let mut lock = self
             .inner
             .lock()
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+            .map_err(|err| io::Error::other(err.to_string()))?;
 
         if !lock.is_open {
             return Err(io::Error::new(
@@ -157,7 +157,7 @@ impl Buffers {
         let mut lock = self
             .inner
             .lock()
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+            .map_err(|err| io::Error::other(err.to_string()))?;
 
         if !lock.is_open {
             return Err(io::Error::new(

@@ -8,7 +8,6 @@ negotiated_crypto!(OneRttKey, OneRttHeaderKey);
 
 impl crypto::OneRttKey for OneRttKey {
     #[inline]
-    #[must_use]
     fn derive_next_key(&self) -> Self {
         Self(self.0.update())
     }
