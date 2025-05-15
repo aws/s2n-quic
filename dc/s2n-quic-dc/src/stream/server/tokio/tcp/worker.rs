@@ -116,8 +116,8 @@ where
 
         let prev_queue_time = core::mem::replace(&mut self.queue_time, now);
         let prev_state = core::mem::replace(&mut self.state, WorkerState::Init);
-        let prev_stream = core::mem::replace(&mut self.stream, Some((stream, remote_address)));
-        let prev_ctx = core::mem::replace(&mut self.subscriber_ctx, Some(subscriber_ctx));
+        let prev_stream = self.stream.replace((stream, remote_address));
+        let prev_ctx = self.subscriber_ctx.replace(subscriber_ctx);
 
         if let Some(remote_address) = prev_stream.map(|(socket, remote_address)| {
             // If linger wasn't already set or it was set to a value other than 0, then override it

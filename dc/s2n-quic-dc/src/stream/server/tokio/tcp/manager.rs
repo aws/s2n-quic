@@ -191,7 +191,7 @@ where
             .push_back(&mut self.inner.workers, idx);
 
         // kick off the initial poll to register wakers with the socket
-        self.inner.poll_worker(idx, cx, publisher, clock);
+        let _ = self.inner.poll_worker(idx, cx, publisher, clock);
 
         true
     }
