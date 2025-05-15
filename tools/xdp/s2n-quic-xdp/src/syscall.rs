@@ -55,10 +55,9 @@ pub fn offsets<Fd: AsRawFd>(fd: &Fd) -> Result<MmapOffsets> {
     }
 
     // an invalid size was returned
-    Err(io::Error::new(
-        io::ErrorKind::Other,
-        format!("invalid mmap offset size: {optlen}"),
-    ))
+    Err(io::Error::other(format!(
+        "invalid mmap offset size: {optlen}"
+    )))
 }
 
 /// Returns the collected statistics for the provided AF_XDP socket
@@ -225,8 +224,7 @@ pub fn mmap(len: usize, offset: usize, fd: Option<RawFd>, huge: bool) -> Result<
         return Err(io::Error::last_os_error());
     }
 
-    let addr = NonNull::new(addr)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "mmap returned null pointer"))?;
+    let addr = NonNull::new(addr).ok_or_else(|| io::Error::other("mmap returned null pointer"))?;
 
     Ok(addr)
 }

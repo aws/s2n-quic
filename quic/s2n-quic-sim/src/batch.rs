@@ -109,8 +109,7 @@ impl FromStr for Plan {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let file = fs::read_to_string(s)?;
-        let mut plan: Self =
-            toml::from_str(&file).map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        let mut plan: Self = toml::from_str(&file).map_err(io::Error::other)?;
 
         if plan.name.is_none() {
             plan.name = Some(

@@ -84,7 +84,7 @@ impl Io {
         let handle = if let Some(handle) = handle {
             handle
         } else {
-            Handle::try_current().map_err(|err| std::io::Error::new(io::ErrorKind::Other, err))?
+            Handle::try_current().map_err(std::io::Error::other)?
         };
 
         let guard = handle.enter();

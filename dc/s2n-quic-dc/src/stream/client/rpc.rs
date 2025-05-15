@@ -44,7 +44,7 @@ where
             let storage = response.provide_storage().await?;
 
             if !storage.has_remaining_capacity() {
-                return Err(io::Error::new(io::ErrorKind::Other, "the provided response buffer failed to provide enough capacity for the peer's response"));
+                return Err(io::Error::other( "the provided response buffer failed to provide enough capacity for the peer's response"));
             }
 
             let len = reader.read_into(storage).await?;

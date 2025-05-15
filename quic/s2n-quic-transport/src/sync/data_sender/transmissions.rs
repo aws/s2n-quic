@@ -424,7 +424,7 @@ impl TransmissionSlab {
         #[cfg(debug_assertions)]
         assert!(prev_entry.occupied);
 
-        let next_entry = core::mem::replace(&mut prev_entry.transmission.next, Some(next));
+        let next_entry = prev_entry.transmission.next.replace(next);
 
         #[cfg(debug_assertions)]
         assert!(self.get_mut(next).occupied);
