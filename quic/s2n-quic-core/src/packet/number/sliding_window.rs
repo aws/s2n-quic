@@ -186,9 +186,7 @@ impl SlidingWindow {
                     // Our mask is the full window since it's all getting evicted.
                     !removed
                 };
-                if let Some(prev_right_edge) =
-                    core::mem::replace(&mut self.right_edge, Some(packet_number))
-                {
+                if let Some(prev_right_edge) = self.right_edge.replace(packet_number) {
                     Ok(EvictedSet {
                         window: removed,
                         right_edge: prev_right_edge,
