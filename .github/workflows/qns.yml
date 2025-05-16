@@ -5,6 +5,9 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    # Run daily job at 8:00 PM PT
+    - cron: '0 3 * * *'
 
 name: qns
 
@@ -548,3 +551,20 @@ jobs:
           set -e
           # `timeout` exits with `124` if the time limit was reached
           [[ "$EXIT_CODE" == "124" ]] || exit $EXIT_CODE
+
+  scheduled-qns-status-report:
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [env, s2n-quic-qns, interop, interop-report, h3spec, perf, perf-report, attack]
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4.2.1
+        if: github.event_name == 'schedule'
+        with:
+          role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHASession
+          aws-region: us-west-2
+      - name: Report daily qns run to CloudWatch
+        if: github.event_name == 'schedule'
+        run: |
+          METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
+          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
