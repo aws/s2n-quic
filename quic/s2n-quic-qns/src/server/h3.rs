@@ -19,7 +19,14 @@ pub async fn handle_connection(connection: Connection, www_dir: Arc<Path>) {
         .await
         .unwrap();
 
-    while let Ok(Some((req, mut stream))) = conn.accept().await {
+    while let Ok(Some(req_resolver)) = conn.accept().await {
+        let (req, mut stream) = match req_resolver.resolve_request().await {
+            Ok(res) => res,
+            Err(err) => {
+                eprintln!("Error resolving request: {err:?}");
+                continue;
+            }
+        };
         match req.uri().path() {
             "" | "/" => {
                 tokio::spawn(async move {
