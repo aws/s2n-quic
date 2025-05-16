@@ -150,7 +150,7 @@ impl Default for Harness {
 
 impl Harness {
     pub fn poll(&mut self) {
-        self.manager.poll(
+        let _ = self.manager.poll(
             &mut (),
             &publisher(&self.subscriber, &self.clock),
             &self.clock,

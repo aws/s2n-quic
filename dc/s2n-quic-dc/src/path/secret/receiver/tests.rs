@@ -206,20 +206,11 @@ fn check_delayed_inner(seed: u64, delay: u16) {
     }
 }
 
+#[derive(Default)]
 struct Model {
     insert_order: Vec<u64>,
     oracle: HashSet<u64>,
     subject: State,
-}
-
-impl Default for Model {
-    fn default() -> Self {
-        Self {
-            oracle: Default::default(),
-            insert_order: Vec::new(),
-            subject: State::new(),
-        }
-    }
 }
 
 impl Model {

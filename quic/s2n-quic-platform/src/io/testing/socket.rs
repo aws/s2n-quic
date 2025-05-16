@@ -278,7 +278,7 @@ impl tx::Socket<Message> for Socket {
 
         let res = self.0.buffers.tx_host(self.0.host, |queue| {
             count = queue.send(entries);
-            events.on_complete(count);
+            let _ = events.on_complete(count);
         });
 
         if count > 0 {
@@ -307,7 +307,7 @@ impl rx::Socket<Message> for Socket {
         let res = self.0.buffers.rx_host(self.0.host, |queue| {
             count = queue.recv(cx, entries);
             if count > 0 {
-                events.on_complete(count);
+                let _ = events.on_complete(count);
             } else {
                 events.blocked()
             }

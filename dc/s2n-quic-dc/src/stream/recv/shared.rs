@@ -143,9 +143,10 @@ impl State {
         // increment the epoch at which we acquired the guard
         self.application_epoch.fetch_add(1, Ordering::AcqRel);
 
-        let inner = self.inner.lock().map_err(|_| {
-            io::Error::new(io::ErrorKind::Other, "shared recv state has been poisoned")
-        })?;
+        let inner = self
+            .inner
+            .lock()
+            .map_err(|_| io::Error::other("shared recv state has been poisoned"))?;
 
         let initial_state = inner.receiver.state().clone();
 
@@ -197,10 +198,7 @@ impl State {
         match self.inner.try_lock() {
             Ok(lock) => Ok(Some(lock)),
             Err(std::sync::TryLockError::WouldBlock) => Ok(None),
-            Err(_) => Err(io::Error::new(
-                io::ErrorKind::Other,
-                "shared recv state has been poisoned",
-            )),
+            Err(_) => Err(io::Error::other("shared recv state has been poisoned")),
         }
     }
 }
