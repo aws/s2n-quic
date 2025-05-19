@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 bytes = "1"
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.6", features = ["html_reports"] }
 crossbeam-channel = { version = "0.5" }
 half = "=2.4.1" # Can be unpinned when we move to MSRV 1.81
 internet-checksum = "0.2"
