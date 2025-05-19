@@ -1,0 +1,29 @@
+---
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+version: 0.2
+env:
+  shell: bash
+  variables:
+    # This assumes you have a Rust toolchain installed
+    CARGO: "cargo +nightly"
+phases:
+  install:
+    commands:
+      - which cargo || true
+      - echo "Installing Rust ..."
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - . $HOME/.cargo/env
+  build:
+    commands:
+      - cargo build --timings --release
+  post_build:
+    commands:
+      - cargo test --exclude s2n-quic-platform --exclude s2n-quic-dc --workspace
+
+artifacts:
+  # upload timing reports
+  files:
+    - '**/*'
+  base-directory: target/cargo-timings
+
