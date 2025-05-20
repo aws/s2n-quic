@@ -92,16 +92,19 @@ pub fn pair<T: Message>(entries: u32, payload_len: u32) -> (Producer<T>, Consume
     let ptr = storage.as_ptr();
 
     let wakers = atomic_waker::pair();
+    let drop_wakers = atomic_waker::pair();
 
     let consumer = Consumer {
         cursor: unsafe { builder(ptr, entries).build_consumer() },
         wakers: wakers.0,
+        drop_waker: drop_wakers.0,
         storage: storage.clone(),
     };
 
     let producer = Producer {
         cursor: unsafe { builder(ptr, entries).build_producer() },
         wakers: wakers.1,
+        drop_waker: drop_wakers.1,
         storage,
     };
 
@@ -112,6 +115,8 @@ pub fn pair<T: Message>(entries: u32, payload_len: u32) -> (Producer<T>, Consume
 pub struct Consumer<T: Message> {
     cursor: Cursor<T>,
     wakers: atomic_waker::Handle,
+    #[allow(dead_code)]
+    drop_waker: atomic_waker::Handle,
     #[allow(dead_code)]
     storage: Arc<message::Storage>,
 }
@@ -195,6 +200,8 @@ pub struct Producer<T: Message> {
     cursor: Cursor<T>,
     wakers: atomic_waker::Handle,
     #[allow(dead_code)]
+    drop_waker: atomic_waker::Handle,
+    #[allow(dead_code)]
     storage: Arc<message::Storage>,
 }
 
@@ -208,6 +215,10 @@ impl<T: Message> Producer<T> {
     #[inline]
     pub fn acquire(&mut self, watermark: u32) -> u32 {
         self.cursor.acquire_producer(watermark)
+    }
+
+    pub fn register_drop_waker(&mut self, cx: &mut Context) {
+        self.drop_waker.register(cx.waker())
     }
 
     /// Polls capacity for sending messages to the consumer
