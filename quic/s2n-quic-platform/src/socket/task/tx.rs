@@ -35,6 +35,7 @@ pub struct Sender<T: Message, S: Socket<T>> {
     ring_cooldown: Cooldown,
     io_cooldown: Cooldown,
     stats: stats::Sender,
+    has_registered_drop_waker: bool,
 }
 
 impl<T, S> Sender<T, S>
@@ -57,6 +58,7 @@ where
             ring_cooldown: cooldown.clone(),
             io_cooldown: cooldown,
             stats,
+            has_registered_drop_waker: false,
         }
     }
 
@@ -101,6 +103,11 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = self.get_mut();
 
+        if !this.has_registered_drop_waker {
+            this.has_registered_drop_waker = true;
+            this.ring.register_drop_waker(cx);
+        }
+
         let mut pending_wake = false;
 
         while !this.events.take_blocked() {
@@ -140,6 +147,9 @@ where
             this.ring.wake();
         }
 
+        if !this.ring.is_open() {
+            return Poll::Ready(None);
+        }
         Poll::Pending
     }
 }

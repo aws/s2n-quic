@@ -133,6 +133,10 @@ impl<T: Message> Consumer<T> {
         self.cursor.acquire_consumer(watermark)
     }
 
+    pub fn register_drop_waker(&mut self, cx: &mut Context) {
+        self.drop_waker.register(cx.waker())
+    }
+
     /// Polls ready-to-consume messages from the producer
     #[inline]
     pub fn poll_acquire(&mut self, watermark: u32, cx: &mut Context) -> Poll<u32> {
