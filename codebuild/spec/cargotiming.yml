@@ -19,7 +19,7 @@ phases:
       - cargo build --timings --release
   post_build:
     commands:
-      - cargo test --exclude s2n-quic-platform --exclude s2n-quic-dc --workspace
+      - cargo test --workspace -- --skip ipv4_two_socket_test --skip ipv4_test
 
 artifacts:
   # upload timing reports
