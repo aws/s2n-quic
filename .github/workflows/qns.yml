@@ -347,7 +347,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "interop / report"
           status: "success"
@@ -503,7 +503,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "perf / report"
           status: "success"
