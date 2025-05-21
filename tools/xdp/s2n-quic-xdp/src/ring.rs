@@ -32,17 +32,21 @@ impl<T: Copy + fmt::Debug> Ring<T> {
         self.flags().contains(RingFlags::NEED_WAKEUP)
     }
 
-    /// Returns a reference to the flags on the ring
+    /// Returns the flags on the ring.
     #[inline]
-    pub fn flags(&self) -> &RingFlags {
-        unsafe { &*self.flags.as_ptr() }
+    pub fn flags(&self) -> RingFlags {
+        // `as_ptr` can be removed once the MSRV hits >= 1.80.0.
+        // The flags are shared with the kernel and non-atomic, which means we cannot create a reference to them without violating aliasing rules.
+        unsafe { self.flags.as_ptr().read() }
     }
 
-    /// Returns a mutable reference to the flags on the ring
+    /// Writes `flags` to the flags on the ring.
     #[inline]
     #[cfg(test)]
-    pub fn flags_mut(&mut self) -> &mut RingFlags {
-        unsafe { &mut *self.flags.as_ptr() }
+    pub fn set_flags(&mut self, flags: RingFlags) {
+        // `as_ptr` can be removed once the MSRV hits >= 1.80.0.
+        // The flags are shared with the kernel and non-atomic, which means we cannot create a reference to them without violating aliasing rules.
+        unsafe { self.flags.as_ptr().write(flags) }
     }
 }
 
@@ -271,7 +275,7 @@ macro_rules! impl_consumer {
 
         #[cfg(test)]
         pub fn set_flags(&mut self, flags: crate::if_xdp::RingFlags) {
-            *self.0.flags_mut() = flags;
+            self.0.set_flags(flags);
         }
     };
 }
