@@ -45,7 +45,7 @@ pub struct Entry {
     // we store this as a u8 to allow the cleaner to separately "take" accessed for id and addr
     // maps while not having two writes and wasting an extra byte of space.
     accessed: AtomicU8,
-    application_data: ApplicationData,
+    application_data: Option<ApplicationData>,
 }
 
 impl SizeOf for Entry {
@@ -73,6 +73,12 @@ impl SizeOf for Entry {
     }
 }
 
+impl SizeOf for Option<ApplicationData> {
+    fn size(&self) -> usize {
+        std::mem::size_of::<ApplicationData>()
+    }
+}
+
 impl SizeOf for ApplicationData {
     fn size(&self) -> usize {
         std::mem::size_of_val(self)
@@ -91,7 +97,7 @@ impl Entry {
         parameters: dc::ApplicationParams,
         // FIXME: remove unused parameter
         _: Duration,
-        application_data: ApplicationData,
+        application_data: Option<ApplicationData>,
     ) -> Self {
         // clamp max datagram size to a well-known value
         parameters
@@ -130,7 +136,7 @@ impl Entry {
             receiver,
             dc::testing::TEST_APPLICATION_PARAMS,
             dc::testing::TEST_REHANDSHAKE_PERIOD,
-            Arc::new(()),
+            None,
         ))
     }
 
@@ -273,7 +279,7 @@ impl Entry {
         self.secret.control_sealer()
     }
 
-    pub fn application_data(&self) -> &ApplicationData {
+    pub fn application_data(&self) -> &Option<ApplicationData> {
         &self.application_data
     }
 }

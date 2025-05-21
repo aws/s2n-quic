@@ -215,7 +215,7 @@ impl Map {
                 receiver::State::new(),
                 dc::testing::TEST_APPLICATION_PARAMS,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
-                Arc::new(()),
+                None,
             );
             let entry = Arc::new(entry);
             provider.store.test_insert(entry);
@@ -277,7 +277,7 @@ impl Map {
                 super::receiver::State::new(),
                 params,
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
-                Arc::new(()),
+                None,
             );
             let entry = Arc::new(entry);
             map.store.test_insert(entry);
@@ -297,7 +297,11 @@ impl Map {
     pub fn register_make_application_data(
         &self,
         cb: Box<
-            dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData + Send + Sync,
+            dyn Fn(
+                    &dyn s2n_quic_core::crypto::tls::TlsSession,
+                ) -> Result<Option<ApplicationData>, &'static str>
+                + Send
+                + Sync,
         >,
     ) {
         self.store.register_make_application_data(cb);

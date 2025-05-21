@@ -106,12 +106,16 @@ pub trait Store: 'static + Send + Sync {
     fn register_make_application_data(
         &self,
         cb: Box<
-            dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData + Send + Sync,
+            dyn Fn(
+                    &dyn s2n_quic_core::crypto::tls::TlsSession,
+                ) -> Result<Option<ApplicationData>, &'static str>
+                + Send
+                + Sync,
         >,
     );
 
     fn application_data(
         &self,
         session: &dyn s2n_quic_core::crypto::tls::TlsSession,
-    ) -> ApplicationData;
+    ) -> Result<Option<ApplicationData>, &'static str>;
 }
