@@ -115,7 +115,6 @@ pub fn pair<T: Message>(entries: u32, payload_len: u32) -> (Producer<T>, Consume
 pub struct Consumer<T: Message> {
     cursor: Cursor<T>,
     wakers: atomic_waker::Handle,
-    #[allow(dead_code)]
     drop_waker: atomic_waker::Handle,
     #[allow(dead_code)]
     storage: Arc<message::Storage>,
@@ -203,7 +202,6 @@ impl<T: Message> Consumer<T> {
 pub struct Producer<T: Message> {
     cursor: Cursor<T>,
     wakers: atomic_waker::Handle,
-    #[allow(dead_code)]
     drop_waker: atomic_waker::Handle,
     #[allow(dead_code)]
     storage: Arc<message::Storage>,
