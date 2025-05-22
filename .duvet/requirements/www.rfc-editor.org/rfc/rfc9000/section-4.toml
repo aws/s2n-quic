@@ -1,0 +1,32 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-4"
+
+# Flow Control
+#
+#    Receivers need to limit the amount of data that they are required to
+#    buffer, in order to prevent a fast sender from overwhelming them or a
+#    malicious sender from consuming a large amount of memory.  To enable
+#    a receiver to limit memory commitments for a connection, streams are
+#    flow controlled both individually and across a connection as a whole.
+#    A QUIC receiver controls the maximum amount of data the sender can
+#    send on a stream as well as across all streams at any time, as
+#    described in Sections 4.1 and 4.2.
+# 
+#    Similarly, to limit concurrency within a connection, a QUIC endpoint
+#    controls the maximum cumulative number of streams that its peer can
+#    initiate, as described in Section 4.6.
+# 
+#    Data sent in CRYPTO frames is not flow controlled in the same way as
+#    stream data.  QUIC relies on the cryptographic protocol
+#    implementation to avoid excessive buffering of data; see [QUIC-TLS].
+#    To avoid excessive buffering at multiple layers, QUIC implementations
+#    SHOULD provide an interface for the cryptographic protocol
+#    implementation to communicate its buffering limits.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+To avoid excessive buffering at multiple layers, QUIC implementations
+SHOULD provide an interface for the cryptographic protocol
+implementation to communicate its buffering limits.
+'''
+
