@@ -219,14 +219,14 @@ where
     mk_application_data: RwLock<
         Option<
             Box<
-                dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData
+                dyn Fn(
+                        &dyn s2n_quic_core::crypto::tls::TlsSession,
+                    ) -> Result<Option<ApplicationData>, &'static str>
                     + Send
                     + Sync,
             >,
         >,
     >,
-
-    dummy_application_data: ApplicationData,
 }
 
 // Share control sockets -- we only send on these so it doesn't really matter if there's only one
@@ -288,7 +288,6 @@ where
             subscriber,
             request_handshake: RwLock::new(None),
             mk_application_data: RwLock::new(None),
-            dummy_application_data: Arc::new(()),
         };
 
         // Growing to double our maximum inserted entries should ensure that we never grow again, see:
@@ -677,7 +676,11 @@ where
     fn register_make_application_data(
         &self,
         cb: Box<
-            dyn Fn(&dyn s2n_quic_core::crypto::tls::TlsSession) -> ApplicationData + Send + Sync,
+            dyn Fn(
+                    &dyn s2n_quic_core::crypto::tls::TlsSession,
+                ) -> Result<Option<ApplicationData>, &'static str>
+                + Send
+                + Sync,
         >,
     ) {
         // FIXME: Maybe panic if already initialized?
@@ -891,7 +894,7 @@ where
     fn application_data(
         &self,
         session: &dyn s2n_quic_core::crypto::tls::TlsSession,
-    ) -> ApplicationData {
+    ) -> Result<Option<ApplicationData>, &'static str> {
         if let Some(ctxt) = &*self
             .mk_application_data
             .read()
@@ -899,7 +902,7 @@ where
         {
             (ctxt)(session)
         } else {
-            self.dummy_application_data.clone()
+            Ok(None)
         }
     }
 }

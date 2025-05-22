@@ -84,7 +84,14 @@ impl dc::Path for HandshakingPath {
         &mut self,
         session: &impl s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
-        self.application_data = Some(self.map.store.application_data(session));
+        match self.map.store.application_data(session) {
+            Ok(application_data) => {
+                self.application_data = application_data;
+            }
+            Err(msg) => {
+                return Err(s2n_quic_core::transport::Error::APPLICATION_ERROR.with_reason(msg));
+            }
+        };
 
         let mut material = Zeroizing::new([0; TLS_EXPORTER_LENGTH]);
         session
@@ -138,7 +145,7 @@ impl dc::Path for HandshakingPath {
             receiver,
             self.parameters.clone(),
             self.map.store.rehandshake_period(),
-            self.application_data.take().unwrap(),
+            self.application_data.take(),
         );
         let entry = Arc::new(entry);
         self.entry = Some(entry.clone());
