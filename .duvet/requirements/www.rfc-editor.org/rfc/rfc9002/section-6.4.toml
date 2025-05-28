@@ -1,0 +1,45 @@
+target = "https://www.rfc-editor.org/rfc/rfc9002#section-6.4"
+
+# Discarding Keys and Packet State
+#
+#    When Initial and Handshake packet protection keys are discarded (see
+#    Section 4.9 of [QUIC-TLS]), all packets that were sent with those
+#    keys can no longer be acknowledged because their acknowledgments
+#    cannot be processed.  The sender MUST discard all recovery state
+#    associated with those packets and MUST remove them from the count of
+#    bytes in flight.
+# 
+#    Endpoints stop sending and receiving Initial packets once they start
+#    exchanging Handshake packets; see Section 17.2.2.1 of
+#    [QUIC-TRANSPORT].  At this point, recovery state for all in-flight
+#    Initial packets is discarded.
+# 
+#    When 0-RTT is rejected, recovery state for all in-flight 0-RTT
+#    packets is discarded.
+# 
+#    If a server accepts 0-RTT, but does not buffer 0-RTT packets that
+#    arrive before Initial packets, early 0-RTT packets will be declared
+#    lost, but that is expected to be infrequent.
+# 
+#    It is expected that keys are discarded at some time after the packets
+#    encrypted with them are either acknowledged or declared lost.
+#    However, Initial and Handshake secrets are discarded as soon as
+#    Handshake and 1-RTT keys are proven to be available to both client
+#    and server; see Section 4.9.1 of [QUIC-TLS].
+
+[[spec]]
+level = "MUST"
+quote = '''
+The sender MUST discard all recovery state
+associated with those packets and MUST remove them from the count of
+bytes in flight.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The sender MUST discard all recovery state
+associated with those packets and MUST remove them from the count of
+bytes in flight.
+'''
+
