@@ -53,7 +53,7 @@ impl Model {
     fn pattern(&mut self, amount: usize, skip: u8) -> impl Iterator<Item = u8> + Clone {
         let base = self.byte as usize + skip as usize;
 
-        let iter = core::iter::repeat(base as u8).take(amount);
+        let iter = std::iter::repeat_n(base as u8, amount);
 
         self.byte = (base + amount) as u8;
 

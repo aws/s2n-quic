@@ -293,7 +293,7 @@ where
                 // update the waker if needed
                 if prev_waker
                     .as_ref()
-                    .map_or(true, |prev| !prev.will_wake(cx.waker()))
+                    .is_none_or(|prev| !prev.will_wake(cx.waker()))
                 {
                     prev_waker = Some(cx.waker().clone());
                     reader.update_waker(cx);
@@ -334,7 +334,7 @@ where
                 // update the waker if needed
                 if prev_waker
                     .as_ref()
-                    .map_or(true, |prev| !prev.will_wake(cx.waker()))
+                    .is_none_or(|prev| !prev.will_wake(cx.waker()))
                 {
                     prev_waker = Some(cx.waker().clone());
                     writer.update_waker(cx);
