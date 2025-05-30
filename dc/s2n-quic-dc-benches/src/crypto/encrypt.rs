@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use criterion::{black_box, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
 
 pub fn benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("crypto/encrypt");

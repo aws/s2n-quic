@@ -395,14 +395,13 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         let packet_number_decoder = self.packet_number_decoder();
         let packet = protected
             .unprotect(&self.header_key, packet_number_decoder)
-            .map_err(|err| {
+            .inspect_err(|_err| {
                 publisher.on_packet_dropped(event::builder::PacketDropped {
                     reason: event::builder::PacketDropReason::UnprotectFailed {
                         space: event::builder::KeySpace::Initial,
                         path: path_event!(path, path_id),
                     },
                 });
-                err
             })?;
 
         if self.is_duplicate(packet.packet_number, path_id, path, publisher) {
@@ -411,14 +410,13 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
 
         let packet_header =
             event::builder::PacketHeader::new(packet.packet_number, publisher.quic_version());
-        let decrypted = packet.decrypt(&self.key).map_err(|err| {
+        let decrypted = packet.decrypt(&self.key).inspect_err(|_err| {
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::DecryptionFailed {
                     packet_header,
                     path: path_event!(path, path_id),
                 },
             });
-            err
         })?;
 
         if Config::ENDPOINT_TYPE.is_client() && !decrypted.token.is_empty() {

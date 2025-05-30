@@ -520,7 +520,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             for (packet_number, acked_packet_info) in self.sent_packets.remove_range(pn_range) {
                 newly_acked_packets.push((packet_number, acked_packet_info));
 
-                if largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
+                if largest_newly_acked.is_none_or(|(pn, _)| packet_number > pn) {
                     largest_newly_acked = Some((packet_number, acked_packet_info));
                 }
 
@@ -652,7 +652,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             if acked_packet_info.path_id == current_path_id {
                 current_path_acked_bytes += sent_bytes;
 
-                if current_path_largest_newly_acked.map_or(true, |(pn, _)| packet_number > pn) {
+                if current_path_largest_newly_acked.is_none_or(|(pn, _)| packet_number > pn) {
                     current_path_largest_newly_acked = Some((packet_number, acked_packet_info));
                 }
             } else if sent_bytes > 0 {
@@ -961,7 +961,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                 // Check that the packet was sent on this path
                 && sent_info.path_id == current_path_id;
 
-            let new_loss_burst = prev_lost_packet_number.map_or(true, |prev: PacketNumber| {
+            let new_loss_burst = prev_lost_packet_number.is_none_or(|prev: PacketNumber| {
                 packet_number.checked_distance(prev) != Some(1)
             });
 

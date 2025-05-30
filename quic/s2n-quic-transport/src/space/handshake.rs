@@ -360,14 +360,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 
         let packet = protected
             .unprotect(&self.header_key, packet_number_decoder)
-            .map_err(|err| {
+            .inspect_err(|_err| {
                 publisher.on_packet_dropped(event::builder::PacketDropped {
                     reason: event::builder::PacketDropReason::UnprotectFailed {
                         space: event::builder::KeySpace::Handshake,
                         path: path_event!(path, path_id),
                     },
                 });
-                err
             })?;
 
         if self.is_duplicate(packet.packet_number, path_id, path, publisher) {
@@ -376,14 +375,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
 
         let packet_header =
             event::builder::PacketHeader::new(packet.packet_number, publisher.quic_version());
-        let decrypted = packet.decrypt(&self.key).map_err(|err| {
+        let decrypted = packet.decrypt(&self.key).inspect_err(|_err| {
             publisher.on_packet_dropped(event::builder::PacketDropped {
                 reason: event::builder::PacketDropReason::DecryptionFailed {
                     packet_header,
                     path: path_event!(path, path_id),
                 },
             });
-            err
         })?;
         Ok(decrypted)
     }

@@ -404,7 +404,7 @@ impl Controller {
         ecn.using_ecn()
             && self
                 .last_acked_ecn_packet_timestamp
-                .map_or(true, |last_acked| last_acked < time_sent)
+                .is_none_or(|last_acked| last_acked < time_sent)
     }
 
     /// Set the state to Failed and arm the retest timer

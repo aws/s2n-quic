@@ -351,8 +351,7 @@ mod tests {
         while sent_bytes < bytes_to_send {
             // Confirm the current departure time is less than 1 rtt
             assert!(pacer
-                .earliest_departure_time()
-                .map_or(true, |departure_time| departure_time < now + rtt));
+                .earliest_departure_time().is_none_or(|departure_time| departure_time < now + rtt));
             pacer.on_packet_sent(now, MINIMUM_MAX_DATAGRAM_SIZE as usize, rtt);
             sent_bytes += MINIMUM_MAX_DATAGRAM_SIZE as u64;
         }

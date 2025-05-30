@@ -112,7 +112,7 @@ impl HybridSlowStart {
         // started the RTT round (or the starting packet itself) is acknowledged
         let rtt_round_is_over = self
             .rtt_round_end_time
-            .map_or(true, |end_time| time_sent >= end_time);
+            .is_none_or(|end_time| time_sent >= end_time);
 
         if rtt_round_is_over {
             // Start a new round and save the previous min RTT

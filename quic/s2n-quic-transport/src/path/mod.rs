@@ -305,8 +305,7 @@ impl<Config: endpoint::Config> Path<Config> {
         !self.at_amplification_limit()
             && self
                 .congestion_controller
-                .earliest_departure_time()
-                .map_or(true, |edt| edt.has_elapsed(timestamp))
+                .earliest_departure_time().is_none_or(|edt| edt.has_elapsed(timestamp))
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.

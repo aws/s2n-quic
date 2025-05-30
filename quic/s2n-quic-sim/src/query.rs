@@ -34,7 +34,7 @@ pub struct Query {
 
 impl Query {
     pub fn run(&self) -> Result {
-        let input: Box<dyn io::Read> = if self.input.as_ref().map_or(true, |v| v == "-") {
+        let input: Box<dyn io::Read> = if self.input.as_ref().is_none_or(|v| v == "-") {
             let reader = io::stdin();
             Box::new(reader)
         } else {
@@ -52,7 +52,7 @@ impl Query {
         let queries = &self.query;
         let filters = &self.filter;
 
-        let header = self.header.map_or(true, |v| v.unwrap_or(true));
+        let header = self.header.is_none_or(|v| v.unwrap_or(true));
         if header {
             let seed = if with_seed {
                 Some(("seed", "id"))
@@ -95,8 +95,8 @@ impl Query {
             Ok(())
         };
 
-        let clients = self.clients.map_or(true, |v| v.unwrap_or(true));
-        let servers = self.servers.map_or(true, |v| v.unwrap_or(true));
+        let clients = self.clients.is_none_or(|v| v.unwrap_or(true));
+        let servers = self.servers.is_none_or(|v| v.unwrap_or(true));
 
         let reader = crate::stats::Stats::reader(input);
 

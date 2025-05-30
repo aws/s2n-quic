@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::hash::Hasher;
-use criterion::{black_box, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput};
 use s2n_quic_core::inet::checksum::Checksum;
+use std::hint::black_box;
 
 pub fn benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("inet");
