@@ -144,9 +144,7 @@ pub mod tx {
             }
 
             // the request is interested in push availability
-            if self
-                .chunks
-                .as_ref().is_none_or(|chunks| chunks.is_empty())
+            if self.chunks.as_ref().is_none_or(|chunks| chunks.is_empty())
                 && !self.finish
                 && !self.flush
                 && context.is_some()

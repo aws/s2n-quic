@@ -118,8 +118,8 @@ fn test_one_rtt(slow_start: bool) {
     while sent_bytes < bytes_to_send {
         // Confirm the current departure time is less than 1 rtt
         assert!(pacer
-            .earliest_departure_time().is_none_or(|departure_time| departure_time
-                < now + rtt.smoothed_rtt()));
+            .earliest_departure_time()
+            .is_none_or(|departure_time| departure_time < now + rtt.smoothed_rtt()));
         pacer.on_packet_sent(
             now,
             MINIMUM_MAX_DATAGRAM_SIZE as usize,

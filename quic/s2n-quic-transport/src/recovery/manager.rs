@@ -961,9 +961,8 @@ impl<Config: endpoint::Config> Manager<Config> {
                 // Check that the packet was sent on this path
                 && sent_info.path_id == current_path_id;
 
-            let new_loss_burst = prev_lost_packet_number.is_none_or(|prev: PacketNumber| {
-                packet_number.checked_distance(prev) != Some(1)
-            });
+            let new_loss_burst = prev_lost_packet_number
+                .is_none_or(|prev: PacketNumber| packet_number.checked_distance(prev) != Some(1));
 
             if sent_info.transmission_mode.is_mtu_probing() {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-14.4
