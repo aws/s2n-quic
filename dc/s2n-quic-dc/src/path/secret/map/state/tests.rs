@@ -151,7 +151,7 @@ impl Model {
                     if let Invariant::ContainsId(id) = invariant {
                         if state
                             .get_by_id_untracked(id)
-                            .map_or(true, |v| v.retired_at().is_some())
+                            .is_none_or(|v| v.retired_at().is_some())
                         {
                             invalidated.push(*id);
                             return false;

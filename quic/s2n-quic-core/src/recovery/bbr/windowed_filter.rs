@@ -28,13 +28,13 @@ pub(crate) struct MinFilter;
 
 impl<T: core::cmp::PartialOrd> Filter<T> for MaxFilter {
     fn supersedes(new: T, current: Option<T>) -> bool {
-        current.map_or(true, |current| new >= current)
+        current.is_none_or(|current| new >= current)
     }
 }
 
 impl<T: core::cmp::PartialOrd> Filter<T> for MinFilter {
     fn supersedes(new: T, current: Option<T>) -> bool {
-        current.map_or(true, |current| new <= current)
+        current.is_none_or(|current| new <= current)
     }
 }
 
