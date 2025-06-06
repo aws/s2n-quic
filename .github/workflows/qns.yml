@@ -225,18 +225,14 @@ jobs:
           done
 
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: |
-          ((github.event_name == 'push' || github.event_name == 'schedule') && github.repository == 'aws/s2n-quic') ||
-          github.repository == github.event.pull_request.head.repo.full_name
+        if: github.repository == 'aws/s2n-quic'
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
-        if: |
-          ((github.event_name == 'push' || github.event_name == 'schedule') && github.repository == 'aws/s2n-quic') ||
-          github.repository == github.event.pull_request.head.repo.full_name
+        if: github.repository == 'aws/s2n-quic'
         id: s3
         working-directory: quic-interop-runner
         run: |
@@ -327,18 +323,14 @@ jobs:
               web/logs/latest/result.json
 
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: |
-          ((github.event_name == 'push' || github.event_name == 'schedule') && github.repository == 'aws/s2n-quic') ||
-          github.repository == github.event.pull_request.head.repo.full_name
+        if: github.repository == 'aws/s2n-quic'
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
-        if: |
-          ((github.event_name == 'push' || github.event_name == 'schedule') && github.repository == 'aws/s2n-quic') ||
-          github.repository == github.event.pull_request.head.repo.full_name
+        if: github.repository == 'aws/s2n-quic'
         id: s3
         run: |
           cp .github/interop/*.html web/
@@ -355,7 +347,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: (github.event_name == 'push' && github.repository == 'aws/s2n-quic') || github.repository == github.event.pull_request.head.repo.full_name
+        if: github.repository == 'aws/s2n-quic'
         with:
           name: "interop / report"
           status: "success"
@@ -489,18 +481,14 @@ jobs:
           tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
 
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: |
-          ((github.event_name == 'push' || github.event_name == 'schedule') && github.repository == 'aws/s2n-quic') ||
-          github.repository == github.event.pull_request.head.repo.full_name
+        if: github.repository == 'aws/s2n-quic'
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload results
-        if: |
-          ((github.event_name == 'push' || github.event_name == 'schedule') && github.repository == 'aws/s2n-quic') ||
-          github.repository == github.event.pull_request.head.repo.full_name
+        if: github.repository == 'aws/s2n-quic'
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/perf"
@@ -515,7 +503,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: (github.event_name == 'push' && github.repository == 'aws/s2n-quic') || github.repository == github.event.pull_request.head.repo.full_name
+        if: github.repository == 'aws/s2n-quic'
         with:
           name: "perf / report"
           status: "success"
@@ -570,13 +558,13 @@ jobs:
     needs: [env, s2n-quic-qns, interop, interop-report, h3spec, perf, perf-report, attack]
     steps:
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: github.event_name == 'schedule' && github.repository == 'aws/s2n-quic'
+        if: github.repository == 'aws/s2n-quic'
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
           role-session-name: S2nQuicGHASession
           aws-region: us-west-2
       - name: Report daily qns run to CloudWatch
-        if: github.event_name == 'schedule' && github.repository == 'aws/s2n-quic'
+        if: github.repository == 'aws/s2n-quic'
         run: |
           METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
           aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
