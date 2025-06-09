@@ -80,11 +80,13 @@ OPTIONS=(
 mkdir -p src/wireshark_sys/
 
 RUST_TARGET=$(rustc -vV | grep release: | awk '{ print $2 }')
+RUST_EDITION=$(cat ../../.rustfmt.toml | grep edition | awk '{ print $3 }' | tr -d '"')
 
 # This list is filtered to roughly what our current usage requires.
 # It's possible there's a better way to do this -- some of the Wireshark
 # headers end up pulling in C++ so we do need some filtering.
 bindgen \
+  --rust-edition $RUST_EDITION \
   --rust-target $RUST_TARGET \
   --raw-line '// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.' \
   --raw-line '// SPDX-License-Identifier: Apache-2.0' \
@@ -94,6 +96,7 @@ bindgen \
   -- ${INCLUDES[@]}
 
 bindgen \
+  --rust-edition $RUST_EDITION \
   --rust-target $RUST_TARGET \
   --raw-line '// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.' \
   --raw-line '// SPDX-License-Identifier: Apache-2.0' \
