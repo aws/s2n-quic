@@ -47,6 +47,14 @@ jobs:
         with:
           folder: target/book
 
+      - name: Test
+        run: |
+          echo "github.event_name: ${{ github.event_name }}"
+          echo "github.repository: ${{ github.repository }}"
+          echo "github.event.pull_request.head.repo.full_name: ${{ github.event.pull_request.head.repo.full_name }}"
+          echo "github.event_name == 'push': ${{ github.event_name == 'push' }}"
+          echo "github.repository == github.event.pull_request.head.repo.full_name: ${{ github.repository == github.event.pull_request.head.repo.full_name }}"
+
       - uses: aws-actions/configure-aws-credentials@v4.2.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
