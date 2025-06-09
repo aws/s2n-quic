@@ -52,14 +52,14 @@ runs:
       run: ${{ inputs.report-script }} ${{ github.sha }}
 
     - uses: aws-actions/configure-aws-credentials@v4.0.2
-      if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+      if: github.repository == 'aws/s2n-quic'
       with:
         role-to-assume: ${{ inputs.role-to-assume}}
         role-session-name: ${{ inputs.role-session-name}}
         aws-region: ${{ inputs.aws-s3-region }}
 
     - name: Upload to S3
-      if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+      if: github.repository == 'aws/s2n-quic'
       id: s3
       shell: bash
       run: |
@@ -88,7 +88,7 @@ runs:
         echo "::set-output name=URL::$URL"
 
     - uses: ouzi-dev/commit-status-updater@v1.1.2
-      if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
+      if: github.repository == 'aws/s2n-quic'
       with:
         name: "compliance / report"
         status: "success"
