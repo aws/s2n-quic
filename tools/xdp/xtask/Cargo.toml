@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-bindgen = "0.71"
+bindgen = "0.72"
 clap = { version = "4.1", features = ["derive"] }
 elf = "0.8"
 env_logger = "0.11"
