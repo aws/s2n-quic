@@ -70,7 +70,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.repository == 'aws/s2n-quic'
+        if: github.repository == 'aws/s2n-quic' && (github.event_name == 'push' || github.event_name == 'pull_request')
         with:
           name: "book / url"
           status: "success"
