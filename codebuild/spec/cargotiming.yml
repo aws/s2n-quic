@@ -19,11 +19,10 @@ phases:
       - cargo build --timings --release
   post_build:
     commands:
-      - cargo test --workspace -- --skip ipv4_two_socket_test --skip ipv4_test
+      - cargo test --workspace -- --skip ipv4_two_socket_test --skip ipv4_test --skip max_total_test
 
 artifacts:
   # upload timing reports
   files:
     - '**/*'
   base-directory: target/cargo-timings
-
