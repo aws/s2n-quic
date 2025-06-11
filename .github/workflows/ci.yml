@@ -175,14 +175,14 @@ jobs:
           RUSTDOCFLAGS: --cfg docsrs
 
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/doc"
@@ -197,7 +197,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "doc / report"
           status: "success"
@@ -441,14 +441,14 @@ jobs:
         run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
 
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload results
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/coverage"
@@ -463,7 +463,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "coverage / report"
           status: "success"
@@ -559,14 +559,14 @@ jobs:
           ./scripts/recovery-sim
 
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/recovery-simulations"
@@ -581,7 +581,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "recovery-simulations / report"
           status: "success"
@@ -610,14 +610,14 @@ jobs:
           ./scripts/sim
 
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/sim"
@@ -632,7 +632,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "sims / report"
           status: "success"
@@ -723,14 +723,14 @@ jobs:
           cargo build --timings --release --workspace
 
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         run: |
           TARGET_SHA="${{ github.sha }}/timing/index.html"
@@ -745,7 +745,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "timing / report"
           status: "success"
@@ -824,14 +824,14 @@ jobs:
           mv dhat-heap.json target/report/
 
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
           role-session-name: S2nQuicGHAS3Session
           aws-region: us-west-2
 
       - name: Upload to S3
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         id: s3
         working-directory: tools/memory-report
         run: |
@@ -847,7 +847,7 @@ jobs:
           fi
 
       - uses: ouzi-dev/commit-status-updater@v2.0.2
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           name: "dhat / report"
           status: "success"
@@ -958,13 +958,13 @@ jobs:
     needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
     steps:
       - uses: aws-actions/configure-aws-credentials@v4.2.1
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'schedule'
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
           role-session-name: S2nQuicGHASession
           aws-region: us-west-2
       - name: Report daily CI run to CloudWatch
-        if: github.repository == 'aws/s2n-quic'
+        if: github.event_name == 'schedule'
         run: |
           METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
           aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
