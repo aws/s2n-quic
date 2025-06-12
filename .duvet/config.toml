@@ -1,0 +1,27 @@
+'$schema' = "https://awslabs.github.io/duvet/config/v0.4.0.json"
+
+[[source]]
+pattern = "quic/**/*.rs"
+
+[[specification]]
+source = "https://www.rfc-editor.org/rfc/rfc8312"
+
+[[specification]]
+source = "https://www.rfc-editor.org/rfc/rfc8899"
+
+[[specification]]
+source = "https://www.rfc-editor.org/rfc/rfc9000"
+
+[[specification]]
+source = "https://www.rfc-editor.org/rfc/rfc9001"
+
+[[specification]]
+source = "https://www.rfc-editor.org/rfc/rfc9002"
+
+[report.html]
+enabled = true
+issue-link = "https://github.com/aws/s2n-quic/issues"
+blob-link = "https://github.com/aws/s2n-quic/blob/${{ BLOB || GITHUB_SHA || 'main' }}"
+
+[report.snapshot]
+enabled = true
