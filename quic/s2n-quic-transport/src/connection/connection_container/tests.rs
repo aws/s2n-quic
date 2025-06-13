@@ -141,6 +141,8 @@ impl connection::Trait for TestConnection {
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         _conn_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
         _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
+        _connection_id_format: &mut <Self::Config as endpoint::Config>::ConnectionIdFormat,
     ) -> Result<(), connection::Error> {
         Ok(())
     }
@@ -157,6 +159,7 @@ impl connection::Trait for TestConnection {
         _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         _conn_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        _connection_id_format: &<Self::Config as endpoint::Config>::ConnectionIdFormat,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -173,6 +176,7 @@ impl connection::Trait for TestConnection {
         _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         _conn_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        _connection_id_format: &<Self::Config as endpoint::Config>::ConnectionIdFormat,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
@@ -190,6 +194,7 @@ impl connection::Trait for TestConnection {
         _datagram_endpoint: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         _connection_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        _connection_id_format: &<Self::Config as endpoint::Config>::ConnectionIdFormat,
     ) -> Result<(), ProcessingError> {
         Ok(())
     }
