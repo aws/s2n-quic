@@ -27,10 +27,12 @@ use s2n_quic_core::{
         id::{ConnectionInfo, Generator},
         InitialId, LocalId, PeerId,
     },
-    crypto::{tls, tls::Endpoint as _, CryptoSuite, InitialKey},
+    crypto::{
+        tls::{self, Endpoint as _},
+        CryptoSuite, InitialKey,
+    },
     datagram::{Endpoint as DatagramEndpoint, PreConnectionInfo},
-    dc,
-    dc::Endpoint as _,
+    dc::{self, Endpoint as _},
     endpoint::{limits::Outcome, Limiter as _},
     event::{
         self, supervisor, ConnectionPublisher, EndpointPublisher as _, IntoEvent, Subscriber as _,
@@ -38,8 +40,7 @@ use s2n_quic_core::{
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
     packet::{initial::ProtectedInitial, interceptor::Interceptor, ProtectedPacket},
-    path,
-    path::{mtu, Handle as _},
+    path::{self, mtu, Handle as _},
     random::Generator as _,
     stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
@@ -215,6 +216,8 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     endpoint_context.datagram,
                     endpoint_context.dc,
                     endpoint_context.connection_limits,
+                    endpoint_context.random_generator,
+                    endpoint_context.packet_interceptor,
                 ) {
                     conn.close(
                         error,
@@ -1232,6 +1235,8 @@ impl<Cfg: Config> Endpoint<Cfg> {
             dc_endpoint: endpoint_context.dc,
             open_registry,
             limits_endpoint: endpoint_context.connection_limits,
+            random_endpoint: endpoint_context.random_generator,
+            interceptor_endpoint: endpoint_context.packet_interceptor,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
         self.connections

@@ -138,6 +138,8 @@ impl connection::Trait for TestConnection {
         _datagram: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         _conn_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
+        _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), connection::Error> {
         Ok(())
     }

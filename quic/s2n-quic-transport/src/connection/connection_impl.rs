@@ -12,7 +12,7 @@ use crate::{
         local_id_registry::LocalIdRegistrationError,
         ConnectionIdMapper, ConnectionInterests, ConnectionTimers, ConnectionTransmission,
         ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
-        ProcessingError,
+        ProcessingError, Trait,
     },
     contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
     endpoint,
@@ -21,8 +21,7 @@ use crate::{
     recovery::{recovery_event, RttEstimator},
     space::{PacketSpace, PacketSpaceManager},
     stream::{self, Manager as _},
-    transmission,
-    transmission::interest::Provider as _,
+    transmission::{self, interest::Provider as _},
     wakeup_queue::WakeupHandle,
 };
 use alloc::sync::Arc;
@@ -32,10 +31,14 @@ use core::{
     task::{Context, Poll, Waker},
     time::Duration,
 };
+use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    application,
-    application::ServerName,
-    connection::{error::Error, id::Generator as _, InitialId, PeerId},
+    application::{self, ServerName},
+    connection::{
+        error::Error,
+        id::{Classification, Generator as _},
+        InitialId, LocalId, PeerId,
+    },
     crypto::{tls, CryptoSuite},
     datagram::{Receiver, Sender},
     event::{
@@ -43,7 +46,7 @@ use s2n_quic_core::{
         builder::{DatagramDropReason, MtuUpdatedCause, RxStreamProgress, TxStreamProgress},
         supervisor, ConnectionPublisher as _, IntoEvent as _, Subscriber,
     },
-    inet::{DatagramInfo, SocketAddress},
+    inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -53,6 +56,7 @@ use s2n_quic_core::{
         short::ProtectedShort,
         version_negotiation::ProtectedVersionNegotiation,
         zero_rtt::ProtectedZeroRtt,
+        ProtectedPacket,
     },
     path::{mtu, Handle as _},
     query,
@@ -182,6 +186,12 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     /// A Waker to the connection.
     waker: Waker,
     event_context: EventContext<Config>,
+    /// Stores one handshake packet that arrives before we have generated the
+    /// handshake keys
+    handshake_packet_buffer: Option<Vec<u8>>,
+    /// Stores one application packet that arrives before we have generated the
+    /// application keys
+    application_packet_buffer: Option<Vec<u8>>,
 }
 
 struct EventContext<Config: endpoint::Config> {
@@ -267,6 +277,13 @@ macro_rules! transmission_context {
     }};
 }
 
+struct ConnIdValidator {}
+impl s2n_quic_core::connection::id::Validator for ConnIdValidator {
+    fn validate(&self, _connection_info: &ConnectionInfo, buffer: &[u8]) -> Option<usize> {
+        Some(16)
+    }
+}
+
 impl<Config: endpoint::Config> ConnectionImpl<Config> {
     fn update_crypto_state(
         &mut self,
@@ -275,10 +292,12 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
         limits: &mut Config::ConnectionLimits,
+        random_generator: &mut Config::RandomGenerator,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), connection::Error> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
-
+        let mut poll_again = false;
         match space_manager.poll_crypto(
             &mut self.path_manager,
             &mut self.local_id_registry,
@@ -290,10 +309,145 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             dc,
             limits,
         ) {
-            Poll::Ready(Ok(())) => {}
+            Poll::Ready(Ok(())) => {
+                // Process stored application packets since the application keys should now exist
+                if let Some((space, status)) = space_manager.application_mut() {
+                    if let Some(mut packet) = self.application_packet_buffer.take() {
+                        let buffer = DecoderBufferMut::new(&mut packet);
+                        let address = self.path_manager.active_path().remote_address();
+                        let conn_info = ConnectionInfo::new(&address);
+
+                        // Fill datagram with fake info. We don't want to store all this information with the packet.
+                        let datagram_info = DatagramInfo {
+                            timestamp,
+                            payload_len: 0,
+                            ecn: ExplicitCongestionNotification::default(),
+                            destination_connection_id: LocalId::TEST_ID,
+                            destination_connection_id_classification: Classification::Initial,
+                            source_connection_id: None,
+                        };
+
+                        // Parse buffer into ProtectedPacket
+                        if let Ok((protected_packet, remaining)) =
+                            ProtectedPacket::decode(buffer, &conn_info, &ConnIdValidator {})
+                        {
+                            // We never buffer more than one packet
+                            debug_assert!(remaining.is_empty());
+
+                            // Parse ProtectedPacket into ShortPacket
+                            if let ProtectedPacket::Short(short) = protected_packet {
+                                let path_id = self.path_manager.active_path_id();
+
+                                if let Ok(decrypted_packet) = space.validate_and_decrypt_packet(
+                                    short,
+                                    &datagram_info,
+                                    path_id,
+                                    &self.path_manager[path_id],
+                                    &mut publisher,
+                                ) {
+                                    let _processed_packet = space.handle_cleartext_payload(
+                                        decrypted_packet.packet_number,
+                                        decrypted_packet.payload,
+                                        &datagram_info,
+                                        path_id,
+                                        &mut self.path_manager,
+                                        status,
+                                        &mut self.local_id_registry,
+                                        random_generator,
+                                        &mut publisher,
+                                        packet_interceptor,
+                                    )?;
+                                    poll_again = true;
+                                } else {
+                                    return Ok(());
+                                }
+                            } else {
+                                return Ok(());
+                            }
+                        } else {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
             // use `from` instead of `into` so the location is correctly captured
             Poll::Ready(Err(err)) => return Err(connection::Error::from(err)),
-            Poll::Pending => return Ok(()),
+            Poll::Pending => {
+                // Process stored handshake packets if the handshake space was created during the last poll crypto call
+                if let Some((space, status)) = space_manager.handshake_mut() {
+                    if let Some(mut packet) = self.handshake_packet_buffer.take() {
+                        let buffer = DecoderBufferMut::new(&mut packet);
+                        let address = self.path_manager.active_path().remote_address();
+                        let conn_info = ConnectionInfo::new(&address);
+
+                        // Fill datagram with fake info. We don't want to store all this information with the packet.
+                        let datagram_info = DatagramInfo {
+                            timestamp,
+                            payload_len: 0,
+                            ecn: ExplicitCongestionNotification::default(),
+                            destination_connection_id: LocalId::TEST_ID,
+                            destination_connection_id_classification: Classification::Initial,
+                            source_connection_id: None,
+                        };
+
+                        // Parse buffer into ProtectedPacket.
+                        if let Ok((protected_packet, remaining)) =
+                            ProtectedPacket::decode(buffer, &conn_info, &ConnIdValidator {})
+                        {
+                            // We never buffer more than one packet
+                            debug_assert!(remaining.is_empty());
+
+                            // Parse ProtectedPacket into HandshakePacket
+                            if let ProtectedPacket::Handshake(handshake) = protected_packet {
+                                let path_id = self.path_manager.active_path_id();
+
+                                if let Ok(decrypted_packet) = space.validate_and_decrypt_packet(
+                                    handshake,
+                                    path_id,
+                                    &self.path_manager[path_id],
+                                    &mut publisher,
+                                ) {
+                                    let _processed_packet = space.handle_cleartext_payload(
+                                        decrypted_packet.packet_number,
+                                        decrypted_packet.payload,
+                                        &datagram_info,
+                                        path_id,
+                                        &mut self.path_manager,
+                                        status,
+                                        &mut self.local_id_registry,
+                                        random_generator,
+                                        &mut publisher,
+                                        packet_interceptor,
+                                    )?;
+                                    poll_again = true;
+                                } else {
+                                    return Ok(());
+                                }
+                            } else {
+                                return Ok(());
+                            }
+                        } else {
+                            return Ok(());
+                        };
+                    }
+                };
+                ()
+            }
+        }
+
+        // We poll again to move the handshake forward if we've been able to decrypt stored handshake packets
+        if poll_again {
+            let _ = space_manager.poll_crypto(
+                &mut self.path_manager,
+                &mut self.local_id_registry,
+                &mut self.limits,
+                timestamp,
+                &self.waker,
+                &mut publisher,
+                datagram,
+                dc,
+                limits,
+            );
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.1
@@ -654,6 +808,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             wakeup_handle,
             waker,
             event_context,
+            handshake_packet_buffer: None,
+            application_packet_buffer: None,
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
@@ -663,6 +819,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 parameters.datagram_endpoint,
                 parameters.dc_endpoint,
                 parameters.limits_endpoint,
+                parameters.random_endpoint,
+                parameters.interceptor_endpoint,
             ) {
                 connection.with_event_publisher(
                     parameters.timestamp,
@@ -1134,12 +1292,22 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
         conn_limits: &mut Config::ConnectionLimits,
+        random_generator: &mut Config::RandomGenerator,
+        packet_interceptor: &mut Config::PacketInterceptor,
     ) -> Result<(), connection::Error> {
         // reset the queued state first so that new wakeup request are not missed
         self.wakeup_handle.wakeup_handled();
 
         // check if crypto progress can be made
-        self.update_crypto_state(timestamp, subscriber, datagram, dc, conn_limits)?;
+        self.update_crypto_state(
+            timestamp,
+            subscriber,
+            datagram,
+            dc,
+            conn_limits,
+            random_generator,
+            packet_interceptor,
+        )?;
 
         if self.space_manager.handshake().is_some() && self.space_manager.is_handshake_confirmed() {
             let mut publisher = self.event_context.publisher(timestamp, subscriber);
@@ -1366,6 +1534,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                random_generator,
+                packet_interceptor,
             )?;
 
             // notify the connection a packet was processed
@@ -1481,18 +1651,42 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                random_generator,
+                packet_interceptor,
             )?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
         } else {
-            let path = &self.path_manager[path_id];
-            publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
-                    path: path_event!(path, path_id),
-                    packet_type: event::builder::PacketType::Handshake,
-                },
-            });
+            // We only want to store a single packet and we don't want to store anything after the handshake
+            if self.handshake_packet_buffer.is_some() || self.space_manager.is_handshake_confirmed()
+            {
+                let path = &self.path_manager[path_id];
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                        path: path_event!(path, path_id),
+                        packet_type: event::builder::PacketType::Handshake,
+                    },
+                });
+            } else {
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.4
+                //# However, a TLS implementation could perform some of its processing
+                //# asynchronously.  In particular, the process of validating a
+                //# certificate can take some time.  While waiting for TLS processing to
+                //# complete, an endpoint SHOULD buffer received packets if they might be
+                //# processed using keys that are not yet available.  These packets can
+                //# be processed once keys are provided by TLS.  An endpoint SHOULD
+                //# continue to respond to packets that can be processed during this
+                //# time.
+
+                // https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
+                //# Due to packet reordering or loss, a client might receive packets
+                //# for a connection that are encrypted with a key it has not yet computed.
+                //# The client MAY drop these packets, or it MAY buffer them in anticipation
+                //# of later packets that allow it to compute the key.
+
+                self.handshake_packet_buffer = Some(packet.get_wire_bytes());
+            }
         }
 
         Ok(())
@@ -1528,12 +1722,32 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# complete.
 
         if !self.space_manager.is_handshake_complete() {
-            let path = &self.path_manager[path_id];
-            publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::HandshakeNotComplete {
-                    path: path_event!(path, path_id),
-                },
-            });
+            if self.application_packet_buffer.is_some() {
+                let path = &self.path_manager[path_id];
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::HandshakeNotComplete {
+                        path: path_event!(path, path_id),
+                    },
+                });
+            } else {
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.4
+                //# However, a TLS implementation could perform some of its processing
+                //# asynchronously.  In particular, the process of validating a
+                //# certificate can take some time.  While waiting for TLS processing to
+                //# complete, an endpoint SHOULD buffer received packets if they might be
+                //# processed using keys that are not yet available.  These packets can
+                //# be processed once keys are provided by TLS.  An endpoint SHOULD
+                //# continue to respond to packets that can be processed during this
+                //# time.
+
+                // https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
+                //# Due to packet reordering or loss, a client might receive packets
+                //# for a connection that are encrypted with a key it has not yet computed.
+                //# The client MAY drop these packets, or it MAY buffer them in anticipation
+                //# of later packets that allow it to compute the key.
+
+                self.application_packet_buffer = Some(packet.get_wire_bytes());
+            }
 
             return Ok(());
         }
