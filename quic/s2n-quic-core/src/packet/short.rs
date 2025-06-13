@@ -194,6 +194,10 @@ impl<'a> ProtectedShort<'a> {
             .get_checked_range(&self.destination_connection_id)
             .into_less_safe_slice()
     }
+
+    pub fn get_wire_bytes(&self) -> Vec<u8> {
+        self.payload.buffer.encode_to_vec()
+    }
 }
 
 impl<'a> EncryptedShort<'a> {
