@@ -12,7 +12,7 @@ use crate::{
         local_id_registry::LocalIdRegistrationError,
         ConnectionIdMapper, ConnectionInterests, ConnectionTimers, ConnectionTransmission,
         ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
-        ProcessingError,
+        ProcessingError, Trait,
     },
     contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
     endpoint,
@@ -21,8 +21,7 @@ use crate::{
     recovery::{recovery_event, RttEstimator},
     space::{PacketSpace, PacketSpaceManager},
     stream::{self, Manager as _},
-    transmission,
-    transmission::interest::Provider as _,
+    transmission::{self, interest::Provider as _},
     wakeup_queue::WakeupHandle,
 };
 use alloc::sync::Arc;
@@ -32,10 +31,14 @@ use core::{
     task::{Context, Poll, Waker},
     time::Duration,
 };
+use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    application,
-    application::ServerName,
-    connection::{error::Error, id::Generator as _, InitialId, PeerId},
+    application::{self, ServerName},
+    connection::{
+        error::Error,
+        id::{Classification, Generator as _},
+        InitialId, PeerId,
+    },
     crypto::{tls, CryptoSuite},
     datagram::{Receiver, Sender},
     event::{
@@ -43,7 +46,7 @@ use s2n_quic_core::{
         builder::{DatagramDropReason, MtuUpdatedCause, RxStreamProgress, TxStreamProgress},
         supervisor, ConnectionPublisher as _, IntoEvent as _, Subscriber,
     },
-    inet::{DatagramInfo, SocketAddress},
+    inet::{DatagramInfo, ExplicitCongestionNotification, SocketAddress},
     io::tx,
     packet::{
         handshake::ProtectedHandshake,
@@ -182,6 +185,9 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     /// A Waker to the connection.
     waker: Waker,
     event_context: EventContext<Config>,
+    /// Stores packets that arrive before we have generated the next packet space
+    packet_storage: Vec<u8>,
+    stored_packet_type: Option<PacketNumberSpace>,
 }
 
 struct EventContext<Config: endpoint::Config> {
@@ -268,6 +274,52 @@ macro_rules! transmission_context {
 }
 
 impl<Config: endpoint::Config> ConnectionImpl<Config> {
+    fn process_stored_packets(
+        &mut self,
+        timestamp: Timestamp,
+        subscriber: &mut Config::EventSubscriber,
+        datagram: &mut Config::DatagramEndpoint,
+        dc: &mut Config::DcEndpoint,
+        limits: &mut Config::ConnectionLimits,
+        random_generator: &mut Config::RandomGenerator,
+        packet_interceptor: &mut Config::PacketInterceptor,
+        connection_id_validator: &Config::ConnectionIdFormat,
+    ) -> Result<(), connection::Error> {
+        let mut payload: Vec<u8> = self.packet_storage.drain(..).collect();
+        let buffer = DecoderBufferMut::new(payload.as_mut_slice());
+
+        let destination_connection_id = self.path_manager.active_path().local_connection_id;
+        let path_handle = self.path_manager.active_path().handle;
+
+        // Fill datagram as much as we can. We don't want to store all this information with the packet.
+        let datagram_info = DatagramInfo {
+            timestamp,
+            payload_len: 0,
+            ecn: ExplicitCongestionNotification::default(),
+            destination_connection_id,
+            destination_connection_id_classification: Classification::Local,
+            source_connection_id: None,
+        };
+        let path_id = self.path_manager.active_path_id();
+        let mut check_for_stateless_reset = false;
+
+        self.handle_remaining_packets(
+            &path_handle,
+            &datagram_info,
+            path_id,
+            connection_id_validator,
+            buffer,
+            random_generator,
+            subscriber,
+            packet_interceptor,
+            datagram,
+            dc,
+            limits,
+            &mut check_for_stateless_reset,
+        )?;
+        Ok(())
+    }
+
     fn update_crypto_state(
         &mut self,
         timestamp: Timestamp,
@@ -275,10 +327,12 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
         limits: &mut Config::ConnectionLimits,
+        random_generator: &mut Config::RandomGenerator,
+        packet_interceptor: &mut Config::PacketInterceptor,
+        connection_id_validator: &Config::ConnectionIdFormat,
     ) -> Result<(), connection::Error> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
-
         match space_manager.poll_crypto(
             &mut self.path_manager,
             &mut self.local_id_registry,
@@ -290,10 +344,43 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             dc,
             limits,
         ) {
-            Poll::Ready(Ok(())) => {}
+            Poll::Ready(Ok(())) => {
+                // Process any stored application packets since the application keys should now exist
+                if self.space_manager.application().is_some()
+                    && self.stored_packet_type == Some(PacketNumberSpace::ApplicationData)
+                {
+                    self.process_stored_packets(
+                        timestamp,
+                        subscriber,
+                        datagram,
+                        dc,
+                        limits,
+                        random_generator,
+                        packet_interceptor,
+                        connection_id_validator,
+                    )?;
+                }
+            }
             // use `from` instead of `into` so the location is correctly captured
             Poll::Ready(Err(err)) => return Err(connection::Error::from(err)),
-            Poll::Pending => return Ok(()),
+            Poll::Pending => {
+                // Process stored handshake packets if the handshake space was created during the last poll crypto call
+                if self.space_manager.handshake().is_some()
+                    && self.stored_packet_type == Some(PacketNumberSpace::Handshake)
+                {
+                    self.process_stored_packets(
+                        timestamp,
+                        subscriber,
+                        datagram,
+                        dc,
+                        limits,
+                        random_generator,
+                        packet_interceptor,
+                        connection_id_validator,
+                    )?;
+                }
+                ()
+            }
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.1
@@ -319,7 +406,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         // handshake is complete so update the connection state and prepare
         // to hand it over to the application.
         if matches!(self.state, ConnectionState::Handshaking)
-            && space_manager.is_handshake_complete()
+            && self.space_manager.is_handshake_complete()
         {
             // Move into the HandshakeCompleted state. This will signal the
             // necessary interest to hand over the connection to the application.
@@ -654,6 +741,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             wakeup_handle,
             waker,
             event_context,
+            packet_storage: Vec::new(),
+            stored_packet_type: None,
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
@@ -663,6 +752,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 parameters.datagram_endpoint,
                 parameters.dc_endpoint,
                 parameters.limits_endpoint,
+                parameters.random_endpoint,
+                parameters.interceptor_endpoint,
+                parameters.connection_id_validator,
             ) {
                 connection.with_event_publisher(
                     parameters.timestamp,
@@ -1134,12 +1226,24 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
         conn_limits: &mut Config::ConnectionLimits,
+        random_generator: &mut Config::RandomGenerator,
+        packet_interceptor: &mut Config::PacketInterceptor,
+        connection_id_validator: &mut Config::ConnectionIdFormat,
     ) -> Result<(), connection::Error> {
         // reset the queued state first so that new wakeup request are not missed
         self.wakeup_handle.wakeup_handled();
 
         // check if crypto progress can be made
-        self.update_crypto_state(timestamp, subscriber, datagram, dc, conn_limits)?;
+        self.update_crypto_state(
+            timestamp,
+            subscriber,
+            datagram,
+            dc,
+            conn_limits,
+            random_generator,
+            packet_interceptor,
+            connection_id_validator,
+        )?;
 
         if self.space_manager.handshake().is_some() && self.space_manager.is_handshake_confirmed() {
             let mut publisher = self.event_context.publisher(timestamp, subscriber);
@@ -1237,6 +1341,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram_endpoint: &mut Config::DatagramEndpoint,
         dc_endpoint: &mut Config::DcEndpoint,
         connection_limits_endpoint: &mut Config::ConnectionLimits,
+        connection_id_format: &Config::ConnectionIdFormat,
     ) -> Result<(), ProcessingError> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
         //= type=TODO
@@ -1279,6 +1384,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                connection_id_format,
             )?;
         } else {
             let path = &self.path_manager[path_id];
@@ -1305,6 +1411,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram_endpoint: &mut Config::DatagramEndpoint,
         dc_endpoint: &mut Config::DcEndpoint,
         connection_limits_endpoint: &mut Config::ConnectionLimits,
+        connection_id_format: &Config::ConnectionIdFormat,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
@@ -1366,6 +1473,9 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                random_generator,
+                packet_interceptor,
+                connection_id_format,
             )?;
 
             // notify the connection a packet was processed
@@ -1395,6 +1505,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram_endpoint: &mut Config::DatagramEndpoint,
         dc_endpoint: &mut Config::DcEndpoint,
         connection_limits_endpoint: &mut Config::ConnectionLimits,
+        connection_id_validator: &Config::ConnectionIdFormat,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
@@ -1481,18 +1592,45 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                random_generator,
+                packet_interceptor,
+                connection_id_validator,
             )?;
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
         } else {
-            let path = &self.path_manager[path_id];
-            publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
-                    path: path_event!(path, path_id),
-                    packet_type: event::builder::PacketType::Handshake,
-                },
-            });
+            if (self.stored_packet_type.is_none()
+                || self.stored_packet_type == Some(PacketNumberSpace::Handshake))
+                && !self.space_manager.is_handshake_confirmed()
+            {
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.4
+                //# However, a TLS implementation could perform some of its processing
+                //# asynchronously.  In particular, the process of validating a
+                //# certificate can take some time.  While waiting for TLS processing to
+                //# complete, an endpoint SHOULD buffer received packets if they might be
+                //# processed using keys that are not yet available.  These packets can
+                //# be processed once keys are provided by TLS.  An endpoint SHOULD
+                //# continue to respond to packets that can be processed during this
+                //# time.
+
+                // https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
+                //# Due to packet reordering or loss, a client might receive packets
+                //# for a connection that are encrypted with a key it has not yet computed.
+                //# The client MAY drop these packets, or it MAY buffer them in anticipation
+                //# of later packets that allow it to compute the key.
+
+                self.packet_storage = packet.get_wire_bytes();
+                self.stored_packet_type = Some(PacketNumberSpace::Handshake)
+            } else {
+                let path = &self.path_manager[path_id];
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                        path: path_event!(path, path_id),
+                        packet_type: event::builder::PacketType::Handshake,
+                    },
+                });
+            }
         }
 
         Ok(())
@@ -1528,12 +1666,34 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# complete.
 
         if !self.space_manager.is_handshake_complete() {
-            let path = &self.path_manager[path_id];
-            publisher.on_packet_dropped(event::builder::PacketDropped {
-                reason: event::builder::PacketDropReason::HandshakeNotComplete {
-                    path: path_event!(path, path_id),
-                },
-            });
+            // We only store one packet of application data for now.
+            if self.stored_packet_type.is_none() {
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.4
+                //# However, a TLS implementation could perform some of its processing
+                //# asynchronously.  In particular, the process of validating a
+                //# certificate can take some time.  While waiting for TLS processing to
+                //# complete, an endpoint SHOULD buffer received packets if they might be
+                //# processed using keys that are not yet available.  These packets can
+                //# be processed once keys are provided by TLS.  An endpoint SHOULD
+                //# continue to respond to packets that can be processed during this
+                //# time.
+
+                // https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
+                //# Due to packet reordering or loss, a client might receive packets
+                //# for a connection that are encrypted with a key it has not yet computed.
+                //# The client MAY drop these packets, or it MAY buffer them in anticipation
+                //# of later packets that allow it to compute the key.
+
+                self.packet_storage = packet.get_wire_bytes();
+                self.stored_packet_type = Some(PacketNumberSpace::ApplicationData);
+            } else {
+                let path = &self.path_manager[path_id];
+                publisher.on_packet_dropped(event::builder::PacketDropped {
+                    reason: event::builder::PacketDropReason::HandshakeNotComplete {
+                        path: path_event!(path, path_id),
+                    },
+                });
+            }
 
             return Ok(());
         }
