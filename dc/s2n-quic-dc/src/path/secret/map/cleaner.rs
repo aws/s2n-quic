@@ -72,13 +72,16 @@ impl Cleaner {
             .spawn(move || loop {
                 // in tests, we should try and be as deterministic as possible
                 let pause = if cfg!(test) {
-                    60
+                    Duration::from_secs(60).as_millis() as u64
                 } else {
-                    rand::rng().random_range(5..60)
+                    rand::rng().random_range(
+                        Duration::from_secs(5).as_millis() as u64
+                            ..Duration::from_secs(60).as_millis() as u64,
+                    )
                 };
 
                 let next_start = Instant::now() + Duration::from_secs(60);
-                std::thread::park_timeout(Duration::from_secs(pause));
+                std::thread::park_timeout(Duration::from_millis(pause));
 
                 let Some(state) = state.upgrade() else {
                     break;
