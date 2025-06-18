@@ -3,16 +3,21 @@
 
 use crate::{
     either::Either,
-    event, msg,
+    event::{self, builder::StreamTcpConnectErrorReason, EndpointPublisher},
+    msg,
     path::secret,
     stream::{
         application::Stream,
         endpoint,
-        environment::tokio::{self as env, Environment},
+        environment::{
+            tokio::{self as env, Environment},
+            Environment as _,
+        },
         recv,
         socket::Protocol,
     },
 };
+use s2n_quic_core::time::Clock;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
 
@@ -33,6 +38,8 @@ where
     // ensure we have a secret for the peer
     let entry = handshake.await?;
 
+    // TODO emit events (https://github.com/aws/s2n-quic/issues/2676)
+
     // TODO potentially branch on not using the recv pool if we're under a certain concurrency?
     let stream = if env.has_recv_pool() {
         let peer = env::udp::Pooled(acceptor_addr.into());
@@ -50,6 +57,21 @@ where
     Ok(stream)
 }
 
+struct DropGuard<'a, S: event::Subscriber + Clone> {
+    env: &'a Environment<S>,
+    reason: Option<StreamTcpConnectErrorReason>,
+}
+
+impl<S: event::Subscriber + Clone> Drop for DropGuard<'_, S> {
+    fn drop(&mut self) {
+        if let Some(reason) = self.reason.take() {
+            self.env
+                .endpoint_publisher()
+                .on_stream_connect_error(event::builder::StreamConnectError { reason });
+        }
+    }
+}
+
 /// Connects using the TCP transport layer
 ///
 /// Callers should send data immediately after calling this to ensure minimal
@@ -65,8 +87,73 @@ where
     H: core::future::Future<Output = io::Result<secret::map::Peer>>,
     Sub: event::Subscriber + Clone,
 {
-    // Race TCP handshake with the TLS handshake
-    let (socket, entry) = tokio::try_join!(TcpStream::connect(acceptor_addr), handshake,)?;
+    // This emits the error event in case this future gets dropped.
+    let mut guard = DropGuard {
+        env,
+        reason: Some(StreamTcpConnectErrorReason::Aborted),
+    };
+
+    let connect = TcpStream::connect(acceptor_addr);
+
+    tokio::pin!(handshake);
+    tokio::pin!(connect);
+
+    // We race the TCP connect() future with either retrieving cached path secret or handshaking to
+    // produce those credentials.
+    //
+    // This should lower our worst-case latency from 3 RTT = TCP (1 RTT) + QUIC (~2 RTT) to just ~2 RTT.
+    let mut error = None;
+    let mut socket = None;
+    let mut peer = None;
+    let start = env.clock().get_time();
+    while (socket.is_none() || peer.is_none()) && error.is_none() {
+        tokio::select! {
+            connected = &mut connect, if socket.is_none() => {
+                let now = env.clock().get_time();
+                env.endpoint_publisher_with_time(now).on_stream_tcp_connect(event::builder::StreamTcpConnect {
+                    error: connected.is_err(),
+                    latency: now.saturating_duration_since(start),
+                });
+                match connected {
+                    Ok(v) => socket = Some(Ok(v)),
+                    Err(e) => {
+                        guard.reason = Some(StreamTcpConnectErrorReason::TcpConnect);
+                        error = Some(e);
+                        socket = Some(Err(()));
+                    }
+                }
+            }
+            handshaked = &mut handshake, if peer.is_none() => {
+                match handshaked {
+                    Ok(v) => peer = Some(Ok(v)),
+                    Err(e) => {
+                        guard.reason = Some(StreamTcpConnectErrorReason::Handshake);
+                        error = Some(e);
+                        peer = Some(Err(()));
+                    }
+                }
+            }
+        }
+    }
+    env.endpoint_publisher()
+        .on_stream_connect(event::builder::StreamConnect {
+            error: error.is_some(),
+            handshake_success: match &peer {
+                Some(Ok(_)) => event::builder::MaybeBoolCounter::Success,
+                Some(Err(_)) => event::builder::MaybeBoolCounter::Failure,
+                None => event::builder::MaybeBoolCounter::Aborted,
+            },
+            tcp_success: match &socket {
+                Some(Ok(_)) => event::builder::MaybeBoolCounter::Success,
+                Some(Err(_)) => event::builder::MaybeBoolCounter::Failure,
+                None => event::builder::MaybeBoolCounter::Aborted,
+            },
+        });
+
+    let (Some(Ok(socket)), Some(Ok(entry))) = (socket, peer) else {
+        // unwrap is OK -- if socket or peer isn't present the error should be set.
+        return Err(error.unwrap());
+    };
 
     // Make sure TCP_NODELAY is set
     let _ = socket.set_nodelay(true);
@@ -127,6 +214,8 @@ where
         local_port,
         recv_buffer: recv_buffer(),
     };
+
+    // TODO emit events (https://github.com/aws/s2n-quic/issues/2676)
 
     let stream = endpoint::open_stream(env, entry, peer, None)?;
 

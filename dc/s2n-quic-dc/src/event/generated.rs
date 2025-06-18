@@ -996,6 +996,65 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    #[doc = " Tracks stream connect where dcQUIC owns the TCP connect()."]
+    pub struct StreamTcpConnect {
+        pub error: bool,
+        pub latency: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamTcpConnect {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamTcpConnect");
+            fmt.field("error", &self.error);
+            fmt.field("latency", &self.latency);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamTcpConnect {
+        const NAME: &'static str = "stream:tcp_connect";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Tracks stream connect where dcQUIC owns the TCP connect()."]
+    pub struct StreamConnect {
+        pub error: bool,
+        pub tcp_success: MaybeBoolCounter,
+        pub handshake_success: MaybeBoolCounter,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamConnect {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamConnect");
+            fmt.field("error", &self.error);
+            fmt.field("tcp_success", &self.tcp_success);
+            fmt.field("handshake_success", &self.handshake_success);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamConnect {
+        const NAME: &'static str = "stream:connect";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Tracks stream connect errors."]
+    #[doc = ""]
+    #[doc = " Currently only emitted in cases where dcQUIC owns the TCP connect too."]
+    pub struct StreamConnectError {
+        pub reason: StreamTcpConnectErrorReason,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamConnectError {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamConnectError");
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamConnectError {
+        const NAME: &'static str = "stream:connect_error";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct ConnectionClosed {}
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for ConnectionClosed {
@@ -1006,6 +1065,89 @@ pub mod api {
     }
     impl Event for ConnectionClosed {
         const NAME: &'static str = "connection:closed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Used for cases where we are racing multiple futures and exit if any of them fail, and so"]
+    #[doc = " recording success is not just a boolean value."]
+    pub enum MaybeBoolCounter {
+        #[non_exhaustive]
+        Success {},
+        #[non_exhaustive]
+        Failure {},
+        #[non_exhaustive]
+        Aborted {},
+    }
+    impl aggregate::AsVariant for MaybeBoolCounter {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SUCCESS\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("FAILURE\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ABORTED\0"),
+                id: 2usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Success { .. } => 0usize,
+                Self::Failure { .. } => 1usize,
+                Self::Aborted { .. } => 2usize,
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Note that there's no guarantee of a particular reason if multiple reasons ~simultaneously"]
+    #[doc = " terminate the connection."]
+    pub enum StreamTcpConnectErrorReason {
+        #[non_exhaustive]
+        #[doc = " TCP connect failed."]
+        TcpConnect {},
+        #[non_exhaustive]
+        #[doc = " Handshake failed to produce credentials."]
+        Handshake {},
+        #[non_exhaustive]
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " Usually indicates a timeout in the application."]
+        Aborted {},
+    }
+    impl aggregate::AsVariant for StreamTcpConnectErrorReason {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("TCP_CONNECT\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("HANDSHAKE\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ABORTED\0"),
+                id: 2usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::TcpConnect { .. } => 0usize,
+                Self::Handshake { .. } => 1usize,
+                Self::Aborted { .. } => 2usize,
+            }
+        }
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2238,6 +2380,32 @@ pub mod tracing {
             let id = context.id();
             let api::StreamReadSocketErrored { capacity, errno } = event;
             tracing :: event ! (target : "stream_read_socket_errored" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , errno = tracing :: field :: debug (errno) });
+        }
+        #[inline]
+        fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
+            let parent = self.parent(meta);
+            let api::StreamTcpConnect { error, latency } = event;
+            tracing :: event ! (target : "stream_tcp_connect" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) , latency = tracing :: field :: debug (latency) });
+        }
+        #[inline]
+        fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
+            let parent = self.parent(meta);
+            let api::StreamConnect {
+                error,
+                tcp_success,
+                handshake_success,
+            } = event;
+            tracing :: event ! (target : "stream_connect" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) , tcp_success = tracing :: field :: debug (tcp_success) , handshake_success = tracing :: field :: debug (handshake_success) });
+        }
+        #[inline]
+        fn on_stream_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectError,
+        ) {
+            let parent = self.parent(meta);
+            let api::StreamConnectError { reason } = event;
+            tracing :: event ! (target : "stream_connect_error" , parent : parent , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) });
         }
         #[inline]
         fn on_connection_closed(
@@ -3602,12 +3770,109 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    #[doc = " Tracks stream connect where dcQUIC owns the TCP connect()."]
+    pub struct StreamTcpConnect {
+        pub error: bool,
+        pub latency: core::time::Duration,
+    }
+    impl IntoEvent<api::StreamTcpConnect> for StreamTcpConnect {
+        #[inline]
+        fn into_event(self) -> api::StreamTcpConnect {
+            let StreamTcpConnect { error, latency } = self;
+            api::StreamTcpConnect {
+                error: error.into_event(),
+                latency: latency.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Tracks stream connect where dcQUIC owns the TCP connect()."]
+    pub struct StreamConnect {
+        pub error: bool,
+        pub tcp_success: MaybeBoolCounter,
+        pub handshake_success: MaybeBoolCounter,
+    }
+    impl IntoEvent<api::StreamConnect> for StreamConnect {
+        #[inline]
+        fn into_event(self) -> api::StreamConnect {
+            let StreamConnect {
+                error,
+                tcp_success,
+                handshake_success,
+            } = self;
+            api::StreamConnect {
+                error: error.into_event(),
+                tcp_success: tcp_success.into_event(),
+                handshake_success: handshake_success.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Tracks stream connect errors."]
+    #[doc = ""]
+    #[doc = " Currently only emitted in cases where dcQUIC owns the TCP connect too."]
+    pub struct StreamConnectError {
+        pub reason: StreamTcpConnectErrorReason,
+    }
+    impl IntoEvent<api::StreamConnectError> for StreamConnectError {
+        #[inline]
+        fn into_event(self) -> api::StreamConnectError {
+            let StreamConnectError { reason } = self;
+            api::StreamConnectError {
+                reason: reason.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct ConnectionClosed {}
     impl IntoEvent<api::ConnectionClosed> for ConnectionClosed {
         #[inline]
         fn into_event(self) -> api::ConnectionClosed {
             let ConnectionClosed {} = self;
             api::ConnectionClosed {}
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Used for cases where we are racing multiple futures and exit if any of them fail, and so"]
+    #[doc = " recording success is not just a boolean value."]
+    pub enum MaybeBoolCounter {
+        Success,
+        Failure,
+        Aborted,
+    }
+    impl IntoEvent<api::MaybeBoolCounter> for MaybeBoolCounter {
+        #[inline]
+        fn into_event(self) -> api::MaybeBoolCounter {
+            use api::MaybeBoolCounter::*;
+            match self {
+                Self::Success => Success {},
+                Self::Failure => Failure {},
+                Self::Aborted => Aborted {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Note that there's no guarantee of a particular reason if multiple reasons ~simultaneously"]
+    #[doc = " terminate the connection."]
+    pub enum StreamTcpConnectErrorReason {
+        #[doc = " TCP connect failed."]
+        TcpConnect,
+        #[doc = " Handshake failed to produce credentials."]
+        Handshake,
+        #[doc = " When the connect future is dropped prior to returning any result."]
+        #[doc = ""]
+        #[doc = " Usually indicates a timeout in the application."]
+        Aborted,
+    }
+    impl IntoEvent<api::StreamTcpConnectErrorReason> for StreamTcpConnectErrorReason {
+        #[inline]
+        fn into_event(self) -> api::StreamTcpConnectErrorReason {
+            use api::StreamTcpConnectErrorReason::*;
+            match self {
+                Self::TcpConnect => TcpConnect {},
+                Self::Handshake => Handshake {},
+                Self::Aborted => Aborted {},
+            }
         }
     }
     #[derive(Clone, Debug)]
@@ -4767,6 +5032,28 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `StreamTcpConnect` event is triggered"]
+        #[inline]
+        fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamConnect` event is triggered"]
+        #[inline]
+        fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamConnectError` event is triggered"]
+        #[inline]
+        fn on_stream_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectError,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `ConnectionClosed` event is triggered"]
         #[inline]
         fn on_connection_closed(
@@ -5451,6 +5738,22 @@ mod traits {
                 .on_stream_read_socket_errored(context, meta, event);
         }
         #[inline]
+        fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
+            self.as_ref().on_stream_tcp_connect(meta, event);
+        }
+        #[inline]
+        fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
+            self.as_ref().on_stream_connect(meta, event);
+        }
+        #[inline]
+        fn on_stream_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectError,
+        ) {
+            self.as_ref().on_stream_connect_error(meta, event);
+        }
+        #[inline]
         fn on_connection_closed(
             &self,
             context: &Self::ConnectionContext,
@@ -6102,6 +6405,25 @@ mod traits {
             (self.1).on_stream_read_socket_errored(&context.1, meta, event);
         }
         #[inline]
+        fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
+            (self.0).on_stream_tcp_connect(meta, event);
+            (self.1).on_stream_tcp_connect(meta, event);
+        }
+        #[inline]
+        fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
+            (self.0).on_stream_connect(meta, event);
+            (self.1).on_stream_connect(meta, event);
+        }
+        #[inline]
+        fn on_stream_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectError,
+        ) {
+            (self.0).on_stream_connect_error(meta, event);
+            (self.1).on_stream_connect_error(meta, event);
+        }
+        #[inline]
         fn on_connection_closed(
             &self,
             context: &Self::ConnectionContext,
@@ -6464,6 +6786,12 @@ mod traits {
         fn on_acceptor_stream_pruned(&self, event: builder::AcceptorStreamPruned);
         #[doc = "Publishes a `AcceptorStreamDequeued` event to the publisher's subscriber"]
         fn on_acceptor_stream_dequeued(&self, event: builder::AcceptorStreamDequeued);
+        #[doc = "Publishes a `StreamTcpConnect` event to the publisher's subscriber"]
+        fn on_stream_tcp_connect(&self, event: builder::StreamTcpConnect);
+        #[doc = "Publishes a `StreamConnect` event to the publisher's subscriber"]
+        fn on_stream_connect(&self, event: builder::StreamConnect);
+        #[doc = "Publishes a `StreamConnectError` event to the publisher's subscriber"]
+        fn on_stream_connect_error(&self, event: builder::StreamConnectError);
         #[doc = "Publishes a `EndpointInitialized` event to the publisher's subscriber"]
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized);
         #[doc = "Publishes a `PathSecretMapInitialized` event to the publisher's subscriber"]
@@ -6715,6 +7043,24 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_acceptor_stream_dequeued(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_tcp_connect(&self, event: builder::StreamTcpConnect) {
+            let event = event.into_event();
+            self.subscriber.on_stream_tcp_connect(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_connect(&self, event: builder::StreamConnect) {
+            let event = event.into_event();
+            self.subscriber.on_stream_connect(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_connect_error(&self, event: builder::StreamConnectError) {
+            let event = event.into_event();
+            self.subscriber.on_stream_connect_error(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -7258,6 +7604,9 @@ pub mod testing {
             pub acceptor_udp_io_error: AtomicU64,
             pub acceptor_stream_pruned: AtomicU64,
             pub acceptor_stream_dequeued: AtomicU64,
+            pub stream_tcp_connect: AtomicU64,
+            pub stream_connect: AtomicU64,
+            pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
             pub path_secret_map_initialized: AtomicU64,
             pub path_secret_map_uninitialized: AtomicU64,
@@ -7339,6 +7688,9 @@ pub mod testing {
                     acceptor_udp_io_error: AtomicU64::new(0),
                     acceptor_stream_pruned: AtomicU64::new(0),
                     acceptor_stream_dequeued: AtomicU64::new(0),
+                    stream_tcp_connect: AtomicU64::new(0),
+                    stream_connect: AtomicU64::new(0),
+                    stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
                     path_secret_map_initialized: AtomicU64::new(0),
                     path_secret_map_uninitialized: AtomicU64::new(0),
@@ -7588,6 +7940,35 @@ pub mod testing {
             ) {
                 self.acceptor_stream_dequeued
                     .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_stream_tcp_connect(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::StreamTcpConnect,
+            ) {
+                self.stream_tcp_connect.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
+                self.stream_connect.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_stream_connect_error(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::StreamConnectError,
+            ) {
+                self.stream_connect_error.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -8012,6 +8393,9 @@ pub mod testing {
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
         pub stream_read_socket_errored: AtomicU64,
+        pub stream_tcp_connect: AtomicU64,
+        pub stream_connect: AtomicU64,
+        pub stream_connect_error: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
@@ -8112,6 +8496,9 @@ pub mod testing {
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
                 stream_read_socket_errored: AtomicU64::new(0),
+                stream_tcp_connect: AtomicU64::new(0),
+                stream_connect: AtomicU64::new(0),
+                stream_connect_error: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
@@ -8627,6 +9014,31 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
+            self.stream_tcp_connect.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
+            self.stream_connect.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_connect_error(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectError,
+        ) {
+            self.stream_connect_error.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
         fn on_connection_closed(
             &self,
             _context: &Self::ConnectionContext,
@@ -9059,6 +9471,9 @@ pub mod testing {
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
         pub stream_read_socket_errored: AtomicU64,
+        pub stream_tcp_connect: AtomicU64,
+        pub stream_connect: AtomicU64,
+        pub stream_connect_error: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
@@ -9149,6 +9564,9 @@ pub mod testing {
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
                 stream_read_socket_errored: AtomicU64::new(0),
+                stream_tcp_connect: AtomicU64::new(0),
+                stream_connect: AtomicU64::new(0),
+                stream_connect_error: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
@@ -9326,6 +9744,27 @@ pub mod testing {
         fn on_acceptor_stream_dequeued(&self, event: builder::AcceptorStreamDequeued) {
             self.acceptor_stream_dequeued
                 .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_tcp_connect(&self, event: builder::StreamTcpConnect) {
+            self.stream_tcp_connect.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_connect(&self, event: builder::StreamConnect) {
+            self.stream_connect.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_connect_error(&self, event: builder::StreamConnectError) {
+            self.stream_connect_error.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");
