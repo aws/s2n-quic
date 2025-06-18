@@ -115,6 +115,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         conn_limits: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
+        packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
     ) -> Result<(), connection::Error>;
 
     // Packet handling

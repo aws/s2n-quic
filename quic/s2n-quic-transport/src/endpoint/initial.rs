@@ -316,6 +316,8 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             dc_endpoint: endpoint_context.dc,
             open_registry: None,
             limits_endpoint: endpoint_context.connection_limits,
+            random_endpoint: endpoint_context.random_generator,
+            interceptor_endpoint: endpoint_context.packet_interceptor,
         };
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
