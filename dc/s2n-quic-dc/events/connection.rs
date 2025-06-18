@@ -250,6 +250,68 @@ pub struct StreamReadSocketErrored {
     errno: Option<i32>,
 }
 
+/// Tracks stream connect where dcQUIC owns the TCP connect().
+#[event("stream:tcp_connect")]
+#[subject(endpoint)]
+pub struct StreamTcpConnect {
+    #[bool_counter("error")]
+    error: bool,
+
+    // This includes the error latencies.
+    //
+    // FIXME: Support Option<Duration> in metrics to make it much easier to record timers
+    // optionally.
+    #[timer("tcp_latency")]
+    latency: core::time::Duration,
+}
+
+/// Tracks stream connect where dcQUIC owns the TCP connect().
+#[event("stream:connect")]
+#[subject(endpoint)]
+pub struct StreamConnect {
+    #[bool_counter("error")]
+    error: bool,
+
+    #[nominal_counter("tcp")]
+    tcp_success: MaybeBoolCounter,
+
+    #[nominal_counter("handshake")]
+    handshake_success: MaybeBoolCounter,
+}
+
+/// Used for cases where we are racing multiple futures and exit if any of them fail, and so
+/// recording success is not just a boolean value.
+enum MaybeBoolCounter {
+    Success,
+    Failure,
+    Aborted,
+}
+
+/// Tracks stream connect errors.
+///
+/// Currently only emitted in cases where dcQUIC owns the TCP connect too.
+#[event("stream:connect_error")]
+#[subject(endpoint)]
+pub struct StreamConnectError {
+    #[nominal_counter("reason")]
+    reason: StreamTcpConnectErrorReason,
+}
+
+/// Note that there's no guarantee of a particular reason if multiple reasons ~simultaneously
+/// terminate the connection.
+pub enum StreamTcpConnectErrorReason {
+    /// TCP connect failed.
+    TcpConnect,
+
+    /// Handshake failed to produce credentials.
+    Handshake,
+
+    /// When the connect future is dropped prior to returning any result.
+    ///
+    /// Usually indicates a timeout in the application.
+    Aborted,
+}
+
 // NOTE - This event MUST come last, since connection-level aggregation depends on it
 #[event("connection:closed")]
 // #[checkpoint("latency")]
