@@ -1,0 +1,18 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-6.1.4"
+
+# Initial Connectivity
+#
+#    An application that does not have other higher-layer information
+#    confirming connectivity with the remote peer SHOULD implement a
+#    connectivity mechanism using acknowledged probe packets before
+#    entering the BASE state.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An application that does not have other higher-layer information
+confirming connectivity with the remote peer SHOULD implement a
+connectivity mechanism using acknowledged probe packets before
+entering the BASE state.
+'''
+
