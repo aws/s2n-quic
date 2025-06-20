@@ -27,6 +27,7 @@ measure#mtu_updated.mtu=1200b
 count#mtu_updated.cause|NEW_PATH=1
 count#mtu_updated.search_complete=false
 count#server_name_information=1
+count#endpoint_connection_attempt_deduplicated=1
 count#platform_event_loop_wakeup=1
 count#platform_rx=1
 count#platform_rx.packets.total=0

@@ -991,6 +991,20 @@ impl<Cfg: Config> Endpoint<Cfg> {
             ));
         }
 
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-15
+        //# This version of the specification is identified by the number
+        //# 0x00000001.
+        let quic_version = 0x00000001;
+        let endpoint_context = self.config.context();
+        let mut endpoint_publisher = event::EndpointPublisherSubscriber::new(
+            event::builder::EndpointMeta {
+                endpoint_type: Cfg::ENDPOINT_TYPE,
+                timestamp,
+            },
+            Some(quic_version),
+            endpoint_context.event_subscriber,
+        );
+
         let open_registry = if deduplicate {
             match self.connection_id_mapper.lazy_open(
                 internal_connection_id,
@@ -1005,6 +1019,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         .connections
                         .register_sender_for_client_connection(&existing, sender)
                     {
+                        endpoint_publisher.on_endpoint_connection_attempt_deduplicated(
+                            event::builder::EndpointConnectionAttemptDeduplicated {
+                                connection_id: existing.into(),
+                                already_open: true,
+                            },
+                        );
+
                         // If we are in the Ok branch of lazy_open, then the connection already exists
                         // in open_request_map (i.e., it is currently open). If we failed to register
                         // the sender, then the connection is already fully open. So, we need to lookup
@@ -1016,6 +1037,13 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         let _ = sender.send(Ok(handle));
                         return Ok(());
                     } else {
+                        endpoint_publisher.on_endpoint_connection_attempt_deduplicated(
+                            event::builder::EndpointConnectionAttemptDeduplicated {
+                                connection_id: existing.into(),
+                                already_open: false,
+                            },
+                        );
+
                         // Done, will get notified with a Result<handle> once the connection opens.
                         return Ok(());
                     }
@@ -1089,11 +1117,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let peer_id_registry = self
             .connection_id_mapper
             .create_client_peer_id_registry(internal_connection_id, rotate_handshake_connection_id);
-
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-15
-        //# This version of the specification is identified by the number
-        //# 0x00000001.
-        let quic_version = 0x00000001;
 
         let meta = event::builder::ConnectionMeta {
             endpoint_type: Cfg::ENDPOINT_TYPE,
