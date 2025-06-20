@@ -6,18 +6,24 @@ use crate::{
     packet::secret_control as control,
     path::secret::{receiver, schedule, sender},
 };
+use parking_lot::Mutex;
 use s2n_quic_core::{
     dc::{self, ApplicationParams, DatagramInfo},
     endpoint, ensure, event,
 };
-use std::{net::SocketAddr, sync::Arc};
+use std::{error::Error, net::SocketAddr, sync::Arc};
 use zeroize::Zeroizing;
 
 const TLS_EXPORTER_LABEL: &str = "EXPERIMENTAL EXPORTER s2n-quic-dc";
 const TLS_EXPORTER_CONTEXT: &str = "";
 const TLS_EXPORTER_LENGTH: usize = schedule::EXPORT_SECRET_LEN;
 
+#[derive(Clone)]
 pub struct HandshakingPath {
+    inner: Arc<Mutex<HandshakingPathInner>>,
+}
+
+struct HandshakingPathInner {
     peer: SocketAddr,
     dc_version: dc::Version,
     parameters: ApplicationParams,
@@ -26,6 +32,8 @@ pub struct HandshakingPath {
     entry: Option<Arc<Entry>>,
     application_data: Option<ApplicationData>,
     map: Map,
+
+    error: Option<Box<dyn Error + Send + Sync>>,
 }
 
 impl HandshakingPath {
@@ -35,16 +43,27 @@ impl HandshakingPath {
             event::api::EndpointType::Client { .. } => endpoint::Type::Client,
         };
 
-        Self {
-            peer: connection_info.remote_address.clone().into(),
-            dc_version: connection_info.dc_version,
-            parameters: connection_info.application_params.clone(),
-            endpoint_type,
-            secret: None,
-            entry: None,
-            application_data: None,
-            map,
+        HandshakingPath {
+            inner: Arc::new(Mutex::new(HandshakingPathInner {
+                peer: connection_info.remote_address.clone().into(),
+                dc_version: connection_info.dc_version,
+                parameters: connection_info.application_params.clone(),
+                endpoint_type,
+                secret: None,
+                entry: None,
+                application_data: None,
+                map,
+                error: None,
+            })),
         }
+    }
+
+    pub fn entry(&self) -> Option<Arc<Entry>> {
+        self.inner.lock().entry.clone()
+    }
+
+    pub fn take_error(&self) -> Option<Box<dyn Error + Send + Sync>> {
+        self.inner.lock().error.take()
     }
 }
 
@@ -84,12 +103,39 @@ impl dc::Path for HandshakingPath {
         &mut self,
         session: &impl s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
+        self.inner.lock().on_path_secrets_ready(session)
+    }
+
+    fn on_peer_stateless_reset_tokens<'a>(
+        &mut self,
+        stateless_reset_tokens: impl Iterator<Item = &'a s2n_quic_core::stateless_reset::Token>,
+    ) {
+        self.inner
+            .lock()
+            .on_peer_stateless_reset_tokens(stateless_reset_tokens)
+    }
+
+    fn on_dc_handshake_complete(&mut self) {
+        self.inner.lock().on_dc_handshake_complete();
+    }
+
+    fn on_mtu_updated(&mut self, mtu: u16) {
+        self.inner.lock().on_mtu_updated(mtu);
+    }
+}
+
+impl HandshakingPathInner {
+    fn on_path_secrets_ready(
+        &mut self,
+        session: &impl s2n_quic_core::crypto::tls::TlsSession,
+    ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
         match self.map.store.application_data(session) {
             Ok(application_data) => {
                 self.application_data = application_data;
             }
-            Err(msg) => {
-                return Err(s2n_quic_core::transport::Error::APPLICATION_ERROR.with_reason(msg));
+            Err(err) => {
+                self.error = Some(err.inner);
+                return Err(s2n_quic_core::transport::Error::APPLICATION_ERROR.with_reason(err.msg));
             }
         };
 
@@ -100,7 +146,9 @@ impl dc::Path for HandshakingPath {
                 TLS_EXPORTER_CONTEXT.as_bytes(),
                 &mut *material,
             )
-            .unwrap();
+            .map_err(|_| {
+                s2n_quic_core::transport::Error::INTERNAL_ERROR.with_reason("tls exporter failed")
+            })?;
 
         let cipher_suite = match session.cipher_suite() {
             s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_128_GCM_SHA256 => {
@@ -109,7 +157,10 @@ impl dc::Path for HandshakingPath {
             s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_256_GCM_SHA384 => {
                 schedule::Ciphersuite::AES_GCM_256_SHA384
             }
-            _ => return Err(s2n_quic_core::transport::Error::INTERNAL_ERROR),
+            _ => {
+                return Err(s2n_quic_core::transport::Error::INTERNAL_ERROR
+                    .with_reason("unsupported ciphersuite"))
+            }
         };
 
         let secret =
