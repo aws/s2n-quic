@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{cleaner::Cleaner, entry::ApplicationData, stateless_reset, Entry, Store};
+use super::{
+    cleaner::Cleaner, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
+};
 use crate::{
     credentials::{Credentials, Id},
     crypto,
@@ -221,7 +223,7 @@ where
             Box<
                 dyn Fn(
                         &dyn s2n_quic_core::crypto::tls::TlsSession,
-                    ) -> Result<Option<ApplicationData>, &'static str>
+                    ) -> Result<Option<ApplicationData>, ApplicationDataError>
                     + Send
                     + Sync,
             >,
@@ -678,7 +680,7 @@ where
         cb: Box<
             dyn Fn(
                     &dyn s2n_quic_core::crypto::tls::TlsSession,
-                ) -> Result<Option<ApplicationData>, &'static str>
+                ) -> Result<Option<ApplicationData>, ApplicationDataError>
                 + Send
                 + Sync,
         >,
@@ -894,7 +896,7 @@ where
     fn application_data(
         &self,
         session: &dyn s2n_quic_core::crypto::tls::TlsSession,
-    ) -> Result<Option<ApplicationData>, &'static str> {
+    ) -> Result<Option<ApplicationData>, ApplicationDataError> {
         if let Some(ctxt) = &*self
             .mk_application_data
             .read()

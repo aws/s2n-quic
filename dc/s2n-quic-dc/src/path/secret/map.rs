@@ -9,7 +9,6 @@ use crate::{
     stream::TransportFeatures,
 };
 use core::fmt;
-pub use entry::ApplicationData;
 use s2n_quic_core::{dc, time};
 use std::{net::SocketAddr, sync::Arc};
 
@@ -32,7 +31,10 @@ mod event_tests;
 pub use entry::Entry;
 use store::Store;
 
-pub use entry::{ApplicationPair, Bidirectional, ControlPair};
+pub use entry::{
+    ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
+};
+pub use handshake::HandshakingPath;
 pub use peer::Peer;
 
 pub(crate) use size_of::SizeOf;
@@ -299,7 +301,7 @@ impl Map {
         cb: Box<
             dyn Fn(
                     &dyn s2n_quic_core::crypto::tls::TlsSession,
-                ) -> Result<Option<ApplicationData>, &'static str>
+                ) -> Result<Option<ApplicationData>, ApplicationDataError>
                 + Send
                 + Sync,
         >,

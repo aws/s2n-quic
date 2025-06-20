@@ -33,6 +33,14 @@ mod tests;
 
 pub type ApplicationData = Arc<dyn Any + Send + Sync>;
 
+#[derive(Debug, thiserror::Error)]
+#[error("{inner}")]
+pub struct ApplicationDataError {
+    pub msg: &'static str,
+    #[source]
+    pub inner: Box<dyn std::error::Error + Send + Sync>,
+}
+
 #[derive(Debug)]
 pub struct Entry {
     creation_time: Instant,
