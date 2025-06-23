@@ -5,7 +5,10 @@
 fn slow_tls() {
     use super::*;
     use crate::provider::tls::default;
-    use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
+    use s2n_quic_core::{
+        connection::limits::Limits,
+        crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM},
+    };
 
     let model = Model::default();
 
@@ -27,15 +30,20 @@ fn slow_tls() {
         endpoint: client_endpoint,
     };
 
+    // Connections will store up to 4000 bytes of packets that can't be processed yet
+    let limits = Limits::default().with_stored_packet_size(4000).unwrap();
+
     test(model, |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
+            .with_limits(limits)?
             .with_tls(slow_server)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(slow_client)?
+            .with_limits(limits)?
             .with_event((tracing_events(), MyEvents))?
             .start()?;
         let addr = start_server(server)?;

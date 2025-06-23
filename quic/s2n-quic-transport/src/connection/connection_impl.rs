@@ -364,7 +364,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             // use `from` instead of `into` so the location is correctly captured
             Poll::Ready(Err(err)) => return Err(connection::Error::from(err)),
             Poll::Pending => {
-                // Process stored handshake packets if the handshake space was created during the last poll crypto call
+                // Process stored handshake packets if the handshake space was recently created
                 if self.space_manager.handshake().is_some()
                     && self.stored_packet_type == Some(PacketNumberSpace::Handshake)
                 {
@@ -1620,8 +1620,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# The client MAY drop these packets, or it MAY buffer them in anticipation
                 //# of later packets that allow it to compute the key.
 
-                self.packet_storage = packet.get_wire_bytes();
-                self.stored_packet_type = Some(PacketNumberSpace::Handshake)
+                let packet_bytes = packet.get_wire_bytes();
+                if packet_bytes.len() + self.packet_storage.len() < self.limits.stored_packet_size()
+                {
+                    self.packet_storage.extend(packet_bytes);
+                    self.stored_packet_type = Some(PacketNumberSpace::Handshake)
+                }
             } else {
                 let path = &self.path_manager[path_id];
                 publisher.on_packet_dropped(event::builder::PacketDropped {
@@ -1666,7 +1670,6 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# complete.
 
         if !self.space_manager.is_handshake_complete() {
-            // We only store one packet of application data for now.
             if self.stored_packet_type.is_none() {
                 //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.4
                 //# However, a TLS implementation could perform some of its processing
@@ -1684,8 +1687,14 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# The client MAY drop these packets, or it MAY buffer them in anticipation
                 //# of later packets that allow it to compute the key.
 
-                self.packet_storage = packet.get_wire_bytes();
-                self.stored_packet_type = Some(PacketNumberSpace::ApplicationData);
+                let packet_bytes = packet.get_wire_bytes();
+                if packet_bytes.len() < self.limits.stored_packet_size() {
+                    // We only store one packet of application data for now. This is due to the fact that
+                    // short packets do not contain a length prefix, therefore, we would have to store additional
+                    // length info per packet to properly parse them once the application space is created.
+                    self.packet_storage = packet_bytes;
+                    self.stored_packet_type = Some(PacketNumberSpace::ApplicationData)
+                }
             } else {
                 let path = &self.path_manager[path_id];
                 publisher.on_packet_dropped(event::builder::PacketDropped {
