@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{dc, seal, Bidirectional, Credentials, Entry, Map, TransportFeatures};
+use super::{dc, seal, Bidirectional, Credentials, Entry, Id, Map, TransportFeatures};
 use std::sync::Arc;
 
 pub struct Peer {
@@ -28,6 +28,11 @@ impl Peer {
         let keys = self.entry.bidi_local(features);
 
         (keys, self.entry.parameters())
+    }
+
+    #[inline]
+    pub fn id(&self) -> &Id {
+        self.entry.id()
     }
 
     #[inline]
