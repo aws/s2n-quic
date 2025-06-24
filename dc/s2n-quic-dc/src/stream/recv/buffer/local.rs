@@ -14,6 +14,7 @@ use std::io;
 #[derive(Debug)]
 pub struct Local {
     recv_buffer: msg::recv::Message,
+    saw_fin: bool,
     handshake: Option<handshake::Receiver>,
 }
 
@@ -22,6 +23,7 @@ impl Local {
     pub fn new(recv_buffer: msg::recv::Message, handshake: Option<handshake::Receiver>) -> Self {
         Self {
             recv_buffer,
+            saw_fin: false,
             handshake,
         }
     }
@@ -66,7 +68,9 @@ impl super::Buffer for Local {
                 }
             }
 
-            ready!(self.poll_fill_once(cx, socket, publisher))?;
+            if ready!(self.poll_fill_once(cx, socket, publisher))? == 0 {
+                self.saw_fin = true;
+            }
 
             return Ok(self.recv_buffer.payload_len()).into();
         }
@@ -177,6 +181,12 @@ impl Local {
                             return Err(recv::error::Kind::Decode.into());
                         }
 
+                        if self.saw_fin {
+                            tracing::error!("truncated stream");
+                            msg.clear();
+                            return Err(recv::error::Kind::Decode.into());
+                        }
+
                         tracing::trace!(
                             socket_kind = %"stream",
                             unexpected_eof = len,
@@ -229,3 +239,6 @@ impl Local {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test;
