@@ -115,7 +115,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_limits(limits::Default::default())?
+        ///     .with_limits(limits::Limits::new().with_max_idle_timeout(Duration::from_secs(30))?)?
         ///     .start()?;
         /// #
         /// #    Ok(())
