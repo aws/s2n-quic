@@ -24,7 +24,7 @@ impl BidirectionalStream {
     /// # async fn test() -> s2n_quic::stream::Result<()> {
     /// #   let connection: s2n_quic::connection::Connection = todo!();
     /// #
-    /// let stream = connection.open_send_stream().await?;
+    /// let stream = connection.open_bidirectional_stream().await?;
     /// println!("New stream's id: {}", stream.id());
     /// #
     /// #   Ok(())

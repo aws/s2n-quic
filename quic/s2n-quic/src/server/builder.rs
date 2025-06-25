@@ -140,7 +140,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_endpoint_limits(endpoint_limits::Default::default())?
+        ///     .with_endpoint_limits(
+        ///         endpoint_limits::Default::builder()
+        ///             .with_inflight_handshake_limit(100)?
+        ///             .build()?,
+        ///     )?
         ///     .start()?;
         /// #
         /// #    Ok(())
