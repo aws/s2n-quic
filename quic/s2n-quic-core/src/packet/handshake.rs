@@ -65,6 +65,10 @@ pub type EncryptedHandshake<'a> =
 pub type CleartextHandshake<'a> = Handshake<&'a [u8], &'a [u8], PacketNumber, DecoderBufferMut<'a>>;
 
 impl<'a> ProtectedHandshake<'a> {
+    pub fn get_wire_bytes(&self) -> Vec<u8> {
+        self.payload.buffer.encode_to_vec()
+    }
+
     #[inline]
     pub(crate) fn decode(
         _tag: Tag,
