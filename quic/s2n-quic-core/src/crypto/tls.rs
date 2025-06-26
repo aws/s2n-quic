@@ -20,6 +20,9 @@ pub mod null;
 #[cfg(feature = "alloc")]
 pub mod slow_tls;
 
+#[cfg(feature = "alloc")]
+pub mod offload;
+
 /// Holds all application parameters which are exchanged within the TLS handshake.
 #[derive(Debug)]
 pub struct ApplicationParameters<'a> {

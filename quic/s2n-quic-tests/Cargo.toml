@@ -11,6 +11,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
+bach = "0.1.0"
 bytes = { version = "1", default-features = false }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 rand = "0.9"
