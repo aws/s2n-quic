@@ -176,7 +176,7 @@ where
         self.0.receive_application(max_len)
     }
 
-    fn can_send_initial(&self) -> bool {
+    fn can_send_initial(&mut self) -> bool {
         self.0.can_send_initial()
     }
 
@@ -184,7 +184,7 @@ where
         self.0.send_initial(transmission);
     }
 
-    fn can_send_handshake(&self) -> bool {
+    fn can_send_handshake(&mut self) -> bool {
         self.0.can_send_handshake()
     }
 
@@ -192,7 +192,7 @@ where
         self.0.send_handshake(transmission);
     }
 
-    fn can_send_application(&self) -> bool {
+    fn can_send_application(&mut self) -> bool {
         self.0.can_send_application()
     }
 
