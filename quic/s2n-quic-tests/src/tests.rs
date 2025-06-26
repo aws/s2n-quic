@@ -39,6 +39,8 @@ mod issue_1717;
 mod issue_954;
 mod mtu;
 mod no_tls;
+#[cfg(feature = "unstable-offload-tls")]
+mod offload;
 mod platform_events;
 mod pto;
 mod resumption;
