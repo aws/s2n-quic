@@ -69,7 +69,7 @@ fn increasing_pto_count_under_loss() {
         .iter()
         .reduce(|prev, new| {
             // assert that the value is monotonically increasing
-            assert!(new >= prev, "prev_value {}, new_value {}", prev, new);
+            assert!(new >= prev, "prev_value {prev}, new_value {new}");
             new
         })
         .unwrap();
@@ -78,8 +78,6 @@ fn increasing_pto_count_under_loss() {
     // duration of the test
     assert!(
         pto_count > 5,
-        "delay: {:?}. pto_count: {}",
-        delay_time,
-        pto_count
+        "delay: {delay_time:?}. pto_count: {pto_count}"
     );
 }

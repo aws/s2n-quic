@@ -806,9 +806,7 @@ mod test {
                 // assert that the unoptimized result matches the optimized to the nearest `weight` nanos
                 assert!(
                     super::abs_difference(expected.as_nanos(), actual.as_nanos()) as u32 <= weight,
-                    "expected: {:?}; actual: {:?}",
-                    expected,
-                    actual
+                    "expected: {expected:?}; actual: {actual:?}"
                 );
             })
     }

@@ -864,9 +864,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
         assert_eq!(
             transmission::Interest::NewData,
             manager.get_transmission_interest(),
-            "stream_type:{:?} opened_streams:{}",
-            stream_type,
-            opened_streams
+            "stream_type:{stream_type:?} opened_streams:{opened_streams}"
         );
 
         let mut frame_buffer = OutgoingFrameBuffer::new();
@@ -1329,7 +1327,7 @@ fn blocked_on_local_concurrent_stream_limit() {
                     assert_eq!(frame.offset, VarInt::default());
                     assert!(frame.data.is_empty());
                 }
-                frame => panic!("unexpected frame: {:?}", frame),
+                frame => panic!("unexpected frame: {frame:?}"),
             }
 
             assert!(frame_buffer.is_empty());
@@ -1426,10 +1424,7 @@ fn asymmetric_stream_limits_remote_initiated() {
                 assert_eq!(
                     VarInt::from_u16(available_limit),
                     available_local_stream_capacity,
-                    "local_limit:{} peer_limit:{} stream_type:{:?}",
-                    local_limit,
-                    peer_limit,
-                    stream_type
+                    "local_limit:{local_limit} peer_limit:{peer_limit} stream_type:{stream_type:?}"
                 );
 
                 // remote capacity assertion
@@ -1440,10 +1435,7 @@ fn asymmetric_stream_limits_remote_initiated() {
                 assert_eq!(
                     VarInt::from_u16(0),
                     available_remote_stream_capacity,
-                    "local_limit:{} peer_limit:{} stream_type:{:?}",
-                    local_limit,
-                    peer_limit,
-                    stream_type
+                    "local_limit:{local_limit} peer_limit:{peer_limit} stream_type:{stream_type:?}"
                 );
             }
         }
@@ -1495,10 +1487,7 @@ fn asymmetric_stream_limits_local_initiated() {
                     );
                     assert!(
                         result.is_ready(),
-                        "local_limit:{} peer_limit:{} stream_type:{:?}",
-                        local_limit,
-                        peer_limit,
-                        stream_type
+                        "local_limit:{local_limit} peer_limit:{peer_limit} stream_type:{stream_type:?}"
                     );
                 }
 
@@ -1510,10 +1499,7 @@ fn asymmetric_stream_limits_local_initiated() {
                 assert_eq!(
                     VarInt::from_u16(0),
                     available_local_stream_capacity,
-                    "local_limit:{} peer_limit:{} stream_type:{:?}",
-                    local_limit,
-                    peer_limit,
-                    stream_type
+                    "local_limit:{local_limit} peer_limit:{peer_limit} stream_type:{stream_type:?}"
                 );
 
                 // remote capacity assertion
@@ -1527,10 +1513,7 @@ fn asymmetric_stream_limits_local_initiated() {
                 assert_eq!(
                     VarInt::from_u16(local_limit),
                     available_remote_stream_capacity,
-                    "local_limit:{} peer_limit:{} stream_type:{:?}",
-                    local_limit,
-                    peer_limit,
-                    stream_type
+                    "local_limit:{local_limit} peer_limit:{peer_limit} stream_type:{stream_type:?}"
                 );
             }
         }
@@ -1733,10 +1716,9 @@ fn accept_returns_opened_streams_of_any_type() {
                 match manager.poll_accept(None, &Context::from_waker(&accept_waker)) {
                     Poll::Ready(Ok(Some(stream_id))) => assert!(
                         streams.remove(&stream_id),
-                        "accepted {:?} stream multiple times",
-                        stream_id
+                        "accepted {stream_id:?} stream multiple times"
                     ),
-                    other => panic!("unexpected result {:?}", other),
+                    other => panic!("unexpected result {other:?}"),
                 }
             }
 

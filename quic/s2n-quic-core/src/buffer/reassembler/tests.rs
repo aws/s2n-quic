@@ -1066,8 +1066,7 @@ fn allocation_size_test() {
         assert_eq!(
             Reassembler::allocation_size(offset),
             size,
-            "offset = {}",
-            offset
+            "offset = {offset}"
         );
 
         if let Some((offset, _)) = received.get(index + 1) {
@@ -1075,8 +1074,7 @@ fn allocation_size_test() {
             assert_eq!(
                 Reassembler::allocation_size(offset),
                 size,
-                "offset = {}",
-                offset
+                "offset = {offset}"
             );
         }
     }

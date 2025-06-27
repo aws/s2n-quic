@@ -292,9 +292,7 @@ fn interval_differential_test() {
 
             assert!(
                 abs_difference(actual, expected) < Duration::from_nanos(1_100_000),
-                "expected: {:?}; actual: {:?}",
-                expected,
-                actual
+                "expected: {expected:?}; actual: {actual:?}"
             );
         });
 }
@@ -328,11 +326,7 @@ fn rfc_interval(
 }
 
 fn abs_difference(a: Duration, b: Duration) -> Duration {
-    if a > b {
-        a - b
-    } else {
-        b - a
-    }
+    a.abs_diff(b)
 }
 
 // Calls `on_packet_sent` until the earliest departure time has increased, and returns the interval

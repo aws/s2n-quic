@@ -319,8 +319,7 @@ mod tests {
             // we should never exceed the capacity
             assert!(
                 frame.encoding_size() <= capacity,
-                "the encoding_size should not exceed capacity {:#?}",
-                frame
+                "the encoding_size should not exceed capacity {frame:#?}"
             );
 
             if new_length < length {
@@ -346,15 +345,13 @@ mod tests {
                 assert_eq!(
                     frame.encoding_size(),
                     capacity,
-                    "should only be the last frame if == capacity {:#?}",
-                    frame
+                    "should only be the last frame if == capacity {frame:#?}"
                 );
             }
         } else {
             assert!(
                 frame.encoding_size() > capacity,
-                "rejection should only occur when encoding size > capacity {:#?}",
-                frame
+                "rejection should only occur when encoding size > capacity {frame:#?}"
             );
         }
     }
