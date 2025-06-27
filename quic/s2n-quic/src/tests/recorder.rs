@@ -129,6 +129,34 @@ event_recorder!(
     }
 );
 
+event_recorder!(
+    InitialCryptoFrameReceived,
+    FrameReceived,
+    on_frame_received,
+    Vec<u8>,
+    |event: &events::FrameReceived, storage: &mut Vec<Vec<u8>>| {
+        if matches!(event.frame, s2n_quic_core::event::api::Frame::Crypto { .. })
+            && matches!(
+                event.packet_header,
+                s2n_quic_core::event::api::PacketHeader::Initial { .. }
+            )
+        {
+            storage.push(event.path.remote_cid.bytes.to_vec());
+        }
+    }
+);
+
+event_recorder!(
+    PathChallengeUpdated,
+    PathChallengeUpdated,
+    on_path_challenge_updated,
+    s2n_quic_core::event::api::PathChallengeStatus,
+    |event: &events::PathChallengeUpdated,
+     storage: &mut Vec<s2n_quic_core::event::api::PathChallengeStatus>| {
+        storage.push(event.path_challenge_status.clone());
+    }
+);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PacketDropReason {
     ConnectionError,

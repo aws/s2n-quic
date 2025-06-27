@@ -43,6 +43,7 @@ mod pto;
 mod self_test;
 mod skip_packets;
 mod tls_context;
+mod zero_length_cid_client_connection_migration;
 
 // TODO: https://github.com/aws/s2n-quic/issues/1726
 //

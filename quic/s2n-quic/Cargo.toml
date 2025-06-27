@@ -85,6 +85,7 @@ zeroize = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
 bolero = { version = "0.13" }
+quiche = "0.24"
 s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
 s2n-quic-transport = { path = "../s2n-quic-transport", features = ["unstable_resumption", "unstable-provider-dc"] }
