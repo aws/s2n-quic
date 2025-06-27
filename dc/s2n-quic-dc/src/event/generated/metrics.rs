@@ -46,6 +46,14 @@ pub struct Context<R: Recorder> {
     stream_read_socket_errored: AtomicU64,
     connection_closed: AtomicU64,
 }
+impl<R: Recorder> Context<R> {
+    pub fn inner(&self) -> &R {
+        &self.recorder
+    }
+    pub fn inner_mut(&mut self) -> &mut R {
+        &mut self.recorder
+    }
+}
 impl<S: event::Subscriber> event::Subscriber for Subscriber<S>
 where
     S::ConnectionContext: Recorder,
