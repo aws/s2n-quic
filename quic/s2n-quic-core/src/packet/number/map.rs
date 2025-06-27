@@ -724,7 +724,7 @@ mod tests {
                         }
                         (None, None) => break,
                         (actual, expected) => {
-                            panic!("expected: {:?}, actual: {:?}", expected, actual);
+                            panic!("expected: {expected:?}, actual: {actual:?}");
                         }
                     }
                 }

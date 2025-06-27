@@ -171,7 +171,7 @@ impl core::fmt::Display for TlsProviders {
             TlsProviders::Rustls => String::from("rustls"),
             TlsProviders::Null => String::from("null"),
         };
-        write!(f, "{}", str)
+        write!(f, "{str}")
     }
 }
 

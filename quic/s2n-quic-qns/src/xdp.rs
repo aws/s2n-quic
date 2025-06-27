@@ -308,7 +308,7 @@ impl Xdp {
         let mut recv_buffer = vec![0; self.frame_size as usize];
         tokio::spawn(async move {
             let result = udp_socket.recv_from(&mut recv_buffer).await;
-            eprintln!("ERROR: received packet on regular UDP socket: {:?}", result);
+            eprintln!("ERROR: received packet on regular UDP socket: {result:?}");
 
             std::process::exit(1);
         });

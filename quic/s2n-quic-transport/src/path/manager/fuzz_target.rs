@@ -198,7 +198,7 @@ impl Model {
                     DatagramDropReason::InsufficientConnectionIds => {}
                     DatagramDropReason::RejectedConnectionMigration { .. } => {}
                     DatagramDropReason::PathLimitExceeded => {}
-                    datagram_drop_reason => panic!("{:?}", datagram_drop_reason),
+                    datagram_drop_reason => panic!("{datagram_drop_reason:?}"),
                 };
             }
         }

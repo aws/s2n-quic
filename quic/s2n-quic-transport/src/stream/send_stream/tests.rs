@@ -126,7 +126,7 @@ enum Instruction {
 fn execute_instructions(test_env: &mut TestEnvironment, instructions: &[Instruction]) {
     println!("executing {} instructions", instructions.len());
     for (id, instruction) in instructions.iter().enumerate() {
-        println!("Executing instruction {:?} {:?}", id, instruction);
+        println!("Executing instruction {id:?} {instruction:?}");
         match instruction {
             Instruction::EnqueueData(offset, size, expect_success) => {
                 let data = Bytes::from(gen_pattern_test_data(*offset, *size));

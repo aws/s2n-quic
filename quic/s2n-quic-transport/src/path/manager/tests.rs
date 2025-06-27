@@ -943,7 +943,7 @@ fn limit_number_of_connection_migrations() {
     let mut total_paths = 1;
 
     for i in 1..u8::MAX {
-        let new_addr: SocketAddr = format!("127.0.0.2:{}", i).parse().unwrap();
+        let new_addr: SocketAddr = format!("127.0.0.2:{i}").parse().unwrap();
         let new_addr = SocketAddress::from(new_addr);
         let new_addr = RemoteAddress::from(new_addr);
         let now = NoopClock {}.get_time();

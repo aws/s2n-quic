@@ -308,7 +308,7 @@ mod tests {
         let mut at_least_one_write = true;
         for (idx, count) in worker_counts.into_iter().enumerate() {
             let count = count.load(Ordering::Relaxed);
-            println!("thread={idx}, count={}", count);
+            println!("thread={idx}, count={count}");
             if count == 0 {
                 at_least_one_write = false;
             }

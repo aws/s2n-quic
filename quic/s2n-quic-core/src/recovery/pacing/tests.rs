@@ -291,10 +291,8 @@ fn interval_differential_test() {
             let expected = rfc_interval(rtt, congestion_window, max_datagram_size, slow_start);
 
             assert!(
-                abs_difference(actual, expected) < Duration::from_nanos(1_100_000),
-                "expected: {:?}; actual: {:?}",
-                expected,
-                actual
+                actual.abs_diff(expected) < Duration::from_nanos(1_100_000),
+                "expected: {expected:?}; actual: {actual:?}"
             );
         });
 }
@@ -325,14 +323,6 @@ fn rfc_interval(
 
     // Divide by n by multiplying by the inverse
     result * *n.denom() as u32 / *n.numer() as u32
-}
-
-fn abs_difference(a: Duration, b: Duration) -> Duration {
-    if a > b {
-        a - b
-    } else {
-        b - a
-    }
 }
 
 // Calls `on_packet_sent` until the earliest departure time has increased, and returns the interval

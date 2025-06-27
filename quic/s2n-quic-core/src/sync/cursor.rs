@@ -206,7 +206,7 @@ impl<T: Copy> Cursor<T> {
     pub fn release_producer(&mut self, len: u32) {
         if cfg!(debug_assertions) {
             let max_len = self.cached_producer_len();
-            assert!(max_len >= len, "available: {}, requested: {}", max_len, len);
+            assert!(max_len >= len, "available: {max_len}, requested: {len}");
         }
         self.cached_producer += len;
         self.cached_len -= len;
@@ -276,7 +276,7 @@ impl<T: Copy> Cursor<T> {
     pub fn release_consumer(&mut self, len: u32) {
         if cfg!(debug_assertions) {
             let max_len = self.cached_consumer_len();
-            assert!(max_len >= len, "available: {}, requested: {}", max_len, len);
+            assert!(max_len >= len, "available: {max_len}, requested: {len}");
         }
         self.cached_consumer += len;
         self.cached_len -= len;

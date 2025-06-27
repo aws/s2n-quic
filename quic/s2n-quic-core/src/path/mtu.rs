@@ -526,7 +526,7 @@ impl Controller {
     /// be over 9000.
     #[inline]
     pub fn new(config: Config, peer_socket_address: &inet::SocketAddress) -> Self {
-        debug_assert!(config.is_valid(), "Invalid MTU configuration {:?}", config);
+        debug_assert!(config.is_valid(), "Invalid MTU configuration {config:?}");
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
         //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
