@@ -94,6 +94,16 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             #fields
         }
 
+        impl<R: Recorder> Context<R> {
+            pub fn inner(&self) -> &R {
+                &self.recorder
+            }
+
+            pub fn inner_mut(&mut self) -> &mut R {
+                &mut self.recorder
+            }
+        }
+
         impl<S: event::Subscriber> event::Subscriber for Subscriber<S>
             where S::ConnectionContext: Recorder {
             type ConnectionContext = Context<S::ConnectionContext>;
