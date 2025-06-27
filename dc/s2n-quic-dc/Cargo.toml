@@ -34,7 +34,6 @@ bitflags = "2"
 bolero-generator = { version = "0.13", default-features = false, optional = true }
 bytes = "1"
 crossbeam-channel = "0.5"
-crossbeam-epoch = "0.9"
 crossbeam-queue = { version = "0.3" }
 dashmap = "6"
 event-listener-strategy = "0.5"
