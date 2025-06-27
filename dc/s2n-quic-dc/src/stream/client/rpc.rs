@@ -27,7 +27,7 @@ where
     reader.set_read_mode(ReadMode::UntilFull);
 
     // TODO if the request is large enough, should we spawn a task for it?
-    let mut writer = async move {
+    let writer = async move {
         while !request.buffer_is_empty() {
             writer.write_from_fin(&mut request).await?;
         }
@@ -39,7 +39,7 @@ where
     let mut writer = core::pin::pin!(writer);
     let mut writer_finished = false;
 
-    let mut reader = async move {
+    let reader = async move {
         loop {
             let storage = response.provide_storage().await?;
 

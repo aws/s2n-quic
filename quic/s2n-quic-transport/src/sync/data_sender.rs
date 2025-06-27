@@ -702,15 +702,13 @@ mod tests {
 
             assert!(
                 did_transmit,
-                "transmission_interest was expressed but sender did not transmit: {:#?}",
-                sender
+                "transmission_interest was expressed but sender did not transmit: {sender:#?}"
             );
         }
 
         assert!(
             !frame_buffer.is_empty(),
-            "the test should transmit at least one frame: {:#?}",
-            sender,
+            "the test should transmit at least one frame: {sender:#?}",
         );
 
         let receiver = stream::Data::new(total_len);
@@ -742,7 +740,7 @@ mod tests {
 
             assert_eq!(received_ranges.max_value(), Some(total_len - 1));
         } else {
-            assert!(received_ranges.is_empty(), "{:#?}", sender);
+            assert!(received_ranges.is_empty(), "{sender:#?}");
         }
 
         assert!(transmitted_fin);

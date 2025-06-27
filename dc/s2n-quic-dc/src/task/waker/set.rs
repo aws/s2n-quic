@@ -47,7 +47,8 @@ impl Set {
     /// Returns all of the IDs that are woken
     #[inline]
     pub fn drain(&mut self) -> impl Iterator<Item = usize> + '_ {
-        core::mem::swap(&mut self.ready, &mut self.state.ready.lock().unwrap());
+        let mut state = self.state.ready.lock().unwrap();
+        core::mem::swap(&mut self.ready, &mut state);
         self.ready.drain()
     }
 }

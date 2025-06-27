@@ -240,8 +240,7 @@ impl Writer for DcStatelessResetTokenWriter {
             Err(error) => {
                 debug_assert!(
                     false,
-                    "The dc provider produced invalid stateless reset tokens: {}",
-                    error
+                    "The dc provider produced invalid stateless reset tokens: {error}"
                 );
                 None
             }

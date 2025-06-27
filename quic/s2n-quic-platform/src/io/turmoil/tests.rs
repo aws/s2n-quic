@@ -79,7 +79,7 @@ impl Endpoint for TestEndpoint {
     fn receive<Rx: rx::Queue<Handle = PathHandle>, C: Clock>(&mut self, queue: &mut Rx, clock: &C) {
         let now = clock.get_time();
         queue.for_each(|_header, payload| {
-            assert_eq!(payload.len(), 4, "invalid payload {:?}", payload);
+            assert_eq!(payload.len(), 4, "invalid payload {payload:?}");
 
             let id = (&*payload).try_into().unwrap();
             let id = u32::from_be_bytes(id);

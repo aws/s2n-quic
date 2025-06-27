@@ -192,12 +192,12 @@ impl Model {
             match invariant {
                 Invariant::ContainsIp(ip) => {
                     if state.max_capacity != 5 {
-                        assert!(state.peers.contains_key(ip), "{:?}", ip);
+                        assert!(state.peers.contains_key(ip), "{ip:?}");
                     }
                 }
                 Invariant::ContainsId(id) => {
                     if state.max_capacity != 5 {
-                        assert!(state.ids.contains_key(id), "{:?}", id);
+                        assert!(state.ids.contains_key(id), "{id:?}");
                     }
                 }
                 Invariant::IdRemoved(id) => {
