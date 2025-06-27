@@ -47,6 +47,7 @@ impl Set {
     /// Returns all of the IDs that are woken
     #[inline]
     pub fn drain(&mut self) -> impl Iterator<Item = usize> + '_ {
+        #[allow(clippy::swap_with_temporary)]
         core::mem::swap(&mut self.ready, &mut self.state.ready.lock().unwrap());
         self.ready.drain()
     }
