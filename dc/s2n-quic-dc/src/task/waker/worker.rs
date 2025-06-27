@@ -42,7 +42,7 @@ impl Waker {
         // we only need to `wake_by_ref` if the worker is sleeping
         ensure!(matches!(state.status, Status::Sleeping));
 
-        // clone the waker out of the lock to avoid deadlocks
+        // wake the waker outside of the lock to avoid deadlocks
         let waker = state.waker.clone();
         drop(state);
         waker.wake();
@@ -50,7 +50,7 @@ impl Waker {
 
     #[inline]
     pub fn wake_forced(&self) {
-        // clone the waker out of the lock to avoid deadlocks
+        // wake the waker outside of the lock to avoid deadlocks
         let waker = self.state.lock().unwrap().waker.clone();
         waker.wake();
     }
