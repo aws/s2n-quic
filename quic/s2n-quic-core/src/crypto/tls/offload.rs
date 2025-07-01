@@ -20,8 +20,12 @@ use futures_channel::{
     oneshot::{Receiver, Sender},
 };
 use std::{sync::Arc, task::Wake, thread};
+type SessionProducer<E> = (
+    <E as tls::Endpoint>::Session,
+    UnboundedSender<Request<<E as tls::Endpoint>::Session>>,
+);
 pub struct OffloadEndpoint<E: tls::Endpoint> {
-    new_session: UnboundedSender<(E::Session, UnboundedSender<Request<E::Session>>)>,
+    new_session: UnboundedSender<SessionProducer<E>>,
     _thread: std::thread::JoinHandle<()>,
     inner: E,
     remote_thread_waker: Waker,
@@ -29,9 +33,7 @@ pub struct OffloadEndpoint<E: tls::Endpoint> {
 
 impl<E: tls::Endpoint> OffloadEndpoint<E> {
     pub fn new(inner: E) -> Self {
-        let (tx, mut rx) =
-            futures_channel::mpsc::unbounded::<(E::Session, UnboundedSender<Request<E::Session>>)>(
-            );
+        let (tx, mut rx) = futures_channel::mpsc::unbounded::<SessionProducer<E>>();
 
         let handle = thread::spawn(move || {
             let mut sessions = vec![];
@@ -162,7 +164,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
     where
         W: tls::Context<Self>,
     {
-        if let Some(finished) = self.is_poll_done.clone() {
+        if let Some(finished) = self.is_poll_done {
             return Poll::Ready(finished);
         }
 
@@ -210,7 +212,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                 }
                 Request::Done(session, res) => {
                     self.inner = Some(session);
-                    self.is_poll_done = Some(res.clone());
+                    self.is_poll_done = Some(res);
 
                     return Poll::Ready(res);
                 }
@@ -276,12 +278,12 @@ impl<T> AsyncRequest<T> {
 
     fn poll_request(
         &mut self,
-        mut cx: &mut core::task::Context<'_>,
+        cx: &mut core::task::Context<'_>,
         issue: impl FnOnce(Sender<T>),
     ) -> Poll<T> {
         loop {
             if let Some(mut receiver) = self.rx.as_mut() {
-                match Pin::new(&mut receiver).poll(&mut cx) {
+                match Pin::new(&mut receiver).poll(cx) {
                     Poll::Ready(Ok(value)) => {
                         receiver.close();
                         self.rx = None;
