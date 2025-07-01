@@ -22,6 +22,8 @@ use crate::{
     transport,
     varint::VarInt,
 };
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 use s2n_codec::{CheckedRange, DecoderBufferMut, DecoderBufferMutResult, Encoder, EncoderValue};
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.4
@@ -65,6 +67,7 @@ pub type EncryptedHandshake<'a> =
 pub type CleartextHandshake<'a> = Handshake<&'a [u8], &'a [u8], PacketNumber, DecoderBufferMut<'a>>;
 
 impl<'a> ProtectedHandshake<'a> {
+    #[cfg(feature = "alloc")]
     pub fn get_wire_bytes(&self) -> Vec<u8> {
         self.payload.buffer.encode_to_vec()
     }

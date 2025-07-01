@@ -379,7 +379,6 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                         connection_id_validator,
                     )?;
                 }
-                ()
             }
         }
 
@@ -1599,42 +1598,39 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             // notify the connection a packet was processed
             self.on_processed_packet(&processed_packet, subscriber)?;
-        } else {
-            if (self.stored_packet_type.is_none()
-                || self.stored_packet_type == Some(PacketNumberSpace::Handshake))
-                && !self.space_manager.is_handshake_confirmed()
-            {
-                //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.4
-                //# However, a TLS implementation could perform some of its processing
-                //# asynchronously.  In particular, the process of validating a
-                //# certificate can take some time.  While waiting for TLS processing to
-                //# complete, an endpoint SHOULD buffer received packets if they might be
-                //# processed using keys that are not yet available.  These packets can
-                //# be processed once keys are provided by TLS.  An endpoint SHOULD
-                //# continue to respond to packets that can be processed during this
-                //# time.
+        } else if (self.stored_packet_type.is_none()
+            || self.stored_packet_type == Some(PacketNumberSpace::Handshake))
+            && !self.space_manager.is_handshake_confirmed()
+        {
+            //= https://www.rfc-editor.org/rfc/rfc9001#section-4.1.4
+            //# However, a TLS implementation could perform some of its processing
+            //# asynchronously.  In particular, the process of validating a
+            //# certificate can take some time.  While waiting for TLS processing to
+            //# complete, an endpoint SHOULD buffer received packets if they might be
+            //# processed using keys that are not yet available.  These packets can
+            //# be processed once keys are provided by TLS.  An endpoint SHOULD
+            //# continue to respond to packets that can be processed during this
+            //# time.
 
-                // https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
-                //# Due to packet reordering or loss, a client might receive packets
-                //# for a connection that are encrypted with a key it has not yet computed.
-                //# The client MAY drop these packets, or it MAY buffer them in anticipation
-                //# of later packets that allow it to compute the key.
+            // https://www.rfc-editor.org/rfc/rfc9000#section-5.2.1
+            //# Due to packet reordering or loss, a client might receive packets
+            //# for a connection that are encrypted with a key it has not yet computed.
+            //# The client MAY drop these packets, or it MAY buffer them in anticipation
+            //# of later packets that allow it to compute the key.
 
-                let packet_bytes = packet.get_wire_bytes();
-                if packet_bytes.len() + self.packet_storage.len() < self.limits.stored_packet_size()
-                {
-                    self.packet_storage.extend(packet_bytes);
-                    self.stored_packet_type = Some(PacketNumberSpace::Handshake)
-                }
-            } else {
-                let path = &self.path_manager[path_id];
-                publisher.on_packet_dropped(event::builder::PacketDropped {
-                    reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
-                        path: path_event!(path, path_id),
-                        packet_type: event::builder::PacketType::Handshake,
-                    },
-                });
+            let packet_bytes = packet.get_wire_bytes();
+            if packet_bytes.len() + self.packet_storage.len() < self.limits.stored_packet_size() {
+                self.packet_storage.extend(packet_bytes);
+                self.stored_packet_type = Some(PacketNumberSpace::Handshake)
             }
+        } else {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::Handshake,
+                },
+            });
         }
 
         Ok(())
