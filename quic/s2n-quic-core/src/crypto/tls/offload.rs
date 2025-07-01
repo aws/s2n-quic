@@ -8,18 +8,18 @@ use crate::{
     },
     transport,
 };
+use alloc::{sync::Arc, task::Wake, vec, vec::Vec};
 use core::{
     any::Any,
     future::Future,
     pin::Pin,
-    task::{Poll, Waker},
+    task::{Context, Poll, Waker},
 };
 use futures::{prelude::Stream, task};
 use futures_channel::{
     mpsc::{UnboundedReceiver, UnboundedSender},
     oneshot::{Receiver, Sender},
 };
-use std::{sync::Arc, task::Wake, thread};
 type SessionProducer<E> = (
     <E as tls::Endpoint>::Session,
     UnboundedSender<Request<<E as tls::Endpoint>::Session>>,
@@ -35,12 +35,12 @@ impl<E: tls::Endpoint> OffloadEndpoint<E> {
     pub fn new(inner: E) -> Self {
         let (tx, mut rx) = futures_channel::mpsc::unbounded::<SessionProducer<E>>();
 
-        let handle = thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             let mut sessions = vec![];
             let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
 
             loop {
-                let mut cx = task::Context::from_waker(&waker);
+                let mut cx = Context::from_waker(&waker);
 
                 // Add incoming sessions to queue
                 while let Poll::Ready(Some((new_session, tx))) =
@@ -89,10 +89,10 @@ impl<E: tls::Endpoint> OffloadEndpoint<E> {
     }
 }
 
-struct ThreadWaker(thread::Thread);
+struct ThreadWaker(std::thread::Thread);
 
 impl Wake for ThreadWaker {
-    fn wake(self: std::sync::Arc<Self>) {
+    fn wake(self: Arc<Self>) {
         self.0.unpark();
     }
 }
@@ -170,7 +170,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
 
         self.waker.wake_by_ref();
         loop {
-            let mut cx = std::task::Context::from_waker(context.waker());
+            let mut cx = Context::from_waker(context.waker());
 
             let req = match Pin::new(&mut self.pending_requests).poll_next(&mut cx) {
                 Poll::Ready(Some(request)) => request,
@@ -422,7 +422,7 @@ impl<S: CryptoSuite> tls::Context<S> for RemoteContext<S> {
     }
 
     fn receive_initial(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        let mut cx = core::task::Context::from_waker(&self.waker);
+        let mut cx = Context::from_waker(&self.waker);
         if let Poll::Ready(resp) = self.receive_initial.poll_request(&mut cx, |tx| {
             let _ = self.tx.unbounded_send(Request::ReceiveInitial(max_len, tx));
         }) {
@@ -433,7 +433,7 @@ impl<S: CryptoSuite> tls::Context<S> for RemoteContext<S> {
     }
 
     fn receive_handshake(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        let mut cx = core::task::Context::from_waker(&self.waker);
+        let mut cx = Context::from_waker(&self.waker);
         if let Poll::Ready(resp) = self.receive_handshake.poll_request(&mut cx, |tx| {
             let _ = self
                 .tx
@@ -446,7 +446,7 @@ impl<S: CryptoSuite> tls::Context<S> for RemoteContext<S> {
     }
 
     fn receive_application(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        let mut cx = core::task::Context::from_waker(&self.waker);
+        let mut cx = Context::from_waker(&self.waker);
         if let Poll::Ready(resp) = self.receive_application.poll_request(&mut cx, |tx| {
             let _ = self
                 .tx
@@ -459,7 +459,7 @@ impl<S: CryptoSuite> tls::Context<S> for RemoteContext<S> {
     }
 
     fn can_send_initial(&mut self) -> bool {
-        let mut cx = core::task::Context::from_waker(&self.waker);
+        let mut cx = Context::from_waker(&self.waker);
         if let Poll::Ready(resp) = self.can_send_initial.poll_request(&mut cx, |tx| {
             let _ = self.tx.unbounded_send(Request::CanSendInitial(tx));
         }) {
@@ -475,7 +475,7 @@ impl<S: CryptoSuite> tls::Context<S> for RemoteContext<S> {
     }
 
     fn can_send_handshake(&mut self) -> bool {
-        let mut cx = core::task::Context::from_waker(&self.waker);
+        let mut cx = Context::from_waker(&self.waker);
         if let Poll::Ready(resp) = self.can_send_handshake.poll_request(&mut cx, |tx| {
             let _ = self.tx.unbounded_send(Request::CanSendHandshake(tx));
         }) {
@@ -491,7 +491,7 @@ impl<S: CryptoSuite> tls::Context<S> for RemoteContext<S> {
     }
 
     fn can_send_application(&mut self) -> bool {
-        let mut cx = core::task::Context::from_waker(&self.waker);
+        let mut cx = Context::from_waker(&self.waker);
         if let Poll::Ready(resp) = self.can_send_application.poll_request(&mut cx, |tx| {
             let _ = self.tx.unbounded_send(Request::CanSendApplication(tx));
         }) {
