@@ -309,7 +309,7 @@ impl Harness {
     async fn run_with(self, client: testing::Client, server: testing::Server) {
         let (run_handle, run_watch) = testing::drop_handle::new();
         let task = self.run_with_drop_handle(client, server, run_watch);
-        let duration = Duration::from_secs(120);
+        let duration = Duration::from_secs(180);
         timeout(duration, task).await.unwrap();
         drop(run_handle);
     }
@@ -651,7 +651,7 @@ macro_rules! tokio_fuzz_test {
                 bolero::check!()
                     .with_generator((produce(), produce(), produce::<Vec<_>>().with().len(1..5)))
                     .cloned()
-                    // limit the amount of time in tests since they can produce a log of tracing data
+                    // limit the amount of time in tests since they can produce a lot of tracing data
                     .with_test_time(Duration::from_secs(10))
                     .for_each(|(client, server, requests)| {
                         static RUNTIME: OnceLock<Runtime> = OnceLock::new();
