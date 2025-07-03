@@ -47,6 +47,8 @@ tracing = { version = "0.1", default-features = false, optional = true }
 zerocopy = { version = "0.8", features = ["derive"] }
 futures-test = { version = "0.3", optional = true } # For testing Waker interactions
 once_cell = { version = "1", optional = true }
+futures-channel = "0.3.31"
+futures = "0.3"
 
 [dev-dependencies]
 bolero = "0.13"
