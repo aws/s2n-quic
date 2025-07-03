@@ -39,6 +39,7 @@ const MAX_KEEP_ALIVE_PERIOD_DEFAULT: Duration = Duration::from_secs(30);
 pub const ANTI_AMPLIFICATION_MULTIPLIER: u8 = 3;
 
 pub const DEFAULT_STREAM_BATCH_SIZE: u8 = 1;
+pub const DEFAULT_STORED_PACKET_SIZE: usize = 0;
 
 #[non_exhaustive]
 #[derive(Debug)]
@@ -104,6 +105,7 @@ pub struct Limits {
     pub(crate) migration_support: MigrationSupport,
     pub(crate) anti_amplification_multiplier: u8,
     pub(crate) stream_batch_size: u8,
+    pub(crate) stored_packet_size: usize,
 }
 
 impl Default for Limits {
@@ -151,6 +153,7 @@ impl Limits {
             migration_support: MigrationSupport::RECOMMENDED,
             anti_amplification_multiplier: ANTI_AMPLIFICATION_MULTIPLIER,
             stream_batch_size: DEFAULT_STREAM_BATCH_SIZE,
+            stored_packet_size: DEFAULT_STORED_PACKET_SIZE,
         }
     }
 
@@ -254,6 +257,7 @@ impl Limits {
         u64
     );
     setter!(with_stream_batch_size, stream_batch_size, u8);
+    setter!(with_stored_packet_size, stored_packet_size, usize);
     setter!(with_ack_elicitation_interval, ack_elicitation_interval, u8);
     setter!(with_max_ack_ranges, ack_ranges_limit, u8);
     setter!(
@@ -421,6 +425,12 @@ impl Limits {
     #[inline]
     pub fn stream_batch_size(&self) -> u8 {
         self.stream_batch_size
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn stored_packet_size(&self) -> usize {
+        self.stored_packet_size
     }
 }
 
