@@ -118,7 +118,7 @@ jobs:
       - uses: camshaft/rust-cache@v1
 
       # TODO translate json reports to in-action warnings
-      - name: Run cargo clippy
+      - name: Run cargo clippy on main crates
         run: |
           # deriving Eq may break API compatibility so we disable it
           # See https://github.com/rust-lang/rust-clippy/issues/9063
@@ -126,6 +126,18 @@ jobs:
           # manual_clamp will panic when min > max
           # See https://github.com/rust-lang/rust-clippy/pull/10101
           cargo clippy --all-features --all-targets --workspace -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
+
+      - name: Run clippy on dc/wireshark crate
+        working-directory: dc/wireshark
+        run: cargo clippy --tests
+
+      - name: Run clippy on all examples crates
+        working-directory: examples
+        run: cargo clippy --all-features --all-targets -- -A clippy::manual_clamp -A clippy::uninlined_format_args ${{ matrix.args }}
+
+      - name: Run clippy on tools/xdp crate
+        working-directory: tools/xdp
+        run: cargo +stable clippy
 
   udeps:
     runs-on: ubuntu-latest
@@ -527,10 +539,6 @@ jobs:
         working-directory: ${{ matrix.example }}
         run: cargo +nightly fmt --all -- --check
 
-      - name: lint
-        working-directory: ${{ matrix.example }}
-        run: cargo clippy --all-features --all-targets -- -A clippy::manual_clamp -A clippy::uninlined_format_args -D warnings
-
       # not all examples will build with the --manifest-path argument, since the
       # manifest-path argument will pull configuration from the current directory
       # instead of the directory with the Cargo.toml file
@@ -898,10 +906,6 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      - name: Run clippy
-        working-directory: tools/xdp
-        run: cargo +stable clippy
-
       - name: Build ebpf
         working-directory: tools/xdp
         env:
@@ -939,10 +943,6 @@ jobs:
       - name: Run cargo fmt
         working-directory: dc/wireshark
         run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        working-directory: dc/wireshark
-        run: cargo clippy --tests
 
       - name: Run tests
         working-directory: dc/wireshark
