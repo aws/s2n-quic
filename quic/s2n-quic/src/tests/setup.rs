@@ -196,13 +196,13 @@ pub fn start_quiche_client(
                             Ok(v) => v,
                             Err(quiche::Error::Done) => 0,
                             Err(e) => {
-                                panic!("quiche client receive error: {:?}", e);
+                                panic!("quiche client receive error: {e:?}");
                             }
                         };
                     }
                     Ok(None) => {}
                     Err(e) => {
-                        panic!("quiche client socket recv error: {:?}", e);
+                        panic!("quiche client socket recv error: {e:?}");
                     }
                 }
 
@@ -218,7 +218,7 @@ pub fn start_quiche_client(
                                 break;
                             }
                             Err(e) => {
-                                panic!("quiche client send error: {:?}", e)
+                                panic!("quiche client send error: {e:?}")
                             }
                         };
 
@@ -262,23 +262,19 @@ pub fn start_quiche_client(
             }
 
             while let Some(qe) = client_conn.path_event_next() {
-                match qe {
-                    quiche::PathEvent::Validated(local_addr, peer_addr) => {
-                        client_conn.migrate(local_addr, peer_addr).unwrap();
-                    }
-                    _ => {}
+                if let quiche::PathEvent::Validated(local_addr, peer_addr) = qe {
+                    client_conn.migrate(local_addr, peer_addr).unwrap();
                 }
             }
 
             // Perform connection migration after the connection is established
             // and the server provides spare CIDs
-            if client_conn.is_established() && client_conn.available_dcids() > 0 {
-                if !path_probed {
+            if client_conn.is_established() && client_conn.available_dcids() > 0
+                && !path_probed {
                     let new_addr = migrated_socket.local_addr().unwrap();
                     client_conn.probe_path(new_addr, server_addr).unwrap();
                     path_probed = true;
                 }
-            }
 
             // Sleep a bit to avoid busy-waiting
             crate::provider::io::testing::time::delay(std::time::Duration::from_millis(10)).await;

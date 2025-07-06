@@ -60,7 +60,7 @@ fn zero_length_cid_client_connection_migration_test() {
 
         // Create a QUIC connection and initiate handshake.
         let conn = quiche::connect(
-            Some(&"localhost"),
+            Some("localhost"),
             &scid,
             socket.local_addr().unwrap(),
             server_addr,
