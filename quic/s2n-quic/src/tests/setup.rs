@@ -269,12 +269,11 @@ pub fn start_quiche_client(
 
             // Perform connection migration after the connection is established
             // and the server provides spare CIDs
-            if client_conn.is_established() && client_conn.available_dcids() > 0
-                && !path_probed {
-                    let new_addr = migrated_socket.local_addr().unwrap();
-                    client_conn.probe_path(new_addr, server_addr).unwrap();
-                    path_probed = true;
-                }
+            if client_conn.available_dcids() > 0 && !path_probed {
+                let new_addr = migrated_socket.local_addr().unwrap();
+                client_conn.probe_path(new_addr, server_addr).unwrap();
+                path_probed = true;
+            }
 
             // Sleep a bit to avoid busy-waiting
             crate::provider::io::testing::time::delay(std::time::Duration::from_millis(10)).await;
