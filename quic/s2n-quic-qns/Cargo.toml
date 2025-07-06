@@ -21,7 +21,7 @@ cfg-if = "1"
 futures = "0.3"
 http = "1.0"
 humansize = "2"
-lru = "0.14"
+lru = "0.16"
 rand = "0.9"
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }

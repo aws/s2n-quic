@@ -247,10 +247,10 @@ pub fn start_quiche_client(
                         let stream_buf = &buf[..read];
                         // The data that the Quiche client received should be the same that it sent
                         if stream_buf.as_bytes() == application_data.as_bytes() {
-                            // The test is done once the client recieves the data. Hence, close the connection
+                            // The test is done once the client receives the data. Hence, close the connection
                             client_conn.close(false, 0x00, b"test finished").unwrap();
                         } else {
-                            panic!("No string recieved!");
+                            panic!("No string received!");
                         }
                     }
                 }

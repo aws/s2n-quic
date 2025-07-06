@@ -14,7 +14,7 @@ publish = false
 anyhow = "1"
 bytes = "1"
 bolero-generator = "0.13.0"
-indicatif = { version = "0.17", features = ["rayon"] }
+indicatif = { version = "0.18", features = ["rayon"] }
 jiff = "0.2"
 once_cell = "1"
 prost = "0.14"
