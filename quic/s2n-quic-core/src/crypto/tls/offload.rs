@@ -20,13 +20,15 @@ use futures_channel::{
     mpsc::{UnboundedReceiver, UnboundedSender},
     oneshot::{Receiver, Sender},
 };
+use std::thread;
+
 type SessionProducer<E> = (
     <E as tls::Endpoint>::Session,
     UnboundedSender<Request<<E as tls::Endpoint>::Session>>,
 );
 pub struct OffloadEndpoint<E: tls::Endpoint> {
     new_session: UnboundedSender<SessionProducer<E>>,
-    _thread: std::thread::JoinHandle<()>,
+    _thread: thread::JoinHandle<()>,
     inner: E,
     remote_thread_waker: Waker,
 }
@@ -35,9 +37,9 @@ impl<E: tls::Endpoint> OffloadEndpoint<E> {
     pub fn new(inner: E) -> Self {
         let (tx, mut rx) = futures_channel::mpsc::unbounded::<SessionProducer<E>>();
 
-        let handle = std::thread::spawn(move || {
+        let handle = thread::spawn(move || {
             let mut sessions = vec![];
-            let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
+            let waker = Waker::from(Arc::new(ThreadWaker(thread::current())));
 
             loop {
                 let mut cx = Context::from_waker(&waker);
@@ -76,7 +78,8 @@ impl<E: tls::Endpoint> OffloadEndpoint<E> {
                     }
                 }
                 sessions = next_sessions;
-                std::thread::park();
+
+                thread::park();
             }
         });
 
@@ -89,7 +92,7 @@ impl<E: tls::Endpoint> OffloadEndpoint<E> {
     }
 }
 
-struct ThreadWaker(std::thread::Thread);
+struct ThreadWaker(thread::Thread);
 
 impl Wake for ThreadWaker {
     fn wake(self: Arc<Self>) {
@@ -131,6 +134,7 @@ impl<E: tls::Endpoint> tls::Endpoint for OffloadEndpoint<E> {
 
 #[derive(Debug)]
 pub struct OffloadSession<S: tls::Session> {
+    // Inner is none while remote thread has the session
     inner: Option<S>,
     is_poll_done: Option<Result<(), crate::transport::Error>>,
     pending_requests: UnboundedReceiver<Request<S>>,
@@ -146,7 +150,7 @@ impl<S: tls::Session> OffloadSession<S> {
         // Channel to pass requests from remote TLS thread to main thread
         let (tx, rx) = futures_channel::mpsc::unbounded::<Request<S>>();
 
-        // Send the session to the TLS thread
+        // Send the session to the TLS thread. It will pass it back when the handshake has finished.
         let _ = new_session.unbounded_send((inner, tx));
 
         Self {
@@ -167,8 +171,9 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
         if let Some(finished) = self.is_poll_done {
             return Poll::Ready(finished);
         }
-
+        // This will wake up the TLS remote thread
         self.waker.wake_by_ref();
+
         loop {
             let mut cx = Context::from_waker(context.waker());
 
@@ -222,7 +227,9 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                 Request::ApplicationProtocol(application_protocol) => {
                     context.on_application_protocol(application_protocol)?;
                 }
-                Request::HandshakeComplete => context.on_handshake_complete()?,
+                Request::HandshakeComplete => {
+                    context.on_handshake_complete()?;
+                }
                 Request::CanSendInitial(sender) => {
                     let _ = sender.send(context.can_send_initial());
                 }
@@ -231,10 +238,18 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                     let _ = sender.send(resp);
                 }
                 Request::ReceiveApplication(max_len, sender) => {
-                    let _ = sender.send(context.receive_application(max_len));
+                    let resp = context.receive_application(max_len);
+                    let _ = sender.send(resp);
                 }
                 Request::ReceiveHandshake(max_len, sender) => {
-                    let _ = sender.send(context.receive_handshake(max_len));
+                    let resp = context.receive_handshake(max_len);
+                    if let Some(_) = resp {
+                        // We need to wake up the s2n-quic endpoint after providing
+                        // handshake packets to the TLS provider as there may now be
+                        // handshake data that needs to be sent in response.
+                        context.waker().wake_by_ref();
+                    }
+                    let _ = sender.send(resp);
                 }
                 Request::CanSendHandshake(sender) => {
                     let _ = sender.send(context.can_send_handshake());
@@ -242,8 +257,12 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                 Request::CanSendApplication(sender) => {
                     let _ = sender.send(context.can_send_application());
                 }
-                Request::SendApplication(bytes) => context.send_application(bytes),
-                Request::SendHandshake(bytes) => context.send_handshake(bytes),
+                Request::SendApplication(bytes) => {
+                    context.send_application(bytes);
+                }
+                Request::SendHandshake(bytes) => {
+                    context.send_handshake(bytes);
+                }
                 Request::SendInitial(bytes) => context.send_initial(bytes),
                 Request::KeyExchangeGroup(named_group) => {
                     context.on_key_exchange_group(named_group)?;
