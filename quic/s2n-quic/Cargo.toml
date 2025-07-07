@@ -95,4 +95,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Quiche's dependency BoringSSL can't be built on i686-unknow-linux-gnu
 # Hence, we need to skip importing quiche on that platform
 [target.'cfg(not(target_arch = "x86"))'.dev-dependencies]
-quiche = "0.24.4"
+quiche = "0.24"

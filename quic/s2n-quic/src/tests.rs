@@ -43,9 +43,6 @@ mod pto;
 mod self_test;
 mod skip_packets;
 mod tls_context;
-// Cloudflare Quiche can only be built on non-x86-32-bit platforms as a dev-dependency
-#[cfg(not(target_arch = "x86"))]
-mod zero_length_cid_client_connection_migration;
 
 // TODO: https://github.com/aws/s2n-quic/issues/1726
 //
@@ -62,6 +59,9 @@ mod dc;
 mod fips;
 #[cfg(not(target_os = "windows"))]
 mod mtls;
+// Cloudflare Quiche can only be built on non-x86-32-bit platforms as a dev-dependency
+#[cfg(not(target_arch = "x86"))]
+mod zero_length_cid_client_connection_migration;
 
 mod exporter;
 mod initial_rtt;
