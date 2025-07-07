@@ -25,10 +25,10 @@ use std::{
 mod recorder;
 
 mod connection_limits;
+mod offload_tls;
 mod resumption;
 mod setup;
 mod slow_tls;
-mod offload_tls;
 use setup::*;
 
 mod blackhole;

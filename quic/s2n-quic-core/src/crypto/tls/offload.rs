@@ -243,7 +243,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                 }
                 Request::ReceiveHandshake(max_len, sender) => {
                     let resp = context.receive_handshake(max_len);
-                    if let Some(_) = resp {
+                    if resp.is_some() {
                         // We need to wake up the s2n-quic endpoint after providing
                         // handshake packets to the TLS provider as there may now be
                         // handshake data that needs to be sent in response.

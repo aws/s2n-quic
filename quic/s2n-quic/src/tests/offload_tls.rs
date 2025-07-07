@@ -5,8 +5,7 @@
 #[cfg(feature = "unstable-offload-tls")]
 fn offload_tls() {
     use super::*;
-    use crate::provider::tls::default;
-    use crate::provider::tls::offload::Offload;
+    use crate::provider::tls::{default, offload::Offload};
     use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
 
     let model = Model::default();
