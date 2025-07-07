@@ -7,6 +7,7 @@ use crate::provider::{
     tls::default::{self as tls},
 };
 
+#[cfg(not(target_arch = "x86"))]
 #[test]
 fn zero_length_cid_client_connection_migration_test() {
     let model = Model::default();

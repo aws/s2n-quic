@@ -21,7 +21,9 @@ use zerocopy::IntoBytes;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
 
+#[cfg(not(target_arch = "x86"))]
 const QUICHE_MAX_DATAGRAM_SIZE: usize = 1350;
+#[cfg(not(target_arch = "x86"))]
 const QUICHE_STREAM_ID: u64 = 0;
 
 pub fn tracing_events() -> event::tracing::Subscriber {
@@ -149,6 +151,7 @@ pub fn start_client(client: Client, server_addr: SocketAddr, data: Data) -> Resu
     Ok(())
 }
 
+#[cfg(not(target_arch = "x86"))]
 pub fn start_quiche_client(
     mut client_conn: quiche::Connection,
     socket: Socket,
