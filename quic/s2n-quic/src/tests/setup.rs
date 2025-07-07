@@ -23,7 +23,6 @@ pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::K
 
 #[cfg(not(target_arch = "x86"))]
 const QUICHE_MAX_DATAGRAM_SIZE: usize = 1350;
-#[cfg(not(target_arch = "x86"))]
 const QUICHE_STREAM_ID: u64 = 0;
 
 pub fn tracing_events() -> event::tracing::Subscriber {
@@ -270,8 +269,7 @@ pub fn start_quiche_client(
                 }
             }
 
-            // Perform connection migration after the connection is established
-            // and the server provides spare CIDs
+            // Perform connection migration after the server provides spare CIDs
             if client_conn.available_dcids() > 0 && !path_probed {
                 let new_addr = migrated_socket.local_addr().unwrap();
                 client_conn.probe_path(new_addr, server_addr).unwrap();

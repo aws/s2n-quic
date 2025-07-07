@@ -51,7 +51,7 @@ fn zero_length_cid_client_connection_migration_test() {
         client_config.set_initial_max_stream_data_bidi_local(1_000_000);
         client_config.set_initial_max_stream_data_bidi_remote(1_000_000);
         client_config.set_disable_active_migration(false);
-        client_config.set_active_connection_id_limit(5);
+        client_config.set_active_connection_id_limit(3);
 
         // create a zero-length Source CID
         let scid = quiche::ConnectionId::default();
