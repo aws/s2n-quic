@@ -11,19 +11,10 @@ use crate::{
     Client, Server,
 };
 use rand::{Rng, RngCore};
-use s2n_quic_core::{
-    crypto::tls::testing::certificates, havoc, inet::ExplicitCongestionNotification::*,
-    stream::testing::Data,
-};
-use s2n_quic_platform::io::testing::Socket;
+use s2n_quic_core::{crypto::tls::testing::certificates, havoc, stream::testing::Data};
 use std::net::SocketAddr;
-use zerocopy::IntoBytes;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
-
-#[cfg(not(target_arch = "x86"))]
-const QUICHE_MAX_DATAGRAM_SIZE: usize = 1350;
-const QUICHE_STREAM_ID: u64 = 0;
 
 pub fn tracing_events() -> event::tracing::Subscriber {
     use std::sync::Once;
@@ -144,140 +135,6 @@ pub fn start_client(client: Client, server_addr: SocketAddr, data: Data) -> Resu
         while let Some(chunk) = send_data.send_one(usize::MAX) {
             tracing::debug!("client sending {} chunk", chunk.len());
             send.send(chunk).await.unwrap();
-        }
-    });
-
-    Ok(())
-}
-
-#[cfg(not(target_arch = "x86"))]
-pub fn start_quiche_client(
-    mut client_conn: quiche::Connection,
-    socket: Socket,
-    migrated_socket: Socket,
-    server_addr: SocketAddr,
-) -> Result {
-    let mut out = [0; QUICHE_MAX_DATAGRAM_SIZE];
-    let mut buf = [0; QUICHE_MAX_DATAGRAM_SIZE];
-    let application_data = "Test Migration";
-
-    primary::spawn(async move {
-        client_conn.timeout();
-
-        // Write Initial handshake packets
-        let (write, send_info) = client_conn.send(&mut out).expect("Initial send failed");
-        socket
-            .send_to(send_info.to, NotEct, out[..write].to_vec())
-            .unwrap();
-
-        let mut path_probed = false;
-        let mut req_sent = false;
-        loop {
-            // We need to check if there is a timeout event at the beginning of
-            // each loop to make sure that the connection will close properly when
-            // the test is done.
-            client_conn.on_timeout();
-            // Quiche doesn't handle IO. So we need to handle events happen
-            // on both the original socket and the migrated socket
-            let sockets = vec![&socket, &migrated_socket];
-            for active_socket in sockets {
-                let local_addr = active_socket.local_addr().unwrap();
-                match active_socket.try_recv_from() {
-                    Ok(Some((from, _ecn, payload))) => {
-                        // Quiche conn.recv requires a mutable payload array
-                        let mut payload_copy = payload.clone();
-
-                        // Feed received data from IO Socket to Quiche
-                        let _read = match client_conn.recv(
-                            &mut payload_copy,
-                            quiche::RecvInfo {
-                                from,
-                                to: active_socket.local_addr().unwrap(),
-                            },
-                        ) {
-                            Ok(v) => v,
-                            Err(quiche::Error::Done) => 0,
-                            Err(e) => {
-                                panic!("quiche client receive error: {e:?}");
-                            }
-                        };
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        panic!("quiche client socket recv error: {e:?}");
-                    }
-                }
-
-                for peer_addr in client_conn.paths_iter(local_addr) {
-                    loop {
-                        let (write, send_info) = match client_conn.send_on_path(
-                            &mut out,
-                            Some(local_addr),
-                            Some(peer_addr),
-                        ) {
-                            Ok(v) => v,
-                            Err(quiche::Error::Done) => {
-                                break;
-                            }
-                            Err(e) => {
-                                panic!("quiche client send error: {e:?}")
-                            }
-                        };
-
-                        active_socket
-                            .send_to(send_info.to, NotEct, out[..write].to_vec())
-                            .unwrap();
-                    }
-
-                    // Send application data using the migrated address
-                    // This can only be done once the connection migration is completed
-                    if local_addr == migrated_socket.local_addr().unwrap()
-                        && client_conn
-                            .is_path_validated(local_addr, peer_addr)
-                            .unwrap()
-                        && !req_sent
-                    {
-                        client_conn
-                            .stream_send(QUICHE_STREAM_ID, application_data.as_bytes(), true)
-                            .unwrap();
-                        req_sent = true;
-                    }
-                }
-
-                for stream_id in client_conn.readable() {
-                    while let Ok((read, _)) = client_conn.stream_recv(stream_id, &mut buf) {
-                        let stream_buf = &buf[..read];
-                        // The data that the Quiche client received should be the same that it sent
-                        if stream_buf.as_bytes() == application_data.as_bytes() {
-                            // The test is done once the client receives the data. Hence, close the connection
-                            client_conn.close(false, 0x00, b"test finished").unwrap();
-                        } else {
-                            panic!("No string received!");
-                        }
-                    }
-                }
-            }
-
-            // Exit the test once the connection is closed
-            if client_conn.is_closed() {
-                break;
-            }
-
-            while let Some(qe) = client_conn.path_event_next() {
-                if let quiche::PathEvent::Validated(local_addr, peer_addr) = qe {
-                    client_conn.migrate(local_addr, peer_addr).unwrap();
-                }
-            }
-
-            // Perform connection migration after the server provides spare CIDs
-            if client_conn.available_dcids() > 0 && !path_probed {
-                let new_addr = migrated_socket.local_addr().unwrap();
-                client_conn.probe_path(new_addr, server_addr).unwrap();
-                path_probed = true;
-            }
-
-            // Sleep a bit to avoid busy-waiting
-            crate::provider::io::testing::time::delay(std::time::Duration::from_millis(10)).await;
         }
     });
 

@@ -1,95 +1,240 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::*;
-use crate::provider::{
-    limits,
-    tls::default::{self as tls},
-};
+use cfg_if::cfg_if;
 
-#[cfg(not(target_arch = "x86"))]
-#[test]
-fn zero_length_cid_client_connection_migration_test() {
-    let model = Model::default();
+cfg_if! {
+    // Cloudflare can only be built on platforms those are not x86 32-bit as a dev-dependency
+    if #[cfg(not(target_arch = "x86"))] {
+        use super::*;
+        use s2n_quic_core::inet::ExplicitCongestionNotification::*;
+        use s2n_quic_platform::io::testing::Socket;
+        use zerocopy::IntoBytes;
+        use crate::provider::io::testing::Result;
+        const QUICHE_MAX_DATAGRAM_SIZE: usize = 1350;
+        const QUICHE_STREAM_ID: u64 = 0;
+        use crate::provider::{
+            limits,
+            tls::default::{self as tls},
+        };
 
-    // Create event subscribers to track frame received events
-    let initial_cid_subscriber = recorder::InitialCryptoFrameReceived::new();
-    let initial_cid_event = initial_cid_subscriber.events();
-    let path_challenge_subscriber = recorder::PathChallengeUpdated::new();
-    let path_challenge_event = path_challenge_subscriber.events();
+        #[test]
+        fn zero_length_cid_client_connection_migration_test() {
+            let model = Model::default();
 
-    test(model, |handle| {
-        // Set up a s2n-quic server
-        let server = tls::Server::builder()
-            .with_application_protocols(["h3"].iter())
-            .unwrap()
-            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
-            .unwrap()
-            .build()
+            // Create event subscribers to track frame received events
+            let initial_cid_subscriber = recorder::InitialCryptoFrameReceived::new();
+            let initial_cid_event = initial_cid_subscriber.events();
+            let path_challenge_subscriber = recorder::PathChallengeUpdated::new();
+            let path_challenge_event = path_challenge_subscriber.events();
+
+            test(model, |handle| {
+                // Set up a s2n-quic server
+                let server = tls::Server::builder()
+                    .with_application_protocols(["h3"].iter())
+                    .unwrap()
+                    .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
+                    .unwrap()
+                    .build()
+                    .unwrap();
+
+                let server = Server::builder()
+                    .with_io(handle.builder().build()?)?
+                    .with_tls(server)?
+                    .with_event((
+                        tracing_events(),
+                        (initial_cid_subscriber, path_challenge_subscriber),
+                    ))?
+                    .with_random(Random::with_seed(456))?
+                    .with_limits(limits::Limits::new().with_max_active_connection_ids(3)?)?
+                    .start()?;
+
+                let server_addr = start_server(server)?;
+
+                // Set up a Cloudflare Quiche client
+                let mut client_config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
+                client_config
+                    .set_application_protos(quiche::h3::APPLICATION_PROTOCOL)
+                    .unwrap();
+                client_config.verify_peer(false);
+                client_config.set_initial_max_data(10_000_000);
+                client_config.set_initial_max_stream_data_bidi_local(1_000_000);
+                client_config.set_initial_max_stream_data_bidi_remote(1_000_000);
+                client_config.set_disable_active_migration(false);
+                client_config.set_active_connection_id_limit(3);
+
+                // create a zero-length Source CID
+                let scid = quiche::ConnectionId::default();
+
+                let socket = handle.builder().build()?.socket();
+                let migrated_socket = handle.builder().build()?.socket();
+
+                // Create a QUIC connection and initiate handshake.
+                let conn = quiche::connect(
+                    Some("localhost"),
+                    &scid,
+                    socket.local_addr().unwrap(),
+                    server_addr,
+                    &mut client_config,
+                )
+                .unwrap();
+
+                // Check if the client is using zero-length CID
+                assert_eq!(conn.source_id().len(), 0);
+
+                start_quiche_client(conn, socket, migrated_socket, server_addr).unwrap();
+
+                Ok(())
+            })
             .unwrap();
 
-        let server = Server::builder()
-            .with_io(handle.builder().build()?)?
-            .with_tls(server)?
-            .with_event((
-                tracing_events(),
-                (initial_cid_subscriber, path_challenge_subscriber),
-            ))?
-            .with_random(Random::with_seed(456))?
-            .with_limits(limits::Limits::new().with_max_active_connection_ids(3)?)?
-            .start()?;
+            let initial_cid_vec = initial_cid_event.lock().unwrap();
+            // The server should only perform one handshake with a successful
+            // connection mgiration. Hence, it should only receive one Initial packet
+            // with Crypto frame
+            assert_eq!(initial_cid_vec.len(), 1);
+            // Verify if the client's original CID is zero-length
+            assert_eq!(initial_cid_vec[0].len(), 0);
 
-        let server_addr = start_server(server)?;
+            // Verify if the new path is validated
+            let path_challenge_statuses = path_challenge_event.lock().unwrap();
+            let path_validated = path_challenge_statuses
+                .iter()
+                .any(|status| matches!(status, events::PathChallengeStatus::Validated { .. }));
+            assert!(path_validated);
+        }
 
-        // Set up a Cloudflare Quiche client
-        let mut client_config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
-        client_config
-            .set_application_protos(quiche::h3::APPLICATION_PROTOCOL)
-            .unwrap();
-        client_config.verify_peer(false);
-        client_config.set_initial_max_data(10_000_000);
-        client_config.set_initial_max_stream_data_bidi_local(1_000_000);
-        client_config.set_initial_max_stream_data_bidi_remote(1_000_000);
-        client_config.set_disable_active_migration(false);
-        client_config.set_active_connection_id_limit(3);
+        pub fn start_quiche_client(
+            mut client_conn: quiche::Connection,
+            socket: Socket,
+            migrated_socket: Socket,
+            server_addr: SocketAddr,
+        ) -> Result<()> {
+            let mut out = [0; QUICHE_MAX_DATAGRAM_SIZE];
+            let mut buf = [0; QUICHE_MAX_DATAGRAM_SIZE];
+            let application_data = "Test Migration";
 
-        // create a zero-length Source CID
-        let scid = quiche::ConnectionId::default();
+            primary::spawn(async move {
+                client_conn.timeout();
 
-        let socket = handle.builder().build()?.socket();
-        let migrated_socket = handle.builder().build()?.socket();
+                // Write Initial handshake packets
+                let (write, send_info) = client_conn.send(&mut out).expect("Initial send failed");
+                socket
+                    .send_to(send_info.to, NotEct, out[..write].to_vec())
+                    .unwrap();
 
-        // Create a QUIC connection and initiate handshake.
-        let conn = quiche::connect(
-            Some("localhost"),
-            &scid,
-            socket.local_addr().unwrap(),
-            server_addr,
-            &mut client_config,
-        )
-        .unwrap();
+                let mut path_probed = false;
+                let mut req_sent = false;
+                loop {
+                    // We need to check if there is a timeout event at the beginning of
+                    // each loop to make sure that the connection will close properly when
+                    // the test is done.
+                    client_conn.on_timeout();
+                    // Quiche doesn't handle IO. So we need to handle events happen
+                    // on both the original socket and the migrated socket
+                    let sockets = vec![&socket, &migrated_socket];
+                    for active_socket in sockets {
+                        let local_addr = active_socket.local_addr().unwrap();
+                        match active_socket.try_recv_from() {
+                            Ok(Some((from, _ecn, payload))) => {
+                                // Quiche conn.recv requires a mutable payload array
+                                let mut payload_copy = payload.clone();
 
-        // Check if the client is using zero-length CID
-        assert_eq!(conn.source_id().len(), 0);
+                                // Feed received data from IO Socket to Quiche
+                                let _read = match client_conn.recv(
+                                    &mut payload_copy,
+                                    quiche::RecvInfo {
+                                        from,
+                                        to: active_socket.local_addr().unwrap(),
+                                    },
+                                ) {
+                                    Ok(v) => v,
+                                    Err(quiche::Error::Done) => 0,
+                                    Err(e) => {
+                                        panic!("quiche client receive error: {e:?}");
+                                    }
+                                };
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                panic!("quiche client socket recv error: {e:?}");
+                            }
+                        }
 
-        start_quiche_client(conn, socket, migrated_socket, server_addr).unwrap();
+                        for peer_addr in client_conn.paths_iter(local_addr) {
+                            loop {
+                                let (write, send_info) = match client_conn.send_on_path(
+                                    &mut out,
+                                    Some(local_addr),
+                                    Some(peer_addr),
+                                ) {
+                                    Ok(v) => v,
+                                    Err(quiche::Error::Done) => {
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        panic!("quiche client send error: {e:?}")
+                                    }
+                                };
 
-        Ok(())
-    })
-    .unwrap();
+                                active_socket
+                                    .send_to(send_info.to, NotEct, out[..write].to_vec())
+                                    .unwrap();
+                            }
 
-    let initial_cid_vec = initial_cid_event.lock().unwrap();
-    // The server should only perform one handshake with a successful
-    // connection mgiration. Hence, it should only receive one Initial packet
-    // with Crypto frame
-    assert_eq!(initial_cid_vec.len(), 1);
-    // Verify if the client's original CID is zero-length
-    assert_eq!(initial_cid_vec[0].len(), 0);
+                            // Send application data using the migrated address
+                            // This can only be done once the connection migration is completed
+                            if local_addr == migrated_socket.local_addr().unwrap()
+                                && client_conn
+                                    .is_path_validated(local_addr, peer_addr)
+                                    .unwrap()
+                                && !req_sent
+                            {
+                                client_conn
+                                    .stream_send(QUICHE_STREAM_ID, application_data.as_bytes(), true)
+                                    .unwrap();
+                                req_sent = true;
+                            }
+                        }
 
-    // Verify if the new path is validated
-    let path_challenge_statuses = path_challenge_event.lock().unwrap();
-    let path_validated = path_challenge_statuses
-        .iter()
-        .any(|status| matches!(status, events::PathChallengeStatus::Validated { .. }));
-    assert!(path_validated);
+                        for stream_id in client_conn.readable() {
+                            while let Ok((read, _)) = client_conn.stream_recv(stream_id, &mut buf) {
+                                let stream_buf = &buf[..read];
+                                // The data that the Quiche client received should be the same that it sent
+                                if stream_buf.as_bytes() == application_data.as_bytes() {
+                                    // The test is done once the client receives the data. Hence, close the connection
+                                    client_conn.close(false, 0x00, b"test finished").unwrap();
+                                } else {
+                                    panic!("No string received!");
+                                }
+                            }
+                        }
+                    }
+
+                    // Exit the test once the connection is closed
+                    if client_conn.is_closed() {
+                        break;
+                    }
+
+                    while let Some(qe) = client_conn.path_event_next() {
+                        if let quiche::PathEvent::Validated(local_addr, peer_addr) = qe {
+                            client_conn.migrate(local_addr, peer_addr).unwrap();
+                        }
+                    }
+
+                    // Perform connection migration after the server provides spare CIDs
+                    if client_conn.available_dcids() > 0 && !path_probed {
+                        let new_addr = migrated_socket.local_addr().unwrap();
+                        client_conn.probe_path(new_addr, server_addr).unwrap();
+                        path_probed = true;
+                    }
+
+                    // Sleep a bit to avoid busy-waiting
+                    crate::provider::io::testing::time::delay(std::time::Duration::from_millis(10)).await;
+                }
+            });
+
+            Ok(())
+        }
+    }
 }
