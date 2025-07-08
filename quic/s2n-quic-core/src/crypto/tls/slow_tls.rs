@@ -164,6 +164,13 @@ where
         self.0.on_tls_exporter_ready(session)
     }
 
+    fn on_tls_handshake_failed(
+        &mut self,
+        session: &impl tls::TlsSession,
+    ) -> Result<(), transport::Error> {
+        self.0.on_tls_exporter_ready(session)
+    }
+
     fn receive_initial(&mut self, max_len: Option<usize>) -> Option<tls::Bytes> {
         self.0.receive_initial(max_len)
     }

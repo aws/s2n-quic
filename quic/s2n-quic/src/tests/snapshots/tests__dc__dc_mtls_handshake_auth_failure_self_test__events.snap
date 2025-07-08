@@ -464,6 +464,7 @@ measure#recovery_metrics.pto_count=0
 measure#recovery_metrics.congestion_window=12000
 measure#recovery_metrics.bytes_in_flight=[REDACTED]
 count#recovery_metrics.congestion_limited=false
+count#tls_handshake_failed=1
 count#packet_dropped=1
 count#packet_dropped.reason|CONNECTION_ERROR=1
 count#connection_closed=1
