@@ -105,9 +105,12 @@ fn zero_length_cid_client_connection_migration_test() {
 
     // Verify that the server close the connection with no error
     let connection_close_status = connection_close_event.lock().unwrap();
+    assert_eq!(connection_close_status.len(), 1);
     assert!(matches!(connection_close_status[0], Error::Closed { .. }));
 }
 
+// Take reference from https://github.com/cloudflare/quiche/blob/master/quiche/examples/client.rs
+// and https://github.com/cloudflare/quiche/blob/master/apps/src/client.rs
 pub fn start_quiche_client(
     mut client_conn: quiche::Connection,
     socket: Socket,
@@ -134,10 +137,9 @@ pub fn start_quiche_client(
             // each loop to make sure that the connection will close properly when
             // the test is done.
             client_conn.on_timeout();
-            // Quiche doesn't handle IO. So we need to handle events happen
-            // on both the original socket and the migrated socket
-            let sockets = vec![&socket, &migrated_socket];
-            for active_socket in sockets {
+            // Quiche doesn't handle IO. So we need to handle events that
+            // happen on both the original socket and the migrated socket
+            for active_socket in vec![&socket, &migrated_socket] {
                 let local_addr = active_socket.local_addr().unwrap();
                 match active_socket.try_recv_from() {
                     Ok(Some((from, _ecn, payload))) => {
@@ -205,32 +207,30 @@ pub fn start_quiche_client(
                     while let Ok((read, _)) = client_conn.stream_recv(stream_id, &mut buf) {
                         let stream_buf = &buf[..read];
                         // The data that the Quiche client received should be the same that it sent
-                        if stream_buf.as_bytes() == application_data.as_bytes() {
-                            // The test is done once the client receives the data. Hence, close the connection
-                            client_conn.close(false, 0x00, b"test finished").unwrap();
-                        } else {
-                            panic!("No string received!");
-                        }
+                        assert_eq!(stream_buf.as_bytes(), application_data.as_bytes());
+                        // The test is done once the client receives the data. Hence, close the connection
+                        client_conn.close(false, 0x00, b"test finished").unwrap();
                     }
                 }
             }
 
-            // Exit the test once the connection is closed
+            // Exit the test once the connection is closed and receive no error from the server
             if client_conn.is_closed() {
+                assert!(client_conn.peer_error().is_none());
                 break;
+            }
+
+            // Probe a new path after the server provides spare CIDs
+            if client_conn.available_dcids() > 0 && !path_probed {
+                let new_addr = migrated_socket.local_addr().unwrap();
+                client_conn.probe_path(new_addr, server_addr).unwrap();
+                path_probed = true;
             }
 
             while let Some(qe) = client_conn.path_event_next() {
                 if let quiche::PathEvent::Validated(local_addr, peer_addr) = qe {
                     client_conn.migrate(local_addr, peer_addr).unwrap();
                 }
-            }
-
-            // Perform connection migration after the server provides spare CIDs
-            if client_conn.available_dcids() > 0 && !path_probed {
-                let new_addr = migrated_socket.local_addr().unwrap();
-                client_conn.probe_path(new_addr, server_addr).unwrap();
-                path_probed = true;
             }
 
             // Sleep a bit to avoid busy-waiting
