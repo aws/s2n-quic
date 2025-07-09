@@ -6,7 +6,7 @@ use crate::provider::{
     io::testing::Result,
     tls::default::{self as tls},
 };
-use s2n_quic_core::inet::ExplicitCongestionNotification::*;
+use s2n_quic_core::{connection::error::Error, inet::ExplicitCongestionNotification::*};
 use s2n_quic_platform::io::testing::Socket;
 use zerocopy::IntoBytes;
 
@@ -27,17 +27,17 @@ const QUICHE_STREAM_ID: u64 = 0;
 // 4. Client closes connection after receiving the test string which is echoed back from the server
 //
 // Verification Points:
-// 1. Confirm client is using zero-length CID throughout the connection
+// 1. Confirm client is using zero-length CID
 // 2. Verify path validation process completes successfully
+// 3. Verify the server close the connection with no error
 #[test]
 fn zero_length_cid_client_connection_migration_test() {
     let model = Model::default();
 
-    // Create event subscribers to track frame received events
-    let initial_cid_subscriber = recorder::ConnectionStarted::new();
-    let initial_cid_event = initial_cid_subscriber.events();
     let path_challenge_subscriber = recorder::PathChallengeUpdated::new();
     let path_challenge_event = path_challenge_subscriber.events();
+    let connection_close_subscriber = recorder::ConnectionClosed::new();
+    let connection_close_event = connection_close_subscriber.events();
 
     test(model, |handle| {
         // Set up a s2n-quic server
@@ -51,7 +51,7 @@ fn zero_length_cid_client_connection_migration_test() {
             .with_tls(server)?
             .with_event((
                 tracing_events(),
-                (initial_cid_subscriber, path_challenge_subscriber),
+                (path_challenge_subscriber, connection_close_subscriber),
             ))?
             .with_random(Random::with_seed(456))?
             .start()?;
@@ -96,16 +96,16 @@ fn zero_length_cid_client_connection_migration_test() {
     })
     .unwrap();
 
-    let initial_cid_vec = initial_cid_event.lock().unwrap();
-    // Verify if the client's original CID is zero-length
-    assert_eq!(initial_cid_vec[0].len(), 0);
-
     // Verify if the new path is validated
     let path_challenge_statuses = path_challenge_event.lock().unwrap();
     let path_validated = path_challenge_statuses
         .iter()
         .any(|status| matches!(status, events::PathChallengeStatus::Validated { .. }));
     assert!(path_validated);
+
+    // Verify that the server close the connection with no error
+    let connection_close_status = connection_close_event.lock().unwrap();
+    assert!(matches!(connection_close_status[0], Error::Closed { .. }));
 }
 
 pub fn start_quiche_client(

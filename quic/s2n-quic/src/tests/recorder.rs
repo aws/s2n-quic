@@ -190,10 +190,10 @@ event_recorder!(
     ConnectionStarted,
     ConnectionStarted,
     on_connection_started,
-    Vec<u8>,
-    |event: &events::ConnectionStarted, storage: &mut Vec<Vec<u8>>| {
-        let cid_bytes = event.path.remote_cid.bytes.to_vec();
-        storage.push(cid_bytes);
+    SocketAddr,
+    |event: &events::ConnectionStarted, storage: &mut Vec<SocketAddr>| {
+        let addr: SocketAddr = event.path.local_addr.to_string().parse().unwrap();
+        storage.push(addr);
     }
 );
 
