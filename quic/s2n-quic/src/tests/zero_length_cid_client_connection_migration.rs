@@ -42,9 +42,12 @@ fn zero_length_cid_client_connection_migration_test() {
     test(model, |handle| {
         // Set up a s2n-quic server
         let server = tls::Server::builder()
-            .with_application_protocols(["h3"].iter())?
-            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
-            .build()?;
+            .with_application_protocols(["h3"].iter())
+            .unwrap()
+            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
@@ -139,7 +142,7 @@ pub fn start_quiche_client(
             client_conn.on_timeout();
             // Quiche doesn't handle IO. So we need to handle events that
             // happen on both the original socket and the migrated socket
-            for active_socket in vec![&socket, &migrated_socket] {
+            for active_socket in [&socket, &migrated_socket] {
                 let local_addr = active_socket.local_addr().unwrap();
                 match active_socket.try_recv_from() {
                     Ok(Some((from, _ecn, payload))) => {
