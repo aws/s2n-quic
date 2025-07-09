@@ -59,7 +59,8 @@ mod dc;
 mod fips;
 #[cfg(not(target_os = "windows"))]
 mod mtls;
-// Cloudflare Quiche can only be built on non-x86-32-bit platforms as a dev-dependency
+// quiche does not currently build on 32-bit platforms
+// see https://github.com/cloudflare/quiche/issues/2097
 #[cfg(not(target_arch = "x86"))]
 mod zero_length_cid_client_connection_migration;
 

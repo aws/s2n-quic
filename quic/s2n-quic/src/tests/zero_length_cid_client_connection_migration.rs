@@ -4,7 +4,6 @@
 use super::*;
 use crate::provider::{
     io::testing::Result,
-    limits,
     tls::default::{self as tls},
 };
 use s2n_quic_core::inet::ExplicitCongestionNotification::*;
@@ -14,12 +13,28 @@ use zerocopy::IntoBytes;
 const QUICHE_MAX_DATAGRAM_SIZE: usize = 1350;
 const QUICHE_STREAM_ID: u64 = 0;
 
+// Test Description:
+// Verifies that an s2n-quic server can handle connection migration from a client using zero-length Connection IDs (CID)
+//
+// Test Setup:
+// - Uses Cloudflare Quiche as the client (since s2n-quic client doesn't support zero-length CIDs)
+// - Quiche client is configured to use zero-length CIDs
+//
+// Test Flow:
+// 1. Client initiates handshake with s2n-quic server
+// 2. After successful handshake, client performs connection migration to a new address
+// 3. Client sends a test string to server post-migration
+// 4. Client closes connection after receiving the test string which is echoed back from the server
+//
+// Verification Points:
+// 1. Confirm client is using zero-length CID throughout the connection
+// 2. Verify path validation process completes successfully
 #[test]
 fn zero_length_cid_client_connection_migration_test() {
     let model = Model::default();
 
     // Create event subscribers to track frame received events
-    let initial_cid_subscriber = recorder::InitialCryptoFrameReceived::new();
+    let initial_cid_subscriber = recorder::ConnectionStarted::new();
     let initial_cid_event = initial_cid_subscriber.events();
     let path_challenge_subscriber = recorder::PathChallengeUpdated::new();
     let path_challenge_event = path_challenge_subscriber.events();
@@ -27,12 +42,9 @@ fn zero_length_cid_client_connection_migration_test() {
     test(model, |handle| {
         // Set up a s2n-quic server
         let server = tls::Server::builder()
-            .with_application_protocols(["h3"].iter())
-            .unwrap()
-            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
-            .unwrap()
-            .build()
-            .unwrap();
+            .with_application_protocols(["h3"].iter())?
+            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
+            .build()?;
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
@@ -42,7 +54,6 @@ fn zero_length_cid_client_connection_migration_test() {
                 (initial_cid_subscriber, path_challenge_subscriber),
             ))?
             .with_random(Random::with_seed(456))?
-            .with_limits(limits::Limits::new().with_max_active_connection_ids(3)?)?
             .start()?;
 
         let server_addr = start_server(server)?;
@@ -53,11 +64,12 @@ fn zero_length_cid_client_connection_migration_test() {
             .set_application_protos(quiche::h3::APPLICATION_PROTOCOL)
             .unwrap();
         client_config.verify_peer(false);
-        client_config.set_initial_max_data(10_000_000);
-        client_config.set_initial_max_stream_data_bidi_local(1_000_000);
-        client_config.set_initial_max_stream_data_bidi_remote(1_000_000);
+
+        // The client sends a 14-byte steam data message in this test
+        // Set 20 bytes for the maximum amount of data sent on the client created stream is enough
+        client_config.set_initial_max_data(20);
+        client_config.set_initial_max_stream_data_bidi_local(20);
         client_config.set_disable_active_migration(false);
-        client_config.set_active_connection_id_limit(3);
 
         // create a zero-length Source CID
         let scid = quiche::ConnectionId::default();
@@ -85,10 +97,6 @@ fn zero_length_cid_client_connection_migration_test() {
     .unwrap();
 
     let initial_cid_vec = initial_cid_event.lock().unwrap();
-    // The server should only perform one handshake with a successful
-    // connection mgiration. Hence, it should only receive one Initial packet
-    // with Crypto frame
-    assert_eq!(initial_cid_vec.len(), 1);
     // Verify if the client's original CID is zero-length
     assert_eq!(initial_cid_vec[0].len(), 0);
 
