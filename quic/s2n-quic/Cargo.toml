@@ -91,3 +91,8 @@ s2n-quic-transport = { path = "../s2n-quic-transport", features = ["unstable_res
 tokio = { version = "1", features = ["full"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# quiche does not currently build on 32-bit platforms
+# see https://github.com/cloudflare/quiche/issues/2097
+[target.'cfg(not(target_arch = "x86"))'.dev-dependencies]
+quiche = "0.24"
