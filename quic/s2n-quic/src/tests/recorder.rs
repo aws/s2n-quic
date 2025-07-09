@@ -129,17 +129,6 @@ event_recorder!(
     }
 );
 
-event_recorder!(
-    PathChallengeUpdated,
-    PathChallengeUpdated,
-    on_path_challenge_updated,
-    s2n_quic_core::event::api::PathChallengeStatus,
-    |event: &events::PathChallengeUpdated,
-     storage: &mut Vec<s2n_quic_core::event::api::PathChallengeStatus>| {
-        storage.push(event.path_challenge_status.clone());
-    }
-);
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PacketDropReason {
     ConnectionError,

@@ -28,16 +28,20 @@ const QUICHE_STREAM_ID: u64 = 0;
 //
 // Verification Points:
 // 1. Confirm client is using zero-length CID
-// 2. Verify path validation process completes successfully
+// 2. Verify the active path is updated to the correct socket address
 // 3. Verify the server close the connection with no error
 #[test]
 fn zero_length_cid_client_connection_migration_test() {
     let model = Model::default();
 
-    let path_challenge_subscriber = recorder::PathChallengeUpdated::new();
-    let path_challenge_event = path_challenge_subscriber.events();
+    let active_path_update_subscriber = recorder::ActivePathUpdated::new();
+    let active_path_update_event = active_path_update_subscriber.events();
     let connection_close_subscriber = recorder::ConnectionClosed::new();
     let connection_close_event = connection_close_subscriber.events();
+
+    // The target address for connection migration
+    // It is initially an unspecified address. It will be updated during test to verify connection migration
+    let mut migrated_socket_address: SocketAddr = "0.0.0.0:0".parse().unwrap();
 
     test(model, |handle| {
         // Set up a s2n-quic server
@@ -54,7 +58,7 @@ fn zero_length_cid_client_connection_migration_test() {
             .with_tls(server)?
             .with_event((
                 tracing_events(),
-                (path_challenge_subscriber, connection_close_subscriber),
+                (active_path_update_subscriber, connection_close_subscriber),
             ))?
             .with_random(Random::with_seed(456))?
             .start()?;
@@ -80,6 +84,8 @@ fn zero_length_cid_client_connection_migration_test() {
         let socket = handle.builder().build()?.socket();
         let migrated_socket = handle.builder().build()?.socket();
 
+        migrated_socket_address = migrated_socket.local_addr().unwrap();
+
         // Create a QUIC connection and initiate handshake.
         let conn = quiche::connect(
             Some("localhost"),
@@ -99,12 +105,11 @@ fn zero_length_cid_client_connection_migration_test() {
     })
     .unwrap();
 
-    // Verify if the new path is validated
-    let path_challenge_statuses = path_challenge_event.lock().unwrap();
-    let path_validated = path_challenge_statuses
-        .iter()
-        .any(|status| matches!(status, events::PathChallengeStatus::Validated { .. }));
-    assert!(path_validated);
+    // Verify the active path is update to the migrated socket address
+    let active_path_update_handle = active_path_update_event.lock().unwrap();
+    assert_eq!(active_path_update_handle.len(), 1);
+    let updated_active_path_remote_addr = active_path_update_handle[0];
+    assert_eq!(updated_active_path_remote_addr, migrated_socket_address);
 
     // Verify that the server close the connection with no error
     let connection_close_status = connection_close_event.lock().unwrap();
@@ -135,6 +140,7 @@ pub fn start_quiche_client(
 
         let mut path_probed = false;
         let mut req_sent = false;
+        let mut stream_data_received = false;
         loop {
             // We need to check if there is a timeout event at the beginning of
             // each loop to make sure that the connection will close properly when
@@ -211,6 +217,7 @@ pub fn start_quiche_client(
                         let stream_buf = &buf[..read];
                         // The data that the Quiche client received should be the same that it sent
                         assert_eq!(stream_buf.as_bytes(), application_data.as_bytes());
+                        stream_data_received = true;
                         // The test is done once the client receives the data. Hence, close the connection
                         client_conn.close(false, 0x00, b"test finished").unwrap();
                     }
@@ -220,6 +227,7 @@ pub fn start_quiche_client(
             // Exit the test once the connection is closed and receive no error from the server
             if client_conn.is_closed() {
                 assert!(client_conn.peer_error().is_none());
+                assert!(stream_data_received);
                 break;
             }
 
