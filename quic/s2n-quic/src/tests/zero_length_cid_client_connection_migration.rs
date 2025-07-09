@@ -6,7 +6,7 @@ use crate::provider::{
     io::testing::Result,
     tls::default::{self as tls},
 };
-use s2n_quic_core::{connection::error::Error, inet::ExplicitCongestionNotification::*};
+use s2n_quic_core::{connection::error::Error, endpoint, inet::ExplicitCongestionNotification::*};
 use s2n_quic_platform::io::testing::Socket;
 use zerocopy::IntoBytes;
 
@@ -111,10 +111,16 @@ fn zero_length_cid_client_connection_migration_test() {
     let updated_active_path_remote_addr = active_path_update_handle[0];
     assert_eq!(updated_active_path_remote_addr, migrated_socket_address);
 
-    // Verify that the server close the connection with no error
+    // Verify the client closes the connection with no error
     let connection_close_status = connection_close_event.lock().unwrap();
     assert_eq!(connection_close_status.len(), 1);
-    assert!(matches!(connection_close_status[0], Error::Closed { .. }));
+    assert!(matches!(
+        connection_close_status[0],
+        Error::Closed {
+            initiator: endpoint::Location::Remote,
+            ..
+        }
+    ));
 }
 
 // Take reference from https://github.com/cloudflare/quiche/blob/master/quiche/examples/client.rs
