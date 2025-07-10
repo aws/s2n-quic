@@ -404,7 +404,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - uses: ./.github/actions/duvet
+      - uses: awslabs/duvet-action@v1
         with:
           report-script: ./scripts/compliance
           report-path: ./target/compliance/report.html
