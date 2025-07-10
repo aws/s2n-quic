@@ -647,7 +647,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             .map(|bytes| bytes.freeze())
     }
 
-    fn can_send_initial(&self) -> bool {
+    fn can_send_initial(&mut self) -> bool {
         self.initial
             .as_ref()
             .map(|space| space.crypto_stream.can_send())
@@ -663,7 +663,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             .push(transmission);
     }
 
-    fn can_send_handshake(&self) -> bool {
+    fn can_send_handshake(&mut self) -> bool {
         self.handshake
             .as_ref()
             .map(|space| space.crypto_stream.can_send())
@@ -679,7 +679,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             .push(transmission);
     }
 
-    fn can_send_application(&self) -> bool {
+    fn can_send_application(&mut self) -> bool {
         self.application
             .as_ref()
             .map(|space| space.crypto_stream.can_send())
