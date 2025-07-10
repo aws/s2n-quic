@@ -1,0 +1,34 @@
+target = "https://www.rfc-editor.org/rfc/rfc8312#section-4.8"
+
+# Slow Start
+#
+#    CUBIC MUST employ a slow-start algorithm, when the cwnd is no more
+#    than ssthresh.  Among the slow-start algorithms, CUBIC MAY choose the
+#    standard TCP slow start [RFC5681] in general networks, or the limited
+#    slow start [RFC3742] or hybrid slow start [HR08] for fast and long-
+#    distance networks.
+# 
+#    In the case when CUBIC runs the hybrid slow start [HR08], it may exit
+#    the first slow start without incurring any packet loss and thus W_max
+#    is undefined.  In this special case, CUBIC switches to congestion
+#    avoidance and increases its congestion window size using Eq. 1, where
+#    t is the elapsed time since the beginning of the current congestion
+#    avoidance, K is set to 0, and W_max is set to the congestion window
+#    size at the beginning of the current congestion avoidance.
+
+[[spec]]
+level = "MUST"
+quote = '''
+CUBIC MUST employ a slow-start algorithm, when the cwnd is no more
+than ssthresh.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Among the slow-start algorithms, CUBIC MAY choose the
+standard TCP slow start [RFC5681] in general networks, or the limited
+slow start [RFC3742] or hybrid slow start [HR08] for fast and long-
+distance networks.
+'''
+

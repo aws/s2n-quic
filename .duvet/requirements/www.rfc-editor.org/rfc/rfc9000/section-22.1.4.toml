@@ -1,0 +1,50 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-22.1.4"
+
+# Permanent Registrations
+#
+#    Permanent registrations in QUIC registries use the Specification
+#    Required policy (Section 4.6 of [RFC8126]), unless otherwise
+#    specified.  The designated expert or experts verify that a
+#    specification exists and is readily accessible.  Experts are
+#    encouraged to be biased towards approving registrations unless they
+#    are abusive, frivolous, or actively harmful (not merely aesthetically
+#    displeasing or architecturally dubious).  The creation of a registry
+#    MAY specify additional constraints on permanent registrations.
+# 
+#    The creation of a registry MAY identify a range of codepoints where
+#    registrations are governed by a different registration policy.  For
+#    instance, the "QUIC Frame Types" registry (Section 22.4) has a
+#    stricter policy for codepoints in the range from 0 to 63.
+# 
+#    Any stricter requirements for permanent registrations do not prevent
+#    provisional registrations for affected codepoints.  For instance, a
+#    provisional registration for a frame type of 61 could be requested.
+# 
+#    All registrations made by Standards Track publications MUST be
+#    permanent.
+# 
+#    All registrations in this document are assigned a permanent status
+#    and list a change controller of the IETF and a contact of the QUIC
+#    Working Group (quic@ietf.org).
+
+[[spec]]
+level = "MAY"
+quote = '''
+The creation of a registry
+MAY specify additional constraints on permanent registrations.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+The creation of a registry MAY identify a range of codepoints where
+registrations are governed by a different registration policy.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+All registrations made by Standards Track publications MUST be
+permanent.
+'''
+
