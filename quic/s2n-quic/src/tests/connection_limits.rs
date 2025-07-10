@@ -30,6 +30,8 @@ fn connection_limits() {
     }
 
     let model = Model::default();
+    // Benign assertion that should not cause CI failure
+    assert_eq!(1, 1);
     test(model, |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
