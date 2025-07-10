@@ -1,0 +1,50 @@
+---
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# This script is ran on both Ubuntu 22 and AL2023
+# It needs to generate a timing report on Ubuntu 22, but not on AL2023 
+version: 0.2
+env:
+  shell: bash
+  variables:
+    # This assumes you have a Rust toolchain installed
+    CARGO: "cargo +nightly"
+    IS_AL2023: "false"
+phases:
+  install:
+    commands:
+      - which cargo || true
+      - echo "Installing Rust ..."
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - . $HOME/.cargo/env
+      - |
+        # Check if platform is AL2023
+        if grep -q "Amazon Linux 2023" /etc/os-release; then
+          export IS_AL2023="true"
+          echo "Running on Amazon Linux 2023"
+        else
+          echo "Not running on Amazon Linux 2023"
+        fi
+  build:
+    commands:
+      # We don't need to run the timing step on AL2023 test
+      - |
+        if [ "$IS_AL2023" = "true" ]; then
+          echo "Running build on AL2023"
+          cargo build --timings --release
+        else
+          echo "Skipping build phase - not running on AL2023"
+        fi
+  post_build:
+    commands:
+      - cargo test --workspace
+
+artifacts:
+  # upload timing reports
+  files:
+    - '**/*'
+  base-directory: target/cargo-timings
+  # Only include artifacts if NOT running on AL2023
+  discard-paths: no
+  condition: eq(env.IS_AL2023, 'false')
