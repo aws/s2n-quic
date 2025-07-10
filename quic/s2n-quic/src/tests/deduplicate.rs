@@ -120,7 +120,7 @@ fn confirm_conn_works(
             .accept_bidirectional_stream()
             .await
             .unwrap()
-            .unwrap_or_else(|| panic!("from {:?}", caller));
+            .unwrap_or_else(|| panic!("from {caller:?}"));
 
         let mut recv_len = 0;
         while let Some(chunk) = stream.receive().await.unwrap() {

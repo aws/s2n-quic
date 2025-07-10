@@ -79,24 +79,25 @@ mod counter {
                 126usize => Self(endpoint_datagram_received),
                 129usize => Self(endpoint_datagram_dropped),
                 133usize => Self(endpoint_connection_attempt_failed),
-                135usize => Self(platform_tx),
-                136usize => Self(platform_tx__packets__total),
-                138usize => Self(platform_tx__syscalls__total),
-                140usize => Self(platform_tx__syscalls__blocked__total),
-                142usize => Self(platform_tx__errors__total),
-                144usize => Self(platform_tx__errors__dropped__total),
-                146usize => Self(platform_tx_error),
-                147usize => Self(platform_rx),
-                148usize => Self(platform_rx__packets__total),
-                150usize => Self(platform_rx__syscalls__total),
-                152usize => Self(platform_rx__syscalls__blocked__total),
-                154usize => Self(platform_rx__errors__total),
-                156usize => Self(platform_rx__errors__dropped__total),
-                158usize => Self(platform_rx_error),
-                159usize => Self(platform_feature_configured),
-                160usize => Self(platform_event_loop_wakeup),
-                161usize => Self(platform_event_loop_sleep),
-                163usize => Self(platform_event_loop_started),
+                135usize => Self(endpoint_connection_attempt_deduplicated),
+                136usize => Self(platform_tx),
+                137usize => Self(platform_tx__packets__total),
+                139usize => Self(platform_tx__syscalls__total),
+                141usize => Self(platform_tx__syscalls__blocked__total),
+                143usize => Self(platform_tx__errors__total),
+                145usize => Self(platform_tx__errors__dropped__total),
+                147usize => Self(platform_tx_error),
+                148usize => Self(platform_rx),
+                149usize => Self(platform_rx__packets__total),
+                151usize => Self(platform_rx__syscalls__total),
+                153usize => Self(platform_rx__syscalls__blocked__total),
+                155usize => Self(platform_rx__errors__total),
+                157usize => Self(platform_rx__errors__dropped__total),
+                159usize => Self(platform_rx_error),
+                160usize => Self(platform_feature_configured),
+                161usize => Self(platform_event_loop_wakeup),
+                162usize => Self(platform_event_loop_sleep),
+                164usize => Self(platform_event_loop_started),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -228,6 +229,8 @@ mod counter {
             fn endpoint_datagram_dropped(value: u64);
             # [link_name = s2n_quic__event__counter__endpoint_connection_attempt_failed]
             fn endpoint_connection_attempt_failed(value: u64);
+            # [link_name = s2n_quic__event__counter__endpoint_connection_attempt_deduplicated]
+            fn endpoint_connection_attempt_deduplicated(value: u64);
             # [link_name = s2n_quic__event__counter__platform_tx]
             fn platform_tx(value: u64);
             # [link_name = s2n_quic__event__counter__platform_tx__packets__total]
@@ -471,16 +474,16 @@ mod measure {
                 128usize => Self(endpoint_datagram_received__bytes__total),
                 130usize => Self(endpoint_datagram_dropped__bytes),
                 131usize => Self(endpoint_datagram_dropped__bytes__total),
-                137usize => Self(platform_tx__packets),
-                139usize => Self(platform_tx__syscalls),
-                141usize => Self(platform_tx__syscalls__blocked),
-                143usize => Self(platform_tx__errors),
-                145usize => Self(platform_tx__errors__dropped),
-                149usize => Self(platform_rx__packets),
-                151usize => Self(platform_rx__syscalls),
-                153usize => Self(platform_rx__syscalls__blocked),
-                155usize => Self(platform_rx__errors),
-                157usize => Self(platform_rx__errors__dropped),
+                138usize => Self(platform_tx__packets),
+                140usize => Self(platform_tx__syscalls),
+                142usize => Self(platform_tx__syscalls__blocked),
+                144usize => Self(platform_tx__errors),
+                146usize => Self(platform_tx__errors__dropped),
+                150usize => Self(platform_rx__packets),
+                152usize => Self(platform_rx__syscalls),
+                154usize => Self(platform_rx__syscalls__blocked),
+                156usize => Self(platform_rx__errors),
+                158usize => Self(platform_rx__errors__dropped),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -609,7 +612,7 @@ mod timer {
                 112usize => Self(dc_state_changed__path_secrets__latency),
                 113usize => Self(dc_state_changed__complete__latency),
                 117usize => Self(connection_closed__latency),
-                162usize => Self(platform_event_loop_sleep__processing_duration),
+                163usize => Self(platform_event_loop_sleep__processing_duration),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }

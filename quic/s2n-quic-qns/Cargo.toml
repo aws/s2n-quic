@@ -4,7 +4,7 @@ name = "s2n-quic-qns"
 version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.82"
 license = "Apache-2.0"
 publish = false
 
@@ -21,9 +21,7 @@ cfg-if = "1"
 futures = "0.3"
 http = "1.0"
 humansize = "2"
-idna_adapter = "=1.2.0" # newer versions require rust 1.82
-litemap = "=0.7.4" # newer versions require rust 1.81
-lru = "0.14"
+lru = "0.16"
 rand = "0.9"
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
@@ -33,7 +31,6 @@ tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
-zerofrom = "=0.1.5" # newer versions require rust 1.81
 
 [target.'cfg(unix)'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["provider-event-console-perf", "provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }

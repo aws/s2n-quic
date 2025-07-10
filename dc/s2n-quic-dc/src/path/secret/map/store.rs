@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{entry::ApplicationData, Entry};
+use super::{ApplicationData, ApplicationDataError, Entry};
 use crate::{
     credentials::{Credentials, Id},
     packet::{secret_control as control, Packet, WireVersion},
@@ -108,7 +108,7 @@ pub trait Store: 'static + Send + Sync {
         cb: Box<
             dyn Fn(
                     &dyn s2n_quic_core::crypto::tls::TlsSession,
-                ) -> Result<Option<ApplicationData>, &'static str>
+                ) -> Result<Option<ApplicationData>, ApplicationDataError>
                 + Send
                 + Sync,
         >,
@@ -117,5 +117,5 @@ pub trait Store: 'static + Send + Sync {
     fn application_data(
         &self,
         session: &dyn s2n_quic_core::crypto::tls::TlsSession,
-    ) -> Result<Option<ApplicationData>, &'static str>;
+    ) -> Result<Option<ApplicationData>, ApplicationDataError>;
 }

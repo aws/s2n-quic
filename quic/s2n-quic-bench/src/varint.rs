@@ -1,9 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use criterion::{black_box, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion};
 use s2n_codec::{DecoderBuffer, Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::varint::VarInt;
+use std::hint::black_box;
 
 pub fn benchmarks(c: &mut Criterion) {
     encode(c);

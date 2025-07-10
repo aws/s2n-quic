@@ -66,7 +66,7 @@ event_recorder!(
     SocketAddr,
     |event: &events::RecoveryMetrics, storage: &mut Vec<SocketAddr>| {
         let addr: SocketAddr = event.path.local_addr.to_string().parse().unwrap();
-        if storage.last().map_or(true, |prev| *prev != addr) {
+        if storage.last().is_none_or(|prev| *prev != addr) {
             storage.push(addr);
         }
     }

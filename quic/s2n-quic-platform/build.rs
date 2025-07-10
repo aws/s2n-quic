@@ -115,12 +115,11 @@ fn main() -> Result<(), Error> {
         }
     }
 
-    // TODO: Uncomment once MSRV is 1.80.0, see https://github.com/aws/s2n-quic/issues/2334
-    // for name in ALL_FEATURES.iter().map(|f| f.name()) {
-    //     println!("cargo::rustc-check-cfg=cfg(s2n_quic_platform_{name})");
-    // }
-    //
-    // println!("cargo::rustc-check-cfg=cfg(fuzz, kani, kani_slow)");
+    for name in ALL_FEATURES.iter().map(|f| f.name()) {
+        println!("cargo::rustc-check-cfg=cfg(s2n_quic_platform_{name})");
+    }
+
+    println!("cargo::rustc-check-cfg=cfg(fuzz, kani, kani_slow)");
 
     Ok(())
 }

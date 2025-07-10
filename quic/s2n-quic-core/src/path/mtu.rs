@@ -526,7 +526,7 @@ impl Controller {
     /// be over 9000.
     #[inline]
     pub fn new(config: Config, peer_socket_address: &inet::SocketAddress) -> Self {
-        debug_assert!(config.is_valid(), "Invalid MTU configuration {:?}", config);
+        debug_assert!(config.is_valid(), "Invalid MTU configuration {config:?}");
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-14.3
         //# Endpoints SHOULD set the initial value of BASE_PLPMTU (Section 5.1 of
@@ -646,7 +646,7 @@ impl Controller {
         if sent_bytes >= self.plpmtu
             && self
                 .largest_acked_mtu_sized_packet
-                .map_or(true, |pn| packet_number > pn)
+                .is_none_or(|pn| packet_number > pn)
         {
             // Reset the black hole counter since a packet the size of the current MTU or larger
             // has been acknowledged, indicating the path can still support the current MTU
@@ -770,7 +770,7 @@ impl Controller {
                 if (self.base_plpmtu + 1..=self.plpmtu).contains(&lost_bytes)
                     && self
                         .largest_acked_mtu_sized_packet
-                        .map_or(true, |pn| packet_number > pn)
+                        .is_none_or(|pn| packet_number > pn)
                     && new_loss_burst
                 {
                     // A non-probe packet larger than the BASE_PLPMTU that was sent after the last

@@ -35,18 +35,14 @@ impl<T: Copy + fmt::Debug> Ring<T> {
     /// Returns the flags on the ring.
     #[inline]
     pub fn flags(&self) -> RingFlags {
-        // `as_ptr` can be removed once the MSRV hits >= 1.80.0.
-        // The flags are shared with the kernel and non-atomic, which means we cannot create a reference to them without violating aliasing rules.
-        unsafe { self.flags.as_ptr().read() }
+        unsafe { self.flags.read() }
     }
 
     /// Writes `flags` to the flags on the ring.
     #[inline]
     #[cfg(test)]
     pub fn set_flags(&mut self, flags: RingFlags) {
-        // `as_ptr` can be removed once the MSRV hits >= 1.80.0.
-        // The flags are shared with the kernel and non-atomic, which means we cannot create a reference to them without violating aliasing rules.
-        unsafe { self.flags.as_ptr().write(flags) }
+        unsafe { self.flags.write(flags) }
     }
 }
 

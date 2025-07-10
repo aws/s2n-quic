@@ -60,7 +60,7 @@ impl<T> Default for Endpoint<T> {
  ████████████████████████████████████████████████████████████████
  ▓▓████████████████████████████████████████████████████████████▓▓
             ";
-            eprintln!("{}", WARNING);
+            eprintln!("{WARNING}");
             eprintln!();
             eprintln!("                  =====  W A R N I N G !!! =====");
             eprintln!();
@@ -72,7 +72,7 @@ impl<T> Default for Endpoint<T> {
             eprintln!("  integrity, or authenticity.");
             eprintln!();
             let location = core::panic::Location::caller();
-            eprintln!("  Endpoint configured by: {}", location);
+            eprintln!("  Endpoint configured by: {location}");
             eprintln!();
             eprintln!("                  ==============================");
         }

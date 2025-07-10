@@ -867,8 +867,7 @@ fn on_packet_loss_initial_mtu_configured() {
                     assert_eq!(MtuResult::MtuUpdated(base_plpmtu), result);
                     assert_eq!(
                         1, cc.on_mtu_update,
-                        "base {} init {} max {} original_plpmtu {}, base_plpmtu {}",
-                        base_plpmtu, initial_mtu, max_mtu, original_plpmtu, base_plpmtu
+                        "base {base_plpmtu} init {initial_mtu} max {max_mtu} original_plpmtu {original_plpmtu}, base_plpmtu {base_plpmtu}"
                     );
                     assert_eq!(base_plpmtu, controller.plpmtu);
                 } else {

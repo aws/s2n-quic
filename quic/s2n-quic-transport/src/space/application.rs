@@ -596,14 +596,13 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         let largest_acked = self.ack_manager.largest_received_packet_number_acked();
         let packet = protected
             .unprotect(&self.header_key, largest_acked)
-            .map_err(|err| {
+            .inspect_err(|_err| {
                 publisher.on_packet_dropped(event::builder::PacketDropped {
                     reason: event::builder::PacketDropReason::UnprotectFailed {
                         space: event::builder::KeySpace::OneRtt,
                         path: path_event!(path, path_id),
                     },
                 });
-                err
             })?;
 
         let packet_number = packet.packet_number;

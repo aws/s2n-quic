@@ -94,11 +94,11 @@ impl RehandshakeState {
 
             request_handshake(entry.unmap().into());
 
-            if idx % 25 == 0 && idx != 0 {
-                // Since we handshake in bursts of 25, this still allows 60*1000/50*25 = 30k
-                // handshakes/minute, which is orders of magnitude more than we should ever have. At
-                // 500k peers with a 24 hour handshake period means ~348 handshakes/minute.
-                std::thread::sleep(Duration::from_millis(50));
+            if idx % 5 == 0 && idx != 0 {
+                // Since we handshake in bursts of 5, this still allows 60*1000/10*5 = 30k
+                // handshakes/minute, which is orders of magnitude more than we should ever have.
+                // At 500k peers with a 24 hour handshake period means ~348 handshakes/minute.
+                std::thread::sleep(Duration::from_millis(10));
             }
         }
     }

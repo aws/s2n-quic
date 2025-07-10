@@ -58,39 +58,42 @@ mod counter {
                 124usize => Self(stream_read_socket_flushed__committed__total),
                 127usize => Self(stream_read_socket_blocked),
                 130usize => Self(stream_read_socket_errored),
-                132usize => Self(connection_closed),
-                133usize => Self(endpoint_initialized),
-                138usize => Self(path_secret_map_initialized),
-                140usize => Self(path_secret_map_uninitialized),
-                144usize => Self(path_secret_map_background_handshake_requested),
-                146usize => Self(path_secret_map_entry_inserted),
-                148usize => Self(path_secret_map_entry_ready),
-                150usize => Self(path_secret_map_entry_replaced),
-                152usize => Self(path_secret_map_id_entry_evicted),
-                155usize => Self(path_secret_map_address_entry_evicted),
-                158usize => Self(unknown_path_secret_packet_sent),
-                160usize => Self(unknown_path_secret_packet_received),
-                162usize => Self(unknown_path_secret_packet_accepted),
-                164usize => Self(unknown_path_secret_packet_rejected),
-                166usize => Self(unknown_path_secret_packet_dropped),
-                168usize => Self(key_accepted),
-                171usize => Self(replay_definitely_detected),
-                172usize => Self(replay_potentially_detected),
-                174usize => Self(replay_detected_packet_sent),
-                176usize => Self(replay_detected_packet_received),
-                178usize => Self(replay_detected_packet_accepted),
-                180usize => Self(replay_detected_packet_rejected),
-                182usize => Self(replay_detected_packet_dropped),
-                184usize => Self(stale_key_packet_sent),
-                186usize => Self(stale_key_packet_received),
-                188usize => Self(stale_key_packet_accepted),
-                190usize => Self(stale_key_packet_rejected),
-                192usize => Self(stale_key_packet_dropped),
-                194usize => Self(path_secret_map_address_cache_accessed),
-                197usize => Self(path_secret_map_address_cache_accessed_hit),
-                200usize => Self(path_secret_map_id_cache_accessed),
-                202usize => Self(path_secret_map_id_cache_accessed_hit),
-                204usize => Self(path_secret_map_cleaner_cycled),
+                132usize => Self(stream_tcp_connect),
+                135usize => Self(stream_connect),
+                139usize => Self(stream_connect_error),
+                141usize => Self(connection_closed),
+                142usize => Self(endpoint_initialized),
+                147usize => Self(path_secret_map_initialized),
+                149usize => Self(path_secret_map_uninitialized),
+                153usize => Self(path_secret_map_background_handshake_requested),
+                155usize => Self(path_secret_map_entry_inserted),
+                157usize => Self(path_secret_map_entry_ready),
+                159usize => Self(path_secret_map_entry_replaced),
+                161usize => Self(path_secret_map_id_entry_evicted),
+                164usize => Self(path_secret_map_address_entry_evicted),
+                167usize => Self(unknown_path_secret_packet_sent),
+                169usize => Self(unknown_path_secret_packet_received),
+                171usize => Self(unknown_path_secret_packet_accepted),
+                173usize => Self(unknown_path_secret_packet_rejected),
+                175usize => Self(unknown_path_secret_packet_dropped),
+                177usize => Self(key_accepted),
+                180usize => Self(replay_definitely_detected),
+                181usize => Self(replay_potentially_detected),
+                183usize => Self(replay_detected_packet_sent),
+                185usize => Self(replay_detected_packet_received),
+                187usize => Self(replay_detected_packet_accepted),
+                189usize => Self(replay_detected_packet_rejected),
+                191usize => Self(replay_detected_packet_dropped),
+                193usize => Self(stale_key_packet_sent),
+                195usize => Self(stale_key_packet_received),
+                197usize => Self(stale_key_packet_accepted),
+                199usize => Self(stale_key_packet_rejected),
+                201usize => Self(stale_key_packet_dropped),
+                203usize => Self(path_secret_map_address_cache_accessed),
+                206usize => Self(path_secret_map_address_cache_accessed_hit),
+                209usize => Self(path_secret_map_id_cache_accessed),
+                211usize => Self(path_secret_map_id_cache_accessed_hit),
+                213usize => Self(path_secret_map_cleaner_cycled),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -184,6 +187,12 @@ mod counter {
             fn stream_read_socket_blocked(value: u64);
             # [link_name = s2n_quic_dc__event__counter__stream_read_socket_errored]
             fn stream_read_socket_errored(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_tcp_connect]
+            fn stream_tcp_connect(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_connect]
+            fn stream_connect(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_connect_error]
+            fn stream_connect_error(value: u64);
             # [link_name = s2n_quic_dc__event__counter__connection_closed]
             fn connection_closed(value: u64);
             # [link_name = s2n_quic_dc__event__counter__endpoint_initialized]
@@ -267,10 +276,12 @@ mod counter {
                     37usize => Self(acceptor_udp_packet_received__is_fin_known),
                     80usize => Self(stream_write_shutdown__background),
                     120usize => Self(stream_read_shutdown__background),
-                    136usize => Self(endpoint_initialized__tcp),
-                    137usize => Self(endpoint_initialized__udp),
-                    196usize => Self(path_secret_map_address_cache_accessed__hit),
-                    201usize => Self(path_secret_map_id_cache_accessed__hit),
+                    133usize => Self(stream_tcp_connect__error),
+                    136usize => Self(stream_connect__error),
+                    145usize => Self(endpoint_initialized__tcp),
+                    146usize => Self(endpoint_initialized__udp),
+                    205usize => Self(path_secret_map_address_cache_accessed__hit),
+                    210usize => Self(path_secret_map_id_cache_accessed__hit),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -298,6 +309,10 @@ mod counter {
                 fn stream_write_shutdown__background(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__stream_read_shutdown__background]
                 fn stream_read_shutdown__background(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__stream_tcp_connect__error]
+                fn stream_tcp_connect__error(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__stream_connect__error]
+                fn stream_connect__error(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__endpoint_initialized__tcp]
                 fn endpoint_initialized__tcp(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__endpoint_initialized__udp]
@@ -321,35 +336,38 @@ mod counter {
                     23usize => Self(acceptor_tcp_packet_dropped__reason),
                     39usize => Self(acceptor_udp_packet_dropped__reason),
                     44usize => Self(acceptor_stream_pruned__reason),
-                    134usize => Self(endpoint_initialized__acceptor__protocol),
-                    135usize => Self(endpoint_initialized__handshake__protocol),
-                    145usize => {
+                    137usize => Self(stream_connect__tcp),
+                    138usize => Self(stream_connect__handshake),
+                    140usize => Self(stream_connect_error__reason),
+                    143usize => Self(endpoint_initialized__acceptor__protocol),
+                    144usize => Self(endpoint_initialized__handshake__protocol),
+                    154usize => {
                         Self(path_secret_map_background_handshake_requested__peer_address__protocol)
                     }
-                    147usize => Self(path_secret_map_entry_inserted__peer_address__protocol),
-                    149usize => Self(path_secret_map_entry_ready__peer_address__protocol),
-                    151usize => Self(path_secret_map_entry_replaced__peer_address__protocol),
-                    153usize => Self(path_secret_map_id_entry_evicted__peer_address__protocol),
-                    156usize => Self(path_secret_map_address_entry_evicted__peer_address__protocol),
-                    159usize => Self(unknown_path_secret_packet_sent__peer_address__protocol),
-                    161usize => Self(unknown_path_secret_packet_received__peer_address__protocol),
-                    163usize => Self(unknown_path_secret_packet_accepted__peer_address__protocol),
-                    165usize => Self(unknown_path_secret_packet_rejected__peer_address__protocol),
-                    167usize => Self(unknown_path_secret_packet_dropped__peer_address__protocol),
-                    175usize => Self(replay_detected_packet_sent__peer_address__protocol),
-                    177usize => Self(replay_detected_packet_received__peer_address__protocol),
-                    179usize => Self(replay_detected_packet_accepted__peer_address__protocol),
-                    181usize => Self(replay_detected_packet_rejected__peer_address__protocol),
-                    183usize => Self(replay_detected_packet_dropped__peer_address__protocol),
-                    185usize => Self(stale_key_packet_sent__peer_address__protocol),
-                    187usize => Self(stale_key_packet_received__peer_address__protocol),
-                    189usize => Self(stale_key_packet_accepted__peer_address__protocol),
-                    191usize => Self(stale_key_packet_rejected__peer_address__protocol),
-                    193usize => Self(stale_key_packet_dropped__peer_address__protocol),
-                    195usize => {
+                    156usize => Self(path_secret_map_entry_inserted__peer_address__protocol),
+                    158usize => Self(path_secret_map_entry_ready__peer_address__protocol),
+                    160usize => Self(path_secret_map_entry_replaced__peer_address__protocol),
+                    162usize => Self(path_secret_map_id_entry_evicted__peer_address__protocol),
+                    165usize => Self(path_secret_map_address_entry_evicted__peer_address__protocol),
+                    168usize => Self(unknown_path_secret_packet_sent__peer_address__protocol),
+                    170usize => Self(unknown_path_secret_packet_received__peer_address__protocol),
+                    172usize => Self(unknown_path_secret_packet_accepted__peer_address__protocol),
+                    174usize => Self(unknown_path_secret_packet_rejected__peer_address__protocol),
+                    176usize => Self(unknown_path_secret_packet_dropped__peer_address__protocol),
+                    184usize => Self(replay_detected_packet_sent__peer_address__protocol),
+                    186usize => Self(replay_detected_packet_received__peer_address__protocol),
+                    188usize => Self(replay_detected_packet_accepted__peer_address__protocol),
+                    190usize => Self(replay_detected_packet_rejected__peer_address__protocol),
+                    192usize => Self(replay_detected_packet_dropped__peer_address__protocol),
+                    194usize => Self(stale_key_packet_sent__peer_address__protocol),
+                    196usize => Self(stale_key_packet_received__peer_address__protocol),
+                    198usize => Self(stale_key_packet_accepted__peer_address__protocol),
+                    200usize => Self(stale_key_packet_rejected__peer_address__protocol),
+                    202usize => Self(stale_key_packet_dropped__peer_address__protocol),
+                    204usize => {
                         Self(path_secret_map_address_cache_accessed__peer_address__protocol)
                     }
-                    198usize => {
+                    207usize => {
                         Self(path_secret_map_address_cache_accessed_hit__peer_address__protocol)
                     }
                     _ => unreachable!("invalid info: {info:?}"),
@@ -392,6 +410,12 @@ mod counter {
                     variant: u64,
                     variant_name: &info::Str,
                 );
+                # [link_name = s2n_quic_dc__event__counter__nominal__stream_connect__tcp]
+                fn stream_connect__tcp(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic_dc__event__counter__nominal__stream_connect__handshake]
+                fn stream_connect__handshake(value: u64, variant: u64, variant_name: &info::Str);
+                # [link_name = s2n_quic_dc__event__counter__nominal__stream_connect_error__reason]
+                fn stream_connect_error__reason(value: u64, variant: u64, variant_name: &info::Str);
                 # [link_name = s2n_quic_dc__event__counter__nominal__endpoint_initialized__acceptor__protocol]
                 fn endpoint_initialized__acceptor__protocol(
                     value: u64,
@@ -616,35 +640,35 @@ mod measure {
                 128usize => Self(stream_read_socket_blocked__conn),
                 129usize => Self(stream_read_socket_blocked__capacity),
                 131usize => Self(stream_read_socket_errored__capacity),
-                139usize => Self(path_secret_map_initialized__capacity),
-                141usize => Self(path_secret_map_uninitialized__capacity),
-                142usize => Self(path_secret_map_uninitialized__entries),
-                143usize => Self(path_secret_map_uninitialized__lifetime),
-                154usize => Self(path_secret_map_id_entry_evicted__age),
-                157usize => Self(path_secret_map_address_entry_evicted__age),
-                169usize => Self(key_accepted__gap),
-                170usize => Self(key_accepted__forward_shift),
-                173usize => Self(replay_potentially_detected__gap),
-                199usize => Self(path_secret_map_address_cache_accessed_hit__age),
-                203usize => Self(path_secret_map_id_cache_accessed_hit__age),
-                205usize => Self(path_secret_map_cleaner_cycled__entries__id),
-                206usize => Self(path_secret_map_cleaner_cycled__entries__id__retired),
-                207usize => Self(path_secret_map_cleaner_cycled__entries__id__active),
-                208usize => Self(path_secret_map_cleaner_cycled__entries__id__active__utilization),
-                209usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization),
-                210usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization__initial),
-                211usize => Self(path_secret_map_cleaner_cycled__entries__address),
-                212usize => Self(path_secret_map_cleaner_cycled__entries__address__active),
-                213usize => {
+                148usize => Self(path_secret_map_initialized__capacity),
+                150usize => Self(path_secret_map_uninitialized__capacity),
+                151usize => Self(path_secret_map_uninitialized__entries),
+                152usize => Self(path_secret_map_uninitialized__lifetime),
+                163usize => Self(path_secret_map_id_entry_evicted__age),
+                166usize => Self(path_secret_map_address_entry_evicted__age),
+                178usize => Self(key_accepted__gap),
+                179usize => Self(key_accepted__forward_shift),
+                182usize => Self(replay_potentially_detected__gap),
+                208usize => Self(path_secret_map_address_cache_accessed_hit__age),
+                212usize => Self(path_secret_map_id_cache_accessed_hit__age),
+                214usize => Self(path_secret_map_cleaner_cycled__entries__id),
+                215usize => Self(path_secret_map_cleaner_cycled__entries__id__retired),
+                216usize => Self(path_secret_map_cleaner_cycled__entries__id__active),
+                217usize => Self(path_secret_map_cleaner_cycled__entries__id__active__utilization),
+                218usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization),
+                219usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization__initial),
+                220usize => Self(path_secret_map_cleaner_cycled__entries__address),
+                221usize => Self(path_secret_map_cleaner_cycled__entries__address__active),
+                222usize => {
                     Self(path_secret_map_cleaner_cycled__entries__address__active__utilization)
                 }
-                214usize => Self(path_secret_map_cleaner_cycled__entries__address__retired),
-                215usize => Self(path_secret_map_cleaner_cycled__entries__address__utilization),
-                216usize => {
+                223usize => Self(path_secret_map_cleaner_cycled__entries__address__retired),
+                224usize => Self(path_secret_map_cleaner_cycled__entries__address__utilization),
+                225usize => {
                     Self(path_secret_map_cleaner_cycled__entries__address__utilization__initial)
                 }
-                217usize => Self(path_secret_map_cleaner_cycled__handshake_requests),
-                218usize => Self(path_secret_map_cleaner_cycled__handshake_requests__retired),
+                226usize => Self(path_secret_map_cleaner_cycled__handshake_requests),
+                227usize => Self(path_secret_map_cleaner_cycled__handshake_requests__retired),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -874,6 +898,7 @@ mod timer {
                 108usize => Self(stream_read_blocked__latency),
                 113usize => Self(stream_read_errored__latency),
                 119usize => Self(stream_read_shutdown__latency),
+                134usize => Self(stream_tcp_connect__tcp_latency),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -921,6 +946,8 @@ mod timer {
             fn stream_read_errored__latency(value: core::time::Duration);
             # [link_name = s2n_quic_dc__event__timer__stream_read_shutdown__latency]
             fn stream_read_shutdown__latency(value: core::time::Duration);
+            # [link_name = s2n_quic_dc__event__timer__stream_tcp_connect__tcp_latency]
+            fn stream_tcp_connect__tcp_latency(value: core::time::Duration);
         }
     );
     pub mod nominal {

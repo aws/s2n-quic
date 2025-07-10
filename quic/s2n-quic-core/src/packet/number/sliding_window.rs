@@ -234,9 +234,9 @@ impl SlidingWindow {
         {
             for pn in evicted.clone() {
                 // If we are returning it as evicted it should be in the initial set.
-                assert_eq!(initial.check(pn), Ok(()), "{:?}", pn);
+                assert_eq!(initial.check(pn), Ok(()), "{pn:?}");
                 // ... and unknown in the new set, since we've slid past it.
-                assert_eq!(self.check(pn), Err(SlidingWindowError::TooOld), "{:?}", pn);
+                assert_eq!(self.check(pn), Err(SlidingWindowError::TooOld), "{pn:?}");
             }
         }
 
@@ -261,9 +261,7 @@ impl SlidingWindow {
                     {
                         assert!(
                             evicted.clone().any(|e| e == pn),
-                            "{:?} expected in evicted after insert of {:?}",
-                            pn,
-                            packet_number
+                            "{pn:?} expected in evicted after insert of {packet_number:?}"
                         );
                     }
                 }

@@ -2861,6 +2861,25 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct EndpointConnectionAttemptDeduplicated {
+        #[doc = " The internal connection ID this deduplicated with."]
+        pub connection_id: u64,
+        pub already_open: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for EndpointConnectionAttemptDeduplicated {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("EndpointConnectionAttemptDeduplicated");
+            fmt.field("connection_id", &self.connection_id);
+            fmt.field("already_open", &self.already_open);
+            fmt.finish()
+        }
+    }
+    impl Event for EndpointConnectionAttemptDeduplicated {
+        const NAME: &'static str = "endpoint:connection_attempt_deduplicated";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Emitted when the platform sends at least one packet"]
     pub struct PlatformTx {
         #[doc = " The number of packets sent"]
@@ -4337,6 +4356,19 @@ pub mod tracing {
             let parent = self.parent(meta);
             let api::EndpointConnectionAttemptFailed { error } = event;
             tracing :: event ! (target : "endpoint_connection_attempt_failed" , parent : parent , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) });
+        }
+        #[inline]
+        fn on_endpoint_connection_attempt_deduplicated(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointConnectionAttemptDeduplicated,
+        ) {
+            let parent = self.parent(meta);
+            let api::EndpointConnectionAttemptDeduplicated {
+                connection_id,
+                already_open,
+            } = event;
+            tracing :: event ! (target : "endpoint_connection_attempt_deduplicated" , parent : parent , tracing :: Level :: DEBUG , { connection_id = tracing :: field :: debug (connection_id) , already_open = tracing :: field :: debug (already_open) });
         }
         #[inline]
         fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
@@ -6596,6 +6628,27 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct EndpointConnectionAttemptDeduplicated {
+        #[doc = " The internal connection ID this deduplicated with."]
+        pub connection_id: u64,
+        pub already_open: bool,
+    }
+    impl IntoEvent<api::EndpointConnectionAttemptDeduplicated>
+        for EndpointConnectionAttemptDeduplicated
+    {
+        #[inline]
+        fn into_event(self) -> api::EndpointConnectionAttemptDeduplicated {
+            let EndpointConnectionAttemptDeduplicated {
+                connection_id,
+                already_open,
+            } = self;
+            api::EndpointConnectionAttemptDeduplicated {
+                connection_id: connection_id.into_event(),
+                already_open: already_open.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Emitted when the platform sends at least one packet"]
     pub struct PlatformTx {
         #[doc = " The number of packets sent"]
@@ -7592,6 +7645,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `EndpointConnectionAttemptDeduplicated` event is triggered"]
+        #[inline]
+        fn on_endpoint_connection_attempt_deduplicated(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointConnectionAttemptDeduplicated,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PlatformTx` event is triggered"]
         #[inline]
         fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
@@ -8289,6 +8352,15 @@ mod traits {
             (self.1).on_endpoint_connection_attempt_failed(meta, event);
         }
         #[inline]
+        fn on_endpoint_connection_attempt_deduplicated(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointConnectionAttemptDeduplicated,
+        ) {
+            (self.0).on_endpoint_connection_attempt_deduplicated(meta, event);
+            (self.1).on_endpoint_connection_attempt_deduplicated(meta, event);
+        }
+        #[inline]
         fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
             (self.0).on_platform_tx(meta, event);
             (self.1).on_platform_tx(meta, event);
@@ -8398,6 +8470,11 @@ mod traits {
             &mut self,
             event: builder::EndpointConnectionAttemptFailed,
         );
+        #[doc = "Publishes a `EndpointConnectionAttemptDeduplicated` event to the publisher's subscriber"]
+        fn on_endpoint_connection_attempt_deduplicated(
+            &mut self,
+            event: builder::EndpointConnectionAttemptDeduplicated,
+        );
         #[doc = "Publishes a `PlatformTx` event to the publisher's subscriber"]
         fn on_platform_tx(&mut self, event: builder::PlatformTx);
         #[doc = "Publishes a `PlatformTxError` event to the publisher's subscriber"]
@@ -8493,6 +8570,16 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_endpoint_connection_attempt_failed(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_endpoint_connection_attempt_deduplicated(
+            &mut self,
+            event: builder::EndpointConnectionAttemptDeduplicated,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_endpoint_connection_attempt_deduplicated(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -9157,6 +9244,7 @@ pub mod testing {
             pub endpoint_datagram_received: u64,
             pub endpoint_datagram_dropped: u64,
             pub endpoint_connection_attempt_failed: u64,
+            pub endpoint_connection_attempt_deduplicated: u64,
             pub platform_tx: u64,
             pub platform_tx_error: u64,
             pub platform_rx: u64,
@@ -9203,6 +9291,7 @@ pub mod testing {
                     endpoint_datagram_received: 0,
                     endpoint_datagram_dropped: 0,
                     endpoint_connection_attempt_failed: 0,
+                    endpoint_connection_attempt_deduplicated: 0,
                     platform_tx: 0,
                     platform_tx_error: 0,
                     platform_rx: 0,
@@ -9294,6 +9383,17 @@ pub mod testing {
                 event: &api::EndpointConnectionAttemptFailed,
             ) {
                 self.endpoint_connection_attempt_failed += 1;
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+            fn on_endpoint_connection_attempt_deduplicated(
+                &mut self,
+                meta: &api::EndpointMeta,
+                event: &api::EndpointConnectionAttemptDeduplicated,
+            ) {
+                self.endpoint_connection_attempt_deduplicated += 1;
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -9439,6 +9539,7 @@ pub mod testing {
         pub endpoint_datagram_received: u64,
         pub endpoint_datagram_dropped: u64,
         pub endpoint_connection_attempt_failed: u64,
+        pub endpoint_connection_attempt_deduplicated: u64,
         pub platform_tx: u64,
         pub platform_tx_error: u64,
         pub platform_rx: u64,
@@ -9532,6 +9633,7 @@ pub mod testing {
                 endpoint_datagram_received: 0,
                 endpoint_datagram_dropped: 0,
                 endpoint_connection_attempt_failed: 0,
+                endpoint_connection_attempt_deduplicated: 0,
                 platform_tx: 0,
                 platform_tx_error: 0,
                 platform_rx: 0,
@@ -10287,6 +10389,17 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.push(out);
         }
+        fn on_endpoint_connection_attempt_deduplicated(
+            &mut self,
+            meta: &api::EndpointMeta,
+            event: &api::EndpointConnectionAttemptDeduplicated,
+        ) {
+            self.endpoint_connection_attempt_deduplicated += 1;
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.push(out);
+        }
         fn on_platform_tx(&mut self, meta: &api::EndpointMeta, event: &api::PlatformTx) {
             self.platform_tx += 1;
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
@@ -10418,6 +10531,7 @@ pub mod testing {
         pub endpoint_datagram_received: u64,
         pub endpoint_datagram_dropped: u64,
         pub endpoint_connection_attempt_failed: u64,
+        pub endpoint_connection_attempt_deduplicated: u64,
         pub platform_tx: u64,
         pub platform_tx_error: u64,
         pub platform_rx: u64,
@@ -10501,6 +10615,7 @@ pub mod testing {
                 endpoint_datagram_received: 0,
                 endpoint_datagram_dropped: 0,
                 endpoint_connection_attempt_failed: 0,
+                endpoint_connection_attempt_deduplicated: 0,
                 platform_tx: 0,
                 platform_tx_error: 0,
                 platform_rx: 0,
@@ -10560,6 +10675,16 @@ pub mod testing {
             event: builder::EndpointConnectionAttemptFailed,
         ) {
             self.endpoint_connection_attempt_failed += 1;
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.push(out);
+        }
+        fn on_endpoint_connection_attempt_deduplicated(
+            &mut self,
+            event: builder::EndpointConnectionAttemptDeduplicated,
+        ) {
+            self.endpoint_connection_attempt_deduplicated += 1;
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");

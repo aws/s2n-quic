@@ -75,3 +75,11 @@ struct EndpointConnectionAttemptFailed {
     #[nominal_counter("error")]
     error: crate::connection::Error,
 }
+
+#[event("endpoint:connection_attempt_deduplicated")]
+#[subject(endpoint)]
+struct EndpointConnectionAttemptDeduplicated {
+    /// The internal connection ID this deduplicated with.
+    connection_id: u64,
+    already_open: bool,
+}

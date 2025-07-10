@@ -115,7 +115,7 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_limits(limits::Default::default())?
+        ///     .with_limits(limits::Limits::new().with_max_idle_timeout(Duration::from_secs(40))?)?
         ///     .start()?;
         /// #
         /// #    Ok(())
@@ -140,7 +140,11 @@ impl<Providers: ServerProviders> Builder<Providers> {
         /// # #[tokio::main]
         /// # async fn main() -> Result<(), Box<dyn Error>> {
         /// let server = Server::builder()
-        ///     .with_endpoint_limits(endpoint_limits::Default::default())?
+        ///     .with_endpoint_limits(
+        ///         endpoint_limits::Default::builder()
+        ///             .with_inflight_handshake_limit(100)?
+        ///             .build()?,
+        ///     )?
         ///     .start()?;
         /// #
         /// #    Ok(())

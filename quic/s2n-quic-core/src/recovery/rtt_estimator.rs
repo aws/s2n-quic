@@ -276,7 +276,7 @@ impl RttEstimator {
         //# rttvar = 3/4 * rttvar + 1/4 * rttvar_sample
 
         // this logic has been updated to follow the errata reported in https://www.rfc-editor.org/errata/eid7539
-        let rttvar_sample = abs_difference(self.smoothed_rtt, adjusted_rtt);
+        let rttvar_sample = self.smoothed_rtt.abs_diff(adjusted_rtt);
         self.rttvar = weighted_average(self.rttvar, rttvar_sample, 4);
         self.smoothed_rtt = weighted_average(self.smoothed_rtt, adjusted_rtt, 8);
     }
@@ -353,15 +353,6 @@ impl RttEstimator {
     fn rttvar_4x(&self) -> Duration {
         // Operate on micros instead, as it's more efficient and we don't need the precision Duration gives
         Duration::from_micros(4 * self.rttvar.as_micros() as u64)
-    }
-}
-
-#[inline]
-fn abs_difference<T: core::ops::Sub + PartialOrd>(a: T, b: T) -> <T as core::ops::Sub>::Output {
-    if a > b {
-        a - b
-    } else {
-        b - a
     }
 }
 
@@ -805,10 +796,8 @@ mod test {
 
                 // assert that the unoptimized result matches the optimized to the nearest `weight` nanos
                 assert!(
-                    super::abs_difference(expected.as_nanos(), actual.as_nanos()) as u32 <= weight,
-                    "expected: {:?}; actual: {:?}",
-                    expected,
-                    actual
+                    expected.as_nanos().abs_diff(actual.as_nanos()) as u32 <= weight,
+                    "expected: {expected:?}; actual: {actual:?}"
                 );
             })
     }

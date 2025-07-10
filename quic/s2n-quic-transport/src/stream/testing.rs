@@ -249,7 +249,7 @@ impl TestEnvironment {
                     result += data.len();
                 }
                 Poll::Ready(Ok(None)) => break, // Consumed all data to end of stream
-                _ => panic!("Unexpected read result {:?}", poll_result),
+                _ => panic!("Unexpected read result {poll_result:?}"),
             }
         }
 
@@ -328,7 +328,7 @@ impl TestEnvironment {
                 "data mismatch",
             );
         } else {
-            panic!("Expected a Stream frame, but got {:?}", decoded_frame);
+            panic!("Expected a Stream frame, but got {decoded_frame:?}");
         }
     }
 

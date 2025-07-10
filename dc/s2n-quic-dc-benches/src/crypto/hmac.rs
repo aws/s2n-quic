@@ -1,7 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use criterion::{black_box, Criterion, Throughput};
+use criterion::{Criterion, Throughput};
+use std::hint::black_box;
 
 pub fn benchmarks(c: &mut Criterion) {
     init(c);

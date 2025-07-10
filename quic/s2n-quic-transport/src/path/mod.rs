@@ -306,7 +306,7 @@ impl<Config: endpoint::Config> Path<Config> {
             && self
                 .congestion_controller
                 .earliest_departure_time()
-                .map_or(true, |edt| edt.has_elapsed(timestamp))
+                .is_none_or(|edt| edt.has_elapsed(timestamp))
     }
 
     /// Only PATH_CHALLENGE and PATH_RESPONSE frames should be transmitted here.

@@ -151,7 +151,7 @@ impl Model {
                     if let Invariant::ContainsId(id) = invariant {
                         if state
                             .get_by_id_untracked(id)
-                            .map_or(true, |v| v.retired_at().is_some())
+                            .is_none_or(|v| v.retired_at().is_some())
                         {
                             invalidated.push(*id);
                             return false;
@@ -192,12 +192,12 @@ impl Model {
             match invariant {
                 Invariant::ContainsIp(ip) => {
                     if state.max_capacity != 5 {
-                        assert!(state.peers.contains_key(ip), "{:?}", ip);
+                        assert!(state.peers.contains_key(ip), "{ip:?}");
                     }
                 }
                 Invariant::ContainsId(id) => {
                     if state.max_capacity != 5 {
-                        assert!(state.ids.contains_key(id), "{:?}", id);
+                        assert!(state.ids.contains_key(id), "{id:?}");
                     }
                 }
                 Invariant::IdRemoved(id) => {

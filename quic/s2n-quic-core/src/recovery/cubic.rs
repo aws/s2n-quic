@@ -64,7 +64,7 @@ impl State {
             debug_assert!(
                 timing
                     .app_limited_time
-                    .map_or(true, |app_limited_time| timestamp >= app_limited_time),
+                    .is_none_or(|app_limited_time| timestamp >= app_limited_time),
                 "timestamp must be monotonically increasing"
             );
             debug_assert!(
