@@ -316,6 +316,9 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             dc_endpoint: endpoint_context.dc,
             open_registry: None,
             limits_endpoint: endpoint_context.connection_limits,
+            random_endpoint: endpoint_context.random_generator,
+            interceptor_endpoint: endpoint_context.packet_interceptor,
+            connection_id_validator: endpoint_context.connection_id_format,
         };
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
@@ -369,6 +372,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                         endpoint_context.datagram,
                         endpoint_context.dc,
                         endpoint_context.connection_limits,
+                        endpoint_context.connection_id_format,
                     )
                     .map_err(|err| {
                         use connection::ProcessingError;
