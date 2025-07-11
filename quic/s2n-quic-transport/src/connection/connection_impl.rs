@@ -608,7 +608,8 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             parameters.mtu_config,
             parameters.limits.anti_amplification_multiplier(),
         );
-
+        // Should cause a panic
+        assert_eq!(1, 0);
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
 
         let mut publisher =
