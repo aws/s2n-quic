@@ -14,6 +14,7 @@ phases:
       - echo "Installing Rust ..."
       - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       - . $HOME/.cargo/env
+      - yum update -y && yum install -y cmake
   build:
     commands:
       - cargo build --timings --release
