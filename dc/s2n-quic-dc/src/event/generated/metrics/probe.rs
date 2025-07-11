@@ -669,6 +669,8 @@ mod measure {
                 }
                 226usize => Self(path_secret_map_cleaner_cycled__handshake_requests),
                 227usize => Self(path_secret_map_cleaner_cycled__handshake_requests__retired),
+                228usize => Self(path_secret_map_cleaner_cycled__handshake_lock_duration),
+                229usize => Self(path_secret_map_cleaner_cycled__total_duration),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -854,6 +856,10 @@ mod measure {
             fn path_secret_map_cleaner_cycled__handshake_requests(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_requests__retired]
             fn path_secret_map_cleaner_cycled__handshake_requests__retired(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__handshake_lock_duration]
+            fn path_secret_map_cleaner_cycled__handshake_lock_duration(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__total_duration]
+            fn path_secret_map_cleaner_cycled__total_duration(value: u64);
         }
     );
 }
