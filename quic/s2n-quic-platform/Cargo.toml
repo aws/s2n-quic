@@ -27,7 +27,7 @@ futures = { version = "0.3", default-features = false, features = ["async-await"
 lazy_static = { version = "1", optional = true }
 s2n-quic-core = { version = "=0.61.0", path = "../s2n-quic-core", default-features = false }
 s2n-quic-xdp = { version = "=0.61.0", path = "../../tools/xdp/s2n-quic-xdp", optional = true }
-socket2 = { version = "0.5", features = ["all"], optional = true }
+socket2 = { version = "0.6", features = ["all"], optional = true }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "time"], optional = true }
 tracing = { version = "0.1", optional = true }
 turmoil = { version = "0.6.0", optional = true }
