@@ -342,6 +342,11 @@ struct TlsExporterReady<'a> {
     session: crate::event::TlsSession<'a>,
 }
 
+#[event("connectivity:tls_handshake_failed")]
+struct TlsHandshakeFailed<'a> {
+    session: crate::event::TlsSession<'a>,
+}
+
 #[event("connectivity:path_challenge_updated")]
 /// Path challenge updated
 struct PathChallengeUpdated<'a> {
