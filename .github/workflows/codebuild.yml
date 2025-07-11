@@ -5,8 +5,7 @@ on:
   push:
     branches: [main]
   pull_request_target:
-    branches: [main, ci_fix]
-  workflow_dispatch:
+    branches: [main]
 
 jobs:
   codebuild-trigger:
