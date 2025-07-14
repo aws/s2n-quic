@@ -425,4 +425,12 @@ struct PathSecretMapCleanerCycled {
     /// The number of handshake requests that were retired in the cycle
     #[measure("handshake_requests.retired")]
     handshake_requests_retired: usize,
+
+    /// How long we kept the handshake lock held (this blocks completing handshakes).
+    #[measure("handshake_lock_duration", Duration)]
+    handshake_lock_duration: core::time::Duration,
+
+    /// Total duration of a cycle.
+    #[measure("total_duration", Duration)]
+    duration: core::time::Duration,
 }

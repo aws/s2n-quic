@@ -104,6 +104,7 @@ impl Cleaner {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
+        let start = state.clock.get_time();
         let current_epoch = self.epoch.fetch_add(1, Ordering::Relaxed);
 
         let utilization = |count: usize| (count as f32 / state.secrets_capacity() as f32) * 100.0;
@@ -129,6 +130,7 @@ impl Cleaner {
             .eviction_queue
             .lock()
             .unwrap_or_else(|e| e.into_inner());
+        let in_lock = state.clock.get_time();
 
         // This map is only accessed with queue lock held and in cleaner, so it is in practice
         // single threaded. No concurrent access is permitted.
@@ -189,6 +191,7 @@ impl Cleaner {
         state.cleaner_peer_seen.clear();
 
         drop(queue);
+        let handshake_lock_duration = state.clock.get_time().saturating_duration_since(in_lock);
 
         if refill_rehandshakes {
             rehandshake.adjust_post_refill();
@@ -221,6 +224,8 @@ impl Cleaner {
                 address_entries_retired,
                 handshake_requests,
                 handshake_requests_retired: 0,
+                handshake_lock_duration,
+                duration: state.clock.get_time().saturating_duration_since(start),
             },
         );
     }

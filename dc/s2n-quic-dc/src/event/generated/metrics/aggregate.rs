@@ -13,7 +13,7 @@ use crate::event::{
     },
 };
 use core::sync::atomic::{AtomicU64, Ordering};
-static INFO: &[Info; 228usize] = &[
+static INFO: &[Info; 230usize] = &[
     info::Builder {
         id: 0usize,
         name: Str::new("acceptor_tcp_started\0"),
@@ -1382,6 +1382,18 @@ static INFO: &[Info; 228usize] = &[
         units: Units::None,
     }
     .build(),
+    info::Builder {
+        id: 228usize,
+        name: Str::new("path_secret_map_cleaner_cycled.handshake_lock_duration\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: 229usize,
+        name: Str::new("path_secret_map_cleaner_cycled.total_duration\0"),
+        units: Units::Duration,
+    }
+    .build(),
 ];
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -1420,7 +1432,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     nominal_counter_offsets: Box<[usize; 32usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 87usize]>,
+    measures: Box<[R::Measure; 89usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
@@ -1451,7 +1463,7 @@ impl<R: Registry> Subscriber<R> {
         let mut bool_counters = Vec::with_capacity(14usize);
         let mut nominal_counters = Vec::with_capacity(32usize);
         let mut nominal_counter_offsets = Vec::with_capacity(32usize);
-        let mut measures = Vec::with_capacity(87usize);
+        let mut measures = Vec::with_capacity(89usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(18usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
@@ -1990,6 +2002,8 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[225usize]));
         measures.push(registry.register_measure(&INFO[226usize]));
         measures.push(registry.register_measure(&INFO[227usize]));
+        measures.push(registry.register_measure(&INFO[228usize]));
+        measures.push(registry.register_measure(&INFO[229usize]));
         timers.push(registry.register_timer(&INFO[5usize]));
         timers.push(registry.register_timer(&INFO[15usize]));
         timers.push(registry.register_timer(&INFO[21usize]));
@@ -2467,6 +2481,8 @@ impl<R: Registry> Subscriber<R> {
                 84usize => (&INFO[225usize], entry),
                 85usize => (&INFO[226usize], entry),
                 86usize => (&INFO[227usize], entry),
+                87usize => (&INFO[228usize], entry),
+                88usize => (&INFO[229usize], entry),
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -3707,6 +3723,8 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         self.measure(225usize, 84usize, event.address_entries_initial_utilization);
         self.measure(226usize, 85usize, event.handshake_requests);
         self.measure(227usize, 86usize, event.handshake_requests_retired);
+        self.measure(228usize, 87usize, event.handshake_lock_duration);
+        self.measure(229usize, 88usize, event.duration);
         let _ = event;
         let _ = meta;
     }
