@@ -14,6 +14,7 @@ phases:
       - echo "Installing Rust ..."
       - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       - . $HOME/.cargo/env
+      # cmake is a dependency of quiche, which is one of our test dependencies
       - yum update -y && yum install -y cmake
   build:
     commands:
