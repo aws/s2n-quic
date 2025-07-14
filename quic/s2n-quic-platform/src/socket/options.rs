@@ -87,7 +87,7 @@ impl Options {
 
         let socket = socket2::Socket::new(domain, ty, Some(protocol))?;
 
-        socket.set_nodelay(!self.delay)?;
+        socket.set_tcp_nodelay(!self.delay)?;
 
         self.build_common(&socket)?;
 
