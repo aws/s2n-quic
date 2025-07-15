@@ -4,23 +4,9 @@
 //! This module shows an example of an event provider that exports a symmetric key from an s2n-quic
 //! connection on both client and server.
 
-use s2n_quic::{
-    client::Connect,
-    provider::{
-        event::events::{self, CipherSuite, ConnectionInfo, ConnectionMeta, Subscriber},
-        io::testing::{primary, spawn, test, Model},
-    },
-    Client, Server,
-};
-use s2n_quic_core::crypto::tls::testing::certificates;
-use s2n_quic_platform::io::testing::time::delay;
-use s2n_quic_tests::*;
-
-use bytes::Bytes;
-use std::{
-    net::SocketAddr,
-    sync::{Arc, Mutex},
-    time::Duration,
+use super::*;
+use s2n_quic::provider::event::events::{
+    self, CipherSuite, ConnectionInfo, ConnectionMeta, Subscriber,
 };
 
 struct Exporter;

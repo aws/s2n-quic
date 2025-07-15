@@ -4,17 +4,8 @@
 //! This module shows an example of an event provider that accesses certificate chains
 //! from QUIC connections on both client and server.
 
-use s2n_quic::{
-    client::Connect,
-    provider::{
-        event::events::{self, ConnectionInfo, ConnectionMeta, Subscriber},
-        io::testing::{primary, spawn, test, time::delay, Model},
-    },
-    Client, Server,
-};
-use s2n_quic_core::crypto::tls::testing::certificates;
-use s2n_quic_tests::*;
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use super::*;
+use s2n_quic::provider::event::events::{self, ConnectionInfo, ConnectionMeta, Subscriber};
 
 struct Chain;
 

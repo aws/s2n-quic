@@ -3,14 +3,7 @@
 
 //! A collection of tests to test the IO testing framework is working
 
-use s2n_quic::{
-    provider::io::testing::{self as io, test, Model},
-    Server,
-};
-use s2n_quic_tests::*;
-
-use s2n_quic_platform::io::testing::network::Packet;
-use std::net::SocketAddr;
+use super::*;
 
 /// Simple end-to-end test
 #[test]

@@ -1,14 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    provider::io::testing::{test, Model},
-    Client, Server,
-};
-use s2n_quic_core::{
-    crypto::tls::testing::certificates, event::testing::endpoint, stream::testing::Data,
-};
-use s2n_quic_tests::*;
+use super::*;
+use s2n_quic_core::event::testing::endpoint;
 
 #[test]
 fn platform_events() {

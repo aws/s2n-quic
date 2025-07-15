@@ -1,21 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    provider::{
-        io::testing::{primary, test, Model, Result},
-        tls::default as tls,
-    },
-    Server,
+use super::*;
+use s2n_quic::provider::{
+    io::testing::Result,
+    tls::default::{self as tls},
 };
-use s2n_quic_core::{
-    connection::error::Error, crypto::tls::testing::certificates, endpoint,
-    inet::ExplicitCongestionNotification::*,
-};
+use s2n_quic_core::{connection::error::Error, endpoint, inet::ExplicitCongestionNotification::*};
 use s2n_quic_platform::io::testing::Socket;
-use s2n_quic_tests::*;
-
-use std::net::SocketAddr;
 use zerocopy::IntoBytes;
 
 const QUICHE_MAX_DATAGRAM_SIZE: usize = 1350;

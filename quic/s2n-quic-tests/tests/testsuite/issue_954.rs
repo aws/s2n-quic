@@ -1,12 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    provider::io::testing::{test, Model},
-    Client, Server,
-};
-use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
-use s2n_quic_tests::*;
+use super::*;
 
 /// Ensures that the client's local path handle is updated after it receives a packet from the
 /// server

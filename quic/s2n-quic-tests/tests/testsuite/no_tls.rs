@@ -1,15 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    provider::{
-        io::testing::{test, Model},
-        tls::Provider,
-    },
-    Client, Server,
-};
-use s2n_quic_core::{crypto::tls::null, stream::testing::Data};
-use s2n_quic_tests::*;
+use super::*;
+use s2n_quic::provider::tls::Provider;
+use s2n_quic_core::crypto::tls::null;
 
 #[derive(Default)]
 pub struct NoTlsProvider {}

@@ -1,31 +1,17 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    client::Connect,
-    connection::error,
-    provider::{
-        event::events::{self, Subscriber},
-        io::testing::{primary, spawn, test, Model},
-    },
-    Client, Server,
-};
+use super::*;
+use s2n_quic::connection::error;
 use s2n_quic_core::{
     connection::Error,
-    crypto::tls::testing::certificates,
-    event::api::Subject,
+    event::{api::Subject, Subscriber},
     packet::{
         interceptor::{Ack, Interceptor},
         number::PacketNumberSpace,
     },
     stream::StreamError,
     varint::VarInt,
-};
-use s2n_quic_tests::*;
-
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
 };
 
 #[test]

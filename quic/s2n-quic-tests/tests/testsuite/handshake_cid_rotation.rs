@@ -1,20 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    provider::{
-        connection_id,
-        event::events::{self},
-        io::testing::{test, Model},
-    },
-    Client, Server,
-};
-use s2n_quic_core::{
-    crypto::tls::testing::certificates,
-    event::api::{Frame, FrameSent},
-    stream::testing::Data,
-};
-use s2n_quic_tests::*;
+use super::*;
+use s2n_quic::provider::connection_id;
+use s2n_quic_core::event::api::{Frame, FrameSent};
 
 // Configure the server and client with the given `rotate_handshake_connection_id` setting
 // and complete a handshake

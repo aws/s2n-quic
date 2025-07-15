@@ -1,26 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use super::*;
 use s2n_codec::DecoderBufferMut;
-use s2n_quic::{
-    client::Connect,
-    provider::io::testing::{self as io, primary, spawn, test, time::delay, Model},
-    Client, Server,
-};
 use s2n_quic_core::{
-    crypto::tls::testing::certificates,
     event::api::{DatagramDropReason, MigrationDenyReason, Subject},
     packet::interceptor::{Datagram, Interceptor},
     path::{LocalAddress, RemoteAddress},
-    stream::testing::Data,
-};
-use s2n_quic_tests::*;
-
-use bytes::Bytes;
-use std::{
-    net::SocketAddr,
-    sync::{Arc, Mutex},
-    time::Duration,
 };
 
 fn run_test<F>(mut on_rebind: F)

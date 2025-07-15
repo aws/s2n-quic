@@ -1,29 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use super::*;
 use s2n_codec::encoder::scatter;
-use s2n_quic::{
-    provider::{
-        event::events::{self},
-        io::testing::{spawn, test, Model},
-        tls,
-    },
-    Client, Server,
-};
+use s2n_quic::provider::tls;
 use s2n_quic_core::{
-    crypto::tls::testing::certificates,
     event::api::Subject,
     packet::interceptor::{Interceptor, Packet},
-    path::{
-        mtu,
-        mtu::{BaseMtu, InitialMtu},
-    },
-    stream::testing::Data,
+    path::{mtu, BaseMtu, InitialMtu},
 };
-use s2n_quic_platform::io::testing::time::delay;
-use s2n_quic_tests::*;
-
-use std::time::Duration;
 
 macro_rules! mtu_test {
     (fn $name:ident($server:ident, $client:ident) $impl:block) => {

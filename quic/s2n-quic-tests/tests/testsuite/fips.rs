@@ -1,15 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    provider::{
-        io::testing::{test, Model},
-        tls::default::{self as tls, security},
-    },
-    Client, Server,
-};
-use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
-use s2n_quic_tests::*;
+use super::*;
+use crate::provider::tls::default::{self as tls, security};
 
 fn test_policy(policy: &security::Policy) {
     let model = Model::default();

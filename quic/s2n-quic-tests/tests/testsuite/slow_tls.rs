@@ -1,18 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    provider::{
-        io::testing::{test, Model},
-        tls::default,
-    },
-    Client, Server,
-};
-use s2n_quic_core::{
-    crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM},
-    stream::testing::Data,
-};
-use s2n_quic_tests::*;
+use super::*;
+use crate::provider::tls::default;
+use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
 
 #[test]
 fn slow_tls() {

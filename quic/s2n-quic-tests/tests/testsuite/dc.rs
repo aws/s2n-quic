@@ -1,22 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use super::*;
 use s2n_codec::DecoderBufferMut;
 use s2n_quic::{
     client,
-    client::{ClientProviders, Connect},
+    client::ClientProviders,
     connection,
-    provider::{
-        dc,
-        event::events,
-        io::testing::{primary, rand, spawn, test, time::delay, Result},
-    },
+    provider::{dc, io::testing::Result},
     server,
     server::ServerProviders,
-    Client, Server,
 };
 use s2n_quic_core::{
-    crypto::{tls, tls::testing::certificates},
+    crypto::tls,
     dc::testing::MockDcEndpoint,
     event::{
         api::{
@@ -33,13 +29,7 @@ use s2n_quic_core::{
     transport,
     varint::VarInt,
 };
-use s2n_quic_platform::io::testing::Model;
-use s2n_quic_tests::*;
-
-use std::{
-    sync::{atomic::Ordering, Arc, Mutex},
-    time::Duration,
-};
+use std::sync::atomic::Ordering;
 
 const SERVER_TOKENS: [stateless_reset::Token; 1] = [TEST_TOKEN_1];
 const CLIENT_TOKENS: [stateless_reset::Token; 1] = [TEST_TOKEN_2];

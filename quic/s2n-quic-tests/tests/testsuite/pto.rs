@@ -1,21 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use super::*;
 use s2n_codec::encoder::scatter;
-use s2n_quic::{
-    client::Connect,
-    provider::io::testing::{primary, spawn, test, Model},
-    Client, Server,
-};
 use s2n_quic_core::{
-    crypto::tls::testing::certificates,
     event::{
         api::{PacketHeader, Subject},
         metrics::aggregate,
     },
     packet::interceptor::{Interceptor, Packet},
 };
-use s2n_quic_tests::*;
 
 /// This test ensures the PTO timer in the Handshake space is armed even
 /// when the client does not otherwise receive or send any handshake

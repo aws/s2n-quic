@@ -1,12 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    provider::io::testing::{test, Model},
-    Server,
-};
-use s2n_quic_core::packet::interceptor::Loss;
-use s2n_quic_tests::*;
+use super::*;
 
 fn intercept_loss(loss: Loss<Random>) {
     let model = Model::default();

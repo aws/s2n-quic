@@ -22,19 +22,9 @@
 //!   is unable to open a stream, as the task was blocked until the server either confirmed or
 //!   rejected the connection attempt.
 
+use super::*;
 use core::task::{Context, Poll, Waker};
-use s2n_quic::{
-    client::Connect,
-    provider::{
-        event::events::{self, ConnectionInfo, ConnectionMeta, Subscriber},
-        io::testing::{primary, test, Model},
-    },
-    Client, Server,
-};
-use s2n_quic_core::crypto::tls::testing::certificates;
-use s2n_quic_tests::*;
-use std::time::Duration;
-
+use s2n_quic::provider::event::events::{self, ConnectionInfo, ConnectionMeta, Subscriber};
 struct ClientConfirm;
 
 impl ClientConfirm {

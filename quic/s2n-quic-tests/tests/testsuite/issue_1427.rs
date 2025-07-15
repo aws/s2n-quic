@@ -1,14 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    client::Connect,
-    provider::io::testing::{primary, test, Model},
-};
-use s2n_quic_platform::io::testing::{rand::Any, time::delay};
-use s2n_quic_tests::*;
-
-use std::time::Duration;
+use super::{rand::Any, *};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Ensures tokio `AsyncRead` implementation functions properly

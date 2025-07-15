@@ -1,20 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use super::*;
 use s2n_quic::{
-    client::Connect,
     connection::Error,
-    provider::{
-        io::testing::{primary, test, Model},
-        tls::default::{self as tls},
-    },
-    Client, Server,
+    provider::tls::default::{self as tls},
 };
-use s2n_quic_core::{
-    crypto::tls::{testing::certificates, Error as TlsError},
-    transport,
-};
-use s2n_quic_tests::*;
+use s2n_quic_core::{crypto::tls::Error as TlsError, transport};
 
 // It helps to expand the Client Hello size to excced 64 KB, by filling
 // the alpn extension in Client Hello with 65310 bytes.

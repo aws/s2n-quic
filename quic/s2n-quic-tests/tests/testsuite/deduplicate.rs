@@ -1,23 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    client::Connect,
-    provider::{
-        endpoint_limits::Outcome,
-        io::testing::{primary, spawn, test, Model},
-    },
-    Client, Server,
-};
-use s2n_quic_core::{
-    crypto::tls::testing::certificates, dc::testing::MockDcEndpoint,
-    stateless_reset::token::testing::TEST_TOKEN_1,
-};
-use s2n_quic_tests::*;
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use super::*;
+use s2n_quic::provider::endpoint_limits::Outcome;
+use s2n_quic_core::{dc::testing::MockDcEndpoint, stateless_reset::token::testing::TEST_TOKEN_1};
 
 const LEN: usize = 1_000_000;
 

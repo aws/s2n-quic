@@ -1,15 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    client::Connect,
-    provider,
-    provider::io::testing::{primary, spawn, test, Model},
-    Server,
-};
-use s2n_quic_tests::*;
-
-use bytes::Bytes;
+use super::*;
 
 /// Ensures streams with STOP_SENDING are properly cleaned up
 ///

@@ -1,16 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    provider::io::testing::{test, Model},
-    Client, Server,
+use super::*;
+use s2n_quic_core::connection::limits::{
+    ConnectionInfo, HandshakeInfo, Limiter, Limits, UpdatableLimits,
 };
-use s2n_quic_core::{
-    connection::limits::{ConnectionInfo, HandshakeInfo, Limiter, Limits, UpdatableLimits},
-    crypto::tls::testing::certificates,
-    stream::testing::Data,
-};
-use s2n_quic_tests::*;
 
 #[test]
 fn connection_limits() {

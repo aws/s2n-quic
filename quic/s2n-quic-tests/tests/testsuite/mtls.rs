@@ -1,25 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use super::*;
 use events::HandshakeStatus;
-use s2n_quic::{
-    client::Connect,
-    provider::{
-        event::events::{self},
-        io::testing::{primary, spawn, test, Model},
-    },
-    Client, Server,
-};
-use s2n_quic_core::crypto::tls::testing::certificates;
-use s2n_quic_tests::*;
-
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[test]
 fn mtls_happy_case() {

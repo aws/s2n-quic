@@ -1,18 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic::{
-    client::Connect,
-    provider,
-    provider::io::testing::{primary, test, Model},
-    Client,
-};
+use super::*;
 use s2n_quic_core::{
-    crypto::tls::testing::certificates,
     inet::SocketAddress,
     recovery::{DEFAULT_INITIAL_RTT, MIN_RTT},
 };
-use s2n_quic_tests::*;
 
 use std::time::Duration;
 

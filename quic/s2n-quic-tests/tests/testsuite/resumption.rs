@@ -5,12 +5,8 @@
 #[cfg(unix)]
 #[test]
 fn resumption_handshake() {
-    use s2n_quic::{
-        provider::io::testing::{test, Model},
-        Client, Server,
-    };
-    use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
-    use s2n_quic_tests::{resumption::*, *};
+    use super::*;
+    use s2n_quic_tests::resumption::*;
 
     let model = Model::default();
     let handler = SessionTicketHandler::default();
