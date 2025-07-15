@@ -1,7 +1,5 @@
 # s2n-quic
 
-positive test - caroljye
-
 `s2n-quic` is a Rust implementation of the [IETF QUIC protocol](https://quicwg.org/), featuring:
 
 - a simple, easy-to-use API. See [an example](https://github.com/aws/s2n-quic/blob/main/examples/echo/src/bin/quic_echo_server.rs) of an s2n-quic echo server built with just a few API calls
