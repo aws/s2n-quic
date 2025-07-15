@@ -1,6 +1,6 @@
 # s2n-quic
 
-positive test - caroljye
+positive test! - caroljye
 
 `s2n-quic` is a Rust implementation of the [IETF QUIC protocol](https://quicwg.org/), featuring:
 
