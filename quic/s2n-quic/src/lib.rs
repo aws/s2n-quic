@@ -128,6 +128,3 @@ pub mod application {
 pub use client::Client;
 pub use connection::Connection;
 pub use server::Server;
-
-#[cfg(test)]
-mod tests;

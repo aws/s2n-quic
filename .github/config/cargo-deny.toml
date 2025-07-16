@@ -34,6 +34,7 @@ skip-tree = [
     { name = "s2n-quic-h3" },
     { name = "s2n-quic-qns" },
     { name = "s2n-quic-sim" },
+    { name = "s2n-quic-tests" },
 ]
 
 [sources]

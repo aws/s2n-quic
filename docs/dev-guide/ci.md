@@ -12,7 +12,7 @@ Unit tests validate the expected behavior of individual components of `s2n-quic`
 
 #### Integration Tests
 
-`s2n-quic` integration tests use the public API to validate the end-to-end behavior of the library under specific scenarios and configurations. Integration tests are located in the top-level `s2n-quic` crate, in the [tests module](https://github.com/aws/s2n-quic/tree/main/quic/s2n-quic/src/tests). 
+`s2n-quic` integration tests use the public API to validate the end-to-end behavior of the library under specific scenarios and configurations. Integration tests are located in the `s2n-quic-tests` crate.
 
 #### Snapshot Tests
 
