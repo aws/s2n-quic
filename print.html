@@ -352,7 +352,7 @@ rustup toolchain install nightly
 <h4 id="unit-tests"><a class="header" href="#unit-tests">Unit Tests</a></h4>
 <p>Unit tests validate the expected behavior of individual components of <code>s2n-quic</code>. Typically, unit tests will be located in a <code>tests</code> module at the end of the file being tested. When there are a significant number of unit test functions for given component, the <code>tests</code> module may be located in a separate file.</p>
 <h4 id="integration-tests"><a class="header" href="#integration-tests">Integration Tests</a></h4>
-<p><code>s2n-quic</code> integration tests use the public API to validate the end-to-end behavior of the library under specific scenarios and configurations. Integration tests are located in the top-level <code>s2n-quic</code> crate, in the <a href="https://github.com/aws/s2n-quic/tree/main/quic/s2n-quic/src/tests">tests module</a>.</p>
+<p><code>s2n-quic</code> integration tests use the public API to validate the end-to-end behavior of the library under specific scenarios and configurations. Integration tests are located in the <code>s2n-quic-tests</code> crate.</p>
 <h4 id="snapshot-tests"><a class="header" href="#snapshot-tests">Snapshot Tests</a></h4>
 <p>Snapshot tests use <a href="https://crates.io/crates/insta">insta</a> to assert complex output remains consistent with expected references values. In <code>s2n-quic</code>, snapshot tests are typically constructed in one of two ways:</p>
 <ul>
