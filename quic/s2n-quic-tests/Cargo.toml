@@ -15,7 +15,7 @@ rand = "0.9"
 rand_chacha = "0.9"
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["branch-tracing", "event-tracing", "probe-tracing", "testing"] }
-s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-default", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["tokio-runtime"] }
 s2n-quic-transport = { path = "../s2n-quic-transport", features = ["unstable_resumption", "unstable-provider-dc"] }
 # quiche does not currently build on 32-bit platforms
