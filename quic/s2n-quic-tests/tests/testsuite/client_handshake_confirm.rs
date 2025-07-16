@@ -23,8 +23,10 @@
 //!   rejected the connection attempt.
 
 use super::*;
-use core::task::{Context, Poll, Waker};
 use s2n_quic::provider::event::events::{self, ConnectionInfo, ConnectionMeta, Subscriber};
+
+use core::task::{Context, Poll, Waker};
+
 struct ClientConfirm;
 
 impl ClientConfirm {

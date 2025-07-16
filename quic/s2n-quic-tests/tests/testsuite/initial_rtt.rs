@@ -7,8 +7,6 @@ use s2n_quic_core::{
     recovery::{DEFAULT_INITIAL_RTT, MIN_RTT},
 };
 
-use std::time::Duration;
-
 /// This test demonstrates that setting initial RTT to smaller values than the default
 /// results in more PTO packets being sent based on the smaller initial value.
 #[test]

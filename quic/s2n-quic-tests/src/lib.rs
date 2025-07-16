@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use rand::{Rng, RngCore};
 use s2n_quic::{
     client::Connect,
     provider::{
@@ -12,6 +11,8 @@ use s2n_quic::{
     Client, Server,
 };
 use s2n_quic_core::{crypto::tls::testing::certificates, havoc, stream::testing::Data};
+
+use rand::{Rng, RngCore};
 use std::net::SocketAddr;
 
 pub mod recorder;
