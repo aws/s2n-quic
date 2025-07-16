@@ -1,6 +1,6 @@
 ---
 source: quic/s2n-quic-core/src/event/snapshot.rs
-input_file: quic/s2n-quic-tests/tests/platform_events.rs
+input_file: quic/s2n-quic-tests/src/tests/platform_events.rs
 ---
 EndpointMeta { endpoint_type: Server, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopStarted { local_address: 1.0.0.0:49152 }
 EndpointMeta { endpoint_type: Server, timestamp: Timestamp(0:00:00.000001) } PlatformEventLoopWakeup { timeout_expired: false, rx_ready: false, tx_ready: true, application_wakeup: false }

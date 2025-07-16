@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::provider::tls::default::{self as tls, security};
+use s2n_quic::provider::tls::default::{self as tls, security};
 
 fn test_policy(policy: &security::Policy) {
     let model = Model::default();

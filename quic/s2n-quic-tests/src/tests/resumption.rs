@@ -6,7 +6,7 @@
 #[test]
 fn resumption_handshake() {
     use super::*;
-    use s2n_quic_tests::resumption::*;
+    use crate::resumption::*;
 
     let model = Model::default();
     let handler = SessionTicketHandler::default();

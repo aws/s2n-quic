@@ -16,6 +16,8 @@ use rand::{Rng, RngCore};
 use std::net::SocketAddr;
 
 pub mod recorder;
+#[cfg(test)]
+mod tests;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
 

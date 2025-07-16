@@ -1,6 +1,6 @@
 ---
 source: quic/s2n-quic-core/src/event/snapshot.rs
-input_file: quic/s2n-quic-tests/src/pto.rs
+input_file: quic/s2n-quic-tests/src/tests/pto.rs
 ---
 === client ===
 count#platform_event_loop_started=1

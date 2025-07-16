@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::provider::tls::default;
+use s2n_quic::provider::tls::default;
 use s2n_quic_core::crypto::tls::testing::certificates::{CERT_PEM, KEY_PEM};
 
 #[test]

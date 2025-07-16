@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::*;
 use s2n_quic::{
     client::Connect,
     provider::{
@@ -14,7 +15,6 @@ use s2n_quic::{
     Client, Server,
 };
 use s2n_quic_core::{crypto::tls::testing::certificates, stream::testing::Data};
-use s2n_quic_tests::*;
 
 use bytes::Bytes;
 use std::{

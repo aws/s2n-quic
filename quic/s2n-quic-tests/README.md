@@ -8,6 +8,8 @@ The test organization in this crate is inspired by the approach used in the [rus
 
 >Each integration test results in a separate executable binary, and cargo test will run them serially. In some cases this can be inefficient, as it can take longer to compile, and may not make full use of multiple CPUs when running the tests. If you have a lot of integration tests, you may want to consider creating a single integration test, and split the tests into multiple modules.
 
+To further increase performance, the tests are contained within the `src` folder to avoid having the tests wait for compilation and linking of the intermediate `s2n-quic-tests` lib.
+
 ### Platform-specific Tests
 
 Some tests in this crate are platform-specific, particularly those that depend on s2n-tls, which is only available on Unix systems. These tests are conditionally compiled using `cfg[unix]` attributes. For example:
@@ -36,10 +38,9 @@ The test suite is organized into several categories:
 ```
 src/
 ├── lib.rs           # Contains common test utilities and setup functions
-└── recorder.rs      # Event recording utilities
-tests/
-└── testsuite/       # Contains all the test files
-    ├── main.rs      # Main test module that imports all tests
+├── recorder.rs      # Event recording utilities
+├── tests.rs         # Main test module that imports all tests
+└── tests/           # Contains all the test files
     ├── blackhole.rs # Individual test files
     ├── ...          # Other test files
     └── snapshots/   # Snapshot files for tests
