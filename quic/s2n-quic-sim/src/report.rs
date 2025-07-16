@@ -62,7 +62,9 @@ impl Report {
                 Entry::Vacant(entry) => {
                     entry.insert(next_id);
 
-                    seed_hist.push((seed, vec![], vec![]));
+                    // Keep seeds as strings in JS, because otherwise some seeds lose precision (JS
+                    // has everything as floats and so >2^53 gets rounded).
+                    seed_hist.push((seed.to_string(), vec![], vec![]));
 
                     next_id
                 }
@@ -176,7 +178,7 @@ impl Report {
         let groups_per_line = seed_hist_size / group_width;
 
         let command = format!(
-            "{:?} + (isNumber({s}) ? (' --seed ' + {s}) : '')",
+            "{:?} + (isString({s}) ? (' --seed ' + {s}) : '')",
             args.join(" "),
             s = "sig$seed_hist.seed"
         );
