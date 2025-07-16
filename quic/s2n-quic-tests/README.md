@@ -117,6 +117,19 @@ The test suite uses the [Bach](https://github.com/camshaft/bach) async simulatio
 
 The `recorder.rs` module provides utilities for recording and verifying events during test execution, allowing tests to assert on the sequence and content of events.
 
+### Packet Interceptor
+
+The test suite uses a packet interceptor utility that allows tests to inspect, modify, or drop datagrams or modify remote addresses on datagrams as they flow between the client and server. 
+
+Implement the `s2n_quic_core::packet::interceptor::Interceptor` trait and configure it in tests like this:
+
+```rust
+let client = Client::builder()
+    .with_io(handle.builder().build().unwrap())?  
+    .with_packet_interceptor(interceptor)?  
+    .start()?;
+```
+
 ### Common Setup
 
 `src/lib.rs` provides common utilities for setting up test clients and servers with various configurations.
