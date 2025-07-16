@@ -97,6 +97,9 @@ where
 
             let select = cooldown.wrap(select);
 
+            #[cfg(feature = "testing")]
+            bach_cpu::assert_zero_cpu();
+
             let select::Outcome {
                 rx_result,
                 tx_result,
@@ -108,6 +111,9 @@ where
                 // The endpoint has shut down; stop the event loop
                 return;
             };
+
+            #[cfg(feature = "testing")]
+            bach_cpu::take_cpu().await;
 
             // notify the application that we woke up and why
             let wakeup_timestamp = clock.get_time();
@@ -126,10 +132,16 @@ where
 
             match rx_result {
                 Some(Ok(())) => {
+                    #[cfg(feature = "testing")]
+                    bach_cpu::assert_zero_cpu();
+
                     // we received some packets. give them to the endpoint.
                     rx.queue(|queue| {
                         endpoint.receive(queue, &clock);
                     });
+
+                    #[cfg(feature = "testing")]
+                    bach_cpu::take_cpu().await;
                 }
                 Some(Err(error)) => {
                     // The RX provider has encountered an error. shut down the event loop
@@ -160,10 +172,19 @@ where
                 }
             }
 
+            #[cfg(feature = "testing")]
+            bach_cpu::assert_zero_cpu();
+
             // Let the endpoint transmit, if possible
             tx.queue(|queue| {
                 endpoint.transmit(queue, &clock);
             });
+
+            #[cfg(feature = "testing")]
+            bach_cpu::take_cpu().await;
+
+            #[cfg(feature = "testing")]
+            bach_cpu::assert_zero_cpu();
 
             // Get the next expiration from the endpoint and update the timer
             let timeout = endpoint.timeout();
@@ -187,3 +208,55 @@ where
         }
     }
 }
+
+/// This allows various parts of s2n-quic to "spend" CPU cycles within bach simulations
+/// deterministically. The goal is to allow simulating (especially) handshakes accurately, which
+/// incur significant CPU cycles and as such delay processing subsequent packets. It's inaccurate
+/// to model this as network delay.
+mod bach_cpu {
+    #[cfg(feature = "testing")]
+    use core::cell::Cell;
+    use core::time::Duration;
+
+    // CPU today is attributed within the event loop, which is at least today always single
+    // threaded, and we never yield while there's still unspent CPU.
+    //
+    // FIXME: I *think* an alternative to this is to wire up an event or pseudo-event that s2n-quic
+    // itself would subscribe to -- that would be a bit less plumbing, but the crypto code doesn't
+    // directly publish events today so it wouldn't be quite enough either.
+    #[cfg(feature = "testing")]
+    thread_local! {
+        static CPU_SPENT: Cell<Duration> = const { Cell::new(Duration::ZERO) };
+    }
+
+    #[inline]
+    pub fn attribute_cpu(time: Duration) {
+        #[cfg(feature = "testing")]
+        {
+            CPU_SPENT.with(|c| {
+                let old = c.get();
+                let new = old + time;
+                c.set(new);
+            });
+        }
+    }
+
+    #[cfg(feature = "testing")]
+    pub(super) async fn take_cpu() {
+        // Make sure assert_zero_cpu works in all cfg(testing), not just with bach.
+        let taken = CPU_SPENT.take();
+
+        if !bach::is_active() {
+            return;
+        }
+
+        bach::time::sleep(taken).await;
+    }
+
+    #[cfg(feature = "testing")]
+    pub(super) fn assert_zero_cpu() {
+        assert_eq!(CPU_SPENT.get(), Duration::ZERO);
+    }
+}
+
+pub use bach_cpu::attribute_cpu;
