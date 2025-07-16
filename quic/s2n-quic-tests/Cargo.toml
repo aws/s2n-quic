@@ -7,6 +7,8 @@ authors = ["AWS s2n"]
 edition = "2021"
 rust-version = "1.82"
 license = "Apache-2.0"
+# this only contains internal tests and should not be published
+publish = false
 
 [dependencies]
 bytes = { version = "1", default-features = false }
