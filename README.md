@@ -113,6 +113,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 The current MSRV is [1.82.0][msrv-url].
 
+## Supported Operating Systems
+
+`s2n-quic` can be built on Linux, MacOS, and Windows. `s2n-quic` requires Linux kernel version 5.0 or later. Earlier Linux kernel versions are not supported as they lack the Generic Segmentation Offload (GSO) capabilities required by `s2n-quic`.
+
 ## Security issue notifications
 
 If you discover a potential security issue in s2n-quic we ask that you notify

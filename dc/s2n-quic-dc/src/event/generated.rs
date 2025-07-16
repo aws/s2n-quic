@@ -1806,6 +1806,10 @@ pub mod api {
         pub handshake_requests: usize,
         #[doc = " The number of handshake requests that were retired in the cycle"]
         pub handshake_requests_retired: usize,
+        #[doc = " How long we kept the handshake lock held (this blocks completing handshakes)."]
+        pub handshake_lock_duration: core::time::Duration,
+        #[doc = " Total duration of a cycle."]
+        pub duration: core::time::Duration,
     }
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for PathSecretMapCleanerCycled {
@@ -1843,6 +1847,8 @@ pub mod api {
                 "handshake_requests_retired",
                 &self.handshake_requests_retired,
             );
+            fmt.field("handshake_lock_duration", &self.handshake_lock_duration);
+            fmt.field("duration", &self.duration);
             fmt.finish()
         }
     }
@@ -2831,8 +2837,10 @@ pub mod tracing {
                 address_entries_initial_utilization,
                 handshake_requests,
                 handshake_requests_retired,
+                handshake_lock_duration,
+                duration,
             } = event;
-            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , { id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_active = tracing :: field :: debug (id_entries_active) , id_entries_active_utilization = tracing :: field :: debug (id_entries_active_utilization) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_active = tracing :: field :: debug (address_entries_active) , address_entries_active_utilization = tracing :: field :: debug (address_entries_active_utilization) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_retired = tracing :: field :: debug (handshake_requests_retired) });
+            tracing :: event ! (target : "path_secret_map_cleaner_cycled" , parent : parent , tracing :: Level :: DEBUG , { id_entries = tracing :: field :: debug (id_entries) , id_entries_retired = tracing :: field :: debug (id_entries_retired) , id_entries_active = tracing :: field :: debug (id_entries_active) , id_entries_active_utilization = tracing :: field :: debug (id_entries_active_utilization) , id_entries_utilization = tracing :: field :: debug (id_entries_utilization) , id_entries_initial_utilization = tracing :: field :: debug (id_entries_initial_utilization) , address_entries = tracing :: field :: debug (address_entries) , address_entries_active = tracing :: field :: debug (address_entries_active) , address_entries_active_utilization = tracing :: field :: debug (address_entries_active_utilization) , address_entries_retired = tracing :: field :: debug (address_entries_retired) , address_entries_utilization = tracing :: field :: debug (address_entries_utilization) , address_entries_initial_utilization = tracing :: field :: debug (address_entries_initial_utilization) , handshake_requests = tracing :: field :: debug (handshake_requests) , handshake_requests_retired = tracing :: field :: debug (handshake_requests_retired) , handshake_lock_duration = tracing :: field :: debug (handshake_lock_duration) , duration = tracing :: field :: debug (duration) });
         }
     }
 }
@@ -4539,6 +4547,10 @@ pub mod builder {
         pub handshake_requests: usize,
         #[doc = " The number of handshake requests that were retired in the cycle"]
         pub handshake_requests_retired: usize,
+        #[doc = " How long we kept the handshake lock held (this blocks completing handshakes)."]
+        pub handshake_lock_duration: core::time::Duration,
+        #[doc = " Total duration of a cycle."]
+        pub duration: core::time::Duration,
     }
     impl IntoEvent<api::PathSecretMapCleanerCycled> for PathSecretMapCleanerCycled {
         #[inline]
@@ -4558,6 +4570,8 @@ pub mod builder {
                 address_entries_initial_utilization,
                 handshake_requests,
                 handshake_requests_retired,
+                handshake_lock_duration,
+                duration,
             } = self;
             api::PathSecretMapCleanerCycled {
                 id_entries: id_entries.into_event(),
@@ -4575,6 +4589,8 @@ pub mod builder {
                     .into_event(),
                 handshake_requests: handshake_requests.into_event(),
                 handshake_requests_retired: handshake_requests_retired.into_event(),
+                handshake_lock_duration: handshake_lock_duration.into_event(),
+                duration: duration.into_event(),
             }
         }
     }
