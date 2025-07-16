@@ -119,7 +119,7 @@ The `recorder.rs` module provides utilities for recording and verifying events d
 
 ### Common Setup
 
-The `setup.rs` module provides common utilities for setting up test clients and servers with various configurations.
+`src/lib.rs` provides common utilities for setting up test clients and servers with various configurations.
 
 ## Contributing New Tests
 
