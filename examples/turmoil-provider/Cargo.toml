@@ -9,6 +9,3 @@ s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["provider-
 tokio = { version = "1", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 turmoil = { version = "0.5.2" }
-
-[workspace]
-members = ["."]

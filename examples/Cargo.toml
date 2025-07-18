@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "async-client-hello-callback",
+    "custom-congestion-controller", "dos-mitigation",
+    "echo", "event-framework", "jumbo-frame",
+    "post-quantum", "resumption", "rustls-mtls",
+    "rustls-provider", "s2n-mtls", "turmoil-provider",
+    "unreliable-datagram"
+]
+
+[workspace.package]
+version = "0.0.1"
+authors = ["AWS s2n"]
+publish = false
+license = "Apache-2.0"
+edition = "2021"

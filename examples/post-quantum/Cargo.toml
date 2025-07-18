@@ -18,6 +18,3 @@ tokio = { version = "1", features = ["full"] }
 # NOTE: The version of the `openssl-sys` crate is not the same as OpenSSL itself.
 #       Versions 1.0.1 - 3.0.0 are automatically discovered.
 openssl-sys = { version = "0.9", features = ["vendored"] }
-
-[workspace]
-members = ["."]
