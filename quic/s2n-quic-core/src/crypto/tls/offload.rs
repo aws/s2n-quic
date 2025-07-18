@@ -468,7 +468,8 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
         &mut self,
         session: &impl tls::TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        todo!()
+        // Not sure what we can do here
+        Ok(())
     }
 }
 
