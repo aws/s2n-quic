@@ -9,6 +9,3 @@ s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["provider-
 tokio = { version = "1", features = ["full"] }
 moka = "0.9"
 rand = "0.8"
-
-[workspace]
-members = ["."]

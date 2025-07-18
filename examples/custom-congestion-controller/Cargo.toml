@@ -7,6 +7,3 @@ edition = "2021"
 [dependencies]
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["unstable-congestion-controller"] }
 tokio = { version = "1", features = ["full"] }
-
-[workspace]
-members = ["."]
