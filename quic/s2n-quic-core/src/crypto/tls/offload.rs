@@ -9,7 +9,7 @@ use crate::{
     sync::spsc::{channel, Receiver, Sender},
     transport,
 };
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 use core::{
     any::Any,
     future::Future,
@@ -466,7 +466,7 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: &impl tls::TlsSession,
+        _session: &impl tls::TlsSession,
     ) -> Result<(), crate::transport::Error> {
         // Not sure what we can do here
         Ok(())
