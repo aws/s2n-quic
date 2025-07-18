@@ -66,6 +66,7 @@ pub struct OffloadSession<S: tls::Session> {
     recv_from_tls: Receiver<Msg<S>>,
     send_to_tls: Sender<Msg<S>>,
 }
+
 impl<S: tls::Session + 'static> OffloadSession<S> {
     fn new(mut inner: S, executor: &impl Executor) -> Self {
         let (mut send_to_quic, recv_from_tls): (Sender<Msg<S>>, Receiver<Msg<S>>) = channel(10);
