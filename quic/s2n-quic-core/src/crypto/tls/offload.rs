@@ -203,16 +203,15 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                         context.send_application(transmission);
                     }
                     Msg::TlsError(e) => return Poll::Ready(Err(e)),
-                    // No other messages are sent from the TLS side
                     _ => (),
                 }
             }
         };
 
-        // Send any TLS data to the TLS side. Note that we have to schedule a wakeup on the quic endpoint each time
-        // we pass data to the TLS side. This is because TLS may generate some data that needs to be sent
-        // in response to the data quic provides (for example, reading the client hello causes the TLS side
-        // to produce a server hello, which will then need to be sent).
+        // Send any TLS data that we have through the async TLS channel. Note that we schedule a wakeup
+        // for the quic endpoint if we have data to give to TLS. This is because when TLS reads
+        // a message, usually its next task is to send a message in response. So we wakeup the quic endpoint
+        // so it is ready to send that response as quickly as possible.
         if let Poll::Ready(Ok(mut slice)) = self.send_to_tls.poll_slice(&mut ctx) {
             if let Some(resp) = context.receive_initial(None) {
                 context.waker().wake_by_ref();
@@ -378,6 +377,7 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
         _session: &impl tls::TlsSession,
     ) -> Result<(), crate::transport::Error> {
         // Not sure what we can do here
+
         Ok(())
     }
 
