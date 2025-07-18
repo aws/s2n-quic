@@ -8,6 +8,7 @@ use core::{
     task::{Context, Poll},
 };
 
+#[derive(Debug)]
 pub struct Receiver<T>(pub(super) State<T>);
 
 impl<T> Receiver<T> {

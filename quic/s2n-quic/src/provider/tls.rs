@@ -309,3 +309,25 @@ pub mod s2n_tls {
         }
     }
 }
+
+#[cfg(feature = "unstable-offload-tls")]
+pub mod offload {
+    use super::Provider;
+    use s2n_quic_core::crypto::tls::offload::{Executor, OffloadEndpoint};
+
+    pub struct Offload<E, X>(pub E, pub X);
+
+    impl<E: Provider, X: Executor + Send + 'static> Provider for Offload<E, X> {
+        type Server = OffloadEndpoint<<E as Provider>::Server, X>;
+        type Client = OffloadEndpoint<<E as Provider>::Client, X>;
+        type Error = E::Error;
+
+        fn start_server(self) -> Result<Self::Server, Self::Error> {
+            Ok(OffloadEndpoint::new(E::start_server(self.0)?, self.1))
+        }
+
+        fn start_client(self) -> Result<Self::Client, Self::Error> {
+            Ok(OffloadEndpoint::new(E::start_client(self.0)?, self.1))
+        }
+    }
+}
