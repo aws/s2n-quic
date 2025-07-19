@@ -3,7 +3,7 @@
 use crate::{
     application,
     crypto::{
-        tls::{self, NamedGroup},
+        tls::{self, NamedGroup, TlsSession},
         CryptoSuite,
     },
     sync::spsc::{channel, Receiver, Sender},
@@ -62,13 +62,15 @@ impl<E: tls::Endpoint, X: Executor + Send + 'static> tls::Endpoint for OffloadEn
 }
 
 #[derive(Debug)]
-pub struct OffloadSession<S: tls::Session> {
+pub struct OffloadSession<S: CryptoSuite> {
     recv_from_tls: Receiver<Msg<S>>,
     send_to_tls: Sender<Msg<S>>,
 }
 
 impl<S: tls::Session + 'static> OffloadSession<S> {
     fn new(mut inner: S, executor: &impl Executor) -> Self {
+        // A channel of size 10 is somewhat arbitrary. I haven't seen this limit be exceeded, but we
+        // could raise this in the future if necessary.
         let (mut send_to_quic, recv_from_tls): (Sender<Msg<S>>, Receiver<Msg<S>>) = channel(10);
         let (send_to_tls, mut recv_from_quic): (Sender<Msg<S>>, Receiver<Msg<S>>) = channel(10);
 
@@ -105,7 +107,8 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                     }
                     let res = inner.poll(&mut context);
 
-                    // If the TLS implementation is complete, either there was an error or the handshake has finished
+                    // Either there was an error or the handshake has finished if TLS returned Poll::Ready.
+                    // Notify the QUIC side accordingly.
                     if let Poll::Ready(res) = res {
                         if let Poll::Ready(Ok(mut slice)) = send_to_quic.poll_slice(ctx) {
                             match res {
@@ -359,7 +362,8 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
     fn on_handshake_complete(&mut self) -> Result<(), crate::transport::Error> {
         let mut cx = Context::from_waker(&self.waker);
         if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::HandshakeComplete);
+            let res = Msg::HandshakeComplete;
+            let _ = slice.push(res);
         }
 
         Ok(())
@@ -374,9 +378,13 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
 
     fn on_tls_exporter_ready(
         &mut self,
-        _session: &impl tls::TlsSession,
+        _session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        // Not sure what we can do here
+        // let mut cx = Context::from_waker(&self.waker);
+        // if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
+        //     let res = Msg::TlsExporter;
+        //     let _ = slice.push(res);
+        // }
 
         Ok(())
     }
