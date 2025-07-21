@@ -2,7 +2,7 @@
 members = [
     "common/s2n-*",
     "quic/s2n-*",
-    "dc/s2n-*",
+    "dc/s2n-*", "examples/tls-offloading",
 ]
 default-members = [
     "common/s2n-*",

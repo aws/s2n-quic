@@ -313,7 +313,8 @@ pub mod s2n_tls {
 #[cfg(feature = "unstable-offload-tls")]
 pub mod offload {
     use super::Provider;
-    use s2n_quic_core::crypto::tls::offload::{Executor, OffloadEndpoint};
+    pub use s2n_quic_core::crypto::tls::offload::Executor;
+    use s2n_quic_core::crypto::tls::offload::OffloadEndpoint;
 
     pub struct Offload<E, X>(pub E, pub X);
 
