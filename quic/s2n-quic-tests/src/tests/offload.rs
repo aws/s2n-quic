@@ -21,11 +21,15 @@ fn tls() {
 
     test(model, |handle| {
         let server_endpoint = default::Server::builder()
-            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
-            .build()?;
+            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
         let client_endpoint = default::Client::builder()
-            .with_certificate(certificates::CERT_PEM)?
-            .build()?;
+            .with_certificate(certificates::CERT_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
         let server_endpoint = Offload(server_endpoint, BachExecutor);
         let client_endpoint = Offload(client_endpoint, BachExecutor);
         let server = Server::builder()
@@ -48,6 +52,7 @@ fn tls() {
 }
 
 #[test]
+#[cfg(unix)]
 fn mtls() {
     struct BachExecutor;
     impl Executor for BachExecutor {
@@ -153,12 +158,16 @@ fn async_client_hello() {
         let client_hello_handler = MyCallbackHandler::new(3);
 
         let server_endpoint = default::Server::builder()
-            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
-            .with_client_hello_handler(client_hello_handler)?
+            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
+            .unwrap()
+            .with_client_hello_handler(client_hello_handler)
+            .unwrap()
             .build()?;
         let client_endpoint = default::Client::builder()
-            .with_certificate(certificates::CERT_PEM)?
-            .build()?;
+            .with_certificate(certificates::CERT_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
 
         let server_endpoint = Offload(server_endpoint, BachExecutor);
         let client_endpoint = Offload(client_endpoint, BachExecutor);
