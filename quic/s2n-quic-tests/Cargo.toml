@@ -32,4 +32,4 @@ zerocopy = { version = "0.8", features = ["derive"] }
 quiche = "0.24"
 
 [target.'cfg(unix)'.dependencies]
-s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-s2n", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-s2n", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random", "unstable-offload-tls", "unstable_client_hello"] }
