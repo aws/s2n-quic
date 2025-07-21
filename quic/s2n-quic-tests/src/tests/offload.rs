@@ -3,10 +3,9 @@
 
 use super::*;
 
-use crate::provider::tls::{default, offload::Offload};
-use s2n_quic_core::crypto::tls::{
-    offload::Executor,
-    testing::certificates::{CERT_PEM, KEY_PEM},
+use s2n_quic::provider::tls::{
+    default,
+    offload::{Executor, Offload},
 };
 
 #[test]
@@ -22,10 +21,10 @@ fn tls() {
 
     test(model, |handle| {
         let server_endpoint = default::Server::builder()
-            .with_certificate(CERT_PEM, KEY_PEM)?
+            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
             .build()?;
         let client_endpoint = default::Client::builder()
-            .with_certificate(CERT_PEM)?
+            .with_certificate(certificates::CERT_PEM)?
             .build()?;
         let server_endpoint = Offload(server_endpoint, BachExecutor);
         let client_endpoint = Offload(client_endpoint, BachExecutor);
@@ -85,10 +84,9 @@ fn mtls() {
 }
 
 #[test]
-#[cfg(feature = "s2n-quic-tls")]
-#[cfg(feature = "unstable_client_hello")]
+#[cfg(unix)]
 fn async_client_hello() {
-    use crate::provider::tls::s2n_tls::{
+    use s2n_quic::provider::tls::s2n_tls::{
         self, callbacks::ClientHelloCallback, connection::Connection, error::Error,
     };
     use std::{
@@ -155,11 +153,11 @@ fn async_client_hello() {
         let client_hello_handler = MyCallbackHandler::new(3);
 
         let server_endpoint = default::Server::builder()
-            .with_certificate(CERT_PEM, KEY_PEM)?
+            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)?
             .with_client_hello_handler(client_hello_handler)?
             .build()?;
         let client_endpoint = default::Client::builder()
-            .with_certificate(CERT_PEM)?
+            .with_certificate(certificates::CERT_PEM)?
             .build()?;
 
         let server_endpoint = Offload(server_endpoint, BachExecutor);
