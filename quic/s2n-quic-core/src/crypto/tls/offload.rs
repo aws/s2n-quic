@@ -380,59 +380,54 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
         &mut self,
         _session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        // let mut cx = Context::from_waker(&self.waker);
-        // if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-        //     let res = Msg::TlsExporter;
-        //     let _ = slice.push(res);
-        // }
+        // TODO
 
         Ok(())
     }
 
     fn receive_initial(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        if let Some(max_len) = max_len {
-            if !self.initial_data.is_empty() {
-                let mut bytes = self.initial_data.remove(0);
+        if !self.initial_data.is_empty() {
+            let mut bytes = self.initial_data.remove(0);
+
+            if let Some(max_len) = max_len {
                 if bytes.len() > max_len {
                     let remainder = bytes.split_off(max_len);
                     self.initial_data.insert(0, remainder);
                 }
-
-                return Some(bytes);
             }
+            return Some(bytes);
         }
 
         None
     }
 
     fn receive_handshake(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        if let Some(max_len) = max_len {
-            if !self.handshake_data.is_empty() {
-                let mut bytes = self.handshake_data.remove(0);
+        if !self.handshake_data.is_empty() {
+            let mut bytes = self.handshake_data.remove(0);
+
+            if let Some(max_len) = max_len {
                 if bytes.len() > max_len {
                     let remainder = bytes.split_off(max_len);
                     self.handshake_data.insert(0, remainder);
                 }
-
-                return Some(bytes);
             }
+            return Some(bytes);
         }
         None
     }
 
     fn receive_application(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        if let Some(max_len) = max_len {
-            if !self.application_data.is_empty() {
-                let mut bytes = self.application_data.remove(0);
+        if !self.application_data.is_empty() {
+            let mut bytes = self.application_data.remove(0);
+
+            if let Some(max_len) = max_len {
                 if bytes.len() > max_len {
                     let remainder = bytes.split_off(max_len);
                     self.application_data.insert(0, remainder);
                 }
-
-                return Some(bytes);
             }
+            return Some(bytes);
         }
-
         None
     }
 
