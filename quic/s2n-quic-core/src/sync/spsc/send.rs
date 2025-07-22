@@ -82,6 +82,7 @@ impl<T> Drop for Sender<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct SendSlice<'a, T>(&'a mut State<T>, Cursor);
 
 impl<T> SendSlice<'_, T> {

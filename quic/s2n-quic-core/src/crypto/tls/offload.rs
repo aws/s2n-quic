@@ -6,10 +6,10 @@ use crate::{
         tls::{self, NamedGroup, TlsSession},
         CryptoSuite,
     },
-    sync::spsc::{channel, Receiver, Sender},
+    sync::spsc::{channel, Receiver, SendSlice, Sender},
     transport,
 };
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, collections::vec_deque::VecDeque};
 use core::{
     any::Any,
     future::Future,
@@ -63,66 +63,77 @@ impl<E: tls::Endpoint, X: Executor + Send + 'static> tls::Endpoint for OffloadEn
 
 #[derive(Debug)]
 pub struct OffloadSession<S: CryptoSuite> {
-    recv_from_tls: Receiver<Msg<S>>,
-    send_to_tls: Sender<Msg<S>>,
+    recv_from_tls: Receiver<Request<S>>,
+    send_to_tls: Sender<Response>,
 }
 
 impl<S: tls::Session + 'static> OffloadSession<S> {
     fn new(mut inner: S, executor: &impl Executor) -> Self {
         // A channel of size 10 is somewhat arbitrary. I haven't seen this limit be exceeded, but we
         // could raise this in the future if necessary.
-        let (mut send_to_quic, recv_from_tls): (Sender<Msg<S>>, Receiver<Msg<S>>) = channel(10);
-        let (send_to_tls, mut recv_from_quic): (Sender<Msg<S>>, Receiver<Msg<S>>) = channel(10);
+        let (mut send_to_quic, recv_from_tls): (Sender<Request<S>>, Receiver<Request<S>>) =
+            channel(10);
+        let (send_to_tls, mut recv_from_quic): (Sender<Response>, Receiver<Response>) = channel(10);
 
         let future = async move {
+            let mut initial_data = VecDeque::default();
+            let mut handshake_data = VecDeque::default();
+            let mut application_data = VecDeque::default();
             loop {
-                if (recv_from_quic.acquire().await).is_err() {
+                if recv_from_quic.acquire().await.is_err() {
                     break;
                 }
 
-                let res = core::future::poll_fn(|ctx| {
-                    let mut slice = recv_from_quic.slice();
-                    let mut context = RemoteContext {
-                        send_to_quic: &mut send_to_quic,
-                        waker: ctx.waker().clone(),
-                        initial_data: Vec::default(),
-                        handshake_data: Vec::default(),
-                        application_data: Vec::default(),
-                        can_send_initial: false,
-                        can_send_handshake: false,
-                        can_send_application: false,
-                    };
-                    while let Some(msg) = slice.pop() {
-                        match msg {
-                            Msg::ResponseInitial(data) => {
-                                context.initial_data.push(data);
-                            }
-                            Msg::ResponseHandshake(data) => context.handshake_data.push(data),
-                            Msg::ResponseApplication(data) => context.application_data.push(data),
-                            Msg::CanSendHandshake(bool) => context.can_send_handshake = bool,
-                            Msg::CanSendInitial(bool) => context.can_send_initial = bool,
-                            Msg::CanSendApplication(bool) => context.can_send_application = bool,
-                            _ => (),
-                        }
-                    }
-                    let res = inner.poll(&mut context);
+                let res = core::future::poll_fn(|mut ctx| {
+                    if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(&mut ctx) {
+                        let mut context = RemoteContext {
+                            send_to_quic: send_slice,
+                            waker: ctx.waker().clone(),
+                            initial_data: &mut initial_data,
+                            handshake_data: &mut handshake_data,
+                            application_data: &mut application_data,
+                            can_send_initial: false,
+                            can_send_handshake: false,
+                            can_send_application: false,
+                        };
 
-                    // Either there was an error or the handshake has finished if TLS returned Poll::Ready.
-                    // Notify the QUIC side accordingly.
-                    if let Poll::Ready(res) = res {
-                        if let Poll::Ready(Ok(mut slice)) = send_to_quic.poll_slice(ctx) {
+                        let mut recv_slice = recv_from_quic.slice();
+                        while let Some(response) = recv_slice.pop() {
+                            match response {
+                                Response::Initial(data) => {
+                                    context.initial_data.push_back(data);
+                                }
+                                Response::Handshake(data) => context.handshake_data.push_back(data),
+                                Response::Application(data) => {
+                                    context.application_data.push_back(data)
+                                }
+                                Response::CanSendHandshake(bool) => {
+                                    context.can_send_handshake = bool
+                                }
+                                Response::CanSendInitial(bool) => context.can_send_initial = bool,
+                                Response::CanSendApplication(bool) => {
+                                    context.can_send_application = bool
+                                }
+                            }
+                        }
+                        let res = inner.poll(&mut context);
+                        // Either there was an error or the handshake has finished if TLS returned Poll::Ready.
+                        // Notify the QUIC side accordingly.
+                        if let Poll::Ready(res) = res {
                             match res {
                                 Ok(()) => {
-                                    let _ = slice.push(Msg::TlsDone);
+                                    let _ = context.send_to_quic.push(Request::TlsDone);
                                 }
 
                                 Err(e) => {
-                                    let _ = slice.push(Msg::TlsError(e));
+                                    let _ = context.send_to_quic.push(Request::TlsError(e));
                                 }
                             }
                         }
+                        return Poll::Ready(res);
                     }
-                    Poll::Ready(res)
+
+                    Poll::Pending
                 })
                 .await;
 
@@ -153,27 +164,27 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
         let mut ctx = core::task::Context::from_waker(cloned_waker);
 
         if let Poll::Ready(Ok(mut slice)) = self.recv_from_tls.poll_slice(&mut ctx) {
-            while let Some(msg) = slice.pop() {
-                match msg {
-                    Msg::HandshakeKeys(key, header_key) => {
+            while let Some(request) = slice.pop() {
+                match request {
+                    Request::HandshakeKeys(key, header_key) => {
                         context.on_handshake_keys(key, header_key)?;
                     }
-                    Msg::ServerName(server_name) => context.on_server_name(server_name)?,
-                    Msg::SendInitial(bytes) => context.send_initial(bytes),
-                    Msg::ClientParams(client_params, mut server_params) => context
+                    Request::ServerName(server_name) => context.on_server_name(server_name)?,
+                    Request::SendInitial(bytes) => context.send_initial(bytes),
+                    Request::ClientParams(client_params, mut server_params) => context
                         .on_client_application_params(
                             tls::ApplicationParameters {
                                 transport_parameters: &client_params,
                             },
                             &mut server_params,
                         )?,
-                    Msg::ApplicationProtocol(bytes) => {
+                    Request::ApplicationProtocol(bytes) => {
                         context.on_application_protocol(bytes)?;
                     }
-                    Msg::KeyExchangeGroup(named_group) => {
+                    Request::KeyExchangeGroup(named_group) => {
                         context.on_key_exchange_group(named_group)?;
                     }
-                    Msg::OneRttKeys(key, header_key, transport_parameters) => context
+                    Request::OneRttKeys(key, header_key, transport_parameters) => context
                         .on_one_rtt_keys(
                             key,
                             header_key,
@@ -181,16 +192,16 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                                 transport_parameters: &transport_parameters,
                             },
                         )?,
-                    Msg::SendHandshake(bytes) => {
+                    Request::SendHandshake(bytes) => {
                         context.send_handshake(bytes);
                     }
-                    Msg::HandshakeComplete => {
+                    Request::HandshakeComplete => {
                         context.on_handshake_complete()?;
                     }
-                    Msg::TlsDone => {
+                    Request::TlsDone => {
                         return Poll::Ready(Ok(()));
                     }
-                    Msg::ZeroRtt(key, header_key, transport_parameters) => {
+                    Request::ZeroRtt(key, header_key, transport_parameters) => {
                         context.on_zero_rtt_keys(
                             key,
                             header_key,
@@ -199,14 +210,13 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                             },
                         )?;
                     }
-                    Msg::TlsContext(ctx) => {
+                    Request::TlsContext(ctx) => {
                         context.on_tls_context(ctx);
                     }
-                    Msg::SendApplication(transmission) => {
+                    Request::SendApplication(transmission) => {
                         context.send_application(transmission);
                     }
-                    Msg::TlsError(e) => return Poll::Ready(Err(e)),
-                    _ => (),
+                    Request::TlsError(e) => return Poll::Ready(Err(e)),
                 }
             }
         };
@@ -218,22 +228,22 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
         if let Poll::Ready(Ok(mut slice)) = self.send_to_tls.poll_slice(&mut ctx) {
             if let Some(resp) = context.receive_initial(None) {
                 context.waker().wake_by_ref();
-                let _ = slice.push(Msg::ResponseInitial(resp));
+                let _ = slice.push(Response::Initial(resp));
             }
 
             if let Some(resp) = context.receive_handshake(None) {
                 context.waker().wake_by_ref();
-                let _ = slice.push(Msg::ResponseHandshake(resp));
+                let _ = slice.push(Response::Handshake(resp));
             }
 
             if let Some(resp) = context.receive_application(None) {
                 context.waker().wake_by_ref();
-                let _ = slice.push(Msg::ResponseApplication(resp));
+                let _ = slice.push(Response::Application(resp));
             }
 
-            let _ = slice.push(Msg::CanSendInitial(context.can_send_initial()));
-            let _ = slice.push(Msg::CanSendHandshake(context.can_send_handshake()));
-            let _ = slice.push(Msg::CanSendApplication(context.can_send_application()));
+            let _ = slice.push(Response::CanSendInitial(context.can_send_initial()));
+            let _ = slice.push(Response::CanSendHandshake(context.can_send_handshake()));
+            let _ = slice.push(Response::CanSendApplication(context.can_send_application()));
         }
 
         Poll::Pending
@@ -253,30 +263,28 @@ impl<S: tls::Session> CryptoSuite for OffloadSession<S> {
 }
 
 #[derive(Debug)]
-struct RemoteContext<'a, Msg> {
-    send_to_quic: &'a mut Sender<Msg>,
-    waker: core::task::Waker,
-    initial_data: Vec<bytes::Bytes>,
-    handshake_data: Vec<bytes::Bytes>,
-    application_data: Vec<bytes::Bytes>,
+struct RemoteContext<'a, Request> {
+    send_to_quic: SendSlice<'a, Request>,
+    initial_data: &'a mut VecDeque<bytes::Bytes>,
+    handshake_data: &'a mut VecDeque<bytes::Bytes>,
+    application_data: &'a mut VecDeque<bytes::Bytes>,
     can_send_initial: bool,
     can_send_handshake: bool,
     can_send_application: bool,
+    waker: core::task::Waker,
 }
 
-impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
+impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
     fn on_client_application_params(
         &mut self,
         client_params: tls::ApplicationParameters,
         server_params: &mut alloc::vec::Vec<u8>,
     ) -> Result<(), crate::transport::Error> {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::ClientParams(
-                client_params.transport_parameters.to_vec(),
-                server_params.to_vec(),
-            ));
-        }
+        let _ = self.send_to_quic.push(Request::ClientParams(
+            client_params.transport_parameters.to_vec(),
+            server_params.to_vec(),
+        ));
+
         Ok(())
     }
 
@@ -285,10 +293,10 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
         key: <S as CryptoSuite>::HandshakeKey,
         header_key: <S as CryptoSuite>::HandshakeHeaderKey,
     ) -> Result<(), crate::transport::Error> {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::HandshakeKeys(key, header_key));
-        }
+        let _ = self
+            .send_to_quic
+            .push(Request::HandshakeKeys(key, header_key));
+
         Ok(())
     }
 
@@ -298,14 +306,12 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
         header_key: <S as CryptoSuite>::ZeroRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
     ) -> Result<(), crate::transport::Error> {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::ZeroRtt(
-                key,
-                header_key,
-                application_parameters.transport_parameters.to_vec(),
-            ));
-        }
+        let _ = self.send_to_quic.push(Request::ZeroRtt(
+            key,
+            header_key,
+            application_parameters.transport_parameters.to_vec(),
+        ));
+
         Ok(())
     }
 
@@ -315,14 +321,12 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
         header_key: <S as CryptoSuite>::OneRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
     ) -> Result<(), crate::transport::Error> {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::OneRttKeys(
-                key,
-                header_key,
-                application_parameters.transport_parameters.to_vec(),
-            ));
-        }
+        let _ = self.send_to_quic.push(Request::OneRttKeys(
+            key,
+            header_key,
+            application_parameters.transport_parameters.to_vec(),
+        ));
+
         Ok(())
     }
 
@@ -330,10 +334,8 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
         &mut self,
         server_name: crate::application::ServerName,
     ) -> Result<(), crate::transport::Error> {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::ServerName(server_name));
-        }
+        let _ = self.send_to_quic.push(Request::ServerName(server_name));
+
         Ok(())
     }
 
@@ -341,10 +343,10 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
         &mut self,
         application_protocol: bytes::Bytes,
     ) -> Result<(), crate::transport::Error> {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::ApplicationProtocol(application_protocol));
-        }
+        let _ = self
+            .send_to_quic
+            .push(Request::ApplicationProtocol(application_protocol));
+
         Ok(())
     }
 
@@ -352,28 +354,21 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
         &mut self,
         named_group: tls::NamedGroup,
     ) -> Result<(), crate::transport::Error> {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::KeyExchangeGroup(named_group));
-        }
+        let _ = self
+            .send_to_quic
+            .push(Request::KeyExchangeGroup(named_group));
+
         Ok(())
     }
 
     fn on_handshake_complete(&mut self) -> Result<(), crate::transport::Error> {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let res = Msg::HandshakeComplete;
-            let _ = slice.push(res);
-        }
+        let _ = self.send_to_quic.push(Request::HandshakeComplete);
 
         Ok(())
     }
 
     fn on_tls_context(&mut self, context: Box<dyn Any + Send>) {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::TlsContext(context));
-        }
+        let _ = self.send_to_quic.push(Request::TlsContext(context));
     }
 
     fn on_tls_exporter_ready(
@@ -386,13 +381,12 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
     }
 
     fn receive_initial(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        if !self.initial_data.is_empty() {
-            let mut bytes = self.initial_data.remove(0);
-
+        let bytes = self.initial_data.pop_front();
+        if let Some(mut bytes) = bytes {
             if let Some(max_len) = max_len {
                 if bytes.len() > max_len {
                     let remainder = bytes.split_off(max_len);
-                    self.initial_data.insert(0, remainder);
+                    self.initial_data.push_front(remainder);
                 }
             }
             return Some(bytes);
@@ -402,13 +396,12 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
     }
 
     fn receive_handshake(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        if !self.handshake_data.is_empty() {
-            let mut bytes = self.handshake_data.remove(0);
-
+        let bytes = self.handshake_data.pop_front();
+        if let Some(mut bytes) = bytes {
             if let Some(max_len) = max_len {
                 if bytes.len() > max_len {
                     let remainder = bytes.split_off(max_len);
-                    self.handshake_data.insert(0, remainder);
+                    self.handshake_data.push_front(remainder);
                 }
             }
             return Some(bytes);
@@ -417,13 +410,12 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
     }
 
     fn receive_application(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        if !self.application_data.is_empty() {
-            let mut bytes = self.application_data.remove(0);
-
+        let bytes = self.application_data.pop_front();
+        if let Some(mut bytes) = bytes {
             if let Some(max_len) = max_len {
                 if bytes.len() > max_len {
                     let remainder = bytes.split_off(max_len);
-                    self.application_data.insert(0, remainder);
+                    self.application_data.push_front(remainder);
                 }
             }
             return Some(bytes);
@@ -436,10 +428,7 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
     }
 
     fn send_initial(&mut self, transmission: bytes::Bytes) {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::SendInitial(transmission));
-        }
+        let _ = self.send_to_quic.push(Request::SendInitial(transmission));
     }
 
     fn can_send_handshake(&self) -> bool {
@@ -447,10 +436,7 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
     }
 
     fn send_handshake(&mut self, transmission: bytes::Bytes) {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::SendHandshake(transmission));
-        }
+        let _ = self.send_to_quic.push(Request::SendHandshake(transmission));
     }
 
     fn can_send_application(&self) -> bool {
@@ -458,10 +444,9 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
     }
 
     fn send_application(&mut self, transmission: bytes::Bytes) {
-        let mut cx = Context::from_waker(&self.waker);
-        if let Poll::Ready(Ok(mut slice)) = self.send_to_quic.poll_slice(&mut cx) {
-            let _ = slice.push(Msg::SendApplication(transmission));
-        }
+        let _ = self
+            .send_to_quic
+            .push(Request::SendApplication(transmission));
     }
 
     fn waker(&self) -> &core::task::Waker {
@@ -477,7 +462,7 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Msg<S>> {
     }
 }
 
-enum Msg<S: CryptoSuite> {
+enum Request<S: CryptoSuite> {
     ZeroRtt(
         <S as CryptoSuite>::ZeroRttKey,
         <S as CryptoSuite>::ZeroRttHeaderKey,
@@ -485,7 +470,6 @@ enum Msg<S: CryptoSuite> {
     ),
     ServerName(crate::application::ServerName),
     SendInitial(bytes::Bytes),
-    ResponseInitial(bytes::Bytes),
     ClientParams(Vec<u8>, Vec<u8>),
     HandshakeKeys(
         <S as CryptoSuite>::HandshakeKey,
@@ -499,41 +483,52 @@ enum Msg<S: CryptoSuite> {
         <S as CryptoSuite>::OneRttHeaderKey,
         Vec<u8>,
     ),
-    ResponseHandshake(bytes::Bytes),
     HandshakeComplete,
     TlsDone,
     TlsContext(Box<dyn Any + Send>),
-    ResponseApplication(bytes::Bytes),
     SendApplication(bytes::Bytes),
     TlsError(transport::Error),
+}
+
+enum Response {
+    Initial(bytes::Bytes),
+    Handshake(bytes::Bytes),
+    Application(bytes::Bytes),
     CanSendInitial(bool),
     CanSendHandshake(bool),
     CanSendApplication(bool),
 }
 
-impl<S: CryptoSuite> alloc::fmt::Debug for Msg<S> {
+impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Msg::ServerName(_) => write!(f, "ServerName"),
-            Msg::SendInitial(_) => write!(f, "SendInitial"),
-            Msg::ResponseInitial(_) => write!(f, "ResponseInitial"),
-            Msg::ClientParams(_, _) => write!(f, "ClientParams"),
-            Msg::HandshakeKeys(_, _) => write!(f, "HandshakeKeys"),
-            Msg::SendHandshake(_) => write!(f, "SendHandshake"),
-            Msg::ApplicationProtocol(_) => write!(f, "ApplicationProtocol"),
-            Msg::KeyExchangeGroup(_) => write!(f, "KeyExchangeGroup"),
-            Msg::OneRttKeys(_, _, _) => write!(f, "OneRttKeys"),
-            Msg::ResponseHandshake(_) => write!(f, "ResponseHandshake"),
-            Msg::HandshakeComplete => write!(f, "HandshakeComplete"),
-            Msg::TlsDone => write!(f, "TlsDone"),
-            Msg::ZeroRtt(_, _, _) => write!(f, "ZeroRtt"),
-            Msg::TlsContext(_) => write!(f, "TlsContext"),
-            Msg::ResponseApplication(_) => write!(f, "ResponseApplication"),
-            Msg::SendApplication(_) => write!(f, "SendApplication"),
-            Msg::TlsError(_) => write!(f, "TlsError"),
-            Msg::CanSendInitial(_) => write!(f, "CanSendInitial"),
-            Msg::CanSendHandshake(_) => write!(f, "CanSendHandshake"),
-            Msg::CanSendApplication(_) => write!(f, "CanSendApplication"),
+            Request::ServerName(_) => write!(f, "ServerName"),
+            Request::SendInitial(_) => write!(f, "SendInitial"),
+            Request::ClientParams(_, _) => write!(f, "ClientParams"),
+            Request::HandshakeKeys(_, _) => write!(f, "HandshakeKeys"),
+            Request::SendHandshake(_) => write!(f, "SendHandshake"),
+            Request::ApplicationProtocol(_) => write!(f, "ApplicationProtocol"),
+            Request::KeyExchangeGroup(_) => write!(f, "KeyExchangeGroup"),
+            Request::OneRttKeys(_, _, _) => write!(f, "OneRttKeys"),
+            Request::HandshakeComplete => write!(f, "HandshakeComplete"),
+            Request::TlsDone => write!(f, "TlsDone"),
+            Request::ZeroRtt(_, _, _) => write!(f, "ZeroRtt"),
+            Request::TlsContext(_) => write!(f, "TlsContext"),
+            Request::SendApplication(_) => write!(f, "SendApplication"),
+            Request::TlsError(_) => write!(f, "TlsError"),
+        }
+    }
+}
+
+impl alloc::fmt::Debug for Response {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Response::Initial(_) => write!(f, "ResponseInitial"),
+            Response::Handshake(_) => write!(f, "ResponseHandshake"),
+            Response::Application(_) => write!(f, "ResponseApplication"),
+            Response::CanSendInitial(_) => write!(f, "CanSendInitial"),
+            Response::CanSendHandshake(_) => write!(f, "CanSendHandshake"),
+            Response::CanSendApplication(_) => write!(f, "CanSendApplication"),
         }
     }
 }

@@ -1,24 +1,20 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
 use super::*;
-
 use s2n_quic::provider::tls::{
     default,
     offload::{Executor, Offload},
 };
+struct BachExecutor;
+impl Executor for BachExecutor {
+    fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
+        bach::spawn(task);
+    }
+}
 
 #[test]
 fn tls() {
-    struct BachExecutor;
-    impl Executor for BachExecutor {
-        fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
-            bach::spawn(task);
-        }
-    }
-
     let model = Model::default();
-
     test(model, |handle| {
         let server_endpoint = default::Server::builder()
             .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
@@ -54,13 +50,6 @@ fn tls() {
 #[test]
 #[cfg(unix)]
 fn mtls() {
-    struct BachExecutor;
-    impl Executor for BachExecutor {
-        fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
-            bach::spawn(task);
-        }
-    }
-
     let model = Model::default();
     test(model, |handle| {
         let server_endpoint = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
@@ -98,13 +87,6 @@ fn async_client_hello() {
         sync::atomic::{AtomicBool, AtomicU8, Ordering},
         task::Poll,
     };
-
-    struct BachExecutor;
-    impl Executor for BachExecutor {
-        fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
-            bach::spawn(task);
-        }
-    }
 
     let model = Model::default();
 
