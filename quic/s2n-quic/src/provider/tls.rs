@@ -316,7 +316,37 @@ pub mod offload {
     pub use s2n_quic_core::crypto::tls::offload::Executor;
     use s2n_quic_core::crypto::tls::offload::OffloadEndpoint;
 
-    pub struct Offload<E, X>(pub E, pub X);
+    pub struct Offload<E, X> {
+        endpoint: E,
+        executor: X,
+    }
+    pub struct OffloadBuilder<E, X> {
+        endpoint: Option<E>,
+        executor: Option<X>,
+    }
+    impl<E, X> OffloadBuilder<E, X> {
+        pub fn new() -> Self {
+            OffloadBuilder {
+                endpoint: None,
+                executor: None,
+            }
+        }
+        pub fn with_endpoint(mut self, endpoint: E) -> OffloadBuilder<E, X> {
+            self.endpoint = Some(endpoint);
+            self
+        }
+        pub fn with_executor(mut self, executor: X) -> OffloadBuilder<E, X> {
+            self.executor = Some(executor);
+            self
+        }
+        pub fn build(self) -> Offload<E, X> {
+            let offload = Offload {
+                endpoint: self.endpoint.expect("Please provide an endpoint"),
+                executor: self.executor.expect("Please provide an executor"),
+            };
+            offload
+        }
+    }
 
     impl<E: Provider, X: Executor + Send + 'static> Provider for Offload<E, X> {
         type Server = OffloadEndpoint<<E as Provider>::Server, X>;
@@ -324,11 +354,17 @@ pub mod offload {
         type Error = E::Error;
 
         fn start_server(self) -> Result<Self::Server, Self::Error> {
-            Ok(OffloadEndpoint::new(E::start_server(self.0)?, self.1))
+            Ok(OffloadEndpoint::new(
+                E::start_server(self.endpoint)?,
+                self.executor,
+            ))
         }
 
         fn start_client(self) -> Result<Self::Client, Self::Error> {
-            Ok(OffloadEndpoint::new(E::start_client(self.0)?, self.1))
+            Ok(OffloadEndpoint::new(
+                E::start_client(self.endpoint)?,
+                self.executor,
+            ))
         }
     }
 }

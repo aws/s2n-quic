@@ -3,7 +3,7 @@
 use super::*;
 use s2n_quic::provider::tls::{
     default,
-    offload::{Executor, Offload},
+    offload::{Executor, Offload, OffloadBuilder},
 };
 struct BachExecutor;
 impl Executor for BachExecutor {
@@ -26,8 +26,16 @@ fn tls() {
             .unwrap()
             .build()
             .unwrap();
-        let server_endpoint = Offload(server_endpoint, BachExecutor);
-        let client_endpoint = Offload(client_endpoint, BachExecutor);
+
+        let server_endpoint = OffloadBuilder::new()
+            .with_endpoint(server_endpoint)
+            .with_executor(BachExecutor)
+            .build();
+        let client_endpoint = OffloadBuilder::new()
+            .with_endpoint(client_endpoint)
+            .with_executor(BachExecutor)
+            .build();
+
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_event(tracing_events())?
@@ -55,8 +63,14 @@ fn mtls() {
         let server_endpoint = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
         let client_endpoint = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
 
-        let server_endpoint = Offload(server_endpoint, BachExecutor);
-        let client_endpoint = Offload(client_endpoint, BachExecutor);
+        let server_endpoint = OffloadBuilder::new()
+            .with_endpoint(server_endpoint)
+            .with_executor(BachExecutor)
+            .build();
+        let client_endpoint = OffloadBuilder::new()
+            .with_endpoint(client_endpoint)
+            .with_executor(BachExecutor)
+            .build();
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
@@ -151,8 +165,14 @@ fn async_client_hello() {
             .build()
             .unwrap();
 
-        let server_endpoint = Offload(server_endpoint, BachExecutor);
-        let client_endpoint = Offload(client_endpoint, BachExecutor);
+        let server_endpoint = OffloadBuilder::new()
+            .with_endpoint(server_endpoint)
+            .with_executor(BachExecutor)
+            .build();
+        let client_endpoint = OffloadBuilder::new()
+            .with_endpoint(client_endpoint)
+            .with_executor(BachExecutor)
+            .build();
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
