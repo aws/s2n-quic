@@ -9,8 +9,9 @@ use crate::{
     sync::spsc::{channel, Receiver, SendSlice, Sender},
     transport,
 };
-use alloc::{boxed::Box, collections::vec_deque::VecDeque};
+use alloc::{boxed::Box, collections::vec_deque::VecDeque, sync::Arc};
 use core::{any::Any, future::Future, task::Poll};
+use std::sync::Mutex;
 
 pub trait Executor {
     fn spawn(&self, task: impl Future<Output = ()> + Send + 'static);
@@ -61,6 +62,7 @@ impl<E: tls::Endpoint, X: Executor + Send + 'static> tls::Endpoint for OffloadEn
 pub struct OffloadSession<S: CryptoSuite> {
     recv_from_tls: Receiver<Request<S>>,
     send_to_tls: Sender<Response>,
+    allowed_to_send: Arc<Mutex<AllowedToSend>>,
 }
 
 impl<S: tls::Session + 'static> OffloadSession<S> {
@@ -70,6 +72,8 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
         let (mut send_to_quic, recv_from_tls): (Sender<Request<S>>, Receiver<Request<S>>) =
             channel(10);
         let (send_to_tls, mut recv_from_quic): (Sender<Response>, Receiver<Response>) = channel(10);
+        let allowed_to_send = Arc::new(Mutex::new(AllowedToSend::default()));
+        let session_clone = allowed_to_send.clone();
 
         let future = async move {
             let mut initial_data = VecDeque::default();
@@ -88,9 +92,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                             initial_data: &mut initial_data,
                             handshake_data: &mut handshake_data,
                             application_data: &mut application_data,
-                            can_send_initial: false,
-                            can_send_handshake: false,
-                            can_send_application: false,
+                            allowed_to_send: (&allowed_to_send).clone(),
                         };
 
                         let mut recv_slice = recv_from_quic.slice();
@@ -103,13 +105,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                                 Response::Application(data) => {
                                     context.application_data.push_back(data)
                                 }
-                                Response::CanSendHandshake(bool) => {
-                                    context.can_send_handshake = bool
-                                }
-                                Response::CanSendInitial(bool) => context.can_send_initial = bool,
-                                Response::CanSendApplication(bool) => {
-                                    context.can_send_application = bool
-                                }
+                                Response::TlsWakeup => (),
                             }
                         }
                         let res = inner.poll(&mut context);
@@ -147,6 +143,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
         Self {
             recv_from_tls,
             send_to_tls,
+            allowed_to_send: session_clone,
         }
     }
 }
@@ -238,10 +235,13 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                 let _ = slice.push(Response::Application(resp));
             }
 
-            let _ = slice.push(Response::CanSendInitial(context.can_send_initial()));
-            let _ = slice.push(Response::CanSendHandshake(context.can_send_handshake()));
-            let _ = slice.push(Response::CanSendApplication(context.can_send_application()));
+            let _ = slice.push(Response::TlsWakeup);
         }
+
+        let mut allowed_to_send = self.allowed_to_send.lock().unwrap();
+        (*allowed_to_send).can_send_initial = context.can_send_initial();
+        (*allowed_to_send).can_send_handshake = context.can_send_handshake();
+        (*allowed_to_send).can_send_application = context.can_send_application();
 
         Poll::Pending
     }
@@ -258,6 +258,12 @@ impl<S: tls::Session> CryptoSuite for OffloadSession<S> {
     type OneRttHeaderKey = <S as CryptoSuite>::OneRttHeaderKey;
     type RetryKey = <S as CryptoSuite>::RetryKey;
 }
+#[derive(Debug, Default)]
+struct AllowedToSend {
+    can_send_initial: bool,
+    can_send_handshake: bool,
+    can_send_application: bool,
+}
 
 #[derive(Debug)]
 struct RemoteContext<'a, Request> {
@@ -265,10 +271,8 @@ struct RemoteContext<'a, Request> {
     initial_data: &'a mut VecDeque<bytes::Bytes>,
     handshake_data: &'a mut VecDeque<bytes::Bytes>,
     application_data: &'a mut VecDeque<bytes::Bytes>,
-    can_send_initial: bool,
-    can_send_handshake: bool,
-    can_send_application: bool,
     waker: core::task::Waker,
+    allowed_to_send: Arc<Mutex<AllowedToSend>>,
 }
 
 impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
@@ -421,7 +425,8 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
     }
 
     fn can_send_initial(&self) -> bool {
-        self.can_send_initial
+        let allowed_to_send = self.allowed_to_send.lock().unwrap();
+        (*allowed_to_send).can_send_initial
     }
 
     fn send_initial(&mut self, transmission: bytes::Bytes) {
@@ -429,7 +434,8 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
     }
 
     fn can_send_handshake(&self) -> bool {
-        self.can_send_handshake
+        let allowed_to_send = self.allowed_to_send.lock().unwrap();
+        (*allowed_to_send).can_send_handshake
     }
 
     fn send_handshake(&mut self, transmission: bytes::Bytes) {
@@ -437,7 +443,8 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
     }
 
     fn can_send_application(&self) -> bool {
-        self.can_send_application
+        let allowed_to_send = self.allowed_to_send.lock().unwrap();
+        (*allowed_to_send).can_send_application
     }
 
     fn send_application(&mut self, transmission: bytes::Bytes) {
@@ -491,9 +498,7 @@ enum Response {
     Initial(bytes::Bytes),
     Handshake(bytes::Bytes),
     Application(bytes::Bytes),
-    CanSendInitial(bool),
-    CanSendHandshake(bool),
-    CanSendApplication(bool),
+    TlsWakeup,
 }
 
 impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
@@ -523,9 +528,7 @@ impl alloc::fmt::Debug for Response {
             Response::Initial(_) => write!(f, "ResponseInitial"),
             Response::Handshake(_) => write!(f, "ResponseHandshake"),
             Response::Application(_) => write!(f, "ResponseApplication"),
-            Response::CanSendInitial(_) => write!(f, "CanSendInitial"),
-            Response::CanSendHandshake(_) => write!(f, "CanSendHandshake"),
-            Response::CanSendApplication(_) => write!(f, "CanSendApplication"),
+            Response::TlsWakeup => write!(f, "TlsWakeup"),
         }
     }
 }
