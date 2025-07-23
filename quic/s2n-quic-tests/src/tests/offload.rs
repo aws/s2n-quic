@@ -56,6 +56,61 @@ fn tls() {
 }
 
 #[test]
+fn failed_tls_handshake() {
+    use s2n_quic::connection::Error;
+    use s2n_quic_core::{crypto::tls::Error as TlsError, transport};
+    let connection_closed_subscriber = recorder::ConnectionClosed::new();
+    let connection_closed_event = connection_closed_subscriber.events();
+
+    let model = Model::default();
+    test(model, |handle| {
+        let server_endpoint = default::Server::builder()
+            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
+        // Client has no ability to trust server, which will lead to a cert untrusted error
+        let client_endpoint = default::Client::builder().build().unwrap();
+
+        let server_endpoint = OffloadBuilder::new()
+            .with_endpoint(server_endpoint)
+            .with_executor(BachExecutor)
+            .build();
+        let client_endpoint = OffloadBuilder::new()
+            .with_endpoint(client_endpoint)
+            .with_executor(BachExecutor)
+            .build();
+
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_event((tracing_events(), connection_closed_subscriber))?
+            .with_tls(server_endpoint)?
+            .start()?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(client_endpoint)?
+            .with_event(tracing_events())?
+            .start()?;
+        let addr = start_server(server)?;
+        primary::spawn(async move {
+            let connect = Connect::new(addr).with_server_name("localhost");
+            client.connect(connect).await.unwrap_err();
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    let connection_closed_handle = connection_closed_event.lock().unwrap();
+    let Error::Transport { code, .. } = connection_closed_handle[0] else {
+        panic!("Unexpected error type")
+    };
+    let expected_error = TlsError::HANDSHAKE_FAILURE;
+    assert_eq!(code, transport::Error::from(expected_error).code);
+}
+
+#[test]
 #[cfg(unix)]
 fn mtls() {
     let model = Model::default();
