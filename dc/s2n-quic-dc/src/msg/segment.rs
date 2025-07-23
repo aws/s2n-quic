@@ -63,15 +63,19 @@ fn max_total_test() {
         let socket = std::net::UdpSocket::bind(addr).unwrap();
         let addr = socket.local_addr().unwrap();
 
-        let mut buffer = vec![0u8; total as usize + 1];
+        let mut send_buffer = vec![0u8; total as usize + 1];
+        let mut recv_buffer = vec![0u8; total as usize];
 
         // This behavior may not be consistent across kernel versions so the check is disabled by default
-        let _ = socket.send_to(&buffer, addr);
+        let _ = socket.send_to(&send_buffer, addr);
 
-        buffer.pop().unwrap();
+        send_buffer.pop().unwrap();
         socket
-            .send_to(&buffer, addr)
+            .send_to(&send_buffer, addr)
             .expect("send should succeed when limited to MAX_TOTAL");
+
+        let size_of_recv = socket.recv(&mut recv_buffer).unwrap();
+        assert_eq!(total as usize, size_of_recv);
     }
 }
 
