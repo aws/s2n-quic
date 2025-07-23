@@ -120,12 +120,7 @@ jobs:
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy
         run: |
-          # deriving Eq may break API compatibility so we disable it
-          # See https://github.com/rust-lang/rust-clippy/issues/9063
-          #
-          # manual_clamp will panic when min > max
-          # See https://github.com/rust-lang/rust-clippy/pull/10101
-          cargo clippy --all-features --all-targets --workspace -- -A clippy::derive_partial_eq_without_eq -A clippy::manual_clamp ${{ matrix.args }}
+          cargo clippy --all-features --all-targets --workspace -- ${{ matrix.args }}
 
   udeps:
     runs-on: ubuntu-latest
@@ -529,7 +524,7 @@ jobs:
 
       - name: lint
         working-directory: ${{ matrix.example }}
-        run: cargo clippy --all-features --all-targets -- -A clippy::manual_clamp -A clippy::uninlined_format_args -D warnings
+        run: cargo clippy --all-features --all-targets -- -D warnings
 
       # not all examples will build with the --manifest-path argument, since the
       # manifest-path argument will pull configuration from the current directory
