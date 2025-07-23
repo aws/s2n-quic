@@ -324,6 +324,11 @@ pub mod offload {
         endpoint: Option<E>,
         executor: Option<X>,
     }
+    impl<E, X> Default for OffloadBuilder<E, X> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
     impl<E, X> OffloadBuilder<E, X> {
         pub fn new() -> Self {
             OffloadBuilder {
@@ -340,11 +345,10 @@ pub mod offload {
             self
         }
         pub fn build(self) -> Offload<E, X> {
-            let offload = Offload {
+            Offload {
                 endpoint: self.endpoint.expect("Please provide an endpoint"),
                 executor: self.executor.expect("Please provide an executor"),
-            };
-            offload
+            }
         }
     }
 

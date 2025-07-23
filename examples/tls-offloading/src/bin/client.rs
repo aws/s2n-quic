@@ -6,7 +6,7 @@ use s2n_quic::{
     client::Connect,
     provider::tls::{
         default,
-        offload::{Executor, Offload},
+        offload::{Executor, OffloadBuilder},
     },
 };
 use std::{error::Error, net::SocketAddr};
@@ -29,10 +29,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tls = default::Client::builder()
         .with_certificate(CERT_PEM)?
         .build()?;
-    let tls = Offload(tls, TokioExecutor);
+    let tls_endpoint = OffloadBuilder::new()
+        .with_endpoint(tls)
+        .with_executor(TokioExecutor)
+        .build();
 
     let client = Client::builder()
-        .with_tls(tls)?
+        .with_tls(tls_endpoint)?
         .with_io("0.0.0.0:0")?
         .start()?;
 

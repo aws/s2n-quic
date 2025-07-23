@@ -5,7 +5,7 @@ use s2n_quic::{
     Server,
     provider::tls::{
         default,
-        offload::{Executor, Offload},
+        offload::{Executor, OffloadBuilder},
     },
 };
 use std::error::Error;
@@ -33,10 +33,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tls = default::Server::builder()
         .with_certificate(CERT_PEM, KEY_PEM)?
         .build()?;
-    let tls = Offload(tls, TokioExecutor);
+
+    let tls_endpoint = OffloadBuilder::new()
+        .with_endpoint(tls)
+        .with_executor(TokioExecutor)
+        .build();
 
     let mut server = Server::builder()
-        .with_tls(tls)?
+        .with_tls(tls_endpoint)?
         .with_io("127.0.0.1:4433")?
         .start()?;
 
