@@ -3,7 +3,7 @@
 use super::*;
 use s2n_quic::provider::tls::{
     default,
-    offload::{Executor, Offload, OffloadBuilder},
+    offload::{Executor, OffloadBuilder},
 };
 struct BachExecutor;
 impl Executor for BachExecutor {
