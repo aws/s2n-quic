@@ -9,7 +9,7 @@ use crate::{
     sync::spsc::{channel, Receiver, SendSlice, Sender},
     transport,
 };
-use alloc::{boxed::Box, collections::vec_deque::VecDeque, sync::Arc};
+use alloc::{boxed::Box, collections::vec_deque::VecDeque, sync::Arc, vec::Vec};
 use core::{any::Any, future::Future, task::Poll};
 use std::sync::Mutex;
 
@@ -84,8 +84,8 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                     break;
                 }
 
-                let res = core::future::poll_fn(|mut ctx| {
-                    if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(&mut ctx) {
+                let res = core::future::poll_fn(|ctx| {
+                    if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(ctx) {
                         let allowed_to_send = allowed_to_send.lock().unwrap();
                         let mut context = RemoteContext {
                             send_to_quic: send_slice,
@@ -123,10 +123,10 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                                 }
                             }
                         }
-                        return Poll::Ready(res);
+                        Poll::Ready(res)
                     } else {
                         // Can't get a send_slice from the channel
-                        return Poll::Ready(Poll::Pending);
+                        Poll::Ready(Poll::Pending)
                     }
                 })
                 .await;
@@ -258,9 +258,9 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
         }
 
         let mut allowed_to_send = self.allowed_to_send.lock().unwrap();
-        (*allowed_to_send).can_send_initial = context.can_send_initial();
-        (*allowed_to_send).can_send_handshake = context.can_send_handshake();
-        (*allowed_to_send).can_send_application = context.can_send_application();
+        allowed_to_send.can_send_initial = context.can_send_initial();
+        allowed_to_send.can_send_handshake = context.can_send_handshake();
+        allowed_to_send.can_send_application = context.can_send_application();
 
         Poll::Pending
     }
