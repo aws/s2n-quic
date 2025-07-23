@@ -10,11 +10,7 @@ use crate::{
     transport,
 };
 use alloc::{boxed::Box, collections::vec_deque::VecDeque};
-use core::{
-    any::Any,
-    future::Future,
-    task::{Context, Poll},
-};
+use core::{any::Any, future::Future, task::Poll};
 
 pub trait Executor {
     fn spawn(&self, task: impl Future<Output = ()> + Send + 'static);
@@ -131,9 +127,10 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                             }
                         }
                         return Poll::Ready(res);
+                    } else {
+                        // Can't get a send_slice from the channel
+                        return Poll::Ready(Poll::Pending);
                     }
-
-                    Poll::Pending
                 })
                 .await;
 
