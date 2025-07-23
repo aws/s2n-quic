@@ -110,7 +110,7 @@ pub mod query_event {
     impl Drop for MyQueryContext {
         // Execute some operations on the context before the Connection is dropped.
         fn drop(&mut self) {
-            println!("{:?}", self);
+            println!("{self:?}");
         }
     }
 }
