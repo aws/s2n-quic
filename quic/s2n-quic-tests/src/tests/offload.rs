@@ -97,29 +97,13 @@ fn async_client_hello() {
     use s2n_quic::provider::tls::s2n_tls::{
         self, callbacks::ClientHelloCallback, connection::Connection, error::Error,
     };
-    use std::{
-        sync::atomic::{AtomicBool, AtomicU8, Ordering},
-        task::Poll,
-    };
+    use std::task::Poll;
 
     let model = Model::default();
 
-    pub struct MyCallbackHandler {
-        done: Arc<AtomicBool>,
-        wait_counter: Arc<AtomicU8>,
-    }
+    struct MyCallbackHandler;
     struct MyConnectionFuture {
-        done: Arc<AtomicBool>,
-        wait_counter: Arc<AtomicU8>,
-    }
-
-    impl MyCallbackHandler {
-        fn new(wait_counter: u8) -> Self {
-            MyCallbackHandler {
-                done: Arc::new(AtomicBool::new(false)),
-                wait_counter: Arc::new(AtomicU8::new(wait_counter)),
-            }
-        }
+        output: Option<bach::task::JoinHandle<()>>,
     }
 
     impl ClientHelloCallback for MyCallbackHandler {
@@ -128,35 +112,37 @@ fn async_client_hello() {
             _connection: &mut Connection,
         ) -> Result<Option<std::pin::Pin<Box<dyn s2n_tls::callbacks::ConnectionFuture>>>, Error>
         {
-            let fut = MyConnectionFuture {
-                done: self.done.clone(),
-                wait_counter: self.wait_counter.clone(),
-            };
+            let fut = MyConnectionFuture { output: None };
             Ok(Some(Box::pin(fut)))
         }
     }
 
     impl s2n_tls::callbacks::ConnectionFuture for MyConnectionFuture {
         fn poll(
-            self: std::pin::Pin<&mut Self>,
+            mut self: std::pin::Pin<&mut Self>,
             _connection: &mut Connection,
             _ctx: &mut core::task::Context,
         ) -> Poll<Result<(), Error>> {
-            if self.wait_counter.fetch_sub(1, Ordering::SeqCst) == 0 {
-                self.done.store(true, Ordering::SeqCst);
-                return Poll::Ready(Ok(()));
+            if let Some(handle) = &self.output {
+                if handle.is_finished() {
+                    return Poll::Ready(Ok(()));
+                }
+            } else {
+                let future = async move {
+                    let timer = bach::time::sleep(Duration::from_secs(3));
+                    timer.await;
+                };
+                self.output = Some(bach::spawn(future));
             }
 
             Poll::Pending
         }
     }
     test(model, |handle| {
-        let client_hello_handler = MyCallbackHandler::new(3);
-
         let server_endpoint = default::Server::builder()
             .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
             .unwrap()
-            .with_client_hello_handler(client_hello_handler)
+            .with_client_hello_handler(MyCallbackHandler)
             .unwrap()
             .build()?;
         let client_endpoint = default::Client::builder()

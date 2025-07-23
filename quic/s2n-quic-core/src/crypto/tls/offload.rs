@@ -220,7 +220,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                     }
                 }
                 Err(_) => {
-                    // The TLS thread was cancelled for some reason if we can't read from the channel
+                    // For whatever reason the TLS thread was cancelled. We cannot continue the handshake.
                     return Poll::Ready(Err(transport::Error::from(tls::Error::HANDSHAKE_FAILURE)));
                 }
             }
@@ -251,7 +251,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                     let _ = slice.push(Response::TlsWakeup);
                 }
                 Err(_) => {
-                    // The TLS thread was cancelled for some reason if we can't write to the channel
+                    // For whatever reason the TLS thread was cancelled. We cannot continue the handshake.
                     return Poll::Ready(Err(transport::Error::from(tls::Error::HANDSHAKE_FAILURE)));
                 }
             }
