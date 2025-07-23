@@ -23,7 +23,7 @@ pub mod print_event {
             meta: &ConnectionMeta,
             info: &event::ConnectionInfo,
         ) -> Self::ConnectionContext {
-            println!("{:?} {:?}", meta, info);
+            println!("{meta:?} {info:?}");
         }
 
         /// This event fires for all events.
@@ -33,7 +33,7 @@ pub mod print_event {
             event: &E,
         ) {
             if self.print_all_events {
-                println!("event: {:?} {:?}", meta, event);
+                println!("event: {meta:?} {event:?}");
             }
         }
 
@@ -47,7 +47,7 @@ pub mod print_event {
             event: &E,
         ) {
             if self.print_connection_events {
-                println!("connection_event: {:?} {:?} {:?}", context, meta, event);
+                println!("connection_event: {context:?} {meta:?} {event:?}");
             }
         }
     }

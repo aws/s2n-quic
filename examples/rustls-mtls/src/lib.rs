@@ -105,11 +105,11 @@ impl MtlsProvider {
 async fn read_file(path: &Path) -> Result<Vec<u8>, RustlsError> {
     let mut f = File::open(path)
         .await
-        .map_err(|e| RustlsError::General(format!("Failed to load file: {}", e)))?;
+        .map_err(|e| RustlsError::General(format!("Failed to load file: {e}")))?;
     let mut buf = Vec::new();
     f.read_to_end(&mut buf)
         .await
-        .map_err(|e| RustlsError::General(format!("Failed to read file: {}", e)))?;
+        .map_err(|e| RustlsError::General(format!("Failed to read file: {e}")))?;
     Ok(buf)
 }
 

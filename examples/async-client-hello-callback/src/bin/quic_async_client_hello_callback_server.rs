@@ -64,7 +64,7 @@ impl ClientHelloCallback for ConfigCache {
             .cache
             .get_with(sni.clone(), || Arc::new(OnceCell::new()));
         if let Some(config) = once_cell_config.get() {
-            eprintln!("Config already cached for SNI: {}", sni);
+            eprintln!("Config already cached for SNI: {sni}");
             connection.set_config(config.clone())?;
             // return `None` if the Config is already in the cache
             return Ok(None);
@@ -84,7 +84,7 @@ impl ClientHelloCallback for ConfigCache {
                     return Err(S2nError::application(Box::new(CustomError)));
                 }
 
-                eprintln!("resolving certificate for SNI: {}", sni);
+                eprintln!("resolving certificate for SNI: {sni}");
 
                 // load the cert and key file asynchronously.
                 let (cert, key) = {
