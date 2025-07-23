@@ -83,7 +83,6 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                 if recv_from_quic.acquire().await.is_err() {
                     break;
                 }
-
                 let res = core::future::poll_fn(|ctx| {
                     if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(ctx) {
                         let allowed_to_send = allowed_to_send.lock().unwrap();
@@ -125,8 +124,9 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                         }
                         Poll::Ready(res)
                     } else {
-                        // Can't get a send_slice from the channel
-                        Poll::Ready(Poll::Pending)
+                        // For whatever reason the QUIC thread decided to drop this channel. In this case
+                        // we complete the future without erroring.
+                        Poll::Ready(Poll::Ready(Ok(())))
                     }
                 })
                 .await;
