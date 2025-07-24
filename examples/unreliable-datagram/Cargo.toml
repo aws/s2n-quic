@@ -9,3 +9,6 @@ s2n-quic-core = { path = "../../quic/s2n-quic-core" }
 tokio = { version = "1", features = ["full"] }
 bytes = { version = "1", default-features = false }
 futures = { version = "0.3", default-features = false, features = ["std"] }
+
+[workspace]
+members = ["."]

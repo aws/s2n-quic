@@ -8,3 +8,6 @@ edition = "2021"
 # Remove the `provider-tls-default` feature and add `provider-tls-rustls`
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", default-features = false, features = ["provider-address-token-default", "provider-tls-rustls"] }
 tokio = { version = "1", features = ["full"] }
+
+[workspace]
+members = ["."]
