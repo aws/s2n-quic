@@ -36,7 +36,7 @@ impl Info for Vec<u8> {
 
     fn append<T: core::fmt::Display>(&mut self, v: T) {
         use std::io::Write;
-        let _ = write!(self, "{}", v);
+        let _ = write!(self, "{v}");
     }
 
     fn append_str(&mut self, v: &str) {
@@ -51,7 +51,7 @@ impl Info for String {
 
     fn append<T: core::fmt::Display>(&mut self, v: T) {
         use std::fmt::Write;
-        let _ = write!(self, "{}", v);
+        let _ = write!(self, "{v}");
     }
 
     fn append_str(&mut self, v: &str) {
