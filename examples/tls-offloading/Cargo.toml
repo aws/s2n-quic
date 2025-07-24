@@ -1,0 +1,8 @@
+[package]
+name = "tls-offloading"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["unstable-offload-tls"]}
+tokio = { version = "1", features = ["full"] }
