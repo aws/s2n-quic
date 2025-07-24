@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             // The datagram was successfully inserted into the send queue
                         }
                         Err(err) => {
-                            eprintln!("{}", err);
+                            eprintln!("{err}");
                             // An error was encountered while calling the send_datagram
                             // method. Either the peer didn't advertise support for datagrams
                             // or the send queue is at capacity.

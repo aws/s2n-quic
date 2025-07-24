@@ -24,6 +24,6 @@ impl Subscriber for MtuEventInformer {
         _meta: &s2n_quic::provider::event::ConnectionMeta,
         event: &s2n_quic::provider::event::events::MtuUpdated,
     ) {
-        eprintln!("{:?}", event);
+        eprintln!("{event:?}");
     }
 }
