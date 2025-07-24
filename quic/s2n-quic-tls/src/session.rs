@@ -161,12 +161,16 @@ impl tls::Session for Session {
                 // context.on_tls_context(ctx);
                 Poll::Ready(Ok(()))
             }
-            Poll::Ready(Err(e)) => Poll::Ready(Err(e
-                .alert()
-                .map(tls::Error::new)
-                .unwrap_or(tls::Error::HANDSHAKE_FAILURE)
-                .with_reason(e.message())
-                .into())),
+            Poll::Ready(Err(e)) => {
+                context.on_tls_handshake_failed(self)?;
+
+                Poll::Ready(Err(e
+                    .alert()
+                    .map(tls::Error::new)
+                    .unwrap_or(tls::Error::HANDSHAKE_FAILURE)
+                    .with_reason(e.message())
+                    .into()))
+            }
             Poll::Pending => Poll::Pending,
         }
     }

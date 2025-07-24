@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     // respond to the client with our own message
                     if let Ok(Some(data)) = stream.receive().await {
-                        eprintln!("message from the client: {:?}", data);
+                        eprintln!("message from the client: {data:?}");
                         let _ = stream.write_all(b"hello post-quantum client!\n").await;
                     }
                 });

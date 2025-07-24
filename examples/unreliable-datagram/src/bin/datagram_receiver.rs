@@ -58,9 +58,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await;
 
         match recv_result {
-            Ok(value) => eprintln!("RECV {:?}", value),
+            Ok(value) => eprintln!("RECV {value:?}"),
             Err(err) => {
-                eprintln!("{:?}", err);
+                eprintln!("{err:?}");
                 return Ok(());
             }
         }

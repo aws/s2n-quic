@@ -213,7 +213,7 @@ where
 
     init_time: Timestamp,
 
-    clock: C,
+    pub(super) clock: C,
 
     subscriber: S,
 

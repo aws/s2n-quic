@@ -135,6 +135,13 @@ where
             }
         }
     }
+
+    // Clear the guard, we were successful. This stops emitting a metric indicating we dropped
+    // before the stream was connected.
+    if error.is_none() {
+        guard.reason = None;
+    }
+
     env.endpoint_publisher()
         .on_stream_connect(event::builder::StreamConnect {
             error: error.is_some(),

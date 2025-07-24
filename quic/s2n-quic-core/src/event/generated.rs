@@ -2466,6 +2466,22 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct TlsHandshakeFailed<'a> {
+        pub session: crate::event::TlsSession<'a>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for TlsHandshakeFailed<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("TlsHandshakeFailed");
+            fmt.field("session", &self.session);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for TlsHandshakeFailed<'a> {
+        const NAME: &'static str = "connectivity:tls_handshake_failed";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Path challenge updated"]
     pub struct PathChallengeUpdated<'a> {
         pub path_challenge_status: PathChallengeStatus,
@@ -4107,6 +4123,17 @@ pub mod tracing {
             let id = context.id();
             let api::TlsExporterReady { session } = event;
             tracing :: event ! (target : "tls_exporter_ready" , parent : id , tracing :: Level :: DEBUG , { session = tracing :: field :: debug (session) });
+        }
+        #[inline]
+        fn on_tls_handshake_failed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::TlsHandshakeFailed,
+        ) {
+            let id = context.id();
+            let api::TlsHandshakeFailed { session } = event;
+            tracing :: event ! (target : "tls_handshake_failed" , parent : id , tracing :: Level :: DEBUG , { session = tracing :: field :: debug (session) });
         }
         #[inline]
         fn on_path_challenge_updated(
@@ -6271,6 +6298,19 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct TlsHandshakeFailed<'a> {
+        pub session: crate::event::TlsSession<'a>,
+    }
+    impl<'a> IntoEvent<api::TlsHandshakeFailed<'a>> for TlsHandshakeFailed<'a> {
+        #[inline]
+        fn into_event(self) -> api::TlsHandshakeFailed<'a> {
+            let TlsHandshakeFailed { session } = self;
+            api::TlsHandshakeFailed {
+                session: session.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Path challenge updated"]
     pub struct PathChallengeUpdated<'a> {
         pub path_challenge_status: PathChallengeStatus,
@@ -7407,6 +7447,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `TlsHandshakeFailed` event is triggered"]
+        #[inline]
+        fn on_tls_handshake_failed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsHandshakeFailed,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `PathChallengeUpdated` event is triggered"]
         #[inline]
         fn on_path_challenge_updated(
@@ -8149,6 +8201,16 @@ mod traits {
             (self.1).on_tls_exporter_ready(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_tls_handshake_failed(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsHandshakeFailed,
+        ) {
+            (self.0).on_tls_handshake_failed(&mut context.0, meta, event);
+            (self.1).on_tls_handshake_failed(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_path_challenge_updated(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -8715,6 +8777,8 @@ mod traits {
         fn on_handshake_status_updated(&mut self, event: builder::HandshakeStatusUpdated);
         #[doc = "Publishes a `TlsExporterReady` event to the publisher's subscriber"]
         fn on_tls_exporter_ready(&mut self, event: builder::TlsExporterReady);
+        #[doc = "Publishes a `TlsHandshakeFailed` event to the publisher's subscriber"]
+        fn on_tls_handshake_failed(&mut self, event: builder::TlsHandshakeFailed);
         #[doc = "Publishes a `PathChallengeUpdated` event to the publisher's subscriber"]
         fn on_path_challenge_updated(&mut self, event: builder::PathChallengeUpdated);
         #[doc = "Publishes a `TlsClientHello` event to the publisher's subscriber"]
@@ -9088,6 +9152,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_tls_exporter_ready(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_tls_handshake_failed(&mut self, event: builder::TlsHandshakeFailed) {
+            let event = event.into_event();
+            self.subscriber
+                .on_tls_handshake_failed(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -9518,6 +9591,7 @@ pub mod testing {
         pub connection_migration_denied: u64,
         pub handshake_status_updated: u64,
         pub tls_exporter_ready: u64,
+        pub tls_handshake_failed: u64,
         pub path_challenge_updated: u64,
         pub tls_client_hello: u64,
         pub tls_server_hello: u64,
@@ -9612,6 +9686,7 @@ pub mod testing {
                 connection_migration_denied: 0,
                 handshake_status_updated: 0,
                 tls_exporter_ready: 0,
+                tls_handshake_failed: 0,
                 path_challenge_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
@@ -10116,6 +10191,20 @@ pub mod testing {
                 self.output.push(out);
             }
         }
+        fn on_tls_handshake_failed(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::TlsHandshakeFailed,
+        ) {
+            self.tls_handshake_failed += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
         fn on_path_challenge_updated(
             &mut self,
             _context: &mut Self::ConnectionContext,
@@ -10510,6 +10599,7 @@ pub mod testing {
         pub connection_migration_denied: u64,
         pub handshake_status_updated: u64,
         pub tls_exporter_ready: u64,
+        pub tls_handshake_failed: u64,
         pub path_challenge_updated: u64,
         pub tls_client_hello: u64,
         pub tls_server_hello: u64,
@@ -10594,6 +10684,7 @@ pub mod testing {
                 connection_migration_denied: 0,
                 handshake_status_updated: 0,
                 tls_exporter_ready: 0,
+                tls_handshake_failed: 0,
                 path_challenge_updated: 0,
                 tls_client_hello: 0,
                 tls_server_hello: 0,
@@ -11054,6 +11145,15 @@ pub mod testing {
         }
         fn on_tls_exporter_ready(&mut self, event: builder::TlsExporterReady) {
             self.tls_exporter_ready += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_tls_handshake_failed(&mut self, event: builder::TlsHandshakeFailed) {
+            self.tls_handshake_failed += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
