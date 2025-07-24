@@ -96,6 +96,7 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
+    needs: env
     strategy:
       fail-fast: false
     steps:
@@ -126,12 +127,20 @@ jobs:
         run: cargo clippy --tests
 
       - name: Run clippy on all examples crates
-        working-directory: examples
-        run: cargo clippy --all-features --all-targets -- -D warnings
+        run: |
+          # Parse the JSON array and iterate through it:
+          # "["examples/turmoil-provider","examples/post-quantum","examples/echo",...,"examples/s2n-mtls"]"
+          EXAMPLES=$(echo '${{ needs.env.outputs.examples }}' | jq -r '.[]')
+          for example in $EXAMPLES; do
+            echo "Running clippy on $example"
+            cd "$example"
+            cargo clippy --all-features --all-targets -- -D warnings
+            cd $GITHUB_WORKSPACE
+          done
 
       - name: Run clippy on tools/xdp crate
         working-directory: tools/xdp
-        run: cargo +stable clippy
+        run: cargo +stable clippy -- -D warnings
 
   udeps:
     runs-on: ubuntu-latest
