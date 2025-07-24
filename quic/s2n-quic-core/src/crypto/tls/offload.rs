@@ -124,7 +124,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                         }
                         Poll::Ready(res)
                     } else {
-                        // For whatever reason the QUIC thread decided to drop this channel. In this case
+                        // For whatever reason the QUIC side decided to drop this channel. In this case
                         // we complete the future without erroring.
                         Poll::Ready(Poll::Ready(Ok(())))
                     }
@@ -220,7 +220,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                     }
                 }
                 Err(_) => {
-                    // For whatever reason the TLS thread was cancelled. We cannot continue the handshake.
+                    // For whatever reason the TLS task was cancelled. We cannot continue the handshake.
                     return Poll::Ready(Err(transport::Error::from(tls::Error::HANDSHAKE_FAILURE)));
                 }
             }
@@ -251,7 +251,7 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                     let _ = slice.push(Response::TlsWakeup);
                 }
                 Err(_) => {
-                    // For whatever reason the TLS thread was cancelled. We cannot continue the handshake.
+                    // For whatever reason the TLS task was cancelled. We cannot continue the handshake.
                     return Poll::Ready(Err(transport::Error::from(tls::Error::HANDSHAKE_FAILURE)));
                 }
             }
