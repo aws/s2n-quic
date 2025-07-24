@@ -65,12 +65,19 @@ fn failed_tls_handshake() {
     let model = Model::default();
     test(model, |handle| {
         let server_endpoint = default::Server::builder()
-            .with_certificate(certificates::CERT_PEM, certificates::KEY_PEM)
+            .with_certificate(
+                certificates::UNTRUSTED_CERT_PEM,
+                certificates::UNTRUSTED_KEY_PEM,
+            )
             .unwrap()
             .build()
             .unwrap();
-        // Client has no ability to trust server, which will lead to a cert untrusted error
-        let client_endpoint = default::Client::builder().build().unwrap();
+
+        let client_endpoint = default::Client::builder()
+            .with_certificate(certificates::CERT_PEM)
+            .unwrap()
+            .build()
+            .unwrap();
 
         let server_endpoint = OffloadBuilder::new()
             .with_endpoint(server_endpoint)
