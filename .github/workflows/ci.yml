@@ -114,17 +114,11 @@ jobs:
 
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy on main crates
-        run: |
-          # deriving Eq may break API compatibility so we disable it
-          # See https://github.com/rust-lang/rust-clippy/issues/9063
-          #
-          # manual_clamp will panic when min > max
-          # See https://github.com/rust-lang/rust-clippy/pull/10101
-          cargo clippy --all-features --all-targets --workspace -- -D warnings
+        run: cargo clippy --all-features --all-targets --workspace -- -D warnings
 
       - name: Run clippy on dc/wireshark crate
         working-directory: dc/wireshark
-        run: cargo clippy --tests
+        run: cargo clippy --tests -- -D warnings
 
       - name: Run clippy on all examples crates
         run: |
