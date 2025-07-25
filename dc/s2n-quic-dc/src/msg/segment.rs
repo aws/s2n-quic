@@ -46,8 +46,7 @@ const MAX_TOTAL_IPV4: u16 = if cfg!(target_os = "linux") {
 
 /// The maximum payload allowed in sendmsg calls using IPv6+UDP
 const MAX_TOTAL_IPV6: u16 = if cfg!(target_os = "linux") {
-    // IPv6 doesn't include the IP header size in the calculation
-    u16::MAX - UDP_HEADER_LEN
+    u16::MAX - IPV6_HEADER_LEN - UDP_HEADER_LEN
 } else {
     9001 - IPV6_HEADER_LEN - UDP_HEADER_LEN
 };
