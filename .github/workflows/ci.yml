@@ -96,14 +96,9 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
+    needs: env
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - toolchain: stable
-            # fail on stable warnings
-            args: "-D warnings"
-          - toolchain: beta
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,15 +107,34 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --component clippy
-          rustup override set ${{ matrix.toolchain }}
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
 
       # TODO translate json reports to in-action warnings
-      - name: Run cargo clippy
+      - name: Run cargo clippy on main crates
+        run: cargo clippy --all-features --all-targets --workspace -- -D warnings
+
+      - name: Run clippy on dc/wireshark crate
+        working-directory: dc/wireshark
+        run: cargo clippy --tests -- -D warnings
+
+      - name: Run clippy on all examples crates
         run: |
-          cargo clippy --all-features --all-targets --workspace -- ${{ matrix.args }}
+          # Parse the JSON array and iterate through it:
+          # "["examples/turmoil-provider","examples/post-quantum","examples/echo",...,"examples/s2n-mtls"]"
+          EXAMPLES=$(echo '${{ needs.env.outputs.examples }}' | jq -r '.[]')
+          for example in $EXAMPLES; do
+            echo "Running clippy on $example"
+            cd "$example"
+            cargo clippy --all-features --all-targets -- -D warnings
+            cd $GITHUB_WORKSPACE
+          done
+
+      - name: Run clippy on tools/xdp crate
+        working-directory: tools/xdp
+        run: cargo +stable clippy -- -D warnings
 
   udeps:
     runs-on: ubuntu-latest
@@ -522,10 +536,6 @@ jobs:
         working-directory: ${{ matrix.example }}
         run: cargo +nightly fmt --all -- --check
 
-      - name: lint
-        working-directory: ${{ matrix.example }}
-        run: cargo clippy --all-features --all-targets -- -D warnings
-
       # not all examples will build with the --manifest-path argument, since the
       # manifest-path argument will pull configuration from the current directory
       # instead of the directory with the Cargo.toml file
@@ -884,7 +894,7 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup toolchain install stable --profile minimal --component rustfmt
           rustup override set stable
 
       - uses: camshaft/install@v1
@@ -892,10 +902,6 @@ jobs:
           crate: bpf-linker
 
       - uses: camshaft/rust-cache@v1
-
-      - name: Run clippy
-        working-directory: tools/xdp
-        run: cargo +stable clippy
 
       - name: Build ebpf
         working-directory: tools/xdp
@@ -917,7 +923,7 @@ jobs:
       - name: Install rust toolchain
         working-directory: dc/wireshark
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup toolchain install stable --profile minimal --component rustfmt
           rustup override set stable
 
       - uses: camshaft/install@v1
@@ -934,10 +940,6 @@ jobs:
       - name: Run cargo fmt
         working-directory: dc/wireshark
         run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        working-directory: dc/wireshark
-        run: cargo clippy --tests
 
       - name: Run tests
         working-directory: dc/wireshark

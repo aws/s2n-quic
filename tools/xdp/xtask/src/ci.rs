@@ -65,7 +65,7 @@ fn cap_net_raw_tests() -> Result<(), anyhow::Error> {
             || !path
                 .file_name()
                 .and_then(|name| name.to_str())
-                .map_or(false, |name| name.starts_with("s2n_quic_xdp"))
+                .is_some_and(|name| name.starts_with("s2n_quic_xdp"))
         {
             continue;
         }

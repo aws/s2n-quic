@@ -33,6 +33,6 @@ fn env<N: AsRef<str>>(name: N) -> String {
 
 fn option_env<N: AsRef<str>>(name: N) -> Option<String> {
     let name = name.as_ref();
-    println!("cargo:rerun-if-env-changed={}", name);
+    println!("cargo:rerun-if-env-changed={name}");
     std::env::var(name).ok()
 }
