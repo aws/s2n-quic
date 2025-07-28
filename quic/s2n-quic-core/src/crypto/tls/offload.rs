@@ -16,19 +16,33 @@ use std::sync::Mutex;
 pub trait Executor {
     fn spawn(&self, task: impl Future<Output = ()> + Send + 'static);
 }
-
-pub struct OffloadEndpoint<E: tls::Endpoint, X: Executor> {
-    inner: E,
-    executor: X,
+pub trait ExporterHandler {
+    fn on_tls_handshake_failed(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
+    fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
 }
 
-impl<E: tls::Endpoint, X: Executor> OffloadEndpoint<E, X> {
-    pub fn new(inner: E, executor: X) -> Self {
-        Self { inner, executor }
+pub struct OffloadEndpoint<E: tls::Endpoint, X: Executor, H: ExporterHandler> {
+    inner: E,
+    executor: X,
+    exporter: Arc<H>,
+}
+
+impl<E: tls::Endpoint, X: Executor, H: ExporterHandler> OffloadEndpoint<E, X, H> {
+    pub fn new(inner: E, executor: X, exporter: Arc<H>) -> Self {
+        Self {
+            inner,
+            executor,
+            exporter,
+        }
     }
 }
 
-impl<E: tls::Endpoint, X: Executor + Send + 'static> tls::Endpoint for OffloadEndpoint<E, X> {
+impl<
+        E: tls::Endpoint,
+        X: Executor + Send + 'static,
+        H: ExporterHandler + Send + 'static + Sync,
+    > tls::Endpoint for OffloadEndpoint<E, X, H>
+{
     type Session = OffloadSession<<E as tls::Endpoint>::Session>;
 
     fn new_server_session<Params: s2n_codec::EncoderValue>(
@@ -38,6 +52,7 @@ impl<E: tls::Endpoint, X: Executor + Send + 'static> tls::Endpoint for OffloadEn
         OffloadSession::new(
             self.inner.new_server_session(transport_parameters),
             &self.executor,
+            self.exporter.clone(),
         )
     }
 
@@ -50,6 +65,7 @@ impl<E: tls::Endpoint, X: Executor + Send + 'static> tls::Endpoint for OffloadEn
             self.inner
                 .new_client_session(transport_parameters, server_name),
             &self.executor,
+            self.exporter.clone(),
         )
     }
 
@@ -66,7 +82,11 @@ pub struct OffloadSession<S: CryptoSuite> {
 }
 
 impl<S: tls::Session + 'static> OffloadSession<S> {
-    fn new(mut inner: S, executor: &impl Executor) -> Self {
+    fn new(
+        mut inner: S,
+        executor: &impl Executor,
+        exporter: Arc<impl ExporterHandler + Sync + Send + 'static>,
+    ) -> Self {
         // A channel of size 10 is somewhat arbitrary. I haven't seen this limit be exceeded, but we
         // could raise this in the future if necessary.
         let (mut send_to_quic, recv_from_tls): (Sender<Request<S>>, Receiver<Request<S>>) =
@@ -76,12 +96,15 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
         let clone = allowed_to_send.clone();
 
         let future = async move {
+            let mut first = true;
             let mut initial_data = VecDeque::default();
             let mut handshake_data = VecDeque::default();
             let mut application_data = VecDeque::default();
             loop {
-                if recv_from_quic.acquire().await.is_err() {
-                    break;
+                if !core::mem::take(&mut first) {
+                    if recv_from_quic.acquire().await.is_err() {
+                        break;
+                    }
                 }
                 let res = core::future::poll_fn(|ctx| {
                     if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(ctx) {
@@ -93,6 +116,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                             handshake_data: &mut handshake_data,
                             application_data: &mut application_data,
                             allowed_to_send: *allowed_to_send,
+                            exporter_handler: exporter.clone(),
                         };
 
                         let mut recv_slice = recv_from_quic.slice();
@@ -105,7 +129,6 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                                 Response::Application(data) => {
                                     context.application_data.push_back(data)
                                 }
-                                Response::TlsWakeup => (),
                             }
                         }
                         let res = inner.poll(&mut context);
@@ -113,7 +136,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                         // Notify the QUIC side accordingly.
                         if let Poll::Ready(res) = res {
                             match res {
-                                Ok(()) => {
+                                Ok(_) => {
                                     let _ = context.send_to_quic.push(Request::TlsDone);
                                 }
 
@@ -122,7 +145,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                                 }
                             }
                         }
-                        Poll::Ready(res)
+                        return Poll::Ready(res);
                     } else {
                         // For whatever reason the QUIC side decided to drop this channel. In this case
                         // we complete the future without erroring.
@@ -228,27 +251,18 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
 
         if let Poll::Ready(res) = self.send_to_tls.poll_slice(&mut ctx) {
             match res {
-                // Send any TLS data that we have through the async TLS channel. Note that we schedule a wakeup
-                // for the quic endpoint if we have data to give to TLS. This is because when TLS reads
-                // a message, usually its next task is to send a message in response. So we wakeup the quic endpoint
-                // so it is ready to send that response as quickly as possible.
                 Ok(mut slice) => {
                     if let Some(resp) = context.receive_initial(None) {
-                        context.waker().wake_by_ref();
                         let _ = slice.push(Response::Initial(resp));
                     }
 
                     if let Some(resp) = context.receive_handshake(None) {
-                        context.waker().wake_by_ref();
                         let _ = slice.push(Response::Handshake(resp));
                     }
 
                     if let Some(resp) = context.receive_application(None) {
-                        context.waker().wake_by_ref();
                         let _ = slice.push(Response::Application(resp));
                     }
-
-                    let _ = slice.push(Response::TlsWakeup);
                 }
                 Err(_) => {
                     // For whatever reason the TLS task was cancelled. We cannot continue the handshake.
@@ -285,16 +299,17 @@ struct AllowedToSend {
 }
 
 #[derive(Debug)]
-struct RemoteContext<'a, Request> {
+struct RemoteContext<'a, Request, H> {
     send_to_quic: SendSlice<'a, Request>,
     initial_data: &'a mut VecDeque<bytes::Bytes>,
     handshake_data: &'a mut VecDeque<bytes::Bytes>,
     application_data: &'a mut VecDeque<bytes::Bytes>,
     waker: core::task::Waker,
     allowed_to_send: AllowedToSend,
+    exporter_handler: Arc<H>,
 }
 
-impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
+impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'a, Request<S>, H> {
     fn on_client_application_params(
         &mut self,
         client_params: tls::ApplicationParameters,
@@ -316,7 +331,6 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
         let _ = self
             .send_to_quic
             .push(Request::HandshakeKeys(key, header_key));
-
         Ok(())
     }
 
@@ -346,7 +360,6 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
             header_key,
             application_parameters.transport_parameters.to_vec(),
         ));
-
         Ok(())
     }
 
@@ -355,7 +368,6 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
         server_name: crate::application::ServerName,
     ) -> Result<(), crate::transport::Error> {
         let _ = self.send_to_quic.push(Request::ServerName(server_name));
-
         Ok(())
     }
 
@@ -387,15 +399,17 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
         Ok(())
     }
 
-    fn on_tls_context(&mut self, context: Box<dyn Any + Send>) {
-        let _ = self.send_to_quic.push(Request::TlsContext(context));
+    fn on_tls_context(&mut self, _context: Box<dyn Any + Send>) {
+        unimplemented!("TLS Context is not supported in Offload implementation");
     }
 
     fn on_tls_exporter_ready(
         &mut self,
-        _session: &impl TlsSession,
+        session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        // TODO
+        if let Some(context) = self.exporter_handler.on_tls_exporter_ready(session) {
+            let _ = self.send_to_quic.push(Request::TlsContext(context));
+        }
 
         Ok(())
     }
@@ -475,9 +489,11 @@ impl<'a, S: CryptoSuite> tls::Context<S> for RemoteContext<'a, Request<S>> {
 
     fn on_tls_handshake_failed(
         &mut self,
-        _session: &impl tls::TlsSession,
+        session: &impl tls::TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        // Not sure what we can do here
+        if let Some(context) = self.exporter_handler.on_tls_handshake_failed(session) {
+            let _ = self.send_to_quic.push(Request::TlsContext(context));
+        }
         Ok(())
     }
 }
@@ -514,7 +530,6 @@ enum Response {
     Initial(bytes::Bytes),
     Handshake(bytes::Bytes),
     Application(bytes::Bytes),
-    TlsWakeup,
 }
 
 impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
@@ -544,7 +559,6 @@ impl alloc::fmt::Debug for Response {
             Response::Initial(_) => write!(f, "ResponseInitial"),
             Response::Handshake(_) => write!(f, "ResponseHandshake"),
             Response::Application(_) => write!(f, "ResponseApplication"),
-            Response::TlsWakeup => write!(f, "TlsWakeup"),
         }
     }
 }

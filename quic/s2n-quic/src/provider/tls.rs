@@ -313,54 +313,66 @@ pub mod s2n_tls {
 #[cfg(feature = "unstable-offload-tls")]
 pub mod offload {
     use super::Provider;
-    pub use s2n_quic_core::crypto::tls::offload::Executor;
     use s2n_quic_core::crypto::tls::offload::OffloadEndpoint;
+    pub use s2n_quic_core::crypto::tls::offload::{Executor, ExporterHandler};
+    use std::sync::Arc;
 
-    pub struct Offload<E, X> {
+    pub struct Offload<E, X, H> {
         endpoint: E,
         executor: X,
+        exporter: Arc<H>,
     }
-    pub struct OffloadBuilder<E, X> {
+    pub struct OffloadBuilder<E, X, H> {
         endpoint: Option<E>,
         executor: Option<X>,
+        exporter: Option<Arc<H>>,
     }
-    impl<E, X> Default for OffloadBuilder<E, X> {
+    impl<E, X, H> Default for OffloadBuilder<E, X, H> {
         fn default() -> Self {
             Self::new()
         }
     }
-    impl<E, X> OffloadBuilder<E, X> {
+    impl<E, X, H> OffloadBuilder<E, X, H> {
         pub fn new() -> Self {
             OffloadBuilder {
                 endpoint: None,
                 executor: None,
+                exporter: None,
             }
         }
-        pub fn with_endpoint(mut self, endpoint: E) -> OffloadBuilder<E, X> {
+        pub fn with_endpoint(mut self, endpoint: E) -> OffloadBuilder<E, X, H> {
             self.endpoint = Some(endpoint);
             self
         }
-        pub fn with_executor(mut self, executor: X) -> OffloadBuilder<E, X> {
+        pub fn with_executor(mut self, executor: X) -> OffloadBuilder<E, X, H> {
             self.executor = Some(executor);
             self
         }
-        pub fn build(self) -> Offload<E, X> {
+        pub fn with_exporter(mut self, exporter: H) -> OffloadBuilder<E, X, H> {
+            self.exporter = Some(Arc::new(exporter));
+            self
+        }
+        pub fn build(self) -> Offload<E, X, H> {
             Offload {
                 endpoint: self.endpoint.expect("Please provide an endpoint"),
                 executor: self.executor.expect("Please provide an executor"),
+                exporter: self.exporter.expect("Please provide an exporter"),
             }
         }
     }
 
-    impl<E: Provider, X: Executor + Send + 'static> Provider for Offload<E, X> {
-        type Server = OffloadEndpoint<<E as Provider>::Server, X>;
-        type Client = OffloadEndpoint<<E as Provider>::Client, X>;
+    impl<E: Provider, X: Executor + Send + 'static, H: ExporterHandler + Send + 'static + Sync>
+        Provider for Offload<E, X, H>
+    {
+        type Server = OffloadEndpoint<<E as Provider>::Server, X, H>;
+        type Client = OffloadEndpoint<<E as Provider>::Client, X, H>;
         type Error = E::Error;
 
         fn start_server(self) -> Result<Self::Server, Self::Error> {
             Ok(OffloadEndpoint::new(
                 E::start_server(self.endpoint)?,
                 self.executor,
+                self.exporter,
             ))
         }
 
@@ -368,6 +380,7 @@ pub mod offload {
             Ok(OffloadEndpoint::new(
                 E::start_client(self.endpoint)?,
                 self.executor,
+                self.exporter,
             ))
         }
     }
