@@ -315,6 +315,7 @@ pub mod offload {
     use super::Provider;
     use s2n_quic_core::crypto::tls::offload::OffloadEndpoint;
     pub use s2n_quic_core::crypto::tls::offload::{Executor, ExporterHandler};
+    pub use s2n_quic_core::crypto::tls::TlsSession;
     use std::sync::Arc;
 
     pub struct Offload<E, X, H> {

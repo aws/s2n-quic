@@ -5,7 +5,7 @@ use s2n_quic::{
     Server,
     provider::tls::{
         default,
-        offload::{Executor, OffloadBuilder},
+        offload::{Executor, ExporterHandler, OffloadBuilder, TlsSession},
     },
 };
 use std::error::Error;
@@ -27,6 +27,22 @@ impl Executor for TokioExecutor {
         tokio::spawn(task);
     }
 }
+struct Exporter;
+impl ExporterHandler for Exporter {
+    fn on_tls_handshake_failed(
+        &self,
+        _session: &impl TlsSession,
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        None
+    }
+
+    fn on_tls_exporter_ready(
+        &self,
+        _session: &impl TlsSession,
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        None
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -37,6 +53,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tls_endpoint = OffloadBuilder::new()
         .with_endpoint(tls)
         .with_executor(TokioExecutor)
+        .with_exporter(Exporter)
         .build();
 
     let mut server = Server::builder()
