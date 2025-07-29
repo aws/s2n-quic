@@ -121,7 +121,7 @@ jobs:
           for workspace in $WORKSPACES; do
             echo "Running clippy on $workspace"
             cd "$workspace"
-            cargo clippy --all-features --all-targets --workspace -- -D warnings --no-deps
+            cargo clippy --all-features --all-targets --workspace -- -D warnings
             cd $GITHUB_WORKSPACE
           done
 
