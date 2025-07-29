@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 aws-lc-rs = "1.12"
-criterion = { version = "0.6", features = ["html_reports", "async_tokio"] }
+criterion = { version = "0.7", features = ["html_reports", "async_tokio"] }
 s2n-codec = { path = "../../common/s2n-codec" }
 s2n-quic-dc = { path = "../s2n-quic-dc", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
