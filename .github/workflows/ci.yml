@@ -77,7 +77,7 @@ jobs:
           export CRATES=$(find quic common -name *Cargo.toml | jq -R | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml","dc/s2n-quic-dc/Cargo.toml"]' | jq -c)
           echo "crates=$CRATES"
           echo "crates=$CRATES" >> $GITHUB_OUTPUT
-          export WORKSPACES=$(find . -maxdepth 4 -name Cargo.toml -not -path './tools/xdp/ebpf/*' -exec grep -l '^\[workspace\]'  {} \; | xargs -n1 dirname | jq -R | jq -sc)
+          export WORKSPACES=$(find . -maxdepth 4 -name Cargo.toml -not -path './tools/xdp/ebpf/*' -exec grep -l '^\[workspace\]'  {} \; | xargs -n1 dirname | sort | jq -R | jq -sc)
           echo "workspaces=$WORKSPACES"
           echo "workspaces=$WORKSPACES" >> $GITHUB_OUTPUT
 
