@@ -96,30 +96,25 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
         let clone = allowed_to_send.clone();
 
         let future = async move {
-            let mut first = true;
             let mut initial_data = VecDeque::default();
             let mut handshake_data = VecDeque::default();
             let mut application_data = VecDeque::default();
-            loop {
-                if !core::mem::take(&mut first) && recv_from_quic.acquire().await.is_err() {
-                    break;
-                }
 
-                let res = core::future::poll_fn(|ctx| {
-                    if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(ctx) {
-                        let allowed_to_send = allowed_to_send.lock().unwrap();
+            let _ = core::future::poll_fn(|ctx| {
+                if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(ctx) {
+                    let allowed_to_send = allowed_to_send.lock().unwrap();
 
-                        let mut context = RemoteContext {
-                            send_to_quic: send_slice,
-                            waker: ctx.waker().clone(),
-                            initial_data: &mut initial_data,
-                            handshake_data: &mut handshake_data,
-                            application_data: &mut application_data,
-                            exporter_handler: exporter.clone(),
-                            allowed_to_send: *allowed_to_send,
-                        };
+                    let mut context = RemoteContext {
+                        send_to_quic: send_slice,
+                        waker: ctx.waker().clone(),
+                        initial_data: &mut initial_data,
+                        handshake_data: &mut handshake_data,
+                        application_data: &mut application_data,
+                        exporter_handler: exporter.clone(),
+                        allowed_to_send: *allowed_to_send,
+                    };
 
-                        let mut recv_slice = recv_from_quic.slice();
+                    while let Poll::Ready(Ok(mut recv_slice)) = recv_from_quic.poll_slice(ctx) {
                         while let Some(response) = recv_slice.pop() {
                             match response {
                                 Response::Initial(data) => {
@@ -134,36 +129,30 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                                 Response::SendStatusChanged => (),
                             }
                         }
-                        let res = inner.poll(&mut context);
-                        // Either there was an error or the handshake has finished if TLS returned Poll::Ready.
-                        // Notify the QUIC side accordingly.
-                        if let Poll::Ready(res) = res {
-                            match res {
-                                Ok(_) => {
-                                    let _ = context.send_to_quic.push(Request::TlsDone);
-                                }
+                    }
 
-                                Err(e) => {
-                                    let _ = context.send_to_quic.push(Request::TlsError(e));
-                                }
+                    let res = inner.poll(&mut context);
+                    // Either there was an error or the handshake has finished if TLS returned Poll::Ready.
+                    // Notify the QUIC side accordingly.
+                    if let Poll::Ready(res) = res {
+                        match res {
+                            Ok(_) => {
+                                let _ = context.send_to_quic.push(Request::TlsDone);
+                            }
+
+                            Err(e) => {
+                                let _ = context.send_to_quic.push(Request::TlsError(e));
                             }
                         }
-                        Poll::Ready(res)
-                    } else {
-                        // For whatever reason the QUIC side decided to drop this channel. In this case
-                        // we complete the future without erroring.
-                        Poll::Ready(Poll::Ready(Ok(())))
                     }
-                })
-                .await;
-
-                match res {
-                    Poll::Ready(_) => {
-                        return;
-                    }
-                    Poll::Pending => (),
+                    res
+                } else {
+                    // For whatever reason the QUIC side decided to drop this channel. In this case
+                    // we complete the future without erroring.
+                    Poll::Ready(Ok(()))
                 }
-            }
+            })
+            .await;
         };
         executor.spawn(future);
 
