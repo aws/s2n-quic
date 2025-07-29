@@ -11,6 +11,7 @@ use crate::{
 };
 use alloc::{boxed::Box, collections::vec_deque::VecDeque, sync::Arc, vec::Vec};
 use core::{any::Any, future::Future, task::Poll};
+use std::sync::Mutex;
 
 pub trait Executor {
     fn spawn(&self, task: impl Future<Output = ()> + Send + 'static);
@@ -77,7 +78,7 @@ impl<
 pub struct OffloadSession<S: CryptoSuite> {
     recv_from_tls: Receiver<Request<S>>,
     send_to_tls: Sender<Response>,
-    allowed_to_send: AllowedToSend,
+    allowed_to_send: Arc<Mutex<AllowedToSend>>,
 }
 
 impl<S: tls::Session + 'static> OffloadSession<S> {
@@ -91,7 +92,8 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
         let (mut send_to_quic, recv_from_tls): (Sender<Request<S>>, Receiver<Request<S>>) =
             channel(10);
         let (send_to_tls, mut recv_from_quic): (Sender<Response>, Receiver<Response>) = channel(10);
-        let allowed_to_send = AllowedToSend::default();
+        let allowed_to_send = Arc::new(Mutex::new(AllowedToSend::default()));
+        let clone = allowed_to_send.clone();
 
         let future = async move {
             let mut first = true;
@@ -105,6 +107,8 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
 
                 let res = core::future::poll_fn(|ctx| {
                     if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(ctx) {
+                        let allowed_to_send = allowed_to_send.lock().unwrap();
+
                         let mut context = RemoteContext {
                             send_to_quic: send_slice,
                             waker: ctx.waker().clone(),
@@ -112,7 +116,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                             handshake_data: &mut handshake_data,
                             application_data: &mut application_data,
                             exporter_handler: exporter.clone(),
-                            allowed_to_send,
+                            allowed_to_send: *allowed_to_send,
                         };
 
                         let mut recv_slice = recv_from_quic.slice();
@@ -127,15 +131,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                                 Response::Application(data) => {
                                     context.application_data.push_back(data)
                                 }
-                                Response::CanSendInitial(bool) => {
-                                    context.allowed_to_send.can_send_initial = bool
-                                }
-                                Response::CanSendHandshake(bool) => {
-                                    context.allowed_to_send.can_send_handshake = bool
-                                }
-                                Response::CanSendApplication(bool) => {
-                                    context.allowed_to_send.can_send_application = bool
-                                }
+                                Response::SendStatusChanged => (),
                             }
                         }
                         let res = inner.poll(&mut context);
@@ -174,7 +170,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
         Self {
             recv_from_tls,
             send_to_tls,
-            allowed_to_send,
+            allowed_to_send: clone,
         }
     }
 }
@@ -256,6 +252,20 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
             }
         }
 
+        let mut allowed_to_send = self.allowed_to_send.lock().unwrap();
+        let mut state_change = false;
+        if allowed_to_send.can_send_initial != context.can_send_initial()
+            || allowed_to_send.can_send_handshake != context.can_send_handshake()
+            || allowed_to_send.can_send_application != context.can_send_application()
+        {
+            *allowed_to_send = AllowedToSend {
+                can_send_initial: context.can_send_initial(),
+                can_send_handshake: context.can_send_handshake(),
+                can_send_application: context.can_send_application(),
+            };
+            state_change = true;
+        }
+
         if let Poll::Ready(res) = self.send_to_tls.poll_slice(&mut ctx) {
             match res {
                 Ok(mut slice) => {
@@ -271,18 +281,8 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                         let _ = slice.push(Response::Application(resp));
                     }
 
-                    // Update the TLS side if something changes and we are now allowed to send data.
-                    // This will make the TLS task poll again and move the handshake forward.
-                    if self.allowed_to_send.can_send_initial != context.can_send_initial() {
-                        let _ = slice.push(Response::CanSendInitial(context.can_send_initial()));
-                    }
-                    if self.allowed_to_send.can_send_handshake != context.can_send_handshake() {
-                        let _ =
-                            slice.push(Response::CanSendHandshake(context.can_send_handshake()));
-                    }
-                    if self.allowed_to_send.can_send_application != context.can_send_application() {
-                        let _ = slice
-                            .push(Response::CanSendApplication(context.can_send_application()));
+                    if state_change {
+                        let _ = slice.push(Response::SendStatusChanged);
                     }
                 }
                 Err(_) => {
@@ -546,9 +546,7 @@ enum Response {
     Initial(bytes::Bytes),
     Handshake(bytes::Bytes),
     Application(bytes::Bytes),
-    CanSendInitial(bool),
-    CanSendHandshake(bool),
-    CanSendApplication(bool),
+    SendStatusChanged,
 }
 
 impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
@@ -578,9 +576,7 @@ impl alloc::fmt::Debug for Response {
             Response::Initial(_) => write!(f, "ResponseInitial"),
             Response::Handshake(_) => write!(f, "ResponseHandshake"),
             Response::Application(_) => write!(f, "ResponseApplication"),
-            Response::CanSendInitial(_) => write!(f, "CanSendInitial"),
-            Response::CanSendHandshake(_) => write!(f, "CanSendHandshake"),
-            Response::CanSendApplication(_) => write!(f, "CanSendApplication"),
+            Response::SendStatusChanged => write!(f, "SendStatusChanged"),
         }
     }
 }
