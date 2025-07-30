@@ -42,6 +42,7 @@ jobs:
       msrv: ${{ steps.definitions.outputs.msrv }}
       examples: ${{ steps.definitions.outputs.examples }}
       crates: ${{ steps.definitions.outputs.crates }}
+      workspaces:  ${{ steps.definitions.outputs.workspaces }}
     steps:
       - uses: actions/checkout@v4
       # examples is populated by
@@ -76,6 +77,9 @@ jobs:
           export CRATES=$(find quic common -name *Cargo.toml | jq -R | jq -s | jq '. += ["tools/xdp/s2n-quic-xdp/Cargo.toml","dc/s2n-quic-dc/Cargo.toml"]' | jq -c)
           echo "crates=$CRATES"
           echo "crates=$CRATES" >> $GITHUB_OUTPUT
+          export WORKSPACES=$(find . -maxdepth 4 -name Cargo.toml -not -path './tools/xdp/ebpf/*' -exec grep -l '^\[workspace\]'  {} \; | xargs -n1 dirname | sort | jq -R | jq -sc)
+          echo "workspaces=$WORKSPACES"
+          echo "workspaces=$WORKSPACES" >> $GITHUB_OUTPUT
 
   rustfmt:
     runs-on: ubuntu-latest
@@ -96,14 +100,7 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - toolchain: stable
-            # fail on stable warnings
-            args: "-D warnings"
-          - toolchain: beta
+    needs: env
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,15 +109,21 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --component clippy
-          rustup override set ${{ matrix.toolchain }}
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup override set stable
 
       - uses: camshaft/rust-cache@v1
 
       # TODO translate json reports to in-action warnings
-      - name: Run cargo clippy
+      - name: Run cargo clippy on all workspaces
         run: |
-          cargo clippy --all-features --all-targets --workspace -- ${{ matrix.args }}
+          WORKSPACES=$(echo '${{ needs.env.outputs.workspaces }}' | jq -r '.[]')
+          for workspace in $WORKSPACES; do
+            echo "Running clippy on $workspace"
+            cd "$workspace"
+            cargo clippy --all-features --all-targets --workspace -- -D warnings
+            cd $GITHUB_WORKSPACE
+          done
 
   udeps:
     runs-on: ubuntu-latest
@@ -522,10 +525,6 @@ jobs:
         working-directory: ${{ matrix.example }}
         run: cargo +nightly fmt --all -- --check
 
-      - name: lint
-        working-directory: ${{ matrix.example }}
-        run: cargo clippy --all-features --all-targets -- -D warnings
-
       # not all examples will build with the --manifest-path argument, since the
       # manifest-path argument will pull configuration from the current directory
       # instead of the directory with the Cargo.toml file
@@ -884,7 +883,7 @@ jobs:
       - name: Install rust toolchain
         id: toolchain
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup toolchain install stable --profile minimal --component rustfmt
           rustup override set stable
 
       - uses: camshaft/install@v1
@@ -892,10 +891,6 @@ jobs:
           crate: bpf-linker
 
       - uses: camshaft/rust-cache@v1
-
-      - name: Run clippy
-        working-directory: tools/xdp
-        run: cargo +stable clippy
 
       - name: Build ebpf
         working-directory: tools/xdp
@@ -917,7 +912,7 @@ jobs:
       - name: Install rust toolchain
         working-directory: dc/wireshark
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup toolchain install stable --profile minimal --component rustfmt
           rustup override set stable
 
       - uses: camshaft/install@v1
@@ -934,10 +929,6 @@ jobs:
       - name: Run cargo fmt
         working-directory: dc/wireshark
         run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        working-directory: dc/wireshark
-        run: cargo clippy --tests
 
       - name: Run tests
         working-directory: dc/wireshark

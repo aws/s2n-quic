@@ -44,7 +44,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     if opt.trace {
         if let Err(e) = EbpfLogger::init(&mut bpf) {
-            warn!("failed to initialize eBPF logger: {}", e);
+            warn!("failed to initialize eBPF logger: {e}");
         }
     }
 

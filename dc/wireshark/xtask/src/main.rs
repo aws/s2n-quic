@@ -264,7 +264,7 @@ impl WiresharkVersion {
         let tshark = tshark(sh).unwrap();
         let output = cmd!(sh, "{tshark} --version").read().unwrap();
         let version = output.lines().next().unwrap();
-        let version = version.trim_start_matches(|v: char| !v.is_digit(10));
+        let version = version.trim_start_matches(|v: char| !v.is_ascii_digit());
         let (version, _) = version
             .split_once(char::is_whitespace)
             .unwrap_or((version, ""));
