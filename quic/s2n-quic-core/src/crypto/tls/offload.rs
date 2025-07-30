@@ -109,65 +109,72 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
             let mut application_data = VecDeque::default();
 
             core::future::poll_fn(|ctx| {
-                if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(ctx) {
-                    let allowed_to_send = *allowed_to_send.lock().unwrap();
+                match send_to_quic.poll_slice(ctx) {
+                    Poll::Ready(res) => match res {
+                        Ok(send_slice) => {
+                            let allowed_to_send = *allowed_to_send.lock().unwrap();
 
-                    let mut context = RemoteContext {
-                        send_to_quic: send_slice,
-                        waker: ctx.waker().clone(),
-                        initial_data: &mut initial_data,
-                        handshake_data: &mut handshake_data,
-                        application_data: &mut application_data,
-                        exporter_handler: exporter.clone(),
-                        allowed_to_send,
-                    };
+                            let mut context = RemoteContext {
+                                send_to_quic: send_slice,
+                                waker: ctx.waker().clone(),
+                                initial_data: &mut initial_data,
+                                handshake_data: &mut handshake_data,
+                                application_data: &mut application_data,
+                                exporter_handler: exporter.clone(),
+                                allowed_to_send,
+                            };
 
-                    while let Poll::Ready(res) = recv_from_quic.poll_slice(ctx) {
-                        match res {
-                            Ok(mut recv_slice) => {
-                                while let Some(response) = recv_slice.pop() {
-                                    match response {
-                                        Response::Initial(data) => {
-                                            context.initial_data.push_back(data);
+                            match recv_from_quic.poll_slice(ctx) {
+                                Poll::Ready(res) => match res {
+                                    Ok(mut recv_slice) => {
+                                        while let Some(response) = recv_slice.pop() {
+                                            match response {
+                                                Response::Initial(data) => {
+                                                    context.initial_data.push_back(data);
+                                                }
+                                                Response::Handshake(data) => {
+                                                    context.handshake_data.push_back(data);
+                                                }
+                                                Response::Application(data) => {
+                                                    context.application_data.push_back(data)
+                                                }
+                                                Response::SendStatusChanged => (),
+                                            }
                                         }
-                                        Response::Handshake(data) => {
-                                            context.handshake_data.push_back(data);
-                                        }
-                                        Response::Application(data) => {
-                                            context.application_data.push_back(data)
-                                        }
-                                        Response::SendStatusChanged => (),
+                                    }
+                                    Err(_) => {
+                                        // For whatever reason the QUIC side decided to drop this channel. In this case
+                                        // we complete the future.
+                                        return Poll::Ready(());
+                                    }
+                                },
+                                Poll::Pending => return Poll::Pending,
+                            }
+
+                            let res = inner.poll(&mut context);
+                            // Either there was an error or the handshake has finished if TLS returned Poll::Ready.
+                            // Notify the QUIC side accordingly.
+                            if let Poll::Ready(res) = res {
+                                match res {
+                                    Ok(_) => {
+                                        let _ = context.send_to_quic.push(Request::TlsDone);
+                                    }
+
+                                    Err(e) => {
+                                        let _ = context.send_to_quic.push(Request::TlsError(e));
                                     }
                                 }
                             }
-                            Err(_) => {
-                                // For whatever reason the QUIC side decided to drop this channel. In this case
-                                // we complete the future.
-                                return Poll::Ready(());
-                            }
+                            // We've already sent the Result to the QUIC side so we can just map it out here.
+                            res.map(|_| ())
                         }
-                    }
-
-                    let res = inner.poll(&mut context);
-                    // Either there was an error or the handshake has finished if TLS returned Poll::Ready.
-                    // Notify the QUIC side accordingly.
-                    if let Poll::Ready(res) = res {
-                        match res {
-                            Ok(_) => {
-                                let _ = context.send_to_quic.push(Request::TlsDone);
-                            }
-
-                            Err(e) => {
-                                let _ = context.send_to_quic.push(Request::TlsError(e));
-                            }
+                        Err(_) => {
+                            // For whatever reason the QUIC side decided to drop this channel. In this case
+                            // we complete the future.
+                            return Poll::Ready(());
                         }
-                    }
-                    // We've already sent the Result to the QUIC side so we can just map it out here.
-                    res.map(|_| ())
-                } else {
-                    // For whatever reason the QUIC side decided to drop this channel. In this case
-                    // we complete the future.
-                    Poll::Ready(())
+                    },
+                    Poll::Pending => return Poll::Pending,
                 }
             })
             .await;
@@ -191,8 +198,8 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
         let cloned_waker = &context.waker().clone();
         let mut ctx = core::task::Context::from_waker(cloned_waker);
 
-        if let Poll::Ready(res) = self.recv_from_tls.poll_slice(&mut ctx) {
-            match res {
+        match self.recv_from_tls.poll_slice(&mut ctx) {
+            Poll::Ready(res) => match res {
                 Ok(mut slice) => {
                     while let Some(request) = slice.pop() {
                         match request {
@@ -256,7 +263,8 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                     // For whatever reason the TLS task was cancelled. We cannot continue the handshake.
                     return Poll::Ready(Err(transport::Error::from(tls::Error::HANDSHAKE_FAILURE)));
                 }
-            }
+            },
+            Poll::Pending => (),
         }
 
         let mut allowed_to_send = self.allowed_to_send.lock().unwrap();
@@ -275,8 +283,8 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
         // Drop the lock ASAP
         drop(allowed_to_send);
 
-        if let Poll::Ready(res) = self.send_to_tls.poll_slice(&mut ctx) {
-            match res {
+        match self.send_to_tls.poll_slice(&mut ctx) {
+            Poll::Ready(res) => match res {
                 Ok(mut slice) => {
                     if let Some(resp) = context.receive_initial(None) {
                         let _ = slice.push(Response::Initial(resp));
@@ -298,7 +306,8 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                     // For whatever reason the TLS task was cancelled. We cannot continue the handshake.
                     return Poll::Ready(Err(transport::Error::from(tls::Error::HANDSHAKE_FAILURE)));
                 }
-            }
+            },
+            Poll::Pending => (),
         }
 
         Poll::Pending
@@ -324,6 +333,9 @@ struct AllowedToSend {
     can_send_application: bool,
 }
 
+const SLICE_ERROR: crate::transport::Error =
+    crate::transport::Error::INTERNAL_ERROR.with_reason("Slice is full");
+
 #[derive(Debug)]
 struct RemoteContext<'a, Request, H> {
     send_to_quic: SendSlice<'a, Request>,
@@ -341,12 +353,15 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         client_params: tls::ApplicationParameters,
         server_params: &mut alloc::vec::Vec<u8>,
     ) -> Result<(), crate::transport::Error> {
-        let _ = self.send_to_quic.push(Request::ClientParams(
+        match self.send_to_quic.push(Request::ClientParams(
             client_params.transport_parameters.to_vec(),
             server_params.to_vec(),
-        ));
-
-        Ok(())
+        )) {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                return Err(SLICE_ERROR);
+            }
+        }
     }
 
     fn on_handshake_keys(
@@ -354,10 +369,15 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         key: <S as CryptoSuite>::HandshakeKey,
         header_key: <S as CryptoSuite>::HandshakeHeaderKey,
     ) -> Result<(), crate::transport::Error> {
-        let _ = self
+        match self
             .send_to_quic
-            .push(Request::HandshakeKeys(key, header_key));
-        Ok(())
+            .push(Request::HandshakeKeys(key, header_key))
+        {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                return Err(SLICE_ERROR);
+            }
+        }
     }
 
     fn on_zero_rtt_keys(
@@ -366,13 +386,16 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         header_key: <S as CryptoSuite>::ZeroRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
     ) -> Result<(), crate::transport::Error> {
-        let _ = self.send_to_quic.push(Request::ZeroRtt(
+        match self.send_to_quic.push(Request::ZeroRtt(
             key,
             header_key,
             application_parameters.transport_parameters.to_vec(),
-        ));
-
-        Ok(())
+        )) {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                return Err(SLICE_ERROR);
+            }
+        }
     }
 
     fn on_one_rtt_keys(
@@ -381,46 +404,67 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         header_key: <S as CryptoSuite>::OneRttHeaderKey,
         application_parameters: tls::ApplicationParameters,
     ) -> Result<(), crate::transport::Error> {
-        let _ = self.send_to_quic.push(Request::OneRttKeys(
+        match self.send_to_quic.push(Request::OneRttKeys(
             key,
             header_key,
             application_parameters.transport_parameters.to_vec(),
-        ));
-        Ok(())
+        )) {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                return Err(SLICE_ERROR);
+            }
+        }
     }
 
     fn on_server_name(
         &mut self,
         server_name: crate::application::ServerName,
     ) -> Result<(), crate::transport::Error> {
-        let _ = self.send_to_quic.push(Request::ServerName(server_name));
-        Ok(())
+        match self.send_to_quic.push(Request::ServerName(server_name)) {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                return Err(SLICE_ERROR);
+            }
+        }
     }
 
     fn on_application_protocol(
         &mut self,
         application_protocol: bytes::Bytes,
     ) -> Result<(), crate::transport::Error> {
-        let _ = self
+        match self
             .send_to_quic
-            .push(Request::ApplicationProtocol(application_protocol));
-
-        Ok(())
+            .push(Request::ApplicationProtocol(application_protocol))
+        {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                return Err(SLICE_ERROR);
+            }
+        }
     }
 
     fn on_key_exchange_group(
         &mut self,
         named_group: tls::NamedGroup,
     ) -> Result<(), crate::transport::Error> {
-        let _ = self
+        match self
             .send_to_quic
-            .push(Request::KeyExchangeGroup(named_group));
-
-        Ok(())
+            .push(Request::KeyExchangeGroup(named_group))
+        {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                return Err(SLICE_ERROR);
+            }
+        }
     }
 
     fn on_handshake_complete(&mut self) -> Result<(), crate::transport::Error> {
-        let _ = self.send_to_quic.push(Request::HandshakeComplete);
+        match self.send_to_quic.push(Request::HandshakeComplete) {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                return Err(SLICE_ERROR);
+            }
+        }
 
         Ok(())
     }
@@ -434,7 +478,12 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
         if let Some(context) = self.exporter_handler.on_tls_exporter_ready(session) {
-            let _ = self.send_to_quic.push(Request::TlsContext(context));
+            match self.send_to_quic.push(Request::TlsContext(context)) {
+                Ok(_) => return Ok(()),
+                Err(_) => {
+                    return Err(SLICE_ERROR);
+                }
+            }
         }
 
         Ok(())
@@ -487,7 +536,12 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         session: &impl tls::TlsSession,
     ) -> Result<(), crate::transport::Error> {
         if let Some(context) = self.exporter_handler.on_tls_handshake_failed(session) {
-            let _ = self.send_to_quic.push(Request::TlsContext(context));
+            match self.send_to_quic.push(Request::TlsContext(context)) {
+                Ok(_) => return Ok(()),
+                Err(_) => {
+                    return Err(SLICE_ERROR);
+                }
+            }
         }
         Ok(())
     }
