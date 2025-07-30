@@ -313,59 +313,97 @@ pub mod s2n_tls {
 #[cfg(feature = "unstable-offload-tls")]
 pub mod offload {
     use super::Provider;
-    use s2n_quic_core::crypto::tls::offload::OffloadEndpoint;
+    use s2n_quic_core::crypto::tls::{offload::OffloadEndpoint, Endpoint};
     pub use s2n_quic_core::crypto::tls::{
         offload::{Executor, ExporterHandler},
         TlsSession,
     };
-    use std::sync::Arc;
 
     pub struct Offload<E, X, H> {
         endpoint: E,
         executor: X,
-        exporter: Arc<H>,
+        exporter: H,
+        channel_capacity: usize,
     }
-    pub struct OffloadBuilder<E, X, H> {
-        endpoint: Option<E>,
-        executor: Option<X>,
-        exporter: Option<Arc<H>>,
+
+    pub struct OffloadBuilder<E = (), X = (), H = ()> {
+        endpoint: E,
+        executor: X,
+        exporter: H,
+        channel_capacity: usize,
     }
-    impl<E, X, H> Default for OffloadBuilder<E, X, H> {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-    impl<E, X, H> OffloadBuilder<E, X, H> {
+
+    impl OffloadBuilder<(), (), ()> {
         pub fn new() -> Self {
-            OffloadBuilder {
-                endpoint: None,
-                executor: None,
-                exporter: None,
-            }
-        }
-        pub fn with_endpoint(mut self, endpoint: E) -> OffloadBuilder<E, X, H> {
-            self.endpoint = Some(endpoint);
-            self
-        }
-        pub fn with_executor(mut self, executor: X) -> OffloadBuilder<E, X, H> {
-            self.executor = Some(executor);
-            self
-        }
-        pub fn with_exporter(mut self, exporter: H) -> OffloadBuilder<E, X, H> {
-            self.exporter = Some(Arc::new(exporter));
-            self
-        }
-        pub fn build(self) -> Offload<E, X, H> {
-            Offload {
-                endpoint: self.endpoint.expect("Please provide an endpoint"),
-                executor: self.executor.expect("Please provide an executor"),
-                exporter: self.exporter.expect("Please provide an exporter"),
+            Self {
+                endpoint: (),
+                executor: (),
+                exporter: (),
+                channel_capacity: 10,
             }
         }
     }
 
-    impl<E: Provider, X: Executor + Send + 'static, H: ExporterHandler + Send + 'static + Sync>
-        Provider for Offload<E, X, H>
+    impl<X, H> OffloadBuilder<(), X, H> {
+        pub fn with_endpoint<E: Endpoint>(self, endpoint: E) -> OffloadBuilder<E, X, H> {
+            OffloadBuilder::<E, X, H> {
+                endpoint,
+                executor: self.executor,
+                exporter: self.exporter,
+                channel_capacity: self.channel_capacity,
+            }
+        }
+    }
+
+    impl<E, H> OffloadBuilder<E, (), H> {
+        pub fn with_executor<X: Executor>(self, executor: X) -> OffloadBuilder<E, X, H> {
+            OffloadBuilder::<E, X, H> {
+                endpoint: self.endpoint,
+                executor,
+                exporter: self.exporter,
+                channel_capacity: self.channel_capacity,
+            }
+        }
+    }
+
+    impl<E, X> OffloadBuilder<E, X, ()> {
+        pub fn with_exporter<H: ExporterHandler>(self, exporter: H) -> OffloadBuilder<E, X, H> {
+            OffloadBuilder::<E, X, H> {
+                endpoint: self.endpoint,
+                executor: self.executor,
+                exporter,
+                channel_capacity: self.channel_capacity,
+            }
+        }
+    }
+
+    impl<E, X, H> OffloadBuilder<E, X, H> {
+        pub fn with_channel_capacity(self, channel_capacity: usize) -> OffloadBuilder<E, X, H> {
+            OffloadBuilder::<E, X, H> {
+                endpoint: self.endpoint,
+                executor: self.executor,
+                exporter: self.exporter,
+                channel_capacity,
+            }
+        }
+    }
+
+    impl<E, X, H> OffloadBuilder<E, X, H> {
+        pub fn build(self) -> Offload<E, X, H> {
+            Offload {
+                endpoint: self.endpoint,
+                executor: self.executor,
+                exporter: self.exporter,
+                channel_capacity: self.channel_capacity,
+            }
+        }
+    }
+
+    impl<E, X, H> Provider for Offload<E, X, H>
+    where
+        E: Provider,
+        X: Executor + Send + 'static,
+        H: ExporterHandler + Send + 'static + Sync + Clone,
     {
         type Server = OffloadEndpoint<<E as Provider>::Server, X, H>;
         type Client = OffloadEndpoint<<E as Provider>::Client, X, H>;
@@ -376,6 +414,7 @@ pub mod offload {
                 E::start_server(self.endpoint)?,
                 self.executor,
                 self.exporter,
+                self.channel_capacity,
             ))
         }
 
@@ -384,6 +423,7 @@ pub mod offload {
                 E::start_client(self.endpoint)?,
                 self.executor,
                 self.exporter,
+                self.channel_capacity,
             ))
         }
     }

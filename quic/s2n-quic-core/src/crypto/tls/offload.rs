@@ -13,9 +13,13 @@ use alloc::{boxed::Box, collections::vec_deque::VecDeque, sync::Arc, vec::Vec};
 use core::{any::Any, future::Future, task::Poll};
 use std::sync::Mutex;
 
+/// Trait used for spawning async tasks corresponding to TLS operations. Each task will signify TLS work
+/// that needs to be done per QUIC connection.
 pub trait Executor {
     fn spawn(&self, task: impl Future<Output = ()> + Send + 'static);
 }
+
+/// Allows access to the TlsSession on handshake failure and when the exporter secret is ready.
 pub trait ExporterHandler {
     fn on_tls_handshake_failed(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
     fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
@@ -24,24 +28,26 @@ pub trait ExporterHandler {
 pub struct OffloadEndpoint<E: tls::Endpoint, X: Executor, H: ExporterHandler> {
     inner: E,
     executor: X,
-    exporter: Arc<H>,
+    exporter: H,
+    channel_capacity: usize,
 }
 
 impl<E: tls::Endpoint, X: Executor, H: ExporterHandler> OffloadEndpoint<E, X, H> {
-    pub fn new(inner: E, executor: X, exporter: Arc<H>) -> Self {
+    pub fn new(inner: E, executor: X, exporter: H, channel_capacity: usize) -> Self {
         Self {
             inner,
             executor,
             exporter,
+            channel_capacity,
         }
     }
 }
 
-impl<
-        E: tls::Endpoint,
-        X: Executor + Send + 'static,
-        H: ExporterHandler + Send + 'static + Sync,
-    > tls::Endpoint for OffloadEndpoint<E, X, H>
+impl<E, X, H> tls::Endpoint for OffloadEndpoint<E, X, H>
+where
+    E: tls::Endpoint,
+    X: Executor + Send + 'static,
+    H: ExporterHandler + Send + 'static + Sync + Clone,
 {
     type Session = OffloadSession<<E as tls::Endpoint>::Session>;
 
@@ -53,6 +59,7 @@ impl<
             self.inner.new_server_session(transport_parameters),
             &self.executor,
             self.exporter.clone(),
+            self.channel_capacity,
         )
     }
 
@@ -66,6 +73,7 @@ impl<
                 .new_client_session(transport_parameters, server_name),
             &self.executor,
             self.exporter.clone(),
+            self.channel_capacity,
         )
     }
 
@@ -85,13 +93,13 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
     fn new(
         mut inner: S,
         executor: &impl Executor,
-        exporter: Arc<impl ExporterHandler + Sync + Send + 'static>,
+        exporter: impl ExporterHandler + Sync + Send + 'static + Clone,
+        channel_capacity: usize,
     ) -> Self {
-        // A channel of size 10 is somewhat arbitrary. I haven't seen this limit be exceeded, but we
-        // could raise this in the future if necessary.
         let (mut send_to_quic, recv_from_tls): (Sender<Request<S>>, Receiver<Request<S>>) =
-            channel(10);
-        let (send_to_tls, mut recv_from_quic): (Sender<Response>, Receiver<Response>) = channel(10);
+            channel(channel_capacity);
+        let (send_to_tls, mut recv_from_quic): (Sender<Response>, Receiver<Response>) =
+            channel(channel_capacity);
         let allowed_to_send = Arc::new(Mutex::new(AllowedToSend::default()));
         let clone = allowed_to_send.clone();
 
@@ -100,9 +108,9 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
             let mut handshake_data = VecDeque::default();
             let mut application_data = VecDeque::default();
 
-            let _ = core::future::poll_fn(|ctx| {
+            core::future::poll_fn(|ctx| {
                 if let Poll::Ready(Ok(send_slice)) = send_to_quic.poll_slice(ctx) {
-                    let allowed_to_send = allowed_to_send.lock().unwrap();
+                    let allowed_to_send = *allowed_to_send.lock().unwrap();
 
                     let mut context = RemoteContext {
                         send_to_quic: send_slice,
@@ -111,22 +119,31 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                         handshake_data: &mut handshake_data,
                         application_data: &mut application_data,
                         exporter_handler: exporter.clone(),
-                        allowed_to_send: *allowed_to_send,
+                        allowed_to_send,
                     };
 
-                    while let Poll::Ready(Ok(mut recv_slice)) = recv_from_quic.poll_slice(ctx) {
-                        while let Some(response) = recv_slice.pop() {
-                            match response {
-                                Response::Initial(data) => {
-                                    context.initial_data.push_back(data);
+                    while let Poll::Ready(res) = recv_from_quic.poll_slice(ctx) {
+                        match res {
+                            Ok(mut recv_slice) => {
+                                while let Some(response) = recv_slice.pop() {
+                                    match response {
+                                        Response::Initial(data) => {
+                                            context.initial_data.push_back(data);
+                                        }
+                                        Response::Handshake(data) => {
+                                            context.handshake_data.push_back(data);
+                                        }
+                                        Response::Application(data) => {
+                                            context.application_data.push_back(data)
+                                        }
+                                        Response::SendStatusChanged => (),
+                                    }
                                 }
-                                Response::Handshake(data) => {
-                                    context.handshake_data.push_back(data);
-                                }
-                                Response::Application(data) => {
-                                    context.application_data.push_back(data)
-                                }
-                                Response::SendStatusChanged => (),
+                            }
+                            Err(_) => {
+                                // For whatever reason the QUIC side decided to drop this channel. In this case
+                                // we complete the future.
+                                return Poll::Ready(());
                             }
                         }
                     }
@@ -145,11 +162,12 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                             }
                         }
                     }
-                    res
+                    // We've already sent the Result to the QUIC side so we can just map it out here.
+                    res.map(|_| ())
                 } else {
                     // For whatever reason the QUIC side decided to drop this channel. In this case
-                    // we complete the future without erroring.
-                    Poll::Ready(Ok(()))
+                    // we complete the future.
+                    Poll::Ready(())
                 }
             })
             .await;
@@ -254,6 +272,8 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
             };
             state_change = true;
         }
+        // Drop the lock ASAP
+        drop(allowed_to_send);
 
         if let Poll::Ready(res) = self.send_to_tls.poll_slice(&mut ctx) {
             match res {
@@ -296,6 +316,7 @@ impl<S: tls::Session> CryptoSuite for OffloadSession<S> {
     type OneRttHeaderKey = <S as CryptoSuite>::OneRttHeaderKey;
     type RetryKey = <S as CryptoSuite>::RetryKey;
 }
+
 #[derive(Debug, Default, Copy, Clone)]
 struct AllowedToSend {
     can_send_initial: bool,
@@ -311,7 +332,7 @@ struct RemoteContext<'a, Request, H> {
     application_data: &'a mut VecDeque<bytes::Bytes>,
     waker: core::task::Waker,
     allowed_to_send: AllowedToSend,
-    exporter_handler: Arc<H>,
+    exporter_handler: H,
 }
 
 impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'a, Request<S>, H> {
@@ -420,46 +441,15 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
     }
 
     fn receive_initial(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        let bytes = self.initial_data.pop_front();
-        if let Some(mut bytes) = bytes {
-            if let Some(max_len) = max_len {
-                if bytes.len() > max_len {
-                    let remainder = bytes.split_off(max_len);
-                    self.initial_data.push_front(remainder);
-                }
-            }
-            return Some(bytes);
-        }
-
-        None
+        gimme_bytes(max_len, self.initial_data)
     }
 
     fn receive_handshake(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        let bytes = self.handshake_data.pop_front();
-        if let Some(mut bytes) = bytes {
-            if let Some(max_len) = max_len {
-                if bytes.len() > max_len {
-                    let remainder = bytes.split_off(max_len);
-                    self.handshake_data.push_front(remainder);
-                }
-            }
-            return Some(bytes);
-        }
-        None
+        gimme_bytes(max_len, self.handshake_data)
     }
 
     fn receive_application(&mut self, max_len: Option<usize>) -> Option<bytes::Bytes> {
-        let bytes = self.application_data.pop_front();
-        if let Some(mut bytes) = bytes {
-            if let Some(max_len) = max_len {
-                if bytes.len() > max_len {
-                    let remainder = bytes.split_off(max_len);
-                    self.application_data.push_front(remainder);
-                }
-            }
-            return Some(bytes);
-        }
-        None
+        gimme_bytes(max_len, self.application_data)
     }
 
     fn can_send_initial(&self) -> bool {
@@ -501,6 +491,20 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         }
         Ok(())
     }
+}
+
+fn gimme_bytes(max_len: Option<usize>, vec: &mut VecDeque<bytes::Bytes>) -> Option<bytes::Bytes> {
+    let bytes = vec.pop_front();
+    if let Some(mut bytes) = bytes {
+        if let Some(max_len) = max_len {
+            if bytes.len() > max_len {
+                let remainder = bytes.split_off(max_len);
+                vec.push_front(remainder);
+            }
+        }
+        return Some(bytes);
+    }
+    None
 }
 
 enum Request<S: CryptoSuite> {

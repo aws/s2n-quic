@@ -12,6 +12,7 @@ impl Executor for BachExecutor {
     }
 }
 
+#[derive(Clone)]
 struct Exporter;
 impl ExporterHandler for Exporter {
     fn on_tls_handshake_failed(
