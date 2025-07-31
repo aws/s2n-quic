@@ -61,6 +61,8 @@ unstable-congestion-controller = ["s2n-quic-core/unstable-congestion-controller"
 unstable-limits = ["s2n-quic-core/unstable-limits"]
 # The feature enables the close formatter provider
 unstable-provider-connection-close-formatter = []
+# This feature enables the use of the offloaded TLS feature
+unstable-offload-tls = []
 
 [dependencies]
 bytes = { version = "1", default-features = false }
