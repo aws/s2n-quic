@@ -25,6 +25,23 @@ pub trait ExporterHandler {
     fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
 }
 
+// Most people don't need the TlsSession so we ignore these callbacks by default
+impl ExporterHandler for () {
+    fn on_tls_handshake_failed(
+        &self,
+        _session: &impl TlsSession,
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        None
+    }
+
+    fn on_tls_exporter_ready(
+        &self,
+        _session: &impl TlsSession,
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        None
+    }
+}
+
 pub struct OffloadEndpoint<E: tls::Endpoint, X: Executor, H: ExporterHandler> {
     inner: E,
     executor: X,
@@ -155,16 +172,10 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                             // Either there was an error or the handshake has finished if TLS returned Poll::Ready.
                             // Notify the QUIC side accordingly.
                             if let Poll::Ready(res) = res {
-                                let request;
-                                match res {
-                                    Ok(_) => {
-                                        request = Request::TlsDone;
-                                    }
-
-                                    Err(e) => {
-                                        request = Request::TlsError(e);
-                                    }
-                                }
+                                let request = match res {
+                                    Ok(_) => Request::TlsDone,
+                                    Err(e) => Request::TlsError(e),
+                                };
                                 let _ = context.send_to_quic.push(request);
                             }
 
@@ -179,10 +190,10 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                         Err(_) => {
                             // For whatever reason the QUIC side decided to drop this channel. In this case
                             // we complete the future.
-                            return Poll::Ready(());
+                            Poll::Ready(())
                         }
                     },
-                    Poll::Pending => return Poll::Pending,
+                    Poll::Pending => Poll::Pending,
                 }
             })
             .await;
@@ -504,7 +515,11 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
     }
 
     fn send_initial(&mut self, transmission: bytes::Bytes) {
-        if let Err(_) = self.send_to_quic.push(Request::SendInitial(transmission)) {
+        if self
+            .send_to_quic
+            .push(Request::SendInitial(transmission))
+            .is_err()
+        {
             self.error = Some(SLICE_ERROR);
         }
     }
@@ -514,7 +529,11 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
     }
 
     fn send_handshake(&mut self, transmission: bytes::Bytes) {
-        if let Err(_) = self.send_to_quic.push(Request::SendHandshake(transmission)) {
+        if self
+            .send_to_quic
+            .push(Request::SendHandshake(transmission))
+            .is_err()
+        {
             self.error = Some(SLICE_ERROR);
         }
     }
@@ -524,9 +543,10 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
     }
 
     fn send_application(&mut self, transmission: bytes::Bytes) {
-        if let Err(_) = self
+        if self
             .send_to_quic
             .push(Request::SendApplication(transmission))
+            .is_err()
         {
             self.error = Some(SLICE_ERROR);
         }
