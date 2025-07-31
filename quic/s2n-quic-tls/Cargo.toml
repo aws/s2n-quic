@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-tls"
-version = "0.62.0"
+version = "0.63.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -19,9 +19,9 @@ unstable_private_key = []
 bytes = { version = "1", default-features = false }
 errno = "0.3"
 libc = "0.2"
-s2n-codec = { version = "=0.62.0", path = "../../common/s2n-codec", default-features = false }
-s2n-quic-core = { version = "=0.62.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
-s2n-quic-crypto = { version = "=0.62.0", path = "../s2n-quic-crypto", default-features = false }
+s2n-codec = { version = "=0.63.0", path = "../../common/s2n-codec", default-features = false }
+s2n-quic-core = { version = "=0.63.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
+s2n-quic-crypto = { version = "=0.63.0", path = "../s2n-quic-crypto", default-features = false }
 # the `on_key_exchange_group` event relies on an API added in 0.3.15
 s2n-tls = { version = "0.3.16", features = ["quic"] }
 
