@@ -344,6 +344,12 @@ pub mod offload {
         }
     }
 
+    impl Default for OffloadBuilder<(), (), ()> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl<X, H> OffloadBuilder<(), X, H> {
         pub fn with_endpoint<E: Endpoint>(self, endpoint: E) -> OffloadBuilder<E, X, H> {
             OffloadBuilder::<E, X, H> {
