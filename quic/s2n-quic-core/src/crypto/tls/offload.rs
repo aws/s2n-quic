@@ -122,6 +122,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                                 application_data: &mut application_data,
                                 exporter_handler: exporter.clone(),
                                 allowed_to_send,
+                                error: None,
                             };
 
                             match recv_from_quic.poll_slice(ctx) {
@@ -155,16 +156,22 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                             // Either there was an error or the handshake has finished if TLS returned Poll::Ready.
                             // Notify the QUIC side accordingly.
                             if let Poll::Ready(res) = res {
+                                let request;
                                 match res {
                                     Ok(_) => {
-                                        let _ = context.send_to_quic.push(Request::TlsDone);
+                                        request = Request::TlsDone;
                                     }
 
                                     Err(e) => {
-                                        let _ = context.send_to_quic.push(Request::TlsError(e));
+                                        request = Request::TlsError(e);
                                     }
                                 }
+                                match context.send_to_quic.push(request) {
+                                    Ok(()) => (),
+                                    Err(_) => return Poll::Ready(()),
+                                }
                             }
+
                             // We've already sent the Result to the QUIC side so we can just map it out here.
                             res.map(|_| ())
                         }
@@ -345,6 +352,7 @@ struct RemoteContext<'a, Request, H> {
     waker: core::task::Waker,
     allowed_to_send: AllowedToSend,
     exporter_handler: H,
+    error: Some(crate::transport::Error),
 }
 
 impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'a, Request<S>, H> {
@@ -358,10 +366,9 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
             server_params.to_vec(),
         )) {
             Ok(_) => return Ok(()),
-            Err(_) => {
-                return Err(SLICE_ERROR);
-            }
+            Err(_) => self.error = Err(SLICE_ERROR),
         }
+        Ok(())
     }
 
     fn on_handshake_keys(
@@ -374,10 +381,9 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
             .push(Request::HandshakeKeys(key, header_key))
         {
             Ok(_) => return Ok(()),
-            Err(_) => {
-                return Err(SLICE_ERROR);
-            }
+            Err(_) => self.error = Some(Err(SLICE_ERROR)),
         }
+        Ok(())
     }
 
     fn on_zero_rtt_keys(
@@ -393,7 +399,7 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         )) {
             Ok(_) => return Ok(()),
             Err(_) => {
-                return Err(SLICE_ERROR);
+                self.error = Some(Err(SLICE_ERROR)),
             }
         }
     }
@@ -410,9 +416,7 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
             application_parameters.transport_parameters.to_vec(),
         )) {
             Ok(_) => return Ok(()),
-            Err(_) => {
-                return Err(SLICE_ERROR);
-            }
+            Err(_) => self.error = Some(Err(SLICE_ERROR)),
         }
     }
 
@@ -422,9 +426,7 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
     ) -> Result<(), crate::transport::Error> {
         match self.send_to_quic.push(Request::ServerName(server_name)) {
             Ok(_) => return Ok(()),
-            Err(_) => {
-                return Err(SLICE_ERROR);
-            }
+            Err(_) => self.error = Some(Err(SLICE_ERROR)),
         }
     }
 
@@ -437,9 +439,7 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
             .push(Request::ApplicationProtocol(application_protocol))
         {
             Ok(_) => return Ok(()),
-            Err(_) => {
-                return Err(SLICE_ERROR);
-            }
+            Err(_) => self.error = Some(Err(SLICE_ERROR)),
         }
     }
 
@@ -452,18 +452,14 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
             .push(Request::KeyExchangeGroup(named_group))
         {
             Ok(_) => return Ok(()),
-            Err(_) => {
-                return Err(SLICE_ERROR);
-            }
+            Err(_) => self.error = Some(Err(SLICE_ERROR)),
         }
     }
 
     fn on_handshake_complete(&mut self) -> Result<(), crate::transport::Error> {
         match self.send_to_quic.push(Request::HandshakeComplete) {
             Ok(_) => return Ok(()),
-            Err(_) => {
-                return Err(SLICE_ERROR);
-            }
+            Err(_) => self.error = Some(Err(SLICE_ERROR)),
         }
 
         Ok(())
@@ -480,9 +476,7 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         if let Some(context) = self.exporter_handler.on_tls_exporter_ready(session) {
             match self.send_to_quic.push(Request::TlsContext(context)) {
                 Ok(_) => return Ok(()),
-                Err(_) => {
-                    return Err(SLICE_ERROR);
-                }
+                Err(_) => self.error = Some(Err(SLICE_ERROR)),
             }
         }
 
@@ -506,7 +500,9 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
     }
 
     fn send_initial(&mut self, transmission: bytes::Bytes) {
-        let _ = self.send_to_quic.push(Request::SendInitial(transmission));
+        if let Err(e) = self.send_to_quic.push(Request::SendInitial(transmission)) {
+            self.error = Some(Err(SLICE_ERROR));
+        }
     }
 
     fn can_send_handshake(&self) -> bool {
@@ -514,7 +510,9 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
     }
 
     fn send_handshake(&mut self, transmission: bytes::Bytes) {
-        let _ = self.send_to_quic.push(Request::SendHandshake(transmission));
+        if let Err(e) = self.send_to_quic.push(Request::SendHandshake(transmission)) {
+            self.error = Some(Err(SLICE_ERROR));
+        }
     }
 
     fn can_send_application(&self) -> bool {
@@ -522,9 +520,12 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
     }
 
     fn send_application(&mut self, transmission: bytes::Bytes) {
-        let _ = self
+        if let Err(e) = self
             .send_to_quic
-            .push(Request::SendApplication(transmission));
+            .push(Request::SendApplication(transmission))
+        {
+            self.error = Some(Err(SLICE_ERROR));
+        }
     }
 
     fn waker(&self) -> &core::task::Waker {
@@ -538,9 +539,7 @@ impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'
         if let Some(context) = self.exporter_handler.on_tls_handshake_failed(session) {
             match self.send_to_quic.push(Request::TlsContext(context)) {
                 Ok(_) => return Ok(()),
-                Err(_) => {
-                    return Err(SLICE_ERROR);
-                }
+                Err(_) => self.error = Some(Err(SLICE_ERROR)),
             }
         }
         Ok(())
