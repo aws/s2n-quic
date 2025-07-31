@@ -39,7 +39,7 @@ permissions:
 
 jobs:
   env:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
@@ -75,7 +75,7 @@ jobs:
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   s2n-quic-qns:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         mode: ["debug", "release"]
@@ -111,7 +111,7 @@ jobs:
           path: s2n-quic-qns/
 
   interop:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     needs: [env, s2n-quic-qns]
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
@@ -132,7 +132,7 @@ jobs:
 
       - uses: docker/setup-docker-action@v4
         with: 
-          version: version=v26.1.3
+          version: version=v28.3.0
 
       - name: Setup dockerfile
         working-directory: s2n-quic-qns
@@ -256,7 +256,7 @@ jobs:
           ! grep -Rq 'The s2n-quic-qns application shut down unexpectedly' results
 
   interop-report:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     needs: [interop]
     steps:
       - uses: actions/checkout@v4
@@ -360,7 +360,7 @@ jobs:
             web/logs/latest/result.json
 
   h3spec:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     needs: [s2n-quic-qns]
     strategy:
       matrix:
@@ -382,7 +382,7 @@ jobs:
           ./scripts/h3spec
 
   perf:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     needs: [s2n-quic-qns]
     strategy:
       matrix:
@@ -460,7 +460,7 @@ jobs:
           path: target/perf/results
 
   perf-report:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     needs: [perf]
     steps:
       - uses: actions/checkout@v4
@@ -510,7 +510,7 @@ jobs:
           url: "${{ steps.s3.outputs.URL }}"
 
   attack:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     needs: [s2n-quic-qns]
     strategy:
       matrix:
