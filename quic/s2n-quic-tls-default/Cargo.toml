@@ -1,6 +1,6 @@
 [package]
 name = "s2n-quic-tls-default"
-version = "0.62.0"
+version = "0.63.0"
 description = "Internal crate used by s2n-quic"
 repository = "https://github.com/aws/s2n-quic"
 authors = ["AWS s2n"]
@@ -24,10 +24,10 @@ fips = ["s2n-quic-tls?/fips"]
 # order to support the `?` syntax, we declare s2n-quic-tls as an optional dependency.
 # `s2n-quic-tls` only gets enabled based on the target.
 [dependencies]
-s2n-quic-tls = { version = "=0.62.0", path = "../s2n-quic-tls", optional = true }
+s2n-quic-tls = { version = "=0.63.0", path = "../s2n-quic-tls", optional = true }
 
 [target.'cfg(unix)'.dependencies]
-s2n-quic-tls = { version = "=0.62.0", path = "../s2n-quic-tls" }
+s2n-quic-tls = { version = "=0.63.0", path = "../s2n-quic-tls" }
 
 [target.'cfg(not(unix))'.dependencies]
-s2n-quic-rustls = { version = "=0.62.0", path = "../s2n-quic-rustls" }
+s2n-quic-rustls = { version = "=0.63.0", path = "../s2n-quic-rustls" }
