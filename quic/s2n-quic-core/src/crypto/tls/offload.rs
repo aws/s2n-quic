@@ -125,8 +125,8 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                                 error: None,
                             };
 
-                            match recv_from_quic.poll_slice(ctx) {
-                                Poll::Ready(res) => match res {
+                            while let Poll::Ready(res) = recv_from_quic.poll_slice(ctx) {
+                                match res {
                                     Ok(mut recv_slice) => {
                                         while let Some(response) = recv_slice.pop() {
                                             match response {
@@ -148,8 +148,7 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
                                         // we complete the future.
                                         return Poll::Ready(());
                                     }
-                                },
-                                Poll::Pending => return Poll::Pending,
+                                }
                             }
 
                             let res = inner.poll(&mut context);
