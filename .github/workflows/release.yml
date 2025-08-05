@@ -46,7 +46,7 @@ jobs:
           fi
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
 
-      - uses: aws-actions/configure-aws-credentials@v4.2.1
+      - uses: aws-actions/configure-aws-credentials@v4.3.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCEcrRole
