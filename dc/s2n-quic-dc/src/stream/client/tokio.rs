@@ -277,7 +277,7 @@ impl Builder {
     ///
     /// See `SO_SNDBUF` for more information.
     ///
-    /// Note that this only applies to sockets that are created by SaltyLib. Any sockets
+    /// Note that this only applies to sockets that are created by s2n-quic-dc. Any sockets
     /// provided by the application will not inherit this value.
     pub fn with_send_buffer(mut self, bytes: usize) -> Self {
         self.send_buffer = Some(bytes);
@@ -288,7 +288,7 @@ impl Builder {
     ///
     /// See `SO_RCVBUF` for more information.
     ///
-    /// Note that this only applies to sockets that are created by SaltyLib. Any sockets
+    /// Note that this only applies to sockets that are created by s2n-quic-dc. Any sockets
     /// provided by the application will not inherit this value.
     pub fn with_recv_buffer(mut self, bytes: usize) -> Self {
         self.recv_buffer = Some(bytes);
