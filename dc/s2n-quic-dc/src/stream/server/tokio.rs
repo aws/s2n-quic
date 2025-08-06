@@ -25,9 +25,11 @@ use tracing::{trace, Instrument as _};
 pub mod tcp;
 pub mod udp;
 
-// This trait is a temporary solution to abstract local_addr() method until we implement the handshake provider
-pub trait Handshake: AsRef<secret::Map> + Clone {
+// This trait is a temporary solution to abstract local_addr and map methods until we implement the handshake provider
+pub trait Handshake: Clone {
     fn local_addr(&self) -> SocketAddr;
+
+    fn map(&self) -> &secret::Map;
 }
 
 #[derive(Clone)]
@@ -56,7 +58,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
     }
 
     pub fn drop_state(&self) {
-        self.handshake.as_ref().drop_state()
+        self.handshake.map().drop_state()
     }
 
     pub fn handshake_state(&self) -> &H {
@@ -225,7 +227,7 @@ impl Builder {
 
             env = env.with_socket_options(options);
 
-            let mut pool = udp_pool::Config::new(handshake.as_ref().clone());
+            let mut pool = udp_pool::Config::new(handshake.map().clone());
 
             pool.reuse_port = concurrency > 1;
             pool.accept_flavor = self.accept_flavor;
@@ -443,7 +445,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             socket,
             &self.stream_sender,
             &self.server.env,
-            self.server.handshake.as_ref(),
+            self.server.handshake.map(),
             self.accept_flavor,
         )
         .run();
@@ -474,7 +476,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             socket,
             &self.stream_sender,
             &self.server.env,
-            self.server.handshake.as_ref(),
+            self.server.handshake.map(),
             self.backlog,
             self.accept_flavor,
             self.linger,

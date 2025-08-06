@@ -25,10 +25,10 @@ pub mod rpc {
     pub use crate::stream::client::rpc::{InMemoryResponse, Request, Response};
 }
 
-// This trait is a temporary solution to abstract handshake_with_entry
-// and local_addr until we implement the handshake provider
+// This trait is a temporary solution to abstract handshake_with_entry,
+// local_addr, and map methods until we implement the handshake provider
 #[allow(async_fn_in_trait)]
-pub trait Handshake: AsRef<secret::Map> + Clone {
+pub trait Handshake: Clone {
     /// Handshake with the remote peer
     async fn handshake_with_entry(
         &self,
@@ -36,6 +36,8 @@ pub trait Handshake: AsRef<secret::Map> + Clone {
     ) -> std::io::Result<(secret::map::Peer, secret::HandshakeKind)>;
 
     fn local_addr(&self) -> std::io::Result<SocketAddr>;
+
+    fn map(&self) -> &secret::Map;
 }
 
 #[derive(Clone)]
@@ -58,7 +60,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
     }
 
     pub fn drop_state(&self) {
-        self.handshake.as_ref().drop_state()
+        self.handshake.map().drop_state()
     }
 
     pub fn handshake_state(&self) -> &H {
@@ -311,7 +313,7 @@ impl Builder {
 
         let mut env = env::Builder::new(subscriber).with_socket_options(options);
 
-        let pool = udp_pool::Config::new((handshake.as_ref()).clone());
+        let pool = udp_pool::Config::new(handshake.map().clone());
         env = env.with_pool(pool);
 
         if let Some(threads) = self.background_threads {
