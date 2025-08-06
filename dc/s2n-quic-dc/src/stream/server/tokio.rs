@@ -1,9 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod tcp;
-pub mod udp;
-
 use crate::{
     event,
     path::secret,
@@ -25,8 +22,10 @@ use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::unix::AsyncFd;
 use tracing::{trace, Instrument as _};
 
+pub mod tcp;
+pub mod udp;
+
 // This trait is a temporary solution to abstract local_addr() method until we implement the handshake provider
-#[allow(async_fn_in_trait)]
 pub trait Handshake: AsRef<secret::Map> + Clone {
     fn local_addr(&self) -> SocketAddr;
 }

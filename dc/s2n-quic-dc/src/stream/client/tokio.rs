@@ -276,6 +276,9 @@ impl Builder {
     /// Sets the send buffer for the OS socket handle.
     ///
     /// See `SO_SNDBUF` for more information.
+    ///
+    /// Note that this only applies to sockets that are created by s2n-quic-dc. Any sockets
+    /// provided by the application will not inherit this value.
     pub fn with_send_buffer(mut self, bytes: usize) -> Self {
         self.send_buffer = Some(bytes);
         self
@@ -283,7 +286,10 @@ impl Builder {
 
     /// Sets the recv buffer for the OS socket handle.
     ///
-    /// See `SO_RCVBUF` for more information..
+    /// See `SO_RCVBUF` for more information.
+    ///
+    /// Note that this only applies to sockets that are created by s2n-quic-dc. Any sockets
+    /// provided by the application will not inherit this value.
     pub fn with_recv_buffer(mut self, bytes: usize) -> Self {
         self.recv_buffer = Some(bytes);
         self
