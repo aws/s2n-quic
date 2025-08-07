@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    connection::limits::{DEFAULT_PTO_JITTER_PERCENTAGE, MAX_PTO_JITTER_PERCENTAGE},
-    packet::number::PacketNumberSpace,
-    random,
-    time::Timestamp,
-    transport::parameters::MaxAckDelay,
+    packet::number::PacketNumberSpace, random, time::Timestamp, transport::parameters::MaxAckDelay,
 };
 use core::{
     cmp::{max, min},
@@ -145,15 +141,53 @@ impl RttEstimator {
     //# an acknowledgement of a sent packet.
     #[inline]
     pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
-        // TODO: This is a temporary backward compatibility wrapper that uses a testing generator.
-        // This should be removed once all call sites are updated to use pto_period_with_jitter
-        // and pass the proper random generator from the connection context.
-        self.pto_period_with_jitter(
-            pto_backoff,
-            space,
-            DEFAULT_PTO_JITTER_PERCENTAGE,
-            &mut random::testing::Generator::default(),
-        )
+        // Backward compatibility method that doesn't apply jitter
+        // This maintains the original RFC 9002 behavior exactly
+
+        // We operate on microseconds rather than `Duration` to improve efficiency.
+        // See https://godbolt.org/z/osEd9rj9a
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+        //# When an ack-eliciting packet is transmitted, the sender schedules a
+        //# timer for the PTO period as follows:
+        //#
+        //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
+        let mut pto_period = self.smoothed_rtt().as_micros() as u64;
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+        //# The PTO period MUST be at least kGranularity, to avoid the timer
+        //# expiring immediately.
+        pto_period += max(
+            self.rttvar_4x().as_micros() as u64,
+            K_GRANULARITY.as_micros() as u64,
+        );
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+        //# When the PTO is armed for Initial or Handshake packet number spaces,
+        //# the max_ack_delay in the PTO period computation is set to 0, since
+        //# the peer is expected to not delay these packets intentionally; see
+        //# Section 13.2.1 of [QUIC-TRANSPORT].
+        if space.is_application_data() {
+            pto_period += self.max_ack_delay.as_micros() as u64;
+        }
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+        //# Even when there are ack-eliciting packets in flight in multiple
+        //# packet number spaces, the exponential increase in PTO occurs across
+        //# all spaces to prevent excess load on the network.  For example, a
+        //# timeout in the Initial packet number space doubles the length of
+        //# the timeout in the Handshake packet number space.
+        pto_period *= pto_backoff as u64;
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+        //# The PTO period MUST be at least kGranularity, to avoid the timer
+        //# expiring immediately.
+        pto_period = pto_period.max(K_GRANULARITY.as_micros() as u64);
+
+        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+        //# The PTO period is the amount of time that a sender ought to wait for
+        //# an acknowledgement of a sent packet.
+        Duration::from_micros(pto_period)
     }
 
     /// Calculates the PTO period with configurable jitter
@@ -165,7 +199,7 @@ impl RttEstimator {
     /// # Arguments
     /// * `pto_backoff` - The PTO backoff multiplier
     /// * `space` - The packet number space
-    /// * `pto_jitter_percentage` - Jitter percentage (0-MAX_PTO_JITTER_PERCENTAGE)
+    /// * `pto_jitter_percentage` - Jitter percentage (0-50)
     /// * `random_generator` - Random number generator for jitter calculation
     ///
     /// # Returns
@@ -425,7 +459,7 @@ fn weighted_average(a: Duration, b: Duration, weight: u64) -> Duration {
 ///
 /// # Arguments
 /// * `base_pto_micros` - Base PTO period in microseconds
-/// * `jitter_percentage` - Jitter percentage (0-MAX_PTO_JITTER_PERCENTAGE)
+/// * `jitter_percentage` - Jitter percentage (0-50)
 /// * `random_generator` - Random number generator
 ///
 /// # Returns
@@ -455,6 +489,7 @@ fn calculate_jitter_amount(
 mod test {
     use super::*;
     use crate::{
+        connection::limits::{DEFAULT_PTO_JITTER_PERCENTAGE, MAX_PTO_JITTER_PERCENTAGE},
         packet::number::PacketNumberSpace,
         path::INITIAL_PTO_BACKOFF,
         time::{Clock, Duration, NoopClock},
@@ -1185,5 +1220,111 @@ mod test {
 
         // Application space should be larger due to max_ack_delay
         // (though jitter might make this not always true, so we just verify they're all valid)
+    }
+
+    #[test]
+    fn pto_period_with_jitter_arithmetic_safety() {
+        let rtt_estimator = RttEstimator::new(MIN_RTT);
+        let mut rng = random::testing::Generator::default();
+        let space = PacketNumberSpace::Initial;
+        let pto_backoff = 1;
+
+        // Test with maximum jitter percentage on minimum RTT
+        // This should produce valid results within expected bounds
+        for _ in 0..100 {
+            let jittered_pto = rtt_estimator.pto_period_with_jitter(
+                pto_backoff,
+                space,
+                MAX_PTO_JITTER_PERCENTAGE,
+                &mut rng,
+            );
+
+            // Should always be valid and >= kGranularity
+            assert!(jittered_pto >= K_GRANULARITY);
+            assert!(jittered_pto <= Duration::from_secs(1)); // Reasonable upper bound
+        }
+    }
+
+    #[test]
+    fn pto_period_with_jitter_extreme_backoff() {
+        let rtt_estimator = RttEstimator::new(Duration::from_millis(100));
+        let mut rng = random::testing::Generator::default();
+        let space = PacketNumberSpace::ApplicationData;
+        let extreme_backoff = 64; // Very high backoff
+        let jitter_percentage = 25;
+
+        // Test that jitter works correctly even with extreme backoff values
+        let jittered_pto = rtt_estimator.pto_period_with_jitter(
+            extreme_backoff,
+            space,
+            jitter_percentage,
+            &mut rng,
+        );
+
+        // Should still be valid and respect minimum bounds
+        assert!(jittered_pto >= K_GRANULARITY);
+        // Should be reasonable (less than 1 minute for this test)
+        assert!(jittered_pto <= Duration::from_secs(60));
+    }
+
+    #[test]
+    fn pto_period_with_jitter_k_granularity_enforcement() {
+        // Create an RTT estimator with very small values that could result in
+        // PTO periods smaller than kGranularity after negative jitter
+        let rtt_estimator = RttEstimator::new(MIN_RTT);
+        let mut rng = random::testing::Generator::default();
+        let space = PacketNumberSpace::Initial;
+        let pto_backoff = 1;
+
+        // Test many iterations to ensure kGranularity is always enforced
+        for _ in 0..1000 {
+            let jittered_pto = rtt_estimator.pto_period_with_jitter(
+                pto_backoff,
+                space,
+                MAX_PTO_JITTER_PERCENTAGE,
+                &mut rng,
+            );
+
+            // Must always be at least kGranularity
+            assert!(
+                jittered_pto >= K_GRANULARITY,
+                "PTO period {} is less than kGranularity {}",
+                jittered_pto.as_micros(),
+                K_GRANULARITY.as_micros()
+            );
+        }
+    }
+
+    #[test]
+    fn pto_period_with_jitter_maintains_rfc_compliance() {
+        let mut rtt_estimator = RttEstimator::new(Duration::from_millis(100));
+        rtt_estimator.on_max_ack_delay(Duration::from_millis(25).try_into().unwrap());
+        let mut rng = random::testing::Generator::default();
+        let jitter_percentage = 20;
+
+        // Test that jittered PTO maintains RFC 9002 compliance for different spaces
+        for space in [
+            PacketNumberSpace::Initial,
+            PacketNumberSpace::Handshake,
+            PacketNumberSpace::ApplicationData,
+        ] {
+            for pto_backoff in [1, 2, 4, 8] {
+                let jittered_pto = rtt_estimator.pto_period_with_jitter(
+                    pto_backoff,
+                    space,
+                    jitter_percentage,
+                    &mut rng,
+                );
+
+                // Must respect minimum PTO period
+                assert!(jittered_pto >= K_GRANULARITY);
+
+                // Should be reasonable for the given parameters
+                let base_pto = rtt_estimator.pto_period(pto_backoff, space);
+                let max_expected = base_pto + base_pto * jitter_percentage as u32 / 100;
+                assert!(jittered_pto <= max_expected + Duration::from_micros(1));
+                // Allow for rounding
+            }
+        }
     }
 }
