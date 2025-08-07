@@ -9,6 +9,7 @@ use crate::{
 };
 use core::time::Duration;
 use s2n_codec::EncoderBuffer;
+use s2n_quic_core::varint::VarInt;
 use std::{net::SocketAddr, sync::Arc};
 
 pub trait Store: 'static + Send + Sync {
@@ -36,7 +37,23 @@ pub trait Store: 'static + Send + Sync {
 
     fn handle_unexpected_packet(&self, packet: &Packet, peer: &SocketAddr);
 
-    fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr);
+    fn handle_stale_key_packet<'a>(
+        &self,
+        packet: &'a control::stale_key::Packet,
+        peer: &SocketAddr,
+    ) -> Option<&'a control::StaleKey>;
+
+    fn handle_replay_detected_packet<'a>(
+        &self,
+        packet: &'a control::replay_detected::Packet,
+        peer: &SocketAddr,
+    ) -> Option<&'a control::ReplayDetected>;
+
+    fn handle_unknown_path_secret_packet<'a>(
+        &self,
+        packet: &'a control::unknown_path_secret::Packet,
+        peer: &SocketAddr,
+    ) -> Option<&'a control::UnknownPathSecret>;
 
     fn signer(&self) -> &stateless_reset::Signer;
 
@@ -49,7 +66,8 @@ pub trait Store: 'static + Send + Sync {
     fn check_dedup(
         &self,
         entry: &Entry,
-        key_id: s2n_quic_core::varint::VarInt,
+        key_id: VarInt,
+        queue_id: Option<VarInt>,
     ) -> crate::crypto::open::Result;
 
     #[cfg(any(test, feature = "testing"))]
@@ -63,9 +81,17 @@ pub trait Store: 'static + Send + Sync {
     fn test_stop_cleaner(&self);
 
     #[inline]
-    fn send_control_error(&self, entry: &Entry, credentials: &Credentials, error: receiver::Error) {
+    fn send_control_error(
+        &self,
+        entry: &Entry,
+        credentials: &Credentials,
+        queue_id: Option<VarInt>,
+        error: receiver::Error,
+    ) {
         let mut buffer = [0; control::MAX_PACKET_SIZE];
-        let len = error.to_packet(entry, credentials, &mut buffer).len();
+        let len = error
+            .to_packet(entry, credentials, queue_id, &mut buffer)
+            .len();
         let buffer = &mut buffer[..len];
         let dst = entry.peer();
         self.send_control_packet(dst, buffer);
@@ -75,26 +101,27 @@ pub trait Store: 'static + Send + Sync {
     fn pre_authentication(
         &self,
         identity: &Credentials,
+        queue_id: Option<VarInt>,
         control_out: &mut Vec<u8>,
     ) -> Option<Arc<Entry>> {
         let Some(state) = self.get_by_id_tracked(&identity.id) else {
             let packet = control::UnknownPathSecret {
                 wire_version: WireVersion::ZERO,
                 credential_id: identity.id,
+                queue_id,
             };
-            control_out.resize(control::UnknownPathSecret::PACKET_SIZE, 0);
+            control_out.resize(control::UnknownPathSecret::MAX_PACKET_SIZE, 0);
             let stateless_reset = self.signer().sign(&identity.id);
             let encoder = EncoderBuffer::new(control_out);
-            packet.encode(encoder, &stateless_reset);
+            let len = packet.encode(encoder, &stateless_reset);
+            control_out.truncate(len);
             return None;
         };
 
         match state.receiver().pre_authentication(identity) {
             Ok(()) => {}
             Err(e) => {
-                self.send_control_error(&state, identity, e);
-                control_out.resize(control::UnknownPathSecret::PACKET_SIZE, 0);
-
+                self.send_control_error(&state, identity, queue_id, e);
                 return None;
             }
         }

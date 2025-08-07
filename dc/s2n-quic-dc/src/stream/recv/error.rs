@@ -105,6 +105,8 @@ pub enum Kind {
     KeyReplayPrevented,
     #[error("the crypto key has been potentially replayed (gap: {gap:?}) and is invalid")]
     KeyReplayMaybePrevented { gap: Option<u64> },
+    #[error("the stream is using an unknown path secret")]
+    UnknownPathSecret,
     #[error("application error: {error}")]
     ApplicationError {
         error: s2n_quic_core::application::Error,
@@ -175,7 +177,9 @@ impl Error {
             Kind::OutOfOrder { .. } => Some(transport::Error::STREAM_STATE_ERROR.into()),
             Kind::OutOfRange => Some(transport::Error::STREAM_LIMIT_ERROR.into()),
             // we don't have working crypto keys so we can't respond
-            Kind::KeyReplayPrevented | Kind::KeyReplayMaybePrevented { .. } => None,
+            Kind::KeyReplayPrevented
+            | Kind::KeyReplayMaybePrevented { .. }
+            | Kind::UnknownPathSecret => None,
             Kind::ApplicationError { error } => Some((*error).into()),
         }
     }
@@ -218,6 +222,7 @@ impl From<Kind> for std::io::ErrorKind {
             Kind::IdleTimeout => ErrorKind::TimedOut,
             Kind::KeyReplayPrevented => ErrorKind::PermissionDenied,
             Kind::KeyReplayMaybePrevented { .. } => ErrorKind::PermissionDenied,
+            Kind::UnknownPathSecret => ErrorKind::PermissionDenied,
             Kind::ApplicationError { .. } => ErrorKind::ConnectionReset,
             Kind::UnexpectedPacket {
                 packet:

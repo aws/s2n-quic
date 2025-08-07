@@ -47,6 +47,11 @@ macro_rules! impl_packet {
 
                 Some(value)
             }
+
+            #[inline]
+            pub fn queue_id(&self) -> Option<s2n_quic_core::varint::VarInt> {
+                self.value.queue_id
+            }
         }
     };
 }

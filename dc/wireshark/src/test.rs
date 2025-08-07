@@ -424,15 +424,18 @@ fn check_control_parse() {
 enum SecretControlPacket {
     UnknownPathSecret {
         id: credentials::Id,
+        queue_id: Option<VarInt>,
         auth_tag: [u8; 16],
     },
     StaleKey {
         id: credentials::Id,
         key_id: VarInt,
+        queue_id: Option<VarInt>,
     },
     ReplayDetected {
         id: credentials::Id,
         key_id: VarInt,
+        queue_id: Option<VarInt>,
     },
 }
 
@@ -448,29 +451,38 @@ fn check_secret_control_parse() {
             let key = TestKey(KeyPhase::Zero);
             let mut buffer = vec![0; s2n_quic_dc::packet::secret_control::MAX_PACKET_SIZE];
             let length = match packet {
-                SecretControlPacket::UnknownPathSecret { id, auth_tag } => {
-                    s2n_quic_dc::packet::secret_control::UnknownPathSecret {
-                        wire_version: WireVersion::ZERO,
-                        credential_id: *id,
-                    }
-                    .encode(EncoderBuffer::new(&mut buffer), auth_tag)
+                SecretControlPacket::UnknownPathSecret {
+                    id,
+                    auth_tag,
+                    queue_id,
+                } => s2n_quic_dc::packet::secret_control::UnknownPathSecret {
+                    wire_version: WireVersion::ZERO,
+                    credential_id: *id,
+                    queue_id: *queue_id,
                 }
-                SecretControlPacket::StaleKey { id, key_id } => {
-                    s2n_quic_dc::packet::secret_control::StaleKey {
-                        wire_version: WireVersion::ZERO,
-                        credential_id: *id,
-                        min_key_id: *key_id,
-                    }
-                    .encode(EncoderBuffer::new(&mut buffer), &key)
+                .encode(EncoderBuffer::new(&mut buffer), auth_tag),
+                SecretControlPacket::StaleKey {
+                    id,
+                    key_id,
+                    queue_id,
+                } => s2n_quic_dc::packet::secret_control::StaleKey {
+                    wire_version: WireVersion::ZERO,
+                    credential_id: *id,
+                    queue_id: *queue_id,
+                    min_key_id: *key_id,
                 }
-                SecretControlPacket::ReplayDetected { id, key_id } => {
-                    s2n_quic_dc::packet::secret_control::ReplayDetected {
-                        wire_version: WireVersion::ZERO,
-                        credential_id: *id,
-                        rejected_key_id: *key_id,
-                    }
-                    .encode(EncoderBuffer::new(&mut buffer), &key)
+                .encode(EncoderBuffer::new(&mut buffer), &key),
+                SecretControlPacket::ReplayDetected {
+                    id,
+                    key_id,
+                    queue_id,
+                } => s2n_quic_dc::packet::secret_control::ReplayDetected {
+                    wire_version: WireVersion::ZERO,
+                    credential_id: *id,
+                    queue_id: *queue_id,
+                    rejected_key_id: *key_id,
                 }
+                .encode(EncoderBuffer::new(&mut buffer), &key),
             };
 
             let fields = crate::field::get();
@@ -483,9 +495,23 @@ fn check_secret_control_parse() {
             );
 
             match packet {
-                SecretControlPacket::UnknownPathSecret { id, auth_tag } => {
-                    assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0000));
+                SecretControlPacket::UnknownPathSecret {
+                    id,
+                    auth_tag,
+                    queue_id,
+                } => {
+                    if queue_id.is_some() {
+                        assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0100));
+                    } else {
+                        assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0000));
+                    }
                     assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
+                    if let Some(queue_id) = queue_id {
+                        assert_eq!(
+                            tracker.remove(fields.queue_id),
+                            Field::Integer(queue_id.as_u64())
+                        );
+                    }
                     assert_eq!(
                         tracker.remove(fields.path_secret_id),
                         Field::Slice(id.to_vec())
@@ -495,9 +521,23 @@ fn check_secret_control_parse() {
                         Field::Slice(auth_tag.to_vec())
                     );
                 }
-                SecretControlPacket::StaleKey { id, key_id } => {
-                    assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0001));
+                SecretControlPacket::StaleKey {
+                    id,
+                    key_id,
+                    queue_id,
+                } => {
+                    if queue_id.is_some() {
+                        assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0101));
+                    } else {
+                        assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0001));
+                    }
                     assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
+                    if let Some(queue_id) = queue_id {
+                        assert_eq!(
+                            tracker.remove(fields.queue_id),
+                            Field::Integer(queue_id.as_u64())
+                        );
+                    }
                     assert_eq!(
                         tracker.remove(fields.path_secret_id),
                         Field::Slice(id.to_vec())
@@ -509,9 +549,23 @@ fn check_secret_control_parse() {
                     // FIXME: Deeper check?
                     assert!(tracker.take(fields.auth_tag).is_some());
                 }
-                SecretControlPacket::ReplayDetected { id, key_id } => {
-                    assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0010));
+                SecretControlPacket::ReplayDetected {
+                    id,
+                    key_id,
+                    queue_id,
+                } => {
+                    if queue_id.is_some() {
+                        assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0110));
+                    } else {
+                        assert_eq!(tracker.remove(fields.tag), Field::Integer(0b0110_0010));
+                    }
                     assert_eq!(tracker.remove(fields.wire_version), Field::Integer(0));
+                    if let Some(queue_id) = queue_id {
+                        assert_eq!(
+                            tracker.remove(fields.queue_id),
+                            Field::Integer(queue_id.as_u64())
+                        );
+                    }
                     assert_eq!(
                         tracker.remove(fields.path_secret_id),
                         Field::Slice(id.to_vec())

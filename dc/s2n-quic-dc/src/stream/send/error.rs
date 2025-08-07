@@ -80,6 +80,12 @@ pub enum Kind {
     FinalSizeChanged,
     #[error("the sender idle timer expired")]
     IdleTimeout,
+    #[error("the crypto key has been replayed and is invalid")]
+    KeyReplayPrevented,
+    #[error("the crypto key has been potentially replayed (gap: {gap:?}) and is invalid")]
+    KeyReplayMaybePrevented { gap: Option<u64> },
+    #[error("the stream is using an unknown path secret")]
+    UnknownPathSecret,
     #[error("the stream was reset by the peer with code {code}")]
     TransportError { code: VarInt },
     #[error("the stream was closed with application code {error}")]
@@ -120,6 +126,9 @@ impl From<Kind> for std::io::ErrorKind {
             Kind::StreamFinished => ErrorKind::UnexpectedEof,
             Kind::FinalSizeChanged => ErrorKind::InvalidInput,
             Kind::IdleTimeout => ErrorKind::TimedOut,
+            Kind::KeyReplayPrevented => ErrorKind::PermissionDenied,
+            Kind::KeyReplayMaybePrevented { .. } => ErrorKind::PermissionDenied,
+            Kind::UnknownPathSecret => ErrorKind::PermissionDenied,
             Kind::ApplicationError { .. } => ErrorKind::ConnectionReset,
             Kind::TransportError { .. } => ErrorKind::ConnectionAborted,
             Kind::FrameError { .. } => ErrorKind::InvalidData,

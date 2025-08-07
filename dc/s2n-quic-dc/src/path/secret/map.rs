@@ -9,7 +9,7 @@ use crate::{
     stream::TransportFeatures,
 };
 use core::fmt;
-use s2n_quic_core::{dc, time};
+use s2n_quic_core::{dc, time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
 
 mod cleaner;
@@ -143,23 +143,29 @@ impl Map {
     pub fn open_once(
         &self,
         credentials: &Credentials,
+        queue_id: Option<VarInt>,
         control_out: &mut Vec<u8>,
     ) -> Option<open::Once> {
-        let entry = self.store.pre_authentication(credentials, control_out)?;
-        let opener = entry.uni_opener(self.clone(), credentials);
+        let entry = self
+            .store
+            .pre_authentication(credentials, queue_id, control_out)?;
+        let opener = entry.uni_opener(self.clone(), credentials, queue_id);
         Some(opener)
     }
 
     pub fn pair_for_credentials(
         &self,
         credentials: &Credentials,
+        queue_id: Option<VarInt>,
         features: &TransportFeatures,
         control_out: &mut Vec<u8>,
     ) -> Option<(entry::Bidirectional, dc::ApplicationParams)> {
-        let entry = self.store.pre_authentication(credentials, control_out)?;
+        let entry = self
+            .store
+            .pre_authentication(credentials, queue_id, control_out)?;
 
         let params = entry.parameters();
-        let keys = entry.bidi_remote(self.clone(), credentials, features);
+        let keys = entry.bidi_remote(self.clone(), credentials, queue_id, features);
 
         Some((keys, params))
     }
@@ -173,7 +179,41 @@ impl Map {
     }
 
     pub fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr) {
-        self.store.handle_control_packet(packet, peer)
+        match packet {
+            control::Packet::StaleKey(packet) => {
+                let _ = self.handle_stale_key_packet(packet, peer);
+            }
+            control::Packet::ReplayDetected(packet) => {
+                let _ = self.handle_replay_detected_packet(packet, peer);
+            }
+            control::Packet::UnknownPathSecret(packet) => {
+                let _ = self.handle_unknown_path_secret_packet(packet, peer);
+            }
+        }
+    }
+
+    pub fn handle_stale_key_packet<'a>(
+        &self,
+        packet: &'a control::stale_key::Packet,
+        peer: &SocketAddr,
+    ) -> Option<&'a control::StaleKey> {
+        self.store.handle_stale_key_packet(packet, peer)
+    }
+
+    pub fn handle_replay_detected_packet<'a>(
+        &self,
+        packet: &'a control::replay_detected::Packet,
+        peer: &SocketAddr,
+    ) -> Option<&'a control::ReplayDetected> {
+        self.store.handle_replay_detected_packet(packet, peer)
+    }
+
+    pub fn handle_unknown_path_secret_packet<'a>(
+        &self,
+        packet: &'a control::unknown_path_secret::Packet,
+        peer: &SocketAddr,
+    ) -> Option<&'a control::UnknownPathSecret> {
+        self.store.handle_unknown_path_secret_packet(packet, peer)
     }
 
     #[doc(hidden)]

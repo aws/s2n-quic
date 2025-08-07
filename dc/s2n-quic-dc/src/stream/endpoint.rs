@@ -99,9 +99,12 @@ where
 {
     let credentials = &packet.credentials;
     let mut secret_control = vec![];
-    let Some((crypto, mut parameters)) =
-        map.pair_for_credentials(credentials, &peer.features(), &mut secret_control)
-    else {
+    let Some((crypto, mut parameters)) = map.pair_for_credentials(
+        credentials,
+        packet.source_queue_id,
+        &peer.features(),
+        &mut secret_control,
+    ) else {
         let error = io::Error::new(
             io::ErrorKind::NotFound,
             format!("missing credentials for client: {credentials:?}"),

@@ -21,6 +21,7 @@ impl<'a> Packet<'a> {
             value: UnknownPathSecret {
                 wire_version: WireVersion::ZERO,
                 credential_id: id,
+                queue_id: None,
             },
             crypto_tag: &stateless_reset[..],
         }
@@ -48,25 +49,37 @@ impl<'a> Packet<'a> {
         aws_lc_rs::constant_time::verify_slices_are_equal(self.crypto_tag, stateless_reset).ok()?;
         Some(&self.value)
     }
+
+    #[inline]
+    pub fn queue_id(&self) -> Option<VarInt> {
+        self.value.queue_id
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 pub struct UnknownPathSecret {
-    pub wire_version: WireVersion,
     pub credential_id: credentials::Id,
+    pub wire_version: WireVersion,
+    pub queue_id: Option<VarInt>,
 }
 
 impl UnknownPathSecret {
-    pub const PACKET_SIZE: usize =
-        size_of::<Tag>() + size_of::<u8>() + size_of::<credentials::Id>() + TAG_LEN;
+    pub const MAX_PACKET_SIZE: usize = size_of::<Tag>()
+        + size_of::<u8>()
+        + size_of::<credentials::Id>()
+        + size_of::<VarInt>()
+        + TAG_LEN;
 
     #[inline]
     pub fn encode(&self, mut encoder: EncoderBuffer, stateless_reset_tag: &[u8; TAG_LEN]) -> usize {
         let before = encoder.len();
-        encoder.encode(&Tag::default());
+        encoder.encode(&Tag::default().with_queue_id(self.queue_id.is_some()));
         encoder.encode(&&self.credential_id[..]);
         encoder.encode(&self.wire_version);
+        if let Some(queue_id) = self.queue_id {
+            encoder.encode(&queue_id);
+        }
         encoder.encode(&&stateless_reset_tag[..]);
         let after = encoder.len();
         after - before
@@ -77,12 +90,19 @@ impl<'a> DecoderValue<'a> for UnknownPathSecret {
     #[inline]
     fn decode(buffer: DecoderBuffer<'a>) -> R<'a, Self> {
         let (tag, buffer) = buffer.decode::<Tag>()?;
-        decoder_invariant!(tag == Tag::default(), "invalid tag");
         let (credential_id, buffer) = buffer.decode()?;
         let (wire_version, buffer) = buffer.decode()?;
+        let (queue_id, buffer) = if tag.has_queue_id() {
+            let (queue_id, buffer) = buffer.decode()?;
+            (Some(queue_id), buffer)
+        } else {
+            (None, buffer)
+        };
+
         let value = Self {
             wire_version,
             credential_id,
+            queue_id,
         };
         Ok((value, buffer))
     }
@@ -102,7 +122,7 @@ mod tests {
         bolero::check!()
             .with_type::<(UnknownPathSecret, [u8; TAG_LEN])>()
             .for_each(|(value, stateless_reset)| {
-                let mut buffer = [0u8; UnknownPathSecret::PACKET_SIZE];
+                let mut buffer = [0u8; UnknownPathSecret::MAX_PACKET_SIZE];
                 let len = {
                     let encoder = s2n_codec::EncoderBuffer::new(&mut buffer);
                     value.encode(encoder, stateless_reset)

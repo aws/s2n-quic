@@ -18,6 +18,11 @@ const UNKNOWN_PATH_SECRET: u8 = 0b0110_0000;
 const STALE_KEY: u8 = 0b0110_0001;
 const REPLAY_DETECTED: u8 = 0b0110_0010;
 
+/// Indicates if the packet has a queue_id field
+///
+/// This is used to route packets to the appropriate sender.
+const HAS_QUEUE_ID: u8 = 0b0000_0100;
+
 pub const MAX_PACKET_SIZE: usize = 64;
 pub const TAG_LEN: usize = 16;
 
@@ -35,6 +40,19 @@ macro_rules! impl_tag {
 
         impl Tag {
             pub const VALUE: u8 = $tag;
+            pub const VALUE_WITH_QUEUE_ID: u8 = $tag | HAS_QUEUE_ID;
+
+            pub const fn has_queue_id(&self) -> bool {
+                (self.0 & HAS_QUEUE_ID) != 0
+            }
+
+            pub fn with_queue_id(self, has_queue_id: bool) -> Self {
+                if has_queue_id {
+                    Self(self.0 | HAS_QUEUE_ID)
+                } else {
+                    self
+                }
+            }
         }
 
         impl From<Tag> for u8 {
@@ -48,7 +66,7 @@ macro_rules! impl_tag {
             impl<'a> Tag {
                 fn decode(buffer: Buffer) -> Result<Self> {
                     let (tag, buffer) = buffer.decode()?;
-                    decoder_invariant!(tag == $tag, "invalid tag");
+                    decoder_invariant!([$tag, $tag | HAS_QUEUE_ID].contains(&tag), "invalid tag");
                     Ok((Self(tag), buffer))
                 }
             }
@@ -135,8 +153,9 @@ impl<'a> Packet<'a> {
     #[inline]
     pub fn decode(buffer: DecoderBufferMut<'a>) -> Rm<'a, Self> {
         let tag = buffer.peek_byte(0)?;
+        let base_tag = tag & !HAS_QUEUE_ID;
 
-        Ok(match tag {
+        Ok(match base_tag {
             UNKNOWN_PATH_SECRET => {
                 let (packet, buffer) = unknown_path_secret::Packet::decode(buffer)?;
                 (Self::UnknownPathSecret(packet), buffer)
@@ -159,6 +178,15 @@ impl<'a> Packet<'a> {
             Self::UnknownPathSecret(p) => p.credential_id(),
             Self::StaleKey(p) => p.credential_id(),
             Self::ReplayDetected(p) => p.credential_id(),
+        }
+    }
+
+    #[inline]
+    pub fn queue_id(&self) -> Option<VarInt> {
+        match self {
+            Self::UnknownPathSecret(p) => p.queue_id(),
+            Self::StaleKey(p) => p.queue_id(),
+            Self::ReplayDetected(p) => p.queue_id(),
         }
     }
 }

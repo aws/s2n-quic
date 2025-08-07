@@ -192,10 +192,15 @@ impl Entry {
         (sealer, credentials)
     }
 
-    pub fn uni_opener(self: Arc<Self>, map: Map, credentials: &Credentials) -> open::Once {
+    pub fn uni_opener(
+        self: Arc<Self>,
+        map: Map,
+        credentials: &Credentials,
+        queue_id: Option<VarInt>,
+    ) -> open::Once {
         let key_id = credentials.key_id;
         let opener = self.secret.application_opener(key_id);
-        let dedup = Dedup::new(self, key_id, map);
+        let dedup = Dedup::new(self, key_id, queue_id, map);
         open::Once::new(opener, dedup)
     }
 
@@ -231,6 +236,7 @@ impl Entry {
         self: &Arc<Self>,
         map: Map,
         credentials: &Credentials,
+        queue_id: Option<VarInt>,
         features: &TransportFeatures,
     ) -> Bidirectional {
         let key_id = credentials.key_id;
@@ -241,7 +247,7 @@ impl Entry {
             key_id,
             initiator,
             // Remote application keys need to be de-duplicated
-            Dedup::new(self.clone(), key_id, map),
+            Dedup::new(self.clone(), key_id, queue_id, map),
         );
 
         let control = if features.is_reliable() {
@@ -297,6 +303,7 @@ impl receiver::Error {
         self,
         entry: &Entry,
         credentials: &Credentials,
+        queue_id: Option<VarInt>,
         buffer: &'buffer mut [u8; control::MAX_PACKET_SIZE],
     ) -> &'buffer [u8] {
         debug_assert_eq!(entry.secret.id(), &credentials.id);
@@ -306,12 +313,14 @@ impl receiver::Error {
                 wire_version: WireVersion::ZERO,
                 credential_id: credentials.id,
                 rejected_key_id: credentials.key_id,
+                queue_id,
             }
             .encode(encoder, &entry.control_sealer()),
             receiver::Error::Unknown => control::StaleKey {
                 wire_version: WireVersion::ZERO,
                 credential_id: credentials.id,
                 min_key_id: entry.receiver.minimum_unseen_key_id(),
+                queue_id,
             }
             .encode(encoder, &entry.control_sealer()),
         };

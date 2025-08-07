@@ -177,7 +177,8 @@ impl Model {
                         id,
                         &stateless_reset,
                     );
-                state.handle_unknown_secret(&packet, &Default::default());
+                state
+                    .handle_unknown_path_secret_packet(&packet, &"127.0.0.1:1234".parse().unwrap());
 
                 // ReceiveUnknown does not cause any action with respect to our invariants, no
                 // updates required.
