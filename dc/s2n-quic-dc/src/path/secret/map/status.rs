@@ -39,7 +39,14 @@ impl IsRetired {
 
 pub struct Dedup {
     cell: once_cell::sync::OnceCell<crypto::open::Result>,
-    init: core::cell::Cell<Option<(Arc<Entry>, VarInt, Map)>>,
+    init: core::cell::Cell<Option<DedupInit>>,
+}
+
+struct DedupInit {
+    entry: Arc<Entry>,
+    key_id: VarInt,
+    queue_id: Option<VarInt>,
+    map: Map,
 }
 
 /// SAFETY: `init` cell is synchronized by `OnceCell`
@@ -47,12 +54,22 @@ unsafe impl Sync for Dedup {}
 
 impl Dedup {
     #[inline]
-    pub(super) fn new(entry: Arc<Entry>, key_id: VarInt, map: Map) -> Self {
+    pub(super) fn new(
+        entry: Arc<Entry>,
+        key_id: VarInt,
+        queue_id: Option<VarInt>,
+        map: Map,
+    ) -> Self {
         // TODO potentially record a timestamp of when this was created to try and detect long
         // delays of processing the first packet.
         Self {
             cell: Default::default(),
-            init: core::cell::Cell::new(Some((entry, key_id, map))),
+            init: core::cell::Cell::new(Some(DedupInit {
+                entry,
+                key_id,
+                queue_id,
+                map,
+            })),
         }
     }
 
@@ -73,7 +90,12 @@ impl Dedup {
     pub fn check(&self) -> crypto::open::Result {
         *self.cell.get_or_init(|| {
             match self.init.take() {
-                Some((entry, key_id, map)) => map.store.check_dedup(&entry, key_id),
+                Some(DedupInit {
+                    entry,
+                    key_id,
+                    queue_id,
+                    map,
+                }) => map.store.check_dedup(&entry, key_id, queue_id),
                 None => {
                     // Dedup has been poisoned! TODO log this
                     Err(crypto::open::Error::ReplayPotentiallyDetected { gap: None })

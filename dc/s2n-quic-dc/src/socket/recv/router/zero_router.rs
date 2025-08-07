@@ -135,6 +135,17 @@ where
     }
 
     #[inline]
+    fn dispatch_stale_key_packet(
+        &mut self,
+        queue_id: Option<VarInt>,
+        credentials: crate::credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        self.non_zero
+            .dispatch_stale_key_packet(queue_id, credentials, segment);
+    }
+
+    #[inline]
     fn handle_replay_detected_packet(
         &mut self,
         packet: packet::secret_control::replay_detected::Packet,
@@ -145,6 +156,17 @@ where
     }
 
     #[inline]
+    fn dispatch_replay_detected_packet(
+        &mut self,
+        queue_id: Option<VarInt>,
+        credentials: crate::credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        self.non_zero
+            .dispatch_replay_detected_packet(queue_id, credentials, segment);
+    }
+
+    #[inline]
     fn handle_unknown_path_secret_packet(
         &mut self,
         packet: packet::secret_control::unknown_path_secret::Packet,
@@ -152,6 +174,17 @@ where
     ) {
         self.non_zero
             .handle_unknown_path_secret_packet(packet, remote_address);
+    }
+
+    #[inline]
+    fn dispatch_unknown_path_secret_packet(
+        &mut self,
+        queue_id: Option<VarInt>,
+        credentials: crate::credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        self.non_zero
+            .dispatch_unknown_path_secret_packet(queue_id, credentials, segment);
     }
 
     #[inline]

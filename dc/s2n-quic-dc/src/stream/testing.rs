@@ -340,6 +340,10 @@ impl Server {
     pub fn subscriber(&self) -> Arc<testing::Subscriber> {
         self.subscriber.clone()
     }
+
+    pub fn map(&self) -> &crate::path::secret::Map {
+        &self.handle.map
+    }
 }
 
 pub(crate) mod drop_handle {

@@ -104,6 +104,7 @@ fn control_packets() {
             control::UnknownPathSecret {
                 wire_version: WireVersion::ZERO,
                 credential_id,
+                queue_id: None,
             },
             &stateless_reset
         );
@@ -113,6 +114,7 @@ fn control_packets() {
                 wire_version: WireVersion::ZERO,
                 credential_id,
                 min_key_id: 123u16.into(),
+                queue_id: None,
             },
             secret
         );
@@ -122,6 +124,7 @@ fn control_packets() {
                 wire_version: WireVersion::ZERO,
                 credential_id,
                 rejected_key_id: 123u16.into(),
+                queue_id: None,
             },
             secret
         );

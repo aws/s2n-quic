@@ -116,6 +116,17 @@ impl<Inner: Router> Router for WithMap<Inner> {
     }
 
     #[inline]
+    fn dispatch_stale_key_packet(
+        &mut self,
+        queue_id: Option<s2n_quic_core::varint::VarInt>,
+        credentials: crate::credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        self.inner
+            .dispatch_stale_key_packet(queue_id, credentials, segment);
+    }
+
+    #[inline]
     fn handle_replay_detected_packet(
         &mut self,
         packet: packet::secret_control::replay_detected::Packet,
@@ -131,6 +142,17 @@ impl<Inner: Router> Router for WithMap<Inner> {
     }
 
     #[inline]
+    fn dispatch_replay_detected_packet(
+        &mut self,
+        queue_id: Option<s2n_quic_core::varint::VarInt>,
+        credentials: crate::credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        self.inner
+            .dispatch_replay_detected_packet(queue_id, credentials, segment);
+    }
+
+    #[inline]
     fn handle_unknown_path_secret_packet(
         &mut self,
         packet: packet::secret_control::unknown_path_secret::Packet,
@@ -143,6 +165,17 @@ impl<Inner: Router> Router for WithMap<Inner> {
         );
         self.inner
             .handle_unknown_path_secret_packet(packet, remote_address);
+    }
+
+    #[inline]
+    fn dispatch_unknown_path_secret_packet(
+        &mut self,
+        queue_id: Option<s2n_quic_core::varint::VarInt>,
+        credentials: crate::credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        self.inner
+            .dispatch_unknown_path_secret_packet(queue_id, credentials, segment);
     }
 
     #[inline]

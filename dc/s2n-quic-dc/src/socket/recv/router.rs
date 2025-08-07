@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    credentials::Credentials,
+    credentials::{self, Credentials},
     packet::{self, stream},
     path::secret,
     socket::recv::descriptor,
 };
 use s2n_codec::DecoderBufferMut;
-use s2n_quic_core::inet::{ExplicitCongestionNotification, SocketAddress};
+use s2n_quic_core::{
+    inet::{ExplicitCongestionNotification, SocketAddress},
+    varint::VarInt,
+};
 
 mod with_map;
 mod zero_router;
@@ -59,7 +62,10 @@ pub trait Router {
             // further and correctly dispatch to the right place.
             Ok((packet, remaining)) => {
                 if cfg!(test) {
-                    assert!(remaining.is_empty());
+                    assert!(
+                        remaining.is_empty(),
+                        "packet = {packet:?}, remaining = {remaining:?}"
+                    );
                 }
                 match packet {
                     packet::Packet::Control(packet) => {
@@ -87,15 +93,24 @@ pub trait Router {
                     }
                     packet::Packet::StaleKey(packet) => {
                         tracing::trace!(?packet, "parsed_stale_key_packet");
+                        let queue_id = packet.queue_id();
+                        let credentials = *packet.credential_id();
                         self.handle_stale_key_packet(packet, remote_address);
+                        self.dispatch_stale_key_packet(queue_id, credentials, segment);
                     }
                     packet::Packet::ReplayDetected(packet) => {
                         tracing::trace!(?packet, "parsed_replay_detected_packet");
+                        let queue_id = packet.queue_id();
+                        let credentials = *packet.credential_id();
                         self.handle_replay_detected_packet(packet, remote_address);
+                        self.dispatch_replay_detected_packet(queue_id, credentials, segment);
                     }
                     packet::Packet::UnknownPathSecret(packet) => {
                         tracing::trace!(?packet, "parsed_unknown_path_secret_packet");
+                        let queue_id = packet.queue_id();
+                        let credentials = *packet.credential_id();
                         self.handle_unknown_path_secret_packet(packet, remote_address);
+                        self.dispatch_unknown_path_secret_packet(queue_id, credentials, segment);
                     }
                 }
             }
@@ -200,6 +215,22 @@ pub trait Router {
     }
 
     #[inline]
+    fn dispatch_stale_key_packet(
+        &mut self,
+        queue_id: Option<VarInt>,
+        credentials: credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        tracing::warn!(
+            unhandled_packet = "stale_key",
+            ?queue_id,
+            ?credentials,
+            remote_address = ?segment.remote_address(),
+            packet_len = segment.len()
+        );
+    }
+
+    #[inline]
     fn handle_replay_detected_packet(
         &mut self,
         packet: packet::secret_control::replay_detected::Packet,
@@ -209,12 +240,43 @@ pub trait Router {
     }
 
     #[inline]
+    fn dispatch_replay_detected_packet(
+        &mut self,
+        queue_id: Option<VarInt>,
+        credentials: credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        tracing::warn!(
+            unhandled_packet = "replay_detected",
+            ?queue_id,
+            ?credentials,
+            remote_address = ?segment.remote_address(),
+            packet_len = segment.len()
+        );
+    }
+
+    #[inline]
     fn handle_unknown_path_secret_packet(
         &mut self,
         packet: packet::secret_control::unknown_path_secret::Packet,
         remote_address: SocketAddress,
     ) {
         self.on_unhandled_packet(remote_address, packet::Packet::UnknownPathSecret(packet));
+    }
+
+    fn dispatch_unknown_path_secret_packet(
+        &mut self,
+        queue_id: Option<VarInt>,
+        credentials: credentials::Id,
+        segment: descriptor::Filled,
+    ) {
+        tracing::warn!(
+            unhandled_packet = "unknown_path_secret",
+            ?queue_id,
+            ?credentials,
+            remote_address = ?segment.remote_address(),
+            packet_len = segment.len()
+        );
     }
 
     #[inline]

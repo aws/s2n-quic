@@ -66,22 +66,25 @@ decoder_value!(
                     let (tag, buffer) = buffer.decode()?;
                     Ok((Self::Control(tag), buffer))
                 }
-                super::secret_control::stale_key::Tag::VALUE => {
+                super::secret_control::stale_key::Tag::VALUE
+                | super::secret_control::stale_key::Tag::VALUE_WITH_QUEUE_ID => {
                     let (tag, buffer) = buffer.decode()?;
                     Ok((Self::StaleKey(tag), buffer))
                 }
-                super::secret_control::replay_detected::Tag::VALUE => {
+                super::secret_control::replay_detected::Tag::VALUE
+                | super::secret_control::replay_detected::Tag::VALUE_WITH_QUEUE_ID => {
                     let (tag, buffer) = buffer.decode()?;
                     Ok((Self::ReplayDetected(tag), buffer))
                 }
-                super::secret_control::unknown_path_secret::Tag::VALUE => {
+                super::secret_control::unknown_path_secret::Tag::VALUE
+                | super::secret_control::unknown_path_secret::Tag::VALUE_WITH_QUEUE_ID => {
                     let (tag, buffer) = buffer.decode()?;
                     Ok((Self::UnknownPathSecret(tag), buffer))
                 }
                 // reserve this range for other packet types
-                0b0110_0011..=0b0111_1111 => Err(s2n_codec::DecoderError::InvariantViolation(
-                    "unexpected packet tag",
-                )),
+                0b0110_0011 | 0b0110_0111 | 0b0110_1000..=0b0111_1111 => Err(
+                    s2n_codec::DecoderError::InvariantViolation("unexpected packet tag"),
+                ),
                 0b1000_0000..=0b1111_1111 => Err(s2n_codec::DecoderError::InvariantViolation(
                     "only short packets are accepted",
                 )),
