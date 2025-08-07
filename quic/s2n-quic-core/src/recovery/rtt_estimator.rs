@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    packet::number::PacketNumberSpace, time::Timestamp, transport::parameters::MaxAckDelay,
+    connection::limits::{DEFAULT_PTO_JITTER_PERCENTAGE, MAX_PTO_JITTER_PERCENTAGE},
+    packet::number::PacketNumberSpace,
+    random,
+    time::Timestamp,
+    transport::parameters::MaxAckDelay,
 };
 use core::{
     cmp::{max, min},
@@ -369,6 +373,39 @@ fn weighted_average(a: Duration, b: Duration, weight: u64) -> Duration {
     b /= weight;
 
     Duration::from_nanos(a + b)
+}
+
+/// Calculates the jitter amount in microseconds for PTO period
+///
+/// Returns a jitter value within ±jitter_percentage of the base PTO period.
+/// Uses integer arithmetic for efficiency and the existing random generator.
+///
+/// # Arguments
+/// * `base_pto_micros` - Base PTO period in microseconds
+/// * `jitter_percentage` - Jitter percentage (0-MAX_PTO_JITTER_PERCENTAGE)
+/// * `random_generator` - Random number generator
+///
+/// # Returns
+/// Jitter amount in microseconds (can be negative)
+#[inline]
+fn calculate_jitter_amount(
+    base_pto_micros: u64,
+    jitter_percentage: u8,
+    random_generator: &mut dyn random::Generator,
+) -> i64 {
+    if jitter_percentage == 0 {
+        return 0;
+    }
+
+    // Calculate max jitter in microseconds
+    let max_jitter_micros = (base_pto_micros * jitter_percentage as u64) / 100;
+
+    // Use existing gen_range_biased to generate value in range [0, 2 * max_jitter]
+    let jitter_range = 2 * max_jitter_micros as usize;
+    let random_value = random::gen_range_biased(random_generator, 0..=jitter_range);
+
+    // Convert to range [-max_jitter, +max_jitter]
+    (random_value as i64) - (max_jitter_micros as i64)
 }
 
 #[cfg(test)]
@@ -847,5 +884,122 @@ mod test {
         //# least the local timer granularity, as indicated by the kGranularity
         //# constant.
         assert!(rtt_estimator.loss_time_threshold() >= K_GRANULARITY);
+    }
+
+    #[test]
+    fn calculate_jitter_amount_zero_percentage() {
+        let mut rng = crate::random::testing::Generator::default();
+        let base_pto_micros = 1000000; // 1 second
+
+        let jitter =
+            calculate_jitter_amount(base_pto_micros, DEFAULT_PTO_JITTER_PERCENTAGE, &mut rng);
+        assert_eq!(jitter, 0);
+    }
+
+    #[test]
+    fn calculate_jitter_amount_within_range() {
+        let mut rng = crate::random::testing::Generator::default();
+        let base_pto_micros = 1000000; // 1 second
+        let jitter_percentage = 25;
+
+        // Test multiple iterations to verify range
+        for _ in 0..100 {
+            let jitter = calculate_jitter_amount(base_pto_micros, jitter_percentage, &mut rng);
+            let max_jitter = (base_pto_micros * jitter_percentage as u64) / 100;
+
+            // Jitter should be within ±25% range
+            assert!(jitter >= -(max_jitter as i64));
+            assert!(jitter <= max_jitter as i64);
+        }
+    }
+
+    #[test]
+    fn calculate_jitter_amount_different_values() {
+        let mut rng = crate::random::testing::Generator::default();
+        let base_pto_micros = 1000000; // 1 second
+        let jitter_percentage = 10;
+
+        let mut jitter_values = Vec::new();
+
+        // Generate multiple jitter values
+        for _ in 0..50 {
+            let jitter = calculate_jitter_amount(base_pto_micros, jitter_percentage, &mut rng);
+            jitter_values.push(jitter);
+        }
+
+        // Verify we get different values (not all the same)
+        let first_value = jitter_values[0];
+        let all_same = jitter_values.iter().all(|&x| x == first_value);
+        assert!(!all_same, "All jitter values should not be identical");
+    }
+
+    #[test]
+    fn calculate_jitter_amount_edge_cases() {
+        let mut rng = crate::random::testing::Generator::default();
+
+        // Test with minimum base PTO
+        let min_base_pto = 1; // 1 microsecond
+        let jitter = calculate_jitter_amount(min_base_pto, MAX_PTO_JITTER_PERCENTAGE, &mut rng);
+        let max_jitter = (min_base_pto * MAX_PTO_JITTER_PERCENTAGE as u64) / 100;
+        assert!(jitter >= -(max_jitter as i64));
+        assert!(jitter <= max_jitter as i64);
+
+        // Test with maximum jitter percentage
+        let base_pto_micros = 1000000;
+        let jitter = calculate_jitter_amount(base_pto_micros, MAX_PTO_JITTER_PERCENTAGE, &mut rng);
+        let max_jitter = (base_pto_micros * MAX_PTO_JITTER_PERCENTAGE as u64) / 100;
+        assert!(jitter >= -(max_jitter as i64));
+        assert!(jitter <= max_jitter as i64);
+    }
+
+    #[test]
+    fn calculate_jitter_amount_distribution() {
+        let mut rng = crate::random::testing::Generator::default();
+        let base_pto_micros = 1000000; // 1 second
+        let jitter_percentage = 20;
+
+        let mut positive_count = 0;
+        let mut negative_count = 0;
+        let mut zero_count = 0;
+
+        // Generate many samples to check distribution
+        for _ in 0..1000 {
+            let jitter = calculate_jitter_amount(base_pto_micros, jitter_percentage, &mut rng);
+
+            if jitter > 0 {
+                positive_count += 1;
+            } else if jitter < 0 {
+                negative_count += 1;
+            } else {
+                zero_count += 1;
+            }
+        }
+
+        // Should have both positive and negative values
+        assert!(
+            positive_count > 0,
+            "Should have some positive jitter values"
+        );
+        assert!(
+            negative_count > 0,
+            "Should have some negative jitter values"
+        );
+
+        // The distribution should be roughly balanced (allowing for some variance)
+        let total = positive_count + negative_count + zero_count;
+        let positive_ratio = positive_count as f64 / total as f64;
+        let negative_ratio = negative_count as f64 / total as f64;
+
+        // Each should be roughly around 50% (allowing 20% variance)
+        assert!(
+            positive_ratio > 0.3 && positive_ratio < 0.7,
+            "Positive ratio: {}",
+            positive_ratio
+        );
+        assert!(
+            negative_ratio > 0.3 && negative_ratio < 0.7,
+            "Negative ratio: {}",
+            negative_ratio
+        );
     }
 }

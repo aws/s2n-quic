@@ -39,7 +39,6 @@ const MAX_KEEP_ALIVE_PERIOD_DEFAULT: Duration = Duration::from_secs(30);
 pub const ANTI_AMPLIFICATION_MULTIPLIER: u8 = 3;
 
 pub const DEFAULT_STREAM_BATCH_SIZE: u8 = 1;
-pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 0;
 
 // Maximum allowed PTO jitter percentage. Limited to 50% to prevent PTO timers
 // from becoming too short (which could cause premature timeouts) or too long
