@@ -39,6 +39,13 @@ const MAX_KEEP_ALIVE_PERIOD_DEFAULT: Duration = Duration::from_secs(30);
 pub const ANTI_AMPLIFICATION_MULTIPLIER: u8 = 3;
 
 pub const DEFAULT_STREAM_BATCH_SIZE: u8 = 1;
+pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 0;
+
+// Maximum allowed PTO jitter percentage. Limited to 50% to prevent PTO timers
+// from becoming too short (which could cause premature timeouts) or too long
+// (which could significantly delay loss recovery).
+pub const MAX_PTO_JITTER_PERCENTAGE: u8 = 50;
+pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 0;
 
 #[non_exhaustive]
 #[derive(Debug)]
@@ -104,6 +111,7 @@ pub struct Limits {
     pub(crate) migration_support: MigrationSupport,
     pub(crate) anti_amplification_multiplier: u8,
     pub(crate) stream_batch_size: u8,
+    pub(crate) pto_jitter_percentage: u8,
 }
 
 impl Default for Limits {
@@ -151,6 +159,7 @@ impl Limits {
             migration_support: MigrationSupport::RECOMMENDED,
             anti_amplification_multiplier: ANTI_AMPLIFICATION_MULTIPLIER,
             stream_batch_size: DEFAULT_STREAM_BATCH_SIZE,
+            pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
         }
     }
 
@@ -326,6 +335,44 @@ impl Limits {
         u8
     );
 
+    /// Sets the PTO jitter percentage (default: 0)
+    ///
+    /// Adds random jitter to Probe Timeout (PTO) calculations to prevent synchronized
+    /// timeouts across multiple connections. The jitter is applied as a percentage
+    /// of the base PTO period, with values between -X% and +X% where X is the
+    /// configured percentage.
+    ///
+    /// Valid range: 0-50%
+    /// - 0%: No jitter (default)
+    /// - 1-50%: Applies random jitter within ±percentage of base PTO
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use s2n_quic_core::connection::Limits;
+    /// let limits = Limits::new()
+    ///     .with_pto_jitter_percentage(25)
+    ///     .unwrap();
+    /// ```
+    pub fn with_pto_jitter_percentage(mut self, value: u8) -> Result<Self, ValidationError> {
+        ensure!(
+            value <= MAX_PTO_JITTER_PERCENTAGE,
+            Err(ValidationError(
+                "PTO jitter percentage must be between 0 and 50"
+            ))
+        );
+        self.pto_jitter_percentage = value;
+        Ok(self)
+    }
+
+    /// Gets the configured PTO jitter percentage
+    ///
+    /// Returns the percentage of jitter applied to PTO calculations.
+    /// A value of 0 means no jitter is applied.
+    pub fn pto_jitter_percentage(&self) -> u8 {
+        self.pto_jitter_percentage
+    }
+
     // internal APIs
 
     #[doc(hidden)]
@@ -491,5 +538,99 @@ mod tests {
         let new_size = 10;
         updatable_limits.with_stream_batch_size(new_size);
         assert_eq!(limits.stream_batch_size, new_size);
+    }
+
+    #[test]
+    fn pto_jitter_percentage_default() {
+        let limits = Limits::new();
+        assert_eq!(
+            limits.pto_jitter_percentage(),
+            DEFAULT_PTO_JITTER_PERCENTAGE
+        );
+
+        let limits = Limits::default();
+        assert_eq!(
+            limits.pto_jitter_percentage(),
+            DEFAULT_PTO_JITTER_PERCENTAGE
+        );
+    }
+
+    #[test]
+    fn pto_jitter_percentage_valid_values() {
+        let limits = Limits::new();
+
+        // Test valid values (0-MAX_PTO_JITTER_PERCENTAGE)
+        for value in 0..=MAX_PTO_JITTER_PERCENTAGE {
+            let result = limits.with_pto_jitter_percentage(value);
+            assert!(result.is_ok(), "Value {} should be valid", value);
+            let limits = result.unwrap();
+            assert_eq!(limits.pto_jitter_percentage(), value);
+        }
+    }
+
+    #[test]
+    fn pto_jitter_percentage_invalid_values() {
+        let limits = Limits::new();
+
+        // Test invalid values (> MAX_PTO_JITTER_PERCENTAGE)
+        for value in (MAX_PTO_JITTER_PERCENTAGE + 1)..=255 {
+            let result = limits.with_pto_jitter_percentage(value);
+            assert!(result.is_err(), "Value {} should be invalid", value);
+
+            if let Err(ValidationError(msg)) = result {
+                assert_eq!(msg, "PTO jitter percentage must be between 0 and 50");
+            } else {
+                panic!("Expected ValidationError for value {}", value);
+            }
+        }
+    }
+
+    #[test]
+    fn pto_jitter_percentage_edge_cases() {
+        let limits = Limits::new();
+
+        // Test boundary values
+        let result = limits.with_pto_jitter_percentage(0);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().pto_jitter_percentage(), 0);
+
+        let result = limits.with_pto_jitter_percentage(MAX_PTO_JITTER_PERCENTAGE);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap().pto_jitter_percentage(),
+            MAX_PTO_JITTER_PERCENTAGE
+        );
+
+        let result = limits.with_pto_jitter_percentage(MAX_PTO_JITTER_PERCENTAGE + 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn pto_jitter_percentage_chaining() {
+        // Test that the setter can be chained with other setters
+        let result = Limits::new()
+            .with_pto_jitter_percentage(25)
+            .and_then(|l| l.with_stream_batch_size(5));
+
+        assert!(result.is_ok());
+        let limits = result.unwrap();
+        assert_eq!(limits.pto_jitter_percentage(), 25);
+        assert_eq!(limits.stream_batch_size(), 5);
+    }
+
+    #[test]
+    fn pto_jitter_percentage_getter() {
+        let mut limits = Limits::new();
+
+        // Test initial value
+        assert_eq!(limits.pto_jitter_percentage(), 0);
+
+        // Test after setting value
+        limits = limits.with_pto_jitter_percentage(30).unwrap();
+        assert_eq!(limits.pto_jitter_percentage(), 30);
+
+        // Test that getter returns the correct value
+        limits = limits.with_pto_jitter_percentage(15).unwrap();
+        assert_eq!(limits.pto_jitter_percentage(), 15);
     }
 }
