@@ -20,7 +20,7 @@ on:
       - ".github/workflows/dependencies.yml"
 
   schedule:
-    # run every morning at 10am Pacific Tim
+    # run every morning at 10am Pacific Time
     - cron: "0 17 * * *"
 
 jobs:
