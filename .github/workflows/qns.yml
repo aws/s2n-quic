@@ -18,7 +18,7 @@ env:
   RUST_BACKTRACE: 1
   # This kept breaking builds so we're pinning for now. We should do our best to keep
   # up with the changes, though.
-  INTEROP_RUNNER_REF: bda2d276de79cd016e4d90fd57ff2d863b05abe5
+  INTEROP_RUNNER_REF: 2654211887b807b2a57dff30aa11b6d09578e882
   # This should be updated when updating wesleyrosenblum/quic-network-simulator
   NETWORK_SIMULATOR_REF: sha256:e102cb0e4b9457f510faf4ca888b4f7f6211aa109b68bfaaa1aa639059fcfc96
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
@@ -164,7 +164,6 @@ jobs:
         run: |
           docker pull "wesleyrosenblum/quic-network-simulator@$NETWORK_SIMULATOR_REF"
           docker pull "martenseemann/quic-interop-iperf-endpoint@$IPERF_ENDPOINT_REF"
-          docker pull ghcr.io/mozilla/neqo:latest
 
       - uses: actions/setup-python@v5
         with:
