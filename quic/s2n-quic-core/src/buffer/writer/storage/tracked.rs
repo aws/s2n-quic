@@ -73,7 +73,7 @@ impl<S: Storage + ?Sized> Storage for Tracked<'_, S> {
     }
 
     #[inline]
-    fn put_chunk(&mut self, chunk: Chunk) {
+    fn put_chunk(&mut self, chunk: Chunk<'_>) {
         let len = chunk.len();
         self.storage.put_chunk(chunk);
         self.written += len;

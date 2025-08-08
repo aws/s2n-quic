@@ -74,7 +74,7 @@ impl<S: Storage + ?Sized> Storage for WriteOnce<'_, S> {
     }
 
     #[inline]
-    fn put_chunk(&mut self, chunk: Chunk) {
+    fn put_chunk(&mut self, chunk: Chunk<'_>) {
         let did_write = !chunk.is_empty();
         self.storage.put_chunk(chunk);
         self.did_write |= did_write;

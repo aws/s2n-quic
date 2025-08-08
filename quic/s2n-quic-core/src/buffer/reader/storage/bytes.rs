@@ -19,7 +19,7 @@ impl Storage for BytesMut {
     }
 
     #[inline]
-    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
+    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk<'_>, Self::Error> {
         let len = self.len().min(watermark);
 
         ensure!(len > 0, Ok(Self::new().into()));
@@ -33,7 +33,7 @@ impl Storage for BytesMut {
     }
 
     #[inline]
-    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk, Self::Error>
+    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk<'_>, Self::Error>
     where
         Dest: writer::Storage + ?Sized,
     {
@@ -79,13 +79,13 @@ impl Storage for Bytes {
     }
 
     #[inline]
-    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
+    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk<'_>, Self::Error> {
         let len = self.len().min(watermark);
         Ok(self.split_to(len).into())
     }
 
     #[inline]
-    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk, Self::Error>
+    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk<'_>, Self::Error>
     where
         Dest: writer::Storage + ?Sized,
     {

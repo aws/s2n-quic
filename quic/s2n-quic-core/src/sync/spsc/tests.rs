@@ -37,7 +37,7 @@ impl Default for WakeState {
 }
 
 impl WakeState {
-    fn context(&self) -> Context {
+    fn context(&self) -> Context<'_> {
         Context::from_waker(&self.waker)
     }
 

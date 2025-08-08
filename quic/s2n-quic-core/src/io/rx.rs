@@ -16,7 +16,7 @@ pub trait Rx: Sized {
 
     /// Returns a future that yields after a packet is ready to be received
     #[inline]
-    fn ready(&mut self) -> RxReady<Self> {
+    fn ready(&mut self) -> RxReady<'_, Self> {
         RxReady(self)
     }
 

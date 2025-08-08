@@ -266,13 +266,13 @@ macro_rules! zerocopy_network_integer {
         }
 
         impl fmt::Debug for $name {
-            fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(formatter, "{}", self.get())
             }
         }
 
         impl fmt::Display for $name {
-            fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(formatter, "{}", self.get())
             }
         }

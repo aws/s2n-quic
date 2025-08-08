@@ -35,7 +35,7 @@ impl<R: Reader + ?Sized> Storage for Limit<'_, R> {
     }
 
     #[inline]
-    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
+    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk<'_>, Self::Error> {
         let watermark = self.len.min(watermark);
         let chunk = self.reader.read_chunk(watermark)?;
         unsafe {
@@ -46,7 +46,7 @@ impl<R: Reader + ?Sized> Storage for Limit<'_, R> {
     }
 
     #[inline]
-    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk, Self::Error>
+    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk<'_>, Self::Error>
     where
         Dest: writer::Storage + ?Sized,
     {

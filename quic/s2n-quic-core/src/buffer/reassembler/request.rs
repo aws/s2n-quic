@@ -15,7 +15,7 @@ pub struct Request<'a> {
 }
 
 impl fmt::Debug for Request<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Request")
             .field("offset", &self.offset)
             .field("len", &self.data.len())
@@ -73,7 +73,7 @@ impl reader::Storage for Request<'_> {
     fn partial_copy_into<Dest>(
         &mut self,
         dest: &mut Dest,
-    ) -> Result<reader::storage::Chunk, Self::Error>
+    ) -> Result<reader::storage::Chunk<'_>, Self::Error>
     where
         Dest: writer::Storage + ?Sized,
     {

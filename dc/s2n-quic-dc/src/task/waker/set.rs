@@ -20,7 +20,7 @@ pub struct Set {
 impl Set {
     /// Called at the beginning of the `poll` function for the owner of [`Set`]
     #[inline]
-    pub fn poll_start(&mut self, cx: &task::Context) {
+    pub fn poll_start(&mut self, cx: &task::Context<'_>) {
         let new_waker = cx.waker();
 
         let root_task_requires_update = if let Some(waker) = self.local_root.as_ref() {

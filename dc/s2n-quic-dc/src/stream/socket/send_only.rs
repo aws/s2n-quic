@@ -33,17 +33,17 @@ where
     }
 
     #[inline]
-    fn poll_peek_len(&self, _cx: &mut Context) -> Poll<io::Result<usize>> {
+    fn poll_peek_len(&self, _cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         unimplemented!()
     }
 
     #[inline]
     fn poll_recv(
         &self,
-        _cx: &mut Context,
+        _cx: &mut Context<'_>,
         _addr: &mut Addr,
         _cmsg: &mut cmsg::Receiver,
-        _buffer: &mut [IoSliceMut],
+        _buffer: &mut [IoSliceMut<'_>],
     ) -> Poll<io::Result<usize>> {
         unimplemented!()
     }
@@ -53,7 +53,7 @@ where
         &self,
         addr: &Addr,
         ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> io::Result<usize> {
         // no point in sending empty packets
         ensure!(!buffer.is_empty(), Ok(0));
@@ -86,10 +86,10 @@ where
     #[inline]
     fn poll_send(
         &self,
-        _cx: &mut Context,
+        _cx: &mut Context<'_>,
         addr: &Addr,
         ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> Poll<io::Result<usize>> {
         self.try_send(addr, ecn, buffer).into()
     }

@@ -116,7 +116,11 @@ impl<T, W: RecvWaker> RingDeque<T, W> {
     }
 
     #[inline]
-    pub fn poll_swap(&self, cx: &mut Context, out: &mut VecDeque<T>) -> Poll<Result<(), Closed>> {
+    pub fn poll_swap(
+        &self,
+        cx: &mut Context<'_>,
+        out: &mut VecDeque<T>,
+    ) -> Poll<Result<(), Closed>> {
         debug_assert!(out.is_empty());
         let mut inner = self.lock()?;
         if inner.queue.is_empty() {
@@ -129,7 +133,7 @@ impl<T, W: RecvWaker> RingDeque<T, W> {
     }
 
     #[inline]
-    pub fn poll_pop_back(&self, cx: &mut Context) -> Poll<Result<T, Closed>> {
+    pub fn poll_pop_back(&self, cx: &mut Context<'_>) -> Poll<Result<T, Closed>> {
         let mut inner = self.lock()?;
         if let Some(item) = inner.queue.pop_back() {
             Ok(item).into()
@@ -171,7 +175,7 @@ impl<T, W: RecvWaker> RingDeque<T, W> {
     }
 
     #[inline]
-    pub fn poll_pop_front(&self, cx: &mut Context) -> Poll<Result<T, Closed>> {
+    pub fn poll_pop_front(&self, cx: &mut Context<'_>) -> Poll<Result<T, Closed>> {
         let mut inner = self.lock()?;
         if let Some(item) = inner.queue.pop_front() {
             Ok(item).into()
@@ -225,14 +229,14 @@ impl<T, W: RecvWaker> RingDeque<T, W> {
     }
 
     #[inline]
-    fn lock(&self) -> Result<std::sync::MutexGuard<Inner<T, W>>, Closed> {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Inner<T, W>>, Closed> {
         let inner = self.inner.lock().unwrap();
         ensure!(inner.open, Err(Closed));
         Ok(inner)
     }
 
     #[inline]
-    fn try_lock(&self) -> Result<Option<std::sync::MutexGuard<Inner<T, W>>>, Closed> {
+    fn try_lock(&self) -> Result<Option<std::sync::MutexGuard<'_, Inner<T, W>>>, Closed> {
         use std::sync::TryLockError;
         let inner = match self.inner.try_lock() {
             Ok(inner) => inner,
@@ -261,7 +265,7 @@ pub trait RecvWaker {
     /// This is to avoid calling `wake` while holding the lock on the queue
     /// to avoid contention.
     fn take(&mut self) -> Option<Waker>;
-    fn update(&mut self, cx: &mut core::task::Context);
+    fn update(&mut self, cx: &mut core::task::Context<'_>);
 }
 
 impl RecvWaker for () {
@@ -271,7 +275,7 @@ impl RecvWaker for () {
     }
 
     #[inline(always)]
-    fn update(&mut self, _cx: &mut core::task::Context) {
+    fn update(&mut self, _cx: &mut core::task::Context<'_>) {
         panic!("polling is disabled");
     }
 }
@@ -283,7 +287,7 @@ impl RecvWaker for Option<Waker> {
     }
 
     #[inline(always)]
-    fn update(&mut self, cx: &mut core::task::Context) {
+    fn update(&mut self, cx: &mut core::task::Context<'_>) {
         let new_waker = cx.waker();
         match self {
             Some(waker) => {

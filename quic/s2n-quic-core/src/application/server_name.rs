@@ -60,7 +60,7 @@ impl From<alloc::string::String> for ServerName {
 }
 
 impl core::fmt::Debug for ServerName {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.as_str().fmt(f)
     }
 }

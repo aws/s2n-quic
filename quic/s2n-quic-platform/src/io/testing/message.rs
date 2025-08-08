@@ -90,7 +90,7 @@ impl MessageTrait for Message {
     fn rx_read(
         &mut self,
         _local_address: &path::LocalAddress,
-    ) -> Option<message::RxMessage<Self::Handle>> {
+    ) -> Option<message::RxMessage<'_, Self::Handle>> {
         let path = self.handle;
         let header = datagram::Header {
             path,

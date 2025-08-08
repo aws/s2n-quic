@@ -440,13 +440,13 @@ impl<'a> UpdatableLimits<'a> {
 
 /// Creates limits for a given connection
 pub trait Limiter: 'static + Send {
-    fn on_connection(&mut self, info: &ConnectionInfo) -> Limits;
+    fn on_connection(&mut self, info: &ConnectionInfo<'_>) -> Limits;
 
     /// Provides another opportunity to change connection limits with information
     /// from the handshake
     #[inline]
     #[cfg(feature = "alloc")]
-    fn on_post_handshake(&mut self, info: &HandshakeInfo, limits: &mut UpdatableLimits) {
+    fn on_post_handshake(&mut self, info: &HandshakeInfo<'_>, limits: &mut UpdatableLimits<'_>) {
         let _ = info;
         let _ = limits;
     }
@@ -454,11 +454,11 @@ pub trait Limiter: 'static + Send {
 
 /// Implement Limiter for a Limits struct
 impl Limiter for Limits {
-    fn on_connection(&mut self, _into: &ConnectionInfo) -> Limits {
+    fn on_connection(&mut self, _into: &ConnectionInfo<'_>) -> Limits {
         *self
     }
     #[cfg(feature = "alloc")]
-    fn on_post_handshake(&mut self, _info: &HandshakeInfo, _limits: &mut UpdatableLimits) {}
+    fn on_post_handshake(&mut self, _info: &HandshakeInfo<'_>, _limits: &mut UpdatableLimits<'_>) {}
 }
 
 #[cfg(test)]

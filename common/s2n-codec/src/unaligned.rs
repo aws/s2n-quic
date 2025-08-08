@@ -203,7 +203,7 @@ impl From<core::num::TryFromIntError> for TryFromIntError {
 }
 
 impl core::fmt::Display for TryFromIntError {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "TryFromIntError")
     }
 }

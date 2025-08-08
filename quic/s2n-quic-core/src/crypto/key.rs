@@ -15,11 +15,11 @@ pub trait Key: Send {
     ) -> Result<(), packet_protection::Error>;
 
     /// Encrypt a payload
-    fn encrypt(
+    fn encrypt<'a>(
         &mut self,
         packet_number: u64,
         header: &[u8],
-        payload: &mut scatter::Buffer,
+        payload: &mut scatter::Buffer<'a>,
     ) -> Result<(), packet_protection::Error>;
 
     /// Length of the appended tag
@@ -87,11 +87,11 @@ pub mod testing {
         }
 
         /// Encrypt a payload
-        fn encrypt(
+        fn encrypt<'a>(
             &mut self,
             _packet_number: u64,
             _header: &[u8],
-            payload: &mut scatter::Buffer,
+            payload: &mut scatter::Buffer<'a>,
         ) -> Result<(), packet_protection::Error> {
             // copy any bytes into the final slice
             payload.flatten();
@@ -158,7 +158,7 @@ pub mod testing {
     }
 
     impl CryptoHeaderKey for HeaderKey {
-        fn opening_header_protection_mask(&self, _sample: &[u8]) -> HeaderProtectionMask {
+        fn opening_header_protection_mask(&self, _sample: &'_ [u8]) -> HeaderProtectionMask {
             [0; 5]
         }
 
@@ -166,7 +166,7 @@ pub mod testing {
             0
         }
 
-        fn sealing_header_protection_mask(&self, _sample: &[u8]) -> HeaderProtectionMask {
+        fn sealing_header_protection_mask(&self, _sample: &'_ [u8]) -> HeaderProtectionMask {
             [0; 5]
         }
 

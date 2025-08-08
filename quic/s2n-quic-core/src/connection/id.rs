@@ -309,7 +309,7 @@ impl Error {
 }
 
 impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.message())
     }
 }
@@ -358,12 +358,12 @@ pub trait Validator {
     /// data after the connection ID.
     ///
     /// Returns the length of the connection id if successful, otherwise `None` is returned.
-    fn validate(&self, connection_info: &ConnectionInfo, buffer: &[u8]) -> Option<usize>;
+    fn validate(&self, connection_info: &ConnectionInfo<'_>, buffer: &[u8]) -> Option<usize>;
 }
 
 impl Validator for usize {
     #[inline]
-    fn validate(&self, _connection_info: &ConnectionInfo, buffer: &[u8]) -> Option<usize> {
+    fn validate(&self, _connection_info: &ConnectionInfo<'_>, buffer: &[u8]) -> Option<usize> {
         if buffer.len() >= *self {
             Some(*self)
         } else {
@@ -383,7 +383,7 @@ pub trait Generator {
     ///
     /// Each call to `generate` should produce a unique Connection ID,
     /// otherwise the endpoint may terminate.
-    fn generate(&mut self, connection_info: &ConnectionInfo) -> LocalId;
+    fn generate(&mut self, connection_info: &ConnectionInfo<'_>) -> LocalId;
 
     /// The maximum amount of time each generated connection ID should be
     /// used for. By default there is no maximum, though connection IDs
@@ -485,13 +485,13 @@ pub mod testing {
     pub struct Format(u64);
 
     impl Validator for Format {
-        fn validate(&self, _connection_info: &ConnectionInfo, _buffer: &[u8]) -> Option<usize> {
+        fn validate(&self, _connection_info: &ConnectionInfo<'_>, _buffer: &[u8]) -> Option<usize> {
             Some(core::mem::size_of::<u64>())
         }
     }
 
     impl Generator for Format {
-        fn generate(&mut self, _connection_info: &ConnectionInfo) -> LocalId {
+        fn generate(&mut self, _connection_info: &ConnectionInfo<'_>) -> LocalId {
             let id = (&self.0.to_be_bytes()[..]).try_into().unwrap();
             self.0 += 1;
             id

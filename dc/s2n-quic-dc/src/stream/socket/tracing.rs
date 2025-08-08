@@ -31,7 +31,7 @@ impl<S: Socket> Socket for Tracing<S> {
     }
 
     #[inline(always)]
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
+    fn poll_peek_len(&self, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         let result = self.0.poll_peek_len(cx);
 
         trace!(
@@ -47,10 +47,10 @@ impl<S: Socket> Socket for Tracing<S> {
     #[inline(always)]
     fn poll_recv(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         addr: &mut Addr,
         cmsg: &mut cmsg::Receiver,
-        buffer: &mut [IoSliceMut],
+        buffer: &mut [IoSliceMut<'_>],
     ) -> Poll<io::Result<usize>> {
         let result = self.0.poll_recv(cx, addr, cmsg, buffer);
 
@@ -90,7 +90,7 @@ impl<S: Socket> Socket for Tracing<S> {
         &self,
         addr: &Addr,
         ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> io::Result<usize> {
         let result = self.0.try_send(addr, ecn, buffer);
 
@@ -115,10 +115,10 @@ impl<S: Socket> Socket for Tracing<S> {
     #[inline(always)]
     fn poll_send(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         addr: &Addr,
         ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> Poll<io::Result<usize>> {
         let result = self.0.poll_send(cx, addr, ecn, buffer);
 
