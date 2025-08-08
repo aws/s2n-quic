@@ -212,7 +212,7 @@ where
     }
 
     #[inline]
-    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
+    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk<'_>, Self::Error> {
         Ok(match self.read_chunk_control_flow(watermark) {
             ControlFlow::Continue(chunk) => chunk,
             ControlFlow::Break(chunk) => chunk,
@@ -220,7 +220,7 @@ where
     }
 
     #[inline]
-    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk, Self::Error>
+    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk<'_>, Self::Error>
     where
         Dest: writer::Storage + ?Sized,
     {

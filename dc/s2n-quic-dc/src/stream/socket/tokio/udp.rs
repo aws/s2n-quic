@@ -34,7 +34,7 @@ where
     }
 
     #[inline]
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
+    fn poll_peek_len(&self, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         loop {
             let mut socket = ready!(self.poll_read_ready(cx))?;
 
@@ -59,10 +59,10 @@ where
     #[inline]
     fn poll_recv(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         addr: &mut Addr,
         cmsg: &mut cmsg::Receiver,
-        buffer: &mut [IoSliceMut],
+        buffer: &mut [IoSliceMut<'_>],
     ) -> Poll<io::Result<usize>> {
         // no point in receiving empty packets
         ensure!(!buffer.is_empty(), Ok(0).into());
@@ -103,7 +103,7 @@ where
         &self,
         addr: &Addr,
         ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> io::Result<usize> {
         // no point in sending empty packets
         ensure!(!buffer.is_empty(), Ok(0));
@@ -132,10 +132,10 @@ where
     #[inline]
     fn poll_send(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         addr: &Addr,
         ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> Poll<io::Result<usize>> {
         // no point in sending empty packets
         ensure!(!buffer.is_empty(), Ok(0).into());

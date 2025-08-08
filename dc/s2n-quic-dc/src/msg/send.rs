@@ -325,7 +325,7 @@ impl Message {
     }
 
     #[inline]
-    pub fn drain(&mut self) -> Drain {
+    pub fn drain(&mut self) -> Drain<'_> {
         Drain {
             message: self,
             index: 0,

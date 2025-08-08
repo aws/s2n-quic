@@ -128,7 +128,7 @@ impl MessageTrait for msghdr {
     fn rx_read(
         &mut self,
         local_address: &path::LocalAddress,
-    ) -> Option<super::RxMessage<Self::Handle>> {
+    ) -> Option<super::RxMessage<'_, Self::Handle>> {
         if cfg!(test) {
             assert_eq!(
                 self.msg_flags & libc::MSG_CTRUNC,

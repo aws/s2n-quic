@@ -137,7 +137,7 @@ impl Buffer {
 
     /// Returns a Viewer for the buffer
     #[inline]
-    pub fn viewer(&self) -> Viewer {
+    pub fn viewer(&self) -> Viewer<'_> {
         Viewer {
             buffer: self,
             offset: *self.head,

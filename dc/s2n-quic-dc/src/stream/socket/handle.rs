@@ -29,12 +29,12 @@ pub trait Socket: 'static + Send + Sync {
     fn features(&self) -> TransportFeatures;
 
     /// Returns the amount of buffered data on the socket
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>>;
+    fn poll_peek_len(&self, cx: &mut Context<'_>) -> Poll<io::Result<usize>>;
 
     #[inline]
     fn poll_recv_buffer(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         msg: &mut msg::recv::Message,
     ) -> Poll<io::Result<usize>> {
         #[cfg(debug_assertions)]
@@ -51,10 +51,10 @@ pub trait Socket: 'static + Send + Sync {
     /// Receives data on the socket
     fn poll_recv(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         addr: &mut Addr,
         cmsg: &mut cmsg::Receiver,
-        buffer: &mut [IoSliceMut],
+        buffer: &mut [IoSliceMut<'_>],
     ) -> Poll<io::Result<usize>>;
 
     #[inline]
@@ -67,13 +67,13 @@ pub trait Socket: 'static + Send + Sync {
         &self,
         addr: &Addr,
         ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> io::Result<usize>;
 
     #[inline]
     fn poll_send_buffer(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         msg: &mut msg::send::Message,
     ) -> Poll<io::Result<usize>> {
         msg.poll_send_with(|addr, ecn, iov| self.poll_send(cx, addr, ecn, iov))
@@ -82,10 +82,10 @@ pub trait Socket: 'static + Send + Sync {
     /// Sends data on the socket
     fn poll_send(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         addr: &Addr,
         ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> Poll<io::Result<usize>>;
 
     /// Shuts down the sender half of the socket, if a concept exists
@@ -133,17 +133,17 @@ macro_rules! impl_box {
             }
 
             #[inline(always)]
-            fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
+            fn poll_peek_len(&self, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
                 (**self).poll_peek_len(cx)
             }
 
             #[inline(always)]
             fn poll_recv(
                 &self,
-                cx: &mut Context,
+                cx: &mut Context<'_>,
                 addr: &mut Addr,
                 cmsg: &mut cmsg::Receiver,
-                buffer: &mut [IoSliceMut],
+                buffer: &mut [IoSliceMut<'_>],
             ) -> Poll<io::Result<usize>> {
                 (**self).poll_recv(cx, addr, cmsg, buffer)
             }
@@ -153,7 +153,7 @@ macro_rules! impl_box {
                 &self,
                 addr: &Addr,
                 ecn: ExplicitCongestionNotification,
-                buffer: &[IoSlice],
+                buffer: &[IoSlice<'_>],
             ) -> io::Result<usize> {
                 (**self).try_send(addr, ecn, buffer)
             }
@@ -161,10 +161,10 @@ macro_rules! impl_box {
             #[inline(always)]
             fn poll_send(
                 &self,
-                cx: &mut Context,
+                cx: &mut Context<'_>,
                 addr: &Addr,
                 ecn: ExplicitCongestionNotification,
-                buffer: &[IoSlice],
+                buffer: &[IoSlice<'_>],
             ) -> Poll<io::Result<usize>> {
                 (**self).poll_send(cx, addr, ecn, buffer)
             }

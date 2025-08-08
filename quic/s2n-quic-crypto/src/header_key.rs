@@ -9,7 +9,7 @@ pub struct HeaderKey(pub(crate) aead::quic::HeaderProtectionKey);
 
 impl crypto::HeaderKey for HeaderKey {
     #[inline]
-    fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
+    fn opening_header_protection_mask(&self, sample: &'_ [u8]) -> HeaderProtectionMask {
         self.header_protection_mask(sample)
     }
 
@@ -19,7 +19,7 @@ impl crypto::HeaderKey for HeaderKey {
     }
 
     #[inline]
-    fn sealing_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
+    fn sealing_header_protection_mask(&self, sample: &'_ [u8]) -> HeaderProtectionMask {
         self.header_protection_mask(sample)
     }
 
@@ -76,7 +76,7 @@ pub struct HeaderKeyPair {
 
 impl crypto::HeaderKey for HeaderKeyPair {
     #[inline]
-    fn opening_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
+    fn opening_header_protection_mask(&self, sample: &'_ [u8]) -> HeaderProtectionMask {
         self.opener.opening_header_protection_mask(sample)
     }
 
@@ -86,7 +86,7 @@ impl crypto::HeaderKey for HeaderKeyPair {
     }
 
     #[inline]
-    fn sealing_header_protection_mask(&self, sample: &[u8]) -> HeaderProtectionMask {
+    fn sealing_header_protection_mask(&self, sample: &'_ [u8]) -> HeaderProtectionMask {
         self.sealer.sealing_header_protection_mask(sample)
     }
 
@@ -105,7 +105,7 @@ macro_rules! header_key {
             #[inline]
             fn opening_header_protection_mask(
                 &self,
-                sample: &[u8],
+                sample: &'_ [u8],
             ) -> s2n_quic_core::crypto::HeaderProtectionMask {
                 self.0.opening_header_protection_mask(sample)
             }
@@ -118,7 +118,7 @@ macro_rules! header_key {
             #[inline]
             fn sealing_header_protection_mask(
                 &self,
-                sample: &[u8],
+                sample: &'_ [u8],
             ) -> s2n_quic_core::crypto::HeaderProtectionMask {
                 self.0.sealing_header_protection_mask(sample)
             }

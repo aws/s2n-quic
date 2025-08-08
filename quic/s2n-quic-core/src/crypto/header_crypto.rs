@@ -13,7 +13,7 @@ pub trait HeaderKey: Send {
     /// used for opening a packet.
     ///
     /// The sample size is determined by the key function.
-    fn opening_header_protection_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask;
+    fn opening_header_protection_mask(&self, ciphertext_sample: &'_ [u8]) -> HeaderProtectionMask;
 
     /// Returns the sample size needed for the header protection
     /// buffer
@@ -23,7 +23,7 @@ pub trait HeaderKey: Send {
     /// used for sealing a packet.
     ///
     /// The sample size is determined by the key function.
-    fn sealing_header_protection_mask(&self, ciphertext_sample: &[u8]) -> HeaderProtectionMask;
+    fn sealing_header_protection_mask(&self, ciphertext_sample: &'_ [u8]) -> HeaderProtectionMask;
 
     /// Returns the sample size needed for the header protection
     /// buffer
@@ -77,10 +77,10 @@ fn xor_mask(payload: &mut [u8], mask: &[u8]) {
 }
 
 #[inline]
-pub(crate) fn apply_header_protection(
+pub(crate) fn apply_header_protection<'a>(
     mask: HeaderProtectionMask,
-    payload: EncryptedPayload,
-) -> ProtectedPayload {
+    payload: EncryptedPayload<'a>,
+) -> ProtectedPayload<'a> {
     let header_len = payload.header_len;
     let packet_number_len = payload.packet_number_len;
     let payload = payload.buffer.into_less_safe_slice();
@@ -95,11 +95,11 @@ pub(crate) fn apply_header_protection(
 }
 
 #[inline]
-pub(crate) fn remove_header_protection(
+pub(crate) fn remove_header_protection<'a>(
     space: PacketNumberSpace,
     mask: HeaderProtectionMask,
-    payload: ProtectedPayload,
-) -> Result<(TruncatedPacketNumber, EncryptedPayload), DecoderError> {
+    payload: ProtectedPayload<'a>,
+) -> Result<(TruncatedPacketNumber, EncryptedPayload<'a>), DecoderError> {
     let header_len = payload.header_len;
     let payload = payload.buffer.into_less_safe_slice();
 

@@ -331,7 +331,7 @@ impl<
 
     const ENDPOINT_TYPE: endpoint::Type = endpoint::Type::Client;
 
-    fn context(&mut self) -> endpoint::Context<Self> {
+    fn context(&mut self) -> endpoint::Context<'_, Self> {
         endpoint::Context {
             congestion_controller: &mut self.congestion_controller,
             connection_close_formatter: &mut self.connection_close_formatter,

@@ -19,7 +19,7 @@ pub struct Deque {
 }
 
 impl fmt::Debug for Deque {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Deque")
             .field("len", &self.len())
             .field("capacity", &self.capacity())
@@ -217,7 +217,7 @@ impl Deque {
 pub struct FillError(());
 
 impl fmt::Display for FillError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "the buffer does not have enough capacity for the provided fill amount"

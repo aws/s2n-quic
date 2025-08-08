@@ -414,7 +414,7 @@ impl<C: CryptoSuite, State: Debug, Params> fmt::Debug for Context<C, State, Para
 where
     for<'a> Params: DecoderValue<'a>,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Context")
             .field("initial", &self.initial)
             .field("handshake", &self.handshake)
@@ -508,12 +508,12 @@ where
         assert!(self.transport_parameters.is_some());
     }
 
-    fn on_application_params(
+    fn on_application_params<'a>(
         &mut self,
-        params: tls::ApplicationParameters,
+        params: tls::ApplicationParameters<'a>,
     ) -> Result<(), transport::Error> {
         // make sure the parameters parse correctly
-        let buffer = DecoderBuffer::new(params.transport_parameters);
+        let buffer = DecoderBuffer::<'_>::new(params.transport_parameters);
         let _ = buffer
             .decode::<Params>()
             .map_err(|_| transport::Error::FRAME_ENCODING_ERROR)?;
@@ -556,7 +556,7 @@ impl<K: Key, Hk: HeaderKey> Default for Space<K, Hk> {
 }
 
 impl<K: Key, Hk: HeaderKey> fmt::Debug for Space<K, Hk> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Space")
             .field("crypto", &self.crypto.is_some())
             .field("rx", &self.rx)
@@ -668,9 +668,9 @@ impl<C: CryptoSuite, State: Debug, Params> tls::Context<C> for Context<C, State,
 where
     for<'a> Params: DecoderValue<'a>,
 {
-    fn on_client_application_params(
+    fn on_client_application_params<'a>(
         &mut self,
-        _client_params: ApplicationParameters,
+        _client_params: ApplicationParameters<'a>,
         _server_params: &mut Vec<u8>,
     ) -> Result<(), transport::Error> {
         self.log("client application params");
@@ -691,11 +691,11 @@ where
         Ok(())
     }
 
-    fn on_zero_rtt_keys(
+    fn on_zero_rtt_keys<'a>(
         &mut self,
         key: C::ZeroRttKey,
         header_key: C::ZeroRttHeaderKey,
-        params: tls::ApplicationParameters,
+        params: tls::ApplicationParameters<'a>,
     ) -> Result<(), transport::Error> {
         assert!(
             self.zero_rtt_crypto.is_none(),
@@ -707,11 +707,11 @@ where
         Ok(())
     }
 
-    fn on_one_rtt_keys(
+    fn on_one_rtt_keys<'a>(
         &mut self,
         key: C::OneRttKey,
         header_key: C::OneRttHeaderKey,
-        params: tls::ApplicationParameters,
+        params: tls::ApplicationParameters<'a>,
     ) -> Result<(), transport::Error> {
         assert!(
             self.application.crypto.is_none(),

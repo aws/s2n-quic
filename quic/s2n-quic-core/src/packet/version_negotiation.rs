@@ -65,8 +65,8 @@ impl<'a> ProtectedVersionNegotiation<'a> {
     pub fn decode(
         tag: Tag,
         _version: Version,
-        buffer: DecoderBufferMut,
-    ) -> DecoderBufferMutResult<VersionNegotiation<&[u8]>> {
+        buffer: DecoderBufferMut<'_>,
+    ) -> DecoderBufferMutResult<'_, VersionNegotiation<'_, &[u8]>> {
         let buffer = buffer
             .skip(size_of::<Tag>() + size_of::<Version>())
             .expect("tag and version already verified");

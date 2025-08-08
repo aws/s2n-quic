@@ -76,7 +76,7 @@ impl MessageTrait for Message {
     fn rx_read(
         &mut self,
         local_address: &path::LocalAddress,
-    ) -> Option<super::RxMessage<Self::Handle>> {
+    ) -> Option<super::RxMessage<'_, Self::Handle>> {
         let path = path::Tuple {
             remote_address: self.address.into(),
             local_address: *local_address,

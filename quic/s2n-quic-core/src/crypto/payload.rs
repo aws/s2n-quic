@@ -48,7 +48,7 @@ impl<'a> ProtectedPayload<'a> {
     }
 
     /// Reads data from a `CheckedRange`
-    pub fn get_checked_range(&self, range: &CheckedRange) -> DecoderBuffer {
+    pub fn get_checked_range<'b>(&'b self, range: &CheckedRange) -> DecoderBuffer<'b> {
         self.buffer.get_checked_range(range)
     }
 
@@ -125,7 +125,7 @@ impl<'a> EncryptedPayload<'a> {
     }
 
     /// Reads data from a `CheckedRange`
-    pub fn get_checked_range(&self, range: &CheckedRange) -> DecoderBuffer {
+    pub fn get_checked_range<'b>(&'b self, range: &CheckedRange) -> DecoderBuffer<'b> {
         self.buffer.get_checked_range(range)
     }
 
@@ -148,11 +148,11 @@ impl<'a> EncryptedPayload<'a> {
     }
 }
 
-fn header_protection_sample(
-    buffer: DecoderBuffer,
+fn header_protection_sample<'a>(
+    buffer: DecoderBuffer<'a>,
     header_len: usize,
     sample_len: usize,
-) -> Result<&[u8], DecoderError> {
+) -> Result<&'a [u8], DecoderError> {
     let buffer = buffer.skip(header_len)?;
 
     //= https://www.rfc-editor.org/rfc/rfc9001#section-5.4.2

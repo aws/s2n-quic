@@ -221,7 +221,7 @@ impl<V> Map<V> {
 
     /// Removes a range of packets from the map and returns their value
     #[inline]
-    pub fn remove_range(&mut self, range: PacketNumberRange) -> RemoveIter<V> {
+    pub fn remove_range(&mut self, range: PacketNumberRange) -> RemoveIter<'_, V> {
         RemoveIter::new(self, range)
     }
 
@@ -233,7 +233,7 @@ impl<V> Map<V> {
 
     /// Gets an iterator over the sent packet entries, sorted by PacketNumber
     #[inline]
-    pub fn iter(&self) -> Iter<V> {
+    pub fn iter(&self) -> Iter<'_, V> {
         Iter::new(self)
     }
 

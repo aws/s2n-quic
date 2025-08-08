@@ -36,7 +36,7 @@ pub trait Environment {
 
     /// Creates an endpoint publisher with the environment's subscriber
     #[inline]
-    fn endpoint_publisher(&self) -> event::EndpointPublisherSubscriber<Self::Subscriber> {
+    fn endpoint_publisher(&self) -> event::EndpointPublisherSubscriber<'_, Self::Subscriber> {
         use s2n_quic_core::time::Clock as _;
 
         self.endpoint_publisher_with_time(self.clock().get_time())
@@ -46,7 +46,7 @@ pub trait Environment {
     fn endpoint_publisher_with_time(
         &self,
         timestamp: Timestamp,
-    ) -> event::EndpointPublisherSubscriber<Self::Subscriber> {
+    ) -> event::EndpointPublisherSubscriber<'_, Self::Subscriber> {
         use s2n_quic_core::event::IntoEvent;
 
         let timestamp = timestamp.into_event();

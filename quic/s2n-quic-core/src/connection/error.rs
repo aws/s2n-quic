@@ -105,7 +105,7 @@ pub enum Error {
 impl std::error::Error for Error {}
 
 impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Closed { initiator, .. } => write!(
                 f,
@@ -402,7 +402,7 @@ impl Error {
 pub fn as_frame<'a, F: connection::close::Formatter>(
     error: Error,
     formatter: &'a F,
-    context: &'a connection::close::Context<'a>,
+    context: &'a connection::close::Context<'_>,
 ) -> Option<(ConnectionClose<'a>, ConnectionClose<'a>)> {
     match error {
         Error::Closed { initiator, .. } => {
@@ -500,7 +500,7 @@ impl From<transport::Error> for Error {
 
 impl From<ConnectionClose<'_>> for Error {
     #[track_caller]
-    fn from(error: ConnectionClose) -> Self {
+    fn from(error: ConnectionClose<'_>) -> Self {
         if let Some(frame_type) = error.frame_type {
             let error = transport::Error {
                 code: transport::error::Code::new(error.error_code),

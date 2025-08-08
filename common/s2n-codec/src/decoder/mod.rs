@@ -191,10 +191,10 @@ macro_rules! impl_buffer {
                 // TODO add doctest
 
                 #[inline]
-                pub fn skip_into_range(
+                pub fn skip_into_range<'b>(
                     self,
                     count: usize,
-                    original_buffer: &crate::DecoderBufferMut,
+                    original_buffer: &'b crate::DecoderBufferMut<'b>,
                 ) -> $result<'a, crate::CheckedRange> {
                     let start = original_buffer.len() - self.len();
                     let (slice, buffer) = self.decode_slice(count)?;
@@ -212,9 +212,9 @@ macro_rules! impl_buffer {
                 // TODO add doctest
 
                 #[inline]
-                pub fn skip_into_range_with_len_prefix<Length: $value<'a> + core::convert::TryInto<usize>>(
+                pub fn skip_into_range_with_len_prefix<'b, Length: $value<'a> + core::convert::TryInto<usize>>(
                     self,
-                    original_buffer: &crate::DecoderBufferMut,
+                    original_buffer: &'b crate::DecoderBufferMut<'b>,
                 ) -> $result<'a, crate::CheckedRange> {
                     let (len, buffer) = self.decode::<Length>()?;
                     let len = len.try_into().map_err(|_| DecoderError::LengthCapacityExceeded)?;
@@ -227,7 +227,7 @@ macro_rules! impl_buffer {
                 // TODO add doctest
 
                 #[inline]
-                pub fn get_checked_range(&self, range: &crate::CheckedRange) -> DecoderBuffer {
+                pub fn get_checked_range(&self, range: &crate::CheckedRange) -> DecoderBuffer<'_> {
                     range.get(self.bytes).into()
                 }
             }
@@ -286,7 +286,7 @@ macro_rules! impl_buffer {
             pub fn peek_range(
                 &self,
                 range: core::ops::Range<usize>,
-            ) -> Result<crate::DecoderBuffer, DecoderError> {
+            ) -> Result<crate::DecoderBuffer<'_>, DecoderError> {
                 let end = range.end;
                 self.bytes
                     .get(range)
@@ -423,7 +423,7 @@ pub enum DecoderError {
 
 use core::fmt;
 impl fmt::Display for DecoderError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // https://github.com/model-checking/kani/issues/1767#issuecomment-1275449305
         if cfg!(kani) {
             return Ok(());

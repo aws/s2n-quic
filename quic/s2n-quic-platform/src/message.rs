@@ -122,7 +122,10 @@ pub trait Message: 'static + Copy {
     unsafe fn reset(&mut self, mtu: usize);
 
     /// Reads the message as an RX packet
-    fn rx_read(&mut self, local_address: &path::LocalAddress) -> Option<RxMessage<Self::Handle>>;
+    fn rx_read(
+        &mut self,
+        local_address: &path::LocalAddress,
+    ) -> Option<RxMessage<'_, Self::Handle>>;
 
     /// Writes the message into the TX packet
     fn tx_write<M: tx::Message<Handle = Self::Handle>>(

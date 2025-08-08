@@ -32,7 +32,7 @@ macro_rules! impl_slice {
             }
 
             #[inline]
-            fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
+            fn read_chunk(&mut self, watermark: usize) -> Result<Chunk<'_>, Self::Error> {
                 ensure!(!self.is_empty(), Ok(Chunk::empty()));
                 let len = self.len().min(watermark);
                 // use `take` to work around borrowing rules
@@ -50,7 +50,7 @@ macro_rules! impl_slice {
             }
 
             #[inline]
-            fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk, Self::Error>
+            fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk<'_>, Self::Error>
             where
                 Dest: writer::Storage + ?Sized,
             {

@@ -66,13 +66,13 @@ pub trait Storage {
     ///
     /// The returned `Chunk` from `partial_copy_into` will always be empty.
     #[inline]
-    fn full_copy(&mut self) -> FullCopy<Self> {
+    fn full_copy(&mut self) -> FullCopy<'_, Self> {
         FullCopy::new(self)
     }
 
     /// Tracks the number of bytes read from the storage
     #[inline]
-    fn track_read(&mut self) -> Tracked<Self> {
+    fn track_read(&mut self) -> Tracked<'_, Self> {
         Tracked::new(self)
     }
 }

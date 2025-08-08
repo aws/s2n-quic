@@ -501,7 +501,7 @@ impl<T: IntervalBound> IntervalSet<T> {
     /// assert_eq!(vec![0, 1, 2, 3, 4, 10, 11, 12, 13, 14], items);
     /// ```
     #[inline]
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             iter: self.intervals.iter(),
             head: None,
@@ -704,7 +704,7 @@ impl<T: Copy> IntervalSet<T> {
     /// assert_eq!(set.intervals().collect::<Vec<_>>(), vec![0..=10]);
     /// ```
     #[inline]
-    pub fn intervals(&self) -> IntervalIter<T> {
+    pub fn intervals(&self) -> IntervalIter<'_, T> {
         IntervalIter {
             iter: self.intervals.iter(),
         }
@@ -721,7 +721,7 @@ impl<T: Copy> IntervalSet<T> {
     /// assert_eq!(set.ranges().collect::<Vec<_>>(), vec![0..11]);
     /// ```
     #[inline]
-    pub fn ranges(&self) -> RangeIter<T> {
+    pub fn ranges(&self) -> RangeIter<'_, T> {
         RangeIter {
             iter: self.intervals.iter(),
         }
@@ -738,7 +738,7 @@ impl<T: Copy> IntervalSet<T> {
     /// assert_eq!(set.inclusive_ranges().collect::<Vec<_>>(), vec![0..=10]);
     /// ```
     #[inline]
-    pub fn inclusive_ranges(&self) -> RangeInclusiveIter<T> {
+    pub fn inclusive_ranges(&self) -> RangeInclusiveIter<'_, T> {
         RangeInclusiveIter {
             iter: self.intervals.iter(),
         }

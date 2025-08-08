@@ -31,7 +31,7 @@ impl Socket for TcpStream {
     }
 
     #[inline]
-    fn poll_peek_len(&self, cx: &mut Context) -> Poll<io::Result<usize>> {
+    fn poll_peek_len(&self, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         loop {
             ready!(self.poll_read_ready(cx))?;
 
@@ -55,10 +55,10 @@ impl Socket for TcpStream {
     #[inline]
     fn poll_recv(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         _addr: &mut Addr,
         cmsg: &mut cmsg::Receiver,
-        buffer: &mut [IoSliceMut],
+        buffer: &mut [IoSliceMut<'_>],
     ) -> Poll<io::Result<usize>> {
         loop {
             ready!(self.poll_read_ready(cx))?;
@@ -95,7 +95,7 @@ impl Socket for TcpStream {
         &self,
         _addr: &Addr,
         _ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> io::Result<usize> {
         loop {
             match tcp::send(self, buffer) {
@@ -111,10 +111,10 @@ impl Socket for TcpStream {
     #[inline]
     fn poll_send(
         &self,
-        cx: &mut Context,
+        cx: &mut Context<'_>,
         _addr: &Addr,
         _ecn: ExplicitCongestionNotification,
-        buffer: &[IoSlice],
+        buffer: &[IoSlice<'_>],
     ) -> Poll<io::Result<usize>> {
         loop {
             ready!(self.poll_write_ready(cx))?;

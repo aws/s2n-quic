@@ -299,7 +299,7 @@ impl<T> Queue<T> {
     }
 
     #[inline]
-    fn lock(&self) -> Result<std::sync::MutexGuard<Inner<T>>, Closed> {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Inner<T>>, Closed> {
         self.inner.lock().map_err(|_| Closed)
     }
 }

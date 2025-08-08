@@ -70,7 +70,7 @@ pub trait Reader: Storage {
 
     /// Limits the maximum offset that the caller can read from the reader
     #[inline]
-    fn with_max_data(&mut self, max_data: VarInt) -> Limit<Self> {
+    fn with_max_data(&mut self, max_data: VarInt) -> Limit<'_, Self> {
         let max_buffered_len = max_data.saturating_sub(self.current_offset());
         let max_buffered_len = max_buffered_len.as_u64().min(self.buffered_len() as u64) as usize;
         self.with_read_limit(max_buffered_len)
@@ -78,13 +78,13 @@ pub trait Reader: Storage {
 
     /// Limits the maximum amount of data that the caller can read from the reader
     #[inline]
-    fn with_read_limit(&mut self, max_buffered_len: usize) -> Limit<Self> {
+    fn with_read_limit(&mut self, max_buffered_len: usize) -> Limit<'_, Self> {
         Limit::new(self, max_buffered_len)
     }
 
     /// Return an empty view onto the reader, with no change in current offset
     #[inline]
-    fn with_empty_buffer(&self) -> Empty<Self> {
+    fn with_empty_buffer(&self) -> Empty<'_, Self> {
         Empty::new(self)
     }
 
@@ -95,7 +95,7 @@ pub trait Reader: Storage {
     /// `debug_assertions` must be enabled for these checks to be performed. Otherwise, the reader
     /// methods will simply be forwarded to `Self`.
     #[inline]
-    fn with_checks(&mut self) -> Checked<Self> {
+    fn with_checks(&mut self) -> Checked<'_, Self> {
         Checked::new(self)
     }
 }

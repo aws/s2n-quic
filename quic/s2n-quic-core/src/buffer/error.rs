@@ -34,7 +34,7 @@ impl Error {
 impl<E: std::error::Error> std::error::Error for Error<E> {}
 
 impl<E: core::fmt::Display> core::fmt::Display for Error<E> {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::OutOfRange => write!(f, "write extends out of the maximum possible offset"),
             Self::InvalidFin => write!(

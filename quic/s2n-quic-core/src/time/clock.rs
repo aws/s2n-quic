@@ -29,7 +29,7 @@ pub trait ClockWithTimer: Clock {
 
 pub trait Timer {
     #[inline]
-    fn ready(&mut self) -> TimerReady<Self> {
+    fn ready(&mut self) -> TimerReady<'_, Self> {
         TimerReady(self)
     }
 
