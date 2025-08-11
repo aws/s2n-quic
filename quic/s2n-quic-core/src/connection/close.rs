@@ -10,8 +10,11 @@ pub use crate::{frame::ConnectionClose, inet::SocketAddress};
 /// to peers. This includes removing `reason` fields and making error codes more general.
 pub trait Formatter: 'static + Send {
     /// Formats a transport error for use in 1-RTT (application data) packets
-    fn format_transport_error(&self, context: &Context, error: transport::Error)
-        -> ConnectionClose<'_>;
+    fn format_transport_error(
+        &self,
+        context: &Context,
+        error: transport::Error,
+    ) -> ConnectionClose<'_>;
 
     /// Formats an application error for use in 1-RTT (application data) packets
     fn format_application_error(
