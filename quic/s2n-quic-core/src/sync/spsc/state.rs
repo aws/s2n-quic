@@ -382,7 +382,7 @@ impl<T> State<T> {
 
     /// Returns the channel slots as two pairs of filled and unfilled slices
     #[inline]
-    pub fn as_pairs(&self) -> (Pair<T>, Pair<T>) {
+    pub fn as_pairs(&self) -> (Pair<'_, T>, Pair<'_, T>) {
         let data = self.data();
         self.data_to_pairs(data)
     }

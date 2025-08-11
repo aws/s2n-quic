@@ -208,7 +208,7 @@ impl State {
     }
 
     #[inline]
-    pub fn worker_try_lock(&self) -> io::Result<Option<MutexGuard<Inner>>> {
+    pub fn worker_try_lock(&self) -> io::Result<Option<MutexGuard<'_, Inner>>> {
         match self.inner.try_lock() {
             Ok(lock) => Ok(Some(lock)),
             Err(std::sync::TryLockError::WouldBlock) => Ok(None),

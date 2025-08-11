@@ -10,29 +10,32 @@ pub use crate::{frame::ConnectionClose, inet::SocketAddress};
 /// to peers. This includes removing `reason` fields and making error codes more general.
 pub trait Formatter: 'static + Send {
     /// Formats a transport error for use in 1-RTT (application data) packets
-    fn format_transport_error(&self, context: &Context, error: transport::Error)
-        -> ConnectionClose;
+    fn format_transport_error(
+        &self,
+        context: &Context,
+        error: transport::Error,
+    ) -> ConnectionClose<'_>;
 
     /// Formats an application error for use in 1-RTT (application data) packets
     fn format_application_error(
         &self,
         context: &Context,
         error: application::Error,
-    ) -> ConnectionClose;
+    ) -> ConnectionClose<'_>;
 
     /// Formats a transport error for use in early (initial, handshake) packets
     fn format_early_transport_error(
         &self,
         context: &Context,
         error: transport::Error,
-    ) -> ConnectionClose;
+    ) -> ConnectionClose<'_>;
 
     /// Formats an application error for use in early (initial, handshake) packets
     fn format_early_application_error(
         &self,
         context: &Context,
         error: application::Error,
-    ) -> ConnectionClose;
+    ) -> ConnectionClose<'_>;
 }
 
 #[non_exhaustive]
@@ -59,7 +62,7 @@ impl Formatter for Development {
         &self,
         _context: &Context,
         error: transport::Error,
-    ) -> ConnectionClose {
+    ) -> ConnectionClose<'_> {
         error.into()
     }
 
@@ -67,7 +70,7 @@ impl Formatter for Development {
         &self,
         _context: &Context,
         error: application::Error,
-    ) -> ConnectionClose {
+    ) -> ConnectionClose<'_> {
         error.into()
     }
 
@@ -75,7 +78,7 @@ impl Formatter for Development {
         &self,
         _context: &Context,
         error: transport::Error,
-    ) -> ConnectionClose {
+    ) -> ConnectionClose<'_> {
         error.into()
     }
 
@@ -83,7 +86,7 @@ impl Formatter for Development {
         &self,
         _context: &Context,
         error: application::Error,
-    ) -> ConnectionClose {
+    ) -> ConnectionClose<'_> {
         error.into()
     }
 }
@@ -104,7 +107,7 @@ impl Formatter for Production {
         &self,
         _context: &Context,
         error: transport::Error,
-    ) -> ConnectionClose {
+    ) -> ConnectionClose<'_> {
         // rewrite internal errors as PROTOCOL_VIOLATION
         if error.code == transport::Error::INTERNAL_ERROR.code {
             return transport::Error::PROTOCOL_VIOLATION.into();
@@ -128,7 +131,7 @@ impl Formatter for Production {
         &self,
         _context: &Context,
         error: application::Error,
-    ) -> ConnectionClose {
+    ) -> ConnectionClose<'_> {
         error.into()
     }
 
@@ -136,7 +139,7 @@ impl Formatter for Production {
         &self,
         context: &Context,
         error: transport::Error,
-    ) -> ConnectionClose {
+    ) -> ConnectionClose<'_> {
         Self.format_transport_error(context, error)
     }
 
@@ -144,7 +147,7 @@ impl Formatter for Production {
         &self,
         _context: &Context,
         _error: application::Error,
-    ) -> ConnectionClose {
+    ) -> ConnectionClose<'_> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-10.2.3
         //# Sending a CONNECTION_CLOSE of type 0x1d in an Initial or Handshake
         //# packet could expose application state or be used to alter application

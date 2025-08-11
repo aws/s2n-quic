@@ -287,7 +287,7 @@ impl<'a> Retry<'a> {
     }
 
     #[inline]
-    fn pseudo_packet(&self, odcid: &'a [u8]) -> PseudoRetry {
+    fn pseudo_packet(&self, odcid: &'a [u8]) -> PseudoRetry<'_> {
         PseudoRetry {
             original_destination_connection_id: odcid,
             tag: self.tag,

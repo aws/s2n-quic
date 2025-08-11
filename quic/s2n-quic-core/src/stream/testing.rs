@@ -201,7 +201,7 @@ impl reader::Storage for Data {
     }
 
     #[inline]
-    fn read_chunk(&mut self, watermark: usize) -> Result<reader::storage::Chunk, Self::Error> {
+    fn read_chunk(&mut self, watermark: usize) -> Result<reader::storage::Chunk<'_>, Self::Error> {
         if let Some(chunk) = self.send_one(watermark) {
             return Ok(chunk.into());
         }
@@ -213,7 +213,7 @@ impl reader::Storage for Data {
     fn partial_copy_into<Dest: writer::Storage + ?Sized>(
         &mut self,
         dest: &mut Dest,
-    ) -> Result<reader::storage::Chunk, Self::Error> {
+    ) -> Result<reader::storage::Chunk<'_>, Self::Error> {
         while let Some(chunk) = self.send_one(dest.remaining_capacity()) {
             // if the chunk matches the destination then return it instead of copying
             if chunk.len() == dest.remaining_capacity() || self.is_finished() {

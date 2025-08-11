@@ -130,7 +130,7 @@ impl Packet<'_> {
     }
 
     #[inline]
-    pub fn control_frames_mut(&mut self) -> ControlFramesMut {
+    pub fn control_frames_mut(&mut self) -> ControlFramesMut<'_> {
         ControlFramesMut {
             buffer: self.control_data.get_mut(self.header),
         }
