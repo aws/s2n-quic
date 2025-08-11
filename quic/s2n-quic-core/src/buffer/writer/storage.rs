@@ -88,13 +88,13 @@ pub trait Storage {
 
     /// Limits the number of bytes that can be written to the storage
     #[inline]
-    fn with_write_limit(&mut self, max_len: usize) -> Limit<Self> {
+    fn with_write_limit(&mut self, max_len: usize) -> Limit<'_, Self> {
         Limit::new(self, max_len)
     }
 
     /// Tracks the number of bytes written to the storage
     #[inline]
-    fn track_write(&mut self) -> Tracked<Self> {
+    fn track_write(&mut self) -> Tracked<'_, Self> {
         Tracked::new(self)
     }
 
@@ -103,7 +103,7 @@ pub trait Storage {
     /// This can be used for very low latency scenarios where processing the single read is more
     /// important than filling the entire storage with as much data as possible.
     #[inline]
-    fn write_once(&mut self) -> WriteOnce<Self> {
+    fn write_once(&mut self) -> WriteOnce<'_, Self> {
         WriteOnce::new(self)
     }
 }

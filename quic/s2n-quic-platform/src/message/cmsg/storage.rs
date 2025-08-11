@@ -14,7 +14,7 @@ pub struct Storage<const L: usize>([u8; L]);
 
 impl<const L: usize> Storage<L> {
     #[inline]
-    pub fn encoder(&mut self) -> Encoder<L> {
+    pub fn encoder(&mut self) -> Encoder<'_, L> {
         Encoder {
             storage: self,
             cursor: 0,
@@ -22,7 +22,7 @@ impl<const L: usize> Storage<L> {
     }
 
     #[inline]
-    pub fn iter(&self) -> super::decode::Iter {
+    pub fn iter(&self) -> super::decode::Iter<'_> {
         super::decode::Iter::new(self)
     }
 }
@@ -78,7 +78,7 @@ impl<'a, const L: usize> Encoder<'a, L> {
     }
 
     #[inline]
-    pub fn iter(&self) -> super::decode::Iter {
+    pub fn iter(&self) -> super::decode::Iter<'_> {
         unsafe {
             // SAFETY: bytes are aligned with Storage type
             super::decode::Iter::from_bytes(self)

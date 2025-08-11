@@ -21,7 +21,7 @@ impl<T> Sender<T> {
     ///
     /// Callers should call [`Self::acquire`] or [`Self::poll_slice`] before calling this method.
     #[inline]
-    pub fn slice(&mut self) -> SendSlice<T> {
+    pub fn slice(&mut self) -> SendSlice<'_, T> {
         let cursor = self.0.cursor;
         SendSlice(&mut self.0, cursor)
     }
@@ -33,7 +33,7 @@ impl<T> Sender<T> {
     }
 
     #[inline]
-    pub fn poll_slice(&mut self, cx: &mut Context) -> Poll<Result<SendSlice<T>>> {
+    pub fn poll_slice(&mut self, cx: &mut Context) -> Poll<Result<SendSlice<'_, T>>> {
         macro_rules! acquire_capacity {
             () => {
                 match self.0.acquire_capacity() {
@@ -65,7 +65,7 @@ impl<T> Sender<T> {
     }
 
     #[inline]
-    pub fn try_slice(&mut self) -> Result<Option<SendSlice<T>>> {
+    pub fn try_slice(&mut self) -> Result<Option<SendSlice<'_, T>>> {
         Ok(if self.0.acquire_capacity()? {
             let cursor = self.0.cursor;
             Some(SendSlice(&mut self.0, cursor))

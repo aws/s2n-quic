@@ -19,7 +19,7 @@ pub trait Tx: Sized {
 
     /// Returns a future that yields after a packet is ready to be transmitted
     #[inline]
-    fn ready(&mut self) -> TxReady<Self> {
+    fn ready(&mut self) -> TxReady<'_, Self> {
         TxReady(self)
     }
 

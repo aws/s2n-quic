@@ -79,7 +79,7 @@ impl Storage for Chunk<'_> {
     }
 
     #[inline]
-    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
+    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk<'_>, Self::Error> {
         match self {
             Self::Slice(v) => v.read_chunk(watermark),
             Self::Bytes(v) => v.read_chunk(watermark),
@@ -88,7 +88,7 @@ impl Storage for Chunk<'_> {
     }
 
     #[inline]
-    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk, Self::Error>
+    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk<'_>, Self::Error>
     where
         Dest: writer::Storage + ?Sized,
     {

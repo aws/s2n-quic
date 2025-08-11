@@ -32,7 +32,7 @@ pub struct WrittenFrame {
 impl WrittenFrame {
     /// Deserializes a written frame into a quic_frame::Frame type.
     /// panics if deserialization fails.
-    pub fn as_frame(&mut self) -> FrameMut {
+    pub fn as_frame(&mut self) -> FrameMut<'_> {
         let buffer = DecoderBufferMut::new(&mut self.data[..]);
         let (frame, remaining) = buffer
             .decode::<FrameMut>()

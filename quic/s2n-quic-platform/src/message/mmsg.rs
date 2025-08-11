@@ -64,7 +64,7 @@ impl MessageTrait for mmsghdr {
     fn rx_read(
         &mut self,
         local_address: &path::LocalAddress,
-    ) -> Option<super::RxMessage<Self::Handle>> {
+    ) -> Option<super::RxMessage<'_, Self::Handle>> {
         unsafe {
             // We need to replicate the `msg_len` field to the inner type before delegating
             // Safety: The `msg_len` is associated with the same buffer as the `msg_hdr`

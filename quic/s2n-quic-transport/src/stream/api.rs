@@ -43,7 +43,7 @@ impl State {
         self.connection.poll_request(id, request, context)
     }
 
-    fn request(&mut self) -> Request {
+    fn request(&mut self) -> Request<'_, '_> {
         Request {
             state: self,
             request: ops::Request::default(),
@@ -331,18 +331,18 @@ impl Stream {
         &self.0.connection
     }
 
-    pub fn request(&mut self) -> Request {
+    pub fn request(&mut self) -> Request<'_, '_> {
         self.0.request()
     }
 
-    pub fn tx_request(&mut self) -> Result<TxRequest, StreamError> {
+    pub fn tx_request(&mut self) -> Result<TxRequest<'_, '_>, StreamError> {
         Ok(TxRequest {
             state: &mut self.0,
             request: ops::Request::default(),
         })
     }
 
-    pub fn rx_request(&mut self) -> Result<RxRequest, StreamError> {
+    pub fn rx_request(&mut self) -> Result<RxRequest<'_, '_>, StreamError> {
         Ok(RxRequest {
             state: &mut self.0,
             request: ops::Request::default(),
@@ -396,7 +396,7 @@ impl SendStream {
         &self.0.connection
     }
 
-    pub fn tx_request(&mut self) -> Result<TxRequest, StreamError> {
+    pub fn tx_request(&mut self) -> Result<TxRequest<'_, '_>, StreamError> {
         Ok(TxRequest {
             state: &mut self.0,
             request: ops::Request::default(),
@@ -440,7 +440,7 @@ impl ReceiveStream {
         &self.0.connection
     }
 
-    pub fn rx_request(&mut self) -> Result<RxRequest, StreamError> {
+    pub fn rx_request(&mut self) -> Result<RxRequest<'_, '_>, StreamError> {
         Ok(RxRequest {
             state: &mut self.0,
             request: ops::Request::default(),
