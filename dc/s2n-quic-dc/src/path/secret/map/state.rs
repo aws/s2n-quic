@@ -400,7 +400,7 @@ where
         self.ids = Default::default();
     }
 
-    pub(super) fn subscriber(&self) -> event::EndpointPublisherSubscriber<S> {
+    pub(super) fn subscriber(&self) -> event::EndpointPublisherSubscriber<'_, S> {
         use event::IntoEvent as _;
 
         let timestamp = self.clock.get_time().into_event();
