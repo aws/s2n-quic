@@ -1310,10 +1310,13 @@ mod tests {
 }
     #[test]
     fn pto_period_with_jitter_configuration() {
-        use s2n_quic_core::packet::number::PacketNumberSpace;
+        use s2n_quic_core::{
+            connection::limits::ANTI_AMPLIFICATION_MULTIPLIER,
+            packet::number::PacketNumberSpace,
+        };
         
         // Test with zero jitter (should match original behavior)
-        let path_no_jitter = Path::new(
+        let path_no_jitter: Path<endpoint::testing::Server> = Path::new(
             Default::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
             connection::LocalId::TEST_ID,
@@ -1330,7 +1333,7 @@ mod tests {
         let pto_no_jitter_with_method = path_no_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
         
         // Test with jitter enabled
-        let path_with_jitter = Path::new(
+        let path_with_jitter: Path<endpoint::testing::Server> = Path::new(
             Default::default(),
             connection::PeerId::try_from_bytes(&[]).unwrap(),
             connection::LocalId::TEST_ID,
