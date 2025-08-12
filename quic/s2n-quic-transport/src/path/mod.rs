@@ -81,6 +81,8 @@ pub struct Path<Config: endpoint::Config> {
     /// True if the path is currently active
     is_active: bool,
     anti_amplification_multiplier: u8,
+    /// PTO jitter percentage (0-50)
+    pto_jitter_percentage: u8,
 }
 
 impl<Config: endpoint::Config> Clone for Path<Config> {
@@ -101,6 +103,7 @@ impl<Config: endpoint::Config> Clone for Path<Config> {
             activated: self.activated,
             is_active: self.is_active,
             anti_amplification_multiplier: self.anti_amplification_multiplier,
+            pto_jitter_percentage: self.pto_jitter_percentage,
         }
     }
 }
@@ -117,6 +120,7 @@ impl<Config: endpoint::Config> Path<Config> {
         peer_validated: bool,
         mtu_config: mtu::Config,
         anti_amplification_multiplier: u8,
+        pto_jitter_percentage: u8,
     ) -> Path<Config> {
         let state = match Config::ENDPOINT_TYPE {
             Type::Server => {
@@ -149,6 +153,7 @@ impl<Config: endpoint::Config> Path<Config> {
             activated: false,
             is_active: false,
             anti_amplification_multiplier,
+            pto_jitter_percentage,
         }
     }
 
@@ -559,13 +564,34 @@ impl<Config: endpoint::Config> Path<Config> {
         }
     }
 
-    /// Returns the current PTO period
+    /// Returns the current PTO period without jitter
     #[inline]
     pub fn pto_period(
         &self,
         space: s2n_quic_core::packet::number::PacketNumberSpace,
     ) -> core::time::Duration {
         self.rtt_estimator.pto_period(self.pto_backoff, space)
+    }
+
+    /// Returns the current PTO period with jitter applied if configured
+    #[inline]
+    pub fn pto_period_with_jitter(
+        &self,
+        space: s2n_quic_core::packet::number::PacketNumberSpace,
+        random_generator: &mut dyn random::Generator,
+    ) -> core::time::Duration {
+        if self.pto_jitter_percentage == 0 {
+            // Use the original method for zero jitter to maintain exact compatibility
+            self.rtt_estimator.pto_period(self.pto_backoff, space)
+        } else {
+            // Use the jitter-enabled method
+            self.rtt_estimator.pto_period_with_jitter(
+                self.pto_backoff,
+                space,
+                self.pto_jitter_percentage,
+                random_generator,
+            )
+        }
     }
 
     /// Resets the PTO backoff to the initial value
@@ -654,6 +680,7 @@ pub mod testing {
             true,
             mtu::Config::default(),
             ANTI_AMPLIFICATION_MULTIPLIER,
+            0, // Default to no jitter for tests
         )
     }
 
@@ -667,6 +694,7 @@ pub mod testing {
             false,
             mtu::Config::default(),
             ANTI_AMPLIFICATION_MULTIPLIER,
+            0, // Default to no jitter for tests
         )
     }
 }
@@ -1201,6 +1229,7 @@ mod tests {
             false,
             mtu::Config::default(),
             ANTI_AMPLIFICATION_MULTIPLIER,
+            0, // Default to no jitter for tests
         );
         let now = NoopClock.get_time();
         let random = &mut random::testing::Generator::default();
@@ -1279,3 +1308,50 @@ mod tests {
         assert!(path.is_congestion_limited(501));
     }
 }
+    #[test]
+    fn pto_period_with_jitter_configuration() {
+        use s2n_quic_core::packet::number::PacketNumberSpace;
+        
+        // Test with zero jitter (should match original behavior)
+        let path_no_jitter = Path::new(
+            Default::default(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(100)),
+            Default::default(),
+            false,
+            mtu::Config::default(),
+            ANTI_AMPLIFICATION_MULTIPLIER,
+            0, // No jitter
+        );
+        
+        let mut rng = random::testing::Generator::default();
+        let pto_no_jitter = path_no_jitter.pto_period(PacketNumberSpace::ApplicationData);
+        let pto_no_jitter_with_method = path_no_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
+        
+        // Test with jitter enabled
+        let path_with_jitter = Path::new(
+            Default::default(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(100)),
+            Default::default(),
+            false,
+            mtu::Config::default(),
+            ANTI_AMPLIFICATION_MULTIPLIER,
+            25, // 25% jitter
+        );
+        
+        let pto_with_jitter = path_with_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
+        
+        // Zero jitter methods should produce identical results
+        assert_eq!(pto_no_jitter, pto_no_jitter_with_method);
+        
+        // Verify the jitter percentage is stored correctly
+        assert_eq!(path_no_jitter.pto_jitter_percentage, 0);
+        assert_eq!(path_with_jitter.pto_jitter_percentage, 25);
+        
+        // Both should be positive durations
+        assert!(pto_no_jitter > Duration::ZERO);
+        assert!(pto_with_jitter > Duration::ZERO);
+    }

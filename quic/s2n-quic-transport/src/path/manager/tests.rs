@@ -63,6 +63,7 @@ fn get_path_by_address_test() {
         false,
         mtu_config,
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // Default to no jitter for tests
     );
 
     let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
@@ -75,6 +76,7 @@ fn get_path_by_address_test() {
         false,
         mtu_config,
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // Default to no jitter for tests
     );
 
     let mut manager = manager_server(first_path.clone());
@@ -1976,6 +1978,7 @@ pub fn helper_path(peer_id: connection::PeerId) -> ServerPath {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // Default to no jitter for tests
     )
 }
 

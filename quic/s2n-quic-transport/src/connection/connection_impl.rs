@@ -33,8 +33,7 @@ use core::{
     time::Duration,
 };
 use s2n_quic_core::{
-    application,
-    application::ServerName,
+    application::{self, ServerName},
     connection::{error::Error, id::Generator as _, InitialId, PeerId},
     crypto::{tls, CryptoSuite},
     datagram::{Receiver, Sender},
@@ -243,6 +242,7 @@ macro_rules! transmission_context {
         $path_id:expr,
         $timestamp:expr,
         $transmission_mode:expr,
+        $random_generator:expr,
         $subscriber:expr,
         $packet_interceptor:expr,
         $(,)?
@@ -261,6 +261,7 @@ macro_rules! transmission_context {
             ecn,
             min_packet_len: None,
             transmission_mode: $transmission_mode,
+            random_generator: $random_generator,
             publisher: &mut $self.event_context.publisher($timestamp, $subscriber),
             packet_interceptor: $packet_interceptor,
         }
@@ -275,6 +276,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
         limits: &mut Config::ConnectionLimits,
+        random_generator: &mut Config::RandomGenerator,
     ) -> Result<(), connection::Error> {
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
@@ -289,6 +291,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             datagram,
             dc,
             limits,
+            random_generator,
         ) {
             Poll::Ready(Ok(())) => {}
             // use `from` instead of `into` so the location is correctly captured
@@ -423,10 +426,12 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
     }
 
     fn current_pto(&self) -> Duration {
-        self.path_manager.active_path().pto_period({
+        // Return the base PTO period without jitter
+        // This is used for idle timeout calculations and other non-timer purposes
+        self.path_manager
+            .active_path()
             // Incorporate `max_ack_delay` into the timeout
-            PacketNumberSpace::ApplicationData
-        })
+            .pto_period(PacketNumberSpace::ApplicationData)
     }
 
     /// Send path validation frames for the non-active path.
@@ -439,6 +444,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         queue: &mut Tx,
         timestamp: Timestamp,
         outcome: &'a mut transmission::Outcome,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &'a mut Config::PacketInterceptor,
     ) -> usize {
@@ -471,6 +477,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
                         min_packet_len: None,
                         ecn,
                         transmission_mode,
+                        random_generator,
                         publisher: &mut self.event_context.publisher(timestamp, subscriber),
                         packet_interceptor,
                     },
@@ -607,6 +614,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             peer_validated,
             parameters.mtu_config,
             parameters.limits.anti_amplification_multiplier(),
+            parameters.limits.pto_jitter_percentage(),
         );
 
         let path_manager = path::Manager::new(initial_path, parameters.peer_id_registry);
@@ -663,6 +671,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 parameters.datagram_endpoint,
                 parameters.dc_endpoint,
                 parameters.limits_endpoint,
+                parameters.random_generator,
             ) {
                 connection.with_event_publisher(
                     parameters.timestamp,
@@ -721,6 +730,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         error: connection::Error,
         close_formatter: &Config::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
+        random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
@@ -764,6 +774,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 active_path_id,
                 timestamp,
                 transmission::Mode::Normal,
+                random_generator,
                 subscriber,
                 packet_interceptor,
             );
@@ -822,8 +833,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         //# sufficient information to identify packets for a closing connection;
         //# the endpoint MAY discard all other connection state.
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
-        self.space_manager
-            .close(error, &mut self.path_manager, timestamp, &mut publisher);
+        self.space_manager.close(
+            error,
+            &mut self.path_manager,
+            random_generator,
+            timestamp,
+            &mut publisher,
+        );
     }
 
     /// Generates and registers new connection IDs using the given `ConnectionIdFormat`
@@ -862,6 +878,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     fn on_transmit<Tx: tx::Queue<Handle = Config::PathHandle>>(
         &mut self,
         queue: &mut Tx,
+        random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
         packet_interceptor: &mut Config::PacketInterceptor,
@@ -897,6 +914,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 path_id,
                                 timestamp,
                                 transmission::Mode::MtuProbing,
+                                random_generator,
                                 subscriber,
                                 packet_interceptor,
                             ),
@@ -917,6 +935,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                                 path_id,
                                 timestamp,
                                 transmission::Mode::Normal,
+                                random_generator,
                                 subscriber,
                                 packet_interceptor,
                             ),
@@ -970,6 +989,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     queue,
                     timestamp,
                     &mut outcome,
+                    random_generator,
                     subscriber,
                     packet_interceptor,
                 );
@@ -977,8 +997,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 // If anything was transmitted, notify the space manager
                 // that a burst of packets has completed transmission
                 if count > 0 {
-                    self.space_manager
-                        .on_transmit_burst_complete(self.path_manager.active_path(), timestamp);
+                    self.space_manager.on_transmit_burst_complete(
+                        self.path_manager.active_path(),
+                        random_generator,
+                        timestamp,
+                    );
                 }
 
                 let mut publisher = self.event_context.publisher(timestamp, subscriber);
@@ -1056,8 +1079,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             self.path_manager
                 .on_timeout(timestamp, random_generator, &mut publisher)?;
         if amplification_outcome.is_active_path_unblocked() {
-            self.space_manager
-                .on_amplification_unblocked(&self.path_manager, timestamp);
+            self.space_manager.on_amplification_unblocked(
+                &self.path_manager,
+                random_generator,
+                timestamp,
+            );
         }
         self.local_id_registry.on_timeout(timestamp);
         self.space_manager.on_timeout(
@@ -1134,12 +1160,20 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
         conn_limits: &mut Config::ConnectionLimits,
+        random_generator: &mut Config::RandomGenerator,
     ) -> Result<(), connection::Error> {
         // reset the queued state first so that new wakeup request are not missed
         self.wakeup_handle.wakeup_handled();
 
         // check if crypto progress can be made
-        self.update_crypto_state(timestamp, subscriber, datagram, dc, conn_limits)?;
+        self.update_crypto_state(
+            timestamp,
+            subscriber,
+            datagram,
+            dc,
+            conn_limits,
+            random_generator,
+        )?;
 
         if self.space_manager.handshake().is_some() && self.space_manager.is_handshake_confirmed() {
             let mut publisher = self.event_context.publisher(timestamp, subscriber);
@@ -1165,6 +1199,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         congestion_controller_endpoint: &mut Config::CongestionControllerEndpoint,
         path_migration: &mut Config::PathMigrationValidator,
         mtu: &mut mtu::Manager<Config::Mtu>,
+        random_generator: &mut Config::RandomGenerator,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<path::Id, DatagramDropReason> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
@@ -1203,8 +1238,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             //# datagram unblocks it, even if none of the packets in the datagram are
             //# successfully processed.  In such a case, the PTO timer will need to
             //# be re-armed.
-            self.space_manager
-                .on_amplification_unblocked(&self.path_manager, datagram.timestamp);
+            self.space_manager.on_amplification_unblocked(
+                &self.path_manager,
+                random_generator,
+                datagram.timestamp,
+            );
         }
 
         if matches!(self.state, ConnectionState::Closing) {
@@ -1366,6 +1404,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                random_generator,
             )?;
 
             // notify the connection a packet was processed
@@ -1463,6 +1502,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 //# successfully processes a Handshake packet.
                 self.space_manager.discard_initial(
                     &mut self.path_manager,
+                    random_generator,
                     datagram.timestamp,
                     &mut publisher,
                 );
@@ -1481,6 +1521,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                 datagram_endpoint,
                 dc_endpoint,
                 connection_limits_endpoint,
+                random_generator,
             )?;
 
             // notify the connection a packet was processed
@@ -1608,6 +1649,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     datagram_endpoint,
                     dc_endpoint,
                     limits_endpoint,
+                    random_generator,
                 )?;
             }
             // notify the connection a packet was processed

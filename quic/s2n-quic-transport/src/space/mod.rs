@@ -160,6 +160,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn discard_initial<Pub: event::ConnectionPublisher>(
         &mut self,
         path_manager: &mut path::Manager<Config>,
+        random_generator: &mut Config::RandomGenerator,
         now: Timestamp,
         publisher: &mut Pub,
     ) {
@@ -187,7 +188,12 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
 
                 // Arm the PTO timer on the handshake space so the handshake can make progress
                 // even if no handshake packets have been transmitted or received yet
-                handshake.update_pto_timer(path_manager, now, handshake_status.is_confirmed());
+                handshake.update_pto_timer(
+                    path_manager,
+                    now,
+                    handshake_status.is_confirmed(),
+                    random_generator,
+                );
             }
         }
 
@@ -252,6 +258,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
         limits_endpoint: &mut Config::ConnectionLimits,
+        random_generator: &mut Config::RandomGenerator,
     ) -> Poll<Result<(), transport::Error>> {
         if let Some(session_info) = self.session_info.as_mut() {
             let mut context: SessionContext<Config, Pub> = SessionContext {
@@ -274,6 +281,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 datagram,
                 dc,
                 limits_endpoint,
+                random_generator,
             };
 
             match session_info.session.poll(&mut context)? {
@@ -302,6 +310,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         datagram: &mut Config::DatagramEndpoint,
         dc: &mut Config::DcEndpoint,
         limits_endpoint: &mut Config::ConnectionLimits,
+        random_generator: &mut Config::RandomGenerator,
     ) -> Result<(), transport::Error> {
         if let Some(session_info) = self.session_info.as_mut() {
             let mut context: SessionContext<Config, Pub> = SessionContext {
@@ -324,6 +333,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 datagram,
                 dc,
                 limits_endpoint,
+                random_generator,
             };
 
             session_info
@@ -405,6 +415,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
     pub fn on_amplification_unblocked(
         &mut self,
         path_manager: &path::Manager<Config>,
+        random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
     ) {
         if let Some((space, handshake_status)) = self.initial_mut() {
@@ -412,6 +423,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 path_manager,
                 timestamp,
                 handshake_status.is_confirmed(),
+                random_generator,
             );
         }
 
@@ -420,6 +432,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 path_manager,
                 timestamp,
                 handshake_status.is_confirmed(),
+                random_generator,
             );
         }
 
@@ -428,12 +441,18 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 path_manager,
                 timestamp,
                 handshake_status.is_confirmed(),
+                random_generator,
             );
         }
     }
 
     /// Called after a burst of one or more packets have finished being transmitted
-    pub fn on_transmit_burst_complete(&mut self, active_path: &Path<Config>, timestamp: Timestamp) {
+    pub fn on_transmit_burst_complete(
+        &mut self,
+        active_path: &Path<Config>,
+        random_generator: &mut Config::RandomGenerator,
+        timestamp: Timestamp,
+    ) {
         debug_assert!(active_path.is_active());
 
         if let Some((space, handshake_status)) = self.initial_mut() {
@@ -441,6 +460,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 active_path,
                 timestamp,
                 handshake_status.is_confirmed(),
+                random_generator,
             );
         }
 
@@ -449,6 +469,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 active_path,
                 timestamp,
                 handshake_status.is_confirmed(),
+                random_generator,
             );
         }
 
@@ -457,6 +478,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 active_path,
                 timestamp,
                 handshake_status.is_confirmed(),
+                random_generator,
             );
         }
     }
@@ -574,12 +596,13 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
         &mut self,
         error: connection::Error,
         path_manager: &mut path::Manager<Config>,
+        random_generator: &mut Config::RandomGenerator,
         now: Timestamp,
         publisher: &mut Pub,
     ) {
         self.session_info = None;
         self.retry_cid = None;
-        self.discard_initial(path_manager, now, publisher);
+        self.discard_initial(path_manager, random_generator, now, publisher);
         self.discard_handshake(path_manager, publisher);
         self.discard_zero_rtt_crypto();
 
@@ -686,6 +709,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
         path_manager: &path::Manager<Config>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     );
 
     fn handle_crypto_frame<Pub: event::ConnectionPublisher>(
@@ -725,6 +749,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
         _path: &mut Path<Config>,
         _local_id_registry: &mut connection::LocalIdRegistry,
         _handshake_status: &mut HandshakeStatus,
+        _random_generator: &mut Config::RandomGenerator,
         _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
@@ -762,6 +787,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
         _timestamp: Timestamp,
         _path_manager: &mut path::Manager<Config>,
         _handshake_status: &mut HandshakeStatus,
+        _random_generator: &mut Config::RandomGenerator,
         _publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         Err(transport::Error::PROTOCOL_VIOLATION
@@ -1053,6 +1079,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                         datagram.timestamp,
                         path_manager,
                         handshake_status,
+                        random_generator,
                         publisher,
                     )
                     .map_err(on_error)?;
@@ -1065,6 +1092,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                         &mut path_manager[path_id],
                         local_id_registry,
                         handshake_status,
+                        random_generator,
                         publisher,
                     )
                     .map_err(on_error)?;
@@ -1103,6 +1131,7 @@ pub trait PacketSpace<Config: endpoint::Config>: Sized {
                 path_manager,
                 datagram.timestamp,
                 handshake_status.is_confirmed(),
+                random_generator,
             );
         }
 
