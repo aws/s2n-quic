@@ -21,7 +21,7 @@ jobs:
       source_sha: ${{ github.sha }}
       pr_author: ${{ github.event.pull_request.user.login }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Get permissions
         id: get_permission
