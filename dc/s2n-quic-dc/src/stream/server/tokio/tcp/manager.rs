@@ -370,7 +370,7 @@ where
     }
 }
 
-pub trait Worker {
+pub(crate) trait Worker {
     type Context;
     type ConnectionContext;
     type Stream;

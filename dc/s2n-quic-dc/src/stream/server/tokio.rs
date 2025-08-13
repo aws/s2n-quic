@@ -468,7 +468,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             self.server.local_addr = socket.local_addr()?;
         }
 
-        let socket = tokio::net::TcpListener::from_std(socket)?;
+        let socket = tokio::io::unix::AsyncFd::new(socket)?;
         let id = self.id();
 
         let acceptor = tcp::Acceptor::new(
@@ -480,7 +480,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             self.backlog,
             self.accept_flavor,
             self.linger,
-        )
+        )?
         .run();
 
         if self.span.is_disabled() {

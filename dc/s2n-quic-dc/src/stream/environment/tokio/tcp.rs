@@ -6,6 +6,7 @@ use crate::{
     stream::{
         environment::{tokio::Environment, Peer, SetupResult, SocketSet},
         recv::shared::RecvBuffer,
+        server::tokio::tcp::LazyBoundStream,
         TransportFeatures,
     },
 };
@@ -51,7 +52,7 @@ where
 
 /// A socket that should be reregistered with the application runtime
 pub struct Reregistered {
-    pub socket: TcpStream,
+    pub socket: LazyBoundStream,
     pub peer_addr: SocketAddress,
     pub local_port: u16,
     pub recv_buffer: RecvBuffer,
