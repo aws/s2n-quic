@@ -219,7 +219,7 @@ impl Entry {
         let control = if features.is_reliable() {
             None
         } else {
-            Some(ControlPair::new(&self.secret, key_id, initiator))
+            Some(Box::new(ControlPair::new(&self.secret, key_id, initiator)))
         };
 
         Bidirectional {
@@ -253,7 +253,7 @@ impl Entry {
         let control = if features.is_reliable() {
             None
         } else {
-            Some(ControlPair::new(&self.secret, key_id, initiator))
+            Some(Box::new(ControlPair::new(&self.secret, key_id, initiator)))
         };
 
         Bidirectional {
@@ -331,7 +331,7 @@ impl receiver::Error {
 pub struct Bidirectional {
     pub credentials: Credentials,
     pub application: ApplicationPair,
-    pub control: Option<ControlPair>,
+    pub control: Option<Box<ControlPair>>,
 }
 
 pub struct ApplicationPair {
