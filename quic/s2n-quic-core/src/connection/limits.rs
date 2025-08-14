@@ -349,6 +349,7 @@ impl Limits {
     ///
     /// ```
     /// # use s2n_quic_core::connection::Limits;
+    /// // Configure 25% PTO jitter
     /// let limits = Limits::new()
     ///     .with_pto_jitter_percentage(25)
     ///     .unwrap();
@@ -367,7 +368,7 @@ impl Limits {
     /// Gets the configured PTO jitter percentage
     ///
     /// Returns the percentage of jitter applied to PTO calculations.
-    /// A value of 0 means no jitter is applied.
+    /// A value of 0 means no jitter is applied (default behavior).
     pub fn pto_jitter_percentage(&self) -> u8 {
         self.pto_jitter_percentage
     }
