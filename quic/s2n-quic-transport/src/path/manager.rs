@@ -223,7 +223,7 @@ impl<Config: endpoint::Config> Manager<Config> {
 
     /// Returns an iterator over all paths pending path_challenge or path_response
     /// transmission.
-    pub fn paths_pending_validation(&mut self) -> PathsPendingValidation<Config> {
+    pub fn paths_pending_validation(&mut self) -> PathsPendingValidation<'_, Config> {
         PathsPendingValidation::new(self)
     }
 

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::accept;
+use super::{accept, LazyBoundStream};
 use crate::{
     either::Either,
     event::{self, EndpointPublisher, IntoEvent},
@@ -11,7 +11,6 @@ use crate::{
         endpoint,
         environment::tokio::{self as env, Environment},
         recv, server,
-        socket::Socket,
     },
 };
 use core::{
@@ -27,7 +26,6 @@ use s2n_quic_core::{
     time::{Clock, Timestamp},
 };
 use std::io;
-use tokio::{io::AsyncWrite as _, net::TcpStream};
 use tracing::debug;
 
 pub struct Context<Sub>
@@ -54,7 +52,7 @@ where
             env: acceptor.env.clone(),
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
-            local_port: acceptor.socket.local_addr().unwrap().port(),
+            local_port: acceptor.socket.get_ref().local_addr().unwrap().port(),
         }
     }
 }
@@ -64,7 +62,7 @@ where
     Sub: event::Subscriber + Clone,
 {
     queue_time: Timestamp,
-    stream: Option<(TcpStream, SocketAddress)>,
+    stream: Option<(LazyBoundStream, SocketAddress)>,
     subscriber_ctx: Option<Sub::ConnectionContext>,
     state: WorkerState,
 }
@@ -89,14 +87,14 @@ where
     Sub: event::Subscriber + Clone,
 {
     type ConnectionContext = Sub::ConnectionContext;
-    type Stream = TcpStream;
+    type Stream = LazyBoundStream;
     type Context = Context<Sub>;
 
     #[inline]
     fn replace<Pub, C>(
         &mut self,
         remote_address: SocketAddress,
-        stream: TcpStream,
+        stream: LazyBoundStream,
         linger: Option<Duration>,
         subscriber_ctx: Self::ConnectionContext,
         publisher: &Pub,
@@ -232,7 +230,7 @@ impl WorkerState {
         &mut self,
         cx: &mut task::Context,
         context: &mut Context<Sub>,
-        stream: &mut Option<(TcpStream, SocketAddress)>,
+        stream: &mut Option<(LazyBoundStream, SocketAddress)>,
         subscriber_ctx: &mut Option<Sub::ConnectionContext>,
         queue_time: Timestamp,
         now: Timestamp,
@@ -396,7 +394,7 @@ impl WorkerState {
     #[inline]
     fn poll_initial_packet<Pub>(
         cx: &mut task::Context,
-        stream: &mut TcpStream,
+        stream: &mut LazyBoundStream,
         remote_address: &SocketAddress,
         recv_buffer: &mut msg::recv::Message,
         sojourn_time: Duration,

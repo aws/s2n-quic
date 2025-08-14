@@ -1302,7 +1302,7 @@ pub mod testing {
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
         type DcEndpoint = s2n_quic_core::dc::testing::MockDcEndpoint;
 
-        fn context(&mut self) -> super::Context<Self> {
+        fn context(&mut self) -> super::Context<'_, Self> {
             todo!()
         }
 
@@ -1334,7 +1334,7 @@ pub mod testing {
         type DatagramEndpoint = s2n_quic_core::datagram::Disabled;
         type DcEndpoint = s2n_quic_core::dc::testing::MockDcEndpoint;
 
-        fn context(&mut self) -> super::Context<Self> {
+        fn context(&mut self) -> super::Context<'_, Self> {
             todo!()
         }
 

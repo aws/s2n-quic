@@ -43,11 +43,11 @@ jobs:
     outputs:
       matrix: ${{ steps.implementations.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: s2n-quic
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: marten-seemann/quic-interop-runner
           ref: ${{ env.INTEROP_RUNNER_REF }}
@@ -83,7 +83,7 @@ jobs:
     env:
       RUSTFLAGS: "-g --cfg s2n_internal_dev --cfg s2n_quic_dump_on_panic --cfg s2n_quic_unstable"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
 
@@ -116,7 +116,7 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.env.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: s2n-quic
 
@@ -148,7 +148,7 @@ jobs:
           docker build . --file Dockerfile --target prebuilt --tag aws/s2n-quic-qns --build-arg tls=s2n-tls
           docker build . --file Dockerfile --target prebuilt --tag aws/s2n-quic-qns-rustls --build-arg tls=rustls
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: marten-seemann/quic-interop-runner
           ref: ${{ env.INTEROP_RUNNER_REF }}
@@ -259,7 +259,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [interop]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/download-artifact@v5
         with:
@@ -367,7 +367,7 @@ jobs:
         tls: ["s2n-tls", "rustls"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/download-artifact@v5
         with:
@@ -393,7 +393,7 @@ jobs:
             server: "s2n-quic-null"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
 
@@ -463,7 +463,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [perf]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # add any additional perf tests here
       - uses: actions/download-artifact@v5
@@ -517,7 +517,7 @@ jobs:
         attack: ["udp"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install rust toolchain
         id: toolchain

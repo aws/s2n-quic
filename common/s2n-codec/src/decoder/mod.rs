@@ -227,7 +227,7 @@ macro_rules! impl_buffer {
                 // TODO add doctest
 
                 #[inline]
-                pub fn get_checked_range(&self, range: &crate::CheckedRange) -> DecoderBuffer {
+                pub fn get_checked_range(&self, range: &crate::CheckedRange) -> DecoderBuffer<'_> {
                     range.get(self.bytes).into()
                 }
             }
@@ -286,7 +286,7 @@ macro_rules! impl_buffer {
             pub fn peek_range(
                 &self,
                 range: core::ops::Range<usize>,
-            ) -> Result<crate::DecoderBuffer, DecoderError> {
+            ) -> Result<crate::DecoderBuffer<'_>, DecoderError> {
                 let end = range.end;
                 self.bytes
                     .get(range)

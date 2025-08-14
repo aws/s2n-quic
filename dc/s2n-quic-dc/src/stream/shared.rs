@@ -207,7 +207,7 @@ where
     }
 
     #[inline]
-    pub fn publisher(&self) -> event::ConnectionPublisherSubscriber<Sub> {
+    pub fn publisher(&self) -> event::ConnectionPublisherSubscriber<'_, Sub> {
         self.publisher_with_timestamp(self.clock.get_time())
     }
 
@@ -215,7 +215,7 @@ where
     pub fn publisher_with_timestamp(
         &self,
         timestamp: Timestamp,
-    ) -> event::ConnectionPublisherSubscriber<Sub> {
+    ) -> event::ConnectionPublisherSubscriber<'_, Sub> {
         self.subscriber.publisher(timestamp)
     }
 
@@ -223,7 +223,7 @@ where
     pub fn endpoint_publisher(
         &self,
         timestamp: Timestamp,
-    ) -> event::EndpointPublisherSubscriber<Sub> {
+    ) -> event::EndpointPublisherSubscriber<'_, Sub> {
         self.subscriber.endpoint_publisher(timestamp)
     }
 }
@@ -241,7 +241,7 @@ where
     Sub: event::Subscriber,
 {
     #[inline]
-    pub fn publisher(&self, timestamp: Timestamp) -> event::ConnectionPublisherSubscriber<Sub> {
+    pub fn publisher(&self, timestamp: Timestamp) -> event::ConnectionPublisherSubscriber<'_, Sub> {
         event::ConnectionPublisherSubscriber::new(
             event::builder::ConnectionMeta {
                 id: 0, // TODO
@@ -257,7 +257,7 @@ where
     pub fn endpoint_publisher(
         &self,
         timestamp: Timestamp,
-    ) -> event::EndpointPublisherSubscriber<Sub> {
+    ) -> event::EndpointPublisherSubscriber<'_, Sub> {
         event::EndpointPublisherSubscriber::new(
             event::builder::EndpointMeta {
                 timestamp: timestamp.into_event(),

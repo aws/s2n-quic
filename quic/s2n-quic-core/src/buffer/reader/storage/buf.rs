@@ -56,7 +56,7 @@ where
     }
 
     #[inline]
-    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk, Self::Error> {
+    fn read_chunk(&mut self, watermark: usize) -> Result<Chunk<'_>, Self::Error> {
         self.commit_pending();
         let chunk = self.buf.chunk();
         let len = chunk.len().min(watermark);
@@ -65,7 +65,7 @@ where
     }
 
     #[inline]
-    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk, Self::Error>
+    fn partial_copy_into<Dest>(&mut self, dest: &mut Dest) -> Result<Chunk<'_>, Self::Error>
     where
         Dest: writer::Storage + ?Sized,
     {

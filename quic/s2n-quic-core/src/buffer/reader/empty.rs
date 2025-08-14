@@ -29,12 +29,12 @@ impl<R: Reader + ?Sized> Storage for Empty<'_, R> {
     }
 
     #[inline(always)]
-    fn read_chunk(&mut self, _watermark: usize) -> Result<Chunk, Self::Error> {
+    fn read_chunk(&mut self, _watermark: usize) -> Result<Chunk<'_>, Self::Error> {
         Ok(Chunk::empty())
     }
 
     #[inline(always)]
-    fn partial_copy_into<Dest>(&mut self, _dest: &mut Dest) -> Result<Chunk, Self::Error>
+    fn partial_copy_into<Dest>(&mut self, _dest: &mut Dest) -> Result<Chunk<'_>, Self::Error>
     where
         Dest: writer::Storage + ?Sized,
     {
