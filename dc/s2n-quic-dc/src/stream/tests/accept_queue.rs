@@ -155,7 +155,9 @@ async fn graceful_surpassing_concurrency() {
     });
 
     // Need to give time for server to drop the streams.
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    // Increased because of TCP_DEFER_ACCEPT delaying actual accept because we don't actually write
+    // anything to the stream.
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     let mut errors = 0;
     let mut ok = 0;
