@@ -136,17 +136,9 @@ impl RttEstimator {
         self.max_ack_delay
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-    //# The PTO period is the amount of time that a sender ought to wait for
-    //# an acknowledgement of a sent packet.
+    /// Calculates the base PTO period in microseconds according to RFC 9002
     #[inline]
-    pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
-        // Backward compatibility method that doesn't apply jitter
-        // This maintains the original RFC 9002 behavior exactly
-
-        // We operate on microseconds rather than `Duration` to improve efficiency.
-        // See https://godbolt.org/z/osEd9rj9a
-
+    fn calculate_base_pto_micros(&self, pto_backoff: u32, space: PacketNumberSpace) -> u64 {
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
@@ -179,15 +171,30 @@ impl RttEstimator {
         //# the timeout in the Handshake packet number space.
         pto_period *= pto_backoff as u64;
 
+        pto_period
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
+    //# The PTO period is the amount of time that a sender ought to wait for
+    //# an acknowledgement of a sent packet.
+    #[inline]
+    pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
+        // Backward compatibility method that doesn't apply jitter
+        // This maintains the original RFC 9002 behavior exactly
+
+        // We operate on microseconds rather than `Duration` to improve efficiency.
+        // See https://godbolt.org/z/osEd9rj9a
+        let pto_period = self.calculate_base_pto_micros(pto_backoff, space);
+
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period MUST be at least kGranularity, to avoid the timer
         //# expiring immediately.
-        pto_period = pto_period.max(K_GRANULARITY.as_micros() as u64);
+        let final_pto_micros = pto_period.max(K_GRANULARITY.as_micros() as u64);
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period is the amount of time that a sender ought to wait for
         //# an acknowledgement of a sent packet.
-        Duration::from_micros(pto_period)
+        Duration::from_micros(final_pto_micros)
     }
 
     /// Calculates the PTO period with configurable jitter
@@ -215,42 +222,13 @@ impl RttEstimator {
         // We operate on microseconds rather than `Duration` to improve efficiency.
         // See https://godbolt.org/z/osEd9rj9a
 
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-        //# When an ack-eliciting packet is transmitted, the sender schedules a
-        //# timer for the PTO period as follows:
-        //#
-        //# PTO = smoothed_rtt + max(4*rttvar, kGranularity) + max_ack_delay
-        let mut pto_period = self.smoothed_rtt().as_micros() as u64;
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-        //# The PTO period MUST be at least kGranularity, to avoid the timer
-        //# expiring immediately.
-        pto_period += max(
-            self.rttvar_4x().as_micros() as u64,
-            K_GRANULARITY.as_micros() as u64,
-        );
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-        //# When the PTO is armed for Initial or Handshake packet number spaces,
-        //# the max_ack_delay in the PTO period computation is set to 0, since
-        //# the peer is expected to not delay these packets intentionally; see
-        //# Section 13.2.1 of [QUIC-TRANSPORT].
-        if space.is_application_data() {
-            pto_period += self.max_ack_delay.as_micros() as u64;
-        }
-
-        //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-        //# Even when there are ack-eliciting packets in flight in multiple
-        //# packet number spaces, the exponential increase in PTO occurs across
-        //# all spaces to prevent excess load on the network.  For example, a
-        //# timeout in the Initial packet number space doubles the length of
-        //# the timeout in the Handshake packet number space.
-        pto_period *= pto_backoff as u64;
+        // Calculate the base PTO period using the shared implementation
+        let base_pto_micros = self.calculate_base_pto_micros(pto_backoff, space);
 
         // Apply jitter if configured
         let jitter_amount =
-            calculate_jitter_amount(pto_period, pto_jitter_percentage, random_generator);
-        let jittered_pto_micros = (pto_period as i64 + jitter_amount) as u64;
+            calculate_jitter_amount(base_pto_micros, pto_jitter_percentage, random_generator);
+        let jittered_pto_micros = (base_pto_micros as i64 + jitter_amount) as u64;
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period MUST be at least kGranularity, to avoid the timer
