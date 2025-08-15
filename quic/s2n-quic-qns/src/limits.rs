@@ -45,6 +45,8 @@ impl Limits {
             .with_max_handshake_duration(Duration::from_secs(self.max_handshake_duration))
             .unwrap()
             .with_max_idle_timeout(Duration::from_secs(self.max_idle_timeout))
+            .unwrap()
+            .with_pto_jitter_percentage(33)
             .unwrap();
 
         if let Some(size) = self.stream_send_buffer_size {
