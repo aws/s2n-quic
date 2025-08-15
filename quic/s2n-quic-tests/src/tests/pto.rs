@@ -107,6 +107,8 @@ fn pto_jitter() {
     let datagram_sent_events_jitter = datagram_sent_subscriber_jitter.events();
 
     // Test 2 clients, one with jitter, one without
+    // No server is needed, since the lack of acknowledgement from the server will
+    // trigger PTO probes
     test(model.clone(), |handle| {
         let addr = "127.0.0.1:443".to_socket_addrs()?.next().unwrap();
 
@@ -166,6 +168,8 @@ fn pto_jitter() {
         1 + EXPECTED_PTO_COUNT * 2
     );
 
+    let mut last_time = Duration::ZERO;
+    let mut last_time_jittered = Duration::ZERO;
     for pto_count in 1..=EXPECTED_PTO_COUNT {
         let default_pto_base = Duration::from_millis(999);
         let expected_pto = default_pto_base * (2_u32.pow(pto_count as u32) - 1);
@@ -173,6 +177,10 @@ fn pto_jitter() {
         let second_pto_datagram = datagram_sent_events[pto_count * 2];
         let first_pto_datagram_jitter = datagram_sent_events_jitter[pto_count * 2 - 1];
         let second_pto_datagram_jitter = datagram_sent_events_jitter[pto_count * 2];
+        let time_since_last = first_pto_datagram - last_time;
+        let time_since_last_jittered = first_pto_datagram_jitter - last_time_jittered;
+        last_time = first_pto_datagram;
+        last_time_jittered = first_pto_datagram_jitter;
 
         // 2 PTO datagrams are sent at the same time
         assert_eq!(first_pto_datagram, second_pto_datagram);
@@ -183,6 +191,13 @@ fn pto_jitter() {
 
         // With jitter the PTO is sent at a different time
         assert_ne!(expected_pto, first_pto_datagram_jitter);
+
+        // The jittered PTO should be within ±50% of the non jittered PTO
+        let min_expected_jittered = (time_since_last * 50) / 100; // -50%
+        let max_expected_jittered = (time_since_last * 150) / 100; // +50%
+
+        assert!(time_since_last_jittered >= min_expected_jittered);
+        assert!(time_since_last_jittered <= max_expected_jittered);
     }
 }
 

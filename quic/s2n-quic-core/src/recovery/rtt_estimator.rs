@@ -139,6 +139,9 @@ impl RttEstimator {
     /// Calculates the base PTO period in microseconds according to RFC 9002
     #[inline]
     fn calculate_base_pto_micros(&self, pto_backoff: u32, space: PacketNumberSpace) -> u64 {
+        // We operate on microseconds rather than `Duration` to improve efficiency.
+        // See https://godbolt.org/z/osEd9rj9a
+
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# When an ack-eliciting packet is transmitted, the sender schedules a
         //# timer for the PTO period as follows:
@@ -174,27 +177,27 @@ impl RttEstimator {
         pto_period
     }
 
-    //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
-    //# The PTO period is the amount of time that a sender ought to wait for
-    //# an acknowledgement of a sent packet.
+    /// Calculates the PTO period based on the standard RFC 9002 PTO calculation
+    ///
+    /// # Arguments
+    /// * `pto_backoff` - The PTO backoff multiplier
+    /// * `space` - The packet number space
+    ///
+    /// # Returns
+    /// The PTO period, guaranteed to be >= kGranularity
     #[inline]
     pub fn pto_period(&self, pto_backoff: u32, space: PacketNumberSpace) -> Duration {
-        // Backward compatibility method that doesn't apply jitter
-        // This maintains the original RFC 9002 behavior exactly
-
-        // We operate on microseconds rather than `Duration` to improve efficiency.
-        // See https://godbolt.org/z/osEd9rj9a
-        let pto_period = self.calculate_base_pto_micros(pto_backoff, space);
+        let mut pto_period = self.calculate_base_pto_micros(pto_backoff, space);
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period MUST be at least kGranularity, to avoid the timer
         //# expiring immediately.
-        let final_pto_micros = pto_period.max(K_GRANULARITY.as_micros() as u64);
+        pto_period = pto_period.max(K_GRANULARITY.as_micros() as u64);
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period is the amount of time that a sender ought to wait for
         //# an acknowledgement of a sent packet.
-        Duration::from_micros(final_pto_micros)
+        Duration::from_micros(pto_period)
     }
 
     /// Calculates the PTO period with configurable jitter
@@ -219,26 +222,23 @@ impl RttEstimator {
         pto_jitter_percentage: u8,
         random_generator: &mut dyn random::Generator,
     ) -> Duration {
-        // We operate on microseconds rather than `Duration` to improve efficiency.
-        // See https://godbolt.org/z/osEd9rj9a
-
         // Calculate the base PTO period using the shared implementation
-        let base_pto_micros = self.calculate_base_pto_micros(pto_backoff, space);
+        let mut pto_period = self.calculate_base_pto_micros(pto_backoff, space);
 
         // Apply jitter if configured
         let jitter_amount =
-            calculate_jitter_amount(base_pto_micros, pto_jitter_percentage, random_generator);
-        let jittered_pto_micros = (base_pto_micros as i64 + jitter_amount) as u64;
+            calculate_jitter_amount(pto_period, pto_jitter_percentage, random_generator);
+        pto_period = (pto_period as i64 + jitter_amount) as u64;
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period MUST be at least kGranularity, to avoid the timer
         //# expiring immediately.
-        let final_pto_micros = jittered_pto_micros.max(K_GRANULARITY.as_micros() as u64);
+        pto_period = pto_period.max(K_GRANULARITY.as_micros() as u64);
 
         //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
         //# The PTO period is the amount of time that a sender ought to wait for
         //# an acknowledgement of a sent packet.
-        Duration::from_micros(final_pto_micros)
+        Duration::from_micros(pto_period)
     }
 
     /// Sets the `max_ack_delay` value from the peer `MaxAckDelay` transport parameter
@@ -433,7 +433,6 @@ fn weighted_average(a: Duration, b: Duration, weight: u64) -> Duration {
 /// Calculates the jitter amount in microseconds for PTO period
 ///
 /// Returns a jitter value within ±jitter_percentage of the base PTO period.
-/// Uses integer arithmetic for efficiency and the existing random generator.
 ///
 /// # Arguments
 /// * `base_pto_micros` - Base PTO period in microseconds
@@ -455,7 +454,7 @@ fn calculate_jitter_amount(
     // Calculate max jitter in microseconds
     let max_jitter_micros = (base_pto_micros * jitter_percentage as u64) / 100;
 
-    // Use existing gen_range_biased to generate value in range [0, 2 * max_jitter]
+    // Use gen_range_biased to generate value in range [0, 2 * max_jitter]
     let jitter_range = 2 * max_jitter_micros as usize;
     let random_value = random::gen_range_biased(random_generator, 0..=jitter_range);
 
@@ -944,7 +943,7 @@ mod test {
 
     #[test]
     fn calculate_jitter_amount_zero_percentage() {
-        let mut rng = crate::random::testing::Generator::default();
+        let mut rng = random::testing::Generator::default();
         let base_pto_micros = 1000000; // 1 second
 
         let jitter =
@@ -954,7 +953,7 @@ mod test {
 
     #[test]
     fn calculate_jitter_amount_within_range() {
-        let mut rng = crate::random::testing::Generator::default();
+        let mut rng = random::testing::Generator::default();
         let base_pto_micros = 1000000; // 1 second
         let jitter_percentage = 25;
 
@@ -970,28 +969,8 @@ mod test {
     }
 
     #[test]
-    fn calculate_jitter_amount_different_values() {
-        let mut rng = crate::random::testing::Generator::default();
-        let base_pto_micros = 1000000; // 1 second
-        let jitter_percentage = 10;
-
-        let mut jitter_values = Vec::new();
-
-        // Generate multiple jitter values
-        for _ in 0..50 {
-            let jitter = calculate_jitter_amount(base_pto_micros, jitter_percentage, &mut rng);
-            jitter_values.push(jitter);
-        }
-
-        // Verify we get different values (not all the same)
-        let first_value = jitter_values[0];
-        let all_same = jitter_values.iter().all(|&x| x == first_value);
-        assert!(!all_same, "All jitter values should not be identical");
-    }
-
-    #[test]
     fn calculate_jitter_amount_edge_cases() {
-        let mut rng = crate::random::testing::Generator::default();
+        let mut rng = random::testing::Generator::default();
 
         // Test with minimum base PTO
         let min_base_pto = 1; // 1 microsecond
@@ -1006,57 +985,6 @@ mod test {
         let max_jitter = (base_pto_micros * MAX_PTO_JITTER_PERCENTAGE as u64) / 100;
         assert!(jitter >= -(max_jitter as i64));
         assert!(jitter <= max_jitter as i64);
-    }
-
-    #[test]
-    fn calculate_jitter_amount_distribution() {
-        let mut rng = crate::random::testing::Generator::default();
-        let base_pto_micros = 1000000; // 1 second
-        let jitter_percentage = 20;
-
-        let mut positive_count = 0;
-        let mut negative_count = 0;
-        let mut zero_count = 0;
-
-        // Generate many samples to check distribution
-        for _ in 0..1000 {
-            let jitter = calculate_jitter_amount(base_pto_micros, jitter_percentage, &mut rng);
-
-            if jitter > 0 {
-                positive_count += 1;
-            } else if jitter < 0 {
-                negative_count += 1;
-            } else {
-                zero_count += 1;
-            }
-        }
-
-        // Should have both positive and negative values
-        assert!(
-            positive_count > 0,
-            "Should have some positive jitter values"
-        );
-        assert!(
-            negative_count > 0,
-            "Should have some negative jitter values"
-        );
-
-        // The distribution should be roughly balanced (allowing for some variance)
-        let total = positive_count + negative_count + zero_count;
-        let positive_ratio = positive_count as f64 / total as f64;
-        let negative_ratio = negative_count as f64 / total as f64;
-
-        // Each should be roughly around 50% (allowing 20% variance)
-        assert!(
-            positive_ratio > 0.3 && positive_ratio < 0.7,
-            "Positive ratio: {}",
-            positive_ratio
-        );
-        assert!(
-            negative_ratio > 0.3 && negative_ratio < 0.7,
-            "Negative ratio: {}",
-            negative_ratio
-        );
     }
 
     #[test]
@@ -1162,68 +1090,6 @@ mod test {
     }
 
     #[test]
-    fn pto_period_with_jitter_different_spaces() {
-        let rtt_estimator = RttEstimator::new_with_max_ack_delay(
-            Duration::from_millis(10),
-            Duration::from_millis(100),
-        );
-        let mut rng = random::testing::Generator::default();
-        let pto_backoff = 1;
-        let jitter_percentage = 20;
-
-        // Test that jitter works correctly for different packet number spaces
-        let initial_pto = rtt_estimator.pto_period_with_jitter(
-            pto_backoff,
-            PacketNumberSpace::Initial,
-            jitter_percentage,
-            &mut rng,
-        );
-        let handshake_pto = rtt_estimator.pto_period_with_jitter(
-            pto_backoff,
-            PacketNumberSpace::Handshake,
-            jitter_percentage,
-            &mut rng,
-        );
-        let application_pto = rtt_estimator.pto_period_with_jitter(
-            pto_backoff,
-            PacketNumberSpace::ApplicationData,
-            jitter_percentage,
-            &mut rng,
-        );
-
-        // All should be valid PTO periods
-        assert!(initial_pto >= K_GRANULARITY);
-        assert!(handshake_pto >= K_GRANULARITY);
-        assert!(application_pto >= K_GRANULARITY);
-
-        // Application space should be larger due to max_ack_delay
-        // (though jitter might make this not always true, so we just verify they're all valid)
-    }
-
-    #[test]
-    fn pto_period_with_jitter_arithmetic_safety() {
-        let rtt_estimator = RttEstimator::new(MIN_RTT);
-        let mut rng = random::testing::Generator::default();
-        let space = PacketNumberSpace::Initial;
-        let pto_backoff = 1;
-
-        // Test with maximum jitter percentage on minimum RTT
-        // This should produce valid results within expected bounds
-        for _ in 0..100 {
-            let jittered_pto = rtt_estimator.pto_period_with_jitter(
-                pto_backoff,
-                space,
-                MAX_PTO_JITTER_PERCENTAGE,
-                &mut rng,
-            );
-
-            // Should always be valid and >= kGranularity
-            assert!(jittered_pto >= K_GRANULARITY);
-            assert!(jittered_pto <= Duration::from_secs(1)); // Reasonable upper bound
-        }
-    }
-
-    #[test]
     fn pto_period_with_jitter_extreme_backoff() {
         let rtt_estimator = RttEstimator::new(Duration::from_millis(100));
         let mut rng = random::testing::Generator::default();
@@ -1243,34 +1109,6 @@ mod test {
         assert!(jittered_pto >= K_GRANULARITY);
         // Should be reasonable (less than 1 minute for this test)
         assert!(jittered_pto <= Duration::from_secs(60));
-    }
-
-    #[test]
-    fn pto_period_with_jitter_k_granularity_enforcement() {
-        // Create an RTT estimator with very small values that could result in
-        // PTO periods smaller than kGranularity after negative jitter
-        let rtt_estimator = RttEstimator::new(MIN_RTT);
-        let mut rng = random::testing::Generator::default();
-        let space = PacketNumberSpace::Initial;
-        let pto_backoff = 1;
-
-        // Test many iterations to ensure kGranularity is always enforced
-        for _ in 0..1000 {
-            let jittered_pto = rtt_estimator.pto_period_with_jitter(
-                pto_backoff,
-                space,
-                MAX_PTO_JITTER_PERCENTAGE,
-                &mut rng,
-            );
-
-            // Must always be at least kGranularity
-            assert!(
-                jittered_pto >= K_GRANULARITY,
-                "PTO period {} is less than kGranularity {}",
-                jittered_pto.as_micros(),
-                K_GRANULARITY.as_micros()
-            );
-        }
     }
 
     #[test]

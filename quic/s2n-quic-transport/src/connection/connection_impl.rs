@@ -33,7 +33,8 @@ use core::{
     time::Duration,
 };
 use s2n_quic_core::{
-    application::{self, ServerName},
+    application,
+    application::ServerName,
     connection::{error::Error, id::Generator as _, InitialId, PeerId},
     crypto::{tls, CryptoSuite},
     datagram::{Receiver, Sender},

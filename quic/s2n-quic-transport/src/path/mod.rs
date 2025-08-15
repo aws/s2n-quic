@@ -580,18 +580,12 @@ impl<Config: endpoint::Config> Path<Config> {
         space: s2n_quic_core::packet::number::PacketNumberSpace,
         random_generator: &mut dyn random::Generator,
     ) -> core::time::Duration {
-        if self.pto_jitter_percentage == 0 {
-            // Use the original method for zero jitter to maintain exact compatibility
-            self.rtt_estimator.pto_period(self.pto_backoff, space)
-        } else {
-            // Use the jitter-enabled method
-            self.rtt_estimator.pto_period_with_jitter(
-                self.pto_backoff,
-                space,
-                self.pto_jitter_percentage,
-                random_generator,
-            )
-        }
+        self.rtt_estimator.pto_period_with_jitter(
+            self.pto_backoff,
+            space,
+            self.pto_jitter_percentage,
+            random_generator,
+        )
     }
 
     /// Resets the PTO backoff to the initial value
@@ -1308,53 +1302,54 @@ mod tests {
         assert!(path.is_congestion_limited(501));
     }
 }
-    #[test]
-    fn pto_period_with_jitter_configuration() {
-        use s2n_quic_core::{
-            connection::limits::ANTI_AMPLIFICATION_MULTIPLIER,
-            packet::number::PacketNumberSpace,
-        };
-        
-        // Test with zero jitter (should match original behavior)
-        let path_no_jitter: Path<endpoint::testing::Server> = Path::new(
-            Default::default(),
-            connection::PeerId::try_from_bytes(&[]).unwrap(),
-            connection::LocalId::TEST_ID,
-            RttEstimator::new(Duration::from_millis(100)),
-            Default::default(),
-            false,
-            mtu::Config::default(),
-            ANTI_AMPLIFICATION_MULTIPLIER,
-            0, // No jitter
-        );
-        
-        let mut rng = random::testing::Generator::default();
-        let pto_no_jitter = path_no_jitter.pto_period(PacketNumberSpace::ApplicationData);
-        let pto_no_jitter_with_method = path_no_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
-        
-        // Test with jitter enabled
-        let path_with_jitter: Path<endpoint::testing::Server> = Path::new(
-            Default::default(),
-            connection::PeerId::try_from_bytes(&[]).unwrap(),
-            connection::LocalId::TEST_ID,
-            RttEstimator::new(Duration::from_millis(100)),
-            Default::default(),
-            false,
-            mtu::Config::default(),
-            ANTI_AMPLIFICATION_MULTIPLIER,
-            25, // 25% jitter
-        );
-        
-        let pto_with_jitter = path_with_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
-        
-        // Zero jitter methods should produce identical results
-        assert_eq!(pto_no_jitter, pto_no_jitter_with_method);
-        
-        // Verify the jitter percentage is stored correctly
-        assert_eq!(path_no_jitter.pto_jitter_percentage, 0);
-        assert_eq!(path_with_jitter.pto_jitter_percentage, 25);
-        
-        // Both should be positive durations
-        assert!(pto_no_jitter > Duration::ZERO);
-        assert!(pto_with_jitter > Duration::ZERO);
-    }
+#[test]
+fn pto_period_with_jitter_configuration() {
+    use s2n_quic_core::{
+        connection::limits::ANTI_AMPLIFICATION_MULTIPLIER, packet::number::PacketNumberSpace,
+    };
+
+    // Test with zero jitter (should match original behavior)
+    let path_no_jitter: Path<endpoint::testing::Server> = Path::new(
+        Default::default(),
+        connection::PeerId::try_from_bytes(&[]).unwrap(),
+        connection::LocalId::TEST_ID,
+        RttEstimator::new(Duration::from_millis(100)),
+        Default::default(),
+        false,
+        mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // No jitter
+    );
+
+    let mut rng = random::testing::Generator::default();
+    let pto_no_jitter = path_no_jitter.pto_period(PacketNumberSpace::ApplicationData);
+    let pto_no_jitter_with_method =
+        path_no_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
+
+    // Test with jitter enabled
+    let path_with_jitter: Path<endpoint::testing::Server> = Path::new(
+        Default::default(),
+        connection::PeerId::try_from_bytes(&[]).unwrap(),
+        connection::LocalId::TEST_ID,
+        RttEstimator::new(Duration::from_millis(100)),
+        Default::default(),
+        false,
+        mtu::Config::default(),
+        ANTI_AMPLIFICATION_MULTIPLIER,
+        25, // 25% jitter
+    );
+
+    let pto_with_jitter =
+        path_with_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
+
+    // Zero jitter methods should produce identical results
+    assert_eq!(pto_no_jitter, pto_no_jitter_with_method);
+
+    // Verify the jitter percentage is stored correctly
+    assert_eq!(path_no_jitter.pto_jitter_percentage, 0);
+    assert_eq!(path_with_jitter.pto_jitter_percentage, 25);
+
+    // Both should be positive durations
+    assert!(pto_no_jitter > Duration::ZERO);
+    assert!(pto_with_jitter > Duration::ZERO);
+}

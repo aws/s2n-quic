@@ -42,7 +42,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: u8 = 1;
 
 // Maximum allowed PTO jitter percentage. Limited to 50% to prevent PTO timers
 // from becoming too short (which could cause premature timeouts) or too long
-// (which could significantly delay loss recovery).
+// (which could delay loss recovery).
 pub const MAX_PTO_JITTER_PERCENTAGE: u8 = 50;
 pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 0;
 
@@ -344,16 +344,6 @@ impl Limits {
     /// Valid range: 0-50%
     /// - 0%: No jitter (default)
     /// - 1-50%: Applies random jitter within ±percentage of base PTO
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use s2n_quic_core::connection::Limits;
-    /// // Configure 25% PTO jitter
-    /// let limits = Limits::new()
-    ///     .with_pto_jitter_percentage(25)
-    ///     .unwrap();
-    /// ```
     pub fn with_pto_jitter_percentage(mut self, value: u8) -> Result<Self, ValidationError> {
         ensure!(
             value <= MAX_PTO_JITTER_PERCENTAGE,
@@ -365,10 +355,8 @@ impl Limits {
         Ok(self)
     }
 
-    /// Gets the configured PTO jitter percentage
-    ///
-    /// Returns the percentage of jitter applied to PTO calculations.
-    /// A value of 0 means no jitter is applied (default behavior).
+    #[doc(hidden)]
+    #[inline]
     pub fn pto_jitter_percentage(&self) -> u8 {
         self.pto_jitter_percentage
     }
