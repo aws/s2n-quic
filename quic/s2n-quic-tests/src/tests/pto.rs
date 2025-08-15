@@ -253,6 +253,6 @@ impl events::Subscriber for DatagramSentTime {
             .events
             .lock()
             .unwrap()
-            .push(meta.timestamp.duration_since_start().clone());
+            .push(meta.timestamp.duration_since_start());
     }
 }
