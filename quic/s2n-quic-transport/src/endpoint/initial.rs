@@ -316,6 +316,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             dc_endpoint: endpoint_context.dc,
             open_registry: None,
             limits_endpoint: endpoint_context.connection_limits,
+            random_generator: endpoint_context.random_generator,
         };
 
         let mut connection = <Config as endpoint::Config>::Connection::new(connection_parameters)?;
@@ -329,6 +330,7 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
                     endpoint_context.congestion_controller,
                     endpoint_context.path_migration,
                     endpoint_context.mtu,
+                    endpoint_context.random_generator,
                     endpoint_context.event_subscriber,
                 );
 

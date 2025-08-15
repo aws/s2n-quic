@@ -63,6 +63,7 @@ fn get_path_by_address_test() {
         false,
         mtu_config,
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
 
     let second_conn_id = connection::PeerId::try_from_bytes(&[5, 4, 3, 2, 1]).unwrap();
@@ -75,6 +76,7 @@ fn get_path_by_address_test() {
         false,
         mtu_config,
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
 
     let mut manager = manager_server(first_path.clone());
@@ -107,6 +109,7 @@ fn test_invalid_path_fallback() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     // simulate receiving a handshake packet to force path validation
     first_path.on_handshake_packet();
@@ -124,6 +127,7 @@ fn test_invalid_path_fallback() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     second_path.set_challenge(challenge);
 
@@ -508,6 +512,7 @@ fn silently_return_when_there_is_no_valid_path() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     first_path.set_challenge(challenge);
     let mut manager = manager_server(first_path);
@@ -716,6 +721,7 @@ fn test_adding_new_path() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_server(first_path);
 
@@ -780,6 +786,7 @@ fn do_not_add_new_path_if_handshake_not_confirmed() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_server(first_path);
 
@@ -843,6 +850,7 @@ fn do_not_add_new_path_if_client() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_client(first_path);
     let mut publisher = Publisher::snapshot();
@@ -899,6 +907,7 @@ fn switch_destination_connection_id_after_first_server_response() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_client(zero_path);
     assert_eq!(manager[zero_path_id].peer_connection_id, initial_cid);
@@ -938,6 +947,7 @@ fn limit_number_of_connection_migrations() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_server(first_path);
     let mut total_paths = 1;
@@ -1001,6 +1011,7 @@ fn active_connection_migration_disabled() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_server(first_path);
     // Give the path manager some new CIDs so it's able to use one for an active migration.
@@ -1127,6 +1138,7 @@ fn connection_migration_challenge_behavior() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_server(first_path);
 
@@ -1223,6 +1235,7 @@ fn connection_migration_use_max_ack_delay_from_active_path() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_server(first_path);
 
@@ -1304,6 +1317,7 @@ fn connection_migration_new_path_abandon_timer() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_server(first_path);
 
@@ -1427,6 +1441,7 @@ fn stop_using_a_retired_connection_id() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_server(first_path);
 
@@ -1524,6 +1539,7 @@ fn pending_paths_should_return_paths_pending_validation() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let expected_response_data = [0; 8];
     third_path.on_path_challenge(&expected_response_data);
@@ -1590,6 +1606,7 @@ fn temporary_until_authenticated() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     let mut manager = manager_server(first_path);
 
@@ -1976,6 +1993,7 @@ pub fn helper_path(peer_id: connection::PeerId) -> ServerPath {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     )
 }
 

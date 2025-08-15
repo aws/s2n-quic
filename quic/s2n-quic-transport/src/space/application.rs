@@ -354,11 +354,13 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         active_path: &Path<Config>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     ) {
         self.recovery_manager.on_transmit_burst_complete(
             active_path,
             timestamp,
             is_handshake_confirmed,
+            random_generator,
         );
     }
 
@@ -429,6 +431,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         &mut self,
         path: &Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
+        random_generator: &mut Config::RandomGenerator,
         timestamp: Timestamp,
     ) {
         // Retire the local connection ID used during the handshake to reduce linkability (if enabled)
@@ -448,7 +451,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
         // PTO timer when the handshake is confirmed, as the Application space PTO timer is not
         // started until the handshake is confirmed.
         self.recovery_manager
-            .update_pto_timer(path, timestamp, true)
+            .update_pto_timer(path, timestamp, true, random_generator)
     }
 
     /// Called when the connection timer expired
@@ -826,6 +829,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path_manager: &path::Manager<Config>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     ) {
         debug_assert!(
             Config::ENDPOINT_TYPE.is_server(),
@@ -841,6 +845,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             path_manager.active_path(),
             timestamp,
             is_handshake_confirmed,
+            random_generator,
         );
     }
 
@@ -1076,6 +1081,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         timestamp: Timestamp,
         path_manager: &mut path::Manager<Config>,
         handshake_status: &mut HandshakeStatus,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         let amplification_outcome = path_manager.on_path_response(&frame, publisher);
@@ -1084,6 +1090,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 path_manager,
                 timestamp,
                 handshake_status.is_confirmed(),
+                random_generator,
             );
         }
         Ok(())
@@ -1096,6 +1103,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         path: &mut Path<Config>,
         local_id_registry: &mut connection::LocalIdRegistry,
         handshake_status: &mut HandshakeStatus,
+        random_generator: &mut Config::RandomGenerator,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-19.20
@@ -1115,7 +1123,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         //# At the
         //# client, the handshake is considered confirmed when a HANDSHAKE_DONE
         //# frame is received.
-        self.on_handshake_confirmed(path, local_id_registry, timestamp);
+        self.on_handshake_confirmed(path, local_id_registry, random_generator, timestamp);
 
         Ok(())
     }

@@ -65,6 +65,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         error: connection::Error,
         close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         packet_buffer: &mut endpoint::PacketBuffer,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         timestamp: Timestamp,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -88,6 +89,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     fn on_transmit<Tx>(
         &mut self,
         queue: &mut Tx,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         timestamp: Timestamp,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -115,6 +117,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         datagram: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         conn_limits: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
     ) -> Result<(), connection::Error>;
 
     // Packet handling
@@ -213,6 +216,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         migration_validator: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
         mtu: &mut mtu::Manager<<Self::Config as endpoint::Config>::Mtu>,
+        random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, DatagramDropReason>;
 

@@ -89,4 +89,6 @@ pub struct Parameters<'a, Cfg: endpoint::Config> {
     pub event_subscriber: &'a mut Cfg::EventSubscriber,
     /// The connection limits provider
     pub limits_endpoint: &'a mut Cfg::ConnectionLimits,
+    /// The random generator
+    pub random_generator: &'a mut Cfg::RandomGenerator,
 }

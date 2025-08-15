@@ -83,6 +83,7 @@ impl connection::Trait for TestConnection {
         _error: connection::Error,
         _close_formatter: &<Self::Config as endpoint::Config>::ConnectionCloseFormatter,
         _packet_buffer: &mut endpoint::PacketBuffer,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         timestamp: Timestamp,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -110,6 +111,7 @@ impl connection::Trait for TestConnection {
     fn on_transmit<Tx: tx::Queue>(
         &mut self,
         _queue: &mut Tx,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _timestamp: Timestamp,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
         _packet_interceptor: &mut <Self::Config as endpoint::Config>::PacketInterceptor,
@@ -138,6 +140,7 @@ impl connection::Trait for TestConnection {
         _datagram: &mut <Self::Config as endpoint::Config>::DatagramEndpoint,
         _dc_endpoint: &mut <Self::Config as endpoint::Config>::DcEndpoint,
         _conn_limits_endpoint: &mut <Self::Config as endpoint::Config>::ConnectionLimits,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
     ) -> Result<(), connection::Error> {
         Ok(())
     }
@@ -249,6 +252,7 @@ impl connection::Trait for TestConnection {
         _congestion_controller_endpoint: &mut <Self::Config as endpoint::Config>::CongestionControllerEndpoint,
         _path_migration: &mut <Self::Config as endpoint::Config>::PathMigrationValidator,
         _mtu: &mut mtu::Manager<<Self::Config as endpoint::Config>::Mtu>,
+        _random_generator: &mut <Self::Config as endpoint::Config>::RandomGenerator,
         _subscriber: &mut <Self::Config as endpoint::Config>::EventSubscriber,
     ) -> Result<path::Id, DatagramDropReason> {
         todo!()

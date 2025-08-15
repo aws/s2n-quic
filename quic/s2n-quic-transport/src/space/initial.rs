@@ -245,11 +245,13 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         active_path: &Path<Config>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     ) {
         self.recovery_manager.on_transmit_burst_complete(
             active_path,
             timestamp,
             is_handshake_confirmed,
+            random_generator,
         );
     }
 
@@ -643,6 +645,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         path_manager: &path::Manager<Config>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     ) {
         debug_assert!(
             Config::ENDPOINT_TYPE.is_server(),
@@ -658,6 +661,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
             path_manager.active_path(),
             timestamp,
             is_handshake_confirmed,
+            random_generator,
         );
     }
 

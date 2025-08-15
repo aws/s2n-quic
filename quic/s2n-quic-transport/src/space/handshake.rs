@@ -196,11 +196,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         active_path: &Path<Config>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     ) {
         self.recovery_manager.on_transmit_burst_complete(
             active_path,
             timestamp,
             is_handshake_confirmed,
+            random_generator,
         );
     }
 
@@ -303,11 +305,13 @@ impl<Config: endpoint::Config> HandshakeSpace<Config> {
         path_manager: &path::Manager<Config>,
         now: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     ) {
         self.recovery_manager.update_pto_timer(
             path_manager.active_path(),
             now,
             is_handshake_confirmed,
+            random_generator,
         );
     }
 
@@ -515,6 +519,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         path_manager: &path::Manager<Config>,
         timestamp: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     ) {
         debug_assert!(
             Config::ENDPOINT_TYPE.is_server(),
@@ -526,7 +531,12 @@ impl<Config: endpoint::Config> PacketSpace<Config> for HandshakeSpace<Config> {
         //# datagram unblocks it, even if none of the packets in the datagram are
         //# successfully processed.  In such a case, the PTO timer will need to
         //# be re-armed.
-        self.update_pto_timer(path_manager, timestamp, is_handshake_confirmed);
+        self.update_pto_timer(
+            path_manager,
+            timestamp,
+            is_handshake_confirmed,
+            random_generator,
+        );
     }
 
     fn handle_crypto_frame<Pub: event::ConnectionPublisher>(
