@@ -1,0 +1,111 @@
+target = "https://www.rfc-editor.org/rfc/rfc8899#section-4.6.2"
+
+# Use of PTB Messages
+#
+#    PTB messages that have been validated MAY be utilized by the DPLPMTUD
+#    algorithm but MUST NOT be used directly to set the PLPMTU.
+# 
+#    Before using the size reported in the PTB message, it must first be
+#    converted to a PL_PTB_SIZE.  The PL_PTB_SIZE is smaller than the
+#    PTB_SIZE because it is reduced by headers below the PL, including any
+#    IP options or extensions added to the PL packet.
+# 
+#    A method that utilizes these PTB messages can improve the speed at
+#    which the algorithm detects an appropriate PLPMTU by triggering an
+#    immediate probe for the PL_PTB_SIZE (resulting in a network-layer
+#    packet of size PTB_SIZE), compared to one that relies solely on
+#    probing using a timer-based search algorithm.
+# 
+#    A set of checks are intended to provide protection from a router that
+#    reports an unexpected PTB_SIZE.  The PL also needs to check that the
+#    indicated PL_PTB_SIZE is less than the size used by probe packets and
+#    at least the minimum size accepted.
+# 
+#    This section provides a summary of how PTB messages can be utilized,
+#    using the set of constants defined in Section 5.1.2.  This processing
+#    depends on the PL_PTB_SIZE and the current value of a set of
+#    variables:
+# 
+#    PL_PTB_SIZE < MIN_PLPMTU
+#       *  Invalid PL_PTB_SIZE, see Section 4.6.1.
+# 
+#       *  PTB message ought to be discarded without further processing
+#          (i.e., PLPMTU is not modified).
+# 
+#       *  The information could be utilized as an input that triggers the
+#          enabling of a resilience mode (see Section 5.3.3).
+# 
+#    MIN_PLPMTU < PL_PTB_SIZE < BASE_PLPMTU
+#       *  A robust PL MAY enter an error state (see Section 5.2) for an
+#          IPv4 path when the PL_PTB_SIZE reported in the PTB message is
+#          larger than or equal to 68 bytes [RFC0791] and when this is
+#          less than the BASE_PLPMTU.
+# 
+#       *  A robust PL MAY enter an error state (see Section 5.2) for an
+#          IPv6 path when the PL_PTB_SIZE reported in the PTB message is
+#          larger than or equal to 1280 bytes [RFC8200] and when this is
+#          less than the BASE_PLPMTU.
+# 
+#    BASE_PLPMTU <= PL_PTB_SIZE < PLPMTU
+#       *  This could be an indication of a black hole.  The PLPMTU SHOULD
+#          be set to BASE_PLPMTU (the PLPMTU is reduced to the BASE_PLPMTU
+#          to avoid unnecessary packet loss when a black hole is
+#          encountered).
+# 
+#       *  The PL ought to start a search to quickly discover the new
+#          PLPMTU.  The PL_PTB_SIZE reported in the PTB message can be
+#          used to initialize a search algorithm.
+# 
+#    PLPMTU < PL_PTB_SIZE < PROBED_SIZE
+#       *  The PLPMTU continues to be valid, but the size of a packet used
+#          to search (PROBED_SIZE) was larger than the actual PMTU.
+# 
+#       *  The PLPMTU is not updated.
+# 
+#       *  The PL can use the reported PL_PTB_SIZE from the PTB message as
+#          the next search point when it resumes the search algorithm.
+# 
+#    PL_PTB_SIZE >= PROBED_SIZE
+#       *  Inconsistent network signal.
+# 
+#       *  PTB message ought to be discarded without further processing
+#          (i.e., PLPMTU is not modified).
+# 
+#       *  The information could be utilized as an input to trigger the
+#          enabling of a resilience mode.
+
+[[spec]]
+level = "MUST"
+quote = '''
+PTB messages that have been validated MAY be utilized by the DPLPMTUD
+algorithm but MUST NOT be used directly to set the PLPMTU.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+MIN_PLPMTU < PL_PTB_SIZE < BASE_PLPMTU
+*  A robust PL MAY enter an error state (see Section 5.2) for an
+IPv4 path when the PL_PTB_SIZE reported in the PTB message is
+larger than or equal to 68 bytes [RFC0791] and when this is
+less than the BASE_PLPMTU.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+*  A robust PL MAY enter an error state (see Section 5.2) for an
+IPv6 path when the PL_PTB_SIZE reported in the PTB message is
+larger than or equal to 1280 bytes [RFC8200] and when this is
+less than the BASE_PLPMTU.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The PLPMTU SHOULD
+be set to BASE_PLPMTU (the PLPMTU is reduced to the BASE_PLPMTU
+to avoid unnecessary packet loss when a black hole is
+encountered).
+'''
+
