@@ -1301,55 +1301,56 @@ mod tests {
         // There isn't room for an MTU sized packet after including the 501 bytes, so the path is congestion limited
         assert!(path.is_congestion_limited(501));
     }
-}
-#[test]
-fn pto_period_with_jitter_configuration() {
-    use s2n_quic_core::{
-        connection::limits::ANTI_AMPLIFICATION_MULTIPLIER, packet::number::PacketNumberSpace,
-    };
 
-    // Test with zero jitter (should match original behavior)
-    let path_no_jitter: Path<endpoint::testing::Server> = Path::new(
-        Default::default(),
-        connection::PeerId::try_from_bytes(&[]).unwrap(),
-        connection::LocalId::TEST_ID,
-        RttEstimator::new(Duration::from_millis(100)),
-        Default::default(),
-        false,
-        mtu::Config::default(),
-        ANTI_AMPLIFICATION_MULTIPLIER,
-        0, // No jitter
-    );
+    #[test]
+    fn pto_period_with_jitter_configuration() {
+        use s2n_quic_core::{
+            connection::limits::ANTI_AMPLIFICATION_MULTIPLIER, packet::number::PacketNumberSpace,
+        };
 
-    let mut rng = random::testing::Generator::default();
-    let pto_no_jitter = path_no_jitter.pto_period(PacketNumberSpace::ApplicationData);
-    let pto_no_jitter_with_method =
-        path_no_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
+        // Test with zero jitter (should match original behavior)
+        let path_no_jitter = Path::new(
+            Default::default(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(100)),
+            Default::default(),
+            false,
+            mtu::Config::default(),
+            ANTI_AMPLIFICATION_MULTIPLIER,
+            0, // No jitter
+        );
 
-    // Test with jitter enabled
-    let path_with_jitter: Path<endpoint::testing::Server> = Path::new(
-        Default::default(),
-        connection::PeerId::try_from_bytes(&[]).unwrap(),
-        connection::LocalId::TEST_ID,
-        RttEstimator::new(Duration::from_millis(100)),
-        Default::default(),
-        false,
-        mtu::Config::default(),
-        ANTI_AMPLIFICATION_MULTIPLIER,
-        25, // 25% jitter
-    );
+        let mut rng = random::testing::Generator::default();
+        let pto_no_jitter = path_no_jitter.pto_period(PacketNumberSpace::ApplicationData);
+        let pto_no_jitter_with_method =
+            path_no_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
 
-    let pto_with_jitter =
-        path_with_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
+        // Test with jitter enabled
+        let path_with_jitter = Path::new(
+            Default::default(),
+            connection::PeerId::try_from_bytes(&[]).unwrap(),
+            connection::LocalId::TEST_ID,
+            RttEstimator::new(Duration::from_millis(100)),
+            Default::default(),
+            false,
+            mtu::Config::default(),
+            ANTI_AMPLIFICATION_MULTIPLIER,
+            25, // 25% jitter
+        );
 
-    // Zero jitter methods should produce identical results
-    assert_eq!(pto_no_jitter, pto_no_jitter_with_method);
+        let pto_with_jitter =
+            path_with_jitter.pto_period_with_jitter(PacketNumberSpace::ApplicationData, &mut rng);
 
-    // Verify the jitter percentage is stored correctly
-    assert_eq!(path_no_jitter.pto_jitter_percentage, 0);
-    assert_eq!(path_with_jitter.pto_jitter_percentage, 25);
+        // Zero jitter methods should produce identical results
+        assert_eq!(pto_no_jitter, pto_no_jitter_with_method);
 
-    // Both should be positive durations
-    assert!(pto_no_jitter > Duration::ZERO);
-    assert!(pto_with_jitter > Duration::ZERO);
+        // Verify the jitter percentage is stored correctly
+        assert_eq!(path_no_jitter.pto_jitter_percentage, 0);
+        assert_eq!(path_with_jitter.pto_jitter_percentage, 25);
+
+        // Both should be positive durations
+        assert!(pto_no_jitter > Duration::ZERO);
+        assert!(pto_with_jitter > Duration::ZERO);
+    }
 }
