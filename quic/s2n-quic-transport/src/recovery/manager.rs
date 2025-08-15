@@ -363,8 +363,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                 now
             };
 
-            self.pto
-                .update(pto_base_timestamp, active_path.pto_period_with_jitter(self.space, random_generator));
+            self.pto.update(
+                pto_base_timestamp,
+                active_path.pto_period_with_jitter(self.space, random_generator),
+            );
         })();
 
         self.check_consistency(active_path, is_handshake_confirmed);
@@ -697,7 +699,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         // be restarted. This behavior is preferred, as detect_and_remove_lost_packets() will
         // cancel the loss timer, and there may still be ack eliciting packets pending that
         // require a PTO timer for recovery.
-        self.update_pto_timer(context.active_path(), timestamp, is_handshake_confirmed, random_generator);
+        self.update_pto_timer(
+            context.active_path(),
+            timestamp,
+            is_handshake_confirmed,
+            random_generator,
+        );
 
         debug_assert!(
             !newly_acked_packets.is_empty(),

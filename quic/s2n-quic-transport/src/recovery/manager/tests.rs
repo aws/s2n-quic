@@ -3458,14 +3458,24 @@ fn on_transmit_burst_complete() {
     context.path_mut().on_peer_validated();
 
     assert!(manager.pto_update_pending);
-    manager.on_transmit_burst_complete(path_manager.active_path(), now, is_handshake_confirmed, random);
+    manager.on_transmit_burst_complete(
+        path_manager.active_path(),
+        now,
+        is_handshake_confirmed,
+        random,
+    );
     assert!(manager.pto.is_armed());
     assert!(!manager.pto_update_pending);
 
     // Cancel the PTO timer to validate it isn't re-armed when not needed
     manager.pto.cancel();
     manager.sent_packets.clear();
-    manager.on_transmit_burst_complete(path_manager.active_path(), now, is_handshake_confirmed, random);
+    manager.on_transmit_burst_complete(
+        path_manager.active_path(),
+        now,
+        is_handshake_confirmed,
+        random,
+    );
     assert!(!manager.pto.is_armed());
 }
 
