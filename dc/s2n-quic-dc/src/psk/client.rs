@@ -101,6 +101,7 @@ impl Provider {
         subscriber: Subscriber,
         query_event_callback: fn(&mut Connection, Duration),
         builder: Builder<Event>,
+        server_name: String,
     ) -> io::Result<Self> {
         let state = State::new_runtime(
             addr,
@@ -117,11 +118,15 @@ impl Provider {
             if let Some(state) = weak.upgrade() {
                 let runtime = state.runtime.as_ref().map(|v| &v.0).unwrap();
                 let client = state.client.clone();
+
+                // Avoiding lifetime and move issues
+                let server_name = server_name.clone();
                 // Drop the JoinHandle -- we're not actually going to block on the join handle's
                 // result. The future will keep running in the background.
                 runtime.spawn(async move {
-                    if let Err(HandshakeFailed { .. }) =
-                        client.connect(peer, query_event_callback).await
+                    if let Err(HandshakeFailed { .. }) = client
+                        .connect(peer, query_event_callback, server_name)
+                        .await
                     {
                         // failure has already been logged, no further action required.
                     }
@@ -140,9 +145,12 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
+        server_name: String,
     ) -> std::io::Result<HandshakeKind> {
+        // Avoiding lifetime and move issues
+        let server_name = server_name.clone();
         let (_peer, kind) = self
-            .handshake_with_entry(peer, query_event_callback)
+            .handshake_with_entry(peer, query_event_callback, server_name)
             .await?;
         Ok(kind)
     }
@@ -156,11 +164,14 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
+        server_name: String,
     ) -> std::io::Result<(secret::map::Peer, HandshakeKind)> {
+        // Avoiding lifetime and move issues
+        let server_name_clone = server_name.clone();
         // Unconditionally request a background handshake. This schedules any re-handshaking
         // needed.
         if self.state.runtime.is_some() {
-            let _ = self.background_handshake_with(peer, query_event_callback);
+            let _ = self.background_handshake_with(peer, query_event_callback, server_name_clone);
         }
 
         if let Some(peer) = self.state.map.get_tracked(peer) {
@@ -170,10 +181,18 @@ impl Provider {
         let state = self.state.clone();
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
             runtime
-                .spawn(async move { state.client.connect(peer, query_event_callback).await })
+                .spawn(async move {
+                    state
+                        .client
+                        .connect(peer, query_event_callback, server_name)
+                        .await
+                })
                 .await??;
         } else {
-            state.client.connect(peer, query_event_callback).await?;
+            state
+                .client
+                .connect(peer, query_event_callback, server_name)
+                .await?;
         }
 
         // already recorded a metric above in get_tracked.
@@ -193,18 +212,22 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
+        server_name: String,
     ) -> std::io::Result<HandshakeKind> {
         if self.state.map.contains(&peer) {
             return Ok(HandshakeKind::Cached);
         }
 
+        // Avoiding lifetime and move issues
+        let server_name = server_name.clone();
         let client = self.state.client.clone();
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
             // Drop the JoinHandle -- we're not actually going to block on the join handle's
             // result. The future will keep running in the background.
             runtime.spawn(async move {
-                if let Err(HandshakeFailed { .. }) =
-                    client.connect(peer, query_event_callback).await
+                if let Err(HandshakeFailed { .. }) = client
+                    .connect(peer, query_event_callback, server_name)
+                    .await
                 {
                     // error already logged
                 }
@@ -229,18 +252,24 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
+        server_name: String,
     ) -> std::io::Result<HandshakeKind> {
+        // Avoiding lifetime and move issues
+        let server_name_clone = server_name.clone();
         // Unconditionally request a background handshake. This schedules any re-handshaking
         // needed.
         if self.state.runtime.is_some() {
-            let _ = self.background_handshake_with(peer, query_event_callback);
+            let _ = self.background_handshake_with(peer, query_event_callback, server_name_clone);
         }
 
         if self.state.map.contains(&peer) {
             return Ok(HandshakeKind::Cached);
         }
 
-        let fut = self.state.client.connect(peer, query_event_callback);
+        let fut = self
+            .state
+            .client
+            .connect(peer, query_event_callback, server_name);
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
             runtime.block_on(fut)?
         } else {
@@ -260,11 +289,19 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
+        server_name: String,
     ) -> std::io::Result<secret::map::Peer> {
+        // Avoiding lifetime and move issues
+        let server_name = server_name.clone();
         let state = self.state.clone();
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
             runtime
-                .spawn(async move { state.client.connect(peer, query_event_callback).await })
+                .spawn(async move {
+                    state
+                        .client
+                        .connect(peer, query_event_callback, server_name)
+                        .await
+                })
                 .await??;
         } else {
             return Err(std::io::Error::new(

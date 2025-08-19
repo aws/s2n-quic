@@ -20,6 +20,7 @@ testing = [
     "tracing-subscriber",
 ]
 tokio = ["tokio/io-util", "tokio/net", "tokio/rt-multi-thread", "tokio/time"]
+s2n-quic-tls = ["s2n-quic/s2n-quic-tls"]
 
 [dependencies]
 ahash = "0.8"
@@ -68,6 +69,7 @@ bolero = "0.13"
 bolero-generator = "0.13"
 insta = "1"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
+s2n-quic = { version = "=1.63.0", path = "../../quic/s2n-quic", features = ["s2n-quic-tls"] }
 s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = [
     "testing",
@@ -77,4 +79,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
-check-cfg = ['cfg(fuzzing)', 'cfg(kani)', 'cfg(todo)']
+check-cfg = ['cfg(future)', 'cfg(fuzzing)', 'cfg(kani)', 'cfg(todo)']
