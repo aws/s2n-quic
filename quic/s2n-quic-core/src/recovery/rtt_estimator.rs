@@ -455,6 +455,10 @@ fn calculate_jitter_amount(
     let max_jitter_micros = (base_pto_micros * jitter_percentage as u64) / 100;
 
     // Use gen_range_biased to generate value in range [0, 2 * max_jitter]
+    // The very slight amount of bias this method will impose towards the lower
+    // range of values will result in a slight bias towards lower PTO values,
+    // but are not significant enough to impact this feature or reveal any
+    // sensitive inputs.
     let jitter_range = 2 * max_jitter_micros as usize;
     let random_value = random::gen_range_biased(random_generator, 0..=jitter_range);
 
