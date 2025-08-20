@@ -938,7 +938,7 @@ jobs:
         working-directory: dc/wireshark
         run: cargo xtask build
 
-  scheduled-ci-status-report:
+  ci-status-report:
     runs-on: ubuntu-latest
     if: ${{ always() }}
     needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]

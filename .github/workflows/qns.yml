@@ -552,7 +552,7 @@ jobs:
           # `timeout` exits with `124` if the time limit was reached
           [[ "$EXIT_CODE" == "124" ]] || exit $EXIT_CODE
 
-  scheduled-qns-status-report:
+  qns-status-report:
     runs-on: ubuntu-latest
     if: ${{ always() }}
     needs: [env, s2n-quic-qns, interop, h3spec, perf, perf-report, attack]
