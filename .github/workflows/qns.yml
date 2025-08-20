@@ -6,8 +6,11 @@ on:
     branches:
       - main
   schedule:
-    # Run daily job at 8:00 PM PT
+    # Run the daily job three times, to account for flakiness
+    # The jobs start running at 8 PM PST / 3 AM UTC
     - cron: '0 3 * * *'
+    - cron: '0 4 * * *'
+    - cron: '0 5 * * *'
 
 name: qns
 
@@ -552,19 +555,40 @@ jobs:
           # `timeout` exits with `124` if the time limit was reached
           [[ "$EXIT_CODE" == "124" ]] || exit $EXIT_CODE
 
-  scheduled-qns-status-report:
+  qns-status-report:
     runs-on: ubuntu-latest
     if: ${{ always() }}
-    needs: [env, s2n-quic-qns, interop, interop-report, h3spec, perf, perf-report, attack]
+    needs: [env, s2n-quic-qns, interop, h3spec, perf, perf-report, attack]
     steps:
       - uses: aws-actions/configure-aws-credentials@v4.3.1
-        if: github.event_name == 'schedule'
+        if: github.event_name != 'pull_request'
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
           role-session-name: S2nQuicGHASession
           aws-region: us-west-2
       - name: Report daily qns run to CloudWatch
-        if: github.event_name == 'schedule'
+        if: github.event_name != 'pull_request'
         run: |
           METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
-          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
+          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFailure" \
+            --value $METRIC_VALUE --dimensions Initiator=${{github.event_name}} --timestamp $(date +%s)
+
+  # Some tests may be flaky and require less strict alarming.
+  # Report those tests separately until the flakiness has been resolved.
+  qns-status-report-flaky:
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [interop-report]
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4.3.1
+        if: github.event_name != 'pull_request'
+        with:
+          role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
+          role-session-name: S2nQuicGHASession
+          aws-region: us-west-2
+      - name: Report potentially flaky qns job runs to CloudWatch
+        if: github.event_name != 'pull_request'
+        run: |
+          METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
+          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFailureFlaky" \
+            --value $METRIC_VALUE --dimensions Initiator=${{github.event_name}} --timestamp $(date +%s)
