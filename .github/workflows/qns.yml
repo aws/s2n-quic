@@ -2,9 +2,11 @@ on:
   push:
     branches:
       - main
+      - lrstewart/ci
   pull_request:
     branches:
       - main
+      - lrstewart/ci
   schedule:
     # Run the daily job at 8 PM PST / 3 AM UTC
     - cron: '0 3 * * *'
