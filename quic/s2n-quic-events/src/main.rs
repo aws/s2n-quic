@@ -136,10 +136,55 @@ impl EventInfo<'_> {
             feature_alloc: quote!(),
         }
     }
+
+    fn test_tls_events() -> Self {
+        let tracing_subscriber_def = quote!(
+        /// Emits events with [`tracing`](https://docs.rs/tracing)
+        #[derive(Clone, Debug)]
+        pub struct Subscriber {
+            root: tracing::Span,
+        }
+
+        impl Default for Subscriber {
+            fn default() -> Self {
+                let root = tracing::span!(target: "tls_test", tracing::Level::DEBUG, "tls_test");
+
+                Self {
+                    root,
+                }
+            }
+        }
+
+        impl Subscriber {
+            fn parent<M: crate::event::Meta>(&self, _meta: &M) -> Option<tracing::Id> {
+                self.root.id()
+            }
+        }
+        );
+
+        EventInfo {
+            crate_name: "tls",
+            input_path: concat!(env!("CARGO_MANIFEST_DIR"), "/tests/tls/events/**/*.rs"),
+            output_path: concat!(env!("CARGO_MANIFEST_DIR"), "/tests/tls/event"),
+            output_mode: OutputMode::Mut,
+            s2n_quic_core_path: quote!(s2n_quic_core),
+            api: quote!(),
+            builder: quote! {
+                pub use s2n_quic_core::event::builder::SocketAddress;
+            },
+            tracing_subscriber_attr: quote!(),
+            tracing_subscriber_def,
+            feature_alloc: quote!(),
+        }
+    }
 }
 
 fn main() -> Result<()> {
-    let event_paths = [EventInfo::s2n_quic(), EventInfo::s2n_quic_dc()];
+    let event_paths = [
+        EventInfo::s2n_quic(),
+        EventInfo::s2n_quic_dc(),
+        EventInfo::test_tls_events(),
+    ];
 
     for event_info in event_paths {
         let mut files = vec![];
