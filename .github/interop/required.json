@@ -83,6 +83,7 @@
       "server"
     ],
     "xquic": [
+      "client",
       "server"
     ]
   },
@@ -98,7 +99,8 @@
     ],
     "msquic": [],
     "mvfst": [
-      "client"
+      "client",
+      "server"
     ],
     "neqo": [],
     "ngtcp2": [
@@ -139,6 +141,7 @@
     ],
     "msquic": [],
     "mvfst": [
+      "client",
       "server"
     ],
     "neqo": [],
@@ -167,12 +170,14 @@
       "server"
     ],
     "xquic": [
+      "client",
       "server"
     ]
   },
   "chacha20": {
     "aioquic": [
-      "client"
+      "client",
+      "server"
     ],
     "kwik": [],
     "lsquic": [],
@@ -180,13 +185,16 @@
     "mvfst": [],
     "neqo": [],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [],
     "s2n-quic": [],
@@ -320,13 +328,16 @@
     "mvfst": [],
     "neqo": [],
     "ngtcp2": [
-      "client"
+      "client",
+      "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [],
     "s2n-quic": [],
@@ -336,7 +347,8 @@
     "aioquic": [],
     "kwik": [],
     "lsquic": [
-      "client"
+      "client",
+      "server"
     ],
     "msquic": [],
     "mvfst": [],
@@ -346,7 +358,8 @@
       "server"
     ],
     "picoquic": [
-      "client"
+      "client",
+      "server"
     ],
     "quic-go": [],
     "quiche": [],
