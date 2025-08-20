@@ -2,6 +2,7 @@ on:
   push:
     branches:
       - main
+      - lrstewart/ci
   pull_request:
     branches:
       - main
@@ -131,7 +132,7 @@ jobs:
           path: s2n-quic-qns/
 
       - uses: docker/setup-docker-action@v4
-        with: 
+        with:
           version: version=v26.1.3
 
       - name: Setup dockerfile
