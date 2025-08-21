@@ -69,6 +69,7 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub dc: &'a mut Config::DcEndpoint,
     pub limits_endpoint: &'a mut Config::ConnectionLimits,
     pub tls_context: &'a mut Option<Box<dyn Any + Send>>,
+    pub random_generator: &'a mut Config::RandomGenerator,
 }
 
 impl<Config: endpoint::Config, Pub: event::ConnectionPublisher> SessionContext<'_, Config, Pub> {
@@ -615,6 +616,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 application.on_handshake_confirmed(
                     self.path_manager.active_path(),
                     self.local_id_registry,
+                    self.random_generator,
                     self.now,
                 );
             }

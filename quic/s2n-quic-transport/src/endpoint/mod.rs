@@ -142,6 +142,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             // ignore the transmission error and just query the queue capacity instead
             let _ = connection.on_transmit(
                 queue,
+                endpoint_context.random_generator,
                 timestamp,
                 endpoint_context.event_subscriber,
                 endpoint_context.packet_interceptor,
@@ -215,11 +216,13 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
                     endpoint_context.datagram,
                     endpoint_context.dc,
                     endpoint_context.connection_limits,
+                    endpoint_context.random_generator,
                 ) {
                     conn.close(
                         error,
                         endpoint_context.connection_close_formatter,
                         close_packet_buffer,
+                        endpoint_context.random_generator,
                         timestamp,
                         endpoint_context.event_subscriber,
                         endpoint_context.packet_interceptor,
@@ -572,6 +575,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         endpoint_context.congestion_controller,
                         endpoint_context.path_migration,
                         endpoint_context.mtu,
+                        endpoint_context.random_generator,
                         endpoint_context.event_subscriber,
                     )
                     .map_err(|datagram_drop_reason| {
@@ -618,6 +622,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         err,
                         endpoint_context.connection_close_formatter,
                         close_packet_buffer,
+                        endpoint_context.random_generator,
                         datagram.timestamp,
                         endpoint_context.event_subscriber,
                         endpoint_context.packet_interceptor,
@@ -645,6 +650,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         err,
                         endpoint_context.connection_close_formatter,
                         close_packet_buffer,
+                        endpoint_context.random_generator,
                         datagram.timestamp,
                         endpoint_context.event_subscriber,
                         endpoint_context.packet_interceptor,
@@ -905,6 +911,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 connection::Error::stateless_reset(),
                 endpoint_context.connection_close_formatter,
                 close_packet_buffer,
+                endpoint_context.random_generator,
                 timestamp,
                 endpoint_context.event_subscriber,
                 endpoint_context.packet_interceptor,
@@ -932,6 +939,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         error,
                         endpoint_context.connection_close_formatter,
                         close_packet_buffer,
+                        endpoint_context.random_generator,
                         timestamp,
                         endpoint_context.event_subscriber,
                         endpoint_context.packet_interceptor,
@@ -1255,6 +1263,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             dc_endpoint: endpoint_context.dc,
             open_registry,
             limits_endpoint: endpoint_context.connection_limits,
+            random_generator: endpoint_context.random_generator,
         };
         let connection = <Cfg as crate::endpoint::Config>::Connection::new(connection_parameters)?;
         self.connections
