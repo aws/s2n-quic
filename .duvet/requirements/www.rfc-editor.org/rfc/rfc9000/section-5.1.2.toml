@@ -1,0 +1,121 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-5.1.2"
+
+# Consuming and Retiring Connection IDs
+#
+#    An endpoint can change the connection ID it uses for a peer to
+#    another available one at any time during the connection.  An endpoint
+#    consumes connection IDs in response to a migrating peer; see
+#    Section 9.5 for more details.
+# 
+#    An endpoint maintains a set of connection IDs received from its peer,
+#    any of which it can use when sending packets.  When the endpoint
+#    wishes to remove a connection ID from use, it sends a
+#    RETIRE_CONNECTION_ID frame to its peer.  Sending a
+#    RETIRE_CONNECTION_ID frame indicates that the connection ID will not
+#    be used again and requests that the peer replace it with a new
+#    connection ID using a NEW_CONNECTION_ID frame.
+# 
+#    As discussed in Section 9.5, endpoints limit the use of a connection
+#    ID to packets sent from a single local address to a single
+#    destination address.  Endpoints SHOULD retire connection IDs when
+#    they are no longer actively using either the local or destination
+#    address for which the connection ID was used.
+# 
+#    An endpoint might need to stop accepting previously issued connection
+#    IDs in certain circumstances.  Such an endpoint can cause its peer to
+#    retire connection IDs by sending a NEW_CONNECTION_ID frame with an
+#    increased Retire Prior To field.  The endpoint SHOULD continue to
+#    accept the previously issued connection IDs until they are retired by
+#    the peer.  If the endpoint can no longer process the indicated
+#    connection IDs, it MAY close the connection.
+# 
+#    Upon receipt of an increased Retire Prior To field, the peer MUST
+#    stop using the corresponding connection IDs and retire them with
+#    RETIRE_CONNECTION_ID frames before adding the newly provided
+#    connection ID to the set of active connection IDs.  This ordering
+#    allows an endpoint to replace all active connection IDs without the
+#    possibility of a peer having no available connection IDs and without
+#    exceeding the limit the peer sets in the active_connection_id_limit
+#    transport parameter; see Section 18.2.  Failure to cease using the
+#    connection IDs when requested can result in connection failures, as
+#    the issuing endpoint might be unable to continue using the connection
+#    IDs with the active connection.
+# 
+#    An endpoint SHOULD limit the number of connection IDs it has retired
+#    locally for which RETIRE_CONNECTION_ID frames have not yet been
+#    acknowledged.  An endpoint SHOULD allow for sending and tracking a
+#    number of RETIRE_CONNECTION_ID frames of at least twice the value of
+#    the active_connection_id_limit transport parameter.  An endpoint MUST
+#    NOT forget a connection ID without retiring it, though it MAY choose
+#    to treat having connection IDs in need of retirement that exceed this
+#    limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
+# 
+#    Endpoints SHOULD NOT issue updates of the Retire Prior To field
+#    before receiving RETIRE_CONNECTION_ID frames that retire all
+#    connection IDs indicated by the previous Retire Prior To value.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Endpoints SHOULD retire connection IDs when
+they are no longer actively using either the local or destination
+address for which the connection ID was used.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The endpoint SHOULD continue to
+accept the previously issued connection IDs until they are retired by
+the peer.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If the endpoint can no longer process the indicated
+connection IDs, it MAY close the connection.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Upon receipt of an increased Retire Prior To field, the peer MUST
+stop using the corresponding connection IDs and retire them with
+RETIRE_CONNECTION_ID frames before adding the newly provided
+connection ID to the set of active connection IDs.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint SHOULD limit the number of connection IDs it has retired
+locally for which RETIRE_CONNECTION_ID frames have not yet been
+acknowledged.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint SHOULD allow for sending and tracking a
+number of RETIRE_CONNECTION_ID frames of at least twice the value of
+the active_connection_id_limit transport parameter.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST
+NOT forget a connection ID without retiring it, though it MAY choose
+to treat having connection IDs in need of retirement that exceed this
+limit as a connection error of type CONNECTION_ID_LIMIT_ERROR.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Endpoints SHOULD NOT issue updates of the Retire Prior To field
+before receiving RETIRE_CONNECTION_ID frames that retire all
+connection IDs indicated by the previous Retire Prior To value.
+'''
+
