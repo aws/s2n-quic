@@ -72,7 +72,7 @@ jobs:
             | jq -c '[. | to_entries[] | select(.value.role == "both" or .value.role == "server") | {"client": "s2n-quic", "server": .key}] | sort'
           )
           echo "Servers: $SERVERS"
-          MATRIX=$(echo "[$CLIENTS, $SERVERS]" | jq -c '{"include": . | flatten | sort | unique}')
+          MATRIX={"include":[{"client":"aioquic","server":"s2n-quic"},{"client":"chrome","server":"s2n-quic"}]}
           echo "Matrix: $MATRIX"
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
@@ -558,6 +558,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [interop-report]
     if: failure() && fromJSON(github.run_attempt) <= 3
+    permissions:
+      actions: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
