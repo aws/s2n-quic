@@ -15,7 +15,7 @@ pub trait Tx: Sized {
     // TODO make this generic over lifetime
     // See https://github.com/aws/s2n-quic/issues/1742
     type Queue: Queue<Handle = Self::PathHandle>;
-    type Error;
+    type Error: Send;
 
     /// Returns a future that yields after a packet is ready to be transmitted
     #[inline]
