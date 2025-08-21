@@ -28,6 +28,8 @@ pub const DEFAULT_BASE_MTU: u16 = 1450;
 pub const DEFAULT_MTU: u16 = 8940;
 #[cfg(not(target_os = "linux"))]
 pub const DEFAULT_MTU: u16 = DEFAULT_BASE_MTU;
+/// Jitter PTO probes by 33% to prevent synchronized timeouts across multiple connections
+pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 33;
 const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(1);
 
 const BUFFER_SIZE: usize = 16 * 1024;

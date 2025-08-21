@@ -3,7 +3,9 @@
 
 use crate::{
     path::secret,
-    psk::io::{Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA, DEFAULT_MTU},
+    psk::io::{
+        Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA, DEFAULT_MTU, DEFAULT_PTO_JITTER_PERCENTAGE,
+    },
 };
 use s2n_quic::provider::{event::Subscriber as Sub, tls::Provider as Prov};
 use std::{net::SocketAddr, time::Duration};
@@ -18,6 +20,7 @@ pub struct Builder<
     pub(crate) data_window: u64,
     pub(crate) mtu: u16,
     pub(crate) max_idle_timeout: Duration,
+    pub(crate) pto_jitter_percentage: u8,
 }
 
 impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
@@ -27,6 +30,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             data_window: DEFAULT_MAX_DATA,
             mtu: DEFAULT_MTU,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
         }
     }
 }
@@ -42,6 +46,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             data_window: self.data_window,
             mtu: self.mtu,
             max_idle_timeout: self.max_idle_timeout,
+            pto_jitter_percentage: self.pto_jitter_percentage,
         }
     }
 
@@ -63,6 +68,21 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     /// timeout.
     pub fn with_max_idle_timeout(mut self, max_idle_timeout: Duration) -> Self {
         self.max_idle_timeout = max_idle_timeout;
+        self
+    }
+
+    /// Sets the PTO jitter percentage (default: 33)
+    ///
+    /// Adds random jitter to Probe Timeout (PTO) calculations to prevent synchronized
+    /// timeouts across multiple connections. The jitter is applied as a percentage
+    /// of the base PTO period, with values between -X% and +X% where X is the
+    /// configured percentage.
+    ///
+    /// Valid range: 0-50% (default: 33%)
+    /// - 0%: No jitter
+    /// - 1-50%: Applies random jitter within ±percentage of base PTO
+    pub fn with_pto_jitter_percentage(mut self, pto_jitter_percentage: u8) -> Self {
+        self.pto_jitter_percentage = pto_jitter_percentage;
         self
     }
 
