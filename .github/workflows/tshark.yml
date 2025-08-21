@@ -1,64 +1,18 @@
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - ".github/Dockerfile.tshark"
-      - ".github/workflows/tshark.yml"
-
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/Dockerfile.tshark"
-      - ".github/workflows/tshark.yml"
-
-  schedule:
-    # run every morning at 10am Pacific Time
-    # Running this every day makes sure the static dependencies are up to date
-    - cron: '0 17 * * *'
-
   workflow_dispatch:
     inputs:
       version:
-        description: 'wireshark version'
         required: true
-        default: '4.4.2'
-        type: string
-
-# Updating status is relatively safe (doesnt modify source code) and caution
-# should be taken before adding more permissions.
-permissions:
-  statuses: write
-  id-token: write # This is required for requesting the JWT/OIDC
-
 jobs:
-  build:
+  retry:
     runs-on: ubuntu-latest
-    env:
-      WIRESHARK_VERSION: ${{ inputs.version || '4.4.2' }}
+    permissions:
+      actions: write
     steps:
-      - uses: actions/checkout@v5
-
-      - run: mkdir -p target/tshark/v$WIRESHARK_VERSION
-
-      - name: Build
-        working-directory: .github
+      - name: rerun ${{ inputs.version }}
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          docker build -f Dockerfile.tshark -t tshark-static --build-arg version=$WIRESHARK_VERSION .
-          docker run \
-            -v `pwd`/../target/tshark/v$WIRESHARK_VERSION:/host-dir \
-            tshark-static \
-            cp /usr/local/bin/tshark /usr/local/bin/editcap /host-dir/
-
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
-        if: github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.repository == github.event.pull_request.head.repo.full_name
-        with:
-          role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
-          role-session-name: S2nQuicGHAS3Session
-          aws-region: us-west-2
-
-      - name: Upload to S3
-        if: github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.repository == github.event.pull_request.head.repo.full_name
-        run: |
-          aws s3 sync target/tshark "s3://s2n-quic-ci-artifacts/tshark" --acl private --follow-symlinks
+          gh run watch ${{ inputs.version }}
+          gh run rerun ${{ inputs.version }}
