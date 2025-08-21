@@ -7,6 +7,9 @@ on:
     inputs:
       run_id:
         required: true
+  pull_request:
+    branches:
+      - lrstewart/ci
 jobs:
   retry:
     runs-on: ubuntu-latest
