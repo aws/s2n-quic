@@ -206,7 +206,7 @@ impl Provider {
         Ok((peer, HandshakeKind::Fresh))
     }
 
-    /// Handshake with a peer in the background.∂
+    /// Handshake with a peer in the background.
     #[inline]
     pub fn background_handshake_with(
         &self,
