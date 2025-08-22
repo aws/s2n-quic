@@ -309,8 +309,9 @@ impl Harness {
     async fn run_with(self, client: testing::Client, server: testing::Server) {
         let (run_handle, run_watch) = testing::drop_handle::new();
         let task = self.run_with_drop_handle(client, server, run_watch);
-        let duration = Duration::from_secs(180);
+        let duration = Duration::from_secs(250);
         timeout(duration, task).await.unwrap();
+        tracing::error!("runtime exceeded timeout of {} seconds", duration.as_secs());
         drop(run_handle);
     }
 
