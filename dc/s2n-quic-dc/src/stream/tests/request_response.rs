@@ -311,6 +311,7 @@ impl Harness {
         let task = self.run_with_drop_handle(client, server, run_watch);
         let duration = Duration::from_secs(250);
         timeout(duration, task).await.unwrap();
+        tracing::error!("runtime exceeded timeout of {} seconds", duration.as_secs());
         drop(run_handle);
     }
 
