@@ -12,7 +12,7 @@ use std::{sync::OnceLock, time::Duration};
 
 pub use bach::{ext, rand};
 
-use s2n_quic::provider::tls::s2n_tls as s2n_quic_tls_prov;
+use s2n_quic::provider::tls::default as s2n_quic_tls_prov;
 
 pub(crate) const SNI: &str = "localhost";
 
