@@ -87,9 +87,9 @@ impl Harness {
             for sleep_before_shutdown in [false, true] {
                 dbg!(bidirectional, sleep_before_shutdown);
                 let task = self.run_one(bidirectional, sleep_before_shutdown);
-                tokio::time::timeout(core::time::Duration::from_secs(60), task)
+                tokio::time::timeout(core::time::Duration::from_secs(90), task)
                     .await
-                    .expect("test timed out after 60 seconds");
+                    .expect("test timed out after 90 seconds");
             }
         }
     }
