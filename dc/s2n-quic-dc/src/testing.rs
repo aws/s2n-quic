@@ -48,6 +48,8 @@ pub async fn timeout<F>(duration: Duration, f: F) -> Result<F::Output, bach::tim
 where
     F: core::future::Future,
 {
+    tracing::error!("runtime exceeded timeout of {} seconds", duration.as_secs());
+
     if bach::is_active() {
         bach::time::timeout(duration, f).await
     } else {
