@@ -47,7 +47,7 @@ pub mod metrics {
 }
 
 pub mod disabled {
-    #[derive(Debug, Default)]
+    #[derive(Clone, Debug, Default)]
     pub struct Subscriber(());
 
     impl super::Subscriber for Subscriber {

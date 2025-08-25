@@ -88,8 +88,8 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
 
     /// Starts the server listening to the given address.
     pub async fn start<
-        TlsProvider: Prov + Clone + Send + Sync + 'static,
-        Subscriber: Sub + Default + Clone + Send + Sync + 'static,
+        TlsProvider: Prov + Send + Sync + 'static,
+        Subscriber: Sub + Send + Sync + 'static,
     >(
         self,
         bind: SocketAddr,
@@ -110,8 +110,8 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
 
     /// Starts the server listening to the given address, blocking until the server has been bound to the address.
     pub fn start_blocking<
-        TlsProvider: Prov + Clone + Send + Sync + 'static,
-        Subscriber: Sub + Default + Clone + Send + Sync + 'static,
+        TlsProvider: Prov + Send + Sync + 'static,
+        Subscriber: Sub + Send + Sync + 'static,
     >(
         self,
         bind: SocketAddr,
