@@ -17,6 +17,7 @@ use crate::{
         recv, socket,
     },
 };
+use s2n_quic::server::Name;
 use s2n_quic_core::time::Clock;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
@@ -33,6 +34,7 @@ pub trait Handshake: Clone {
     async fn handshake_with_entry(
         &self,
         remote_handshake_addr: SocketAddr,
+        server_name: Name,
     ) -> std::io::Result<(secret::map::Peer, secret::HandshakeKind)>;
 
     fn local_addr(&self) -> std::io::Result<SocketAddr>;
@@ -44,8 +46,9 @@ impl Handshake for crate::psk::client::Provider {
     async fn handshake_with_entry(
         &self,
         remote_handshake_addr: SocketAddr,
+        server_name: Name,
     ) -> std::io::Result<(secret::map::Peer, secret::HandshakeKind)> {
-        self.handshake_with_entry(remote_handshake_addr, |_conn, _duration| {})
+        self.handshake_with_entry(remote_handshake_addr, |_conn, _duration| {}, server_name)
             .await
     }
 
@@ -89,10 +92,11 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
     pub async fn handshake_with(
         &self,
         remote_handshake_addr: SocketAddr,
+        server_name: Name,
     ) -> io::Result<secret::HandshakeKind> {
         let (_peer, kind) = self
             .handshake
-            .handshake_with_entry(remote_handshake_addr)
+            .handshake_with_entry(remote_handshake_addr, server_name)
             .await?;
         Ok(kind)
     }
@@ -101,10 +105,11 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
     async fn handshake_for_connect(
         &self,
         remote_handshake_addr: SocketAddr,
+        server_name: Name,
     ) -> io::Result<secret::map::Peer> {
         let (peer, _kind) = self
             .handshake
-            .handshake_with_entry(remote_handshake_addr)
+            .handshake_with_entry(remote_handshake_addr, server_name)
             .await?;
         Ok(peer)
     }
@@ -115,10 +120,17 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         &self,
         handshake_addr: SocketAddr,
         acceptor_addr: SocketAddr,
+        server_name: Name,
     ) -> io::Result<Stream<S>> {
         match self.default_protocol {
-            socket::Protocol::Udp => self.connect_udp(handshake_addr, acceptor_addr).await,
-            socket::Protocol::Tcp => self.connect_tcp(handshake_addr, acceptor_addr).await,
+            socket::Protocol::Udp => {
+                self.connect_udp(handshake_addr, acceptor_addr, server_name)
+                    .await
+            }
+            socket::Protocol::Tcp => {
+                self.connect_tcp(handshake_addr, acceptor_addr, server_name)
+                    .await
+            }
             protocol => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("invalid default protocol {protocol:?}"),
@@ -133,6 +145,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         acceptor_addr: SocketAddr,
         request: Req,
         response: Res,
+        server_name: Name,
     ) -> io::Result<Res::Output>
     where
         Req: rpc::Request,
@@ -140,12 +153,24 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
     {
         match self.default_protocol {
             socket::Protocol::Udp => {
-                self.rpc_udp(handshake_addr, acceptor_addr, request, response)
-                    .await
+                self.rpc_udp(
+                    handshake_addr,
+                    acceptor_addr,
+                    request,
+                    response,
+                    server_name,
+                )
+                .await
             }
             socket::Protocol::Tcp => {
-                self.rpc_tcp(handshake_addr, acceptor_addr, request, response)
-                    .await
+                self.rpc_tcp(
+                    handshake_addr,
+                    acceptor_addr,
+                    request,
+                    response,
+                    server_name,
+                )
+                .await
             }
             protocol => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -160,9 +185,10 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         &self,
         handshake_addr: SocketAddr,
         acceptor_addr: SocketAddr,
+        server_name: Name,
     ) -> io::Result<Stream<S>> {
         // ensure we have a secret for the peer
-        let handshake = self.handshake_for_connect(handshake_addr);
+        let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
         let mut stream = client::connect_udp(handshake, acceptor_addr, &self.env).await?;
         Self::write_prelude(&mut stream).await?;
@@ -177,13 +203,14 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         acceptor_addr: SocketAddr,
         request: Req,
         response: Res,
+        server_name: Name,
     ) -> io::Result<Res::Output>
     where
         Req: rpc::Request,
         Res: rpc::Response,
     {
         // ensure we have a secret for the peer
-        let handshake = self.handshake_for_connect(handshake_addr);
+        let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
         let stream = client::connect_udp(handshake, acceptor_addr, &self.env).await?;
         rpc_internal::from_stream(stream, request, response).await
@@ -195,9 +222,10 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         &self,
         handshake_addr: SocketAddr,
         acceptor_addr: SocketAddr,
+        server_name: Name,
     ) -> io::Result<Stream<S>> {
         // ensure we have a secret for the peer
-        let handshake = self.handshake_for_connect(handshake_addr);
+        let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
         let mut stream =
             client::connect_tcp(handshake, acceptor_addr, &self.env, self.linger).await?;
@@ -213,13 +241,14 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         acceptor_addr: SocketAddr,
         request: Req,
         response: Res,
+        server_name: Name,
     ) -> io::Result<Res::Output>
     where
         Req: rpc::Request,
         Res: rpc::Response,
     {
         // ensure we have a secret for the peer
-        let handshake = self.handshake_for_connect(handshake_addr);
+        let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
         let stream = client::connect_tcp(handshake, acceptor_addr, &self.env, self.linger).await?;
         rpc_internal::from_stream(stream, request, response).await
@@ -231,9 +260,12 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         &self,
         handshake_addr: SocketAddr,
         stream: TcpStream,
+        server_name: Name,
     ) -> io::Result<Stream<S>> {
         // ensure we have a secret for the peer
-        let handshake = self.handshake_for_connect(handshake_addr).await?;
+        let handshake = self
+            .handshake_for_connect(handshake_addr, server_name)
+            .await?;
 
         let mut stream = client::connect_tcp_with(handshake, stream, &self.env).await?;
         Self::write_prelude(&mut stream).await?;
