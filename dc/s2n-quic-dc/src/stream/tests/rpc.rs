@@ -3,8 +3,9 @@
 
 use crate::{
     stream::{
-        client::rpc,
-        testing::{Client, Server},
+        client::rpc::{self, InMemoryResponse},
+        testing::{dcquic::Context, Client, Server},
+        Protocol,
     },
     testing::{ext::*, sim, without_tracing},
 };
@@ -299,4 +300,84 @@ fn fuzz_test() {
             .with_test_time(30.s())
             .for_each(|harness| sim(|| harness.run()))
     });
+}
+
+#[derive(Clone, Debug)]
+struct RpcHarness {
+    protocol: Protocol,
+}
+
+impl Default for RpcHarness {
+    fn default() -> Self {
+        Self {
+            protocol: Protocol::Udp,
+        }
+    }
+}
+
+impl RpcHarness {
+    async fn run(self) {
+        let (client, server) = Context::new(self.protocol).await.split();
+        let handshake_addr = server.handshake_addr().unwrap();
+        let acceptor_addr = server.acceptor_addr().unwrap();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _peer_addr)) = server.accept().await {
+                tokio::spawn(async move {
+                    let mut buffer = Vec::with_capacity(1024);
+                    while let Ok(n) = stream.read_buf(&mut buffer).await {
+                        if n == 0 {
+                            break;
+                        }
+                        stream.write_all(&buffer[..n]).await.unwrap();
+                    }
+                });
+            }
+        });
+
+        let count = 1_000;
+
+        for _ in 0..count {
+            let request = &b"hello"[..];
+            let response = InMemoryResponse::from(BytesMut::new());
+            let response = client
+                .rpc(handshake_addr, acceptor_addr, request, response)
+                .await
+                .unwrap();
+            assert_eq!(response.as_ref(), request);
+        }
+    }
+}
+
+macro_rules! tests {
+    () => {
+        #[tokio::test]
+        async fn many_requests() {
+            RpcHarness { ..rpc_harness() }.run().await
+        }
+    };
+}
+
+mod tcp {
+    use super::*;
+
+    fn rpc_harness() -> RpcHarness {
+        RpcHarness {
+            protocol: Protocol::Tcp,
+        }
+    }
+
+    tests!();
+}
+
+mod udp {
+    use super::*;
+
+    fn rpc_harness() -> RpcHarness {
+        RpcHarness {
+            protocol: Protocol::Udp,
+        }
+    }
+
+    tests!();
 }

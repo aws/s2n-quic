@@ -25,8 +25,8 @@ pub mod rpc {
     pub use crate::stream::client::rpc::{InMemoryResponse, Request, Response};
 }
 
-// This trait is a temporary solution to abstract handshake_with_entry,
-// local_addr, and map methods until we implement the handshake provider
+// This trait is a solution to abstract handshake_with_entry,
+// local_addr, and map methods
 #[allow(async_fn_in_trait)]
 pub trait Handshake: Clone {
     /// Handshake with the remote peer

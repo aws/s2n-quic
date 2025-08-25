@@ -209,10 +209,11 @@ impl Client {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
+        server_name: String,
     ) -> Result<(), HandshakeFailed> {
         self.queue
             .clone()
-            .handshake(&self.client, peer, query_event_callback)
+            .handshake(&self.client, peer, query_event_callback, server_name)
             .await
     }
 }
@@ -314,6 +315,7 @@ impl HandshakeQueue {
         client: &s2n_quic::Client,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
+        server_name: String,
     ) -> Result<(), HandshakeFailed> {
         let entry = self.allocate_entry(peer);
         let entry2 = entry.clone();
@@ -328,7 +330,7 @@ impl HandshakeQueue {
             let limiter_duration = start.elapsed();
 
             let mut connection = client
-                .connect(s2n_quic::client::Connect::new(peer).with_server_name("anyhostname"))
+                .connect(s2n_quic::client::Connect::new(peer).with_server_name(server_name))
                 .await?;
 
             query_event_callback(&mut connection, limiter_duration);

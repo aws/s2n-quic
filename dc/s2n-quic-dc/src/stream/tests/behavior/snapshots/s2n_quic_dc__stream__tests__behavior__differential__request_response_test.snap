@@ -1,0 +1,24 @@
+---
+source: dc/s2n-quic-dc/src/stream/tests/behavior/differential.rs
+expression: outcome.unwrap()
+---
+Ok(
+    Endpoints {
+        client: Ok(
+            Ok(
+                Stats {
+                    recv: 200,
+                    send: 100,
+                },
+            ),
+        ),
+        server: Ok(
+            Ok(
+                Stats {
+                    recv: 100,
+                    send: 200,
+                },
+            ),
+        ),
+    },
+)

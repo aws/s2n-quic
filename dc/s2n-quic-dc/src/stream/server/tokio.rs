@@ -25,7 +25,7 @@ use tracing::{trace, Instrument as _};
 pub mod tcp;
 pub mod udp;
 
-// This trait is a temporary solution to abstract local_addr and map methods until we implement the handshake provider
+// This trait is a solution to abstract local_addr and map methods
 pub trait Handshake: Clone {
     fn local_addr(&self) -> SocketAddr;
 
