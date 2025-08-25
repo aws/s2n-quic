@@ -102,6 +102,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         tls_materials_provider: TlsProvider,
         subscriber: Subscriber,
         query_event_callback: fn(&mut Connection, Duration),
+        server_name: String,
     ) -> Result<Provider> {
         Provider::new::<TlsProvider, Subscriber, Event>(
             addr,
@@ -110,6 +111,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             subscriber,
             query_event_callback,
             self,
+            server_name,
         )
     }
 }
