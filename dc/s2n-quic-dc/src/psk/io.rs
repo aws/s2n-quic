@@ -44,7 +44,7 @@ pub struct Server {
 
 impl Server {
     pub fn bind<
-        Provider: Prov + Clone + Send + Sync + 'static,
+        Provider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
         Event: s2n_quic::provider::event::Subscriber,
     >(
@@ -89,7 +89,7 @@ impl Server {
 }
 
 pub(super) async fn server<
-    Provider: Prov + Clone + Send + Sync + 'static,
+    Provider: Prov + Send + Sync + 'static,
     Subscriber: Sub + Send + Sync + 'static,
     Event: s2n_quic::provider::event::Subscriber,
 >(
@@ -164,7 +164,7 @@ impl Client {
     }
 
     pub fn bind<
-        Provider: Prov + Clone + Send + Sync + 'static,
+        Provider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
         Event: s2n_quic::provider::event::Subscriber,
     >(

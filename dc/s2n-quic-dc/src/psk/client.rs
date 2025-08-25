@@ -54,7 +54,7 @@ fn make_runtime() -> (Arc<Runtime>, DropGuard) {
 
 impl State {
     fn new_runtime<
-        Provider: Prov + Clone + Send + Sync + 'static,
+        Provider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
         Event: s2n_quic::provider::event::Subscriber,
     >(
@@ -91,7 +91,7 @@ impl Provider {
     }
 
     pub fn new<
-        Provider: Prov + Clone + Send + Sync + 'static,
+        Provider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
         Event: s2n_quic::provider::event::Subscriber,
     >(

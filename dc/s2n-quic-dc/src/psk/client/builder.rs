@@ -93,7 +93,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     ///
     /// Typically the address provided can use an ephemeral port.
     pub fn start<
-        TlsProvider: Prov + Clone + Send + Sync + 'static,
+        TlsProvider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
     >(
         self,
