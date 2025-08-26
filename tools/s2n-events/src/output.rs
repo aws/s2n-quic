@@ -68,7 +68,7 @@ impl Output {
         put!("// SPDX-License-Identifier: Apache-2.0");
         put!();
         put!("// DO NOT MODIFY THIS FILE");
-        put!("// This file was generated with the `s2n-quic-events` crate and any required");
+        put!("// This file was generated with the `s2n-events` crate and any required");
         put!("// changes should be made there.");
         put!();
         put!("{}", output.to_token_stream());

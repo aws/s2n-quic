@@ -1,4 +1,4 @@
-# s2n-quic-events
+# s2n-events
 
 This crate generates all of the boilerplate for event types and traits.
 
