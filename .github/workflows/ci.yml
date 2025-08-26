@@ -641,6 +641,35 @@ jobs:
         run: |
           ./scripts/copyright_check
 
+  s2n-events:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      # nightly features are used for formatting
+      - name: Install rust nightly toolchain
+        id: nightly-toolchain
+        run: |
+          rustup toolchain install nightly --component rustfmt
+
+      - name: Install rust stable toolchain
+        id: stable-toolchain
+        run: |
+          rustup toolchain install stable
+          rustup override set stable
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: format
+        working-directory: ./tools/s2n-events
+        run: cargo +nightly fmt -- --check
+
+      - name: test
+        working-directory: ./tools/s2n-events
+        run: cargo test
+
   # ensures the event codegen is up to date
   events:
     runs-on: ubuntu-latest
@@ -659,11 +688,12 @@ jobs:
 
       - name: Run events codegen
         run: |
-          cargo run --bin s2n-quic-events
+          cargo run --manifest-path ./tools/s2n-events/Cargo.toml
 
       - name: Check to make sure the generated events are up-to-date
         run: |
-          # If this fails you need to run `cargo run --bin s2n-quic-events`
+          # If this fails you need to run regenerate the events systems. See the
+          # "Run events codegen" job above.
           git diff --exit-code
 
   # ensures there are no unused snapshots
