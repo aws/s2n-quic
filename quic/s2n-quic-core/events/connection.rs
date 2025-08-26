@@ -469,3 +469,8 @@ struct ConnectionClosed {
     #[nominal_counter("error")]
     error: crate::connection::Error,
 }
+
+#[event("transport:a_new_event")]
+struct ANewEvent {
+    a_brand_new_event_value: u32,
+}
