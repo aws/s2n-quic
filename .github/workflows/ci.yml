@@ -687,6 +687,15 @@ jobs:
         working-directory: ./tools/s2n-events
         run: cargo +nightly fmt -- --check
 
+      - name: generate test events
+        run: |
+          cargo run --manifest-path ./tools/s2n-events/Cargo.toml
+
+      - name: ensure test events are up to date
+        run: |
+          # If this fails you need to run `cargo run --manifest-path ./tools/s2n-events/Cargo.toml`
+          git diff --exit-code
+
       - name: test
         working-directory: ./tools/s2n-events
         run: cargo test
