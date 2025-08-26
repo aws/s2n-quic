@@ -711,11 +711,11 @@ jobs:
 
       - name: Run events codegen
         run: |
-          cargo run --manifest-path ./tools/s2n-events/Cargo.toml
+          cargo run --manifest-path ./tools/generate-events/Cargo.toml
 
       - name: Check to make sure the generated events are up-to-date
         run: |
-          # If this fails you need to run `cargo run --manifest-path ./tools/s2n-events/Cargo.toml`
+          # If this fails you need to run `cargo run --manifest-path ./tools/generate-events/Cargo.toml`
           git diff --exit-code
 
   # ensures there are no unused snapshots
