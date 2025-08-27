@@ -33,9 +33,6 @@ env:
 permissions:
   statuses: write
   id-token: write # This is required for requesting the JWT/OIDC
-  # clippy bot requires write permission for contents and pull-requests
-  contents: write
-  pull-requests: write
 
 jobs:
   env:
@@ -104,6 +101,11 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     needs: env
+    # clippy bot requires write permission for contents and pull-requests when creating PRs.
+    # create-pull-request action mandates this in https://github.com/marketplace/actions/create-pull-request#token
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -140,10 +142,10 @@ jobs:
         with:
           title: 'chore: clippy lint updates'
           body: |
-            ## Description of Change:
-            Apply new clippy lints requirements to the s2n-quic codebase.
+            ### Description of changes: 
+            Fixes new Clippy lints in the latest Rust release. For details on the new lints, see the [Rust Blog](https://blog.rust-lang.org/releases/latest).
 
-            ## Testing:
+            ### Testing:
             CI clippy test should pass.
 
   udeps:
