@@ -671,7 +671,7 @@ jobs:
         run: cargo test
 
   # ensures the event codegen is up to date
-  events:
+  generate-events:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
