@@ -33,6 +33,9 @@ env:
 permissions:
   statuses: write
   id-token: write # This is required for requesting the JWT/OIDC
+  # clippy bot requires write permission for contents and pull-requests
+  contents: write
+  pull-requests: write
 
 jobs:
   env:
@@ -117,13 +120,31 @@ jobs:
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy on all workspaces
         run: |
+          # Clippy bot only runs on schedule event
+          CLIPPY_FIX_FLAG=""
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            CLIPPY_FIX_FLAG='--fix --allow-dirty'
+          fi
+
           WORKSPACES=$(echo '${{ needs.env.outputs.workspaces }}' | jq -r '.[]')
           for workspace in $WORKSPACES; do
             echo "Running clippy on $workspace"
             cd "$workspace"
-            cargo clippy --all-features --all-targets --workspace -- -D warnings
+            cargo clippy --all-features --all-targets --workspace $CLIPPY_FIX_FLAG -- -D warnings
             cd $GITHUB_WORKSPACE
           done
+
+      - name: Create clippy pull request
+        if: github.event_name == 'schedule'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          title: 'chore: clippy lint updates'
+          body: |
+            ## Description of Change:
+            Apply new clippy lints requirements to the s2n-quic codebase.
+
+            ## Testing:
+            CI clippy test should pass.
 
   udeps:
     runs-on: ubuntu-latest
