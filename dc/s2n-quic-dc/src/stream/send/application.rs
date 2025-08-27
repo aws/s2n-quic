@@ -249,6 +249,7 @@ where
                             &clock::Cached::new(&self.shared.clock),
                             message,
                             &features,
+                            &self.shared.publisher(),
                         )
                     },
                     |sealer| {

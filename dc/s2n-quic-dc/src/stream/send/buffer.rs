@@ -27,7 +27,7 @@ impl ops::Deref for Segment {
 impl From<Vec<u8>> for Segment {
     #[inline]
     fn from(value: Vec<u8>) -> Self {
-        Self(value.into())
+        Self(Arc::new(value))
     }
 }
 
@@ -54,17 +54,30 @@ impl Default for Allocator {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum Source {
+    Pool,
+    Fresh,
+}
+
 impl Allocator {
     #[inline]
-    pub fn alloc(&self, capacity: usize) -> Segment {
-        self.free
-            .pop()
-            .filter(|buffer| buffer.capacity() >= capacity)
-            .unwrap_or_else(|| Vec::with_capacity(capacity).into())
+    pub fn alloc(&self, capacity: usize) -> (Segment, Source) {
+        if let Some(segment) = self.free.pop() {
+            if segment.capacity() >= capacity {
+                return (segment, Source::Pool);
+            }
+        }
+
+        (Segment::from(Vec::with_capacity(capacity)), Source::Fresh)
     }
 
     #[inline]
     pub fn free(&self, mut segment: Segment) {
+        // Only store the segment for re-use if it is uniquely owned.
+        //
+        // FIXME: Should this actually defer that question to when we try to pull it *from* the
+        // queue?
         if let Some(buffer) = Arc::get_mut(&mut segment.0) {
             // clear the buffer if it has bytes in it
             buffer.clear();

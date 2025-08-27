@@ -90,6 +90,15 @@ pub struct StreamWriteKeyUpdated {
     key_phase: u8,
 }
 
+#[event("stream:write_allocated")]
+#[measure_counter("conn")]
+pub struct StreamWriteAllocated {
+    /// The number of bytes that we allocated.
+    #[measure("allocated_len", Bytes)]
+    #[measure_counter("allocated_len.conn", Bytes)]
+    allocated_len: usize,
+}
+
 #[event("stream:write_shutdown")]
 #[checkpoint("latency")]
 pub struct StreamWriteShutdown {
