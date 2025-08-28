@@ -425,6 +425,19 @@ impl Harness {
     }
 }
 
+// Filter requests that are too large compared to client's or server's max_read_len
+// Timeout will happen if the request size is 100 times larger than client's or server's max_read_len
+fn filter_large_requests(
+    client: &Client,
+    server: &Server,
+    mut requests: Vec<Request>,
+) -> Vec<Request> {
+    let min_max_read_len = client.max_read_len.min(server.max_read_len);
+    requests.retain(|request| request.request_size <= min_max_read_len * 100);
+
+    requests
+}
+
 struct Runtime {
     rt: tokio::runtime::Runtime,
     client: testing::Client,
@@ -461,10 +474,13 @@ impl Runtime {
     }
 
     fn run_with(&self, client: Client, server: Server, requests: Vec<Request>) {
+        // Filter out requests that are too large compared to client or server max_read_len
+        let filtered_requests = filter_large_requests(&client, &server, requests);
+
         let harness = Harness {
             client,
             server,
-            requests,
+            requests: filtered_requests,
             protocol: self.protocol,
         };
         let client = self.client.clone();
