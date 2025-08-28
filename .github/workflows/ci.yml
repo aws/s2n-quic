@@ -101,6 +101,11 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     needs: env
+    # clippy bot requires write permission for contents and pull-requests when creating PRs.
+    # create-pull-request action mandates this in https://github.com/marketplace/actions/create-pull-request#token
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -117,13 +122,31 @@ jobs:
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy on all workspaces
         run: |
+          # Clippy bot only runs on schedule event
+          CLIPPY_FIX_FLAG=""
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            CLIPPY_FIX_FLAG='--fix --allow-dirty'
+          fi
+
           WORKSPACES=$(echo '${{ needs.env.outputs.workspaces }}' | jq -r '.[]')
           for workspace in $WORKSPACES; do
             echo "Running clippy on $workspace"
             cd "$workspace"
-            cargo clippy --all-features --all-targets --workspace -- -D warnings
+            cargo clippy --all-features --all-targets --workspace $CLIPPY_FIX_FLAG -- -D warnings
             cd $GITHUB_WORKSPACE
           done
+
+      - name: Create clippy pull request
+        if: github.event_name == 'schedule'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          title: 'chore: clippy lint updates'
+          body: |
+            ### Description of changes: 
+            Fixes new Clippy lints in the latest Rust release. For details on the new lints, see the [Rust Blog](https://blog.rust-lang.org/releases/latest).
+
+            ### Testing:
+            CI clippy test should pass.
 
   udeps:
     runs-on: ubuntu-latest
