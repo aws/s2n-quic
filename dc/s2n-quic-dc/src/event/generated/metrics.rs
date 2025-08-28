@@ -45,6 +45,7 @@ pub struct Context<R: Recorder> {
     stream_read_socket_flushed: AtomicU64,
     stream_read_socket_blocked: AtomicU64,
     stream_read_socket_errored: AtomicU64,
+    stream_decrypt_packet: AtomicU64,
     connection_closed: AtomicU64,
 }
 impl<R: Recorder> Context<R> {
@@ -86,6 +87,7 @@ where
             stream_read_socket_flushed: AtomicU64::new(0),
             stream_read_socket_blocked: AtomicU64::new(0),
             stream_read_socket_errored: AtomicU64::new(0),
+            stream_decrypt_packet: AtomicU64::new(0),
             connection_closed: AtomicU64::new(0),
         }
     }
@@ -323,6 +325,19 @@ where
             .on_stream_read_socket_errored(&context.recorder, meta, event);
     }
     #[inline]
+    fn on_stream_decrypt_packet(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamDecryptPacket,
+    ) {
+        context
+            .stream_decrypt_packet
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_decrypt_packet(&context.recorder, meta, event);
+    }
+    #[inline]
     fn on_connection_closed(
         &self,
         context: &Self::ConnectionContext,
@@ -411,6 +426,10 @@ impl<R: Recorder> Drop for Context<R> {
         self.recorder.increment_counter(
             "stream_read_socket_errored",
             self.stream_read_socket_errored.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_decrypt_packet",
+            self.stream_decrypt_packet.load(Ordering::Relaxed) as _,
         );
         self.recorder.increment_counter(
             "connection_closed",

@@ -604,6 +604,7 @@ where
                             ecn,
                             self.clock,
                             self.out_buf,
+                            &self.shared.subscriber,
                         )?;
 
                         self.any_valid_packets = true;

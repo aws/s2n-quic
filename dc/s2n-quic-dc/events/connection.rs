@@ -259,6 +259,26 @@ pub struct StreamReadSocketErrored {
     errno: Option<i32>,
 }
 
+#[event("stream:decrypt_packet")]
+pub struct StreamDecryptPacket {
+    /// Did we decrypt the packet in place, or were we able to merge the copy and decrypt?
+    #[bool_counter("decrypted_in_place")]
+    decrypted_in_place: bool,
+
+    /// The number of bytes we were forced to copy after decrypting in the packet buffer.
+    ///
+    /// This means that the application buffer was insufficiently large to allow us to directly
+    /// copy as part of the decrypt. This can be non-zero even with decrypted_in_place=false, if we
+    /// decrypted into the reassembly buffer. Right now it doesn't take into account zero-copy
+    /// reads from the reassembly buffer (e.g., with specialized Bytes).
+    #[measure("forced_copy", Bytes)]
+    forced_copy: usize,
+
+    /// The application buffer size that would avoid copies.
+    #[measure("required_application_buffer", Bytes)]
+    required_application_buffer: usize,
+}
+
 /// Tracks stream connect where dcQUIC owns the TCP connect().
 #[event("stream:tcp_connect")]
 #[subject(endpoint)]

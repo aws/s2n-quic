@@ -135,7 +135,19 @@ where
             // if this packet is non-contiguous, then delegate to the wrapped writer
             should_delegate |= reader.current_offset() != self.duplex.current_offset();
 
-            // if the storage has less than half of the payload, then delegate
+            // We want to decrypt into our own buffer (`duplex`) if that's cheaper. Note that
+            // decrypt is itself an optional "free" copy. Our choices are:
+            //
+            // 1. Decrypt in-place, copy head to `storage` and tail to `duplex`
+            // 2. Decrypt to `duplex`, copy head to `storage`
+            // 3. Decrypt to `storage`
+            //
+            // 1 and 2 are always possible (duplex can take any amount of data).
+            // 1 is always more expensive than 2 in `# of bytes copied` but does potentially save
+            // allocating large buffer(s) in `duplex`, if most of the bytes go into storage.
+            //
+            // 3 is optimal and should essentially always be preferred. Maybe that should even
+            // override SPECIALIZES_BYTES/_MUT?
             should_delegate |= self.storage.remaining_capacity() < (reader.buffered_len() / 2);
 
             if should_delegate {
