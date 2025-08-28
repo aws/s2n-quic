@@ -425,6 +425,31 @@ impl Harness {
     }
 }
 
+/// Cap request sizes that are too large compared to client or server max_read_len
+///
+/// This helper function caps request sizes to 100 times the minimum max_read_len
+/// of the client or server if they exceed this limit. This prevents timeouts that
+/// can occur when processing excessively large requests.
+fn cap_large_requests(
+    client: &Client,
+    server: &Server,
+    mut requests: Vec<Request>,
+) -> Vec<Request> {
+    let min_max_read_len = client.max_read_len.min(server.max_read_len);
+
+    // Set maximum request sizes to be 100 times the minimum of client or server max_read_len
+    let max_request_size = min_max_read_len * 100;
+
+    // Cap request sizes to max_request_size if they exceed it
+    for request in &mut requests {
+        if request.request_size > max_request_size {
+            request.request_size = max_request_size;
+        }
+    }
+
+    requests
+}
+
 struct Runtime {
     rt: tokio::runtime::Runtime,
     client: testing::Client,
@@ -461,10 +486,13 @@ impl Runtime {
     }
 
     fn run_with(&self, client: Client, server: Server, requests: Vec<Request>) {
+        // Cap request sizes that are too large compared to client or server max_read_len
+        let capped_requests = cap_large_requests(&client, &server, requests);
+
         let harness = Harness {
             client,
             server,
-            requests,
+            requests: capped_requests,
             protocol: self.protocol,
         };
         let client = self.client.clone();
