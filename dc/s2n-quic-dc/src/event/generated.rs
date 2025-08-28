@@ -1013,6 +1013,37 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct StreamDecryptPacket {
+        #[doc = " Did we decrypt the packet in place, or were we able to merge the copy and decrypt?"]
+        pub decrypted_in_place: bool,
+        #[doc = " The number of bytes we were forced to copy after decrypting in the packet buffer."]
+        #[doc = ""]
+        #[doc = " This means that the application buffer was insufficiently large to allow us to directly"]
+        #[doc = " copy as part of the decrypt. This can be non-zero even with decrypted_in_place=false, if we"]
+        #[doc = " decrypted into the reassembly buffer. Right now it doesn't take into account zero-copy"]
+        #[doc = " reads from the reassembly buffer (e.g., with specialized Bytes)."]
+        pub forced_copy: usize,
+        #[doc = " The application buffer size that would avoid copies."]
+        pub required_application_buffer: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamDecryptPacket {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamDecryptPacket");
+            fmt.field("decrypted_in_place", &self.decrypted_in_place);
+            fmt.field("forced_copy", &self.forced_copy);
+            fmt.field(
+                "required_application_buffer",
+                &self.required_application_buffer,
+            );
+            fmt.finish()
+        }
+    }
+    impl Event for StreamDecryptPacket {
+        const NAME: &'static str = "stream:decrypt_packet";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     #[doc = " Tracks stream connect where dcQUIC owns the TCP connect()."]
     pub struct StreamTcpConnect {
         pub error: bool,
@@ -2414,6 +2445,21 @@ pub mod tracing {
             let id = context.id();
             let api::StreamReadSocketErrored { capacity, errno } = event;
             tracing :: event ! (target : "stream_read_socket_errored" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , errno = tracing :: field :: debug (errno) });
+        }
+        #[inline]
+        fn on_stream_decrypt_packet(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
+        ) {
+            let id = context.id();
+            let api::StreamDecryptPacket {
+                decrypted_in_place,
+                forced_copy,
+                required_application_buffer,
+            } = event;
+            tracing :: event ! (target : "stream_decrypt_packet" , parent : id , tracing :: Level :: DEBUG , { decrypted_in_place = tracing :: field :: debug (decrypted_in_place) , forced_copy = tracing :: field :: debug (forced_copy) , required_application_buffer = tracing :: field :: debug (required_application_buffer) });
         }
         #[inline]
         fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
@@ -3820,6 +3866,35 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct StreamDecryptPacket {
+        #[doc = " Did we decrypt the packet in place, or were we able to merge the copy and decrypt?"]
+        pub decrypted_in_place: bool,
+        #[doc = " The number of bytes we were forced to copy after decrypting in the packet buffer."]
+        #[doc = ""]
+        #[doc = " This means that the application buffer was insufficiently large to allow us to directly"]
+        #[doc = " copy as part of the decrypt. This can be non-zero even with decrypted_in_place=false, if we"]
+        #[doc = " decrypted into the reassembly buffer. Right now it doesn't take into account zero-copy"]
+        #[doc = " reads from the reassembly buffer (e.g., with specialized Bytes)."]
+        pub forced_copy: usize,
+        #[doc = " The application buffer size that would avoid copies."]
+        pub required_application_buffer: usize,
+    }
+    impl IntoEvent<api::StreamDecryptPacket> for StreamDecryptPacket {
+        #[inline]
+        fn into_event(self) -> api::StreamDecryptPacket {
+            let StreamDecryptPacket {
+                decrypted_in_place,
+                forced_copy,
+                required_application_buffer,
+            } = self;
+            api::StreamDecryptPacket {
+                decrypted_in_place: decrypted_in_place.into_event(),
+                forced_copy: forced_copy.into_event(),
+                required_application_buffer: required_application_buffer.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     #[doc = " Tracks stream connect where dcQUIC owns the TCP connect()."]
     pub struct StreamTcpConnect {
         pub error: bool,
@@ -5102,6 +5177,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `StreamDecryptPacket` event is triggered"]
+        #[inline]
+        fn on_stream_decrypt_packet(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `StreamTcpConnect` event is triggered"]
         #[inline]
         fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
@@ -5818,6 +5905,15 @@ mod traits {
                 .on_stream_read_socket_errored(context, meta, event);
         }
         #[inline]
+        fn on_stream_decrypt_packet(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
+        ) {
+            self.as_ref().on_stream_decrypt_packet(context, meta, event);
+        }
+        #[inline]
         fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
             self.as_ref().on_stream_tcp_connect(meta, event);
         }
@@ -6493,6 +6589,16 @@ mod traits {
         ) {
             (self.0).on_stream_read_socket_errored(&context.0, meta, event);
             (self.1).on_stream_read_socket_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_decrypt_packet(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
+        ) {
+            (self.0).on_stream_decrypt_packet(&context.0, meta, event);
+            (self.1).on_stream_decrypt_packet(&context.1, meta, event);
         }
         #[inline]
         fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
@@ -7448,6 +7554,8 @@ mod traits {
         fn on_stream_read_socket_blocked(&self, event: builder::StreamReadSocketBlocked);
         #[doc = "Publishes a `StreamReadSocketErrored` event to the publisher's subscriber"]
         fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored);
+        #[doc = "Publishes a `StreamDecryptPacket` event to the publisher's subscriber"]
+        fn on_stream_decrypt_packet(&self, event: builder::StreamDecryptPacket);
         #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
         fn on_connection_closed(&self, event: builder::ConnectionClosed);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
@@ -7653,6 +7761,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_stream_read_socket_errored(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_decrypt_packet(&self, event: builder::StreamDecryptPacket) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_decrypt_packet(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -8495,6 +8612,7 @@ pub mod testing {
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
         pub stream_read_socket_errored: AtomicU64,
+        pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
@@ -8599,6 +8717,7 @@ pub mod testing {
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
                 stream_read_socket_errored: AtomicU64::new(0),
+                stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
@@ -9131,6 +9250,20 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_stream_decrypt_packet(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
+        ) {
+            self.stream_decrypt_packet.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
             self.stream_tcp_connect.fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
@@ -9589,6 +9722,7 @@ pub mod testing {
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
         pub stream_read_socket_errored: AtomicU64,
+        pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
@@ -9683,6 +9817,7 @@ pub mod testing {
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
                 stream_read_socket_errored: AtomicU64::new(0),
+                stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
@@ -10349,6 +10484,15 @@ pub mod testing {
         fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored) {
             self.stream_read_socket_errored
                 .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_decrypt_packet(&self, event: builder::StreamDecryptPacket) {
+            self.stream_decrypt_packet.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
