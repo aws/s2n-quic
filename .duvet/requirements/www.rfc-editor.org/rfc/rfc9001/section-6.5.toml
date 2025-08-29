@@ -1,0 +1,91 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-6.5"
+
+# Receiving with Different Keys
+#
+#    For receiving packets during a key update, packets protected with
+#    older keys might arrive if they were delayed by the network.
+#    Retaining old packet protection keys allows these packets to be
+#    successfully processed.
+# 
+#    As packets protected with keys from the next key phase use the same
+#    Key Phase value as those protected with keys from the previous key
+#    phase, it is necessary to distinguish between the two if packets
+#    protected with old keys are to be processed.  This can be done using
+#    packet numbers.  A recovered packet number that is lower than any
+#    packet number from the current key phase uses the previous packet
+#    protection keys; a recovered packet number that is higher than any
+#    packet number from the current key phase requires the use of the next
+#    packet protection keys.
+# 
+#    Some care is necessary to ensure that any process for selecting
+#    between previous, current, and next packet protection keys does not
+#    expose a timing side channel that might reveal which keys were used
+#    to remove packet protection.  See Section 9.5 for more information.
+# 
+#    Alternatively, endpoints can retain only two sets of packet
+#    protection keys, swapping previous for next after enough time has
+#    passed to allow for reordering in the network.  In this case, the Key
+#    Phase bit alone can be used to select keys.
+# 
+#    An endpoint MAY allow a period of approximately the Probe Timeout
+#    (PTO; see [QUIC-RECOVERY]) after promoting the next set of receive
+#    keys to be current before it creates the subsequent set of packet
+#    protection keys.  These updated keys MAY replace the previous keys at
+#    that time.  With the caveat that PTO is a subjective measure -- that
+#    is, a peer could have a different view of the RTT -- this time is
+#    expected to be long enough that any reordered packets would be
+#    declared lost by a peer even if they were acknowledged and short
+#    enough to allow a peer to initiate further key updates.
+# 
+#    Endpoints need to allow for the possibility that a peer might not be
+#    able to decrypt packets that initiate a key update during the period
+#    when the peer retains old keys.  Endpoints SHOULD wait three times
+#    the PTO before initiating a key update after receiving an
+#    acknowledgment that confirms that the previous key update was
+#    received.  Failing to allow sufficient time could lead to packets
+#    being discarded.
+# 
+#    An endpoint SHOULD retain old read keys for no more than three times
+#    the PTO after having received a packet protected using the new keys.
+#    After this period, old read keys and their corresponding secrets
+#    SHOULD be discarded.
+
+[[spec]]
+level = "MAY"
+quote = '''
+An endpoint MAY allow a period of approximately the Probe Timeout
+(PTO; see [QUIC-RECOVERY]) after promoting the next set of receive
+keys to be current before it creates the subsequent set of packet
+protection keys.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+These updated keys MAY replace the previous keys at
+that time.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Endpoints SHOULD wait three times
+the PTO before initiating a key update after receiving an
+acknowledgment that confirms that the previous key update was
+received.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint SHOULD retain old read keys for no more than three times
+the PTO after having received a packet protected using the new keys.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+After this period, old read keys and their corresponding secrets
+SHOULD be discarded.
+'''
+

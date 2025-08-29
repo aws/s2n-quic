@@ -1,0 +1,39 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-21.9"
+
+# Peer Denial of Service
+#
+#    QUIC and TLS both contain frames or messages that have legitimate
+#    uses in some contexts, but these frames or messages can be abused to
+#    cause a peer to expend processing resources without having any
+#    observable impact on the state of the connection.
+# 
+#    Messages can also be used to change and revert state in small or
+#    inconsequential ways, such as by sending small increments to flow
+#    control limits.
+# 
+#    If processing costs are disproportionately large in comparison to
+#    bandwidth consumption or effect on state, then this could allow a
+#    malicious peer to exhaust processing capacity.
+# 
+#    While there are legitimate uses for all messages, implementations
+#    SHOULD track cost of processing relative to progress and treat
+#    excessive quantities of any non-productive packets as indicative of
+#    an attack.  Endpoints MAY respond to this condition with a connection
+#    error or by dropping packets.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+While there are legitimate uses for all messages, implementations
+SHOULD track cost of processing relative to progress and treat
+excessive quantities of any non-productive packets as indicative of
+an attack.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Endpoints MAY respond to this condition with a connection
+error or by dropping packets.
+'''
+

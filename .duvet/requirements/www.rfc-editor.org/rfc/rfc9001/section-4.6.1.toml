@@ -1,0 +1,47 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-4.6.1"
+
+# Enabling 0-RTT
+#
+#    The TLS early_data extension in the NewSessionTicket message is
+#    defined to convey (in the max_early_data_size parameter) the amount
+#    of TLS 0-RTT data the server is willing to accept.  QUIC does not use
+#    TLS early data.  QUIC uses 0-RTT packets to carry early data.
+#    Accordingly, the max_early_data_size parameter is repurposed to hold
+#    a sentinel value 0xffffffff to indicate that the server is willing to
+#    accept QUIC 0-RTT data.  To indicate that the server does not accept
+#    0-RTT data, the early_data extension is omitted from the
+#    NewSessionTicket.  The amount of data that the client can send in
+#    QUIC 0-RTT is controlled by the initial_max_data transport parameter
+#    supplied by the server.
+# 
+#    Servers MUST NOT send the early_data extension with a
+#    max_early_data_size field set to any value other than 0xffffffff.  A
+#    client MUST treat receipt of a NewSessionTicket that contains an
+#    early_data extension with any other value as a connection error of
+#    type PROTOCOL_VIOLATION.
+# 
+#    A client that wishes to send 0-RTT packets uses the early_data
+#    extension in the ClientHello message of a subsequent handshake; see
+#    Section 4.2.10 of [TLS13].  It then sends application data in 0-RTT
+#    packets.
+# 
+#    A client that attempts 0-RTT might also provide an address validation
+#    token if the server has sent a NEW_TOKEN frame; see Section 8.1 of
+#    [QUIC-TRANSPORT].
+
+[[spec]]
+level = "MUST"
+quote = '''
+Servers MUST NOT send the early_data extension with a
+max_early_data_size field set to any value other than 0xffffffff.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+client MUST treat receipt of a NewSessionTicket that contains an
+early_data extension with any other value as a connection error of
+type PROTOCOL_VIOLATION.
+'''
+

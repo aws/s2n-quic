@@ -1,0 +1,99 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-9.2"
+
+# Replay Attacks with 0-RTT
+#
+#    As described in Section 8 of [TLS13], use of TLS early data comes
+#    with an exposure to replay attack.  The use of 0-RTT in QUIC is
+#    similarly vulnerable to replay attack.
+# 
+#    Endpoints MUST implement and use the replay protections described in
+#    [TLS13], however it is recognized that these protections are
+#    imperfect.  Therefore, additional consideration of the risk of replay
+#    is needed.
+# 
+#    QUIC is not vulnerable to replay attack, except via the application
+#    protocol information it might carry.  The management of QUIC protocol
+#    state based on the frame types defined in [QUIC-TRANSPORT] is not
+#    vulnerable to replay.  Processing of QUIC frames is idempotent and
+#    cannot result in invalid connection states if frames are replayed,
+#    reordered, or lost.  QUIC connections do not produce effects that
+#    last beyond the lifetime of the connection, except for those produced
+#    by the application protocol that QUIC serves.
+# 
+#    TLS session tickets and address validation tokens are used to carry
+#    QUIC configuration information between connections, specifically, to
+#    enable a server to efficiently recover state that is used in
+#    connection establishment and address validation.  These MUST NOT be
+#    used to communicate application semantics between endpoints; clients
+#    MUST treat them as opaque values.  The potential for reuse of these
+#    tokens means that they require stronger protections against replay.
+# 
+#    A server that accepts 0-RTT on a connection incurs a higher cost than
+#    accepting a connection without 0-RTT.  This includes higher
+#    processing and computation costs.  Servers need to consider the
+#    probability of replay and all associated costs when accepting 0-RTT.
+# 
+#    Ultimately, the responsibility for managing the risks of replay
+#    attacks with 0-RTT lies with an application protocol.  An application
+#    protocol that uses QUIC MUST describe how the protocol uses 0-RTT and
+#    the measures that are employed to protect against replay attack.  An
+#    analysis of replay risk needs to consider all QUIC protocol features
+#    that carry application semantics.
+# 
+#    Disabling 0-RTT entirely is the most effective defense against replay
+#    attack.
+# 
+#    QUIC extensions MUST either describe how replay attacks affect their
+#    operation or prohibit the use of the extension in 0-RTT.  Application
+#    protocols MUST either prohibit the use of extensions that carry
+#    application semantics in 0-RTT or provide replay mitigation
+#    strategies.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints MUST implement and use the replay protections described in
+[TLS13], however it is recognized that these protections are
+imperfect.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+These MUST NOT be
+used to communicate application semantics between endpoints; clients
+MUST treat them as opaque values.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+These MUST NOT be
+used to communicate application semantics between endpoints; clients
+MUST treat them as opaque values.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An application
+protocol that uses QUIC MUST describe how the protocol uses 0-RTT and
+the measures that are employed to protect against replay attack.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+QUIC extensions MUST either describe how replay attacks affect their
+operation or prohibit the use of the extension in 0-RTT.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Application
+protocols MUST either prohibit the use of extensions that carry
+application semantics in 0-RTT or provide replay mitigation
+strategies.
+'''
+
