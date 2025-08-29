@@ -171,6 +171,19 @@ impl<T: Message> Consumer<T> {
     /// Releases consumed messages to the producer without waking the producer
     #[inline]
     pub fn release_no_wake(&mut self, release_len: u32) {
+        if release_len == 0 {
+            return;
+        }
+
+        debug_assert!(
+            release_len <= self.cursor.cached_consumer_len(),
+            "cannot release more messages than acquired"
+        );
+
+        unsafe {
+            sync_ring_regions::<_, false>(&self.cursor, release_len);
+        }
+
         self.cursor.release_consumer(release_len);
     }
 
@@ -556,4 +569,49 @@ mod tests {
     send_recv_test!(msg_send_recv, crate::message::msg::Message);
     #[cfg(s2n_quic_platform_socket_mmsg)]
     send_recv_test!(mmsg_send_recv, crate::message::mmsg::Message);
+
+    macro_rules! consumer_modifications_test {
+        ($name:ident, $msg:ty) => {
+            #[test]
+            fn $name() {
+                check!().with_type::<u32>().for_each(|&count| {
+                    let entries = if cfg!(kani) { 2 } else { 16 };
+                    let payload_len = if cfg!(kani) { 2 } else { 128 };
+                    let count = count % entries;
+
+                    let (mut producer, mut consumer) = pair::<$msg>(entries, payload_len);
+
+                    // Producer writes initial data
+                    producer.acquire(u32::MAX);
+                    for entry in &mut producer.data()[..count as usize] {
+                        unsafe {
+                            entry.set_payload_len(0);
+                        }
+                    }
+                    producer.release(count);
+
+                    // Consumer modifies the data
+                    let count = consumer.acquire(u32::MAX);
+                    for entry in &mut consumer.data()[..count as usize] {
+                        unsafe {
+                            entry.set_payload_len(payload_len as usize);
+                        }
+                    }
+                    consumer.release(count);
+
+                    // Verify modifications seen by producer for reuse
+                    producer.acquire(u32::MAX);
+                    for entry in producer.data() {
+                        assert_eq!(entry.payload_len(), payload_len as usize);
+                    }
+                });
+            }
+        };
+    }
+
+    consumer_modifications_test!(simple_rx_modifications, crate::message::simple::Message);
+    #[cfg(s2n_quic_platform_socket_msg)]
+    consumer_modifications_test!(msg_rx_modifications, crate::message::msg::Message);
+    #[cfg(s2n_quic_platform_socket_mmsg)]
+    consumer_modifications_test!(mmsg_rx_modifications, crate::message::mmsg::Message);
 }
