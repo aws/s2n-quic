@@ -15,3 +15,6 @@ heck = "0.5"
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
+
+[workspace]
+members = ["."]
