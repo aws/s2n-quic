@@ -65,9 +65,12 @@ impl EventInfo<'_> {
             crate_name: "s2n_quic",
             input_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../s2n-quic-core/events/**/*.rs"
+                "/../../quic/s2n-quic-core/events/**/*.rs"
             ),
-            output_path: concat!(env!("CARGO_MANIFEST_DIR"), "/../s2n-quic-core/src/event"),
+            output_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../quic/s2n-quic-core/src/event"
+            ),
             output_mode: OutputMode::Mut,
             s2n_quic_core_path: quote!(crate),
             api: quote!(),

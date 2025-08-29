@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // DO NOT MODIFY THIS FILE
-// This file was generated with the `s2n-quic-events` crate and any required
+// This file was generated with the `s2n-events` crate and any required
 // changes should be made there.
 
 #![allow(clippy::needless_lifetimes)]

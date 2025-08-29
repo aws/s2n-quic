@@ -32,7 +32,7 @@ RUN set -eux; \
   sed -i '/xdp/d' quic/s2n-quic-platform/Cargo.toml; \
   sed -i '/xdp/d' quic/s2n-quic-qns/Cargo.toml; \
   sed -i '/xdp/d' quic/s2n-quic/Cargo.toml; \
-  rm -rf quic/s2n-quic-bench quic/s2n-quic-events quic/s2n-quic-sim quic/s2n-quic-tests
+  rm -rf quic/s2n-quic-bench quic/s2n-quic-sim quic/s2n-quic-tests
 
 #################
 # Planner image #
