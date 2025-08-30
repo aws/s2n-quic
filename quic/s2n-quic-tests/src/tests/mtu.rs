@@ -99,7 +99,7 @@ fn mtu_updates<S: tls::Provider, C: tls::Provider>(
             .start()?;
         let addr = start_server(server)?;
         // we need a large payload to allow for multiple rounds of MTU probing
-        start_client(client, addr, Data::new(20_000_000))?;
+        start_client(client, addr, Data::new(50_000_000))?;
         Ok(addr)
     })
     .unwrap();
