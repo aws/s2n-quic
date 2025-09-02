@@ -277,7 +277,7 @@ mod counter {
                     19usize => Self(acceptor_tcp_packet_received__is_fin),
                     20usize => Self(acceptor_tcp_packet_received__is_fin_known),
                     34usize => Self(acceptor_udp_packet_received__is_zero_offset),
-                    35usize => Self(acceptor_udp_packet_received__is_retransmisson),
+                    35usize => Self(acceptor_udp_packet_received__is_retransmission),
                     36usize => Self(acceptor_udp_packet_received__is_fin),
                     37usize => Self(acceptor_udp_packet_received__is_fin_known),
                     84usize => Self(stream_write_shutdown__background),
@@ -306,8 +306,8 @@ mod counter {
                 fn acceptor_tcp_packet_received__is_fin_known(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_zero_offset]
                 fn acceptor_udp_packet_received__is_zero_offset(value: bool);
-                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_retransmisson]
-                fn acceptor_udp_packet_received__is_retransmisson(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_retransmission]
+                fn acceptor_udp_packet_received__is_retransmission(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_fin]
                 fn acceptor_udp_packet_received__is_fin(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__acceptor_udp_packet_received__is_fin_known]

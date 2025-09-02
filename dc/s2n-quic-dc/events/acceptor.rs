@@ -240,7 +240,7 @@ struct AcceptorUdpPacketReceived<'a> {
     is_zero_offset: bool,
 
     /// If the packet is a retransmission
-    #[bool_counter("is_retransmisson")]
+    #[bool_counter("is_retransmission")]
     is_retransmission: bool,
 
     /// If the packet includes the final bytes of the stream

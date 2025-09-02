@@ -226,7 +226,7 @@ static INFO: &[Info; 238usize] = &[
     .build(),
     info::Builder {
         id: 35usize,
-        name: Str::new("acceptor_udp_packet_received.is_retransmisson\0"),
+        name: Str::new("acceptor_udp_packet_received.is_retransmission\0"),
         units: Units::None,
     }
     .build(),
