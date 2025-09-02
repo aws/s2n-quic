@@ -459,7 +459,7 @@ jobs:
         run: curl -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
 
       - name: Run cargo llvm-cov
-        run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
+        run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --all-features
 
       - uses: aws-actions/configure-aws-credentials@v4.3.1
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
@@ -664,8 +664,37 @@ jobs:
         run: |
           ./scripts/copyright_check
 
+  s2n-events:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      # nightly features are used for formatting
+      - name: Install rust nightly toolchain
+        id: nightly-toolchain
+        run: |
+          rustup toolchain install nightly --component rustfmt
+
+      - name: Install rust stable toolchain
+        id: stable-toolchain
+        run: |
+          rustup toolchain install stable
+          rustup override set stable
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: format
+        working-directory: ./tools/s2n-events
+        run: cargo +nightly fmt -- --check
+
+      - name: test
+        working-directory: ./tools/s2n-events
+        run: cargo test
+
   # ensures the event codegen is up to date
-  events:
+  generate-events:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -682,11 +711,11 @@ jobs:
 
       - name: Run events codegen
         run: |
-          cargo run --bin s2n-quic-events
+          cargo run --manifest-path ./tools/s2n-events/Cargo.toml
 
       - name: Check to make sure the generated events are up-to-date
         run: |
-          # If this fails you need to run `cargo run --bin s2n-quic-events`
+          # If this fails you need to run `cargo run --manifest-path ./tools/s2n-events/Cargo.toml`
           git diff --exit-code
 
   # ensures there are no unused snapshots
@@ -964,7 +993,7 @@ jobs:
   ci-status-report:
     runs-on: ubuntu-latest
     if: ${{ always() }}
-    needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
+    needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, s2n-events, generate-events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
     steps:
       - uses: aws-actions/configure-aws-credentials@v4.3.1
         if: github.event_name != 'pull_request'
