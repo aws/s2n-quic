@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{parser::File, OutputMode};
+use crate::{parser::File, OutputConfig};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::path::{Path, PathBuf};
@@ -31,7 +31,7 @@ pub struct Output {
     pub endpoint_publisher_testing: TokenStream,
     pub connection_publisher_testing: TokenStream,
     pub extra: TokenStream,
-    pub mode: OutputMode,
+    pub config: OutputConfig,
     pub crate_name: &'static str,
     pub s2n_quic_core_path: TokenStream,
     pub top_level: TokenStream,
@@ -110,7 +110,7 @@ impl ToTokens for Output {
             endpoint_publisher_testing,
             connection_publisher_testing,
             extra,
-            mode,
+            config: _,
             s2n_quic_core_path,
             top_level,
             feature_alloc: _,
@@ -118,18 +118,19 @@ impl ToTokens for Output {
             root: _,
         } = self;
 
-        let imports = self.mode.imports();
-        let mutex = self.mode.mutex();
-        let testing_output_type = self.mode.testing_output_type();
-        let lock = self.mode.lock();
-        let supervisor = self.mode.supervisor();
-        let supervisor_timeout = self.mode.supervisor_timeout();
-        let supervisor_timeout_tuple = self.mode.supervisor_timeout_tuple();
-        let query_mut = self.mode.query_mut();
-        let query_mut_tuple = self.mode.query_mut_tuple();
-        let trait_constraints = self.mode.trait_constraints();
+        let mode = &self.config.mode;
+        let imports = self.config.imports();
+        let mutex = self.config.mutex();
+        let testing_output_type = self.config.testing_output_type();
+        let lock = self.config.lock();
+        let supervisor = self.config.supervisor();
+        let supervisor_timeout = self.config.supervisor_timeout();
+        let supervisor_timeout_tuple = self.config.supervisor_timeout_tuple();
+        let query_mut = self.config.query_mut();
+        let query_mut_tuple = self.config.query_mut_tuple();
+        let trait_constraints = self.config.trait_constraints();
 
-        let ref_subscriber = self.mode.ref_subscriber(quote!(
+        let ref_subscriber = self.config.ref_subscriber(quote!(
             type ConnectionContext = T::ConnectionContext;
 
             #[inline]
