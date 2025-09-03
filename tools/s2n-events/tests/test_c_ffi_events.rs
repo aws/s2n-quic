@@ -6,9 +6,7 @@ mod c_ffi_events;
 pub use c_ffi_events::event;
 use c_ffi_events::event::ConnectionPublisher;
 use s2n_quic_core::{
-    application,
     event::IntoEvent,
-    inet,
     time::{testing::Clock as MockClock, Clock},
 };
 

@@ -3,15 +3,15 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use s2n_events::{parser, validation, Output, Result};
+use s2n_events::{parser, validation, GenerateConfig, Output, OutputCApi, OutputMode, Result};
 
 struct EventInfo<'a> {
     input_path: &'a str,
     output_path: &'a str,
     crate_name: &'a str,
     s2n_quic_core_path: TokenStream,
-    builder: TokenStream,
     tracing_subscriber_def: TokenStream,
+    config: GenerateConfig,
 }
 
 impl EventInfo<'_> {
@@ -48,10 +48,11 @@ impl EventInfo<'_> {
             ),
             output_path: concat!(env!("CARGO_MANIFEST_DIR"), "/tests/c_ffi_events/event"),
             s2n_quic_core_path: quote!(s2n_quic_core),
-            builder: quote! {
-                pub use s2n_quic_core::event::builder::SocketAddress;
-            },
             tracing_subscriber_def,
+            config: GenerateConfig {
+                mode: OutputMode::Mut,
+                c_api: OutputCApi::Enabled,
+            },
         }
     }
 }
@@ -83,10 +84,10 @@ fn main() -> Result<()> {
 
         let mut output = Output {
             s2n_quic_core_path: event_info.s2n_quic_core_path,
-            builders: event_info.builder,
             tracing_subscriber_def: event_info.tracing_subscriber_def,
             crate_name: event_info.crate_name,
             root,
+            config: event_info.config,
             ..Default::default()
         };
 

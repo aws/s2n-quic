@@ -7,7 +7,7 @@ mod output;
 pub mod parser;
 pub mod validation;
 
-pub use generate_config::{GenerateConfig, OutputMode};
+pub use generate_config::{GenerateConfig, OutputCApi, OutputMode};
 pub use output::Output;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;

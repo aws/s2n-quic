@@ -217,7 +217,6 @@ pub mod tracing {
 }
 pub mod builder {
     use super::*;
-    pub use s2n_quic_core::event::builder::SocketAddress;
     #[derive(Clone, Debug)]
     pub struct ConnectionMeta {
         pub id: u64,
@@ -323,58 +322,6 @@ pub mod builder {
         }
     }
 }
-pub mod supervisor {
-    #![doc = r" This module contains the `supervisor::Outcome` and `supervisor::Context` for use"]
-    #![doc = r" when implementing [`Subscriber::supervisor_timeout`](crate::event::Subscriber::supervisor_timeout) and"]
-    #![doc = r" [`Subscriber::on_supervisor_timeout`](crate::event::Subscriber::on_supervisor_timeout)"]
-    #![doc = r" on a Subscriber."]
-    use crate::{
-        application,
-        event::{builder::SocketAddress, IntoEvent},
-    };
-    #[non_exhaustive]
-    #[derive(Clone, Debug, Eq, PartialEq)]
-    pub enum Outcome {
-        #[doc = r" Allow the connection to remain open"]
-        Continue,
-        #[doc = r" Close the connection and notify the peer"]
-        Close { error_code: application::Error },
-        #[doc = r" Close the connection without notifying the peer"]
-        ImmediateClose { reason: &'static str },
-    }
-    impl Default for Outcome {
-        fn default() -> Self {
-            Self::Continue
-        }
-    }
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct Context<'a> {
-        #[doc = r" Number of handshakes that have begun but not completed"]
-        pub inflight_handshakes: usize,
-        #[doc = r" Number of open connections"]
-        pub connection_count: usize,
-        #[doc = r" The address of the peer"]
-        pub remote_address: SocketAddress<'a>,
-        #[doc = r" True if the connection is in the handshake state, false otherwise"]
-        pub is_handshaking: bool,
-    }
-    impl<'a> Context<'a> {
-        pub fn new(
-            inflight_handshakes: usize,
-            connection_count: usize,
-            remote_address: &'a crate::inet::SocketAddress,
-            is_handshaking: bool,
-        ) -> Self {
-            Self {
-                inflight_handshakes,
-                connection_count,
-                remote_address: remote_address.into_event(),
-                is_handshaking,
-            }
-        }
-    }
-}
 pub use traits::*;
 mod traits {
     use super::*;
@@ -432,40 +379,6 @@ mod traits {
             meta: &api::ConnectionMeta,
             info: &api::ConnectionInfo,
         ) -> Self::ConnectionContext;
-        #[doc = r" The period at which `on_supervisor_timeout` is called"]
-        #[doc = r""]
-        #[doc = r" If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`"]
-        #[doc = r" across all `event::Subscriber`s will be used."]
-        #[doc = r""]
-        #[doc = r" If the `supervisor_timeout()` is `None` across all `event::Subscriber`s, connection supervision"]
-        #[doc = r" will cease for the remaining lifetime of the connection and `on_supervisor_timeout` will no longer"]
-        #[doc = r" be called."]
-        #[doc = r""]
-        #[doc = r" It is recommended to avoid setting this value less than ~100ms, as short durations"]
-        #[doc = r" may lead to higher CPU utilization."]
-        #[allow(unused_variables)]
-        fn supervisor_timeout(
-            &mut self,
-            conn_context: &mut Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            context: &supervisor::Context,
-        ) -> Option<Duration> {
-            None
-        }
-        #[doc = r" Called for each `supervisor_timeout` to determine any action to take on the connection based on the `supervisor::Outcome`"]
-        #[doc = r""]
-        #[doc = r" If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`"]
-        #[doc = r" across all `event::Subscriber`s will be used, and thus `on_supervisor_timeout` may be called"]
-        #[doc = r" earlier than the `supervisor_timeout` for a given `event::Subscriber` implementation."]
-        #[allow(unused_variables)]
-        fn on_supervisor_timeout(
-            &mut self,
-            conn_context: &mut Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            context: &supervisor::Context,
-        ) -> supervisor::Outcome {
-            supervisor::Outcome::default()
-        }
         #[doc = "Called when the `ByteArrayEvent` event is triggered"]
         #[inline]
         fn on_byte_array_event(
@@ -549,50 +462,6 @@ mod traits {
                 self.0.create_connection_context(meta, info),
                 self.1.create_connection_context(meta, info),
             )
-        }
-        #[inline]
-        fn supervisor_timeout(
-            &mut self,
-            conn_context: &mut Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            context: &supervisor::Context,
-        ) -> Option<Duration> {
-            let timeout_a = self
-                .0
-                .supervisor_timeout(&mut conn_context.0, meta, context);
-            let timeout_b = self
-                .1
-                .supervisor_timeout(&mut conn_context.1, meta, context);
-            match (timeout_a, timeout_b) {
-                (None, None) => None,
-                (None, Some(timeout)) | (Some(timeout), None) => Some(timeout),
-                (Some(a), Some(b)) => Some(a.min(b)),
-            }
-        }
-        #[inline]
-        fn on_supervisor_timeout(
-            &mut self,
-            conn_context: &mut Self::ConnectionContext,
-            meta: &api::ConnectionMeta,
-            context: &supervisor::Context,
-        ) -> supervisor::Outcome {
-            let outcome_a = self
-                .0
-                .on_supervisor_timeout(&mut conn_context.0, meta, context);
-            let outcome_b = self
-                .1
-                .on_supervisor_timeout(&mut conn_context.1, meta, context);
-            match (outcome_a, outcome_b) {
-                (supervisor::Outcome::ImmediateClose { reason }, _)
-                | (_, supervisor::Outcome::ImmediateClose { reason }) => {
-                    supervisor::Outcome::ImmediateClose { reason }
-                }
-                (supervisor::Outcome::Close { error_code }, _)
-                | (_, supervisor::Outcome::Close { error_code }) => {
-                    supervisor::Outcome::Close { error_code }
-                }
-                _ => supervisor::Outcome::Continue,
-            }
         }
         #[inline]
         fn on_byte_array_event(
