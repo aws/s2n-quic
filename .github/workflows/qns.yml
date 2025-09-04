@@ -165,7 +165,7 @@ jobs:
           docker pull "wesleyrosenblum/quic-network-simulator@$NETWORK_SIMULATOR_REF"
           docker pull "martenseemann/quic-interop-iperf-endpoint@$IPERF_ENDPOINT_REF"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.7
 
