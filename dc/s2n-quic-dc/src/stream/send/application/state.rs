@@ -4,6 +4,7 @@
 use crate::{
     credentials::Credentials,
     crypto::seal,
+    event::ConnectionPublisher,
     packet::stream::{self, encoder},
     stream::{
         packet_number,
@@ -22,11 +23,14 @@ use s2n_quic_core::{
 
 pub trait Message {
     fn max_segments(&self) -> usize;
+
+    /// Returns Some(bytes) if we allocated a buffer of size bytes.
+    /// None if no buffer was allocated.
     fn push<P: FnOnce(&mut UninitSlice) -> transmission::Event<()>>(
         &mut self,
         buffer_len: usize,
         p: P,
-    );
+    ) -> Option<usize>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -36,7 +40,7 @@ pub struct State {
 
 impl State {
     #[inline]
-    pub fn transmit<E, I, Clk, M>(
+    pub fn transmit<E, I, Clk, M, Pub>(
         &self,
         credits: flow::Credits,
         path: &path::Info,
@@ -49,12 +53,14 @@ impl State {
         clock: &Clk,
         message: &mut M,
         features: &TransportFeatures,
+        publisher: &Pub,
     ) -> Result<(), Error>
     where
         E: seal::Application,
         I: buffer::reader::Storage<Error = core::convert::Infallible>,
         Clk: Clock,
         M: Message,
+        Pub: ConnectionPublisher,
     {
         ensure!(
             credits.len > 0 || storage.buffer_is_empty() || credits.is_fin,
@@ -90,7 +96,7 @@ impl State {
                 (max_record_size as usize).min(estimated_len)
             };
 
-            message.push(buffer_len, |buffer| {
+            let res = message.push(buffer_len, |buffer| {
                 let stream_offset = reader.current_offset();
                 let mut reader = reader.track_read();
 
@@ -161,6 +167,12 @@ impl State {
                     has_more_app_data,
                 }
             });
+
+            if let Some(allocated_len) = res {
+                publisher.on_stream_write_allocated(crate::event::builder::StreamWriteAllocated {
+                    allocated_len,
+                });
+            }
 
             // bail if we've transmitted everything
             ensure!(!reader.buffer_is_empty(), break);

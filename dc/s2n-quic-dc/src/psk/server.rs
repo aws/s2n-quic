@@ -19,7 +19,7 @@ pub struct Provider {
 
 impl Provider {
     pub fn setup<
-        Provider: Prov + Clone + Send + Sync + 'static,
+        Provider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
         Event: s2n_quic::provider::event::Subscriber,
     >(

@@ -11,7 +11,7 @@ use crate::{
 };
 use core::{future::poll_fn, task::Poll};
 use s2n_quic_core::{inet::SocketAddress, time::Clock};
-use std::{net::TcpListener, os::fd::AsRawFd, time::Duration};
+use std::{net::TcpListener, time::Duration};
 use tokio::io::unix::AsyncFd;
 use tracing::debug;
 
@@ -62,6 +62,8 @@ where
 
         #[cfg(target_os = "linux")]
         {
+            use std::os::fd::AsRawFd;
+
             let res = unsafe {
                 libc::setsockopt(
                     acceptor.socket.get_ref().as_raw_fd(),

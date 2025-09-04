@@ -469,6 +469,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             true,
             mtu_config,
             limits.anti_amplification_multiplier(),
+            limits.pto_jitter_percentage(),
         );
 
         let amplification_outcome = path.on_bytes_received(datagram.payload_len);

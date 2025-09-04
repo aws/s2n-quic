@@ -176,6 +176,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     context.active_path(),
                     timestamp,
                     context.is_handshake_confirmed(),
+                    random_generator,
                 );
             }
         } else {
@@ -198,6 +199,7 @@ impl<Config: endpoint::Config> Manager<Config> {
                     context.active_path(),
                     timestamp,
                     context.is_handshake_confirmed(),
+                    random_generator,
                 );
             }
         }
@@ -279,11 +281,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         active_path: &Path<Config>,
         now: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     ) {
         debug_assert!(active_path.is_active());
         if self.pto_update_pending {
             // Update the PTO timer once per transmission burst to reduce CPU cost
-            self.update_pto_timer(active_path, now, is_handshake_confirmed);
+            self.update_pto_timer(active_path, now, is_handshake_confirmed, random_generator);
             debug_assert!(!self.pto_update_pending);
         }
         self.check_consistency(active_path, is_handshake_confirmed);
@@ -295,6 +298,7 @@ impl<Config: endpoint::Config> Manager<Config> {
         active_path: &Path<Config>,
         now: Timestamp,
         is_handshake_confirmed: bool,
+        random_generator: &mut Config::RandomGenerator,
     ) {
         self.pto_update_pending = false;
 
@@ -359,8 +363,10 @@ impl<Config: endpoint::Config> Manager<Config> {
                 now
             };
 
-            self.pto
-                .update(pto_base_timestamp, active_path.pto_period(self.space));
+            self.pto.update(
+                pto_base_timestamp,
+                active_path.pto_period_with_jitter(self.space, random_generator),
+            );
         })();
 
         self.check_consistency(active_path, is_handshake_confirmed);
@@ -693,7 +699,12 @@ impl<Config: endpoint::Config> Manager<Config> {
         // be restarted. This behavior is preferred, as detect_and_remove_lost_packets() will
         // cancel the loss timer, and there may still be ack eliciting packets pending that
         // require a PTO timer for recovery.
-        self.update_pto_timer(context.active_path(), timestamp, is_handshake_confirmed);
+        self.update_pto_timer(
+            context.active_path(),
+            timestamp,
+            is_handshake_confirmed,
+            random_generator,
+        );
 
         debug_assert!(
             !newly_acked_packets.is_empty(),

@@ -7,7 +7,7 @@ use crate::{
         testing::{dcquic::Context, Client, Server},
         Protocol,
     },
-    testing::{ext::*, sim, without_tracing},
+    testing::{ext::*, server_name, sim, without_tracing},
 };
 use bolero::{check, TypeGenerator};
 use bytes::BytesMut;
@@ -341,7 +341,13 @@ impl RpcHarness {
             let request = &b"hello"[..];
             let response = InMemoryResponse::from(BytesMut::new());
             let response = client
-                .rpc(handshake_addr, acceptor_addr, request, response)
+                .rpc(
+                    handshake_addr,
+                    acceptor_addr,
+                    request,
+                    response,
+                    server_name(),
+                )
                 .await
                 .unwrap();
             assert_eq!(response.as_ref(), request);

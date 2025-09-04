@@ -32,6 +32,16 @@ pub trait Handshake: Clone {
     fn map(&self) -> &secret::Map;
 }
 
+impl Handshake for crate::psk::server::Provider {
+    fn local_addr(&self) -> SocketAddr {
+        self.local_addr()
+    }
+
+    fn map(&self) -> &secret::Map {
+        self.map()
+    }
+}
+
 #[derive(Clone)]
 pub struct Server<H: Handshake + Clone, S: event::Subscriber + Clone> {
     streams: accept::Receiver<S>,

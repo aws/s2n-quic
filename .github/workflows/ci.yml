@@ -101,6 +101,11 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     needs: env
+    # clippy bot requires write permission for contents and pull-requests when creating PRs.
+    # create-pull-request action mandates this in https://github.com/marketplace/actions/create-pull-request#token
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -117,13 +122,31 @@ jobs:
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy on all workspaces
         run: |
+          # Clippy bot only runs on schedule event
+          CLIPPY_FIX_FLAG=""
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            CLIPPY_FIX_FLAG='--fix --allow-dirty'
+          fi
+
           WORKSPACES=$(echo '${{ needs.env.outputs.workspaces }}' | jq -r '.[]')
           for workspace in $WORKSPACES; do
             echo "Running clippy on $workspace"
             cd "$workspace"
-            cargo clippy --all-features --all-targets --workspace -- -D warnings
+            cargo clippy --all-features --all-targets --workspace $CLIPPY_FIX_FLAG -- -D warnings
             cd $GITHUB_WORKSPACE
           done
+
+      - name: Create clippy pull request
+        if: github.event_name == 'schedule'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          title: 'chore: clippy lint updates'
+          body: |
+            ### Description of changes: 
+            Fixes new Clippy lints in the latest Rust release. For details on the new lints, see the [Rust Blog](https://blog.rust-lang.org/releases/latest).
+
+            ### Testing:
+            CI clippy test should pass.
 
   udeps:
     runs-on: ubuntu-latest
@@ -172,7 +195,7 @@ jobs:
         env:
           RUSTDOCFLAGS: --cfg docsrs
 
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -436,9 +459,9 @@ jobs:
         run: curl -LsSf https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
 
       - name: Run cargo llvm-cov
-        run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --exclude s2n-quic-events --all-features
+        run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --all-features
 
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -552,7 +575,7 @@ jobs:
         run: |
           ./scripts/recovery-sim
 
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -603,7 +626,7 @@ jobs:
         run: |
           ./scripts/sim
 
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -641,8 +664,37 @@ jobs:
         run: |
           ./scripts/copyright_check
 
+  s2n-events:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      # nightly features are used for formatting
+      - name: Install rust nightly toolchain
+        id: nightly-toolchain
+        run: |
+          rustup toolchain install nightly --component rustfmt
+
+      - name: Install rust stable toolchain
+        id: stable-toolchain
+        run: |
+          rustup toolchain install stable
+          rustup override set stable
+
+      - uses: camshaft/rust-cache@v1
+
+      - name: format
+        working-directory: ./tools/s2n-events
+        run: cargo +nightly fmt -- --check
+
+      - name: test
+        working-directory: ./tools/s2n-events
+        run: cargo test
+
   # ensures the event codegen is up to date
-  events:
+  generate-events:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -659,11 +711,11 @@ jobs:
 
       - name: Run events codegen
         run: |
-          cargo run --bin s2n-quic-events
+          cargo run --manifest-path ./tools/s2n-events/Cargo.toml
 
       - name: Check to make sure the generated events are up-to-date
         run: |
-          # If this fails you need to run `cargo run --bin s2n-quic-events`
+          # If this fails you need to run `cargo run --manifest-path ./tools/s2n-events/Cargo.toml`
           git diff --exit-code
 
   # ensures there are no unused snapshots
@@ -716,7 +768,7 @@ jobs:
           cd examples/echo
           cargo build --timings --release --workspace
 
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -817,7 +869,7 @@ jobs:
           mv report.tsv target/report/
           mv dhat-heap.json target/report/
 
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -938,19 +990,20 @@ jobs:
         working-directory: dc/wireshark
         run: cargo xtask build
 
-  scheduled-ci-status-report:
+  ci-status-report:
     runs-on: ubuntu-latest
     if: ${{ always() }}
-    needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
+    needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, s2n-events, generate-events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
-        if: github.event_name == 'schedule'
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
+        if: github.event_name != 'pull_request'
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
           role-session-name: S2nQuicGHASession
           aws-region: us-west-2
       - name: Report daily CI run to CloudWatch
-        if: github.event_name == 'schedule'
+        if: github.event_name != 'pull_request'
         run: |
           METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
-          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
+          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFailure" \
+            --value $METRIC_VALUE --dimensions Initiator=${{github.event_name}} --timestamp $(date +%s)

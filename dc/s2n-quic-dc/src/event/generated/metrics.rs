@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // DO NOT MODIFY THIS FILE
-// This file was generated with the `s2n-quic-events` crate and any required
+// This file was generated with the `s2n-events` crate and any required
 // changes should be made there.
 
 use crate::event::{self, api, metrics::Recorder};
@@ -31,6 +31,7 @@ pub struct Context<R: Recorder> {
     stream_write_blocked: AtomicU64,
     stream_write_errored: AtomicU64,
     stream_write_key_updated: AtomicU64,
+    stream_write_allocated: AtomicU64,
     stream_write_shutdown: AtomicU64,
     stream_write_socket_flushed: AtomicU64,
     stream_write_socket_blocked: AtomicU64,
@@ -44,6 +45,7 @@ pub struct Context<R: Recorder> {
     stream_read_socket_flushed: AtomicU64,
     stream_read_socket_blocked: AtomicU64,
     stream_read_socket_errored: AtomicU64,
+    stream_decrypt_packet: AtomicU64,
     connection_closed: AtomicU64,
 }
 impl<R: Recorder> Context<R> {
@@ -71,6 +73,7 @@ where
             stream_write_blocked: AtomicU64::new(0),
             stream_write_errored: AtomicU64::new(0),
             stream_write_key_updated: AtomicU64::new(0),
+            stream_write_allocated: AtomicU64::new(0),
             stream_write_shutdown: AtomicU64::new(0),
             stream_write_socket_flushed: AtomicU64::new(0),
             stream_write_socket_blocked: AtomicU64::new(0),
@@ -84,6 +87,7 @@ where
             stream_read_socket_flushed: AtomicU64::new(0),
             stream_read_socket_blocked: AtomicU64::new(0),
             stream_read_socket_errored: AtomicU64::new(0),
+            stream_decrypt_packet: AtomicU64::new(0),
             connection_closed: AtomicU64::new(0),
         }
     }
@@ -145,6 +149,19 @@ where
             .fetch_add(1, Ordering::Relaxed);
         self.subscriber
             .on_stream_write_key_updated(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_write_allocated(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamWriteAllocated,
+    ) {
+        context
+            .stream_write_allocated
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_write_allocated(&context.recorder, meta, event);
     }
     #[inline]
     fn on_stream_write_shutdown(
@@ -308,6 +325,19 @@ where
             .on_stream_read_socket_errored(&context.recorder, meta, event);
     }
     #[inline]
+    fn on_stream_decrypt_packet(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamDecryptPacket,
+    ) {
+        context
+            .stream_decrypt_packet
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_decrypt_packet(&context.recorder, meta, event);
+    }
+    #[inline]
     fn on_connection_closed(
         &self,
         context: &Self::ConnectionContext,
@@ -340,6 +370,10 @@ impl<R: Recorder> Drop for Context<R> {
         self.recorder.increment_counter(
             "stream_write_key_updated",
             self.stream_write_key_updated.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_write_allocated",
+            self.stream_write_allocated.load(Ordering::Relaxed) as _,
         );
         self.recorder.increment_counter(
             "stream_write_shutdown",
@@ -392,6 +426,10 @@ impl<R: Recorder> Drop for Context<R> {
         self.recorder.increment_counter(
             "stream_read_socket_errored",
             self.stream_read_socket_errored.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_decrypt_packet",
+            self.stream_decrypt_packet.load(Ordering::Relaxed) as _,
         );
         self.recorder.increment_counter(
             "connection_closed",

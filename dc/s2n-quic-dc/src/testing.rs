@@ -6,7 +6,7 @@ use crate::{
     path::secret::{stateless_reset::Signer, Map},
     psk::{client, server},
 };
-use s2n_quic::{provider::tls::Provider, Connection};
+use s2n_quic::{provider::tls::Provider, server::Name, Connection};
 use s2n_quic_core::{crypto::tls::testing::certificates, time::StdClock};
 use std::{sync::OnceLock, time::Duration};
 
@@ -14,7 +14,12 @@ pub use bach::{ext, rand};
 
 use s2n_quic::provider::tls::default as s2n_quic_tls_prov;
 
-pub(crate) const SNI: &str = "localhost";
+pub static SNI: OnceLock<Name> = OnceLock::new();
+
+#[doc(hidden)]
+pub fn server_name() -> Name {
+    SNI.get_or_init(|| "localhost".into()).clone()
+}
 
 pub mod task {
     pub use bach::task::*;
@@ -278,7 +283,7 @@ impl Pair {
                 tls_materials_provider,
                 test_event_subscriber,
                 query_event,
-                SNI.to_string(),
+                server_name(),
             )
             .unwrap();
 
@@ -319,7 +324,7 @@ impl Pair {
                 tls_materials_provider,
                 test_event_subscriber,
                 query_event,
-                SNI.to_string(),
+                server_name(),
             )
             .unwrap();
 

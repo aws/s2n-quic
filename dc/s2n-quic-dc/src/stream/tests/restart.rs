@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::{testing::dcquic::Context, Protocol};
+use crate::{
+    stream::{testing::dcquic::Context, Protocol},
+    testing::server_name,
+};
 use std::{io, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{info_span, Instrument};
@@ -43,7 +46,7 @@ async fn check_stream(
         async {
             let mut a = context
                 .client
-                .connect(handshake_addr, acceptor_addr)
+                .connect(handshake_addr, acceptor_addr, server_name())
                 .await?;
             let _ = a.write_all(b"testing").await;
 

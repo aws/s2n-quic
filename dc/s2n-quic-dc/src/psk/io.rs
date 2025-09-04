@@ -10,6 +10,7 @@ use s2n_quic::{
         event::Subscriber as Sub,
         tls::Provider as Prov,
     },
+    server::Name,
     Connection,
 };
 use std::{
@@ -28,6 +29,8 @@ pub const DEFAULT_BASE_MTU: u16 = 1450;
 pub const DEFAULT_MTU: u16 = 8940;
 #[cfg(not(target_os = "linux"))]
 pub const DEFAULT_MTU: u16 = DEFAULT_BASE_MTU;
+/// Jitter PTO probes by 33% to prevent synchronized timeouts across multiple connections
+pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 33;
 const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(1);
 
 const BUFFER_SIZE: usize = 16 * 1024;
@@ -42,7 +45,7 @@ pub struct Server {
 
 impl Server {
     pub fn bind<
-        Provider: Prov + Clone + Send + Sync + 'static,
+        Provider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
         Event: s2n_quic::provider::event::Subscriber,
     >(
@@ -87,7 +90,7 @@ impl Server {
 }
 
 pub(super) async fn server<
-    Provider: Prov + Clone + Send + Sync + 'static,
+    Provider: Prov + Send + Sync + 'static,
     Subscriber: Sub + Send + Sync + 'static,
     Event: s2n_quic::provider::event::Subscriber,
 >(
@@ -162,7 +165,7 @@ impl Client {
     }
 
     pub fn bind<
-        Provider: Prov + Clone + Send + Sync + 'static,
+        Provider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
         Event: s2n_quic::provider::event::Subscriber,
     >(
@@ -207,7 +210,7 @@ impl Client {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
-        server_name: String,
+        server_name: Name,
     ) -> Result<(), HandshakeFailed> {
         self.queue
             .clone()
@@ -313,7 +316,7 @@ impl HandshakeQueue {
         client: &s2n_quic::Client,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
-        server_name: String,
+        server_name: Name,
     ) -> Result<(), HandshakeFailed> {
         let entry = self.allocate_entry(peer);
         let entry2 = entry.clone();

@@ -6,7 +6,7 @@ on:
     branches:
       - main
   schedule:
-    # Run daily job at 8:00 PM PT
+    # Run the daily job at 8 PM PST / 3 AM UTC
     - cron: '0 3 * * *'
 
 name: qns
@@ -165,7 +165,7 @@ jobs:
           docker pull "wesleyrosenblum/quic-network-simulator@$NETWORK_SIMULATOR_REF"
           docker pull "martenseemann/quic-interop-iperf-endpoint@$IPERF_ENDPOINT_REF"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.7
 
@@ -224,7 +224,7 @@ jobs:
                 $from
           done
 
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -322,7 +322,7 @@ jobs:
             results/**/result.json > \
               web/logs/latest/result.json
 
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -480,7 +480,7 @@ jobs:
           cd perf-results
           tree -H "." -T "Performance Results" --noreport --charset utf-8 > index.html
 
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'push' || github.event_name == 'schedule' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -552,19 +552,39 @@ jobs:
           # `timeout` exits with `124` if the time limit was reached
           [[ "$EXIT_CODE" == "124" ]] || exit $EXIT_CODE
 
-  scheduled-qns-status-report:
+  retry-failures:
     runs-on: ubuntu-latest
-    if: ${{ always() }}
-    needs: [env, s2n-quic-qns, interop, interop-report, h3spec, perf, perf-report, attack]
+    needs: [interop-report]
+    if: failure() && fromJSON(github.run_attempt) < 3 && github.event_name != 'pull_request'
+    permissions:
+      actions: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4.3.1
-        if: github.event_name == 'schedule'
+      - name: Run retry.yml
+        run: |
+          # You cannot rerun an in-progress workflow, so you cannot rerun a workflow
+          # from inside that same workflow. Instead, start a new workflow.
+          # The new workflow will wait for this run to complete, then retry.
+          gh workflow run retry.yml \
+            -r ${{ github.head_ref || github.ref_name }} \
+            -F run_id=${{ github.run_id }}
+
+  qns-status-report:
+    runs-on: ubuntu-latest
+    if: always() && needs.retry-failures.result == 'skipped'
+    needs: [retry-failures, env, s2n-quic-qns, interop, interop-report, h3spec, perf, perf-report, attack]
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
+        if: github.event_name != 'pull_request'
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
           role-session-name: S2nQuicGHASession
           aws-region: us-west-2
       - name: Report daily qns run to CloudWatch
-        if: github.event_name == 'schedule'
+        if: github.event_name != 'pull_request'
         run: |
           METRIC_VALUE=${{ contains(needs.*.result, 'failure') && '1' || '0' }}
-          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFaliure" --value $METRIC_VALUE --dimensions Initiator=scheduled --timestamp $(date +%s)
+          aws cloudwatch put-metric-data --namespace "Github" --metric-name "ActionCIFailure" \
+            --value $METRIC_VALUE --dimensions Initiator=${{github.event_name}} --timestamp $(date +%s)

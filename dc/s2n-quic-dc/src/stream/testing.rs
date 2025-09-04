@@ -13,9 +13,8 @@ use crate::{
         server::{self as stream_server, accept, stats},
         socket::Protocol,
     },
-    testing::{NoopSubscriber, SNI},
+    testing::NoopSubscriber,
 };
-use s2n_quic::Connection;
 use s2n_quic_core::dc::{self, ApplicationParams};
 use s2n_quic_platform::socket;
 use std::{
@@ -24,7 +23,6 @@ use std::{
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    time::Duration,
 };
 use tracing::Instrument;
 
@@ -48,36 +46,6 @@ pub(crate) const MAX_DATAGRAM_SIZE: u16 = if cfg!(target_os = "linux") {
 };
 
 type Env = Either<tokio::Environment<Subscriber>, bach::Environment<Subscriber>>;
-
-pub(crate) fn query_event(_connection: &mut Connection, _limiter_duration: Duration) {}
-
-impl stream_client::tokio::Handshake for ClientProvider {
-    async fn handshake_with_entry(
-        &self,
-        remote_handshake_addr: SocketAddr,
-    ) -> std::io::Result<(secret::map::Peer, secret::HandshakeKind)> {
-        self.handshake_with_entry(remote_handshake_addr, query_event, SNI.to_string())
-            .await
-    }
-
-    fn local_addr(&self) -> std::io::Result<SocketAddr> {
-        self.local_addr()
-    }
-
-    fn map(&self) -> &secret::Map {
-        self.map()
-    }
-}
-
-impl stream_server::tokio::Handshake for ServerProvider {
-    fn local_addr(&self) -> SocketAddr {
-        self.local_addr()
-    }
-
-    fn map(&self) -> &secret::Map {
-        self.map()
-    }
-}
 
 pub fn bind_pair(
     protocol: Protocol,
@@ -168,6 +136,7 @@ pub mod dcquic {
             socket::Protocol,
             testing::{bind_pair, NoopSubscriber},
         },
+        testing::server_name,
     };
     use std::net::SocketAddr;
 
@@ -241,7 +210,7 @@ pub mod dcquic {
             let (client, server) = tokio::join!(
                 async move {
                     self.client
-                        .connect(handshake_addr, acceptor_addr)
+                        .connect(handshake_addr, acceptor_addr, server_name())
                         .await
                         .expect("connect")
                 },

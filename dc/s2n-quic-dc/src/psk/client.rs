@@ -5,6 +5,7 @@ use super::io::{self, HandshakeFailed};
 use crate::path::secret;
 use s2n_quic::{
     provider::{event::Subscriber as Sub, tls::Provider as Prov},
+    server::Name,
     Connection,
 };
 use std::{net::SocketAddr, sync::Arc, time::Duration};
@@ -54,7 +55,7 @@ fn make_runtime() -> (Arc<Runtime>, DropGuard) {
 
 impl State {
     fn new_runtime<
-        Provider: Prov + Clone + Send + Sync + 'static,
+        Provider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
         Event: s2n_quic::provider::event::Subscriber,
     >(
@@ -91,7 +92,7 @@ impl Provider {
     }
 
     pub fn new<
-        Provider: Prov + Clone + Send + Sync + 'static,
+        Provider: Prov + Send + Sync + 'static,
         Subscriber: Sub + Send + Sync + 'static,
         Event: s2n_quic::provider::event::Subscriber,
     >(
@@ -101,7 +102,7 @@ impl Provider {
         subscriber: Subscriber,
         query_event_callback: fn(&mut Connection, Duration),
         builder: Builder<Event>,
-        server_name: String,
+        server_name: Name,
     ) -> io::Result<Self> {
         let state = State::new_runtime(
             addr,
@@ -118,8 +119,6 @@ impl Provider {
             if let Some(state) = weak.upgrade() {
                 let runtime = state.runtime.as_ref().map(|v| &v.0).unwrap();
                 let client = state.client.clone();
-
-                // Avoiding lifetime and move issues
                 let server_name = server_name.clone();
                 // Drop the JoinHandle -- we're not actually going to block on the join handle's
                 // result. The future will keep running in the background.
@@ -145,7 +144,7 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
-        server_name: String,
+        server_name: Name,
     ) -> std::io::Result<HandshakeKind> {
         // Avoiding lifetime and move issues
         let server_name = server_name.clone();
@@ -164,14 +163,12 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
-        server_name: String,
+        server_name: Name,
     ) -> std::io::Result<(secret::map::Peer, HandshakeKind)> {
-        // Avoiding lifetime and move issues
-        let server_name_clone = server_name.clone();
         // Unconditionally request a background handshake. This schedules any re-handshaking
         // needed.
         if self.state.runtime.is_some() {
-            let _ = self.background_handshake_with(peer, query_event_callback, server_name_clone);
+            let _ = self.background_handshake_with(peer, query_event_callback, server_name.clone());
         }
 
         if let Some(peer) = self.state.map.get_tracked(peer) {
@@ -212,7 +209,7 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
-        server_name: String,
+        server_name: Name,
     ) -> std::io::Result<HandshakeKind> {
         if self.state.map.contains(&peer) {
             return Ok(HandshakeKind::Cached);
@@ -222,6 +219,7 @@ impl Provider {
         let server_name = server_name.clone();
         let client = self.state.client.clone();
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
+            let server_name = server_name.clone();
             // Drop the JoinHandle -- we're not actually going to block on the join handle's
             // result. The future will keep running in the background.
             runtime.spawn(async move {
@@ -252,14 +250,12 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
-        server_name: String,
+        server_name: Name,
     ) -> std::io::Result<HandshakeKind> {
-        // Avoiding lifetime and move issues
-        let server_name_clone = server_name.clone();
         // Unconditionally request a background handshake. This schedules any re-handshaking
         // needed.
         if self.state.runtime.is_some() {
-            let _ = self.background_handshake_with(peer, query_event_callback, server_name_clone);
+            let _ = self.background_handshake_with(peer, query_event_callback, server_name.clone());
         }
 
         if self.state.map.contains(&peer) {
@@ -289,7 +285,7 @@ impl Provider {
         &self,
         peer: SocketAddr,
         query_event_callback: fn(&mut Connection, Duration),
-        server_name: String,
+        server_name: Name,
     ) -> std::io::Result<secret::map::Peer> {
         // Avoiding lifetime and move issues
         let server_name = server_name.clone();
