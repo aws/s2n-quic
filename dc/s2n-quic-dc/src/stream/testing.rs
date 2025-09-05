@@ -56,8 +56,6 @@ pub fn bind_pair(
     ClientTokio<ClientProvider, NoopSubscriber>,
     ServerTokio<ServerProvider, NoopSubscriber>,
 ) {
-    tracing::info!("Binding pair!");
-
     let test_subscriber = NoopSubscriber {};
     let client = ClientTokio::<ClientProvider, NoopSubscriber>::builder()
         .with_default_protocol(protocol)
@@ -178,7 +176,6 @@ pub mod dcquic {
         }
 
         pub async fn bind(protocol: Protocol, addr: SocketAddr) -> Self {
-            tracing::info!("Bind function called.");
             Self::bind_with(protocol, addr, crate::testing::Pair::default()).await
         }
 
@@ -187,9 +184,7 @@ pub mod dcquic {
             addr: SocketAddr,
             pair: crate::testing::Pair,
         ) -> Self {
-            tracing::info!("Bind with function called.");
             let (client, server) = pair.build().await;
-            tracing::info!("Server client provider successfully built.");
             let (client, server) = bind_pair(protocol, addr, client, server);
             Self {
                 client,

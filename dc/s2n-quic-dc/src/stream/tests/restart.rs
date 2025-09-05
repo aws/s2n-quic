@@ -99,17 +99,12 @@ impl Harness {
 
     async fn run_one(&self, bidirectional: bool, sleep_before_shutdown: bool) {
         tracing::info!(bidirectional, sleep_before_shutdown);
-        tracing::info!("About to create context!");
         let context = Context::bind(self.protocol, "127.0.0.1:0".parse().unwrap()).await;
-
-        tracing::info!("Context created!");
 
         check_stream(&context, bidirectional, sleep_before_shutdown)
             .instrument(info_span!("first"))
             .await
             .unwrap();
-
-        tracing::info!("First check stream succeeded.");
 
         match self.drop {
             Side::Client => context.client.drop_state(),
@@ -119,8 +114,6 @@ impl Harness {
                 context.server.drop_state();
             }
         }
-
-        tracing::info!("Restart started!");
 
         // This might fail, we don't care. At least two streams should fail before we
         // manage to successfully establish after dropping state.
