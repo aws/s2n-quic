@@ -112,7 +112,7 @@ impl Code {
     }
 
     #[inline]
-    pub(crate) fn as_varint(self) -> VarInt {
+    pub fn as_varint(self) -> VarInt {
         self.0
     }
 }
