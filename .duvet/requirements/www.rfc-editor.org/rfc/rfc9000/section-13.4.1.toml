@@ -1,0 +1,44 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-13.4.1"
+
+# Reporting ECN Counts
+#
+#    The use of ECN requires the receiving endpoint to read the ECN field
+#    from an IP packet, which is not possible on all platforms.  If an
+#    endpoint does not implement ECN support or does not have access to
+#    received ECN fields, it does not report ECN counts for packets it
+#    receives.
+# 
+#    Even if an endpoint does not set an ECT field in packets it sends,
+#    the endpoint MUST provide feedback about ECN markings it receives, if
+#    these are accessible.  Failing to report the ECN counts will cause
+#    the sender to disable the use of ECN for this connection.
+# 
+#    On receiving an IP packet with an ECT(0), ECT(1), or ECN-CE
+#    codepoint, an ECN-enabled endpoint accesses the ECN field and
+#    increases the corresponding ECT(0), ECT(1), or ECN-CE count.  These
+#    ECN counts are included in subsequent ACK frames; see Sections 13.2
+#    and 19.3.
+# 
+#    Each packet number space maintains separate acknowledgment state and
+#    separate ECN counts.  Coalesced QUIC packets (see Section 12.2) share
+#    the same IP header so the ECN counts are incremented once for each
+#    coalesced QUIC packet.
+# 
+#    For example, if one each of an Initial, Handshake, and 1-RTT QUIC
+#    packet are coalesced into a single UDP datagram, the ECN counts for
+#    all three packet number spaces will be incremented by one each, based
+#    on the ECN field of the single IP header.
+# 
+#    ECN counts are only incremented when QUIC packets from the received
+#    IP packet are processed.  As such, duplicate QUIC packets are not
+#    processed and do not increase ECN counts; see Section 21.10 for
+#    relevant security concerns.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Even if an endpoint does not set an ECT field in packets it sends,
+the endpoint MUST provide feedback about ECN markings it receives, if
+these are accessible.
+'''
+
