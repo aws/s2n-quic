@@ -89,8 +89,15 @@ async fn multiple_shutdown_test() {
     let context = Context::new().await;
     let (mut client, server) = context.pair().await;
 
-    for _ in 0..3 {
-        client.shutdown().await.unwrap();
+    for i in 0..3 {
+        if i > 0 && cfg!(target_os = "macos") {
+            assert_eq!(
+                client.shutdown().await.unwrap_err().kind(),
+                ErrorKind::NotConnected
+            );
+        } else {
+            client.shutdown().await.unwrap();
+        }
     }
 
     drop(server);
