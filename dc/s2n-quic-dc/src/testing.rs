@@ -249,10 +249,13 @@ impl Pair {
     }
 
     pub async fn build(self) -> (client::Provider, server::Provider) {
+        tracing::info!("Build function called.");
         init_tracing();
 
         let tls_materials_provider = TestTlsProvider {};
         let test_event_subscriber = NoopSubscriber {};
+
+        tracing::info!("Building a server provider.");
 
         let server = self
             .server()
@@ -269,6 +272,8 @@ impl Pair {
             )
             .await
             .unwrap();
+
+        tracing::info!("Building a client provider.");
 
         let client = self
             .client()
