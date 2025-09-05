@@ -361,10 +361,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
             context.event_subscriber,
         );
 
-        let connection_info = ConnectionInfo::new(&remote_address);
-
-        let local_connection_id = context.connection_id_format.generate(&connection_info);
-
         match outcome {
             Outcome::Allow { .. } => Some(()),
             Outcome::Retry { .. } => {
@@ -376,6 +372,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# Section 18.2, forces the server to demonstrate that it, or an entity
                 //# it cooperates with, received the original Initial packet from the
                 //# client.
+
+                let connection_info = ConnectionInfo::new(&remote_address);
+
+                let local_connection_id = context.connection_id_format.generate(&connection_info);
 
                 self.retry_dispatch.queue::<
                     _,
@@ -395,6 +395,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# If a server refuses to accept a new connection, it SHOULD send an
                 //# Initial packet containing a CONNECTION_CLOSE frame with error code
                 //# CONNECTION_REFUSED.
+
+                let connection_info = ConnectionInfo::new(&remote_address);
+
+                let local_connection_id = context.connection_id_format.generate(&connection_info);
 
                 self.connection_close_dispatch.queue::<
                     <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
