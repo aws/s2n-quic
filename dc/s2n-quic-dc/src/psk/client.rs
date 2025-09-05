@@ -146,6 +146,8 @@ impl Provider {
         query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<HandshakeKind> {
+        // Avoiding lifetime and move issues
+        let server_name = server_name.clone();
         let (_peer, kind) = self
             .handshake_with_entry(peer, query_event_callback, server_name)
             .await?;
@@ -201,7 +203,7 @@ impl Provider {
         Ok((peer, HandshakeKind::Fresh))
     }
 
-    /// Handshake with a peer in the background.∂
+    /// Handshake with a peer in the background.
     #[inline]
     pub fn background_handshake_with(
         &self,
@@ -213,6 +215,8 @@ impl Provider {
             return Ok(HandshakeKind::Cached);
         }
 
+        // Avoiding lifetime and move issues
+        let server_name = server_name.clone();
         let client = self.state.client.clone();
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
             let server_name = server_name.clone();
@@ -283,6 +287,8 @@ impl Provider {
         query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<secret::map::Peer> {
+        // Avoiding lifetime and move issues
+        let server_name = server_name.clone();
         let state = self.state.clone();
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
             runtime
