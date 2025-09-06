@@ -32,9 +32,12 @@ pub enum Outcome {
 
     /// Cleanly close the connection
     ///
-    /// Use `Outcome::close()` to construct this variant
+    /// Use `Outcome::close()` or `Outcome::close_with_reason()` to construct this variant
     #[non_exhaustive]
-    Close,
+    Close {
+        /// An optional reason message to include in the CONNECTION_CLOSE frame
+        reason: Option<&'static [u8]>,
+    },
 }
 
 impl Outcome {
@@ -54,8 +57,10 @@ impl Outcome {
     }
 
     /// Cleanly close the connection
-    pub fn close() -> Self {
-        Self::Close
+    pub fn close(reason: &'static [u8]) -> Self {
+        Self::Close {
+            reason: Some(reason),
+        }
     }
 }
 

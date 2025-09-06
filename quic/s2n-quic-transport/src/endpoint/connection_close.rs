@@ -18,6 +18,8 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
+static DEFAULT_REASON: &str = "The server's limiter refused the connection";
+
 #[derive(Debug)]
 pub struct Dispatch<Path: path::Handle> {
     transmissions: VecDeque<Transmission<Path>>,
@@ -41,10 +43,12 @@ impl<Path: path::Handle> Dispatch<Path> {
         path_handle: Path,
         packet: &s2n_quic_core::packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
+        reason: Option<&[u8]>,
     ) where
         <C as InitialKey>::HeaderKey: InitialHeaderKey,
     {
-        if let Some(transmission) = Transmission::new::<C>(path_handle, packet, local_connection_id)
+        if let Some(transmission) =
+            Transmission::new::<C>(path_handle, packet, local_connection_id, reason)
         {
             self.transmissions.push_back(transmission);
         }
@@ -102,6 +106,7 @@ impl<Path: path::Handle> Transmission<Path> {
         path: Path,
         packet: &s2n_quic_core::packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
+        reason: Option<&[u8]>,
     ) -> Option<Self>
     where
         <C as InitialKey>::HeaderKey: InitialHeaderKey,
@@ -124,7 +129,7 @@ impl<Path: path::Handle> Transmission<Path> {
         let connection_close = ConnectionClose {
             error_code: transport::Error::CONNECTION_REFUSED.code.as_varint(),
             frame_type: Some(VarInt::ZERO),
-            reason: Some(b"The server's limiter refused the connection"),
+            reason: reason.or(Some(DEFAULT_REASON.as_bytes())),
         };
 
         let mut encoded_frame = connection_close.encode_to_vec();

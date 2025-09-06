@@ -390,7 +390,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
                 None
             }
-            Outcome::Close { .. } => {
+            Outcome::Close { reason, .. } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
                 //# If a server refuses to accept a new connection, it SHOULD send an
                 //# Initial packet containing a CONNECTION_CLOSE frame with error code
@@ -406,6 +406,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     header.path,
                     packet,
                     local_connection_id,
+                    reason,
                 );
 
                 publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {

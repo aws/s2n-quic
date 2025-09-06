@@ -5,19 +5,21 @@ use super::*;
 use s2n_quic::provider::endpoint_limits::{ConnectionAttempt, Limiter, Outcome};
 use s2n_quic_core::{connection::error::Error, endpoint};
 
-/// A custom limiter that always returns Outcome::close()
-struct AlwaysCloseLimiter;
+static REASON: &str = "Always close connections for testing purpose";
 
-impl Limiter for AlwaysCloseLimiter {
+/// A custom limiter that always returns Outcome::close() with a reason
+struct AlwaysCloseLimiterWithReason;
+
+impl Limiter for AlwaysCloseLimiterWithReason {
     fn on_connection_attempt(&mut self, _info: &ConnectionAttempt) -> Outcome {
-        Outcome::close()
+        Outcome::close(REASON.as_bytes())
     }
 }
 
 // This test verifies that when the server would send a CONNECTION_CLOSE frame with
 // error code CONNECTION_REFUSED when the server's limiter returns Outcome::close().
 #[test]
-fn endpoint_limits_test() {
+fn endpoint_limits_close_test() {
     let model = Model::default();
 
     let connection_close_subscriber = recorder::ConnectionClosed::new();
@@ -29,7 +31,7 @@ fn endpoint_limits_test() {
             .with_tls(SERVER_CERTS)?
             .with_event(tracing_events())?
             .with_random(Random::with_seed(456))?
-            .with_endpoint_limits(AlwaysCloseLimiter)?
+            .with_endpoint_limits(AlwaysCloseLimiterWithReason)?
             .start()?;
 
         let server_addr = start_server(server)?;
@@ -64,7 +66,8 @@ fn endpoint_limits_test() {
         Error::Transport {
             code,
             initiator,
+            reason,
             ..
-        } if (code == s2n_quic_core::transport::Error::CONNECTION_REFUSED.code && initiator == endpoint::Location::Remote)
+        } if (code == s2n_quic_core::transport::Error::CONNECTION_REFUSED.code && initiator == endpoint::Location::Remote && reason == "")
     ));
 }
