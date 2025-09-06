@@ -3,17 +3,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-
-type Error = Box<dyn std::error::Error + Send + Sync>;
-type Result<T, E = Error> = core::result::Result<T, E>;
-
-mod output;
-mod output_mode;
-mod parser;
-mod validation;
-
-use output::Output;
-use output_mode::OutputMode;
+use s2n_events::{Output, OutputMode, Result, parser, validation};
 
 struct EventInfo<'a> {
     input_path: &'a str,
