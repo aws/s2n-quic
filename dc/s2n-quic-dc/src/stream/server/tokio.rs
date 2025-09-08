@@ -75,6 +75,15 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
         &self.handshake
     }
 
+    /// Should generally only be used for advanced users.
+    ///
+    /// This should not be used for spawning heavy-weight work (e.g., request processing), and is
+    /// generally best used for tiny tasks which intermediate to some other runtime. For example,
+    /// it can work well for having some small processing to then send into another channel.
+    pub fn acceptor_rt(&self) -> tokio::runtime::Handle {
+        (*self.acceptor_rt).clone()
+    }
+
     #[inline]
     pub async fn accept(&self) -> io::Result<(crate::stream::application::Stream<S>, SocketAddr)> {
         accept::accept(&self.streams, &self.stats).await
