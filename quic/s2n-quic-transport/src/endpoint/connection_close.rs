@@ -156,19 +156,17 @@ impl<Path: path::Handle> Transmission<Path> {
             PacketNumberSpace::Initial.new_packet_number(VarInt::ZERO);
 
         // Use the PacketEncoder trait to encode, encrypt, and protect the packet
-        let packet_range = match initial_packet.encode_packet(
-            &mut initial_key,
-            &initial_header_key,
-            largest_acknowledged_packet_number,
-            None,
-            s2n_codec::EncoderBuffer::new(&mut packet_buf),
-        ) {
-            Ok((protected_payload, _)) => 0..protected_payload.len(),
-            Err(e) => {
-                println!("The error is {:?}", e);
-                return None;
-            }
-        };
+        let encrypted_initial_packet = initial_packet
+            .encode_packet(
+                &mut initial_key,
+                &initial_header_key,
+                largest_acknowledged_packet_number,
+                None,
+                s2n_codec::EncoderBuffer::new(&mut packet_buf),
+            )
+            .unwrap();
+
+        let packet_range = 0..encrypted_initial_packet.0.len();
 
         Some(Self {
             path,

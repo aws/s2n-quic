@@ -32,7 +32,7 @@ pub enum Outcome {
 
     /// Cleanly close the connection
     ///
-    /// Use `Outcome::close()` or `Outcome::close_with_reason()` to construct this variant
+    /// Use `Outcome::close()` to construct this variant
     #[non_exhaustive]
     Close {
         /// An optional reason message to include in the CONNECTION_CLOSE frame

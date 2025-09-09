@@ -66,8 +66,7 @@ fn endpoint_limits_close_test() {
         Error::Transport {
             code,
             initiator,
-            reason,
             ..
-        } if (code == s2n_quic_core::transport::Error::CONNECTION_REFUSED.code && initiator == endpoint::Location::Remote && reason == "")
+        } if (code == s2n_quic_core::transport::Error::CONNECTION_REFUSED.code && initiator == endpoint::Location::Remote)
     ));
 }
