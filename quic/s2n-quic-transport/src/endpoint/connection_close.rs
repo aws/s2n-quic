@@ -13,12 +13,12 @@ use s2n_quic_core::{
     inet::ExplicitCongestionNotification,
     io::tx,
     packet::{initial::CleartextInitial, number::PacketNumberSpace},
-    path::{self, MINIMUM_MAX_DATAGRAM_SIZE},
-    time, transport,
+    path, time, transport,
     varint::VarInt,
 };
 
 static DEFAULT_REASON: &str = "The server's limiter refused the connection";
+static DEFAULT_SIZE: usize = 150;
 
 #[derive(Debug)]
 pub struct Dispatch<Path: path::Handle> {
@@ -85,7 +85,7 @@ impl<Path: path::Handle> Dispatch<Path> {
 
 pub struct Transmission<Path: path::Handle> {
     path: Path,
-    packet: [u8; MINIMUM_MAX_DATAGRAM_SIZE as usize],
+    packet: [u8; DEFAULT_SIZE],
     packet_range: Range<usize>,
     version: u32,
     packet_number: u64,
@@ -123,7 +123,7 @@ impl<Path: path::Handle> Transmission<Path> {
             return None;
         }
 
-        let mut packet_buf = [0u8; MINIMUM_MAX_DATAGRAM_SIZE as usize];
+        let mut packet_buf = [0u8; DEFAULT_SIZE];
 
         // Create a connection close frame with CONNECTION_REFUSED error code
         let connection_close = ConnectionClose {
