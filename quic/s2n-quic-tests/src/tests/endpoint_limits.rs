@@ -5,14 +5,24 @@ use super::*;
 use s2n_quic::provider::endpoint_limits::{ConnectionAttempt, Limiter, Outcome};
 use s2n_quic_core::{connection::error::Error, endpoint};
 
-static REASON: &str = "Always close connections for testing purpose";
+static REASON: &str = "Server only allows the first connection";
 
-/// A custom limiter that always returns Outcome::close() with a reason
-struct AlwaysCloseLimiterWithReason;
+/// A custom limiter that allows the first connection but closes subsequent ones
+#[derive(Default)]
+struct AllowFirstThenCloseLimiter {
+    connection_count: usize,
+}
 
-impl Limiter for AlwaysCloseLimiterWithReason {
+impl Limiter for AllowFirstThenCloseLimiter {
     fn on_connection_attempt(&mut self, _info: &ConnectionAttempt) -> Outcome {
-        Outcome::close(REASON.as_bytes())
+        if self.connection_count == 0 {
+            self.connection_count += 1;
+            // Allow the first connection
+            Outcome::allow()
+        } else {
+            // Close subsequent connections
+            Outcome::close(REASON.as_bytes())
+        }
     }
 }
 
@@ -31,26 +41,35 @@ fn endpoint_limits_close_test() {
             .with_tls(SERVER_CERTS)?
             .with_event(tracing_events())?
             .with_random(Random::with_seed(456))?
-            .with_endpoint_limits(AlwaysCloseLimiterWithReason)?
+            .with_endpoint_limits(AllowFirstThenCloseLimiter::default())?
             .start()?;
 
         let server_addr = start_server(server)?;
 
-        let client = Client::builder()
+        let client1 = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(), connection_close_subscriber))?
+            .with_event(tracing_events())?
             .with_random(Random::with_seed(456))?
             .start()?;
 
-        primary::spawn(async move {
-            let connect = Connect::new(server_addr).with_server_name("localhost");
+        let client2 = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event((tracing_events(), connection_close_subscriber))?
+            .with_random(Random::with_seed(789))?
+            .start()?;
 
-            // The server should immediately close the connection, so that the handshake will fail
-            matches!(
-                client.connect(connect).await.unwrap_err(),
-                Error::Transport { .. }
-            );
+        primary::spawn(async move {
+            // First client should connect successfully
+            let connect1 = Connect::new(server_addr).with_server_name("localhost");
+            client1.connect(connect1).await.unwrap();
+
+            // Second client should fail to connect, since the server's endpoint limiter
+            // will refuse all connections after the first one.
+            let connect2 = Connect::new(server_addr).with_server_name("localhost");
+            let result = client2.connect(connect2).await;
+            assert!(matches!(result.unwrap_err(), Error::Transport { .. }));
         });
 
         Ok(())
