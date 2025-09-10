@@ -22,7 +22,7 @@ use s2n_quic_core::{
 // The maximum size of the initial packet with the CONNECTION_CLOSE frame is 1 (first byte) + 4 (version) + 1 (DCID len) + 20 (DCID) + 1 (SCID len)
 // + 20 (SCID) + 2 (token len) + 0 (token) + 2 (packet number) + 61 (CONNECTION_CLOSE frame) = 113 bytes.
 // Hence, I set the buffer size to 150 bytes to ensure the buffer can hold the entire initial packet with the CONNECTION_CLOSE frame.
-static DEFAULT_PAYLOAD_SIZE: usize = 150;
+const DEFAULT_PAYLOAD_SIZE: usize = 150;
 
 #[derive(Debug)]
 pub struct Dispatch<Path: path::Handle> {
