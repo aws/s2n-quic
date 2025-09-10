@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    event::{self, Subscriber},
+    event,
     path::secret::{stateless_reset::Signer, Map},
     psk::{client, server},
 };
@@ -168,12 +168,13 @@ pub(crate) fn query_event(_connection: &mut Connection, _limiter_duration: Durat
 #[derive(Clone, Default)]
 pub struct NoopSubscriber;
 
-impl Subscriber for NoopSubscriber {
+// Need to implement both s2n-quic-dc::event::Subscriber and s2n-quic-core::event::Subscriber
+// to fulfill the trait bounds for both client::Provider and server::Provider
+impl crate::event::Subscriber for NoopSubscriber {
     /// The context type associated with each connection
     /// For a no-op subscriber, we can use the unit type since we don't need to store any state
     type ConnectionContext = ();
 
-    /// Creates a context to be passed to each connection-related event
     fn create_connection_context(
         &self,
         _meta: &event::api::ConnectionMeta,
@@ -187,7 +188,6 @@ impl s2n_quic_core::event::Subscriber for NoopSubscriber {
     /// For a no-op subscriber, we can use the unit type since we don't need to store any state
     type ConnectionContext = ();
 
-    /// Creates a context to be passed to each connection-related event
     fn create_connection_context(
         &mut self,
         _meta: &s2n_quic_core::event::api::ConnectionMeta,
