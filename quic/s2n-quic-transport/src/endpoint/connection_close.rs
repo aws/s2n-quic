@@ -13,10 +13,13 @@ use s2n_quic_core::{
     inet::ExplicitCongestionNotification,
     io::tx,
     packet::{initial::CleartextInitial, number::PacketNumberSpace},
-    path::{self, MINIMUM_MAX_DATAGRAM_SIZE},
-    time, transport,
+    path, time, transport,
     varint::VarInt,
 };
+
+// The reason for the connection close frame is hardcoded and the payload size is
+// approximately 110 bytes. We allocate a buffer of 150 bytes to be safe.
+static DEFAULT_PAYLOAD_SIZE: usize = 150;
 
 #[derive(Debug)]
 pub struct Dispatch<Path: path::Handle> {
@@ -83,7 +86,7 @@ impl<Path: path::Handle> Dispatch<Path> {
 
 pub struct Transmission<Path: path::Handle> {
     path: Path,
-    packet: [u8; MINIMUM_MAX_DATAGRAM_SIZE as usize],
+    packet: [u8; DEFAULT_PAYLOAD_SIZE],
     packet_range: Range<usize>,
     version: u32,
     packet_number: u64,
@@ -121,7 +124,7 @@ impl<Path: path::Handle> Transmission<Path> {
             return None;
         }
 
-        let mut packet_buf = [0u8; MINIMUM_MAX_DATAGRAM_SIZE as usize];
+        let mut packet_buf = [0u8; DEFAULT_PAYLOAD_SIZE];
 
         // Create a connection close frame with CONNECTION_REFUSED error code
         let connection_close = ConnectionClose {
