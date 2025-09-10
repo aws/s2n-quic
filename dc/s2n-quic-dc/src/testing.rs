@@ -171,8 +171,6 @@ pub struct NoopSubscriber;
 // Need to implement both s2n-quic-dc::event::Subscriber and s2n-quic-core::event::Subscriber
 // to fulfill the trait bounds for both client::Provider and server::Provider
 impl crate::event::Subscriber for NoopSubscriber {
-    /// The context type associated with each connection
-    /// For a no-op subscriber, we can use the unit type since we don't need to store any state
     type ConnectionContext = ();
 
     fn create_connection_context(
@@ -184,8 +182,6 @@ impl crate::event::Subscriber for NoopSubscriber {
 }
 
 impl s2n_quic_core::event::Subscriber for NoopSubscriber {
-    /// The context type associated with each connection
-    /// For a no-op subscriber, we can use the unit type since we don't need to store any state
     type ConnectionContext = ();
 
     fn create_connection_context(
