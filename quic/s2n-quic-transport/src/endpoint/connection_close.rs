@@ -18,8 +18,6 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-static DEFAULT_REASON: &str = "The server's limiter refused the connection";
-
 #[derive(Debug)]
 pub struct Dispatch<Path: path::Handle> {
     transmissions: VecDeque<Transmission<Path>>,
@@ -129,7 +127,7 @@ impl<Path: path::Handle> Transmission<Path> {
         let connection_close = ConnectionClose {
             error_code: transport::Error::CONNECTION_REFUSED.code.as_varint(),
             frame_type: Some(VarInt::ZERO),
-            reason: reason.or(Some(DEFAULT_REASON.as_bytes())),
+            reason,
         };
 
         let mut encoded_frame = connection_close.encode_to_vec();

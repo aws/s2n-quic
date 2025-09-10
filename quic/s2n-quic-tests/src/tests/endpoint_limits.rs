@@ -5,8 +5,6 @@ use super::*;
 use s2n_quic::provider::endpoint_limits::{ConnectionAttempt, Limiter, Outcome};
 use s2n_quic_core::{connection::error::Error, endpoint};
 
-static REASON: &str = "Server only allows the first connection";
-
 /// A custom limiter that allows the first connection but closes subsequent ones
 #[derive(Default)]
 struct AllowFirstThenCloseLimiter {
@@ -21,7 +19,7 @@ impl Limiter for AllowFirstThenCloseLimiter {
             Outcome::allow()
         } else {
             // Close subsequent connections
-            Outcome::close(REASON.as_bytes())
+            Outcome::throttle()
         }
     }
 }
