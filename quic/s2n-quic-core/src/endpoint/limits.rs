@@ -6,8 +6,6 @@ use crate::{
     inet,
 };
 
-pub static THROTTLE_REASON: &str = "The server's limiter refused the connection";
-
 /// Outcome describes how the library should proceed on a connection attempt. The implementor will
 /// use information from the ConnectionAttempt object to determine how the library should handle
 /// the connection attempt
@@ -36,10 +34,7 @@ pub enum Outcome {
     ///
     /// Use `Outcome::close()` to construct this variant
     #[non_exhaustive]
-    Close {
-        /// An optional reason message to include in the CONNECTION_CLOSE frame
-        reason: Option<&'static [u8]>,
-    },
+    Close,
 }
 
 impl Outcome {
@@ -60,14 +55,7 @@ impl Outcome {
 
     /// Cleanly close the connection
     pub fn close() -> Self {
-        Self::Close { reason: None }
-    }
-
-    /// Cleanly close the connection with a reason
-    pub fn throttle() -> Self {
-        Self::Close {
-            reason: Some(THROTTLE_REASON.as_bytes()),
-        }
+        Self::Close
     }
 }
 

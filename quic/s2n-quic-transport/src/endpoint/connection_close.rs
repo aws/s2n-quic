@@ -17,10 +17,9 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-// The reason field for the CONNECTIONC_CLOSE frame is hardcoded to be 43 bytes.
-// The maximum size of the CONNECTION_CLOSE frame is 1 (type) + 8 (error code) + 8 (frame type) + 1 (reason length) + 43 (reason) = 61 bytes.
+// The maximum size of the CONNECTION_CLOSE frame is 1 (type) + 8 (error code) + 8 (frame type) + 1 (reason length) + 33 (reason) = 51 bytes.
 // The maximum size of the initial packet with the CONNECTION_CLOSE frame is 1 (first byte) + 4 (version) + 1 (DCID len) + 20 (DCID) + 1 (SCID len)
-// + 20 (SCID) + 2 (token len) + 0 (token) + 2 (packet number) + 61 (CONNECTION_CLOSE frame) = 113 bytes.
+// + 20 (SCID) + 2 (token len) + 0 (token) + 2 (packet number) + 18 (CONNECTION_CLOSE frame) = 102 bytes.
 // Hence, I set the buffer size to 150 bytes to ensure the buffer can hold the entire initial packet with the CONNECTION_CLOSE frame.
 const DEFAULT_PAYLOAD_SIZE: usize = 150;
 
@@ -47,12 +46,10 @@ impl<Path: path::Handle> Dispatch<Path> {
         path_handle: Path,
         packet: &s2n_quic_core::packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
-        reason: Option<&[u8]>,
     ) where
         <C as InitialKey>::HeaderKey: InitialHeaderKey,
     {
-        if let Some(transmission) =
-            Transmission::new::<C>(path_handle, packet, local_connection_id, reason)
+        if let Some(transmission) = Transmission::new::<C>(path_handle, packet, local_connection_id)
         {
             self.transmissions.push_back(transmission);
         }
@@ -110,7 +107,6 @@ impl<Path: path::Handle> Transmission<Path> {
         path: Path,
         packet: &s2n_quic_core::packet::initial::ProtectedInitial,
         local_connection_id: connection::LocalId,
-        reason: Option<&[u8]>,
     ) -> Option<Self>
     where
         <C as InitialKey>::HeaderKey: InitialHeaderKey,
@@ -133,7 +129,7 @@ impl<Path: path::Handle> Transmission<Path> {
         let connection_close = ConnectionClose {
             error_code: transport::Error::CONNECTION_REFUSED.code.as_varint(),
             frame_type: Some(VarInt::ZERO),
-            reason,
+            reason: Some(b"The server refused the connection"),
         };
 
         let mut encoded_frame = connection_close.encode_to_vec();
