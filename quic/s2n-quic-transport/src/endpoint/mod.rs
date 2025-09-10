@@ -322,7 +322,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
             version_negotiator: version::Negotiator::default(),
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
-            connection_close_dispatch: connection_close::Dispatch::default(),
+            connection_close_dispatch: connection_close::Dispatch::new(
+                DEFAULT_MAX_PEERS,
+                Cfg::ENDPOINT_TYPE,
+            ),
             close_packet_buffer: Default::default(),
         };
 

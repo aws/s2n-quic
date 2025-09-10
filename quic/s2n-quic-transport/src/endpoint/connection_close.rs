@@ -17,8 +17,11 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-// The reason for the connection close frame is hardcoded and the payload size is
-// approximately 110 bytes. We allocate a buffer of 150 bytes to be safe.
+// The reason field for the CONNECTIONC_CLOSE frame is hardcoded to be 43 bytes.
+// The maximum size of the CONNECTION_CLOSE frame is 1 (type) + 8 (error code) + 8 (frame type) + 1 (reason length) + 43 (reason) = 61 bytes.
+// The maximum size of the initial packet with the CONNECTION_CLOSE frame is 1 (first byte) + 4 (version) + 1 (DCID len) + 20 (DCID) + 1 (SCID len)
+// + 20 (SCID) + 2 (token len) + 0 (token) + 2 (packet number) + 61 (CONNECTION_CLOSE frame) = 113 bytes.
+// Hence, I set the buffer size to 150 bytes to ensure the buffer can hold the entire initial packet with the CONNECTION_CLOSE frame.
 static DEFAULT_PAYLOAD_SIZE: usize = 150;
 
 #[derive(Debug)]
@@ -26,16 +29,16 @@ pub struct Dispatch<Path: path::Handle> {
     transmissions: VecDeque<Transmission<Path>>,
 }
 
-impl<Path: path::Handle> Default for Dispatch<Path> {
-    fn default() -> Self {
-        Self::new(endpoint::DEFAULT_MAX_PEERS)
-    }
-}
-
 impl<Path: path::Handle> Dispatch<Path> {
-    pub fn new(max_peers: usize) -> Self {
+    pub fn new(max_peers: usize, endpoint_type: endpoint::Type) -> Self {
+        // Only the server endpoint can send CONNECTION_CLOSE frame to drop connection request
+        let capacity = if endpoint_type.is_server() {
+            max_peers
+        } else {
+            0
+        };
         Self {
-            transmissions: VecDeque::with_capacity(max_peers),
+            transmissions: VecDeque::with_capacity(capacity),
         }
     }
 
