@@ -84,21 +84,14 @@ async fn empty_write_after_shutdown_test() {
 /// Q: What happens when the application shuts down multiple times
 ///
 /// A: It returns `Ok`
+// refers to https://github.com/aws/s2n-quic/pull/2772 for the macOS exception
+#[cfg(not(target_os = "macos"))]
 #[tokio::test]
 async fn multiple_shutdown_test() {
     let context = Context::new().await;
     let (mut client, server) = context.pair().await;
 
-    for i in 0..3 {
-        if i > 0 && cfg!(target_os = "macos") {
-            assert_eq!(
-                client.shutdown().await.unwrap_err().kind(),
-                ErrorKind::NotConnected
-            );
-        } else {
-            client.shutdown().await.unwrap();
-        }
-    }
+    client.shutdown().await.unwrap();
 
     drop(server);
 }
