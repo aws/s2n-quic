@@ -201,7 +201,7 @@ impl Provider {
         Ok((peer, HandshakeKind::Fresh))
     }
 
-    /// Handshake with a peer in the background.∂
+    /// Handshake with a peer in the background.
     #[inline]
     pub fn background_handshake_with(
         &self,
@@ -215,7 +215,6 @@ impl Provider {
 
         let client = self.state.client.clone();
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
-            let server_name = server_name.clone();
             // Drop the JoinHandle -- we're not actually going to block on the join handle's
             // result. The future will keep running in the background.
             runtime.spawn(async move {
