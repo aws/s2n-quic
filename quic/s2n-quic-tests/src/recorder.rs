@@ -126,16 +126,6 @@ event_recorder!(
 );
 
 event_recorder!(
-    ConnectionCloseReason,
-    ConnectionCloseFrameReceived,
-    on_connection_close_frame_received,
-    Vec<u8>,
-    |event: &events::ConnectionCloseFrameReceived, storage: &mut Vec<Vec<u8>>| {
-        storage.push(event.frame.reason.map(|bytes| bytes.to_vec()).unwrap());
-    }
-);
-
-event_recorder!(
     TlsClientHello,
     TlsClientHello,
     on_tls_client_hello,

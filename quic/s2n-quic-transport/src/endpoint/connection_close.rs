@@ -17,9 +17,9 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-// The maximum size of the CONNECTION_CLOSE frame is 1 (type) + 8 (error code) + 8 (frame type) + 1 (reason length) + 33 (reason) = 51 bytes.
-// The maximum size of the initial packet with the CONNECTION_CLOSE frame is 1 (first byte) + 4 (version) + 1 (DCID len) + 20 (DCID) + 1 (SCID len)
-// + 20 (SCID) + 2 (token len) + 0 (token) + 2 (packet number) + 18 (CONNECTION_CLOSE frame) = 102 bytes.
+// The maximum size of the CONNECTION_CLOSE frame is 1 (type) + 1 (error code) + 1 (frame type) + 1 (reason length) + 33 (reason) = 37 bytes.
+// The maximum size of the initial packet with the CONNECTION_CLOSE frame is 1 (header form, fixed bit, long packet type, reserved bits, and packet number length)
+// + 4 (version) + 1 (DCID len) + 20 (DCID) + 1 (SCID len) + 20 (SCID) + 1 (token len) + 0 (token) + 4 (packet number) + 37 (CONNECTION_CLOSE frame) = 89 bytes.
 // Hence, I set the buffer size to 150 bytes to ensure the buffer can hold the entire initial packet with the CONNECTION_CLOSE frame.
 const DEFAULT_PAYLOAD_SIZE: usize = 150;
 
@@ -74,6 +74,12 @@ impl<Path: path::Handle> Dispatch<Path> {
                         len: len as u16,
                         gso_offset: 0,
                     });
+
+                    publisher.on_endpoint_connection_attempt_failed(
+                        event::builder::EndpointConnectionAttemptFailed {
+                            error: transport::Error::CONNECTION_REFUSED.into(),
+                        },
+                    );
                 }
                 Err(_) => {
                     self.transmissions.push_front(transmission);
@@ -112,20 +118,13 @@ impl<Path: path::Handle> Transmission<Path> {
         <C as InitialKey>::HeaderKey: InitialHeaderKey,
     {
         use s2n_quic_core::packet::encoding::PacketEncoder;
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1
-        //# This value MUST NOT be equal to the Destination
-        //# Connection ID field of the packet sent by the client.
-        debug_assert_ne!(
-            local_connection_id.as_ref(),
-            packet.destination_connection_id()
-        );
-        if local_connection_id.as_ref() == packet.destination_connection_id() {
-            return None;
-        }
 
         let mut packet_buf = [0u8; DEFAULT_PAYLOAD_SIZE];
 
-        // Create a connection close frame with CONNECTION_REFUSED error code
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
+        //# If a server refuses to accept a new connection, it SHOULD send an
+        //# Initial packet containing a CONNECTION_CLOSE frame with error code
+        //# CONNECTION_REFUSED.
         let connection_close = ConnectionClose {
             error_code: transport::Error::CONNECTION_REFUSED.code.as_varint(),
             frame_type: Some(VarInt::ZERO),

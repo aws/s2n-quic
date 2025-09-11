@@ -67,7 +67,7 @@ fn endpoint_limits_close_test() {
             // will refuse all connections after the first one.
             let connect2 = Connect::new(server_addr).with_server_name("localhost");
             let result = client2.connect(connect2).await;
-            assert!(matches!(result.unwrap_err(), Error::Transport { .. }));
+            assert!(matches!(result.unwrap_err(), Error::Transport { code, .. } if code == s2n_quic_core::transport::Error::CONNECTION_REFUSED.code));
         });
 
         Ok(())
