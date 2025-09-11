@@ -28,20 +28,19 @@ use std::{
 mod tests;
 
 #[derive(Default)]
+#[repr(align(128))]
 pub(crate) struct PeerMap(
-    Mutex<hashbrown::HashTable<Arc<Entry>>>,
+    parking_lot::RwLock<hashbrown::HashTable<Arc<Entry>>>,
     std::collections::hash_map::RandomState,
 );
 
 #[derive(Default)]
-pub(crate) struct IdMap(Mutex<hashbrown::HashTable<Arc<Entry>>>);
+#[repr(align(128))]
+pub(crate) struct IdMap(parking_lot::RwLock<hashbrown::HashTable<Arc<Entry>>>);
 
 impl PeerMap {
     fn reserve(&self, additional: usize) {
-        self.0
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .reserve(additional, |e| self.hash(e));
+        self.0.write().reserve(additional, |e| self.hash(e));
     }
 
     fn hash(&self, entry: &Entry) -> u64 {
@@ -54,7 +53,7 @@ impl PeerMap {
 
     pub(crate) fn insert(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
         let hash = self.hash(&entry);
-        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self.0.write();
         match map.entry(hash, |other| other.peer() == entry.peer(), |e| self.hash(e)) {
             hashbrown::hash_table::Entry::Occupied(mut o) => {
                 Some(std::mem::replace(o.get_mut(), entry))
@@ -68,29 +67,29 @@ impl PeerMap {
 
     pub(crate) fn contains_key(&self, ip: &SocketAddr) -> bool {
         let hash = self.hash_key(ip);
-        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let map = self.0.read();
         map.find(hash, |o| o.peer() == ip).is_some()
     }
 
     pub(crate) fn get(&self, peer: SocketAddr) -> Option<Arc<Entry>> {
         let hash = self.hash_key(&peer);
-        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let map = self.0.read();
         map.find(hash, |o| *o.peer() == peer).cloned()
     }
 
     pub(crate) fn clear(&self) {
-        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self.0.write();
         map.clear();
     }
 
     pub(super) fn len(&self) -> usize {
-        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let map = self.0.read();
         map.len()
     }
 
     fn remove_exact(&self, entry: &Arc<Entry>) -> Option<Arc<Entry>> {
         let hash = self.hash(entry);
-        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self.0.write();
         // Note that we are passing `eq` by **ID** not by address: this ensures that we find the
         // specific entry. The hash is still of the SocketAddr so we will look at the right entries
         // while doing this.
@@ -103,10 +102,7 @@ impl PeerMap {
 
 impl IdMap {
     fn reserve(&self, additional: usize) {
-        self.0
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .reserve(additional, |e| self.hash(e));
+        self.0.write().reserve(additional, |e| self.hash(e));
     }
 
     fn hash(&self, entry: &Entry) -> u64 {
@@ -119,7 +115,7 @@ impl IdMap {
 
     pub(crate) fn insert(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
         let hash = self.hash(&entry);
-        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self.0.write();
         match map.entry(hash, |other| other.id() == entry.id(), |e| self.hash(e)) {
             hashbrown::hash_table::Entry::Occupied(mut o) => {
                 Some(std::mem::replace(o.get_mut(), entry))
@@ -134,29 +130,29 @@ impl IdMap {
     #[cfg(test)]
     pub(crate) fn contains_key(&self, id: &Id) -> bool {
         let hash = self.hash_key(id);
-        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let map = self.0.read();
         map.find(hash, |o| o.id() == id).is_some()
     }
 
     pub(crate) fn get(&self, id: Id) -> Option<Arc<Entry>> {
         let hash = self.hash_key(&id);
-        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let map = self.0.read();
         map.find(hash, |o| *o.id() == id).cloned()
     }
 
     pub(crate) fn clear(&self) {
-        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self.0.write();
         map.clear();
     }
 
     pub(super) fn len(&self) -> usize {
-        let map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let map = self.0.read();
         map.len()
     }
 
     pub(super) fn remove(&self, id: Id) -> Option<Arc<Entry>> {
         let hash = self.hash_key(&id);
-        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self.0.write();
         match map.find_entry(hash, |other| *other.id() == id) {
             Ok(o) => Some(o.remove().0),
             Err(_) => None,
