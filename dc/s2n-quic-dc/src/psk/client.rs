@@ -146,7 +146,6 @@ impl Provider {
         query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<HandshakeKind> {
-        let server_name = server_name.clone();
         let (_peer, kind) = self
             .handshake_with_entry(peer, query_event_callback, server_name)
             .await?;
@@ -214,10 +213,8 @@ impl Provider {
             return Ok(HandshakeKind::Cached);
         }
 
-        let server_name = server_name.clone();
         let client = self.state.client.clone();
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
-            let server_name = server_name.clone();
             // Drop the JoinHandle -- we're not actually going to block on the join handle's
             // result. The future will keep running in the background.
             runtime.spawn(async move {
@@ -285,7 +282,6 @@ impl Provider {
         query_event_callback: fn(&mut Connection, Duration),
         server_name: Name,
     ) -> std::io::Result<secret::map::Peer> {
-        let server_name = server_name.clone();
         let state = self.state.clone();
         if let Some((runtime, _)) = self.state.runtime.as_ref() {
             runtime
