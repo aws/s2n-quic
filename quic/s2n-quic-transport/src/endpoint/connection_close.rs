@@ -19,8 +19,8 @@ use s2n_quic_core::{
 
 // The maximum size of the CONNECTION_CLOSE frame is 1 (type) + 1 (error code) + 1 (frame type) + 1 (reason length) + 33 (reason) = 37 bytes.
 // The maximum size of the initial packet with the CONNECTION_CLOSE frame is 1 (header form, fixed bit, long packet type, reserved bits, and packet number length)
-// + 4 (version) + 1 (DCID len) + 20 (DCID) + 1 (SCID len) + 20 (SCID) + 1 (token len) + 0 (token) + 4 (packet number) + 37 (CONNECTION_CLOSE frame) = 89 bytes.
-// Hence, I set the buffer size to 150 bytes to ensure the buffer can hold the entire initial packet with the CONNECTION_CLOSE frame.
+// + 4 (version) + 1 (DCID len) + 20 (DCID) + 1 (SCID len) + 20 (SCID) + 1 (token len) + 0 (token) + 1 (length) + 1 (packet number) + 37 (CONNECTION_CLOSE frame) = 87 bytes.
+// With packet header for the the payload and some other components, the maximum size can go up to around 110 bytes. Hence, we use 150 bytes here for safety.
 const DEFAULT_PAYLOAD_SIZE: usize = 150;
 
 #[derive(Debug)]
@@ -125,6 +125,9 @@ impl<Path: path::Handle> Transmission<Path> {
         //# If a server refuses to accept a new connection, it SHOULD send an
         //# Initial packet containing a CONNECTION_CLOSE frame with error code
         //# CONNECTION_REFUSED.
+
+        // The total packet length has to be more than stateless_reset::min_indistinguishable_packet_len(key.tag_len()) + 1.
+        // We need to use a reason that's more than 15 bytes to ensure the packet will be sent.
         let connection_close = ConnectionClose {
             error_code: transport::Error::CONNECTION_REFUSED.code.as_varint(),
             frame_type: Some(VarInt::ZERO),

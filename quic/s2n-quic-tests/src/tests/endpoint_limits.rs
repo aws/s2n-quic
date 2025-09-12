@@ -2,8 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_quic::provider::endpoint_limits::{ConnectionAttempt, Limiter, Outcome};
-use s2n_quic_core::{connection::error::Error, endpoint};
+use s2n_quic::provider::{
+    connection_id,
+    endpoint_limits::{ConnectionAttempt, Limiter, Outcome},
+};
+use s2n_quic_core::{
+    connection::{error::Error, id},
+    endpoint,
+};
 
 /// A custom limiter that allows the first connection but closes subsequent ones
 #[derive(Default)]
@@ -24,6 +30,27 @@ impl Limiter for AllowFirstThenCloseLimiter {
     }
 }
 
+const MAX_CID_LEN: usize = 20;
+// Use the maximum length for connection IDs to generate large payload for the Initial packet
+struct MaxSizeIdFormat;
+
+impl connection_id::Generator for MaxSizeIdFormat {
+    fn generate(
+        &mut self,
+        _connection_info: &id::ConnectionInfo,
+    ) -> s2n_quic_core::connection::LocalId {
+        let mut id = [0u8; MAX_CID_LEN];
+        ::rand::rng().fill_bytes(&mut id);
+        connection_id::LocalId::try_from_bytes(&id[..]).unwrap()
+    }
+}
+
+impl connection_id::Validator for MaxSizeIdFormat {
+    fn validate(&self, _connection_info: &id::ConnectionInfo, _buffer: &[u8]) -> Option<usize> {
+        Some(MAX_CID_LEN)
+    }
+}
+
 // This test verifies that when the server would send a CONNECTION_CLOSE frame with
 // error code CONNECTION_REFUSED when the server's limiter returns Outcome::close().
 #[test]
@@ -38,6 +65,7 @@ fn endpoint_limits_close_test() {
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_event(tracing_events())?
+            .with_connection_id(MaxSizeIdFormat)?
             .with_random(Random::with_seed(456))?
             .with_endpoint_limits(AllowFirstThenCloseLimiter::default())?
             .start()?;
@@ -48,6 +76,7 @@ fn endpoint_limits_close_test() {
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
             .with_event(tracing_events())?
+            .with_connection_id(MaxSizeIdFormat)?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -55,6 +84,7 @@ fn endpoint_limits_close_test() {
             .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
             .with_event((tracing_events(), connection_close_subscriber))?
+            .with_connection_id(MaxSizeIdFormat)?
             .with_random(Random::with_seed(789))?
             .start()?;
 
