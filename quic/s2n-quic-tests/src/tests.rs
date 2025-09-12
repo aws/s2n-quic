@@ -28,6 +28,7 @@ mod buffer_limit;
 mod connection_limits;
 mod connection_migration;
 mod deduplicate;
+mod endpoint_limits;
 mod exporter;
 mod handshake_cid_rotation;
 mod initial_rtt;

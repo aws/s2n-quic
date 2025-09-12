@@ -50,6 +50,7 @@ use s2n_quic_core::{
 pub mod close;
 mod config;
 pub mod connect;
+mod connection_close;
 pub mod handle;
 mod initial;
 mod packet_buffer;
@@ -86,6 +87,7 @@ pub struct Endpoint<Cfg: Config> {
     version_negotiator: version::Negotiator<Cfg>,
     retry_dispatch: retry::Dispatch<Cfg::PathHandle>,
     stateless_reset_dispatch: stateless_reset::Dispatch<Cfg::PathHandle>,
+    connection_close_dispatch: connection_close::Dispatch<Cfg::PathHandle>,
     close_packet_buffer: packet_buffer::Buffer,
 }
 
@@ -166,6 +168,8 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             self.version_negotiator.on_transmit(queue, &mut publisher);
             self.retry_dispatch.on_transmit(queue, &mut publisher);
             self.stateless_reset_dispatch
+                .on_transmit(queue, &mut publisher);
+            self.connection_close_dispatch
                 .on_transmit(queue, &mut publisher);
         }
     }
@@ -318,6 +322,10 @@ impl<Cfg: Config> Endpoint<Cfg> {
             version_negotiator: version::Negotiator::default(),
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
+            connection_close_dispatch: connection_close::Dispatch::new(
+                DEFAULT_MAX_PEERS,
+                Cfg::ENDPOINT_TYPE,
+            ),
             close_packet_buffer: Default::default(),
         };
 
@@ -387,11 +395,21 @@ impl<Cfg: Config> Endpoint<Cfg> {
             }
             Outcome::Close { .. } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
-                //= type=TODO
-                //= tracking-issue=270
                 //# If a server refuses to accept a new connection, it SHOULD send an
                 //# Initial packet containing a CONNECTION_CLOSE frame with error code
                 //# CONNECTION_REFUSED.
+
+                let connection_info = ConnectionInfo::new(&remote_address);
+
+                let local_connection_id = context.connection_id_format.generate(&connection_info);
+
+                self.connection_close_dispatch.queue::<
+                    <<<Cfg as Config>::TLSEndpoint as tls::Endpoint>::Session as CryptoSuite>::InitialKey,
+                >(
+                    header.path,
+                    packet,
+                    local_connection_id,
+                );
 
                 publisher.on_endpoint_datagram_dropped(event::builder::EndpointDatagramDropped {
                     len: payload_len as u16,
