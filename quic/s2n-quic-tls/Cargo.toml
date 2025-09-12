@@ -26,7 +26,7 @@ s2n-quic-crypto = { version = "=0.64.0", path = "../s2n-quic-crypto", default-fe
 s2n-tls = { version = "0.3.16", features = ["quic"] }
 
 [dev-dependencies]
-checkers = "0.6"
+checkers = "0.7"
 pin-project = { version = "1" }
 openssl = { version = "0.10" }
 # Build the vendored version to make it easy to test in dev
