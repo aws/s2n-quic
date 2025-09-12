@@ -17,14 +17,14 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             s.attrs.subject.is_connection()
         });
 
-    let mode = &output.mode;
+    let mode = &output.config.mode;
 
-    let imports = output.mode.imports();
-    let receiver = output.mode.receiver();
-    let counter_increment = output.mode.counter_increment();
-    let counter_type = output.mode.counter_type();
-    let counter_init = output.mode.counter_init();
-    let counter_load = output.mode.counter_load();
+    let imports = output.config.imports();
+    let receiver = mode.receiver();
+    let counter_increment = output.config.counter_increment();
+    let counter_type = output.config.counter_type();
+    let counter_init = output.config.counter_init();
+    let counter_load = output.config.counter_load();
 
     let mut fields = quote!();
     let mut init = quote!();
