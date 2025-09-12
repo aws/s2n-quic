@@ -83,8 +83,7 @@ mod gso_enabled {
     // ```
     // #define UDP_MAX_SEGMENTS	(1 << 6UL)
     // ```
-    pub const MAX_SEGMENTS: MaxSegments =
-        MaxSegments(unsafe { NonZeroUsize::new_unchecked(1 << 6) });
+    pub const MAX_SEGMENTS: MaxSegments = MaxSegments(NonZeroUsize::new(1 << 6).unwrap());
 
     // The packet pacer enforces a burst limit of 10 packets, so generally there is no benefit to
     // exceeding that value for GSO segments. However, in low RTT/high bandwidth networks the pacing
@@ -93,9 +92,9 @@ mod gso_enabled {
     // positive effect on efficiency.
     //= https://www.rfc-editor.org/rfc/rfc9002#section-7.7
     //# Senders SHOULD limit bursts to the initial congestion window
-    pub const DEFAULT_SEGMENTS: MaxSegments = MaxSegments(unsafe {
-        NonZeroUsize::new_unchecked(s2n_quic_core::recovery::MAX_BURST_PACKETS as usize)
-    });
+    pub const DEFAULT_SEGMENTS: MaxSegments = MaxSegments(
+        NonZeroUsize::new(s2n_quic_core::recovery::MAX_BURST_PACKETS as usize).unwrap(),
+    );
 
     #[derive(Clone, Debug)]
     pub struct Gso(Arc<AtomicUsize>);
@@ -151,7 +150,7 @@ mod gso_disabled {
         false
     }
 
-    pub const MAX_SEGMENTS: MaxSegments = MaxSegments(unsafe { NonZeroUsize::new_unchecked(1) });
+    pub const MAX_SEGMENTS: MaxSegments = MaxSegments(NonZeroUsize::new(1).unwrap());
     pub const DEFAULT_SEGMENTS: MaxSegments = MAX_SEGMENTS;
 
     #[derive(Clone, Default, Debug)]

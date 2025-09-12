@@ -220,10 +220,9 @@ macro_rules! impl_mtu {
 }
 
 // Safety: 1500 and MINIMUM_MTU are greater than zero
-const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(unsafe { NonZeroU16::new_unchecked(1500) });
-const DEFAULT_BASE_MTU: BaseMtu = BaseMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
-const DEFAULT_INITIAL_MTU: InitialMtu =
-    InitialMtu(unsafe { NonZeroU16::new_unchecked(MINIMUM_MTU) });
+const DEFAULT_MAX_MTU: MaxMtu = MaxMtu(NonZeroU16::new(1500).unwrap());
+const DEFAULT_BASE_MTU: BaseMtu = BaseMtu(NonZeroU16::new(MINIMUM_MTU).unwrap());
+const DEFAULT_INITIAL_MTU: InitialMtu = InitialMtu(NonZeroU16::new(MINIMUM_MTU).unwrap());
 
 impl_mtu!(MaxMtu, DEFAULT_MAX_MTU);
 impl_mtu!(InitialMtu, DEFAULT_INITIAL_MTU);

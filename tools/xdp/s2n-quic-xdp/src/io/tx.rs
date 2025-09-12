@@ -313,7 +313,7 @@ pub struct Queue<'a, D: Driver> {
     encoder: &'a mut encoder::State,
 }
 
-impl<'a, D: Driver> tx::Queue for Queue<'a, D> {
+impl<D: Driver> tx::Queue for Queue<'_, D> {
     type Handle = path::Tuple;
 
     const SUPPORTS_ECN: bool = true;
@@ -404,7 +404,7 @@ impl<'a, D: Driver> tx::Queue for Queue<'a, D> {
     }
 }
 
-impl<'a, D: Driver> Drop for Queue<'a, D> {
+impl<D: Driver> Drop for Queue<'_, D> {
     #[inline]
     fn drop(&mut self) {
         // if the current channel pushed some items it needs to be woken up

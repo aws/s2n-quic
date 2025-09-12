@@ -3,7 +3,7 @@ name = "udp-attack"
 version = "0.1.0"
 edition = "2021"
 publish = false
-rust-version = "1.82"
+rust-version = "1.84"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
