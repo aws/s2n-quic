@@ -452,7 +452,12 @@ impl Queue {
         self.packets.push_back(packet);
     }
 
-    pub fn recv(&mut self, cx: &mut Context, msgs: &mut [super::message::Message]) -> usize {
+    pub fn recv(
+        &mut self,
+        cx: &mut Context,
+        msgs: &mut [super::message::Message],
+        max_mtu: MaxMtu,
+    ) -> usize {
         let to_remove = self.packets.len().min(msgs.len());
 
         if to_remove == 0 {
@@ -473,6 +478,12 @@ impl Queue {
 
             *msg.handle_mut() = packet.path;
             *msg.ecn_mut() = packet.ecn;
+
+            unsafe {
+                // Safety: the message was allocated with the configured MaxMtu
+                msg.reset(max_mtu.into());
+            }
+
             let payload = msg.payload_mut();
             let to_copy = payload.len().min(packet.payload.len());
             payload[..to_copy].copy_from_slice(&packet.payload[..to_copy]);

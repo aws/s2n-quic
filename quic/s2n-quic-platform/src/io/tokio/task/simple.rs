@@ -11,7 +11,7 @@ use crate::{
     syscall::SocketEvents,
 };
 use core::task::{Context, Poll};
-use s2n_quic_core::task::cooldown::Cooldown;
+use s2n_quic_core::{path::MaxMtu, task::cooldown::Cooldown};
 use tokio::{io, net::UdpSocket};
 
 pub async fn rx<S: Into<std::net::UdpSocket>>(
@@ -19,12 +19,13 @@ pub async fn rx<S: Into<std::net::UdpSocket>>(
     producer: ring::Producer<Message>,
     cooldown: Cooldown,
     stats: stats::Sender,
+    max_mtu: MaxMtu,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = UdpSocket::from_std(socket).unwrap();
-    let result = task::Receiver::new(producer, socket, cooldown, stats).await;
+    let result = task::Receiver::new(producer, socket, cooldown, stats, max_mtu).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -100,8 +101,14 @@ impl rx::Socket<Message> for UdpSocket {
         entries: &mut [Message],
         events: &mut rx::Events,
         stats: &stats::Sender,
+        max_mtu: MaxMtu,
     ) -> io::Result<()> {
         for entry in entries {
+            unsafe {
+                // Safety: the message was allocated with the configured MaxMtu
+                entry.reset(max_mtu.into());
+            }
+
             let payload = entry.payload_mut();
             let mut buf = io::ReadBuf::new(payload);
 

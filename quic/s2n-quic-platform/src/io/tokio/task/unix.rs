@@ -10,7 +10,7 @@ use crate::{
     syscall::{SocketType, UnixMessage},
 };
 use core::task::{Context, Poll};
-use s2n_quic_core::task::cooldown::Cooldown;
+use s2n_quic_core::{path::MaxMtu, task::cooldown::Cooldown};
 use std::{io, os::unix::io::AsRawFd};
 use tokio::io::unix::AsyncFd;
 
@@ -19,12 +19,13 @@ pub async fn rx<S: Into<std::net::UdpSocket>, M: UnixMessage + Unpin>(
     producer: ring::Producer<M>,
     cooldown: Cooldown,
     stats: stats::Sender,
+    max_mtu: MaxMtu,
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
     let socket = AsyncFd::new(socket).unwrap();
-    let result = rx::Receiver::new(producer, socket, cooldown, stats).await;
+    let result = rx::Receiver::new(producer, socket, cooldown, stats, max_mtu).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -111,6 +112,7 @@ impl<S: AsRawFd, M: UnixMessage> rx::Socket<M> for AsyncFd<S> {
         entries: &mut [M],
         events: &mut rx::Events,
         stats: &stats::Sender,
+        max_mtu: MaxMtu,
     ) -> io::Result<()> {
         // Call the syscall for the socket
         //
@@ -124,6 +126,7 @@ impl<S: AsRawFd, M: UnixMessage> rx::Socket<M> for AsyncFd<S> {
             entries,
             events,
             stats,
+            max_mtu,
         );
 
         // yield back if we weren't blocked
