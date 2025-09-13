@@ -25,8 +25,9 @@ pub async fn rx(
     socket: Socket,
     producer: ring::Producer<Message>,
     stats: stats::Sender,
+    max_mtu: MaxMtu,
 ) -> io::Result<()> {
-    let result = task::Receiver::new(producer, socket, Default::default(), stats).await;
+    let result = task::Receiver::new(producer, socket, Default::default(), stats, max_mtu).await;
     if let Some(err) = result {
         Err(err)
     } else {
@@ -200,13 +201,12 @@ impl Socket {
         consumers.push(consumer);
 
         // spawn a task that actually reads from the socket into the ring buffer
-        super::spawn(super::socket::rx(self.clone(), producer, stats));
+        super::spawn(super::socket::rx(self.clone(), producer, stats, max_mtu));
 
         // construct the RX side for the endpoint event loop
-        let max_mtu = MaxMtu::try_from(payload_len as u16).unwrap();
         let handle = self.local_addr().unwrap();
         let handle = SocketAddress::from(handle);
-        crate::socket::io::rx::Rx::new(consumers, max_mtu, handle.into())
+        crate::socket::io::rx::Rx::new(consumers, handle.into())
     }
 
     pub fn tx_task(
@@ -301,11 +301,12 @@ impl rx::Socket<Message> for Socket {
         entries: &mut [Message],
         events: &mut rx::Events,
         stats: &stats::Sender,
+        max_mtu: MaxMtu,
     ) -> io::Result<()> {
         let mut count = 0;
 
         let res = self.0.buffers.rx_host(self.0.host, |queue| {
-            count = queue.recv(cx, entries);
+            count = queue.recv(cx, entries, max_mtu);
             if count > 0 {
                 let _ = events.on_complete(count);
             } else {

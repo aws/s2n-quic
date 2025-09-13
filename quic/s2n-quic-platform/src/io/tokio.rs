@@ -191,6 +191,8 @@ impl Io {
                 entries.next_power_of_two()
             };
 
+            let max_mtu = MaxMtu::try_from(payload_len as u16).expect("payload cannot have 0-len");
+
             let mut consumers = vec![];
 
             let rx_socket_count = parse_env("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT").unwrap_or(1);
@@ -210,6 +212,7 @@ impl Io {
                         producer,
                         rx_cooldown,
                         stats_sender.clone(),
+                        max_mtu,
                     ));
                     break;
                 } else {
@@ -219,14 +222,14 @@ impl Io {
                         producer,
                         rx_cooldown.clone(),
                         stats_sender.clone(),
+                        max_mtu,
                     ));
                 }
             }
 
             // construct the RX side for the endpoint event loop
-            let max_mtu = MaxMtu::try_from(payload_len as u16).unwrap();
             let addr: inet::SocketAddress = rx_addr.into();
-            socket::io::rx::Rx::new(consumers, max_mtu, addr.into())
+            socket::io::rx::Rx::new(consumers, addr.into())
         };
 
         let tx = {

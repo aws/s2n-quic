@@ -4,6 +4,7 @@
 use super::{SocketEvents, SocketType, UnixMessage};
 use crate::{message::Message as _, socket::stats};
 use libc::msghdr;
+use s2n_quic_core::path::MaxMtu;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 impl UnixMessage for msghdr {
@@ -24,8 +25,9 @@ impl UnixMessage for msghdr {
         entries: &mut [Self],
         events: &mut E,
         stats: &stats::Sender,
+        max_mtu: MaxMtu,
     ) {
-        recv(&fd, ty, entries, events, stats)
+        recv(&fd, ty, entries, events, stats, max_mtu)
     }
 }
 
@@ -113,6 +115,7 @@ pub fn recv<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
     packets: P,
     events: &mut E,
     stats: &stats::Sender,
+    max_mtu: MaxMtu,
 ) {
     let mut flags = match socket_type {
         SocketType::Blocking => Default::default(),
@@ -142,6 +145,11 @@ pub fn recv<'a, Sock: AsRawFd, P: IntoIterator<Item = &'a mut msghdr>, E: Socket
         // > of the available buffer in msg_control; upon return from a successful
         // > call it will contain the length of the control message sequence.
         let msg = packet;
+
+        unsafe {
+            // Safety: the message was allocated with the configured MaxMtu
+            msg.reset(max_mtu.into());
+        }
 
         // > The flags argument to a recv() call is formed by ORing one or more flags
         //

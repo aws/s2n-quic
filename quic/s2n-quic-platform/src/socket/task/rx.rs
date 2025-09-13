@@ -10,7 +10,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use s2n_quic_core::task::cooldown::Cooldown;
+use s2n_quic_core::{path::MaxMtu, task::cooldown::Cooldown};
 
 pub use events::RxEvents as Events;
 
@@ -23,6 +23,7 @@ pub trait Socket<T: Message> {
         entries: &mut [T],
         events: &mut Events,
         stats: &stats::Sender,
+        max_mtu: MaxMtu,
     ) -> Result<(), Self::Error>;
 }
 
@@ -34,6 +35,7 @@ pub struct Receiver<T: Message, S: Socket<T>> {
     io_cooldown: Cooldown,
     stats: stats::Sender,
     has_registered_drop_waker: bool,
+    max_mtu: MaxMtu,
 }
 
 impl<T, S> Receiver<T, S>
@@ -42,7 +44,13 @@ where
     S: Socket<T> + Unpin,
 {
     #[inline]
-    pub fn new(ring: Producer<T>, rx: S, cooldown: Cooldown, stats: stats::Sender) -> Self {
+    pub fn new(
+        ring: Producer<T>,
+        rx: S,
+        cooldown: Cooldown,
+        stats: stats::Sender,
+        max_mtu: MaxMtu,
+    ) -> Self {
         Self {
             ring,
             rx,
@@ -50,6 +58,7 @@ where
             io_cooldown: cooldown,
             stats,
             has_registered_drop_waker: false,
+            max_mtu,
         }
     }
 
@@ -118,7 +127,10 @@ where
             let entries = this.ring.data();
 
             // perform the recv syscall
-            match this.rx.recv(cx, entries, &mut events, &this.stats) {
+            match this
+                .rx
+                .recv(cx, entries, &mut events, &this.stats, this.max_mtu)
+            {
                 Ok(_) => {
                     // increment the number of received messages
                     let count = events.take_count() as u32;

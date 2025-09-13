@@ -90,7 +90,7 @@ impl Io {
             let (producer, consumer) = ring::pair(entries, payload_len);
             consumers.push(consumer);
 
-            let rx = rx::Rx::new(consumers, mtu_config.max_mtu(), local_addr.into());
+            let rx = rx::Rx::new(consumers, local_addr.into());
 
             (rx, producer)
         };

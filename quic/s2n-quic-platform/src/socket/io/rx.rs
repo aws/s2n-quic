@@ -3,27 +3,19 @@
 
 use crate::{message::Message, socket::ring::Consumer};
 use core::task::{Context, Poll};
-use s2n_quic_core::{
-    event,
-    inet::datagram,
-    io::rx,
-    path::{LocalAddress, MaxMtu},
-    task::waker,
-};
+use s2n_quic_core::{event, inet::datagram, io::rx, path::LocalAddress, task::waker};
 
 /// Structure for receiving messages from consumer channels
 pub struct Rx<T: Message> {
     channels: Vec<Consumer<T>>,
-    max_mtu: MaxMtu,
     local_address: LocalAddress,
 }
 
 impl<T: Message> Rx<T> {
     #[inline]
-    pub fn new(channels: Vec<Consumer<T>>, max_mtu: MaxMtu, local_address: LocalAddress) -> Self {
+    pub fn new(channels: Vec<Consumer<T>>, local_address: LocalAddress) -> Self {
         Self {
             channels,
-            max_mtu,
             local_address,
         }
     }
@@ -88,7 +80,6 @@ impl<T: Message> rx::Rx for Rx<T> {
 
         let mut queue = RxQueue {
             channels: &mut this.channels,
-            max_mtu: this.max_mtu,
             local_address: &this.local_address,
         };
 
@@ -105,7 +96,6 @@ impl<T: Message> rx::Rx for Rx<T> {
 
 pub struct RxQueue<'a, T: Message> {
     channels: &'a mut [Consumer<T>],
-    max_mtu: MaxMtu,
     local_address: &'a LocalAddress,
 }
 
@@ -128,11 +118,6 @@ impl<T: Message> rx::Queue for RxQueue<'_, T> {
                 //       channel is completely drained here.
                 if let Some(message) = message.rx_read(self.local_address) {
                     message.for_each(&mut on_packet);
-                }
-
-                unsafe {
-                    // Safety: the message was allocated with the configured MaxMtu
-                    message.reset(self.max_mtu.into());
                 }
             }
 

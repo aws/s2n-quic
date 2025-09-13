@@ -28,15 +28,16 @@ macro_rules! libc_msg {
                 message::$message::Message,
                 socket::{ring, stats},
             };
-            use s2n_quic_core::task::cooldown::Cooldown;
+            use s2n_quic_core::{path::MaxMtu, task::cooldown::Cooldown};
 
             pub async fn rx<S: Into<std::net::UdpSocket>>(
                 socket: S,
                 producer: ring::Producer<Message>,
                 cooldown: Cooldown,
                 stats: stats::Sender,
+                max_mtu: MaxMtu,
             ) -> std::io::Result<()> {
-                unix::rx(socket, producer, cooldown, stats).await
+                unix::rx(socket, producer, cooldown, stats, max_mtu).await
             }
 
             pub async fn tx<S: Into<std::net::UdpSocket>>(

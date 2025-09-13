@@ -63,6 +63,7 @@ pub trait UnixMessage: crate::message::Message {
         entries: &mut [Self],
         events: &mut E,
         stats: &stats::Sender,
+        max_mtu: s2n_quic_core::path::MaxMtu,
     );
 }
 
