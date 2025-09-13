@@ -4,6 +4,7 @@
 use super::{SocketEvents, SocketType, UnixMessage};
 use crate::socket::stats;
 use libc::mmsghdr;
+use s2n_quic_core::path::MaxMtu;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 impl UnixMessage for mmsghdr {
@@ -24,7 +25,11 @@ impl UnixMessage for mmsghdr {
         entries: &mut [Self],
         events: &mut E,
         stats: &stats::Sender,
+        max_mtu: MaxMtu,
     ) {
+        // we don't need max mtu to reset message len for mmsg
+        let _max_mtu = max_mtu;
+
         recv(&fd, ty, entries, events, stats)
     }
 }
