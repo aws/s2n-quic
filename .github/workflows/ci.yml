@@ -669,23 +669,17 @@ jobs:
         with:
           submodules: true
 
-      # nightly features are used for formatting
-      - name: Install rust nightly toolchain
-        id: nightly-toolchain
+      - name: Install rust toolchain
+        id: toolchain
         run: |
-          rustup toolchain install nightly --component rustfmt
-
-      - name: Install rust stable toolchain
-        id: stable-toolchain
-        run: |
-          rustup toolchain install stable
-          rustup override set stable
+          rustup toolchain install ${{ env.RUST_NIGHTLY_TOOLCHAIN }} --profile minimal --component rustfmt
+          rustup override set ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
 
       - uses: camshaft/rust-cache@v1
 
       - name: format
         working-directory: ./tools/s2n-events
-        run: cargo +nightly fmt -- --check
+        run: cargo fmt -- --check
 
       - name: generate test events
         run: |
