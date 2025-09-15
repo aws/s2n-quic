@@ -658,38 +658,4 @@ mod tests {
         message_rx_modifications,
         crate::io::testing::message::Message
     );
-
-    #[test]
-    fn test() {
-        let entries = if cfg!(kani) { 2 } else { 16 };
-        let payload_len = if cfg!(kani) { 2 } else { 128 };
-        let count = 16;
-
-        let (mut producer, mut consumer) = pair::<simple::Message>(entries, payload_len);
-
-        // Producer writes to shared buffer
-        producer.acquire(u32::MAX);
-        for entry in &mut producer.data()[..count as usize] {
-            unsafe {
-                entry.set_payload_len(100);
-            }
-        }
-        producer.release(count);
-
-        // Consumer modifies the data
-        let count = consumer.acquire(u32::MAX);
-        for entry in &mut consumer.data()[..count as usize] {
-            unsafe {
-                entry.reset(payload_len as usize);
-            }
-        }
-        consumer.release(count);
-
-        // Verify modifications seen by producer for reuse
-        producer.acquire(u32::MAX);
-        let s = producer.data();
-        for entry in s {
-            assert_eq!(entry.payload_len(), payload_len as usize);
-        }
-    }
 }
