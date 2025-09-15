@@ -367,7 +367,7 @@ struct RemoteContext<'a, Request, H> {
     error: Option<crate::transport::Error>,
 }
 
-impl<'a, S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'a, Request<S>, H> {
+impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, Request<S>, H> {
     fn on_client_application_params(
         &mut self,
         client_params: tls::ApplicationParameters,
