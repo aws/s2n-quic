@@ -285,9 +285,7 @@ jobs:
 
       - name: Install cross
         if: ${{ matrix.target != 'native' }}
-        uses: camshaft/install@v1
-        with:
-          crate: cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
       - uses: camshaft/rust-cache@v1
         with:
