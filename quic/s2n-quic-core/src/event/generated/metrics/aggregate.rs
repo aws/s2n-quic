@@ -1680,6 +1680,7 @@ impl<R: Registry> Subscriber<R> {
     pub fn nominal_counters(
         &self,
     ) -> impl Iterator<Item = (&'static Info, &[R::NominalCounter], &[info::Variant])> + '_ {
+        #[allow(unused_imports)]
         use api::*;
         self.nominal_counter_offsets
             .iter()

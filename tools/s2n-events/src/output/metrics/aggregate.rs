@@ -470,6 +470,7 @@ pub fn emit(output: &Output, files: &[File]) -> TokenStream {
             /// Returns all of the registered nominal counters
             #[inline]
             pub fn nominal_counters(&self) -> impl Iterator<Item = (&'static Info, &[R::NominalCounter], &[info::Variant])> + '_ {
+                #[allow(unused_imports)]
                 use api::*;
                 #nominal_counters
             }
