@@ -25,7 +25,7 @@ use tracing::{trace, Instrument as _};
 pub mod tcp;
 pub mod udp;
 
-// This trait is a temporary solution to abstract local_addr and map methods until we implement the handshake provider
+// This trait is a solution to abstract local_addr and map methods
 pub trait Handshake: Clone {
     fn local_addr(&self) -> SocketAddr;
 
@@ -73,6 +73,15 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Server<H, S> {
 
     pub fn handshake_state(&self) -> &H {
         &self.handshake
+    }
+
+    /// Should generally only be used for advanced users.
+    ///
+    /// This should not be used for spawning heavy-weight work (e.g., request processing), and is
+    /// generally best used for tiny tasks which intermediate to some other runtime. For example,
+    /// it can work well for having some small processing to then send into another channel.
+    pub fn acceptor_rt(&self) -> tokio::runtime::Handle {
+        (*self.acceptor_rt).clone()
     }
 
     #[inline]

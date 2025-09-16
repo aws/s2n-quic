@@ -249,7 +249,7 @@ pub struct Queue<'a, D: Driver> {
     error_logger: &'a mut Option<Box<dyn ErrorLogger>>,
 }
 
-impl<'a, D: Driver> rx::Queue for Queue<'a, D> {
+impl<D: Driver> rx::Queue for Queue<'_, D> {
     type Handle = path::Tuple;
 
     #[inline]

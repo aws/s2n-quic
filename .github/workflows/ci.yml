@@ -285,9 +285,7 @@ jobs:
 
       - name: Install cross
         if: ${{ matrix.target != 'native' }}
-        uses: camshaft/install@v1
-        with:
-          crate: cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
       - uses: camshaft/rust-cache@v1
         with:
@@ -711,11 +709,11 @@ jobs:
 
       - name: Run events codegen
         run: |
-          cargo run --manifest-path ./tools/s2n-events/Cargo.toml
+          cargo run --manifest-path ./tools/event-generator/Cargo.toml
 
       - name: Check to make sure the generated events are up-to-date
         run: |
-          # If this fails you need to run `cargo run --manifest-path ./tools/s2n-events/Cargo.toml`
+          # If this fails you need to run `cargo run --manifest-path ./tools/event-generator/Cargo.toml`
           git diff --exit-code
 
   # ensures there are no unused snapshots

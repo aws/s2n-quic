@@ -1,11 +1,13 @@
 # s2n-events
 
-This crate generates all of the boilerplate for event types and traits.
+This crate implements the code generation for boilerplate event types and traits.
+
+s2n-events is a library which exposes functionality to generate an events system according to project-specific configuration options. s2n-events should be consumed by an event generation program within a given project. For example, see the [event-generator](../event-generator) crate which generates the s2n-quic/s2n-quic-dc events systems.
 
 ## Features
 
 * A single rust file is generated for all of the event handling code.
-* The generator script is executed at commit time, which provides minimal compilation overhead.
+* Project-owned generator scripts can be executed at commit time, which provides minimal compilation overhead.
 * The output can be easily read and audited.
 * IDEs can easily read the generated code and provide autocompletion on events.
 
