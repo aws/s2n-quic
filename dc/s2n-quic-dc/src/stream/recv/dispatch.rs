@@ -231,36 +231,68 @@ impl crate::socket::recv::router::Router for Dispatch {
         let _ = self.send_stream(id.queue_id, segment);
     }
 
+    /// implement this so we don't get warnings about not handling it
     #[inline]
     fn handle_replay_detected_packet(
         &mut self,
-        packet: packet::secret_control::replay_detected::Packet,
-        remote_address: SocketAddress,
+        _packet: packet::secret_control::replay_detected::Packet,
+        _remote_address: SocketAddress,
     ) {
-        // TODO reset the destination queue - currently secret control packets don't have queue_ids
-        let _ = packet;
-        let _ = remote_address;
     }
 
     #[inline]
+    fn dispatch_replay_detected_packet(
+        &mut self,
+        queue_id: Option<VarInt>,
+        _credentials: credentials::Id,
+        segment: desc::Filled,
+    ) {
+        let Some(queue_id) = queue_id else {
+            return;
+        };
+        let _ = self.send_control(queue_id, segment);
+    }
+
+    /// implement this so we don't get warnings about not handling it
+    #[inline]
     fn handle_stale_key_packet(
         &mut self,
-        packet: packet::secret_control::stale_key::Packet,
-        remote_address: SocketAddress,
+        _packet: packet::secret_control::stale_key::Packet,
+        _remote_address: SocketAddress,
     ) {
-        // TODO reset the destination queue - currently secret control packets don't have queue_ids
-        let _ = packet;
-        let _ = remote_address;
+    }
+
+    #[inline]
+    fn dispatch_stale_key_packet(
+        &mut self,
+        queue_id: Option<VarInt>,
+        _credentials: credentials::Id,
+        segment: desc::Filled,
+    ) {
+        let Some(queue_id) = queue_id else {
+            return;
+        };
+        let _ = self.send_control(queue_id, segment);
     }
 
     #[inline]
     fn handle_unknown_path_secret_packet(
         &mut self,
-        packet: packet::secret_control::unknown_path_secret::Packet,
-        remote_address: SocketAddress,
+        _packet: packet::secret_control::unknown_path_secret::Packet,
+        _remote_address: SocketAddress,
     ) {
-        // TODO reset the destination queue - currently secret control packets don't have queue_ids
-        let _ = packet;
-        let _ = remote_address;
+    }
+
+    #[inline]
+    fn dispatch_unknown_path_secret_packet(
+        &mut self,
+        queue_id: Option<VarInt>,
+        _credentials: credentials::Id,
+        segment: desc::Filled,
+    ) {
+        let Some(queue_id) = queue_id else {
+            return;
+        };
+        let _ = self.send_control(queue_id, segment);
     }
 }

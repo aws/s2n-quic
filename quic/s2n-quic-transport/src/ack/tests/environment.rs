@@ -38,7 +38,7 @@ impl TestEnvironment {
         }
     }
 
-    pub fn context(&mut self) -> MockWriteContext {
+    pub fn context(&mut self) -> MockWriteContext<'_> {
         MockWriteContext::new(
             self.current_time,
             &mut self.sent_frames,

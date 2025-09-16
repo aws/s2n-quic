@@ -527,16 +527,44 @@ where
         ecn: ExplicitCongestionNotification,
         packet: crate::packet::Packet,
     ) -> Result<(), crate::stream::recv::Error> {
+        let credentials = *self.shared.credentials();
+
+        macro_rules! secret_control {
+            ($packet:expr, $handle:ident, | $authenticated:ident | $kind:expr) => {{
+                let packet = $packet;
+
+                ensure!(packet.credential_id() == &credentials.id, Ok(()));
+
+                let Some($authenticated) = self
+                    .shared
+                    .crypto
+                    .map()
+                    .$handle(&$packet, &(*remote_addr).into())
+                else {
+                    return Ok(());
+                };
+
+                self.sender.on_error({
+                    use error::Kind::*;
+                    $kind
+                });
+                self.shared.receiver.notify_error({
+                    use crate::stream::recv::Kind::*;
+                    ($kind).into()
+                });
+            }};
+        }
+
         match packet {
             Packet::Control(mut packet) => {
                 // make sure we're processing the expected stream
-                ensure!(packet.credentials() == self.shared.credentials(), Ok(()));
+                ensure!(packet.credentials() == &credentials, Ok(()));
 
                 let remote_queue_id = packet.source_queue_id();
 
                 let res = self.sender.on_control_packet(
                     self.opener,
-                    self.shared.credentials(),
+                    &credentials,
                     ecn,
                     &mut packet,
                     self.random,
@@ -553,6 +581,29 @@ where
                         self.remote_queue_id = remote_queue_id;
                     }
                 }
+            }
+            Packet::StaleKey(packet) => {
+                secret_control!(packet, handle_stale_key_packet, |packet| {
+                    // make sure that this stream would be rejected before processing
+                    ensure!(packet.min_key_id > credentials.key_id, Ok(()));
+
+                    KeyReplayMaybePrevented {
+                        gap: Some(packet.min_key_id.as_u64() - credentials.key_id.as_u64()),
+                    }
+                })
+            }
+            Packet::ReplayDetected(packet) => {
+                secret_control!(packet, handle_replay_detected_packet, |packet| {
+                    // make sure the rejected key id matches the credentials we're using
+                    ensure!(packet.rejected_key_id == credentials.key_id, Ok(()));
+
+                    KeyReplayPrevented
+                })
+            }
+            Packet::UnknownPathSecret(packet) => {
+                secret_control!(packet, handle_unknown_path_secret_packet, |_packet| {
+                    UnknownPathSecret
+                })
             }
             other => self
                 .shared

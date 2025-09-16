@@ -212,7 +212,7 @@ macro_rules! impl_receive_stream_api {
         #[inline]
         pub(crate) fn rx_request(
             &mut self,
-        ) -> $crate::stream::Result<s2n_quic_transport::stream::RxRequest> {
+        ) -> $crate::stream::Result<s2n_quic_transport::stream::RxRequest<'_, '_>> {
             macro_rules! $dispatch {
                 () => {
                     Err($crate::stream::Error::non_readable())

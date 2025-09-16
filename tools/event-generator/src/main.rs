@@ -3,17 +3,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-
-type Error = Box<dyn std::error::Error + Send + Sync>;
-type Result<T, E = Error> = core::result::Result<T, E>;
-
-mod output;
-mod output_mode;
-mod parser;
-mod validation;
-
-use output::Output;
-use output_mode::OutputMode;
+use s2n_events::{Output, OutputMode, Result, parser, validation};
 
 struct EventInfo<'a> {
     input_path: &'a str,
@@ -65,9 +55,12 @@ impl EventInfo<'_> {
             crate_name: "s2n_quic",
             input_path: concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../s2n-quic-core/events/**/*.rs"
+                "/../../quic/s2n-quic-core/events/**/*.rs"
             ),
-            output_path: concat!(env!("CARGO_MANIFEST_DIR"), "/../s2n-quic-core/src/event"),
+            output_path: concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../quic/s2n-quic-core/src/event"
+            ),
             output_mode: OutputMode::Mut,
             s2n_quic_core_path: quote!(crate),
             api: quote!(),

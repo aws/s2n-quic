@@ -63,6 +63,7 @@ fn one_second_pto_when_no_previous_rtt_available() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
 
     manager
@@ -445,6 +446,7 @@ fn on_ack_frame() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     context.path_manager.activate_path_for_test(path_id);
     context.path_mut().pto_backoff = 2;
@@ -541,7 +543,7 @@ fn on_invalid_ack_frame() {
             &mut publisher,
         );
     }
-    manager.on_transmit_burst_complete(context.active_path(), time_sent, true);
+    manager.on_transmit_burst_complete(context.active_path(), time_sent, true, random);
 
     // Ack packet 2, arming the loss timer for packet 1
     let ack_receive_time = time_sent + Duration::from_millis(10);
@@ -2146,6 +2148,7 @@ fn detect_and_remove_lost_packets_early_mtu_probe() {
             .build()
             .unwrap(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
 
     let mut path_manager = path::Manager::new(path, registry);
@@ -2761,6 +2764,7 @@ fn update_pto_timer() {
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
     let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
 
     context.path_mut().rtt_estimator.update_rtt(
         Duration::from_millis(0),
@@ -2783,7 +2787,7 @@ fn update_pto_timer() {
     // Arm the PTO so we can verify it is cancelled
     manager.pto.update(now, Duration::from_secs(10));
     manager.pto_update_pending = true;
-    manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
+    manager.update_pto_timer(context.path(), now, is_handshake_confirmed, random);
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.2.1
     //= type=test
@@ -2801,7 +2805,7 @@ fn update_pto_timer() {
     // simulate receiving a handshake packet to force path validation
     context.path_mut().on_handshake_packet();
     context.path_mut().on_peer_validated();
-    manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
+    manager.update_pto_timer(context.path(), now, is_handshake_confirmed, random);
 
     // Since the path is peer validated and sent packets is empty, PTO is cancelled
     assert!(!manager.pto.is_armed());
@@ -2820,6 +2824,7 @@ fn update_pto_timer() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     context.path_manager.activate_path_for_test(path_id);
     // simulate receiving a handshake packet to force path validation
@@ -2827,7 +2832,7 @@ fn update_pto_timer() {
     context.path_mut().pto_backoff = 2;
     manager.pto_update_pending = true;
     let is_handshake_confirmed = false;
-    manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
+    manager.update_pto_timer(context.path(), now, is_handshake_confirmed, random);
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
     //= type=test
@@ -2839,7 +2844,7 @@ fn update_pto_timer() {
     // Set is handshake confirmed back to true
     let is_handshake_confirmed = true;
     manager.pto_update_pending = true;
-    manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
+    manager.update_pto_timer(context.path(), now, is_handshake_confirmed, random);
 
     // Now the PTO is armed
     assert!(manager.pto.is_armed());
@@ -2873,7 +2878,7 @@ fn update_pto_timer() {
         space,
     );
     manager.pto_update_pending = true;
-    manager.update_pto_timer(context.path(), now, is_handshake_confirmed);
+    manager.update_pto_timer(context.path(), now, is_handshake_confirmed, random);
 
     //= https://www.rfc-editor.org/rfc/rfc9002#section-6.2.1
     //# When an ack-eliciting packet is transmitted, the sender schedules a
@@ -2904,6 +2909,7 @@ fn pto_armed_if_handshake_not_confirmed() {
     let now = time::now() + Duration::from_secs(10);
     let is_handshake_confirmed = false;
     let mut path_manager = helper_generate_path_manager(Duration::from_millis(10));
+    let random = &mut random::testing::Generator::default();
     let path_id = unsafe { path::Id::new(0) };
     path_manager[path_id] = Path::new(
         Default::default(),
@@ -2914,13 +2920,14 @@ fn pto_armed_if_handshake_not_confirmed() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
     path_manager.activate_path_for_test(path_id);
 
     // simulate receiving a handshake packet to force path validation
     path_manager[path_id].on_handshake_packet();
 
-    manager.update_pto_timer(&path_manager[path_id], now, is_handshake_confirmed);
+    manager.update_pto_timer(&path_manager[path_id], now, is_handshake_confirmed, random);
 
     assert!(manager.pto.is_armed());
 }
@@ -2943,6 +2950,7 @@ fn pto_must_be_at_least_k_granularity() {
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
 
     // Update RTT with the smallest possible sample
@@ -3008,7 +3016,7 @@ fn on_timeout() {
         &mut context,
         &mut publisher,
     );
-    manager.on_transmit_burst_complete(context.path(), now, true);
+    manager.on_transmit_burst_complete(context.path(), now, true, random);
 
     // Loss timer is armed and expired, on_packet_loss is called
     manager.loss_timer.set(now - Duration::from_secs(1));
@@ -3141,7 +3149,7 @@ fn on_timeout_packet_lost() {
         &mut context,
         &mut publisher,
     );
-    manager.on_transmit_burst_complete(context.path(), now - Duration::from_secs(5), true);
+    manager.on_transmit_burst_complete(context.path(), now - Duration::from_secs(5), true, random);
 
     assert!(manager.pto.is_armed());
 
@@ -3220,7 +3228,7 @@ fn new_client_space() {
 
     // No PTO update was pending, nothing happens
     assert!(!manager.pto_update_pending);
-    manager.on_transmit_burst_complete(context.path(), now, false);
+    manager.on_transmit_burst_complete(context.path(), now, false, random);
     assert!(!manager.pto_update_pending);
 }
 
@@ -3426,6 +3434,7 @@ fn on_transmit_burst_complete() {
     let ecn = ExplicitCongestionNotification::default();
     let mut context = MockContext::new(&mut path_manager);
     let mut publisher = Publisher::snapshot();
+    let random = &mut random::testing::Generator::default();
 
     // Send an ack-eliciting packet to trigger a PTO timer update
     manager.on_packet_sent(
@@ -3449,14 +3458,24 @@ fn on_transmit_burst_complete() {
     context.path_mut().on_peer_validated();
 
     assert!(manager.pto_update_pending);
-    manager.on_transmit_burst_complete(path_manager.active_path(), now, is_handshake_confirmed);
+    manager.on_transmit_burst_complete(
+        path_manager.active_path(),
+        now,
+        is_handshake_confirmed,
+        random,
+    );
     assert!(manager.pto.is_armed());
     assert!(!manager.pto_update_pending);
 
     // Cancel the PTO timer to validate it isn't re-armed when not needed
     manager.pto.cancel();
     manager.sent_packets.clear();
-    manager.on_transmit_burst_complete(path_manager.active_path(), now, is_handshake_confirmed);
+    manager.on_transmit_burst_complete(
+        path_manager.active_path(),
+        now,
+        is_handshake_confirmed,
+        random,
+    );
     assert!(!manager.pto.is_armed());
 }
 
@@ -3578,6 +3597,7 @@ fn helper_generate_path_manager_with_first_addr(
         true,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
 
     path::Manager::new(path, registry)
@@ -3603,6 +3623,7 @@ fn helper_generate_client_path_manager(
         false,
         mtu::Config::default(),
         ANTI_AMPLIFICATION_MULTIPLIER,
+        0, // pto_jitter_percentage
     );
 
     path::Manager::new(path, registry)

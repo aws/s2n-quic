@@ -294,7 +294,7 @@ impl Set {
     }
 
     #[inline]
-    pub fn remove_range(&mut self, range: PacketNumberRange) -> SetRemoveIter {
+    pub fn remove_range(&mut self, range: PacketNumberRange) -> SetRemoveIter<'_> {
         SetRemoveIter {
             inner: self.packets.remove_range(range),
             next: None,

@@ -4,7 +4,7 @@
 use crate::event::{self, EndpointPublisher};
 use core::task::{Context, Poll};
 use s2n_quic_core::inet::SocketAddress;
-use std::{collections::VecDeque, io};
+use std::{collections::VecDeque, io, task::ready};
 
 /// Converts the kernel's TCP FIFO accept queue to LIFO
 ///
@@ -107,13 +107,20 @@ pub trait Listener {
     fn poll_accept(&mut self, cx: &mut Context) -> Poll<io::Result<(Self::Stream, SocketAddress)>>;
 }
 
-impl Listener for tokio::net::TcpListener {
-    type Stream = tokio::net::TcpStream;
+impl Listener for tokio::io::unix::AsyncFd<std::net::TcpListener> {
+    type Stream = std::net::TcpStream;
 
     #[inline]
     fn poll_accept(&mut self, cx: &mut Context) -> Poll<io::Result<(Self::Stream, SocketAddress)>> {
-        (*self)
-            .poll_accept(cx)
-            .map_ok(|(socket, remote_address)| (socket, remote_address.into()))
+        loop {
+            let mut guard = ready!(self.poll_read_ready(cx))?;
+            let (socket, remote_addr) = match guard.try_io(|listener| listener.get_ref().accept()) {
+                Ok(v) => v?,
+                // arm the waker via poll_read_ready if WouldBlock returned.
+                Err(_) => continue,
+            };
+            socket.set_nonblocking(true)?;
+            return Poll::Ready(Ok((socket, remote_addr.into())));
+        }
     }
 }

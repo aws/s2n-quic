@@ -130,7 +130,7 @@ impl Session {
         Ok(())
     }
 
-    fn application_parameters(&self) -> Result<tls::ApplicationParameters, transport::Error> {
+    fn application_parameters(&self) -> Result<tls::ApplicationParameters<'_>, transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9001#section-8.2
         //# endpoints that
         //# receive ClientHello or EncryptedExtensions messages without the

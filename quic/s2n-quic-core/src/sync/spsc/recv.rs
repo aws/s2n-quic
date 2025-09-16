@@ -8,6 +8,7 @@ use core::{
     task::{Context, Poll},
 };
 
+#[derive(Debug)]
 pub struct Receiver<T>(pub(super) State<T>);
 
 impl<T> Receiver<T> {
@@ -35,7 +36,7 @@ impl<T> Receiver<T> {
     ///
     /// Callers should call [`Self::acquire`] or [`Self::poll_slice`] before calling this method.
     #[inline]
-    pub fn slice(&mut self) -> RecvSlice<T> {
+    pub fn slice(&mut self) -> RecvSlice<'_, T> {
         let cursor = self.0.cursor;
         RecvSlice(&mut self.0, cursor)
     }
@@ -47,7 +48,7 @@ impl<T> Receiver<T> {
     }
 
     #[inline]
-    pub fn poll_slice(&mut self, cx: &mut Context) -> Poll<Result<RecvSlice<T>>> {
+    pub fn poll_slice(&mut self, cx: &mut Context) -> Poll<Result<RecvSlice<'_, T>>> {
         macro_rules! acquire_filled {
             () => {
                 match self.0.acquire_filled() {
@@ -79,7 +80,7 @@ impl<T> Receiver<T> {
     }
 
     #[inline]
-    pub fn try_slice(&mut self) -> Result<Option<RecvSlice<T>>> {
+    pub fn try_slice(&mut self) -> Result<Option<RecvSlice<'_, T>>> {
         Ok(if self.0.acquire_filled()? {
             let cursor = self.0.cursor;
             Some(RecvSlice(&mut self.0, cursor))

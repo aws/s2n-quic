@@ -38,7 +38,7 @@ jobs:
     env:
       WIRESHARK_VERSION: ${{ inputs.version || '4.4.2' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - run: mkdir -p target/tshark/v$WIRESHARK_VERSION
 
@@ -51,7 +51,7 @@ jobs:
             tshark-static \
             cp /usr/local/bin/tshark /usr/local/bin/editcap /host-dir/
 
-      - uses: aws-actions/configure-aws-credentials@v4.2.1
+      - uses: aws-actions/configure-aws-credentials@v5.0.0
         if: github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole

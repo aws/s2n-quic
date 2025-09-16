@@ -171,6 +171,18 @@ impl<T: Message> Consumer<T> {
     /// Releases consumed messages to the producer without waking the producer
     #[inline]
     pub fn release_no_wake(&mut self, release_len: u32) {
+        if release_len == 0 {
+            return;
+        }
+
+        debug_assert!(
+            release_len <= self.cursor.cached_consumer_len(),
+            "cannot release more messages than acquired"
+        );
+        unsafe {
+            sync_ring_regions::<_, false>(&self.cursor, release_len, replicate_payload_len);
+        }
+
         self.cursor.release_consumer(release_len);
     }
 
@@ -260,7 +272,7 @@ impl<T: Message> Producer<T> {
         self.wake();
     }
 
-    /// Releases consumed messages to the producer without waking the producer
+    /// Releases consumed messages to the consumer without waking the consumer
     #[inline]
     pub fn release_no_wake(&mut self, release_len: u32) {
         if release_len == 0 {
@@ -272,58 +284,8 @@ impl<T: Message> Producer<T> {
             "cannot release more messages than acquired"
         );
 
-        let idx = self.cursor.cached_producer();
-        let ring_size = self.cursor.capacity();
-
-        // replicate any written items to the secondary region
         unsafe {
-            assume!(ring_size > idx, "idx should never exceed the ring size");
-
-            // calculate the maximum number of replications we need to perform for the primary ->
-            // secondary
-            let max_possible_replications = ring_size - idx;
-            // the replication count should exceed the number that we're releasing
-            let replication_count = max_possible_replications.min(release_len);
-
-            assume!(
-                replication_count != 0,
-                "we should always be releasing at least 1 item"
-            );
-
-            // calculate the data pointer based on the current message index
-            let primary = self.cursor.data_ptr().as_ptr().add(idx as _);
-            // add the size of the ring to the primary pointer to get into the secondary message
-            let secondary = primary.add(ring_size as _);
-
-            // copy the primary into the secondary
-            self.replicate(primary, secondary, replication_count as _);
-
-            // if messages were also written to the secondary region, we need to copy them back to the
-            // primary region
-            assume!(
-                idx.checked_add(release_len).is_some(),
-                "overflow amount should not exceed u32::MAX"
-            );
-            assume!(
-                idx + release_len < ring_size * 2,
-                "overflow amount should not extend beyond the secondary replica"
-            );
-
-            let overflow_amount = (idx + release_len).checked_sub(ring_size).filter(|v| {
-                // we didn't overflow if the count is 0
-                *v > 0
-            });
-
-            if let Some(replication_count) = overflow_amount {
-                // secondary -> primary replication always happens at the beginning of the data
-                let primary = self.cursor.data_ptr().as_ptr();
-                // add the size of the ring to the primary pointer to get into the secondary
-                // message
-                let secondary = primary.add(ring_size as _);
-
-                // copy the secondary into the primary
-                self.replicate(secondary, primary, replication_count as _);
-            }
+            sync_ring_regions::<_, true>(&self.cursor, release_len, replicate);
         }
 
         // finally release the len to the consumer
@@ -352,22 +314,108 @@ impl<T: Message> Producer<T> {
     pub fn is_open(&self) -> bool {
         self.wakers.is_open()
     }
+}
 
-    /// Replicates messages from the primary to secondary memory regions
-    #[inline]
-    unsafe fn replicate(&self, primary: *mut T, secondary: *mut T, len: usize) {
-        debug_assert_ne!(len, 0);
+/// Copies messages from the primary to secondary memory regions
+#[inline]
+unsafe fn replicate<T: Message>(src: *mut T, dest: *mut T, len: usize) {
+    debug_assert_ne!(len, 0);
 
-        #[cfg(debug_assertions)]
-        {
-            let primary = core::slice::from_raw_parts(primary, len as _);
-            let secondary = core::slice::from_raw_parts(secondary, len as _);
-            for (primary, secondary) in primary.iter().zip(secondary) {
-                T::validate_replication(primary, secondary);
-            }
+    #[cfg(debug_assertions)]
+    {
+        let src_slice = core::slice::from_raw_parts(src, len as _);
+        let dest_slice = core::slice::from_raw_parts(dest, len as _);
+        for (src_message, dest_message) in src_slice.iter().zip(dest_slice) {
+            T::validate_replication(src_message, dest_message);
         }
+    }
 
-        core::ptr::copy_nonoverlapping(primary, secondary, len as _);
+    core::ptr::copy_nonoverlapping(src, dest, len as _);
+}
+
+#[inline]
+unsafe fn replicate_payload_len<T: Message>(src: *mut T, dest: *mut T, len: usize) {
+    let src_slice = core::slice::from_raw_parts_mut(src, len as _);
+    let dest_slice = core::slice::from_raw_parts_mut(dest, len as _);
+    for (src_message, dest_message) in src_slice.iter_mut().zip(dest_slice) {
+        dest_message.set_payload_len(src_message.payload_len());
+    }
+}
+
+/// Synchronizes data between primary and secondary regions of the ring buffer.
+///
+/// The ring buffer is divided into two equal regions to ensure contiguous reads.
+/// When data is written to one region, it needs to be replicated to maintain
+/// consistency:
+///
+/// * Data written to the primary region is copied to the corresponding location
+///   in the secondary region
+/// * If the write wraps around the end of the primary region, the wrapped portion
+///   from the secondary region is copied back to the start of the primary region
+///
+/// The `PRODUCER` const generic parameter determines whether this is being called
+/// from the producer (writing) or consumer (reading) side of the ring.
+unsafe fn sync_ring_regions<T: Message, const PRODUCER: bool>(
+    cursor: &Cursor<T>,
+    release_len: u32,
+    f: unsafe fn(src: *mut T, dest: *mut T, len: usize),
+) {
+    let idx = if PRODUCER {
+        cursor.cached_producer()
+    } else {
+        cursor.cached_consumer()
+    };
+
+    let ring_size = cursor.capacity();
+
+    // replicate any written items to the secondary region
+
+    assume!(ring_size > idx, "idx should never exceed the ring size");
+
+    // calculate the maximum number of replications we need to perform for the primary ->
+    // secondary
+    let max_possible_replications = ring_size - idx;
+    // the replication count should exceed the number that we're releasing
+    let replication_count = max_possible_replications.min(release_len);
+
+    assume!(
+        replication_count != 0,
+        "we should always be releasing at least 1 item"
+    );
+
+    // calculate the data pointer based on the current message index
+    let primary = cursor.data_ptr().as_ptr().add(idx as _);
+    // add the size of the ring to the primary pointer to get into the secondary message
+    let secondary = primary.add(ring_size as _);
+
+    // copy the primary into the secondary
+    f(primary, secondary, replication_count as _);
+
+    // if messages were also written to the secondary region, we need to copy them back to the
+    // primary region
+    assume!(
+        idx.checked_add(release_len).is_some(),
+        "overflow amount should not exceed u32::MAX"
+    );
+    assume!(
+        idx + release_len < ring_size * 2,
+        "overflow amount should not extend beyond the secondary replica"
+    );
+
+    let overflow_amount = (idx + release_len).checked_sub(ring_size).filter(|v| {
+        // we didn't overflow if the count is 0
+        *v > 0
+    });
+
+    if let Some(replication_count) = overflow_amount {
+        // secondary -> primary replication always happens at the beginning of the data
+        let primary = cursor.data_ptr().as_ptr();
+        // add the size of the ring to the primary pointer to get into the secondary
+        // message
+        let secondary = primary.add(ring_size as _);
+
+        // copy the secondary into the primary
+        f(secondary, primary, replication_count as _);
     }
 }
 
@@ -528,4 +576,50 @@ mod tests {
     send_recv_test!(msg_send_recv, crate::message::msg::Message);
     #[cfg(s2n_quic_platform_socket_mmsg)]
     send_recv_test!(mmsg_send_recv, crate::message::mmsg::Message);
+
+    macro_rules! consumer_modifications_test {
+        ($name:ident, $msg:ty) => {
+            #[test]
+            fn $name() {
+                check!().with_type::<u32>().for_each(|&count| {
+                    let entries = if cfg!(kani) { 2 } else { 16 };
+                    let payload_len = if cfg!(kani) { 2 } else { 128 };
+                    let count = count % entries;
+
+                    let (mut producer, mut consumer) = pair::<$msg>(entries, payload_len);
+
+                    // Producer writes to the ring buffer
+                    producer.acquire(u32::MAX);
+                    for entry in &mut producer.data()[..count as usize] {
+                        unsafe {
+                            entry.set_payload_len(100);
+                        }
+                    }
+                    producer.release(count);
+
+                    // Consumer reads and resets the payload
+                    let count = consumer.acquire(u32::MAX);
+                    for entry in &mut consumer.data()[..count as usize] {
+                        unsafe {
+                            entry.reset(payload_len as usize);
+                        }
+                    }
+                    consumer.release(count);
+
+                    // Verify modifications seen by producer for reuse
+                    producer.acquire(u32::MAX);
+                    let s = producer.data();
+                    for entry in s {
+                        assert_eq!(entry.payload_len(), payload_len as usize);
+                    }
+                });
+            }
+        };
+    }
+
+    consumer_modifications_test!(simple_rx_modifications, crate::message::simple::Message);
+    #[cfg(s2n_quic_platform_socket_msg)]
+    consumer_modifications_test!(msg_rx_modifications, crate::message::msg::Message);
+    #[cfg(s2n_quic_platform_socket_mmsg)]
+    consumer_modifications_test!(mmsg_rx_modifications, crate::message::mmsg::Message);
 }

@@ -60,7 +60,7 @@ fn fmt_test() {
 }
 
 /// A prechecked 1us value
-const ONE_MICROSECOND: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
+const ONE_MICROSECOND: NonZeroU64 = NonZeroU64::new(1).unwrap();
 
 impl Timestamp {
     /// Tries to calculate a `Timestamp` based on the current `Timestamp` and

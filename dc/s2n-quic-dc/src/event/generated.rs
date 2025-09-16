@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // DO NOT MODIFY THIS FILE
-// This file was generated with the `s2n-quic-events` crate and any required
+// This file was generated with the `s2n-events` crate and any required
 // changes should be made there.
 
 #![allow(clippy::needless_lifetimes)]
@@ -735,6 +735,23 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct StreamWriteAllocated {
+        #[doc = " The number of bytes that we allocated."]
+        pub allocated_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamWriteAllocated {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamWriteAllocated");
+            fmt.field("allocated_len", &self.allocated_len);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamWriteAllocated {
+        const NAME: &'static str = "stream:write_allocated";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct StreamWriteShutdown {
         #[doc = " The number of bytes in the send buffer at the time of shutdown"]
         pub buffer_len: usize,
@@ -993,6 +1010,37 @@ pub mod api {
     }
     impl Event for StreamReadSocketErrored {
         const NAME: &'static str = "stream:read_socket_errored";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamDecryptPacket {
+        #[doc = " Did we decrypt the packet in place, or were we able to merge the copy and decrypt?"]
+        pub decrypted_in_place: bool,
+        #[doc = " The number of bytes we were forced to copy after decrypting in the packet buffer."]
+        #[doc = ""]
+        #[doc = " This means that the application buffer was insufficiently large to allow us to directly"]
+        #[doc = " copy as part of the decrypt. This can be non-zero even with decrypted_in_place=false, if we"]
+        #[doc = " decrypted into the reassembly buffer. Right now it doesn't take into account zero-copy"]
+        #[doc = " reads from the reassembly buffer (e.g., with specialized Bytes)."]
+        pub forced_copy: usize,
+        #[doc = " The application buffer size that would avoid copies."]
+        pub required_application_buffer: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamDecryptPacket {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamDecryptPacket");
+            fmt.field("decrypted_in_place", &self.decrypted_in_place);
+            fmt.field("forced_copy", &self.forced_copy);
+            fmt.field(
+                "required_application_buffer",
+                &self.required_application_buffer,
+            );
+            fmt.finish()
+        }
+    }
+    impl Event for StreamDecryptPacket {
+        const NAME: &'static str = "stream:decrypt_packet";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2219,6 +2267,17 @@ pub mod tracing {
             tracing :: event ! (target : "stream_write_key_updated" , parent : id , tracing :: Level :: DEBUG , { key_phase = tracing :: field :: debug (key_phase) });
         }
         #[inline]
+        fn on_stream_write_allocated(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamWriteAllocated,
+        ) {
+            let id = context.id();
+            let api::StreamWriteAllocated { allocated_len } = event;
+            tracing :: event ! (target : "stream_write_allocated" , parent : id , tracing :: Level :: DEBUG , { allocated_len = tracing :: field :: debug (allocated_len) });
+        }
+        #[inline]
         fn on_stream_write_shutdown(
             &self,
             context: &Self::ConnectionContext,
@@ -2386,6 +2445,21 @@ pub mod tracing {
             let id = context.id();
             let api::StreamReadSocketErrored { capacity, errno } = event;
             tracing :: event ! (target : "stream_read_socket_errored" , parent : id , tracing :: Level :: DEBUG , { capacity = tracing :: field :: debug (capacity) , errno = tracing :: field :: debug (errno) });
+        }
+        #[inline]
+        fn on_stream_decrypt_packet(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
+        ) {
+            let id = context.id();
+            let api::StreamDecryptPacket {
+                decrypted_in_place,
+                forced_copy,
+                required_application_buffer,
+            } = event;
+            tracing :: event ! (target : "stream_decrypt_packet" , parent : id , tracing :: Level :: DEBUG , { decrypted_in_place = tracing :: field :: debug (decrypted_in_place) , forced_copy = tracing :: field :: debug (forced_copy) , required_application_buffer = tracing :: field :: debug (required_application_buffer) });
         }
         #[inline]
         fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
@@ -3530,6 +3604,20 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct StreamWriteAllocated {
+        #[doc = " The number of bytes that we allocated."]
+        pub allocated_len: usize,
+    }
+    impl IntoEvent<api::StreamWriteAllocated> for StreamWriteAllocated {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteAllocated {
+            let StreamWriteAllocated { allocated_len } = self;
+            api::StreamWriteAllocated {
+                allocated_len: allocated_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct StreamWriteShutdown {
         #[doc = " The number of bytes in the send buffer at the time of shutdown"]
         pub buffer_len: usize,
@@ -3774,6 +3862,35 @@ pub mod builder {
             api::StreamReadSocketErrored {
                 capacity: capacity.into_event(),
                 errno: errno.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamDecryptPacket {
+        #[doc = " Did we decrypt the packet in place, or were we able to merge the copy and decrypt?"]
+        pub decrypted_in_place: bool,
+        #[doc = " The number of bytes we were forced to copy after decrypting in the packet buffer."]
+        #[doc = ""]
+        #[doc = " This means that the application buffer was insufficiently large to allow us to directly"]
+        #[doc = " copy as part of the decrypt. This can be non-zero even with decrypted_in_place=false, if we"]
+        #[doc = " decrypted into the reassembly buffer. Right now it doesn't take into account zero-copy"]
+        #[doc = " reads from the reassembly buffer (e.g., with specialized Bytes)."]
+        pub forced_copy: usize,
+        #[doc = " The application buffer size that would avoid copies."]
+        pub required_application_buffer: usize,
+    }
+    impl IntoEvent<api::StreamDecryptPacket> for StreamDecryptPacket {
+        #[inline]
+        fn into_event(self) -> api::StreamDecryptPacket {
+            let StreamDecryptPacket {
+                decrypted_in_place,
+                forced_copy,
+                required_application_buffer,
+            } = self;
+            api::StreamDecryptPacket {
+                decrypted_in_place: decrypted_in_place.into_event(),
+                forced_copy: forced_copy.into_event(),
+                required_application_buffer: required_application_buffer.into_event(),
             }
         }
     }
@@ -4892,6 +5009,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `StreamWriteAllocated` event is triggered"]
+        #[inline]
+        fn on_stream_write_allocated(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteAllocated,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `StreamWriteShutdown` event is triggered"]
         #[inline]
         fn on_stream_write_shutdown(
@@ -5043,6 +5172,18 @@ mod traits {
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
             event: &api::StreamReadSocketErrored,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamDecryptPacket` event is triggered"]
+        #[inline]
+        fn on_stream_decrypt_packet(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
         ) {
             let _ = context;
             let _ = meta;
@@ -5629,6 +5770,16 @@ mod traits {
                 .on_stream_write_key_updated(context, meta, event);
         }
         #[inline]
+        fn on_stream_write_allocated(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteAllocated,
+        ) {
+            self.as_ref()
+                .on_stream_write_allocated(context, meta, event);
+        }
+        #[inline]
         fn on_stream_write_shutdown(
             &self,
             context: &Self::ConnectionContext,
@@ -5752,6 +5903,15 @@ mod traits {
         ) {
             self.as_ref()
                 .on_stream_read_socket_errored(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_decrypt_packet(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
+        ) {
+            self.as_ref().on_stream_decrypt_packet(context, meta, event);
         }
         #[inline]
         fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
@@ -6291,6 +6451,16 @@ mod traits {
             (self.1).on_stream_write_key_updated(&context.1, meta, event);
         }
         #[inline]
+        fn on_stream_write_allocated(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteAllocated,
+        ) {
+            (self.0).on_stream_write_allocated(&context.0, meta, event);
+            (self.1).on_stream_write_allocated(&context.1, meta, event);
+        }
+        #[inline]
         fn on_stream_write_shutdown(
             &self,
             context: &Self::ConnectionContext,
@@ -6419,6 +6589,16 @@ mod traits {
         ) {
             (self.0).on_stream_read_socket_errored(&context.0, meta, event);
             (self.1).on_stream_read_socket_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_decrypt_packet(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
+        ) {
+            (self.0).on_stream_decrypt_packet(&context.0, meta, event);
+            (self.1).on_stream_decrypt_packet(&context.1, meta, event);
         }
         #[inline]
         fn on_stream_tcp_connect(&self, meta: &api::EndpointMeta, event: &api::StreamTcpConnect) {
@@ -7346,6 +7526,8 @@ mod traits {
         fn on_stream_write_errored(&self, event: builder::StreamWriteErrored);
         #[doc = "Publishes a `StreamWriteKeyUpdated` event to the publisher's subscriber"]
         fn on_stream_write_key_updated(&self, event: builder::StreamWriteKeyUpdated);
+        #[doc = "Publishes a `StreamWriteAllocated` event to the publisher's subscriber"]
+        fn on_stream_write_allocated(&self, event: builder::StreamWriteAllocated);
         #[doc = "Publishes a `StreamWriteShutdown` event to the publisher's subscriber"]
         fn on_stream_write_shutdown(&self, event: builder::StreamWriteShutdown);
         #[doc = "Publishes a `StreamWriteSocketFlushed` event to the publisher's subscriber"]
@@ -7372,6 +7554,8 @@ mod traits {
         fn on_stream_read_socket_blocked(&self, event: builder::StreamReadSocketBlocked);
         #[doc = "Publishes a `StreamReadSocketErrored` event to the publisher's subscriber"]
         fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored);
+        #[doc = "Publishes a `StreamDecryptPacket` event to the publisher's subscriber"]
+        fn on_stream_decrypt_packet(&self, event: builder::StreamDecryptPacket);
         #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
         fn on_connection_closed(&self, event: builder::ConnectionClosed);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
@@ -7451,6 +7635,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_stream_write_key_updated(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_write_allocated(&self, event: builder::StreamWriteAllocated) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_write_allocated(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -7568,6 +7761,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_stream_read_socket_errored(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_decrypt_packet(&self, event: builder::StreamDecryptPacket) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_decrypt_packet(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -8396,6 +8598,7 @@ pub mod testing {
         pub stream_write_blocked: AtomicU64,
         pub stream_write_errored: AtomicU64,
         pub stream_write_key_updated: AtomicU64,
+        pub stream_write_allocated: AtomicU64,
         pub stream_write_shutdown: AtomicU64,
         pub stream_write_socket_flushed: AtomicU64,
         pub stream_write_socket_blocked: AtomicU64,
@@ -8409,6 +8612,7 @@ pub mod testing {
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
         pub stream_read_socket_errored: AtomicU64,
+        pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
@@ -8499,6 +8703,7 @@ pub mod testing {
                 stream_write_blocked: AtomicU64::new(0),
                 stream_write_errored: AtomicU64::new(0),
                 stream_write_key_updated: AtomicU64::new(0),
+                stream_write_allocated: AtomicU64::new(0),
                 stream_write_shutdown: AtomicU64::new(0),
                 stream_write_socket_flushed: AtomicU64::new(0),
                 stream_write_socket_blocked: AtomicU64::new(0),
@@ -8512,6 +8717,7 @@ pub mod testing {
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
                 stream_read_socket_errored: AtomicU64::new(0),
+                stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
@@ -8842,6 +9048,20 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_stream_write_allocated(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteAllocated,
+        ) {
+            self.stream_write_allocated.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_stream_write_shutdown(
             &self,
             _context: &Self::ConnectionContext,
@@ -9023,6 +9243,20 @@ pub mod testing {
         ) {
             self.stream_read_socket_errored
                 .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_decrypt_packet(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamDecryptPacket,
+        ) {
+            self.stream_decrypt_packet.fetch_add(1, Ordering::Relaxed);
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -9474,6 +9708,7 @@ pub mod testing {
         pub stream_write_blocked: AtomicU64,
         pub stream_write_errored: AtomicU64,
         pub stream_write_key_updated: AtomicU64,
+        pub stream_write_allocated: AtomicU64,
         pub stream_write_shutdown: AtomicU64,
         pub stream_write_socket_flushed: AtomicU64,
         pub stream_write_socket_blocked: AtomicU64,
@@ -9487,6 +9722,7 @@ pub mod testing {
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
         pub stream_read_socket_errored: AtomicU64,
+        pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
@@ -9567,6 +9803,7 @@ pub mod testing {
                 stream_write_blocked: AtomicU64::new(0),
                 stream_write_errored: AtomicU64::new(0),
                 stream_write_key_updated: AtomicU64::new(0),
+                stream_write_allocated: AtomicU64::new(0),
                 stream_write_shutdown: AtomicU64::new(0),
                 stream_write_socket_flushed: AtomicU64::new(0),
                 stream_write_socket_blocked: AtomicU64::new(0),
@@ -9580,6 +9817,7 @@ pub mod testing {
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
                 stream_read_socket_errored: AtomicU64::new(0),
+                stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
@@ -10121,6 +10359,15 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_stream_write_allocated(&self, event: builder::StreamWriteAllocated) {
+            self.stream_write_allocated.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_stream_write_shutdown(&self, event: builder::StreamWriteShutdown) {
             self.stream_write_shutdown.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
@@ -10237,6 +10484,15 @@ pub mod testing {
         fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored) {
             self.stream_read_socket_errored
                 .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_decrypt_packet(&self, event: builder::StreamDecryptPacket) {
+            self.stream_decrypt_packet.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

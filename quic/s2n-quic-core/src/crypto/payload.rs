@@ -48,7 +48,7 @@ impl<'a> ProtectedPayload<'a> {
     }
 
     /// Reads data from a `CheckedRange`
-    pub fn get_checked_range(&self, range: &CheckedRange) -> DecoderBuffer {
+    pub fn get_checked_range(&self, range: &CheckedRange) -> DecoderBuffer<'_> {
         self.buffer.get_checked_range(range)
     }
 
@@ -125,7 +125,7 @@ impl<'a> EncryptedPayload<'a> {
     }
 
     /// Reads data from a `CheckedRange`
-    pub fn get_checked_range(&self, range: &CheckedRange) -> DecoderBuffer {
+    pub fn get_checked_range(&self, range: &CheckedRange) -> DecoderBuffer<'_> {
         self.buffer.get_checked_range(range)
     }
 
@@ -149,7 +149,7 @@ impl<'a> EncryptedPayload<'a> {
 }
 
 fn header_protection_sample(
-    buffer: DecoderBuffer,
+    buffer: DecoderBuffer<'_>,
     header_len: usize,
     sample_len: usize,
 ) -> Result<&[u8], DecoderError> {

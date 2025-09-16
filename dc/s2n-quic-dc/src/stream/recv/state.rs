@@ -6,6 +6,7 @@ use crate::{
     clock,
     credentials::Credentials,
     crypto::{self, UninitSlice},
+    event::{self, ConnectionPublisher},
     packet::{control, stream},
     stream::{
         recv::{
@@ -228,7 +229,7 @@ impl State {
     }
 
     #[inline]
-    pub fn on_stream_packet<D, C, B, Clk>(
+    pub fn on_stream_packet<D, C, B, Clk, Sub>(
         &mut self,
         opener: &D,
         control: &C,
@@ -237,12 +238,14 @@ impl State {
         ecn: ExplicitCongestionNotification,
         clock: &Clk,
         out_buf: &mut B,
+        subscriber: &crate::stream::shared::Subscriber<Sub>,
     ) -> Result<(), Error>
     where
         D: crypto::open::Application,
         C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
         B: buffer::Duplex<Error = core::convert::Infallible>,
+        Sub: event::Subscriber,
     {
         probes::on_stream_packet(
             credentials.id,
@@ -255,8 +258,16 @@ impl State {
             packet.is_retransmission(),
         );
 
-        match self.on_stream_packet_impl(opener, control, credentials, packet, ecn, clock, out_buf)
-        {
+        match self.on_stream_packet_impl(
+            opener,
+            control,
+            credentials,
+            packet,
+            ecn,
+            clock,
+            out_buf,
+            subscriber,
+        ) {
             Ok(()) => Ok(()),
             Err(err) => {
                 if err.is_fatal(&self.features) {
@@ -271,7 +282,7 @@ impl State {
     }
 
     #[inline]
-    fn on_stream_packet_impl<D, C, B, Clk>(
+    fn on_stream_packet_impl<D, C, B, Clk, Sub>(
         &mut self,
         opener: &D,
         control: &C,
@@ -280,12 +291,14 @@ impl State {
         ecn: ExplicitCongestionNotification,
         clock: &Clk,
         out_buf: &mut B,
+        subscriber: &crate::stream::shared::Subscriber<Sub>,
     ) -> Result<(), Error>
     where
         D: crypto::open::Application,
         C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
         B: buffer::Duplex<Error = core::convert::Infallible>,
+        Sub: event::Subscriber,
     {
         use buffer::reader::Storage as _;
 
@@ -325,8 +338,32 @@ impl State {
             return Err(error);
         }
 
+        let initial = out_buf.buffered_len();
+
         // decrypt and write the packet to the provided buffer
         out_buf.read_from(&mut packet)?;
+
+        let new = out_buf.buffered_len();
+
+        // Don't emit for empty payloads, those don't have copy costs.
+        if !packet.packet.payload().is_empty() {
+            let publisher = subscriber.publisher(clock.get_time());
+            publisher.on_stream_decrypt_packet(event::builder::StreamDecryptPacket {
+                decrypted_in_place: packet.is_decrypted_in_place,
+                forced_copy: if packet.is_decrypted_in_place {
+                    packet.packet.payload().len()
+                } else {
+                    // Any new bytes buffered into the `out_buf` means they are going to need to be
+                    // copied out into the application buffer.
+                    //
+                    // `saturating_sub` would be needed if we moved bytes out of the reassembler into
+                    // the application buffer as part of the read_from. Currently it doesn't seem like
+                    // that's possible (looking at `read_from`) but defense in depth.
+                    new.saturating_sub(initial)
+                },
+                required_application_buffer: packet.packet.payload().len(),
+            });
+        }
 
         let mut chunk = buffer::writer::storage::Empty;
         self.on_read_buffer(out_buf, &mut chunk, clock);

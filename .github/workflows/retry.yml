@@ -1,0 +1,22 @@
+# You cannot rerun an in-progress workflow, so you cannot rerun a workflow
+# from inside that same workflow. Instead, this workflow should be used.
+# It waits for the previous workflow complete, then reruns it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        required: true
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: rerun ${{ inputs.run_id }}
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run watch ${{ inputs.run_id }}
+          gh run rerun ${{ inputs.run_id }}

@@ -11,20 +11,23 @@ use crate::{
 };
 use core::{future::poll_fn, task::Poll};
 use s2n_quic_core::{inet::SocketAddress, time::Clock};
-use std::time::Duration;
-use tokio::net::TcpListener;
+use std::{net::TcpListener, time::Duration};
+use tokio::io::unix::AsyncFd;
 use tracing::debug;
 
 mod fresh;
+mod lazy;
 mod manager;
 mod worker;
+
+pub(crate) use lazy::LazyBoundStream;
 
 pub struct Acceptor<Sub>
 where
     Sub: Subscriber + Clone,
 {
     sender: accept::Sender<Sub>,
-    socket: TcpListener,
+    socket: AsyncFd<TcpListener>,
     env: Environment<Sub>,
     secrets: secret::Map,
     backlog: usize,
@@ -39,14 +42,14 @@ where
     #[inline]
     pub fn new(
         id: usize,
-        socket: TcpListener,
+        socket: AsyncFd<TcpListener>,
         sender: &accept::Sender<Sub>,
         env: &Environment<Sub>,
         secrets: &secret::Map,
         backlog: usize,
         accept_flavor: accept::Flavor,
         linger: Option<Duration>,
-    ) -> Self {
+    ) -> std::io::Result<Self> {
         let acceptor = Self {
             sender: sender.clone(),
             socket,
@@ -57,7 +60,29 @@ where
             linger,
         };
 
-        if let Ok(addr) = acceptor.socket.local_addr() {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::fd::AsRawFd;
+
+            let res = unsafe {
+                libc::setsockopt(
+                    acceptor.socket.get_ref().as_raw_fd(),
+                    libc::SOL_TCP,
+                    libc::TCP_DEFER_ACCEPT,
+                    // This is how many seconds elapse before the kernel will accept a stream
+                    // without any data and return it to userspace. Any number of seconds is
+                    // arguably too many in our domain (we'd expect data in milliseconds) but in
+                    // practice this value shouldn't matter much.
+                    &1u32 as *const _ as *const _,
+                    std::mem::size_of::<u32>() as libc::socklen_t,
+                )
+            };
+            if res != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+
+        if let Ok(addr) = acceptor.socket.get_ref().local_addr() {
             let local_address: SocketAddress = addr.into();
             acceptor.env.endpoint_publisher().on_acceptor_tcp_started(
                 event::builder::AcceptorTcpStarted {
@@ -68,7 +93,7 @@ where
             );
         }
 
-        acceptor
+        Ok(acceptor)
     }
 
     pub async fn run(mut self) {
@@ -103,7 +128,7 @@ where
 
                 workers.insert(
                     remote_address,
-                    socket,
+                    LazyBoundStream::Std(socket),
                     self.linger,
                     &mut context,
                     subscriber_ctx,

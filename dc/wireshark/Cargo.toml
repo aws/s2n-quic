@@ -3,7 +3,7 @@ name = "wireshark_dcquic"
 version = "0.0.0"
 edition = "2021"
 publish = false
-rust-version = "1.82"
+rust-version = "1.84"
 
 [lib]
 crate-type = ["rlib", "cdylib"]

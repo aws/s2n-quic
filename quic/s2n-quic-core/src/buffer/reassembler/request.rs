@@ -73,7 +73,7 @@ impl reader::Storage for Request<'_> {
     fn partial_copy_into<Dest>(
         &mut self,
         dest: &mut Dest,
-    ) -> Result<reader::storage::Chunk, Self::Error>
+    ) -> Result<reader::storage::Chunk<'_>, Self::Error>
     where
         Dest: writer::Storage + ?Sized,
     {

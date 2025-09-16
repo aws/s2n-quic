@@ -4,7 +4,7 @@ name = "s2n-quic-qns"
 version = "0.1.0"
 authors = ["AWS s2n"]
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.84"
 license = "Apache-2.0"
 publish = false
 

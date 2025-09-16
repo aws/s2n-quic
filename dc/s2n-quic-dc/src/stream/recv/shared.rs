@@ -108,6 +108,7 @@ impl State {
             reassembler,
             buffer,
             handshake: endpoint.into(),
+            application_waker: None,
         };
         let inner = Mutex::new(inner);
         Self {
@@ -169,6 +170,19 @@ impl State {
     }
 
     #[inline]
+    pub fn notify_error(&self, error: recv::Error) {
+        let waker = {
+            let mut inner = self.inner.lock().unwrap();
+            inner.receiver.on_error(error);
+            inner.application_waker.take()
+        };
+        self.worker_waker.wake();
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+
+    #[inline]
     pub fn poll_peek_worker<S, C, Sub>(
         &self,
         cx: &mut Context,
@@ -194,7 +208,7 @@ impl State {
     }
 
     #[inline]
-    pub fn worker_try_lock(&self) -> io::Result<Option<MutexGuard<Inner>>> {
+    pub fn worker_try_lock(&self) -> io::Result<Option<MutexGuard<'_, Inner>>> {
         match self.inner.try_lock() {
             Ok(lock) => Ok(Some(lock)),
             Err(std::sync::TryLockError::WouldBlock) => Ok(None),
@@ -224,6 +238,12 @@ where
     fn send_ack(&mut self) -> bool {
         // we only send ACKs for unreliable protocols
         ensure!(!self.sockets.features().is_reliable(), false);
+
+        // If we haven't completed the handshake then no need to send an ACK
+        ensure!(
+            !matches!(self.handshake, handshake::State::ClientInit),
+            false
+        );
 
         match self.ack_mode {
             AckMode::Application => {
@@ -308,6 +328,7 @@ pub struct Inner {
     pub reassembler: buffer::Reassembler,
     buffer: RecvBuffer,
     handshake: handshake::State,
+    application_waker: Option<core::task::Waker>,
 }
 
 impl fmt::Debug for Inner {
@@ -369,12 +390,23 @@ impl Inner {
         C: ?Sized + Clock,
         Sub: event::Subscriber,
     {
-        self.buffer.poll_fill(
+        let res = self.buffer.poll_fill(
             cx,
             actor,
             socket,
             &mut subscriber.publisher(clock.get_time()),
-        )
+        );
+
+        // If we haven't received anything yet, it's possible this stream might be rejected by the sender worker so we need
+        // to store the waker if that happens
+        if matches!(actor, Actor::Application)
+            && matches!(self.handshake, handshake::State::ClientInit)
+            && res.is_pending()
+        {
+            self.application_waker = Some(cx.waker().clone());
+        }
+
+        res
     }
 
     #[inline]
@@ -572,6 +604,7 @@ where
                             ecn,
                             self.clock,
                             self.out_buf,
+                            &self.shared.subscriber,
                         )?;
 
                         self.any_valid_packets = true;

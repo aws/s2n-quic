@@ -225,14 +225,14 @@ impl<T, W: RecvWaker> RingDeque<T, W> {
     }
 
     #[inline]
-    fn lock(&self) -> Result<std::sync::MutexGuard<Inner<T, W>>, Closed> {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Inner<T, W>>, Closed> {
         let inner = self.inner.lock().unwrap();
         ensure!(inner.open, Err(Closed));
         Ok(inner)
     }
 
     #[inline]
-    fn try_lock(&self) -> Result<Option<std::sync::MutexGuard<Inner<T, W>>>, Closed> {
+    fn try_lock(&self) -> Result<Option<std::sync::MutexGuard<'_, Inner<T, W>>>, Closed> {
         use std::sync::TryLockError;
         let inner = match self.inner.try_lock() {
             Ok(inner) => inner,

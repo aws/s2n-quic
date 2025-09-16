@@ -53,7 +53,7 @@ pub trait Config: 'static + Send + Sized + core::fmt::Debug {
     const ENDPOINT_TYPE: endpoint::Type;
 
     /// Returns the context for the endpoint configuration
-    fn context(&mut self) -> Context<Self>;
+    fn context(&mut self) -> Context<'_, Self>;
 }
 
 #[derive(Debug)]

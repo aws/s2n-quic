@@ -28,6 +28,7 @@ pub struct ConnectionTransmissionContext<'a, 'sub, Config: endpoint::Config> {
     pub ecn: ExplicitCongestionNotification,
     pub min_packet_len: Option<usize>,
     pub transmission_mode: transmission::Mode,
+    pub random_generator: &'a mut Config::RandomGenerator,
     pub publisher: &'a mut event::ConnectionPublisherSubscriber<'sub, Config::EventSubscriber>,
     pub packet_interceptor: &'a mut Config::PacketInterceptor,
 }
@@ -299,6 +300,7 @@ impl<Config: endpoint::Config> tx::Message for ConnectionTransmission<'_, '_, Co
                 if Config::ENDPOINT_TYPE.is_client() {
                     space_manager.discard_initial(
                         self.context.path_manager,
+                        self.context.random_generator,
                         self.context.timestamp,
                         self.context.publisher,
                     );

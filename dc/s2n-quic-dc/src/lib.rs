@@ -14,6 +14,7 @@ pub mod msg;
 pub mod packet;
 pub mod path;
 pub mod pool;
+pub mod psk;
 pub mod random;
 pub mod recovery;
 pub mod socket;

@@ -55,8 +55,8 @@ impl application::state::Message for Message<'_> {
         &mut self,
         buffer_len: usize,
         p: P,
-    ) {
-        let mut buffer = self.segment_alloc.alloc(buffer_len);
+    ) -> Option<usize> {
+        let (mut buffer, buf_source) = self.segment_alloc.alloc(buffer_len);
 
         let transmission = {
             let buffer = buffer.make_mut();
@@ -99,6 +99,11 @@ impl application::state::Message for Message<'_> {
             buffer,
             offset: 0,
         });
+
+        match buf_source {
+            buffer::Source::Pool => None,
+            buffer::Source::Fresh => Some(buffer_len),
+        }
     }
 }
 

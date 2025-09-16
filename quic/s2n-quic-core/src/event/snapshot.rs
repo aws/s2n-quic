@@ -81,7 +81,7 @@ impl Location {
 pub trait Fmt {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result;
 
-    fn to_snapshot(&self) -> ToSnapshot<Self> {
+    fn to_snapshot(&self) -> ToSnapshot<'_, Self> {
         ToSnapshot(self)
     }
 }

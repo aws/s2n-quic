@@ -531,7 +531,7 @@ pub fn secret_control<T: Node>(
     let mut item = tag.record(buffer, tree, fields.tag);
 
     match tag.value {
-        packet::Tag::UnknownPathSecret(_) => {
+        packet::Tag::UnknownPathSecret(tag) => {
             item.append_text(c" (UnknownPathSecret)");
 
             let path_secret_id = buffer.consume_bytes(16)?;
@@ -539,6 +539,11 @@ pub fn secret_control<T: Node>(
 
             let wire_version = buffer.consume::<WireVersion>()?;
             wire_version.record(buffer, tree, fields.wire_version);
+
+            if tag.has_queue_id() {
+                let queue_id = buffer.consume::<VarInt>()?;
+                queue_id.record(buffer, tree, fields.queue_id);
+            }
 
             let auth_tag = buffer.consume_bytes(16)?;
             auth_tag.record(buffer, tree, fields.auth_tag);
@@ -548,7 +553,7 @@ pub fn secret_control<T: Node>(
 
             Some(())
         }
-        packet::Tag::StaleKey(_) => {
+        packet::Tag::StaleKey(tag) => {
             item.append_text(c" (StaleKey)");
 
             let path_secret_id = buffer.consume_bytes(16)?;
@@ -556,6 +561,11 @@ pub fn secret_control<T: Node>(
 
             let wire_version = buffer.consume::<WireVersion>()?;
             wire_version.record(buffer, tree, fields.wire_version);
+
+            if tag.has_queue_id() {
+                let queue_id = buffer.consume::<VarInt>()?;
+                queue_id.record(buffer, tree, fields.queue_id);
+            }
 
             let min_key_id = buffer.consume::<VarInt>()?;
             min_key_id.record(buffer, tree, fields.min_key_id);
@@ -568,7 +578,7 @@ pub fn secret_control<T: Node>(
 
             Some(())
         }
-        packet::Tag::ReplayDetected(_) => {
+        packet::Tag::ReplayDetected(tag) => {
             item.append_text(c" (ReplayDetected)");
 
             let path_secret_id = buffer.consume_bytes(16)?;
@@ -576,6 +586,11 @@ pub fn secret_control<T: Node>(
 
             let wire_version = buffer.consume::<WireVersion>()?;
             wire_version.record(buffer, tree, fields.wire_version);
+
+            if tag.has_queue_id() {
+                let queue_id = buffer.consume::<VarInt>()?;
+                queue_id.record(buffer, tree, fields.queue_id);
+            }
 
             let rejected_key_id = buffer.consume::<VarInt>()?;
             rejected_key_id.record(buffer, tree, fields.rejected_key_id);
