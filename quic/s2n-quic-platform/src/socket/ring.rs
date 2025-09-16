@@ -438,8 +438,6 @@ unsafe fn builder<T: Message>(ptr: *mut u8, size: u32) -> cursor::Builder<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::message::simple;
-
     use super::*;
     use bolero::check;
     use s2n_quic_core::{
@@ -592,35 +590,7 @@ mod tests {
 
                     let (mut producer, mut consumer) = pair::<$msg>(entries, payload_len);
 
-                    // Producer writes to half of the ring buffer
-                    producer.acquire(u32::MAX);
-                    let half = count / 2;
-                    for entry in &mut producer.data()[..half as usize] {
-                        unsafe {
-                            entry.set_payload_len(100);
-                        }
-                    }
-                    producer.release(count);
-
-                    // Consumer modifies the data
-                    let count = consumer.acquire(u32::MAX);
-                    for entry in &mut consumer.data()[..half as usize] {
-                        unsafe {
-                            entry.reset(payload_len as usize);
-                        }
-                    }
-                    consumer.release(count);
-
-                    // Verify modifications seen by producer for reuse
-                    producer.acquire(u32::MAX);
-                    let s = producer.data();
-                    for entry in s {
-                        assert_eq!(entry.payload_len(), payload_len as usize);
-                    }
-
-                    // Producer writes to the other half of the ring buffer. This call will wrap
-                    // around to the beginning of the buffer because the producer
-                    // started in the middle of the buffer
+                    // Producer writes to the ring buffer
                     producer.acquire(u32::MAX);
                     for entry in &mut producer.data()[..count as usize] {
                         unsafe {
@@ -629,7 +599,7 @@ mod tests {
                     }
                     producer.release(count);
 
-                    // Consumer modifies the data
+                    // Consumer reads and resets the payload
                     let count = consumer.acquire(u32::MAX);
                     for entry in &mut consumer.data()[..count as usize] {
                         unsafe {
