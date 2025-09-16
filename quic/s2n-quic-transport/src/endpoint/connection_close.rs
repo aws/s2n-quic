@@ -17,10 +17,36 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-// The maximum size of the CONNECTION_CLOSE frame is 1 (type) + 1 (error code) + 1 (frame type) + 1 (reason length) + 33 (reason) = 37 bytes.
-// The maximum size of the initial packet with the CONNECTION_CLOSE frame is 1 (header form, fixed bit, long packet type, reserved bits, and packet number length)
-// + 4 (version) + 1 (DCID len) + 20 (DCID) + 1 (SCID len) + 20 (SCID) + 1 (token len) + 0 (token) + 1 (length) + 1 (packet number) + 37 (CONNECTION_CLOSE frame) = 87 bytes.
-// With packet header for the the payload and some other components, the maximum size can go up to around 110 bytes. Hence, we use 150 bytes here for safety.
+// Size for the Initial packet with the CONNECTION_CLOSE frame in this scenario
+
+// CONNECTION_CLOSE Frame {
+//   Type (8) = 0x1c,
+//   Error Code (8) = 0x02,
+//   Frame Type (8)= 0x00,
+//   Reason Phrase Length (8) =0x21,
+//   Reason Phrase (264) = "The server refused the connection",
+// }
+
+// Initial Packet {
+//   Header Form (1) = 1,
+//   Fixed Bit (1) = 1,
+//   Long Packet Type (2) = 0,
+//   Reserved Bits (2),
+//   Packet Number Length (2),
+//   Version (32),
+//   Destination Connection ID Length (8),
+//   Destination Connection ID (160), # assuming max length for CID
+//   Source Connection ID Length (8),
+//   Source Connection ID (160), # assuming max length for CID
+//   Token Length (1),
+//   Token (0) = no token,
+//   Length (12) = length for packet number + payload is 304 bits which needs 12 bits to encode,
+//   Packet Number (8),
+//   Packet Payload (296) = CONNECTION_CLOSE Frame,
+// }
+
+// As shown above, the total size of the initial packet is 693 bits which is 87 bytes.
+// We use a slightly larger buffer to ensure the buffer is large enoug to hold the packet.
 const DEFAULT_PAYLOAD_SIZE: usize = 150;
 
 #[derive(Debug)]
@@ -126,8 +152,9 @@ impl<Path: path::Handle> Transmission<Path> {
         //# Initial packet containing a CONNECTION_CLOSE frame with error code
         //# CONNECTION_REFUSED.
 
-        // The total packet length has to be more than stateless_reset::min_indistinguishable_packet_len(key.tag_len()) + 1.
-        // We need to use a reason that's more than 15 bytes to ensure the packet will be sent.
+        // We need to ensure that the packet is at least 22 bytes longer than the the minimum connection ID length,
+        // that it requests the peer to include in its packets
+        // Hewnce, we need to use a reason that's more than 15 bytes to ensure the packet will be sent.
         let connection_close = ConnectionClose {
             error_code: transport::Error::CONNECTION_REFUSED.code.as_varint(),
             frame_type: Some(VarInt::ZERO),

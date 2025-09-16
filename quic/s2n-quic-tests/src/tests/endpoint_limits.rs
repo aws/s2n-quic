@@ -30,8 +30,9 @@ impl Limiter for AllowFirstThenCloseLimiter {
     }
 }
 
+// We've allocated 150 bytes for the connection close packet.
+// Testing with the maximum length of a connection ID ensures that we've allocated enough to store packet.
 const MAX_CID_LEN: usize = 20;
-// Use the maximum length for connection IDs to generate large payload for the Initial packet
 struct MaxSizeIdFormat;
 
 impl connection_id::Generator for MaxSizeIdFormat {
@@ -51,7 +52,7 @@ impl connection_id::Validator for MaxSizeIdFormat {
     }
 }
 
-// This test verifies that when the server would send a CONNECTION_CLOSE frame with
+// This test verifies that the server sends a CONNECTION_CLOSE frame with
 // error code CONNECTION_REFUSED when the server's limiter returns Outcome::close().
 #[test]
 fn endpoint_limits_close_test() {
