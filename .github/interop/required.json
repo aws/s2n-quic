@@ -14,7 +14,10 @@
       "client",
       "server"
     ],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -57,7 +60,10 @@
     "mvfst": [
       "server"
     ],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -100,7 +106,10 @@
     "mvfst": [
       "client"
     ],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -141,7 +150,10 @@
     "mvfst": [
       "server"
     ],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -178,7 +190,9 @@
     "lsquic": [],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client"
+    ],
     "ngtcp2": [
       "client"
     ],
@@ -207,7 +221,10 @@
       "client",
       "server"
     ],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -246,7 +263,10 @@
     ],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -285,7 +305,10 @@
     ],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -318,7 +341,9 @@
     "lsquic": [],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client"
+    ],
     "ngtcp2": [
       "client"
     ],
@@ -372,7 +397,9 @@
     ],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -432,7 +459,10 @@
     ],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -492,7 +522,10 @@
     ],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -529,7 +562,9 @@
     ],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client"
+    ],
     "ngtcp2": [],
     "picoquic": [
       "client"
@@ -611,7 +646,10 @@
     "mvfst": [
       "server"
     ],
-    "neqo": [],
+    "neqo": [
+      "client",
+      "server"
+    ],
     "ngtcp2": [
       "client",
       "server"
