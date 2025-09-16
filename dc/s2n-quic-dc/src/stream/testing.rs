@@ -30,9 +30,24 @@ thread_local! {
     static SERVERS: RefCell<HashMap<SocketAddr, server::Handle>> = Default::default();
 }
 
+pub mod read {
+    use crate::stream::recv::application as recv;
+
+    pub use recv::{AckMode, ReadMode};
+    pub type Reader = recv::Reader<super::Subscriber>;
+}
+
+pub mod write {
+    use crate::stream::send::application as send;
+
+    pub type Writer = send::Writer<super::Subscriber>;
+}
+
 pub type Subscriber = (Arc<event::testing::Subscriber>, event::tracing::Subscriber);
 
 pub type Stream = application::Stream<Subscriber>;
+pub use read::Reader;
+pub use write::Writer;
 
 const DEFAULT_POOLED: bool = true;
 
