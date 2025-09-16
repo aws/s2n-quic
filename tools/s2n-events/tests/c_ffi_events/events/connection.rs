@@ -13,6 +13,5 @@ enum TestEnum {
 
 #[event("enum_event")]
 struct EnumEvent {
-    #[nominal_counter("value")]
     value: TestEnum,
 }
