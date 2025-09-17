@@ -20,7 +20,7 @@ env:
   # up with the changes, though.
   INTEROP_RUNNER_REF: 793bce4298cc69e3cf12cdbcbb7dea92e72df26e
   # This should be updated when updating wesleyrosenblum/quic-network-simulator
-  NETWORK_SIMULATOR_REF: sha256:e102cb0e4b9457f510faf4ca888b4f7f6211aa109b68bfaaa1aa639059fcfc96
+  NETWORK_SIMULATOR_REF: sha256:5b8dc787ae208b08203036f853d4376011d5f2f4d63bedf7da7bbc18a11b888b
   IPERF_ENDPOINT_REF: sha256:cb50cc8019d45d9cad5faecbe46a3c21dd5e871949819a5175423755a9045106
   WIRESHARK_VERSION: 4.4.2
   CDN: https://dnglbrstg7yg.cloudfront.net
