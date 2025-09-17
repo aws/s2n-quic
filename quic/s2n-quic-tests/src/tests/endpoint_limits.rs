@@ -52,6 +52,11 @@ impl connection_id::Validator for MaxSizeIdFormat {
     }
 }
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
+//= type=test
+//# If a server refuses to accept a new connection, it SHOULD send an
+//# Initial packet containing a CONNECTION_CLOSE frame with error code
+//# CONNECTION_REFUSED.
 // This test verifies that the server sends a CONNECTION_CLOSE frame with
 // error code CONNECTION_REFUSED when the server's limiter returns Outcome::close().
 #[test]
