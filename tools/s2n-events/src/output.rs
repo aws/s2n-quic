@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{parser::File, OutputConfig};
+use crate::{parser::File, GenerateConfig};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::path::{Path, PathBuf};
@@ -31,7 +31,7 @@ pub struct Output {
     pub endpoint_publisher_testing: TokenStream,
     pub connection_publisher_testing: TokenStream,
     pub extra: TokenStream,
-    pub config: OutputConfig,
+    pub config: GenerateConfig,
     pub crate_name: &'static str,
     pub s2n_quic_core_path: TokenStream,
     pub top_level: TokenStream,

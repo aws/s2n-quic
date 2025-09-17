@@ -30,11 +30,11 @@ impl OutputMode {
 }
 
 #[derive(Debug, Default)]
-pub struct OutputConfig {
+pub struct GenerateConfig {
     pub mode: OutputMode,
 }
 
-impl OutputConfig {
+impl GenerateConfig {
     pub fn counter_type(&self) -> TokenStream {
         match self.mode {
             OutputMode::Ref => quote!(AtomicU64),

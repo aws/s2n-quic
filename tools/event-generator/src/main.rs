@@ -3,13 +3,13 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use s2n_events::{Output, OutputConfig, OutputMode, Result, parser, validation};
+use s2n_events::{Output, GenerateConfig, OutputMode, Result, parser, validation};
 
 struct EventInfo<'a> {
     input_path: &'a str,
     output_path: &'a str,
     crate_name: &'a str,
-    output_config: OutputConfig,
+    generate_config: GenerateConfig,
     s2n_quic_core_path: TokenStream,
     api: TokenStream,
     builder: TokenStream,
@@ -61,7 +61,7 @@ impl EventInfo<'_> {
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../quic/s2n-quic-core/src/event"
             ),
-            output_config: OutputConfig {
+            generate_config: GenerateConfig {
                 mode: OutputMode::Mut,
             },
             s2n_quic_core_path: quote!(crate),
@@ -110,7 +110,7 @@ impl EventInfo<'_> {
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../dc/s2n-quic-dc/src/event"
             ),
-            output_config: OutputConfig {
+            generate_config: GenerateConfig {
                 mode: OutputMode::Ref,
             },
             s2n_quic_core_path: quote!(s2n_quic_core),
@@ -161,7 +161,7 @@ fn main() -> Result<()> {
         let root = root.canonicalize()?;
 
         let mut output = Output {
-            config: event_info.output_config,
+            config: event_info.generate_config,
             s2n_quic_core_path: event_info.s2n_quic_core_path,
             api: event_info.api,
             builders: event_info.builder,
