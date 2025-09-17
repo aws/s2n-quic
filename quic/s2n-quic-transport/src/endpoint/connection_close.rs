@@ -46,7 +46,7 @@ use s2n_quic_core::{
 // }
 
 // As shown above, the total size of the initial packet is 693 bits which is 87 bytes.
-// We use a slightly larger buffer to ensure the buffer is large enoug to hold the packet.
+// We use a slightly larger buffer to ensure the buffer is large enough to hold the packet.
 const DEFAULT_PAYLOAD_SIZE: usize = 150;
 
 #[derive(Debug)]
