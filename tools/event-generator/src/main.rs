@@ -3,7 +3,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use s2n_events::{Output, GenerateConfig, OutputMode, Result, parser, validation};
+use s2n_events::{GenerateConfig, Output, OutputMode, Result, parser, validation};
 
 struct EventInfo<'a> {
     input_path: &'a str,
