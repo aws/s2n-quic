@@ -134,7 +134,6 @@ jobs:
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy on all workspaces
         run: |
-          # Clippy bot only runs on schedule event
           CLIPPY_FIX_FLAG=""
           if [ "${{ steps.should_fix.outputs.SHOULD_FIX }}" == "true" ]; then
             CLIPPY_FIX_FLAG='--fix --allow-dirty'
