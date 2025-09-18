@@ -6,8 +6,11 @@ on:
     branches:
       - main
   schedule:
-    # Run daily job at 8:00 PM PT
-    - cron: '0 3 * * *'
+    # Run daily job at 8:00 AM PT.
+    # The workflow is run in the morning to allow for the clippy job to resolve lints from new Rust
+    # versions in a timely manner.
+    - cron: '0 15 * * *'
+  workflow_dispatch:
 
 name: ci
 
@@ -119,12 +122,20 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
+      - name: Determine if a PR should be opened
+        id: should_fix
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "SHOULD_FIX=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "SHOULD_FIX=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # TODO translate json reports to in-action warnings
       - name: Run cargo clippy on all workspaces
         run: |
-          # Clippy bot only runs on schedule event
           CLIPPY_FIX_FLAG=""
-          if [ "${{ github.event_name }}" == "schedule" ]; then
+          if [ "${{ steps.should_fix.outputs.SHOULD_FIX }}" == "true" ]; then
             CLIPPY_FIX_FLAG='--fix --allow-dirty'
           fi
 
@@ -137,7 +148,7 @@ jobs:
           done
 
       - name: Create clippy pull request
-        if: github.event_name == 'schedule'
+        if: steps.should_fix.outputs.SHOULD_FIX == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           title: 'chore: clippy lint updates'
