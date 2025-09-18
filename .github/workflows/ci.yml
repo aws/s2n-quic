@@ -148,7 +148,7 @@ jobs:
           done
 
       - name: Create clippy pull request
-        if: steps.should_fix.output.SHOULD_FIX == 'true'
+        if: steps.should_fix.outputs.SHOULD_FIX == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           title: 'chore: clippy lint updates'
