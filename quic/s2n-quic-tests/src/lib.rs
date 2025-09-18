@@ -308,7 +308,7 @@ pub mod resumption {
         fn initialize_connection(
             &self,
             connection: &mut Connection,
-        ) -> Result<Option<Pin<Box<(dyn ConnectionFuture)>>>, Error> {
+        ) -> Result<Option<Pin<Box<dyn ConnectionFuture>>>, Error> {
             if let Some(ticket) = (*self.ticket_storage).lock().unwrap().pop_back().as_deref() {
                 connection.set_session_ticket(ticket)?;
             }

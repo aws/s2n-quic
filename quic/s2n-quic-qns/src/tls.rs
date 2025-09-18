@@ -251,7 +251,7 @@ pub mod s2n_tls {
         fn initialize_connection(
             &self,
             connection: &mut Connection,
-        ) -> Result<Option<Pin<Box<(dyn ConnectionFuture)>>>, Error> {
+        ) -> Result<Option<Pin<Box<dyn ConnectionFuture>>>, Error> {
             if let Some(ticket) = (*self.ticket_storage)
                 .lock()
                 .unwrap()
