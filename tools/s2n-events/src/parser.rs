@@ -190,8 +190,8 @@ impl Struct {
             let publisher_doc =
                 format!("Publishes a `{ident_str}` event to the publisher's subscriber");
 
-            let counter_type = output.mode.counter_type();
-            let counter_init = output.mode.counter_init();
+            let counter_type = output.config.counter_type();
+            let counter_init = output.config.counter_init();
 
             // add a counter for testing structs
             output.testing_fields.extend(quote!(
@@ -201,9 +201,9 @@ impl Struct {
                 #counter: #counter_init,
             ));
 
-            let receiver = output.mode.receiver();
-            let counter_increment = output.mode.counter_increment();
-            let lock = output.mode.lock();
+            let receiver = output.config.mode.receiver();
+            let counter_increment = output.config.counter_increment();
+            let lock = output.config.lock();
 
             match attrs.subject {
                 Subject::Endpoint => {
@@ -227,7 +227,7 @@ impl Struct {
                         }
                     ));
 
-                    if output.mode.is_ref() {
+                    if output.config.mode.is_ref() {
                         output.ref_subscriber.extend(quote!(
                             #[inline]
                             #allow_deprecated
@@ -329,7 +329,7 @@ impl Struct {
                         }
                     ));
 
-                    if output.mode.is_ref() {
+                    if output.config.mode.is_ref() {
                         output.ref_subscriber.extend(quote!(
                             #[inline]
                             #allow_deprecated
