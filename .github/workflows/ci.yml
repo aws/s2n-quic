@@ -151,6 +151,8 @@ jobs:
         if: steps.should_fix.outputs.SHOULD_FIX == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
+          commit-message: |
+            chore: clippy lint updates
           title: 'chore: clippy lint updates'
           body: |
             ### Description of changes: 
