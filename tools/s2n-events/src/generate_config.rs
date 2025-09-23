@@ -30,16 +30,9 @@ impl OutputMode {
 }
 
 #[derive(Debug, Default)]
-pub enum OutputCApi {
-    Enabled,
-    #[default]
-    Disabled,
-}
-
-#[derive(Debug, Default)]
 pub struct GenerateConfig {
     pub mode: OutputMode,
-    pub c_api: OutputCApi,
+    pub c_api: bool,
 }
 
 impl GenerateConfig {
@@ -154,7 +147,7 @@ impl GenerateConfig {
     fn supervisor_supported(&self) -> bool {
         // The supervisor feature will require additional effort to expose a C API for. For now,
         // this feature is disabled for simplicity.
-        if let OutputCApi::Enabled = self.c_api {
+        if self.c_api {
             return false;
         }
 

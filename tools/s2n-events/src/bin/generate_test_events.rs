@@ -3,7 +3,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use s2n_events::{parser, validation, GenerateConfig, Output, OutputCApi, OutputMode, Result};
+use s2n_events::{parser, validation, GenerateConfig, Output, OutputMode, Result};
 
 struct EventInfo<'a> {
     input_path: &'a str,
@@ -51,7 +51,7 @@ impl EventInfo<'_> {
             tracing_subscriber_def,
             config: GenerateConfig {
                 mode: OutputMode::Mut,
-                c_api: OutputCApi::Enabled,
+                c_api: true,
             },
         }
     }
