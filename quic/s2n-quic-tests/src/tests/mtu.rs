@@ -98,8 +98,31 @@ fn mtu_updates<S: tls::Provider, C: tls::Provider>(
             .with_tls(client)?
             .start()?;
         let addr = start_server(server)?;
-        // we need a large payload to allow for multiple rounds of MTU probing
-        start_client(client, addr, Data::new(70_000_000))?;
+
+        primary::spawn(async move {
+            let connect = Connect::new(addr).with_server_name("localhost");
+            let mut connection = client.connect(connect).await.unwrap();
+
+            tracing::debug!("connected with client connection: {}", connection.id());
+
+            let stream = connection.open_bidirectional_stream().await.unwrap();
+            tracing::debug!("opened client stream: {}", stream.id());
+
+            let (mut recv, mut send) = stream.split();
+
+            // 50 roundtrips is enough for MTU probing completion
+            primary::spawn(async move {
+                for _ in 0..50 {
+                    tracing::debug!("client sending ping");
+                    send.send("ping".into()).await.unwrap();
+                    if let Some(chunk) = recv.receive().await.unwrap() {
+                        assert!(chunk == "ping");
+                        tracing::debug!("received ping from server");
+                    }
+                }
+            });
+        });
+
         Ok(addr)
     })
     .unwrap();
