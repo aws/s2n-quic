@@ -349,10 +349,10 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             // find a port and spawn the initial listeners
             self.spawn_initial_wildcard_pair()?;
             // spawn the rest of the concurrency
-            self.spawn_count(self.concurrency - 1)?;
+            self.spawn_count(self.concurrency - 1, 1)?;
         } else {
             // otherwise spawn things as normal
-            self.spawn_count(self.concurrency)?;
+            self.spawn_count(self.concurrency, 0)?;
         }
 
         debug_assert_ne!(
@@ -399,20 +399,33 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
     }
 
     #[inline]
-    fn spawn_count(&mut self, count: usize) -> io::Result<()> {
+    fn spawn_count(&mut self, count: usize, already_running: usize) -> io::Result<()> {
         for protocol in [socket::Protocol::Udp, socket::Protocol::Tcp] {
             match protocol {
                 socket::Protocol::Udp => ensure!(self.enable_udp, continue),
                 socket::Protocol::Tcp => ensure!(self.enable_tcp, continue),
                 _ => continue,
             }
-            for _ in 0..count {
+
+            for idx in 0..count {
                 match protocol {
                     socket::Protocol::Udp => {
                         let socket = self.socket_opts(self.server.local_addr).build_udp()?;
                         self.spawn_udp(socket)?;
                     }
                     socket::Protocol::Tcp => {
+                        // The kernel contends on fdtable lock when calling accept to locate free file
+                        // descriptors, so even if we don't contend on the underlying socket (due to
+                        // REUSEPORT) it still ends up expensive to have large amounts of threads trying to
+                        // accept() within a single process. Clamp concurrency to at most 4 threads
+                        // executing the TCP acceptor tasks accordingly.
+                        //
+                        // With UDP there's ~no lock contention for receiving packets on separate UDP sockets,
+                        // so we don't clamp concurrency in that case.
+                        if idx + already_running >= 4 {
+                            continue;
+                        }
+
                         let socket = self
                             .socket_opts(self.server.local_addr)
                             .build_tcp_listener()?;
