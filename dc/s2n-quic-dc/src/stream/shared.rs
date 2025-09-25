@@ -36,6 +36,32 @@ pub enum Half {
     Write,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ShutdownKind {
+    Normal,
+    Panicking,
+    Pruned,
+}
+
+impl ShutdownKind {
+    pub const PRUNED_CODE: u8 = 0x02;
+
+    pub fn error_code(&self) -> Option<u8> {
+        match self {
+            ShutdownKind::Normal => None,
+            ShutdownKind::Panicking => Some(0x01),
+            ShutdownKind::Pruned => Some(Self::PRUNED_CODE),
+        }
+    }
+}
+
+/// The state of whether the stream has been accepted by the application
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcceptState {
+    Waiting,
+    Accepted,
+}
+
 pub type ArcShared<Sub> = Arc<Shared<Sub, dyn Clock>>;
 
 pub struct Shared<Subscriber, Clk>

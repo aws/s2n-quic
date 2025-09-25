@@ -289,7 +289,7 @@ where
         let shared = shared.clone();
 
         let task = async move {
-            let mut reader = recv::worker::Worker::new(socket, shared, endpoint_type);
+            let mut reader = recv::worker::Worker::new(socket, shared, endpoint_type, &parameters);
 
             let mut prev_waker: Option<core::task::Waker> = None;
             core::future::poll_fn(|cx| {

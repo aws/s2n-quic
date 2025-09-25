@@ -279,6 +279,13 @@ pub struct ControlFramesMut<'a> {
     buffer: &'a mut [u8],
 }
 
+impl<'a> ControlFramesMut<'a> {
+    #[inline]
+    pub(crate) fn new(buffer: &'a mut [u8]) -> Self {
+        Self { buffer }
+    }
+}
+
 impl<'a> Iterator for ControlFramesMut<'a> {
     type Item = Result<FrameMut<'a>, s2n_codec::DecoderError>;
 

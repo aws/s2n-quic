@@ -5,7 +5,11 @@ use crate::{
     clock::Timer,
     event::{self, ConnectionPublisher as _},
     msg,
-    stream::{recv, runtime, shared::ArcShared, socket, Actor},
+    stream::{
+        recv, runtime,
+        shared::{AcceptState, ArcShared, ShutdownKind},
+        socket, Actor,
+    },
 };
 use core::{
     fmt,
@@ -227,7 +231,8 @@ where
 
         loop {
             // try to process any bytes we have in the recv buffer
-            reader.process_recv_buffer(out_buf, shared, transport_features);
+            // - use the `Accepted` state since this is the application interface
+            reader.process_recv_buffer(out_buf, shared, transport_features, AcceptState::Accepted);
 
             // if we still have remaining capacity in the `out_buf` make sure the reassembler is
             // fully drained
@@ -239,6 +244,12 @@ where
             if let Err(err) = reader.receiver.check_error() {
                 self.local_state
                     .transition(LocalState::Errored(err), &self.shared);
+
+                if out_buf.written_len() > 0 {
+                    // if we've written something to the buffer then return that first
+                    break;
+                }
+
                 return Err(err.into()).into();
             }
 
@@ -370,9 +381,13 @@ where
             .transition(LocalState::Drained, &self.shared);
 
         // let the peer know if we shut down cleanly
-        let is_panicking = std::thread::panicking();
+        let kind = if std::thread::panicking() {
+            ShutdownKind::Panicking
+        } else {
+            ShutdownKind::Normal
+        };
 
-        self.shared.receiver.shutdown(is_panicking);
+        self.shared.receiver.shutdown(kind);
     }
 
     #[inline(always)]

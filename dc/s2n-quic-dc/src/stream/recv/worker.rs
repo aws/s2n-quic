@@ -5,10 +5,16 @@ use crate::{
     allocator::Allocator,
     clock::Timer,
     event, msg,
-    stream::{shared::ArcShared, socket::Socket, Actor},
+    stream::{
+        shared::{AcceptState, ArcShared, ShutdownKind},
+        socket::Socket,
+        Actor,
+    },
 };
 use core::task::{Context, Poll};
-use s2n_quic_core::{buffer, endpoint, ensure, ready, time::clock::Timer as _};
+use s2n_quic_core::{
+    buffer, dc::ApplicationParams, endpoint, ensure, ready, time::clock::Timer as _,
+};
 use std::{io, time::Duration};
 use tracing::{debug, trace};
 
@@ -67,9 +73,12 @@ where
     last_observed_epoch: u64,
     send_buffer: msg::send::Message,
     state: waiting::State,
-    timer: Timer,
+    peek_timer: Timer,
+    idle_timer: Timer,
+    idle_timeout_duration: Duration,
     backoff: u8,
     socket: S,
+    accept_state: AcceptState,
 }
 
 impl<S, Sub> Worker<S, Sub>
@@ -78,9 +87,18 @@ where
     Sub: event::Subscriber,
 {
     #[inline]
-    pub fn new(socket: S, shared: ArcShared<Sub>, endpoint: endpoint::Type) -> Self {
+    pub fn new(
+        socket: S,
+        shared: ArcShared<Sub>,
+        endpoint: endpoint::Type,
+        parameters: &ApplicationParams,
+    ) -> Self {
         let send_buffer = msg::send::Message::new(shared.remote_addr(), shared.gso.clone());
-        let timer = Timer::new_with_timeout(&shared.clock, INITIAL_TIMEOUT);
+        let idle_timeout_duration = parameters
+            .max_idle_timeout()
+            .unwrap_or_else(|| Duration::from_secs(30));
+        let peek_timer = Timer::new_with_timeout(&shared.clock, INITIAL_TIMEOUT);
+        let idle_timer = Timer::new_with_timeout(&shared.clock, idle_timeout_duration);
 
         let state = match endpoint {
             // on the client we delay before reading from the socket
@@ -95,9 +113,12 @@ where
             last_observed_epoch: 0,
             send_buffer,
             state,
-            timer,
+            peek_timer,
+            idle_timer,
+            idle_timeout_duration,
             backoff: 0,
             socket,
+            accept_state: AcceptState::Waiting,
         }
     }
 
@@ -108,7 +129,11 @@ where
 
     #[inline]
     pub fn poll(&mut self, cx: &mut Context) -> Poll<()> {
-        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| self.poll_impl(cx))
+        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+            ready!(self.poll_impl(cx));
+            tracing::debug!("read worker shutting down");
+            Poll::Ready(())
+        })
     }
 
     #[inline]
@@ -127,10 +152,18 @@ where
 
         // go until we get into the finished state
         if let waiting::State::Finished = &self.state {
-            Poll::Ready(())
-        } else {
-            Poll::Pending
+            return Poll::Ready(());
         }
+
+        {
+            let target = self.shared.last_peer_activity() + self.idle_timeout_duration;
+            self.idle_timer.update(target);
+            if self.idle_timer.poll_ready(cx).is_ready() {
+                return Poll::Ready(());
+            }
+        }
+
+        Poll::Pending
     }
 
     #[inline]
@@ -149,7 +182,7 @@ where
                         &self.shared.subscriber,
                     ));
 
-                    self.arm_timer();
+                    self.arm_peek_timer();
                     self.state.on_peek_packet().unwrap();
                     continue;
                 }
@@ -157,7 +190,7 @@ where
                     // check to see if the application is progressing before checking the timer
                     ensure!(!self.is_application_progressing(), continue);
 
-                    ready!(self.timer.poll_ready(cx));
+                    ready!(self.peek_timer.poll_ready(cx));
 
                     // the application isn't making progress so emit the timer expired event
                     self.state.on_epoch_unchanged().unwrap();
@@ -178,7 +211,7 @@ where
                     // check to see if the application is progressing before checking the timer
                     ensure!(!self.is_application_progressing(), continue);
 
-                    ready!(self.timer.poll_ready(cx));
+                    ready!(self.peek_timer.poll_ready(cx));
 
                     // go back to waiting for a packet
                     let _ = self.state.on_cooldown_elapsed();
@@ -198,7 +231,7 @@ where
                     // in case the sender didn't see the control packet. This is similar to TCP Reuse/Recycle.
                     let now = self.shared.clock.get_time();
                     let target = now + Duration::from_millis(500);
-                    self.timer.update(target);
+                    self.peek_timer.update(target);
                 }
                 waiting::State::TimeWait => {
                     // check if we have any packets in the socket
@@ -208,7 +241,7 @@ where
                     ensure!(self.state.is_time_wait(), continue);
 
                     // wait for the timer to expire
-                    ready!(self.timer.poll_ready(cx));
+                    ready!(self.peek_timer.poll_ready(cx));
 
                     // after the timer expires, then transition to the finished state
                     let _ = self.state.on_finished();
@@ -224,14 +257,24 @@ where
     #[inline]
     fn is_application_progressing(&mut self) -> bool {
         // check to see if the application shut down
-        if let super::shared::ApplicationState::Closed { is_panicking } =
+        if let super::shared::ApplicationState::Closed { shutdown_kind } =
             self.shared.receiver.application_state()
         {
+            if matches!(shutdown_kind, ShutdownKind::Pruned) {
+                // if the stream was pruned then we don't need to do anything else
+                let _ = self.state.on_finished();
+                self.peek_timer.cancel();
+                self.idle_timer.cancel();
+                return true;
+            }
+
             if let Ok(Some(mut recv)) = self.shared.receiver.worker_try_lock() {
                 // check to see if we have anything in the reassembler as well
                 let is_buffer_empty = recv.payload_is_empty() && recv.reassembler.is_empty();
 
-                let error = if !is_buffer_empty || is_panicking {
+                let error = if let Some(code) = shutdown_kind.error_code() {
+                    code
+                } else if !is_buffer_empty {
                     // we still had data in our buffer so notify the sender
                     ErrorCode::Application as u8
                 } else {
@@ -253,6 +296,11 @@ where
 
         let current_epoch = self.shared.receiver.application_epoch();
 
+        // If the application incremented its epoch then it's been accepted
+        if current_epoch > 0 {
+            self.accept_state = AcceptState::Accepted;
+        }
+
         // make sure the epoch has changed since we last saw it before cooling down
         ensure!(self.last_observed_epoch < current_epoch, false);
 
@@ -264,7 +312,7 @@ where
 
         // delay when we read from the socket again to avoid spinning
         let _ = self.state.on_application_progress();
-        self.arm_timer();
+        self.arm_peek_timer();
 
         // after successful progress from the application we want to intervene less
         self.backoff = (self.backoff + 1).min(10);
@@ -335,6 +383,7 @@ where
                     &mut buffer::writer::storage::Empty,
                     &self.shared,
                     self.socket.features(),
+                    self.accept_state,
                 );
             }
 
@@ -358,6 +407,7 @@ where
                 &mut buffer::writer::storage::Empty,
                 &self.shared,
                 self.socket.features(),
+                self.accept_state,
             );
         }
 
@@ -374,7 +424,7 @@ where
     }
 
     #[inline]
-    fn arm_timer(&mut self) {
+    fn arm_peek_timer(&mut self) {
         // TODO do we derive this from RTT?
         let mut timeout = INITIAL_TIMEOUT;
         // don't back off on packet peeks
@@ -384,6 +434,6 @@ where
         let now = self.shared.clock.get_time();
         let target = now + timeout;
 
-        self.timer.update(target);
+        self.peek_timer.update(target);
     }
 }

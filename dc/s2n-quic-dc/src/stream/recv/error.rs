@@ -5,15 +5,15 @@ use crate::{
     credentials,
     crypto::open,
     packet::{self, stream},
-    stream::TransportFeatures,
+    stream::{shared::ShutdownKind, TransportFeatures},
 };
 use core::{fmt, panic::Location};
-use s2n_quic_core::{buffer, frame};
+use s2n_quic_core::{buffer, frame, varint::VarInt};
 
 #[derive(Clone, Copy)]
 pub struct Error {
-    kind: Kind,
-    location: &'static Location<'static>,
+    pub(crate) kind: Kind,
+    pub(crate) location: &'static Location<'static>,
 }
 
 impl fmt::Debug for Error {
@@ -107,6 +107,8 @@ pub enum Kind {
     KeyReplayMaybePrevented { gap: Option<u64> },
     #[error("the stream is using an unknown path secret")]
     UnknownPathSecret,
+    #[error("the stream was reset by the peer with code {code}")]
+    TransportError { code: VarInt },
     #[error("application error: {error}")]
     ApplicationError {
         error: s2n_quic_core::application::Error,
@@ -180,6 +182,11 @@ impl Error {
             Kind::KeyReplayPrevented
             | Kind::KeyReplayMaybePrevented { .. }
             | Kind::UnknownPathSecret => None,
+            Kind::TransportError { code } => Some(frame::ConnectionClose {
+                error_code: *code,
+                reason: None,
+                frame_type: Some(VarInt::ZERO),
+            }),
             Kind::ApplicationError { error } => Some((*error).into()),
         }
     }
@@ -223,6 +230,10 @@ impl From<Kind> for std::io::ErrorKind {
             Kind::KeyReplayPrevented => ErrorKind::PermissionDenied,
             Kind::KeyReplayMaybePrevented { .. } => ErrorKind::PermissionDenied,
             Kind::UnknownPathSecret => ErrorKind::PermissionDenied,
+            Kind::ApplicationError { error } if *error == ShutdownKind::PRUNED_CODE as u64 => {
+                ErrorKind::ConnectionRefused
+            }
+            Kind::TransportError { .. } => ErrorKind::ConnectionAborted,
             Kind::ApplicationError { .. } => ErrorKind::ConnectionReset,
             Kind::UnexpectedPacket {
                 packet:

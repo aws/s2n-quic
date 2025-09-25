@@ -8,7 +8,7 @@ use crate::{
     stream::{
         pacer, runtime,
         send::{flow, queue},
-        shared::ArcShared,
+        shared::{ArcShared, ShutdownKind},
         socket,
     },
 };
@@ -100,11 +100,39 @@ where
     }
 
     #[inline]
+    pub async fn write_all_from<S>(&mut self, buf: &mut S) -> io::Result<usize>
+    where
+        S: buffer::reader::storage::Infallible,
+    {
+        let mut len = 0;
+        loop {
+            len += self.write_from(buf).await?;
+            if buf.buffer_is_empty() {
+                return Ok(len);
+            }
+        }
+    }
+
+    #[inline]
     pub async fn write_from_fin<S>(&mut self, buf: &mut S) -> io::Result<usize>
     where
         S: buffer::reader::storage::Infallible,
     {
         core::future::poll_fn(|cx| self.poll_write_from(cx, buf, true)).await
+    }
+
+    #[inline]
+    pub async fn write_all_from_fin<S>(&mut self, buf: &mut S) -> io::Result<usize>
+    where
+        S: buffer::reader::storage::Infallible,
+    {
+        let mut len = 0;
+        loop {
+            len += self.write_from_fin(buf).await?;
+            if buf.buffer_is_empty() {
+                return Ok(len);
+            }
+        }
     }
 
     #[inline]
@@ -346,7 +374,12 @@ where
                 });
 
             let is_panicking = matches!(ty, ShutdownType::Drop { is_panicking: true });
-            self.shared.sender.shutdown(queue, is_panicking);
+            let shutdown_kind = if is_panicking {
+                ShutdownKind::Panicking
+            } else {
+                ShutdownKind::Normal
+            };
+            self.shared.sender.shutdown(queue, shutdown_kind);
             return Ok(());
         }
 

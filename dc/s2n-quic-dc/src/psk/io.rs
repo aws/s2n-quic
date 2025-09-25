@@ -65,12 +65,19 @@ impl Server {
 
         let server = s2n_quic::Server::builder().with_io(io)?;
 
+        let initial_max_data = builder.initial_data_window.unwrap_or_else(|| {
+            // default to only receive 10 packet worth before the application accepts the connection
+            builder.mtu as u64 * 10
+        });
+
         let connection_limits = s2n_quic::provider::limits::Limits::new()
             .with_max_idle_timeout(builder.max_idle_timeout)?
-            .with_data_window(builder.data_window)?
+            .with_data_window(initial_max_data)?
+            // After the connection is established we increase the data window to the configured value
             .with_bidirectional_local_data_window(builder.data_window)?
-            .with_bidirectional_remote_data_window(builder.data_window)?
+            .with_bidirectional_remote_data_window(initial_max_data)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
+
         let event = (ConfirmComplete, subscriber);
 
         let server = server
@@ -191,6 +198,7 @@ impl Client {
             .with_bidirectional_local_data_window(builder.data_window)?
             .with_bidirectional_remote_data_window(builder.data_window)?
             .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
+
         let event = (ConfirmComplete, subscriber);
 
         let client = client
