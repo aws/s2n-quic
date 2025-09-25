@@ -32,6 +32,7 @@ impl OutputMode {
 #[derive(Debug, Default)]
 pub struct GenerateConfig {
     pub mode: OutputMode,
+    pub c_api: bool,
 }
 
 impl GenerateConfig {
@@ -143,10 +144,23 @@ impl GenerateConfig {
         }
     }
 
-    pub fn supervisor(&self) -> TokenStream {
+    fn supervisor_supported(&self) -> bool {
+        // The supervisor feature will require additional effort to expose a C API for. For now,
+        // this feature is disabled for simplicity.
+        if self.c_api {
+            return false;
+        }
+
         match self.mode {
-            OutputMode::Ref => quote!(),
-            OutputMode::Mut => quote!(
+            OutputMode::Ref => false,
+            OutputMode::Mut => true,
+        }
+    }
+
+    pub fn supervisor(&self) -> TokenStream {
+        match self.supervisor_supported() {
+            false => quote!(),
+            true => quote!(
                 pub mod supervisor {
                     //! This module contains the `supervisor::Outcome` and `supervisor::Context` for use
                     //! when implementing [`Subscriber::supervisor_timeout`](crate::event::Subscriber::supervisor_timeout) and
@@ -214,9 +228,9 @@ impl GenerateConfig {
     }
 
     pub fn supervisor_timeout(&self) -> TokenStream {
-        match self.mode {
-            OutputMode::Ref => quote!(),
-            OutputMode::Mut => quote!(
+        match self.supervisor_supported() {
+            false => quote!(),
+            true => quote!(
                 /// The period at which `on_supervisor_timeout` is called
                 ///
                 /// If multiple `event::Subscriber`s are composed together, the minimum `supervisor_timeout`
@@ -257,9 +271,9 @@ impl GenerateConfig {
     }
 
     pub fn supervisor_timeout_tuple(&self) -> TokenStream {
-        match self.mode {
-            OutputMode::Ref => quote!(),
-            OutputMode::Mut => quote!(
+        match self.supervisor_supported() {
+            false => quote!(),
+            true => quote!(
                 #[inline]
                 fn supervisor_timeout(
                     &mut self,
