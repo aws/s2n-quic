@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 
 cargo +nightly run --manifest-path ./tools/s2n-events/Cargo.toml
+cargo +nightly run --manifest-path ./tools/event-generator/Cargo.toml
