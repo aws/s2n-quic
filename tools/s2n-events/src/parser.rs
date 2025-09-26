@@ -97,6 +97,34 @@ impl Struct {
     }
 
     fn to_tokens(&self, output: &mut Output) {
+        match self.attrs.c_definition {
+            true => self.to_tokens_c_definition(output),
+            false => self.to_tokens_rust_definition(output),
+        }
+    }
+
+    fn to_tokens_c_definition(&self, output: &mut Output) {
+        assert!(
+            self.attrs.event_name.is_none(),
+            "C struct definitions cannot be directly used as events."
+        );
+
+        let ident = &self.ident;
+        let extra_attrs = &self.attrs.extra;
+        let c_definition_attrs = &self.attrs.c_definition_attrs;
+        let builder_fields = self.fields.iter().map(Field::builder);
+
+        output.c_ffi.extend(quote!(
+            #c_definition_attrs
+            #[derive(Clone, Debug)]
+            #extra_attrs
+            pub struct #ident {
+                #(#builder_fields)*
+            }
+        ));
+    }
+
+    fn to_tokens_rust_definition(&self, output: &mut Output) {
         let Self {
             attrs,
             ident,
@@ -172,6 +200,12 @@ impl Struct {
                 }
             }
         ));
+
+        if ident_str == "ConnectionMeta" {
+            output.connection_meta_c_type = attrs.associated_c_type.clone();
+        } else if ident_str == "ConnectionInfo" {
+            output.connection_info_c_type = attrs.associated_c_type.clone();
+        }
 
         if let Some(event_name) = attrs.event_name.as_ref() {
             output.api.extend(quote!(
@@ -296,6 +330,12 @@ impl Struct {
                             self.output #lock.push(out);
                         }
                     ));
+
+                    assert!(
+                        attrs.associated_c_type.is_empty(),
+                        "C types cannot be associated with endpoint events. Publishing endpoint \
+                        events from the C API is not yet supported."
+                    );
                 }
                 Subject::Connection => {
                     output.subscriber.extend(quote!(
@@ -405,6 +445,15 @@ impl Struct {
                             }
                         }
                     ));
+
+                    if output.config.c_api {
+                        let c_type = &attrs.associated_c_type;
+                        assert!(
+                            !c_type.is_empty(),
+                            "Events must specify an associated C type with the #[c_type()] \
+                            attribute.",
+                        );
+                    }
                 }
             }
         }
@@ -432,17 +481,40 @@ impl Enum {
     }
 
     fn to_tokens(&self, output: &mut Output) {
+        assert!(
+            self.attrs.event_name.is_none(),
+            "enum events are not currently supported"
+        );
+
+        match self.attrs.c_definition {
+            true => self.to_tokens_c_definition(output),
+            false => self.to_tokens_rust_definition(output),
+        }
+    }
+
+    fn to_tokens_c_definition(&self, output: &mut Output) {
+        let ident = &self.ident;
+        let extra_attrs = &self.attrs.extra;
+        let c_definition_attrs = &self.attrs.c_definition_attrs;
+        let builder_fields = self.variants.iter().map(Variant::builder);
+
+        output.c_ffi.extend(quote!(
+            #c_definition_attrs
+            #[derive(Clone, Debug)]
+            #extra_attrs
+            pub enum #ident {
+                #(#builder_fields)*
+            }
+        ));
+    }
+
+    fn to_tokens_rust_definition(&self, output: &mut Output) {
         let Self {
             attrs,
             ident,
             generics,
             variants,
         } = self;
-
-        assert!(
-            attrs.event_name.is_none(),
-            "enum events are not currently supported"
-        );
 
         let derive_attrs = &attrs.derive_attrs;
         let builder_derive_attrs = &attrs.builder_derive_attrs;
@@ -543,6 +615,9 @@ pub struct ContainerAttrs {
     pub checkpoint: Vec<Checkpoint>,
     pub measure_counter: Vec<Metric>,
     pub extra: TokenStream,
+    pub associated_c_type: TokenStream,
+    pub c_definition: bool,
+    pub c_definition_attrs: TokenStream,
 }
 
 impl ContainerAttrs {
@@ -563,6 +638,9 @@ impl ContainerAttrs {
             checkpoint: vec![],
             measure_counter: vec![],
             extra: quote!(),
+            associated_c_type: quote!(),
+            c_definition: false,
+            c_definition_attrs: TokenStream::default(),
         };
 
         for attr in attrs {
@@ -591,6 +669,13 @@ impl ContainerAttrs {
                 v.checkpoint.push(attr.parse_args().unwrap());
             } else if path.is_ident("measure_counter") {
                 v.measure_counter.push(attr.parse_args().unwrap());
+            } else if path.is_ident("c_type") {
+                v.associated_c_type = attr.parse_args().unwrap();
+            } else if path.is_ident("repr") {
+                // Structs/enums with the #[repr(...)] attribute are assumed to be defined for the
+                // C API.
+                v.c_definition = true;
+                attr.to_tokens(&mut v.c_definition_attrs);
             } else {
                 attr.to_tokens(&mut v.extra)
             }
