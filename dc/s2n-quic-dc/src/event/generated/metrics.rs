@@ -46,6 +46,17 @@ pub struct Context<R: Recorder> {
     stream_read_socket_blocked: AtomicU64,
     stream_read_socket_errored: AtomicU64,
     stream_decrypt_packet: AtomicU64,
+    stream_packet_transmitted: AtomicU64,
+    stream_probe_transmitted: AtomicU64,
+    stream_packet_received: AtomicU64,
+    stream_packet_lost: AtomicU64,
+    stream_packet_acked: AtomicU64,
+    stream_packet_spuriously_retransmitted: AtomicU64,
+    stream_max_data_received: AtomicU64,
+    stream_control_packet_transmitted: AtomicU64,
+    stream_control_packet_received: AtomicU64,
+    stream_receiver_errored: AtomicU64,
+    stream_sender_errored: AtomicU64,
     connection_closed: AtomicU64,
 }
 impl<R: Recorder> Context<R> {
@@ -88,6 +99,17 @@ where
             stream_read_socket_blocked: AtomicU64::new(0),
             stream_read_socket_errored: AtomicU64::new(0),
             stream_decrypt_packet: AtomicU64::new(0),
+            stream_packet_transmitted: AtomicU64::new(0),
+            stream_probe_transmitted: AtomicU64::new(0),
+            stream_packet_received: AtomicU64::new(0),
+            stream_packet_lost: AtomicU64::new(0),
+            stream_packet_acked: AtomicU64::new(0),
+            stream_packet_spuriously_retransmitted: AtomicU64::new(0),
+            stream_max_data_received: AtomicU64::new(0),
+            stream_control_packet_transmitted: AtomicU64::new(0),
+            stream_control_packet_received: AtomicU64::new(0),
+            stream_receiver_errored: AtomicU64::new(0),
+            stream_sender_errored: AtomicU64::new(0),
             connection_closed: AtomicU64::new(0),
         }
     }
@@ -338,6 +360,145 @@ where
             .on_stream_decrypt_packet(&context.recorder, meta, event);
     }
     #[inline]
+    fn on_stream_packet_transmitted(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamPacketTransmitted,
+    ) {
+        context
+            .stream_packet_transmitted
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_packet_transmitted(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_probe_transmitted(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamProbeTransmitted,
+    ) {
+        context
+            .stream_probe_transmitted
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_probe_transmitted(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_packet_received(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamPacketReceived,
+    ) {
+        context
+            .stream_packet_received
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_packet_received(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_packet_lost(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamPacketLost,
+    ) {
+        context.stream_packet_lost.fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_packet_lost(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_packet_acked(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamPacketAcked,
+    ) {
+        context.stream_packet_acked.fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_packet_acked(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_packet_spuriously_retransmitted(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamPacketSpuriouslyRetransmitted,
+    ) {
+        context
+            .stream_packet_spuriously_retransmitted
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_packet_spuriously_retransmitted(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_max_data_received(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamMaxDataReceived,
+    ) {
+        context
+            .stream_max_data_received
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_max_data_received(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_control_packet_transmitted(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamControlPacketTransmitted,
+    ) {
+        context
+            .stream_control_packet_transmitted
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_control_packet_transmitted(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_control_packet_received(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamControlPacketReceived,
+    ) {
+        context
+            .stream_control_packet_received
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_control_packet_received(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_receiver_errored(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamReceiverErrored,
+    ) {
+        context
+            .stream_receiver_errored
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_receiver_errored(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_sender_errored(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamSenderErrored,
+    ) {
+        context
+            .stream_sender_errored
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_sender_errored(&context.recorder, meta, event);
+    }
+    #[inline]
     fn on_connection_closed(
         &self,
         context: &Self::ConnectionContext,
@@ -430,6 +591,52 @@ impl<R: Recorder> Drop for Context<R> {
         self.recorder.increment_counter(
             "stream_decrypt_packet",
             self.stream_decrypt_packet.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_packet_transmitted",
+            self.stream_packet_transmitted.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_probe_transmitted",
+            self.stream_probe_transmitted.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_packet_received",
+            self.stream_packet_received.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_packet_lost",
+            self.stream_packet_lost.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_packet_acked",
+            self.stream_packet_acked.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_packet_spuriously_retransmitted",
+            self.stream_packet_spuriously_retransmitted
+                .load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_max_data_received",
+            self.stream_max_data_received.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_control_packet_transmitted",
+            self.stream_control_packet_transmitted
+                .load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_control_packet_received",
+            self.stream_control_packet_received.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_receiver_errored",
+            self.stream_receiver_errored.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_sender_errored",
+            self.stream_sender_errored.load(Ordering::Relaxed) as _,
         );
         self.recorder.increment_counter(
             "connection_closed",

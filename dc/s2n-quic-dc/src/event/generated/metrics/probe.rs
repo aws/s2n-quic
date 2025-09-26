@@ -63,39 +63,56 @@ mod counter {
                 140usize => Self(stream_tcp_connect),
                 143usize => Self(stream_connect),
                 147usize => Self(stream_connect_error),
-                149usize => Self(connection_closed),
-                150usize => Self(endpoint_initialized),
-                155usize => Self(path_secret_map_initialized),
-                157usize => Self(path_secret_map_uninitialized),
-                161usize => Self(path_secret_map_background_handshake_requested),
-                163usize => Self(path_secret_map_entry_inserted),
-                165usize => Self(path_secret_map_entry_ready),
-                167usize => Self(path_secret_map_entry_replaced),
-                169usize => Self(path_secret_map_id_entry_evicted),
-                172usize => Self(path_secret_map_address_entry_evicted),
-                175usize => Self(unknown_path_secret_packet_sent),
-                177usize => Self(unknown_path_secret_packet_received),
-                179usize => Self(unknown_path_secret_packet_accepted),
-                181usize => Self(unknown_path_secret_packet_rejected),
-                183usize => Self(unknown_path_secret_packet_dropped),
-                185usize => Self(key_accepted),
-                188usize => Self(replay_definitely_detected),
-                189usize => Self(replay_potentially_detected),
-                191usize => Self(replay_detected_packet_sent),
-                193usize => Self(replay_detected_packet_received),
-                195usize => Self(replay_detected_packet_accepted),
-                197usize => Self(replay_detected_packet_rejected),
-                199usize => Self(replay_detected_packet_dropped),
-                201usize => Self(stale_key_packet_sent),
-                203usize => Self(stale_key_packet_received),
-                205usize => Self(stale_key_packet_accepted),
-                207usize => Self(stale_key_packet_rejected),
-                209usize => Self(stale_key_packet_dropped),
-                211usize => Self(path_secret_map_address_cache_accessed),
-                214usize => Self(path_secret_map_address_cache_accessed_hit),
-                217usize => Self(path_secret_map_id_cache_accessed),
-                219usize => Self(path_secret_map_id_cache_accessed_hit),
-                221usize => Self(path_secret_map_cleaner_cycled),
+                149usize => Self(stream_packet_transmitted),
+                151usize => Self(stream_packet_transmitted__payload_len__total),
+                155usize => Self(stream_probe_transmitted),
+                157usize => Self(stream_packet_received),
+                159usize => Self(stream_packet_received__payload_len__total),
+                163usize => Self(stream_packet_lost),
+                165usize => Self(stream_packet_lost__payload_len__total),
+                170usize => Self(stream_packet_acked),
+                172usize => Self(stream_packet_acked__payload_len__total),
+                177usize => Self(stream_packet_spuriously_retransmitted),
+                179usize => Self(stream_packet_spuriously_retransmitted__payload_len__total),
+                183usize => Self(stream_max_data_received),
+                184usize => Self(stream_max_data_received__increase__total),
+                186usize => Self(stream_control_packet_transmitted),
+                189usize => Self(stream_control_packet_received),
+                193usize => Self(stream_receiver_errored),
+                194usize => Self(stream_sender_errored),
+                195usize => Self(connection_closed),
+                196usize => Self(endpoint_initialized),
+                201usize => Self(path_secret_map_initialized),
+                203usize => Self(path_secret_map_uninitialized),
+                207usize => Self(path_secret_map_background_handshake_requested),
+                209usize => Self(path_secret_map_entry_inserted),
+                211usize => Self(path_secret_map_entry_ready),
+                213usize => Self(path_secret_map_entry_replaced),
+                215usize => Self(path_secret_map_id_entry_evicted),
+                218usize => Self(path_secret_map_address_entry_evicted),
+                221usize => Self(unknown_path_secret_packet_sent),
+                223usize => Self(unknown_path_secret_packet_received),
+                225usize => Self(unknown_path_secret_packet_accepted),
+                227usize => Self(unknown_path_secret_packet_rejected),
+                229usize => Self(unknown_path_secret_packet_dropped),
+                231usize => Self(key_accepted),
+                234usize => Self(replay_definitely_detected),
+                235usize => Self(replay_potentially_detected),
+                237usize => Self(replay_detected_packet_sent),
+                239usize => Self(replay_detected_packet_received),
+                241usize => Self(replay_detected_packet_accepted),
+                243usize => Self(replay_detected_packet_rejected),
+                245usize => Self(replay_detected_packet_dropped),
+                247usize => Self(stale_key_packet_sent),
+                249usize => Self(stale_key_packet_received),
+                251usize => Self(stale_key_packet_accepted),
+                253usize => Self(stale_key_packet_rejected),
+                255usize => Self(stale_key_packet_dropped),
+                257usize => Self(path_secret_map_address_cache_accessed),
+                260usize => Self(path_secret_map_address_cache_accessed_hit),
+                263usize => Self(path_secret_map_id_cache_accessed),
+                265usize => Self(path_secret_map_id_cache_accessed_hit),
+                267usize => Self(path_secret_map_cleaner_cycled),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -199,6 +216,40 @@ mod counter {
             fn stream_connect(value: u64);
             # [link_name = s2n_quic_dc__event__counter__stream_connect_error]
             fn stream_connect_error(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_transmitted]
+            fn stream_packet_transmitted(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_transmitted__payload_len__total]
+            fn stream_packet_transmitted__payload_len__total(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_probe_transmitted]
+            fn stream_probe_transmitted(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_received]
+            fn stream_packet_received(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_received__payload_len__total]
+            fn stream_packet_received__payload_len__total(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_lost]
+            fn stream_packet_lost(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_lost__payload_len__total]
+            fn stream_packet_lost__payload_len__total(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_acked]
+            fn stream_packet_acked(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_acked__payload_len__total]
+            fn stream_packet_acked__payload_len__total(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_spuriously_retransmitted]
+            fn stream_packet_spuriously_retransmitted(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_packet_spuriously_retransmitted__payload_len__total]
+            fn stream_packet_spuriously_retransmitted__payload_len__total(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_max_data_received]
+            fn stream_max_data_received(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_max_data_received__increase__total]
+            fn stream_max_data_received__increase__total(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_control_packet_transmitted]
+            fn stream_control_packet_transmitted(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_control_packet_received]
+            fn stream_control_packet_received(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_receiver_errored]
+            fn stream_receiver_errored(value: u64);
+            # [link_name = s2n_quic_dc__event__counter__stream_sender_errored]
+            fn stream_sender_errored(value: u64);
             # [link_name = s2n_quic_dc__event__counter__connection_closed]
             fn connection_closed(value: u64);
             # [link_name = s2n_quic_dc__event__counter__endpoint_initialized]
@@ -285,10 +336,16 @@ mod counter {
                     137usize => Self(stream_decrypt_packet__decrypted_in_place),
                     141usize => Self(stream_tcp_connect__error),
                     144usize => Self(stream_connect__error),
-                    153usize => Self(endpoint_initialized__tcp),
-                    154usize => Self(endpoint_initialized__udp),
-                    213usize => Self(path_secret_map_address_cache_accessed__hit),
-                    218usize => Self(path_secret_map_id_cache_accessed__hit),
+                    154usize => Self(stream_packet_transmitted__retransmission),
+                    162usize => Self(stream_packet_received__retransmission),
+                    169usize => Self(stream_packet_lost__retransmission),
+                    176usize => Self(stream_packet_acked__retransmission),
+                    182usize => Self(stream_packet_spuriously_retransmitted__retransmission),
+                    192usize => Self(stream_control_packet_received__authenticated),
+                    199usize => Self(endpoint_initialized__tcp),
+                    200usize => Self(endpoint_initialized__udp),
+                    259usize => Self(path_secret_map_address_cache_accessed__hit),
+                    264usize => Self(path_secret_map_id_cache_accessed__hit),
                     _ => unreachable!("invalid info: {info:?}"),
                 }
             }
@@ -322,6 +379,18 @@ mod counter {
                 fn stream_tcp_connect__error(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__stream_connect__error]
                 fn stream_connect__error(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_transmitted__retransmission]
+                fn stream_packet_transmitted__retransmission(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_received__retransmission]
+                fn stream_packet_received__retransmission(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_lost__retransmission]
+                fn stream_packet_lost__retransmission(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_acked__retransmission]
+                fn stream_packet_acked__retransmission(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__stream_packet_spuriously_retransmitted__retransmission]
+                fn stream_packet_spuriously_retransmitted__retransmission(value: bool);
+                # [link_name = s2n_quic_dc__event__counter__bool__stream_control_packet_received__authenticated]
+                fn stream_control_packet_received__authenticated(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__endpoint_initialized__tcp]
                 fn endpoint_initialized__tcp(value: bool);
                 # [link_name = s2n_quic_dc__event__counter__bool__endpoint_initialized__udp]
@@ -348,35 +417,35 @@ mod counter {
                     145usize => Self(stream_connect__tcp),
                     146usize => Self(stream_connect__handshake),
                     148usize => Self(stream_connect_error__reason),
-                    151usize => Self(endpoint_initialized__acceptor__protocol),
-                    152usize => Self(endpoint_initialized__handshake__protocol),
-                    162usize => {
+                    197usize => Self(endpoint_initialized__acceptor__protocol),
+                    198usize => Self(endpoint_initialized__handshake__protocol),
+                    208usize => {
                         Self(path_secret_map_background_handshake_requested__peer_address__protocol)
                     }
-                    164usize => Self(path_secret_map_entry_inserted__peer_address__protocol),
-                    166usize => Self(path_secret_map_entry_ready__peer_address__protocol),
-                    168usize => Self(path_secret_map_entry_replaced__peer_address__protocol),
-                    170usize => Self(path_secret_map_id_entry_evicted__peer_address__protocol),
-                    173usize => Self(path_secret_map_address_entry_evicted__peer_address__protocol),
-                    176usize => Self(unknown_path_secret_packet_sent__peer_address__protocol),
-                    178usize => Self(unknown_path_secret_packet_received__peer_address__protocol),
-                    180usize => Self(unknown_path_secret_packet_accepted__peer_address__protocol),
-                    182usize => Self(unknown_path_secret_packet_rejected__peer_address__protocol),
-                    184usize => Self(unknown_path_secret_packet_dropped__peer_address__protocol),
-                    192usize => Self(replay_detected_packet_sent__peer_address__protocol),
-                    194usize => Self(replay_detected_packet_received__peer_address__protocol),
-                    196usize => Self(replay_detected_packet_accepted__peer_address__protocol),
-                    198usize => Self(replay_detected_packet_rejected__peer_address__protocol),
-                    200usize => Self(replay_detected_packet_dropped__peer_address__protocol),
-                    202usize => Self(stale_key_packet_sent__peer_address__protocol),
-                    204usize => Self(stale_key_packet_received__peer_address__protocol),
-                    206usize => Self(stale_key_packet_accepted__peer_address__protocol),
-                    208usize => Self(stale_key_packet_rejected__peer_address__protocol),
-                    210usize => Self(stale_key_packet_dropped__peer_address__protocol),
-                    212usize => {
+                    210usize => Self(path_secret_map_entry_inserted__peer_address__protocol),
+                    212usize => Self(path_secret_map_entry_ready__peer_address__protocol),
+                    214usize => Self(path_secret_map_entry_replaced__peer_address__protocol),
+                    216usize => Self(path_secret_map_id_entry_evicted__peer_address__protocol),
+                    219usize => Self(path_secret_map_address_entry_evicted__peer_address__protocol),
+                    222usize => Self(unknown_path_secret_packet_sent__peer_address__protocol),
+                    224usize => Self(unknown_path_secret_packet_received__peer_address__protocol),
+                    226usize => Self(unknown_path_secret_packet_accepted__peer_address__protocol),
+                    228usize => Self(unknown_path_secret_packet_rejected__peer_address__protocol),
+                    230usize => Self(unknown_path_secret_packet_dropped__peer_address__protocol),
+                    238usize => Self(replay_detected_packet_sent__peer_address__protocol),
+                    240usize => Self(replay_detected_packet_received__peer_address__protocol),
+                    242usize => Self(replay_detected_packet_accepted__peer_address__protocol),
+                    244usize => Self(replay_detected_packet_rejected__peer_address__protocol),
+                    246usize => Self(replay_detected_packet_dropped__peer_address__protocol),
+                    248usize => Self(stale_key_packet_sent__peer_address__protocol),
+                    250usize => Self(stale_key_packet_received__peer_address__protocol),
+                    252usize => Self(stale_key_packet_accepted__peer_address__protocol),
+                    254usize => Self(stale_key_packet_rejected__peer_address__protocol),
+                    256usize => Self(stale_key_packet_dropped__peer_address__protocol),
+                    258usize => {
                         Self(path_secret_map_address_cache_accessed__peer_address__protocol)
                     }
-                    215usize => {
+                    261usize => {
                         Self(path_secret_map_address_cache_accessed_hit__peer_address__protocol)
                     }
                     _ => unreachable!("invalid info: {info:?}"),
@@ -654,37 +723,60 @@ mod measure {
                 135usize => Self(stream_read_socket_errored__capacity),
                 138usize => Self(stream_decrypt_packet__forced_copy),
                 139usize => Self(stream_decrypt_packet__required_application_buffer),
-                156usize => Self(path_secret_map_initialized__capacity),
-                158usize => Self(path_secret_map_uninitialized__capacity),
-                159usize => Self(path_secret_map_uninitialized__entries),
-                160usize => Self(path_secret_map_uninitialized__lifetime),
-                171usize => Self(path_secret_map_id_entry_evicted__age),
-                174usize => Self(path_secret_map_address_entry_evicted__age),
-                186usize => Self(key_accepted__gap),
-                187usize => Self(key_accepted__forward_shift),
-                190usize => Self(replay_potentially_detected__gap),
-                216usize => Self(path_secret_map_address_cache_accessed_hit__age),
-                220usize => Self(path_secret_map_id_cache_accessed_hit__age),
-                222usize => Self(path_secret_map_cleaner_cycled__entries__id),
-                223usize => Self(path_secret_map_cleaner_cycled__entries__id__retired),
-                224usize => Self(path_secret_map_cleaner_cycled__entries__id__active),
-                225usize => Self(path_secret_map_cleaner_cycled__entries__id__active__utilization),
-                226usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization),
-                227usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization__initial),
-                228usize => Self(path_secret_map_cleaner_cycled__entries__address),
-                229usize => Self(path_secret_map_cleaner_cycled__entries__address__active),
-                230usize => {
+                150usize => Self(stream_packet_transmitted__packet_len),
+                152usize => Self(stream_packet_transmitted__payload_len),
+                153usize => Self(stream_packet_transmitted__payload_len__conn),
+                156usize => Self(stream_probe_transmitted__packet_len),
+                158usize => Self(stream_packet_received__packet_len),
+                160usize => Self(stream_packet_received__payload_len),
+                161usize => Self(stream_packet_received__payload_len__conn),
+                164usize => Self(stream_packet_lost__packet_len),
+                166usize => Self(stream_packet_lost__payload_len),
+                167usize => Self(stream_packet_lost__payload_len__conn),
+                168usize => Self(stream_packet_lost__lifetime),
+                171usize => Self(stream_packet_acked__packet_len),
+                173usize => Self(stream_packet_acked__payload_len),
+                174usize => Self(stream_packet_acked__payload_len__conn),
+                175usize => Self(stream_packet_acked__lifetime),
+                178usize => Self(stream_packet_spuriously_retransmitted__packet_len),
+                180usize => Self(stream_packet_spuriously_retransmitted__payload_len),
+                181usize => Self(stream_packet_spuriously_retransmitted__payload_len__conn),
+                185usize => Self(stream_max_data_received__increase),
+                187usize => Self(stream_control_packet_transmitted__packet_len),
+                188usize => Self(stream_control_packet_transmitted__control_data_len),
+                190usize => Self(stream_control_packet_received__packet_len),
+                191usize => Self(stream_control_packet_received__control_data_len),
+                202usize => Self(path_secret_map_initialized__capacity),
+                204usize => Self(path_secret_map_uninitialized__capacity),
+                205usize => Self(path_secret_map_uninitialized__entries),
+                206usize => Self(path_secret_map_uninitialized__lifetime),
+                217usize => Self(path_secret_map_id_entry_evicted__age),
+                220usize => Self(path_secret_map_address_entry_evicted__age),
+                232usize => Self(key_accepted__gap),
+                233usize => Self(key_accepted__forward_shift),
+                236usize => Self(replay_potentially_detected__gap),
+                262usize => Self(path_secret_map_address_cache_accessed_hit__age),
+                266usize => Self(path_secret_map_id_cache_accessed_hit__age),
+                268usize => Self(path_secret_map_cleaner_cycled__entries__id),
+                269usize => Self(path_secret_map_cleaner_cycled__entries__id__retired),
+                270usize => Self(path_secret_map_cleaner_cycled__entries__id__active),
+                271usize => Self(path_secret_map_cleaner_cycled__entries__id__active__utilization),
+                272usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization),
+                273usize => Self(path_secret_map_cleaner_cycled__entries__id__utilization__initial),
+                274usize => Self(path_secret_map_cleaner_cycled__entries__address),
+                275usize => Self(path_secret_map_cleaner_cycled__entries__address__active),
+                276usize => {
                     Self(path_secret_map_cleaner_cycled__entries__address__active__utilization)
                 }
-                231usize => Self(path_secret_map_cleaner_cycled__entries__address__retired),
-                232usize => Self(path_secret_map_cleaner_cycled__entries__address__utilization),
-                233usize => {
+                277usize => Self(path_secret_map_cleaner_cycled__entries__address__retired),
+                278usize => Self(path_secret_map_cleaner_cycled__entries__address__utilization),
+                279usize => {
                     Self(path_secret_map_cleaner_cycled__entries__address__utilization__initial)
                 }
-                234usize => Self(path_secret_map_cleaner_cycled__handshake_requests),
-                235usize => Self(path_secret_map_cleaner_cycled__handshake_requests__retired),
-                236usize => Self(path_secret_map_cleaner_cycled__handshake_lock_duration),
-                237usize => Self(path_secret_map_cleaner_cycled__total_duration),
+                280usize => Self(path_secret_map_cleaner_cycled__handshake_requests),
+                281usize => Self(path_secret_map_cleaner_cycled__handshake_requests__retired),
+                282usize => Self(path_secret_map_cleaner_cycled__handshake_lock_duration),
+                283usize => Self(path_secret_map_cleaner_cycled__total_duration),
                 _ => unreachable!("invalid info: {info:?}"),
             }
         }
@@ -830,6 +922,52 @@ mod measure {
             fn stream_decrypt_packet__forced_copy(value: u64);
             # [link_name = s2n_quic_dc__event__measure__stream_decrypt_packet__required_application_buffer]
             fn stream_decrypt_packet__required_application_buffer(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_transmitted__packet_len]
+            fn stream_packet_transmitted__packet_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_transmitted__payload_len]
+            fn stream_packet_transmitted__payload_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_transmitted__payload_len__conn]
+            fn stream_packet_transmitted__payload_len__conn(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_probe_transmitted__packet_len]
+            fn stream_probe_transmitted__packet_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_received__packet_len]
+            fn stream_packet_received__packet_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_received__payload_len]
+            fn stream_packet_received__payload_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_received__payload_len__conn]
+            fn stream_packet_received__payload_len__conn(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_lost__packet_len]
+            fn stream_packet_lost__packet_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_lost__payload_len]
+            fn stream_packet_lost__payload_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_lost__payload_len__conn]
+            fn stream_packet_lost__payload_len__conn(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_lost__lifetime]
+            fn stream_packet_lost__lifetime(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_acked__packet_len]
+            fn stream_packet_acked__packet_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_acked__payload_len]
+            fn stream_packet_acked__payload_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_acked__payload_len__conn]
+            fn stream_packet_acked__payload_len__conn(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_acked__lifetime]
+            fn stream_packet_acked__lifetime(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_spuriously_retransmitted__packet_len]
+            fn stream_packet_spuriously_retransmitted__packet_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_spuriously_retransmitted__payload_len]
+            fn stream_packet_spuriously_retransmitted__payload_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_packet_spuriously_retransmitted__payload_len__conn]
+            fn stream_packet_spuriously_retransmitted__payload_len__conn(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_max_data_received__increase]
+            fn stream_max_data_received__increase(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_control_packet_transmitted__packet_len]
+            fn stream_control_packet_transmitted__packet_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_control_packet_transmitted__control_data_len]
+            fn stream_control_packet_transmitted__control_data_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_control_packet_received__packet_len]
+            fn stream_control_packet_received__packet_len(value: u64);
+            # [link_name = s2n_quic_dc__event__measure__stream_control_packet_received__control_data_len]
+            fn stream_control_packet_received__control_data_len(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_initialized__capacity]
             fn path_secret_map_initialized__capacity(value: u64);
             # [link_name = s2n_quic_dc__event__measure__path_secret_map_uninitialized__capacity]

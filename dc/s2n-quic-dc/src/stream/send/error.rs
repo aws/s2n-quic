@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::{packet_number, recv, shared::ShutdownKind};
+use crate::{
+    event::IntoEvent,
+    stream::{packet_number, recv, shared::ShutdownKind},
+};
 use core::{fmt, panic::Location};
 use s2n_quic_core::{buffer, varint::VarInt};
 
@@ -32,6 +35,12 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+impl IntoEvent<Error> for Error {
+    fn into_event(self) -> Error {
+        self
+    }
+}
 
 impl Error {
     #[track_caller]
@@ -113,8 +122,8 @@ impl Kind {
         Error::new(self)
     }
 
-    pub(crate) fn for_recv(self) -> Option<recv::Kind> {
-        use recv::Kind as RecvKind;
+    pub(crate) fn for_recv(self) -> Option<recv::ErrorKind> {
+        use recv::ErrorKind as RecvKind;
 
         match self {
             Kind::PayloadTooLarge => None,

@@ -308,7 +308,8 @@ where
             if recv_len == 0 {
                 if transport_features.is_stream() {
                     // if we got a 0-length read then the stream was closed - notify the receiver
-                    reader.receiver.on_transport_close();
+                    let publisher = self.shared.publisher();
+                    reader.receiver.on_transport_close(&publisher);
                     continue;
                 } else {
                     debug_assert!(false, "datagram recv buffers should never be empty");

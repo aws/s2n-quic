@@ -7,9 +7,8 @@ pub(crate) mod buffer;
 pub mod dispatch;
 mod error;
 mod packet;
-mod probes;
 pub mod shared;
 pub mod state;
 pub mod worker;
 
-pub use error::{Error, Kind};
+pub use error::{Error, Kind as ErrorKind};

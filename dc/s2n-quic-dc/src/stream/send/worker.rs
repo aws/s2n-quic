@@ -135,7 +135,8 @@ impl Snapshot {
                 shared.sender.flow.set_error(error.error);
 
                 if let Some(err) = error.error.for_recv() {
-                    shared.receiver.notify_error(err, error.source);
+                    let publisher = shared.publisher();
+                    shared.receiver.notify_error(err, error.source, &publisher);
                 }
             }
         }
@@ -283,7 +284,8 @@ where
                         let error = error::Kind::ApplicationError {
                             error: error.into(),
                         };
-                        self.sender.on_error(error, Location::Local);
+                        let publisher = self.shared.publisher();
+                        self.sender.on_error(error, Location::Local, &publisher);
                     }
 
                     // transition to a detached state
@@ -342,6 +344,7 @@ where
             .expect("control crypto should be available");
 
         let had_error = self.sender.error.is_some();
+        let publisher = self.shared.publisher();
 
         {
             let mut router = Router {
@@ -354,6 +357,7 @@ where
                 remote_queue_id: None,
                 any_valid_packets: false,
                 handshake: &mut self.handshake,
+                publisher: &publisher,
             };
 
             let _ = self
@@ -364,7 +368,9 @@ where
         if !had_error {
             if let Some(error) = self.sender.error.as_ref() {
                 if let Some(err) = error.error.for_recv() {
-                    self.shared.receiver.notify_error(err, error.source);
+                    self.shared
+                        .receiver
+                        .notify_error(err, error.source, &publisher);
                 }
             }
         }
@@ -375,8 +381,9 @@ where
         let _ = cx;
         let shared = &self.shared;
         let clock = clock::Cached::new(&shared.clock);
+        let publisher = shared.publisher();
         self.sender
-            .on_time_update(&clock, || shared.last_peer_activity());
+            .on_time_update(&clock, || shared.last_peer_activity(), &publisher);
         Poll::Ready(())
     }
 
@@ -393,6 +400,7 @@ where
 
             match self.state {
                 waiting::State::Acking => {
+                    let publisher = self.shared.publisher();
                     let stream_id = self.shared.stream_id();
                     let source_queue_id = self.shared.local_queue_id();
                     let _ = self.sender.fill_transmit_queue(
@@ -401,6 +409,7 @@ where
                         &stream_id,
                         source_queue_id,
                         &self.shared.clock,
+                        &publisher,
                     );
                 }
                 waiting::State::Detached => {
@@ -433,6 +442,7 @@ where
                     continue;
                 }
                 waiting::State::ShuttingDown => {
+                    let publisher = self.shared.publisher();
                     let stream_id = self.shared.stream_id();
                     let source_queue_id = self.shared.local_queue_id();
                     let _ = self.sender.fill_transmit_queue(
@@ -441,6 +451,7 @@ where
                         &stream_id,
                         source_queue_id,
                         &self.shared.clock,
+                        &publisher,
                     );
 
                     if self.sender.state.is_terminal() {
@@ -520,11 +531,12 @@ where
     }
 }
 
-struct Router<'a, Sub, C, R>
+struct Router<'a, Sub, C, R, P>
 where
     Sub: event::Subscriber,
     C: Clock,
     R: random::Generator,
+    P: event::ConnectionPublisher,
 {
     shared: &'a shared::Shared<Sub, C>,
     sender: &'a mut State,
@@ -535,13 +547,15 @@ where
     random: &'a mut R,
     any_valid_packets: bool,
     handshake: &'a mut handshake::State,
+    publisher: &'a P,
 }
 
-impl<Sub, C, R> buffer::Dispatch for Router<'_, Sub, C, R>
+impl<Sub, C, R, P> buffer::Dispatch for Router<'_, Sub, C, R, P>
 where
     Sub: event::Subscriber,
     C: Clock,
     R: random::Generator,
+    P: event::ConnectionPublisher,
 {
     fn on_packet(
         &mut self,
@@ -572,13 +586,15 @@ where
                         $kind
                     },
                     Location::Local,
+                    self.publisher,
                 );
                 self.shared.receiver.notify_error(
                     {
-                        use crate::stream::recv::Kind::*;
+                        use crate::stream::recv::ErrorKind::*;
                         ($kind).into()
                     },
                     Location::Local,
+                    self.publisher,
                 );
             }};
         }
@@ -592,13 +608,13 @@ where
 
                 let res = self.sender.on_control_packet(
                     self.opener,
-                    &credentials,
                     ecn,
                     &mut packet,
                     self.random,
                     &self.clock,
                     &self.shared.sender.application_transmission_queue,
                     &self.shared.sender.segment_alloc,
+                    self.publisher,
                 );
 
                 if res.is_ok() {
@@ -644,11 +660,12 @@ where
     }
 }
 
-impl<Sub, C, R> Drop for Router<'_, Sub, C, R>
+impl<Sub, C, R, P> Drop for Router<'_, Sub, C, R, P>
 where
     Sub: event::Subscriber,
     C: Clock,
     R: random::Generator,
+    P: event::ConnectionPublisher,
 {
     #[inline]
     fn drop(&mut self) {

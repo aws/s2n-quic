@@ -2,23 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    credentials::Credentials,
-    crypto,
+    crypto, event,
     packet::stream,
     stream::recv::{state::State as Receiver, Error},
 };
 use s2n_quic_core::{
     buffer::{reader, writer, Reader},
+    ensure,
     inet::ExplicitCongestionNotification,
     time::Clock,
     varint::VarInt,
 };
 
-pub struct Packet<'a, 'p, D, K, C>
+pub struct Packet<'a, 'p, D, K, C, Pub>
 where
     D: crypto::open::Application,
     K: crypto::open::control::Stream,
     C: Clock + ?Sized,
+    Pub: event::ConnectionPublisher,
 {
     pub packet: &'a mut stream::decoder::Packet<'p>,
     pub payload_cursor: usize,
@@ -27,15 +28,17 @@ where
     pub clock: &'a C,
     pub opener: &'a D,
     pub control: &'a K,
-    pub credentials: &'a Credentials,
     pub receiver: &'a mut Receiver,
+    pub copied_len: usize,
+    pub publisher: &'a Pub,
 }
 
-impl<D, K, C: Clock> reader::Storage for Packet<'_, '_, D, K, C>
+impl<D, K, C: Clock, Pub> reader::Storage for Packet<'_, '_, D, K, C, Pub>
 where
     D: crypto::open::Application,
     K: crypto::open::control::Stream,
     C: Clock + ?Sized,
+    Pub: event::ConnectionPublisher,
 {
     type Error = Error;
 
@@ -50,10 +53,10 @@ where
             self.receiver.on_stream_packet_in_place(
                 self.opener,
                 self.control,
-                self.credentials,
                 self.packet,
                 self.ecn,
                 self.clock,
+                self.publisher,
             )?;
             self.is_decrypted_in_place = true;
         }
@@ -61,6 +64,7 @@ where
         let payload = &self.packet.payload()[self.payload_cursor..];
         let len = payload.len().min(watermark);
         self.payload_cursor += len;
+        self.copied_len += len;
         let payload = &payload[..len];
         Ok(payload.into())
     }
@@ -95,11 +99,11 @@ where
             self.receiver.on_stream_packet_copy(
                 self.opener,
                 self.control,
-                self.credentials,
                 self.packet,
                 self.ecn,
                 dest,
                 self.clock,
+                self.publisher,
             )
         })?;
 
@@ -108,21 +112,36 @@ where
             return self.read_chunk(dest.remaining_capacity());
         }
 
-        self.payload_cursor = self.packet.payload().len();
+        let len = self.packet.payload().len();
+        self.payload_cursor = len;
+        self.copied_len += len;
 
         Ok(Default::default())
     }
 }
 
-impl<D, K, C: Clock> Reader for Packet<'_, '_, D, K, C>
+impl<D, K, C: Clock, Pub> Reader for Packet<'_, '_, D, K, C, Pub>
 where
     D: crypto::open::Application,
     K: crypto::open::control::Stream,
     C: Clock + ?Sized,
+    Pub: event::ConnectionPublisher,
 {
     #[inline]
     fn current_offset(&self) -> VarInt {
         self.packet.stream_offset() + self.payload_cursor
+    }
+
+    #[inline]
+    fn skip_until(&mut self, offset: VarInt) -> Result<(), Self::Error> {
+        ensure!(offset > self.current_offset(), Ok(()));
+        let remaining = offset - self.current_offset();
+        let remaining = remaining.as_u64() as usize;
+        self.payload_cursor = (self.payload_cursor + remaining).min(self.packet.payload().len());
+
+        // don't count skipped bytes as copied
+
+        Ok(())
     }
 
     #[inline]

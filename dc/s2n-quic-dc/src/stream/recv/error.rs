@@ -4,6 +4,7 @@
 use crate::{
     credentials,
     crypto::open,
+    event::IntoEvent,
     packet::{self, stream},
     stream::{shared::ShutdownKind, TransportFeatures},
 };
@@ -37,6 +38,12 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+impl IntoEvent<Error> for Error {
+    fn into_event(self) -> Error {
+        self
+    }
+}
 
 impl Error {
     #[track_caller]

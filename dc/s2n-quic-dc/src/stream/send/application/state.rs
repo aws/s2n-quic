@@ -4,11 +4,12 @@
 use crate::{
     credentials::Credentials,
     crypto::seal,
+    event,
     event::ConnectionPublisher,
     packet::stream::{self, encoder},
     stream::{
         packet_number,
-        send::{application::transmission, error::Error, flow, path, probes},
+        send::{application::transmission, error::Error, flow, path},
         TransportFeatures,
     },
 };
@@ -135,17 +136,14 @@ impl State {
                     .is_some_and(|fin| stream_offset.as_u64() + payload_len as u64 == fin.as_u64());
 
                 let time_sent = clock.get_time();
-                probes::on_transmit_stream(
-                    credentials.id,
-                    credentials.key_id,
-                    stream::PacketSpace::Stream,
-                    s2n_quic_core::packet::number::PacketNumberSpace::Initial
-                        .new_packet_number(packet_number),
-                    stream_offset,
-                    payload_len,
-                    included_fin,
-                    false,
-                );
+                publisher.on_stream_packet_transmitted(event::builder::StreamPacketTransmitted {
+                    packet_len: packet_len as usize,
+                    payload_len: payload_len as usize,
+                    packet_number: packet_number.as_u64(),
+                    stream_offset: stream_offset.as_u64(),
+                    is_fin: included_fin,
+                    is_retransmission: false,
+                });
 
                 let info = transmission::Info {
                     packet_len,
