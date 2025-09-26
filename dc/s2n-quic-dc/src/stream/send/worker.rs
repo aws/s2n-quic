@@ -10,10 +10,10 @@ use crate::{
         pacer,
         recv::buffer::{self, Buffer},
         send::{
-            error::{self, Error},
+            error,
             queue::Queue,
             shared::Event,
-            state::State,
+            state::{ErrorState, State},
         },
         shared::{self, handshake},
         socket::Socket,
@@ -22,7 +22,8 @@ use crate::{
 };
 use core::task::{Context, Poll};
 use s2n_quic_core::{
-    endpoint, ensure,
+    endpoint::{self, Location},
+    ensure,
     inet::{ExplicitCongestionNotification, SocketAddress},
     random, ready,
     recovery::bandwidth::Bandwidth,
@@ -91,7 +92,7 @@ struct Snapshot {
     next_expected_control_packet: VarInt,
     timeout: Option<Timestamp>,
     bandwidth: Bandwidth,
-    error: Option<Error>,
+    error: Option<ErrorState>,
 }
 
 impl Snapshot {
@@ -131,7 +132,11 @@ impl Snapshot {
 
         if let Some(error) = self.error {
             if initial.error.is_none() {
-                shared.sender.flow.set_error(error);
+                shared.sender.flow.set_error(error.error);
+
+                if let Some(err) = error.error.for_recv() {
+                    shared.receiver.notify_error(err, error.source);
+                }
             }
         }
     }
@@ -160,6 +165,8 @@ where
         // if this is a client then set up the sender
         if endpoint.is_client() {
             sender.init_client(&shared.clock);
+        } else {
+            sender.init_server(&shared.clock);
         }
 
         let handshake = match endpoint {
@@ -188,14 +195,16 @@ where
 
     #[inline]
     pub fn poll(&mut self, cx: &mut Context) -> Poll<()> {
-        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| self.poll_impl(cx))
+        s2n_quic_core::task::waker::debug_assert_contract(cx, |cx| {
+            ready!(self.poll_impl(cx));
+            tracing::debug!("write worker shutting down");
+            Poll::Ready(())
+        })
     }
 
     #[inline]
     fn poll_impl(&mut self, cx: &mut Context) -> Poll<()> {
         let initial = self.snapshot();
-
-        let is_initial = self.sender.state.is_ready();
 
         tracing::trace!(
             view = "before",
@@ -229,23 +238,26 @@ where
             snapshot = ?current,
         );
 
-        if is_initial || initial.timeout != current.timeout {
-            if let Some(target) = current.timeout {
-                self.timer.update(target);
-                if self.timer.poll_ready(cx).is_ready() {
-                    cx.waker().wake_by_ref();
-                }
-            } else {
-                self.timer.cancel();
-            }
-        }
+        let timeout = current.timeout.filter(|_| {
+            // only set a timeout if we're not finished
+            !matches!(self.state, waiting::State::Finished)
+        });
 
         current.apply(&initial, &self.shared);
 
-        if let waiting::State::Finished = &self.state {
-            Poll::Ready(())
-        } else {
+        if let Some(target) = timeout {
+            self.timer.update(target);
+            if self.timer.poll_ready(cx).is_ready() {
+                // If the timer fired then we need to schedule the worker again
+                cx.waker().wake_by_ref();
+            }
             Poll::Pending
+        } else {
+            // If the sender has no timeout then we're finished
+            debug_assert!(self.sender.state.is_terminal(), "{:?}", self.sender.state);
+            self.state = waiting::State::Finished;
+            self.timer.cancel();
+            Poll::Ready(())
         }
     }
 
@@ -265,15 +277,13 @@ where
 
         while let Some(message) = self.shared.sender.pop_worker_message() {
             match message.event {
-                Event::Shutdown {
-                    queue,
-                    is_panicking,
-                } => {
+                Event::Shutdown { queue, kind } => {
                     // if the application is panicking then we notify the peer
-                    if is_panicking {
-                        let error = error::Kind::ApplicationError { error: 1u8.into() };
-                        self.sender.on_error(error);
-                        continue;
+                    if let Some(error) = kind.error_code() {
+                        let error = error::Kind::ApplicationError {
+                            error: error.into(),
+                        };
+                        self.sender.on_error(error, Location::Local);
                     }
 
                     // transition to a detached state
@@ -331,21 +341,33 @@ where
             .control_opener()
             .expect("control crypto should be available");
 
-        let mut router = Router {
-            shared: &self.shared,
-            opener,
-            random,
-            sender: &mut self.sender,
-            clock,
-            remote_addr: Default::default(),
-            remote_queue_id: None,
-            any_valid_packets: false,
-            handshake: &mut self.handshake,
-        };
+        let had_error = self.sender.error.is_some();
 
-        let _ = self
-            .recv_buffer
-            .process(TransportFeatures::UDP, &mut router);
+        {
+            let mut router = Router {
+                shared: &self.shared,
+                opener,
+                random,
+                sender: &mut self.sender,
+                clock,
+                remote_addr: Default::default(),
+                remote_queue_id: None,
+                any_valid_packets: false,
+                handshake: &mut self.handshake,
+            };
+
+            let _ = self
+                .recv_buffer
+                .process(TransportFeatures::UDP, &mut router);
+        }
+
+        if !had_error {
+            if let Some(error) = self.sender.error.as_ref() {
+                if let Some(err) = error.error.for_recv() {
+                    self.shared.receiver.notify_error(err, error.source);
+                }
+            }
+        }
     }
 
     #[inline]
@@ -544,14 +566,20 @@ where
                     return Ok(());
                 };
 
-                self.sender.on_error({
-                    use error::Kind::*;
-                    $kind
-                });
-                self.shared.receiver.notify_error({
-                    use crate::stream::recv::Kind::*;
-                    ($kind).into()
-                });
+                self.sender.on_error(
+                    {
+                        use error::Kind::*;
+                        $kind
+                    },
+                    Location::Local,
+                );
+                self.shared.receiver.notify_error(
+                    {
+                        use crate::stream::recv::Kind::*;
+                        ($kind).into()
+                    },
+                    Location::Local,
+                );
             }};
         }
 

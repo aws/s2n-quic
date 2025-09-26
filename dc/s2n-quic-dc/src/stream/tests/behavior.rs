@@ -28,7 +28,6 @@ mod dcquic_tcp {
 }
 
 #[path = "behavior"]
-#[cfg(not(target_os = "macos"))] // TODO fix macos
 mod dcquic_udp {
     use super::testing::dcquic::udp::*;
 

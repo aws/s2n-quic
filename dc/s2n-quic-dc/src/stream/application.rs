@@ -99,7 +99,8 @@ where
                 reason,
             });
 
-        // TODO emit event
+        self.shared.receiver.on_prune();
+        self.shared.sender.on_prune();
     }
 }
 
@@ -171,11 +172,27 @@ where
     }
 
     #[inline]
+    pub async fn write_all_from(
+        &mut self,
+        buf: &mut impl buffer::reader::storage::Infallible,
+    ) -> io::Result<usize> {
+        self.write.write_all_from(buf).await
+    }
+
+    #[inline]
     pub async fn write_from_fin(
         &mut self,
         buf: &mut impl buffer::reader::storage::Infallible,
     ) -> io::Result<usize> {
         self.write.write_from_fin(buf).await
+    }
+
+    #[inline]
+    pub async fn write_all_from_fin(
+        &mut self,
+        buf: &mut impl buffer::reader::storage::Infallible,
+    ) -> io::Result<usize> {
+        self.write.write_all_from_fin(buf).await
     }
 
     #[inline]

@@ -14,6 +14,7 @@ use crate::{
 use bach::ext::*;
 use s2n_quic_platform::features;
 use std::{io, net::SocketAddr, sync::Arc};
+use tracing::{info_span, Instrument};
 
 mod pool;
 pub mod udp;
@@ -188,8 +189,9 @@ where
     }
 
     #[inline]
+    #[track_caller]
     fn spawn_reader<F: 'static + Send + std::future::Future<Output = ()>>(&self, f: F) {
-        self.rt.spawn(f.primary());
+        self.rt.spawn(f.instrument(info_span!("reader")).primary());
     }
 
     #[inline]
@@ -198,7 +200,8 @@ where
     }
 
     #[inline]
+    #[track_caller]
     fn spawn_writer<F: 'static + Send + std::future::Future<Output = ()>>(&self, f: F) {
-        self.rt.spawn(f.primary());
+        self.rt.spawn(f.instrument(info_span!("writer")).primary());
     }
 }

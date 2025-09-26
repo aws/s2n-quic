@@ -98,7 +98,7 @@ impl dc::Path for MockDcPath {
 #[allow(clippy::declare_interior_mutable_const)]
 pub const TEST_APPLICATION_PARAMS: ApplicationParams = ApplicationParams {
     max_datagram_size: AtomicU16::new(1472),
-    remote_max_data: VarInt::from_u32(1u32 << 25),
+    remote_max_data: VarInt::from_u32(1472 * 10),
     local_send_max_data: VarInt::from_u32(1u32 << 25),
     local_recv_max_data: VarInt::from_u32(1u32 << 25),
     max_idle_timeout: NonZeroU32::new(Duration::from_secs(30).as_millis() as _),

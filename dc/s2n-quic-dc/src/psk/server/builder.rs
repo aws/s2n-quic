@@ -18,6 +18,7 @@ pub struct Builder<
     #[allow(dead_code)]
     pub(crate) event_subscriber: Event,
     pub(crate) data_window: u64,
+    pub(crate) initial_data_window: Option<u64>,
     pub(crate) mtu: u16,
     pub(crate) max_idle_timeout: Duration,
     pub(crate) pto_jitter_percentage: u8,
@@ -28,6 +29,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
         Self {
             event_subscriber: Default::default(),
             data_window: DEFAULT_MAX_DATA,
+            initial_data_window: None,
             mtu: DEFAULT_MTU,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
@@ -44,6 +46,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         Builder {
             event_subscriber,
             data_window: self.data_window,
+            initial_data_window: self.initial_data_window,
             mtu: self.mtu,
             max_idle_timeout: self.max_idle_timeout,
             pto_jitter_percentage: self.pto_jitter_percentage,
@@ -53,6 +56,15 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     /// Sets the data window to use for flow control
     pub fn with_data_window(mut self, data_window: u64) -> Self {
         self.data_window = data_window;
+        self
+    }
+
+    /// Sets the initial amount of data that the peer is allowed to send before the application
+    /// accepts the stream
+    ///
+    /// This defaults to 10x the MTU if not set.
+    pub fn with_initial_data_window(mut self, initial_data_window: u64) -> Self {
+        self.initial_data_window = Some(initial_data_window);
         self
     }
 

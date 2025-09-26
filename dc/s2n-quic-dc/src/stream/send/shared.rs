@@ -8,6 +8,7 @@ use crate::{
             application::transmission, buffer, error::Error, flow, path, queue::Queue,
             state::Transmission,
         },
+        shared::ShutdownKind,
     },
     task::waker::worker::Waker as WorkerWaker,
 };
@@ -27,7 +28,7 @@ pub struct Message {
 
 #[derive(Debug)]
 pub enum Event {
-    Shutdown { queue: Queue, is_panicking: bool },
+    Shutdown { queue: Queue, kind: ShutdownKind },
 }
 
 pub struct State {
@@ -102,18 +103,15 @@ impl State {
         Ok(())
     }
 
+    pub fn on_prune(&self) {
+        self.shutdown(Default::default(), ShutdownKind::Pruned);
+    }
+
     #[inline]
-    pub fn shutdown(&self, queue: Queue, is_panicking: bool) {
-        trace!(
-            event = "shutdown",
-            queue = queue.accepted_len(),
-            is_panicking = is_panicking
-        );
+    pub fn shutdown(&self, queue: Queue, kind: ShutdownKind) {
+        trace!(event = "shutdown", queue = queue.accepted_len(), ?kind);
         let message = Message {
-            event: Event::Shutdown {
-                queue,
-                is_panicking,
-            },
+            event: Event::Shutdown { queue, kind },
         };
         self.worker_queue.push(message);
         self.worker_waker.wake();

@@ -5,6 +5,7 @@ use crate::{
     credentials::Credentials,
     crypto,
     packet::{
+        control::decoder::ControlFramesMut,
         stream::{self, RelativeRetransmissionOffset, Tag},
         WireVersion,
     },
@@ -200,6 +201,11 @@ impl Packet<'_> {
     #[inline]
     pub fn control_data(&self) -> &[u8] {
         self.control_data.get(self.header)
+    }
+
+    #[inline]
+    pub fn control_frames_mut(&mut self) -> ControlFramesMut<'_> {
+        ControlFramesMut::new(self.control_data.get_mut(self.header))
     }
 
     #[inline]

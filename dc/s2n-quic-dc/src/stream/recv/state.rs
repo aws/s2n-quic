@@ -14,6 +14,7 @@ use crate::{
             error::{self, Error},
             packet, probes,
         },
+        shared::AcceptState,
         TransportFeatures, DEFAULT_IDLE_TIMEOUT,
     },
 };
@@ -22,6 +23,7 @@ use s2n_codec::{EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     buffer::{self, reader::storage::Infallible as _},
     dc::ApplicationParams,
+    endpoint::Location,
     ensure,
     frame::{self, ack::EcnCounts},
     inet::ExplicitCongestionNotification,
@@ -34,6 +36,12 @@ use s2n_quic_core::{
     },
     varint::VarInt,
 };
+
+#[derive(Clone, Copy, Debug)]
+struct ErrorState {
+    error: Error,
+    source: Location,
+}
 
 #[derive(Debug)]
 pub struct State {
@@ -50,7 +58,7 @@ pub struct State {
     is_reliable: bool,
     max_data: VarInt,
     max_data_window: VarInt,
-    error: Option<Error>,
+    error: Option<ErrorState>,
     fin_ack_packet_number: Option<VarInt>,
     features: TransportFeatures,
 }
@@ -66,7 +74,13 @@ impl State {
     where
         C: Clock + ?Sized,
     {
-        let initial_max_data = params.local_recv_max_data;
+        let (initial_max_data, max_data_window) = if features.is_flow_controlled() {
+            (VarInt::MAX, VarInt::MAX)
+        } else {
+            let initial_max_data = params.remote_max_data;
+            let data_window = params.local_recv_max_data;
+            (initial_max_data, data_window)
+        };
 
         // set up the idle timer in case we never read anything
         let now = clock.get_time();
@@ -89,7 +103,7 @@ impl State {
             tick_timer,
             _should_transmit: false,
             max_data: initial_max_data,
-            max_data_window: initial_max_data,
+            max_data_window,
             error: None,
             fin_ack_packet_number: None,
             features,
@@ -122,12 +136,17 @@ impl State {
     pub fn stop_sending(&mut self, error: s2n_quic_core::application::Error) {
         // if we've already received everything then no need to notify the peer to stop
         ensure!(matches!(self.state, Receiver::Recv | Receiver::SizeKnown));
-        self.on_error(error::Kind::ApplicationError { error });
+        self.on_error(error::Kind::ApplicationError { error }, Location::Local);
     }
 
     #[inline]
-    pub fn on_read_buffer<B, C, Clk>(&mut self, out_buf: &mut B, chunk: &mut C, _clock: &Clk)
-    where
+    pub fn on_read_buffer<B, C, Clk>(
+        &mut self,
+        out_buf: &mut B,
+        chunk: &mut C,
+        accept_state: AcceptState,
+        _clock: &Clk,
+    ) where
         B: buffer::Duplex<Error = core::convert::Infallible>,
         C: buffer::writer::Storage,
         Clk: Clock + ?Sized,
@@ -137,14 +156,18 @@ impl State {
             out_buf.infallible_copy_into(chunk);
         }
 
-        // record our new max data value
-        let new_max_data = out_buf
-            .current_offset()
-            .saturating_add(self.max_data_window);
+        // Only increase the max data if the application has accepted the stream.
+        if matches!(accept_state, AcceptState::Accepted) {
+            let new_max_data = out_buf
+                .current_offset()
+                .saturating_add(self.max_data_window);
 
-        if new_max_data > self.max_data {
-            self.max_data = new_max_data;
-            self.needs_transmission("new_max_data");
+            // record our new max data value
+            if new_max_data > self.max_data {
+                // TODO make this smarter to avoid sending too many MAX_DATA frames
+                self.max_data = new_max_data;
+                self.needs_transmission("new_max_data");
+            }
         }
 
         // if we know the final offset then update the sate
@@ -173,8 +196,7 @@ impl State {
             Ok(()) => Ok(()),
             Err(err) => {
                 if err.is_fatal(&self.features) {
-                    tracing::error!(fatal_error = %err, ?packet);
-                    self.on_error(err);
+                    self.on_error(err, Location::Local);
                 } else {
                     tracing::debug!(non_fatal_error = %err, ?packet);
                 }
@@ -236,6 +258,7 @@ impl State {
         credentials: &Credentials,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
+        accept_state: AcceptState,
         clock: &Clk,
         out_buf: &mut B,
         subscriber: &crate::stream::shared::Subscriber<Sub>,
@@ -264,6 +287,7 @@ impl State {
             credentials,
             packet,
             ecn,
+            accept_state,
             clock,
             out_buf,
             subscriber,
@@ -271,8 +295,7 @@ impl State {
             Ok(()) => Ok(()),
             Err(err) => {
                 if err.is_fatal(&self.features) {
-                    tracing::error!(fatal_error = %err, ?packet);
-                    self.on_error(err);
+                    self.on_error(err, Location::Local);
                 } else {
                     tracing::debug!(non_fatal_error = %err, ?packet);
                 }
@@ -289,6 +312,7 @@ impl State {
         credentials: &Credentials,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
+        accept_state: AcceptState,
         clock: &Clk,
         out_buf: &mut B,
         subscriber: &crate::stream::shared::Subscriber<Sub>,
@@ -334,7 +358,7 @@ impl State {
             );
 
             let error = error::Kind::MaxDataExceeded.err();
-            self.on_error(error);
+            self.on_error(error, Location::Local);
             return Err(error);
         }
 
@@ -366,7 +390,7 @@ impl State {
         }
 
         let mut chunk = buffer::writer::storage::Empty;
-        self.on_read_buffer(out_buf, &mut chunk, clock);
+        self.on_read_buffer(out_buf, &mut chunk, accept_state, clock);
 
         Ok(())
     }
@@ -457,7 +481,7 @@ impl State {
     #[inline]
     fn on_cleartext_stream_packet<Clk>(
         &mut self,
-        packet: &stream::decoder::Packet,
+        packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
         clock: &Clk,
     ) -> Result<(), Error>
@@ -486,6 +510,7 @@ impl State {
         }
 
         // if we got a new packet then we'll need to transmit an ACK
+        // TODO make this smarter to avoid sending too many ACKs
         self.needs_transmission("new_packet");
 
         // update the idle timer since we received a valid packet
@@ -495,8 +520,30 @@ impl State {
             self.update_idle_timer(clock);
         }
 
-        // TODO process control data
-        let _ = packet.control_data();
+        for frame in packet.control_frames_mut() {
+            let Ok(frame) = frame else {
+                return Err(error::Kind::Decode.err());
+            };
+            match frame {
+                frame::Frame::ConnectionClose(close) => {
+                    let error = if close.frame_type.is_some() {
+                        error::Kind::TransportError {
+                            code: close.error_code,
+                        }
+                    } else {
+                        error::Kind::ApplicationError {
+                            error: close.error_code.into(),
+                        }
+                    }
+                    .err();
+                    self.on_error(error, Location::Remote);
+                    return Err(error);
+                }
+                _ => {
+                    // ignore other frames for now
+                }
+            }
+        }
 
         self.ecn_counts.increment(ecn);
 
@@ -524,7 +571,7 @@ impl State {
         // only error out if we're still expecting more data
         ensure!(matches!(self.state, Receiver::Recv | Receiver::SizeKnown));
 
-        self.on_error(error::Kind::TruncatedTransport);
+        self.on_error(error::Kind::TruncatedTransport, Location::Local);
     }
 
     #[inline]
@@ -590,7 +637,7 @@ impl State {
 
     #[inline]
     #[track_caller]
-    pub fn on_error<E>(&mut self, error: E)
+    pub fn on_error<E>(&mut self, error: E, source: Location)
     where
         Error: From<E>,
     {
@@ -599,11 +646,17 @@ impl State {
         let _ = self.state.on_reset();
         self.stream_ack.clear();
         self.recovery_ack.clear();
-        self.needs_transmission("on_error");
 
         // make sure we haven't already set the error from something else
         ensure!(self.error.is_none());
-        self.error = Some(error);
+        self.error = Some(ErrorState { error, source });
+
+        if matches!(source, Location::Local) {
+            self.needs_transmission("on_error");
+        } else {
+            let _ = self.state.on_app_read_reset();
+            self.silent_shutdown();
+        }
     }
 
     #[inline]
@@ -615,7 +668,7 @@ impl State {
         );
 
         if let Some(err) = self.error {
-            Err(err)
+            Err(err.error)
         } else {
             Ok(())
         }
@@ -639,7 +692,7 @@ impl State {
             did_transition |= self.state.on_reset().is_ok();
             did_transition |= self.state.on_app_read_reset().is_ok();
             if did_transition {
-                self.on_error(error::Kind::IdleTimeout);
+                self.on_error(error::Kind::IdleTimeout, Location::Local);
                 // override the transmission since we're just timing out
                 self._should_transmit = false;
             }
@@ -890,6 +943,11 @@ impl State {
         Clk: Clock + ?Sized,
     {
         ensure!(self.should_transmit());
+        let Some(error) = self.error else {
+            return;
+        };
+        // Only transmit errors that we originated
+        ensure!(matches!(error.source, Location::Local));
 
         let mtu = self.mtu() as usize;
 
@@ -904,10 +962,9 @@ impl State {
 
         let encoder = EncoderBuffer::new(buffer);
 
-        let frame = self
+        let frame = error
             .error
-            .as_ref()
-            .and_then(|err| err.connection_close())
+            .connection_close()
             .unwrap_or_else(|| s2n_quic_core::transport::Error::NO_ERROR.into());
 
         let encoding_size = frame.encoding_size().try_into().unwrap();

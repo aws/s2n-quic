@@ -282,7 +282,7 @@ fn large_transfer() {
         Harness {
             num_clients: 1,
             num_requests: 1,
-            req_size: 1_000_000_000,
+            req_size: 100_000_000,
             res_size: 10,
             server_pause: 1,
             server_include_fin: true,

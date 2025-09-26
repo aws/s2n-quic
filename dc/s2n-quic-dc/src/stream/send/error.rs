@@ -1,14 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stream::packet_number;
+use crate::stream::{packet_number, recv, shared::ShutdownKind};
 use core::{fmt, panic::Location};
 use s2n_quic_core::{buffer, varint::VarInt};
 
 #[derive(Clone, Copy)]
 pub struct Error {
-    kind: Kind,
-    location: &'static Location<'static>,
+    pub(crate) kind: Kind,
+    pub(crate) location: &'static Location<'static>,
 }
 
 impl fmt::Debug for Error {
@@ -53,6 +53,14 @@ impl Error {
         self.location
             .file()
             .trim_start_matches(concat!(env!("CARGO_MANIFEST_DIR"), "/src/"))
+    }
+
+    pub(crate) fn for_recv(self) -> Option<recv::Error> {
+        let kind = self.kind.for_recv()?;
+        Some(recv::Error {
+            kind,
+            location: self.location,
+        })
     }
 }
 
@@ -104,6 +112,31 @@ impl Kind {
     pub(crate) fn err(self) -> Error {
         Error::new(self)
     }
+
+    pub(crate) fn for_recv(self) -> Option<recv::Kind> {
+        use recv::Kind as RecvKind;
+
+        match self {
+            Kind::PayloadTooLarge => None,
+            Kind::PacketBufferTooSmall => None,
+            Kind::PacketNumberExhaustion => None,
+            Kind::RetransmissionFailure => None,
+            Kind::StreamFinished => None,
+            Kind::FinalSizeChanged => None,
+            Kind::IdleTimeout => Some(RecvKind::IdleTimeout),
+            Kind::KeyReplayPrevented => Some(RecvKind::KeyReplayPrevented),
+            Kind::KeyReplayMaybePrevented { gap } => {
+                Some(RecvKind::KeyReplayMaybePrevented { gap })
+            }
+            Kind::UnknownPathSecret => Some(RecvKind::UnknownPathSecret),
+            Kind::TransportError { code } => Some(RecvKind::TransportError { code }),
+            // If the application error is 0, it indicates a graceful shutdown
+            Kind::ApplicationError { error } if *error == 0 => None,
+            Kind::ApplicationError { error } => Some(RecvKind::ApplicationError { error }),
+            Kind::FrameError { .. } => None,
+            Kind::FatalError => Some(RecvKind::TruncatedTransport),
+        }
+    }
 }
 
 impl From<Error> for std::io::Error {
@@ -129,6 +162,9 @@ impl From<Kind> for std::io::ErrorKind {
             Kind::KeyReplayPrevented => ErrorKind::PermissionDenied,
             Kind::KeyReplayMaybePrevented { .. } => ErrorKind::PermissionDenied,
             Kind::UnknownPathSecret => ErrorKind::PermissionDenied,
+            Kind::ApplicationError { error } if *error == ShutdownKind::PRUNED_CODE as u64 => {
+                ErrorKind::ConnectionRefused
+            }
             Kind::ApplicationError { .. } => ErrorKind::ConnectionReset,
             Kind::TransportError { .. } => ErrorKind::ConnectionAborted,
             Kind::FrameError { .. } => ErrorKind::InvalidData,

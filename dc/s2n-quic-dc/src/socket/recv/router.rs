@@ -13,6 +13,12 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
+// Use `debug` logging for unhandled packets in non-test builds to reduce noise
+#[cfg(not(test))]
+use tracing::debug as warn;
+#[cfg(test)]
+use tracing::warn;
+
 mod with_map;
 mod zero_router;
 
@@ -139,7 +145,7 @@ pub trait Router {
         credentials: Credentials,
         segment: descriptor::Filled,
     ) {
-        tracing::warn!(
+        warn!(
             unhandled_packet = "control",
             ?tag,
             ?id,
@@ -168,7 +174,7 @@ pub trait Router {
         credentials: Credentials,
         segment: descriptor::Filled,
     ) {
-        tracing::warn!(
+        warn!(
             unhandled_packet = "stream",
             ?tag,
             ?id,
@@ -196,7 +202,7 @@ pub trait Router {
         credentials: Credentials,
         segment: descriptor::Filled,
     ) {
-        tracing::warn!(
+        warn!(
             unhandled_packet = "datagram",
             ?tag,
             ?credentials,
@@ -221,7 +227,7 @@ pub trait Router {
         credentials: credentials::Id,
         segment: descriptor::Filled,
     ) {
-        tracing::warn!(
+        warn!(
             unhandled_packet = "stale_key",
             ?queue_id,
             ?credentials,
@@ -246,7 +252,7 @@ pub trait Router {
         credentials: credentials::Id,
         segment: descriptor::Filled,
     ) {
-        tracing::warn!(
+        warn!(
             unhandled_packet = "replay_detected",
             ?queue_id,
             ?credentials,
@@ -270,7 +276,7 @@ pub trait Router {
         credentials: credentials::Id,
         segment: descriptor::Filled,
     ) {
-        tracing::warn!(
+        warn!(
             unhandled_packet = "unknown_path_secret",
             ?queue_id,
             ?credentials,
@@ -281,7 +287,7 @@ pub trait Router {
 
     #[inline]
     fn on_unhandled_packet(&mut self, remote_address: SocketAddress, packet: packet::Packet) {
-        tracing::warn!(unhandled_packet = ?packet, ?remote_address)
+        warn!(unhandled_packet = ?packet, ?remote_address)
     }
 
     #[inline]
@@ -291,7 +297,7 @@ pub trait Router {
         remote_address: SocketAddress,
         segment: descriptor::Filled,
     ) {
-        tracing::warn!(
+        warn!(
             ?error,
             ?remote_address,
             packet_len = segment.len(),

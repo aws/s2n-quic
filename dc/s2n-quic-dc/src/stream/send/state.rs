@@ -23,9 +23,10 @@ use crate::{
     },
 };
 use core::{task::Poll, time::Duration};
-use s2n_codec::{DecoderBufferMut, EncoderBuffer};
+use s2n_codec::{DecoderBufferMut, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     dc::ApplicationParams,
+    endpoint::Location,
     ensure,
     frame::{self, FrameMut},
     inet::ExplicitCongestionNotification,
@@ -76,6 +77,41 @@ pub struct SentRecoveryPacket {
     max_stream_packet_number: VarInt,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ErrorState {
+    pub error: Error,
+    pub source: Location,
+}
+
+impl ErrorState {
+    fn as_frame(&self) -> Option<frame::ConnectionClose<'static>> {
+        // No need to send the peer an error if they sent it
+        if matches!(self.source, Location::Remote) {
+            return None;
+        }
+
+        use error::Kind;
+
+        match self.error.kind {
+            Kind::ApplicationError { error } => Some(frame::ConnectionClose {
+                error_code: VarInt::new(*error).unwrap(),
+                frame_type: None,
+                reason: None,
+            }),
+            Kind::TransportError { code } => Some(frame::ConnectionClose {
+                error_code: code,
+                frame_type: Some(VarInt::from_u16(0)),
+                reason: None,
+            }),
+            _ => Some(frame::ConnectionClose {
+                error_code: VarInt::from_u16(1),
+                frame_type: None,
+                reason: None,
+            }),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct State {
     pub rtt_estimator: RttEstimator,
@@ -98,7 +134,7 @@ pub struct State {
     pub pto_backoff: u32,
     pub idle_timer: Timer,
     pub idle_timeout: Duration,
-    pub error: Option<Error>,
+    pub error: Option<ErrorState>,
     pub unacked_ranges: IntervalSet<VarInt>,
     pub max_sent_offset: VarInt,
     pub max_data: VarInt,
@@ -167,6 +203,13 @@ impl State {
         debug_assert!(self.state.is_ready());
         // make sure a packet gets sent soon if the application doesn't
         self.force_arm_pto_timer(clock);
+        self.update_idle_timer(clock);
+    }
+
+    #[inline]
+    pub fn init_server(&mut self, clock: &impl Clock) {
+        debug_assert!(self.state.is_ready());
+        self.update_idle_timer(clock);
     }
 
     /// Returns the current flow offset
@@ -234,7 +277,7 @@ impl State {
             Ok(None) => {}
             Ok(Some(error)) => return Err(error),
             Err(error) => {
-                self.on_error(error);
+                self.on_error(error, Location::Local);
             }
         }
 
@@ -389,7 +432,10 @@ impl State {
                             error: close.error_code.into(),
                         }
                     };
-                    return Err(error.err());
+
+                    let error = error.err();
+                    self.on_error(error, Location::Remote);
+                    return Err(error);
                 }
                 _ => continue,
             }
@@ -747,7 +793,7 @@ impl State {
         Ld: FnOnce() -> Timestamp,
     {
         if self.poll_idle_timer(clock, load_last_activity).is_ready() {
-            self.on_error(error::Kind::IdleTimeout);
+            self.on_error(error::Kind::IdleTimeout, Location::Local);
             // we don't actually want to send any packets on idle timeout
             let _ = self.state.on_send_reset();
             let _ = self.state.on_recv_reset_ack();
@@ -953,7 +999,7 @@ impl State {
             source_queue_id,
             clock,
         ) {
-            self.on_error(error);
+            self.on_error(error, Location::Local);
             return Err(error);
         }
 
@@ -1150,6 +1196,19 @@ impl State {
                 final_offset,
             };
 
+            let mut control_data_len = VarInt::ZERO;
+            let control_data = if let Some(error) = self.error.as_ref() {
+                if let Some(frame) = error.as_frame() {
+                    control_data_len = VarInt::try_from(frame.encoding_size()).unwrap();
+
+                    Some(frame)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             let encoder = EncoderBuffer::new(&mut buffer);
             let packet_len = encoder::probe(
                 encoder,
@@ -1159,8 +1218,8 @@ impl State {
                 self.next_expected_control_packet,
                 VarInt::ZERO,
                 &mut &[][..],
-                VarInt::ZERO,
-                &(),
+                control_data_len,
+                &control_data,
                 &mut payload,
                 control_key,
                 credentials,
@@ -1248,15 +1307,19 @@ impl State {
 
     #[inline]
     #[track_caller]
-    pub fn on_error<E>(&mut self, error: E)
+    pub fn on_error<E>(&mut self, error: E, source: Location)
     where
         Error: From<E>,
     {
         ensure!(self.error.is_none());
-        self.error = Some(Error::from(error));
+        self.error = Some(ErrorState {
+            error: Error::from(error),
+            source,
+        });
         let _ = self.state.on_queue_reset();
 
         self.clean_up();
+        self.pto.force_transmit();
     }
 
     #[inline]

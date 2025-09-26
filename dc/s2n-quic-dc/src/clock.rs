@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::{fmt, pin::Pin, task::Poll, time::Duration};
-use s2n_quic_core::{ensure, time};
+use s2n_quic_core::{
+    ensure, time,
+    time::{timer, timer::Provider},
+};
 use tracing::trace;
 
 #[macro_use]
@@ -62,7 +65,7 @@ pub trait Sleep: Clock + core::future::Future<Output = ()> {
 
 pub struct Timer {
     /// The `Instant` at which the timer should expire
-    target: Option<Timestamp>,
+    target: timer::Timer,
     /// The handle to the timer entry in the tokio runtime
     sleep: Pin<Box<dyn Sleep>>,
 }
@@ -88,8 +91,10 @@ impl Timer {
     #[inline]
     pub fn new_with_timeout(clock: &dyn Clock, timeout: Duration) -> Self {
         let (sleep, target) = clock.sleep(timeout);
+        let mut timer = timer::Timer::default();
+        timer.set(target);
         Self {
-            target: Some(target),
+            target: timer,
             sleep,
         }
     }
@@ -97,7 +102,7 @@ impl Timer {
     #[inline]
     pub fn cancel(&mut self) {
         trace!(cancel = ?self.target);
-        self.target = None;
+        self.target.cancel();
     }
 
     pub async fn sleep(&mut self, target: Timestamp) {
@@ -110,13 +115,13 @@ impl Timer {
 impl time::clock::Timer for Timer {
     #[inline]
     fn poll_ready(&mut self, cx: &mut core::task::Context) -> Poll<()> {
-        ensure!(self.target.is_some(), Poll::Ready(()));
+        ensure!(self.target.is_armed(), Poll::Ready(()));
 
         let res = self.sleep.as_mut().poll(cx);
 
         if res.is_ready() {
             // clear the target after it fires, otherwise we'll endlessly wake up the task
-            self.target = None;
+            self.target.cancel();
         }
 
         res
@@ -125,9 +130,15 @@ impl time::clock::Timer for Timer {
     #[inline]
     fn update(&mut self, target: Timestamp) {
         // no need to update if it hasn't changed
-        ensure!(self.target != Some(target));
+        ensure!(self.target.next_expiration() != Some(target));
 
         self.sleep.as_mut().update(target);
-        self.target = Some(target);
+        self.target.set(target);
+    }
+}
+
+impl timer::Provider for Timer {
+    fn timers<Q: timer::Query>(&self, query: &mut Q) -> timer::Result {
+        self.target.timers(query)
     }
 }
