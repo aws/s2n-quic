@@ -1,7 +1,6 @@
 [book]
 authors = ["AWS s2n"]
 language = "en"
-multilingual = false
 src = "."
 title = "s2n-quic Guide"
 
