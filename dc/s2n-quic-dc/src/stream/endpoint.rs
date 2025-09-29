@@ -7,7 +7,11 @@ use crate::{
     path::secret::{self, map, Map},
     random::Random,
     stream::{
-        self, application, environment::{Environment, Peer}, recv, send::{self, flow}, server, shared
+        self, application,
+        environment::{Environment, Peer},
+        recv,
+        send::{self, flow},
+        server, shared,
     },
 };
 use core::cell::UnsafeCell;
