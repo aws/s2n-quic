@@ -15,6 +15,7 @@ use crate::{
         recv,
         server::{self, accept},
         socket::{Ext as _, Socket},
+        TransportFeatures,
     },
 };
 use core::ops::ControlFlow;
@@ -117,6 +118,26 @@ where
 
         let peer = env::udp::Owned(remote_addr, recv_buffer);
 
+        let mut secret_control = vec![];
+        let (crypto, parameters) = match endpoint::derive_stream_credentials(
+            &packet,
+            &self.secrets,
+            &TransportFeatures::UDP,
+            &mut secret_control,
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                // Handle credential derivation error
+                if !secret_control.is_empty() {
+                    let addr = msg::addr::Addr::new(remote_addr);
+                    let ecn = Default::default();
+                    let buffer = &[io::IoSlice::new(&secret_control)];
+                    let _ = self.socket.try_send(&addr, ecn, buffer);
+                }
+                return Err(error);
+            }
+        };
+
         let stream = match endpoint::accept_stream(
             now,
             &self.env,
@@ -125,6 +146,9 @@ where
             &self.secrets,
             subscriber_ctx,
             None,
+            crypto,
+            parameters,
+            secret_control,
         ) {
             Ok(stream) => stream,
             Err(error) => {

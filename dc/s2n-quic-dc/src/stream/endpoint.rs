@@ -7,11 +7,7 @@ use crate::{
     path::secret::{self, map, Map},
     random::Random,
     stream::{
-        application,
-        environment::{Environment, Peer},
-        recv,
-        send::{self, flow},
-        server, shared,
+        self, application, environment::{Environment, Peer}, recv, send::{self, flow}, server, shared
     },
 };
 use core::cell::UnsafeCell;
@@ -84,6 +80,31 @@ where
 }
 
 #[inline]
+pub fn derive_stream_credentials(
+    packet: &server::InitialPacket,
+    map: &Map,
+    features: &stream::TransportFeatures,
+    secret_control: &mut Vec<u8>,
+) -> Result<(secret::map::Bidirectional, dc::ApplicationParams), io::Error> {
+    let credentials = &packet.credentials;
+
+    let Some((crypto, parameters)) = map.pair_for_credentials(
+        credentials,
+        packet.source_queue_id,
+        features,
+        secret_control,
+    ) else {
+        let error = io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("missing credentials for client: {credentials:?}"),
+        );
+        return Err(error);
+    };
+
+    Ok((crypto, parameters))
+}
+
+#[inline]
 pub fn accept_stream<Env, P>(
     now: Timestamp,
     env: &Env,
@@ -92,31 +113,14 @@ pub fn accept_stream<Env, P>(
     map: &Map,
     subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
     parameter_override: Option<&dyn Fn(dc::ApplicationParams) -> dc::ApplicationParams>,
+    crypto: secret::map::Bidirectional,
+    mut parameters: dc::ApplicationParams,
+    secret_control: Vec<u8>,
 ) -> Result<application::Builder<Env::Subscriber>, AcceptError<P>>
 where
     Env: Environment,
     P: Peer<Env>,
 {
-    let credentials = &packet.credentials;
-    let mut secret_control = vec![];
-    let Some((crypto, mut parameters)) = map.pair_for_credentials(
-        credentials,
-        packet.source_queue_id,
-        &peer.features(),
-        &mut secret_control,
-    ) else {
-        let error = io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("missing credentials for client: {credentials:?}"),
-        );
-        let error = AcceptError {
-            secret_control,
-            peer: Some(peer),
-            error,
-        };
-        return Err(error);
-    };
-
     if let Some(o) = parameter_override {
         parameters = o(parameters);
     }
