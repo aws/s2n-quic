@@ -14,14 +14,14 @@ pub enum AckTransmissionState {
     /// state, the ACK Manager won't express interest in transmission, but
     /// will transmit ACK frames if other components are transmitting.
     Passive {
-        /// The number of remaining tranmissions for the current ack ranges
+        /// The number of remaining transmissions for the current ack ranges
         retransmissions: usize,
     },
 
     /// An ACK frame is required to be transmitted. While in this state,
     /// the ACK Manager will express interest in transmission.
     Active {
-        /// The number of remaining tranmissions for the current ack ranges
+        /// The number of remaining transmissions for the current ack ranges
         retransmissions: usize,
     },
 }

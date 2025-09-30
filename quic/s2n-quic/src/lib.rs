@@ -106,12 +106,6 @@
 // Tag docs with the required platform and features.
 // https://doc.rust-lang.org/rustdoc/unstable-features.html
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![cfg_attr(
-    docsrs,
-    feature(doc_auto_cfg),
-    feature(doc_cfg_hide),
-    doc(cfg_hide(doc))
-)]
 
 #[macro_use]
 pub mod provider;

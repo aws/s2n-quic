@@ -207,7 +207,7 @@ impl ReceiveStreamFlowController {
     /// This checks the Streams individual flow control limit as well as the
     /// connections flow control limit.
     /// For the connections limit the method will acquire the necessary remaining
-    /// limit from the connetions flow controller.
+    /// limit from the connections flow controller.
     fn acquire_window_up_to(
         &mut self,
         offset: VarInt,
