@@ -25,7 +25,7 @@ pub(crate) use lazy::LazyBoundStream;
 pub struct Acceptor<Sub, B>
 where
     Sub: Subscriber + Clone,
-    B: PollBehavior<Sub>,
+    B: PollBehavior<Sub> + Clone,
 {
     sender: accept::Sender<Sub>,
     socket: AsyncFd<TcpListener>,
@@ -34,14 +34,13 @@ where
     backlog: usize,
     accept_flavor: accept::Flavor,
     linger: Option<Duration>,
-    socket_path: Option<String>,
-    _phantom: std::marker::PhantomData<B>,
+    poll_behavior: B,
 }
 
 impl<Sub, B> Acceptor<Sub, B>
 where
     Sub: event::Subscriber + Clone,
-    B: PollBehavior<Sub>,
+    B: PollBehavior<Sub> + Clone,
 {
     #[inline]
     pub fn new(
@@ -53,7 +52,7 @@ where
         backlog: usize,
         accept_flavor: accept::Flavor,
         linger: Option<Duration>,
-        socket_path: Option<String>,
+        poll_behavior: B,
     ) -> std::io::Result<Self> {
         let acceptor = Self {
             sender: sender.clone(),
@@ -63,8 +62,7 @@ where
             backlog,
             accept_flavor,
             linger,
-            socket_path,
-            _phantom: std::marker::PhantomData::<B>,
+            poll_behavior,
         };
 
         #[cfg(target_os = "linux")]
@@ -108,7 +106,10 @@ where
         let mut fresh = fresh::Queue::new(self.backlog);
         let mut workers = {
             let workers = (0..self.backlog).map(|_| {
-                worker::Worker::<Sub, B>::new(self.env.clock().get_time(), self.socket_path.clone())
+                worker::Worker::<Sub, B>::new(
+                    self.env.clock().get_time(),
+                    self.poll_behavior.clone(),
+                )
             });
             manager::Manager::new(workers)
         };

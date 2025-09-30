@@ -653,7 +653,6 @@ pub(crate) mod drop_handle {
 }
 
 pub mod server {
-    use crate::stream::server::tokio::tcp::worker::DefaultBehavior;
     use std::time::Duration;
 
     use super::*;
@@ -839,11 +838,18 @@ pub mod server {
                         let local_addr = socket.local_addr().unwrap();
                         let socket = ::tokio::io::unix::AsyncFd::new(socket).unwrap();
 
-                        let acceptor =
-                            stream_server::tokio::tcp::Acceptor::<_, DefaultBehavior>::new(
-                                0, socket, &sender, &env, &map, backlog, flavor, linger, None,
-                            )
-                            .unwrap();
+                        let acceptor = stream_server::tokio::tcp::Acceptor::new(
+                            0,
+                            socket,
+                            &sender,
+                            &env,
+                            &map,
+                            backlog,
+                            flavor,
+                            linger,
+                            stream_server::tokio::tcp::worker::DefaultBehavior::default(),
+                        )
+                        .unwrap();
                         let acceptor = drop_handle_receiver.wrap(acceptor.run());
                         let acceptor = acceptor.instrument(tracing::info_span!("tcp"));
                         ::tokio::task::spawn(acceptor);

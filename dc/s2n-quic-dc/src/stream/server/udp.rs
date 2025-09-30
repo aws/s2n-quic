@@ -148,7 +148,6 @@ where
         ) {
             Ok(result) => result,
             Err(_error) => {
-                // Handle credential derivation error
                 if !secret_control.is_empty() {
                     let addr = msg::addr::Addr::new(peer_addr);
                     let ecn = Default::default();

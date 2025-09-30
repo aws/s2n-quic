@@ -514,7 +514,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
         let socket = tokio::io::unix::AsyncFd::new(socket)?;
         let id = self.id();
 
-        let acceptor = tcp::Acceptor::<_, tcp::worker::DefaultBehavior>::new(
+        let acceptor = tcp::Acceptor::new(
             id,
             socket,
             &self.stream_sender,
@@ -523,7 +523,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             self.backlog,
             self.accept_flavor,
             self.linger,
-            None,
+            tcp::worker::DefaultBehavior::default(),
         )?
         .run();
 

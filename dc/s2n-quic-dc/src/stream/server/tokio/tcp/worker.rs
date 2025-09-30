@@ -45,7 +45,7 @@ where
 impl<Sub, B> Context<Sub, B>
 where
     Sub: event::Subscriber + Clone,
-    B: PollBehavior<Sub>,
+    B: PollBehavior<Sub> + Clone,
 {
     #[inline]
     pub fn new(acceptor: &super::Acceptor<Sub, B>) -> Self {
@@ -70,8 +70,7 @@ where
     stream: Option<(LazyBoundStream, SocketAddress)>,
     subscriber_ctx: Option<Sub::ConnectionContext>,
     state: WorkerState,
-    socket_path: Option<String>,
-    _phantom: std::marker::PhantomData<B>,
+    poll_behavior: B,
 }
 
 impl<Sub, B> Worker<Sub, B>
@@ -80,14 +79,13 @@ where
     B: PollBehavior<Sub>,
 {
     #[inline]
-    pub fn new(now: Timestamp, socket_path: Option<String>) -> Self {
+    pub fn new(now: Timestamp, poll_behavior: B) -> Self {
         Self {
             queue_time: now,
             stream: None,
             subscriber_ctx: None,
             state: WorkerState::Init,
-            socket_path,
-            _phantom: std::marker::PhantomData::<B>,
+            poll_behavior,
         }
     }
 }
@@ -188,7 +186,7 @@ where
             self.queue_time,
             clock.get_time(),
             publisher,
-            &self.socket_path,
+            &self.poll_behavior
         ));
 
         // if we're ready then reset the worker
@@ -224,6 +222,7 @@ where
     Sub: event::Subscriber + Clone,
 {
     fn poll<Pub>(
+        &self,
         state: &mut WorkerState,
         cx: &mut task::Context,
         context: &mut Context<Sub, Self>,
@@ -232,7 +231,6 @@ where
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
-        unix_socket_path: &Option<String>,
     ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
     where
         Pub: EndpointPublisher,
@@ -267,14 +265,14 @@ impl WorkerState {
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
-        unix_socket_path: &Option<String>,
+        poll_behavior: &B,
     ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
     where
         Sub: event::Subscriber + Clone,
         Pub: EndpointPublisher,
         B: PollBehavior<Sub>,
     {
-        B::poll(
+        poll_behavior.poll(
             self,
             cx,
             context,
@@ -283,7 +281,6 @@ impl WorkerState {
             queue_time,
             now,
             publisher,
-            unix_socket_path,
         )
     }
 
@@ -357,6 +354,7 @@ impl WorkerState {
     }
 }
 
+#[derive(Clone, Default)]
 pub struct DefaultBehavior;
 
 impl<Sub> PollBehavior<Sub> for DefaultBehavior
@@ -364,6 +362,7 @@ where
     Sub: event::Subscriber + Clone,
 {
     fn poll<Pub>(
+        &self,
         state: &mut WorkerState,
         cx: &mut task::Context,
         context: &mut Context<Sub, Self>,
@@ -372,7 +371,6 @@ where
         queue_time: Timestamp,
         now: Timestamp,
         publisher: &Pub,
-        _unix_socket_path: &Option<String>, //& option??
     ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
     where
         Pub: EndpointPublisher,
@@ -461,9 +459,6 @@ where
             ) {
                 Ok(result) => result,
                 Err(error) => {
-                    // Handle credential derivation error with socket management
-                    //let (socket, remote_address) = stream.take().unwrap();
-
                     if !secret_control.is_empty() {
                         *stream = Some((socket, remote_address));
                         *state = WorkerState::Erroring {
