@@ -1103,6 +1103,298 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    pub struct StreamPacketTransmitted {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the transmitted packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " Whether the packet contained the final bytes of the stream"]
+        pub is_fin: bool,
+        pub is_retransmission: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamPacketTransmitted {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamPacketTransmitted");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.field("payload_len", &self.payload_len);
+            fmt.field("packet_number", &self.packet_number);
+            fmt.field("stream_offset", &self.stream_offset);
+            fmt.field("is_fin", &self.is_fin);
+            fmt.field("is_retransmission", &self.is_retransmission);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamPacketTransmitted {
+        const NAME: &'static str = "stream:packet_transmitted";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamProbeTransmitted {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The packet number of the transmitted packet"]
+        pub packet_number: u64,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamProbeTransmitted {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamProbeTransmitted");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.field("packet_number", &self.packet_number);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamProbeTransmitted {
+        const NAME: &'static str = "stream:probe_transmitted";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamPacketReceived {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the received packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " Whether the packet contained the final bytes of the stream"]
+        pub is_fin: bool,
+        pub is_retransmission: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamPacketReceived {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamPacketReceived");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.field("payload_len", &self.payload_len);
+            fmt.field("packet_number", &self.packet_number);
+            fmt.field("stream_offset", &self.stream_offset);
+            fmt.field("is_fin", &self.is_fin);
+            fmt.field("is_retransmission", &self.is_retransmission);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamPacketReceived {
+        const NAME: &'static str = "stream:packet_received";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Indicates that a packet was lost on a stream"]
+    pub struct StreamPacketLost {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the lost packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " The time the packet was originally sent"]
+        pub time_sent: Timestamp,
+        #[doc = " The amount of time between when the packet was sent and when it was detected as lost"]
+        pub lifetime: core::time::Duration,
+        pub is_retransmission: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamPacketLost {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamPacketLost");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.field("payload_len", &self.payload_len);
+            fmt.field("packet_number", &self.packet_number);
+            fmt.field("stream_offset", &self.stream_offset);
+            fmt.field("time_sent", &self.time_sent);
+            fmt.field("lifetime", &self.lifetime);
+            fmt.field("is_retransmission", &self.is_retransmission);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamPacketLost {
+        const NAME: &'static str = "stream:packet_lost";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Indicates that a packet was acknowledged on a stream"]
+    pub struct StreamPacketAcked {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the acknowledged packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " The time the packet was originally sent"]
+        pub time_sent: Timestamp,
+        #[doc = " The amount of time between when the packet was sent and when it was detected as lost"]
+        pub lifetime: core::time::Duration,
+        pub is_retransmission: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamPacketAcked {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamPacketAcked");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.field("payload_len", &self.payload_len);
+            fmt.field("packet_number", &self.packet_number);
+            fmt.field("stream_offset", &self.stream_offset);
+            fmt.field("time_sent", &self.time_sent);
+            fmt.field("lifetime", &self.lifetime);
+            fmt.field("is_retransmission", &self.is_retransmission);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamPacketAcked {
+        const NAME: &'static str = "stream:packet_acked";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Indicates that a packet was retransmitted on a stream but was not actually lost"]
+    pub struct StreamPacketSpuriouslyRetransmitted {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " Whether the packet contained the final bytes of the stream"]
+        pub is_fin: bool,
+        pub is_retransmission: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamPacketSpuriouslyRetransmitted {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamPacketSpuriouslyRetransmitted");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.field("payload_len", &self.payload_len);
+            fmt.field("packet_number", &self.packet_number);
+            fmt.field("stream_offset", &self.stream_offset);
+            fmt.field("is_fin", &self.is_fin);
+            fmt.field("is_retransmission", &self.is_retransmission);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamPacketSpuriouslyRetransmitted {
+        const NAME: &'static str = "stream:packet_spuriously_retransmitted";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    #[doc = " Indicates that the stream received additional flow control credits"]
+    pub struct StreamMaxDataReceived {
+        #[doc = " The number of bytes of flow control credits received"]
+        pub increase: u64,
+        #[doc = " The new offset of the stream"]
+        pub new_max_data: u64,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamMaxDataReceived {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamMaxDataReceived");
+            fmt.field("increase", &self.increase);
+            fmt.field("new_max_data", &self.new_max_data);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamMaxDataReceived {
+        const NAME: &'static str = "stream:max_data_received";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamControlPacketTransmitted {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the control data in the packet"]
+        pub control_data_len: usize,
+        #[doc = " The packet number of the received control packet"]
+        pub packet_number: u64,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamControlPacketTransmitted {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamControlPacketTransmitted");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.field("control_data_len", &self.control_data_len);
+            fmt.field("packet_number", &self.packet_number);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamControlPacketTransmitted {
+        const NAME: &'static str = "stream:control_packet_transmitted";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamControlPacketReceived {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the control data in the packet"]
+        pub control_data_len: usize,
+        #[doc = " The packet number of the received control packet"]
+        pub packet_number: u64,
+        #[doc = " Whether the packet was successfully authenticated"]
+        pub is_authenticated: bool,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamControlPacketReceived {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamControlPacketReceived");
+            fmt.field("packet_len", &self.packet_len);
+            fmt.field("control_data_len", &self.control_data_len);
+            fmt.field("packet_number", &self.packet_number);
+            fmt.field("is_authenticated", &self.is_authenticated);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamControlPacketReceived {
+        const NAME: &'static str = "stream:control_packet_received";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamReceiverErrored {
+        pub error: crate::stream::recv::Error,
+        #[doc = " The location where the error originated"]
+        pub source: s2n_quic_core::endpoint::Location,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReceiverErrored {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReceiverErrored");
+            fmt.field("error", &self.error);
+            fmt.field("source", &self.source);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReceiverErrored {
+        const NAME: &'static str = "stream:receiver_errored";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct StreamSenderErrored {
+        pub error: crate::stream::send::Error,
+        #[doc = " The location where the error originated"]
+        pub source: s2n_quic_core::endpoint::Location,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamSenderErrored {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamSenderErrored");
+            fmt.field("error", &self.error);
+            fmt.field("source", &self.source);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamSenderErrored {
+        const NAME: &'static str = "stream:sender_errored";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct ConnectionClosed {}
     #[cfg(any(test, feature = "testing"))]
     impl crate::event::snapshot::Fmt for ConnectionClosed {
@@ -2486,6 +2778,179 @@ pub mod tracing {
             let parent = self.parent(meta);
             let api::StreamConnectError { reason } = event;
             tracing :: event ! (target : "stream_connect_error" , parent : parent , tracing :: Level :: DEBUG , { reason = tracing :: field :: debug (reason) });
+        }
+        #[inline]
+        fn on_stream_packet_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamPacketTransmitted,
+        ) {
+            let id = context.id();
+            let api::StreamPacketTransmitted {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                is_fin,
+                is_retransmission,
+            } = event;
+            tracing :: event ! (target : "stream_packet_transmitted" , parent : id , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) , payload_len = tracing :: field :: debug (payload_len) , packet_number = tracing :: field :: debug (packet_number) , stream_offset = tracing :: field :: debug (stream_offset) , is_fin = tracing :: field :: debug (is_fin) , is_retransmission = tracing :: field :: debug (is_retransmission) });
+        }
+        #[inline]
+        fn on_stream_probe_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamProbeTransmitted,
+        ) {
+            let id = context.id();
+            let api::StreamProbeTransmitted {
+                packet_len,
+                packet_number,
+            } = event;
+            tracing :: event ! (target : "stream_probe_transmitted" , parent : id , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) , packet_number = tracing :: field :: debug (packet_number) });
+        }
+        #[inline]
+        fn on_stream_packet_received(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamPacketReceived,
+        ) {
+            let id = context.id();
+            let api::StreamPacketReceived {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                is_fin,
+                is_retransmission,
+            } = event;
+            tracing :: event ! (target : "stream_packet_received" , parent : id , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) , payload_len = tracing :: field :: debug (payload_len) , packet_number = tracing :: field :: debug (packet_number) , stream_offset = tracing :: field :: debug (stream_offset) , is_fin = tracing :: field :: debug (is_fin) , is_retransmission = tracing :: field :: debug (is_retransmission) });
+        }
+        #[inline]
+        fn on_stream_packet_lost(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamPacketLost,
+        ) {
+            let id = context.id();
+            let api::StreamPacketLost {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                time_sent,
+                lifetime,
+                is_retransmission,
+            } = event;
+            tracing :: event ! (target : "stream_packet_lost" , parent : id , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) , payload_len = tracing :: field :: debug (payload_len) , packet_number = tracing :: field :: debug (packet_number) , stream_offset = tracing :: field :: debug (stream_offset) , time_sent = tracing :: field :: debug (time_sent) , lifetime = tracing :: field :: debug (lifetime) , is_retransmission = tracing :: field :: debug (is_retransmission) });
+        }
+        #[inline]
+        fn on_stream_packet_acked(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamPacketAcked,
+        ) {
+            let id = context.id();
+            let api::StreamPacketAcked {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                time_sent,
+                lifetime,
+                is_retransmission,
+            } = event;
+            tracing :: event ! (target : "stream_packet_acked" , parent : id , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) , payload_len = tracing :: field :: debug (payload_len) , packet_number = tracing :: field :: debug (packet_number) , stream_offset = tracing :: field :: debug (stream_offset) , time_sent = tracing :: field :: debug (time_sent) , lifetime = tracing :: field :: debug (lifetime) , is_retransmission = tracing :: field :: debug (is_retransmission) });
+        }
+        #[inline]
+        fn on_stream_packet_spuriously_retransmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamPacketSpuriouslyRetransmitted,
+        ) {
+            let id = context.id();
+            let api::StreamPacketSpuriouslyRetransmitted {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                is_fin,
+                is_retransmission,
+            } = event;
+            tracing :: event ! (target : "stream_packet_spuriously_retransmitted" , parent : id , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) , payload_len = tracing :: field :: debug (payload_len) , packet_number = tracing :: field :: debug (packet_number) , stream_offset = tracing :: field :: debug (stream_offset) , is_fin = tracing :: field :: debug (is_fin) , is_retransmission = tracing :: field :: debug (is_retransmission) });
+        }
+        #[inline]
+        fn on_stream_max_data_received(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamMaxDataReceived,
+        ) {
+            let id = context.id();
+            let api::StreamMaxDataReceived {
+                increase,
+                new_max_data,
+            } = event;
+            tracing :: event ! (target : "stream_max_data_received" , parent : id , tracing :: Level :: DEBUG , { increase = tracing :: field :: debug (increase) , new_max_data = tracing :: field :: debug (new_max_data) });
+        }
+        #[inline]
+        fn on_stream_control_packet_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketTransmitted,
+        ) {
+            let id = context.id();
+            let api::StreamControlPacketTransmitted {
+                packet_len,
+                control_data_len,
+                packet_number,
+            } = event;
+            tracing :: event ! (target : "stream_control_packet_transmitted" , parent : id , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) , control_data_len = tracing :: field :: debug (control_data_len) , packet_number = tracing :: field :: debug (packet_number) });
+        }
+        #[inline]
+        fn on_stream_control_packet_received(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketReceived,
+        ) {
+            let id = context.id();
+            let api::StreamControlPacketReceived {
+                packet_len,
+                control_data_len,
+                packet_number,
+                is_authenticated,
+            } = event;
+            tracing :: event ! (target : "stream_control_packet_received" , parent : id , tracing :: Level :: DEBUG , { packet_len = tracing :: field :: debug (packet_len) , control_data_len = tracing :: field :: debug (control_data_len) , packet_number = tracing :: field :: debug (packet_number) , is_authenticated = tracing :: field :: debug (is_authenticated) });
+        }
+        #[inline]
+        fn on_stream_receiver_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReceiverErrored,
+        ) {
+            let id = context.id();
+            let api::StreamReceiverErrored { error, source } = event;
+            tracing :: event ! (target : "stream_receiver_errored" , parent : id , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) , source = tracing :: field :: debug (source) });
+        }
+        #[inline]
+        fn on_stream_sender_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamSenderErrored,
+        ) {
+            let id = context.id();
+            let api::StreamSenderErrored { error, source } = event;
+            tracing :: event ! (target : "stream_sender_errored" , parent : id , tracing :: Level :: DEBUG , { error = tracing :: field :: debug (error) , source = tracing :: field :: debug (source) });
         }
         #[inline]
         fn on_connection_closed(
@@ -3949,6 +4414,317 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct StreamPacketTransmitted {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the transmitted packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " Whether the packet contained the final bytes of the stream"]
+        pub is_fin: bool,
+        pub is_retransmission: bool,
+    }
+    impl IntoEvent<api::StreamPacketTransmitted> for StreamPacketTransmitted {
+        #[inline]
+        fn into_event(self) -> api::StreamPacketTransmitted {
+            let StreamPacketTransmitted {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                is_fin,
+                is_retransmission,
+            } = self;
+            api::StreamPacketTransmitted {
+                packet_len: packet_len.into_event(),
+                payload_len: payload_len.into_event(),
+                packet_number: packet_number.into_event(),
+                stream_offset: stream_offset.into_event(),
+                is_fin: is_fin.into_event(),
+                is_retransmission: is_retransmission.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamProbeTransmitted {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The packet number of the transmitted packet"]
+        pub packet_number: u64,
+    }
+    impl IntoEvent<api::StreamProbeTransmitted> for StreamProbeTransmitted {
+        #[inline]
+        fn into_event(self) -> api::StreamProbeTransmitted {
+            let StreamProbeTransmitted {
+                packet_len,
+                packet_number,
+            } = self;
+            api::StreamProbeTransmitted {
+                packet_len: packet_len.into_event(),
+                packet_number: packet_number.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamPacketReceived {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the received packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " Whether the packet contained the final bytes of the stream"]
+        pub is_fin: bool,
+        pub is_retransmission: bool,
+    }
+    impl IntoEvent<api::StreamPacketReceived> for StreamPacketReceived {
+        #[inline]
+        fn into_event(self) -> api::StreamPacketReceived {
+            let StreamPacketReceived {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                is_fin,
+                is_retransmission,
+            } = self;
+            api::StreamPacketReceived {
+                packet_len: packet_len.into_event(),
+                payload_len: payload_len.into_event(),
+                packet_number: packet_number.into_event(),
+                stream_offset: stream_offset.into_event(),
+                is_fin: is_fin.into_event(),
+                is_retransmission: is_retransmission.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Indicates that a packet was lost on a stream"]
+    pub struct StreamPacketLost {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the lost packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " The time the packet was originally sent"]
+        pub time_sent: Timestamp,
+        #[doc = " The amount of time between when the packet was sent and when it was detected as lost"]
+        pub lifetime: core::time::Duration,
+        pub is_retransmission: bool,
+    }
+    impl IntoEvent<api::StreamPacketLost> for StreamPacketLost {
+        #[inline]
+        fn into_event(self) -> api::StreamPacketLost {
+            let StreamPacketLost {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                time_sent,
+                lifetime,
+                is_retransmission,
+            } = self;
+            api::StreamPacketLost {
+                packet_len: packet_len.into_event(),
+                payload_len: payload_len.into_event(),
+                packet_number: packet_number.into_event(),
+                stream_offset: stream_offset.into_event(),
+                time_sent: time_sent.into_event(),
+                lifetime: lifetime.into_event(),
+                is_retransmission: is_retransmission.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Indicates that a packet was acknowledged on a stream"]
+    pub struct StreamPacketAcked {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the acknowledged packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " The time the packet was originally sent"]
+        pub time_sent: Timestamp,
+        #[doc = " The amount of time between when the packet was sent and when it was detected as lost"]
+        pub lifetime: core::time::Duration,
+        pub is_retransmission: bool,
+    }
+    impl IntoEvent<api::StreamPacketAcked> for StreamPacketAcked {
+        #[inline]
+        fn into_event(self) -> api::StreamPacketAcked {
+            let StreamPacketAcked {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                time_sent,
+                lifetime,
+                is_retransmission,
+            } = self;
+            api::StreamPacketAcked {
+                packet_len: packet_len.into_event(),
+                payload_len: payload_len.into_event(),
+                packet_number: packet_number.into_event(),
+                stream_offset: stream_offset.into_event(),
+                time_sent: time_sent.into_event(),
+                lifetime: lifetime.into_event(),
+                is_retransmission: is_retransmission.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Indicates that a packet was retransmitted on a stream but was not actually lost"]
+    pub struct StreamPacketSpuriouslyRetransmitted {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the application data in the packet"]
+        pub payload_len: usize,
+        #[doc = " The packet number of the packet"]
+        pub packet_number: u64,
+        #[doc = " The offset in the stream of the first byte in the packet"]
+        pub stream_offset: u64,
+        #[doc = " Whether the packet contained the final bytes of the stream"]
+        pub is_fin: bool,
+        pub is_retransmission: bool,
+    }
+    impl IntoEvent<api::StreamPacketSpuriouslyRetransmitted> for StreamPacketSpuriouslyRetransmitted {
+        #[inline]
+        fn into_event(self) -> api::StreamPacketSpuriouslyRetransmitted {
+            let StreamPacketSpuriouslyRetransmitted {
+                packet_len,
+                payload_len,
+                packet_number,
+                stream_offset,
+                is_fin,
+                is_retransmission,
+            } = self;
+            api::StreamPacketSpuriouslyRetransmitted {
+                packet_len: packet_len.into_event(),
+                payload_len: payload_len.into_event(),
+                packet_number: packet_number.into_event(),
+                stream_offset: stream_offset.into_event(),
+                is_fin: is_fin.into_event(),
+                is_retransmission: is_retransmission.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[doc = " Indicates that the stream received additional flow control credits"]
+    pub struct StreamMaxDataReceived {
+        #[doc = " The number of bytes of flow control credits received"]
+        pub increase: u64,
+        #[doc = " The new offset of the stream"]
+        pub new_max_data: u64,
+    }
+    impl IntoEvent<api::StreamMaxDataReceived> for StreamMaxDataReceived {
+        #[inline]
+        fn into_event(self) -> api::StreamMaxDataReceived {
+            let StreamMaxDataReceived {
+                increase,
+                new_max_data,
+            } = self;
+            api::StreamMaxDataReceived {
+                increase: increase.into_event(),
+                new_max_data: new_max_data.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamControlPacketTransmitted {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the control data in the packet"]
+        pub control_data_len: usize,
+        #[doc = " The packet number of the received control packet"]
+        pub packet_number: u64,
+    }
+    impl IntoEvent<api::StreamControlPacketTransmitted> for StreamControlPacketTransmitted {
+        #[inline]
+        fn into_event(self) -> api::StreamControlPacketTransmitted {
+            let StreamControlPacketTransmitted {
+                packet_len,
+                control_data_len,
+                packet_number,
+            } = self;
+            api::StreamControlPacketTransmitted {
+                packet_len: packet_len.into_event(),
+                control_data_len: control_data_len.into_event(),
+                packet_number: packet_number.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamControlPacketReceived {
+        #[doc = " The total size of the packet"]
+        pub packet_len: usize,
+        #[doc = " The size of the control data in the packet"]
+        pub control_data_len: usize,
+        #[doc = " The packet number of the received control packet"]
+        pub packet_number: u64,
+        #[doc = " Whether the packet was successfully authenticated"]
+        pub is_authenticated: bool,
+    }
+    impl IntoEvent<api::StreamControlPacketReceived> for StreamControlPacketReceived {
+        #[inline]
+        fn into_event(self) -> api::StreamControlPacketReceived {
+            let StreamControlPacketReceived {
+                packet_len,
+                control_data_len,
+                packet_number,
+                is_authenticated,
+            } = self;
+            api::StreamControlPacketReceived {
+                packet_len: packet_len.into_event(),
+                control_data_len: control_data_len.into_event(),
+                packet_number: packet_number.into_event(),
+                is_authenticated: is_authenticated.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamReceiverErrored {
+        pub error: crate::stream::recv::Error,
+        #[doc = " The location where the error originated"]
+        pub source: s2n_quic_core::endpoint::Location,
+    }
+    impl IntoEvent<api::StreamReceiverErrored> for StreamReceiverErrored {
+        #[inline]
+        fn into_event(self) -> api::StreamReceiverErrored {
+            let StreamReceiverErrored { error, source } = self;
+            api::StreamReceiverErrored {
+                error: error.into_event(),
+                source: source.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct StreamSenderErrored {
+        pub error: crate::stream::send::Error,
+        #[doc = " The location where the error originated"]
+        pub source: s2n_quic_core::endpoint::Location,
+    }
+    impl IntoEvent<api::StreamSenderErrored> for StreamSenderErrored {
+        #[inline]
+        fn into_event(self) -> api::StreamSenderErrored {
+            let StreamSenderErrored { error, source } = self;
+            api::StreamSenderErrored {
+                error: error.into_event(),
+                source: source.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct ConnectionClosed {}
     impl IntoEvent<api::ConnectionClosed> for ConnectionClosed {
         #[inline]
@@ -5211,6 +5987,138 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        #[doc = "Called when the `StreamPacketTransmitted` event is triggered"]
+        #[inline]
+        fn on_stream_packet_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketTransmitted,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamProbeTransmitted` event is triggered"]
+        #[inline]
+        fn on_stream_probe_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamProbeTransmitted,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamPacketReceived` event is triggered"]
+        #[inline]
+        fn on_stream_packet_received(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketReceived,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamPacketLost` event is triggered"]
+        #[inline]
+        fn on_stream_packet_lost(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketLost,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamPacketAcked` event is triggered"]
+        #[inline]
+        fn on_stream_packet_acked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketAcked,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamPacketSpuriouslyRetransmitted` event is triggered"]
+        #[inline]
+        fn on_stream_packet_spuriously_retransmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketSpuriouslyRetransmitted,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamMaxDataReceived` event is triggered"]
+        #[inline]
+        fn on_stream_max_data_received(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamMaxDataReceived,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamControlPacketTransmitted` event is triggered"]
+        #[inline]
+        fn on_stream_control_packet_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketTransmitted,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamControlPacketReceived` event is triggered"]
+        #[inline]
+        fn on_stream_control_packet_received(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketReceived,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamReceiverErrored` event is triggered"]
+        #[inline]
+        fn on_stream_receiver_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReceiverErrored,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        #[doc = "Called when the `StreamSenderErrored` event is triggered"]
+        #[inline]
+        fn on_stream_sender_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamSenderErrored,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         #[doc = "Called when the `ConnectionClosed` event is triggered"]
         #[inline]
         fn on_connection_closed(
@@ -5930,6 +6838,113 @@ mod traits {
             self.as_ref().on_stream_connect_error(meta, event);
         }
         #[inline]
+        fn on_stream_packet_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketTransmitted,
+        ) {
+            self.as_ref()
+                .on_stream_packet_transmitted(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_probe_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamProbeTransmitted,
+        ) {
+            self.as_ref()
+                .on_stream_probe_transmitted(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_packet_received(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketReceived,
+        ) {
+            self.as_ref()
+                .on_stream_packet_received(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_packet_lost(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketLost,
+        ) {
+            self.as_ref().on_stream_packet_lost(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_packet_acked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketAcked,
+        ) {
+            self.as_ref().on_stream_packet_acked(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_packet_spuriously_retransmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketSpuriouslyRetransmitted,
+        ) {
+            self.as_ref()
+                .on_stream_packet_spuriously_retransmitted(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_max_data_received(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamMaxDataReceived,
+        ) {
+            self.as_ref()
+                .on_stream_max_data_received(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_control_packet_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketTransmitted,
+        ) {
+            self.as_ref()
+                .on_stream_control_packet_transmitted(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_control_packet_received(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketReceived,
+        ) {
+            self.as_ref()
+                .on_stream_control_packet_received(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_receiver_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReceiverErrored,
+        ) {
+            self.as_ref()
+                .on_stream_receiver_errored(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_sender_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamSenderErrored,
+        ) {
+            self.as_ref().on_stream_sender_errored(context, meta, event);
+        }
+        #[inline]
         fn on_connection_closed(
             &self,
             context: &Self::ConnectionContext,
@@ -6618,6 +7633,116 @@ mod traits {
         ) {
             (self.0).on_stream_connect_error(meta, event);
             (self.1).on_stream_connect_error(meta, event);
+        }
+        #[inline]
+        fn on_stream_packet_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketTransmitted,
+        ) {
+            (self.0).on_stream_packet_transmitted(&context.0, meta, event);
+            (self.1).on_stream_packet_transmitted(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_probe_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamProbeTransmitted,
+        ) {
+            (self.0).on_stream_probe_transmitted(&context.0, meta, event);
+            (self.1).on_stream_probe_transmitted(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_packet_received(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketReceived,
+        ) {
+            (self.0).on_stream_packet_received(&context.0, meta, event);
+            (self.1).on_stream_packet_received(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_packet_lost(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketLost,
+        ) {
+            (self.0).on_stream_packet_lost(&context.0, meta, event);
+            (self.1).on_stream_packet_lost(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_packet_acked(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketAcked,
+        ) {
+            (self.0).on_stream_packet_acked(&context.0, meta, event);
+            (self.1).on_stream_packet_acked(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_packet_spuriously_retransmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketSpuriouslyRetransmitted,
+        ) {
+            (self.0).on_stream_packet_spuriously_retransmitted(&context.0, meta, event);
+            (self.1).on_stream_packet_spuriously_retransmitted(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_max_data_received(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamMaxDataReceived,
+        ) {
+            (self.0).on_stream_max_data_received(&context.0, meta, event);
+            (self.1).on_stream_max_data_received(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_control_packet_transmitted(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketTransmitted,
+        ) {
+            (self.0).on_stream_control_packet_transmitted(&context.0, meta, event);
+            (self.1).on_stream_control_packet_transmitted(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_control_packet_received(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketReceived,
+        ) {
+            (self.0).on_stream_control_packet_received(&context.0, meta, event);
+            (self.1).on_stream_control_packet_received(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_receiver_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReceiverErrored,
+        ) {
+            (self.0).on_stream_receiver_errored(&context.0, meta, event);
+            (self.1).on_stream_receiver_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_sender_errored(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamSenderErrored,
+        ) {
+            (self.0).on_stream_sender_errored(&context.0, meta, event);
+            (self.1).on_stream_sender_errored(&context.1, meta, event);
         }
         #[inline]
         fn on_connection_closed(
@@ -7556,6 +8681,34 @@ mod traits {
         fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored);
         #[doc = "Publishes a `StreamDecryptPacket` event to the publisher's subscriber"]
         fn on_stream_decrypt_packet(&self, event: builder::StreamDecryptPacket);
+        #[doc = "Publishes a `StreamPacketTransmitted` event to the publisher's subscriber"]
+        fn on_stream_packet_transmitted(&self, event: builder::StreamPacketTransmitted);
+        #[doc = "Publishes a `StreamProbeTransmitted` event to the publisher's subscriber"]
+        fn on_stream_probe_transmitted(&self, event: builder::StreamProbeTransmitted);
+        #[doc = "Publishes a `StreamPacketReceived` event to the publisher's subscriber"]
+        fn on_stream_packet_received(&self, event: builder::StreamPacketReceived);
+        #[doc = "Publishes a `StreamPacketLost` event to the publisher's subscriber"]
+        fn on_stream_packet_lost(&self, event: builder::StreamPacketLost);
+        #[doc = "Publishes a `StreamPacketAcked` event to the publisher's subscriber"]
+        fn on_stream_packet_acked(&self, event: builder::StreamPacketAcked);
+        #[doc = "Publishes a `StreamPacketSpuriouslyRetransmitted` event to the publisher's subscriber"]
+        fn on_stream_packet_spuriously_retransmitted(
+            &self,
+            event: builder::StreamPacketSpuriouslyRetransmitted,
+        );
+        #[doc = "Publishes a `StreamMaxDataReceived` event to the publisher's subscriber"]
+        fn on_stream_max_data_received(&self, event: builder::StreamMaxDataReceived);
+        #[doc = "Publishes a `StreamControlPacketTransmitted` event to the publisher's subscriber"]
+        fn on_stream_control_packet_transmitted(
+            &self,
+            event: builder::StreamControlPacketTransmitted,
+        );
+        #[doc = "Publishes a `StreamControlPacketReceived` event to the publisher's subscriber"]
+        fn on_stream_control_packet_received(&self, event: builder::StreamControlPacketReceived);
+        #[doc = "Publishes a `StreamReceiverErrored` event to the publisher's subscriber"]
+        fn on_stream_receiver_errored(&self, event: builder::StreamReceiverErrored);
+        #[doc = "Publishes a `StreamSenderErrored` event to the publisher's subscriber"]
+        fn on_stream_sender_errored(&self, event: builder::StreamSenderErrored);
         #[doc = "Publishes a `ConnectionClosed` event to the publisher's subscriber"]
         fn on_connection_closed(&self, event: builder::ConnectionClosed);
         #[doc = r" Returns the QUIC version negotiated for the current connection, if any"]
@@ -7770,6 +8923,114 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_stream_decrypt_packet(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_packet_transmitted(&self, event: builder::StreamPacketTransmitted) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_packet_transmitted(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_probe_transmitted(&self, event: builder::StreamProbeTransmitted) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_probe_transmitted(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_packet_received(&self, event: builder::StreamPacketReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_packet_received(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_packet_lost(&self, event: builder::StreamPacketLost) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_packet_lost(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_packet_acked(&self, event: builder::StreamPacketAcked) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_packet_acked(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_packet_spuriously_retransmitted(
+            &self,
+            event: builder::StreamPacketSpuriouslyRetransmitted,
+        ) {
+            let event = event.into_event();
+            self.subscriber.on_stream_packet_spuriously_retransmitted(
+                self.context,
+                &self.meta,
+                &event,
+            );
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_max_data_received(&self, event: builder::StreamMaxDataReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_max_data_received(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_control_packet_transmitted(
+            &self,
+            event: builder::StreamControlPacketTransmitted,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_control_packet_transmitted(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_control_packet_received(&self, event: builder::StreamControlPacketReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_control_packet_received(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_receiver_errored(&self, event: builder::StreamReceiverErrored) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_receiver_errored(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_sender_errored(&self, event: builder::StreamSenderErrored) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_sender_errored(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -8616,6 +9877,17 @@ pub mod testing {
         pub stream_tcp_connect: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
+        pub stream_packet_transmitted: AtomicU64,
+        pub stream_probe_transmitted: AtomicU64,
+        pub stream_packet_received: AtomicU64,
+        pub stream_packet_lost: AtomicU64,
+        pub stream_packet_acked: AtomicU64,
+        pub stream_packet_spuriously_retransmitted: AtomicU64,
+        pub stream_max_data_received: AtomicU64,
+        pub stream_control_packet_transmitted: AtomicU64,
+        pub stream_control_packet_received: AtomicU64,
+        pub stream_receiver_errored: AtomicU64,
+        pub stream_sender_errored: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
@@ -8721,6 +9993,17 @@ pub mod testing {
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
+                stream_packet_transmitted: AtomicU64::new(0),
+                stream_probe_transmitted: AtomicU64::new(0),
+                stream_packet_received: AtomicU64::new(0),
+                stream_packet_lost: AtomicU64::new(0),
+                stream_packet_acked: AtomicU64::new(0),
+                stream_packet_spuriously_retransmitted: AtomicU64::new(0),
+                stream_max_data_received: AtomicU64::new(0),
+                stream_control_packet_transmitted: AtomicU64::new(0),
+                stream_control_packet_received: AtomicU64::new(0),
+                stream_receiver_errored: AtomicU64::new(0),
+                stream_sender_errored: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
@@ -9289,6 +10572,166 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_stream_packet_transmitted(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketTransmitted,
+        ) {
+            self.stream_packet_transmitted
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_probe_transmitted(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamProbeTransmitted,
+        ) {
+            self.stream_probe_transmitted
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_packet_received(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketReceived,
+        ) {
+            self.stream_packet_received.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_packet_lost(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketLost,
+        ) {
+            self.stream_packet_lost.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_packet_acked(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketAcked,
+        ) {
+            self.stream_packet_acked.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_packet_spuriously_retransmitted(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamPacketSpuriouslyRetransmitted,
+        ) {
+            self.stream_packet_spuriously_retransmitted
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_max_data_received(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamMaxDataReceived,
+        ) {
+            self.stream_max_data_received
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_control_packet_transmitted(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketTransmitted,
+        ) {
+            self.stream_control_packet_transmitted
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_control_packet_received(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamControlPacketReceived,
+        ) {
+            self.stream_control_packet_received
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_receiver_errored(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReceiverErrored,
+        ) {
+            self.stream_receiver_errored.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_sender_errored(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamSenderErrored,
+        ) {
+            self.stream_sender_errored.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_connection_closed(
             &self,
             _context: &Self::ConnectionContext,
@@ -9726,6 +11169,17 @@ pub mod testing {
         pub stream_tcp_connect: AtomicU64,
         pub stream_connect: AtomicU64,
         pub stream_connect_error: AtomicU64,
+        pub stream_packet_transmitted: AtomicU64,
+        pub stream_probe_transmitted: AtomicU64,
+        pub stream_packet_received: AtomicU64,
+        pub stream_packet_lost: AtomicU64,
+        pub stream_packet_acked: AtomicU64,
+        pub stream_packet_spuriously_retransmitted: AtomicU64,
+        pub stream_max_data_received: AtomicU64,
+        pub stream_control_packet_transmitted: AtomicU64,
+        pub stream_control_packet_received: AtomicU64,
+        pub stream_receiver_errored: AtomicU64,
+        pub stream_sender_errored: AtomicU64,
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
@@ -9821,6 +11275,17 @@ pub mod testing {
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
+                stream_packet_transmitted: AtomicU64::new(0),
+                stream_probe_transmitted: AtomicU64::new(0),
+                stream_packet_received: AtomicU64::new(0),
+                stream_packet_lost: AtomicU64::new(0),
+                stream_packet_acked: AtomicU64::new(0),
+                stream_packet_spuriously_retransmitted: AtomicU64::new(0),
+                stream_max_data_received: AtomicU64::new(0),
+                stream_control_packet_transmitted: AtomicU64::new(0),
+                stream_control_packet_received: AtomicU64::new(0),
+                stream_receiver_errored: AtomicU64::new(0),
+                stream_sender_errored: AtomicU64::new(0),
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
@@ -10493,6 +11958,117 @@ pub mod testing {
         }
         fn on_stream_decrypt_packet(&self, event: builder::StreamDecryptPacket) {
             self.stream_decrypt_packet.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_packet_transmitted(&self, event: builder::StreamPacketTransmitted) {
+            self.stream_packet_transmitted
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_probe_transmitted(&self, event: builder::StreamProbeTransmitted) {
+            self.stream_probe_transmitted
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_packet_received(&self, event: builder::StreamPacketReceived) {
+            self.stream_packet_received.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_packet_lost(&self, event: builder::StreamPacketLost) {
+            self.stream_packet_lost.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_packet_acked(&self, event: builder::StreamPacketAcked) {
+            self.stream_packet_acked.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_packet_spuriously_retransmitted(
+            &self,
+            event: builder::StreamPacketSpuriouslyRetransmitted,
+        ) {
+            self.stream_packet_spuriously_retransmitted
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_max_data_received(&self, event: builder::StreamMaxDataReceived) {
+            self.stream_max_data_received
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_control_packet_transmitted(
+            &self,
+            event: builder::StreamControlPacketTransmitted,
+        ) {
+            self.stream_control_packet_transmitted
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_control_packet_received(&self, event: builder::StreamControlPacketReceived) {
+            self.stream_control_packet_received
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_receiver_errored(&self, event: builder::StreamReceiverErrored) {
+            self.stream_receiver_errored.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_sender_errored(&self, event: builder::StreamSenderErrored) {
+            self.stream_sender_errored.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);

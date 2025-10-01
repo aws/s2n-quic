@@ -282,7 +282,8 @@ where
                     ErrorCode::None as u8
                 };
 
-                recv.receiver.stop_sending(error.into());
+                let publisher = self.shared.publisher();
+                recv.receiver.stop_sending(error.into(), &publisher);
 
                 if recv.receiver.is_finished() {
                     let _ = self.state.on_finished();

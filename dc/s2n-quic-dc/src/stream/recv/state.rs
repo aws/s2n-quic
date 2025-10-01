@@ -6,13 +6,13 @@ use crate::{
     clock,
     credentials::Credentials,
     crypto::{self, UninitSlice},
-    event::{self, ConnectionPublisher},
+    event,
     packet::{control, stream},
     stream::{
         recv::{
             ack,
             error::{self, Error},
-            packet, probes,
+            packet,
         },
         shared::AcceptState,
         TransportFeatures, DEFAULT_IDLE_TIMEOUT,
@@ -133,10 +133,17 @@ impl State {
     }
 
     #[inline]
-    pub fn stop_sending(&mut self, error: s2n_quic_core::application::Error) {
+    pub fn stop_sending<Pub>(&mut self, error: s2n_quic_core::application::Error, publisher: &Pub)
+    where
+        Pub: event::ConnectionPublisher,
+    {
         // if we've already received everything then no need to notify the peer to stop
         ensure!(matches!(self.state, Receiver::Recv | Receiver::SizeKnown));
-        self.on_error(error::Kind::ApplicationError { error }, Location::Local);
+        self.on_error(
+            error::Kind::ApplicationError { error },
+            Location::Local,
+            publisher,
+        );
     }
 
     #[inline]
@@ -187,16 +194,20 @@ impl State {
     }
 
     #[inline]
-    pub fn precheck_stream_packet(
+    pub fn precheck_stream_packet<Pub>(
         &mut self,
         credentials: &Credentials,
         packet: &stream::decoder::Packet,
-    ) -> Result<(), Error> {
+        publisher: &Pub,
+    ) -> Result<(), Error>
+    where
+        Pub: event::ConnectionPublisher,
+    {
         match self.precheck_stream_packet_impl(credentials, packet) {
             Ok(()) => Ok(()),
             Err(err) => {
                 if err.is_fatal(&self.features) {
-                    self.on_error(err, Location::Local);
+                    self.on_error(err, Location::Local, publisher);
                 } else {
                     tracing::debug!(non_fatal_error = %err, ?packet);
                 }
@@ -251,7 +262,7 @@ impl State {
     }
 
     #[inline]
-    pub fn on_stream_packet<D, C, B, Clk, Sub>(
+    pub fn on_stream_packet<D, C, B, Clk, Pub>(
         &mut self,
         opener: &D,
         control: &C,
@@ -261,25 +272,23 @@ impl State {
         accept_state: AcceptState,
         clock: &Clk,
         out_buf: &mut B,
-        subscriber: &crate::stream::shared::Subscriber<Sub>,
+        publisher: &Pub,
     ) -> Result<(), Error>
     where
         D: crypto::open::Application,
         C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
         B: buffer::Duplex<Error = core::convert::Infallible>,
-        Sub: event::Subscriber,
+        Pub: event::ConnectionPublisher,
     {
-        probes::on_stream_packet(
-            credentials.id,
-            *packet.stream_id(),
-            packet.tag().packet_space(),
-            packet.packet_number(),
-            packet.stream_offset(),
-            packet.payload().len(),
-            packet.is_fin(),
-            packet.is_retransmission(),
-        );
+        publisher.on_stream_packet_received(event::builder::StreamPacketReceived {
+            packet_len: packet.total_len(),
+            packet_number: packet.packet_number().as_u64(),
+            stream_offset: packet.stream_offset().as_u64(),
+            payload_len: packet.payload().len(),
+            is_fin: packet.is_fin(),
+            is_retransmission: packet.is_retransmission(),
+        });
 
         match self.on_stream_packet_impl(
             opener,
@@ -290,12 +299,12 @@ impl State {
             accept_state,
             clock,
             out_buf,
-            subscriber,
+            publisher,
         ) {
             Ok(()) => Ok(()),
             Err(err) => {
                 if err.is_fatal(&self.features) {
-                    self.on_error(err, Location::Local);
+                    self.on_error(err, Location::Local, publisher);
                 } else {
                     tracing::debug!(non_fatal_error = %err, ?packet);
                 }
@@ -305,7 +314,7 @@ impl State {
     }
 
     #[inline]
-    fn on_stream_packet_impl<D, C, B, Clk, Sub>(
+    fn on_stream_packet_impl<D, C, B, Clk, Pub>(
         &mut self,
         opener: &D,
         control: &C,
@@ -315,14 +324,14 @@ impl State {
         accept_state: AcceptState,
         clock: &Clk,
         out_buf: &mut B,
-        subscriber: &crate::stream::shared::Subscriber<Sub>,
+        publisher: &Pub,
     ) -> Result<(), Error>
     where
         D: crypto::open::Application,
         C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
         B: buffer::Duplex<Error = core::convert::Infallible>,
-        Sub: event::Subscriber,
+        Pub: event::ConnectionPublisher,
     {
         use buffer::reader::Storage as _;
 
@@ -339,8 +348,9 @@ impl State {
             clock,
             opener,
             control,
-            credentials,
             receiver: self,
+            copied_len: 0,
+            publisher,
         };
 
         if !is_max_data_ok {
@@ -358,7 +368,7 @@ impl State {
             );
 
             let error = error::Kind::MaxDataExceeded.err();
-            self.on_error(error, Location::Local);
+            self.on_error(error, Location::Local, publisher);
             return Err(error);
         }
 
@@ -371,7 +381,21 @@ impl State {
 
         // Don't emit for empty payloads, those don't have copy costs.
         if !packet.packet.payload().is_empty() {
-            let publisher = subscriber.publisher(clock.get_time());
+            // If the reader didn't actually copy any bytes from the packet payload then it skipped over it,
+            // meaning the application data contained was already received previously.
+            if packet.copied_len == 0 {
+                publisher.on_stream_packet_spuriously_retransmitted(
+                    event::builder::StreamPacketSpuriouslyRetransmitted {
+                        packet_len: packet.packet.total_len(),
+                        packet_number: packet.packet.packet_number().as_u64(),
+                        stream_offset: packet.packet.stream_offset().as_u64(),
+                        payload_len: packet.packet.payload().len(),
+                        is_fin: packet.packet.is_fin(),
+                        is_retransmission: packet.packet.is_retransmission(),
+                    },
+                );
+            }
+
             publisher.on_stream_decrypt_packet(event::builder::StreamDecryptPacket {
                 decrypted_in_place: packet.is_decrypted_in_place,
                 forced_copy: if packet.is_decrypted_in_place {
@@ -396,74 +420,52 @@ impl State {
     }
 
     #[inline]
-    pub(super) fn on_stream_packet_in_place<D, C, Clk>(
+    pub(super) fn on_stream_packet_in_place<D, C, Clk, Pub>(
         &mut self,
         crypto: &D,
         control: &C,
-        credentials: &Credentials,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
         clock: &Clk,
+        publisher: &Pub,
     ) -> Result<(), Error>
     where
         D: crypto::open::Application,
         C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
+        Pub: event::ConnectionPublisher,
     {
         // ensure the packet is authentic before processing it
         let res = packet.decrypt_in_place(crypto, control);
 
-        probes::on_stream_packet_decrypted(
-            credentials.id,
-            *packet.stream_id(),
-            packet.tag().packet_space(),
-            packet.packet_number(),
-            packet.stream_offset(),
-            packet.payload().len(),
-            packet.is_fin(),
-            packet.is_retransmission(),
-            res.is_ok(),
-        );
-
         res?;
 
-        self.on_cleartext_stream_packet(packet, ecn, clock)
+        self.on_cleartext_stream_packet(packet, ecn, clock, publisher)
     }
 
     #[inline]
-    pub(super) fn on_stream_packet_copy<D, C, Clk>(
+    pub(super) fn on_stream_packet_copy<D, C, Clk, Pub>(
         &mut self,
         crypto: &D,
         control: &C,
-        credentials: &Credentials,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
         payload_out: &mut UninitSlice,
         clock: &Clk,
+        publisher: &Pub,
     ) -> Result<(), Error>
     where
         D: crypto::open::Application,
         C: crypto::open::control::Stream,
         Clk: Clock + ?Sized,
+        Pub: event::ConnectionPublisher,
     {
         // ensure the packet is authentic before processing it
         let res = packet.decrypt(crypto, control, payload_out);
 
-        probes::on_stream_packet_decrypted(
-            credentials.id,
-            *packet.stream_id(),
-            packet.tag().packet_space(),
-            packet.packet_number(),
-            packet.stream_offset(),
-            packet.payload().len(),
-            packet.is_fin(),
-            packet.is_retransmission(),
-            res.is_ok(),
-        );
-
         res?;
 
-        self.on_cleartext_stream_packet(packet, ecn, clock)
+        self.on_cleartext_stream_packet(packet, ecn, clock, publisher)
     }
 
     #[inline]
@@ -479,14 +481,16 @@ impl State {
     }
 
     #[inline]
-    fn on_cleartext_stream_packet<Clk>(
+    fn on_cleartext_stream_packet<Clk, Pub>(
         &mut self,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
         clock: &Clk,
+        publisher: &Pub,
     ) -> Result<(), Error>
     where
         Clk: Clock + ?Sized,
+        Pub: event::ConnectionPublisher,
     {
         tracing::trace!(
             stream_id = %packet.stream_id(),
@@ -536,7 +540,7 @@ impl State {
                         }
                     }
                     .err();
-                    self.on_error(error, Location::Remote);
+                    self.on_error(error, Location::Remote, publisher);
                     return Err(error);
                 }
                 _ => {
@@ -564,14 +568,17 @@ impl State {
     }
 
     #[inline]
-    pub fn on_transport_close(&mut self) {
+    pub fn on_transport_close<Pub>(&mut self, publisher: &Pub)
+    where
+        Pub: event::ConnectionPublisher,
+    {
         // only stream transports can be closed
         ensure!(self.features.is_stream());
 
         // only error out if we're still expecting more data
         ensure!(matches!(self.state, Receiver::Recv | Receiver::SizeKnown));
 
-        self.on_error(error::Kind::TruncatedTransport, Location::Local);
+        self.on_error(error::Kind::TruncatedTransport, Location::Local, publisher);
     }
 
     #[inline]
@@ -637,9 +644,10 @@ impl State {
 
     #[inline]
     #[track_caller]
-    pub fn on_error<E>(&mut self, error: E, source: Location)
+    pub fn on_error<E, Pub>(&mut self, error: E, source: Location, publisher: &Pub)
     where
         Error: From<E>,
+        Pub: event::ConnectionPublisher,
     {
         let error = Error::from(error);
         debug_assert!(error.is_fatal(&self.features));
@@ -650,6 +658,8 @@ impl State {
         // make sure we haven't already set the error from something else
         ensure!(self.error.is_none());
         self.error = Some(ErrorState { error, source });
+        publisher
+            .on_stream_receiver_errored(event::builder::StreamReceiverErrored { error, source });
 
         if matches!(source, Location::Local) {
             self.needs_transmission("on_error");
@@ -675,10 +685,11 @@ impl State {
     }
 
     #[inline]
-    pub fn on_timeout<Clk, Ld>(&mut self, clock: &Clk, load_last_activity: Ld)
+    pub fn on_timeout<Clk, Ld, Pub>(&mut self, clock: &Clk, load_last_activity: Ld, publisher: &Pub)
     where
         Clk: Clock + ?Sized,
         Ld: FnOnce() -> Timestamp,
+        Pub: event::ConnectionPublisher,
     {
         let now = clock.get_time();
         if self.poll_idle_timer(clock, load_last_activity).is_ready() {
@@ -692,7 +703,7 @@ impl State {
             did_transition |= self.state.on_reset().is_ok();
             did_transition |= self.state.on_app_read_reset().is_ok();
             if did_transition {
-                self.on_error(error::Kind::IdleTimeout, Location::Local);
+                self.on_error(error::Kind::IdleTimeout, Location::Local, publisher);
                 // override the transmission since we're just timing out
                 self._should_transmit = false;
             }
@@ -739,7 +750,7 @@ impl State {
     }
 
     #[inline]
-    pub fn on_transmit<K, A, Clk>(
+    pub fn on_transmit<K, A, Clk, Pub>(
         &mut self,
         key: &K,
         credentials: &Credentials,
@@ -747,10 +758,12 @@ impl State {
         source_queue_id: Option<VarInt>,
         output: &mut A,
         clock: &Clk,
+        publisher: &Pub,
     ) where
         K: crypto::seal::control::Stream,
         A: Allocator,
         Clk: Clock + ?Sized,
+        Pub: event::ConnectionPublisher,
     {
         (if self.error.is_none() {
             Self::on_transmit_ack
@@ -765,11 +778,12 @@ impl State {
             output,
             // avoid querying the clock for every transmitted packet
             &clock::Cached::new(clock),
+            publisher,
         )
     }
 
     #[inline]
-    fn on_transmit_ack<K, A, Clk>(
+    fn on_transmit_ack<K, A, Clk, Pub>(
         &mut self,
         key: &K,
         credentials: &Credentials,
@@ -777,10 +791,12 @@ impl State {
         source_queue_id: Option<VarInt>,
         output: &mut A,
         _clock: &Clk,
+        publisher: &Pub,
     ) where
         K: crypto::seal::control::Stream,
         A: Allocator,
         Clk: Clock + ?Sized,
+        Pub: event::ConnectionPublisher,
     {
         ensure!(self.should_transmit());
 
@@ -896,30 +912,16 @@ impl State {
             }
         }
 
-        for (ack, space) in [
-            (&self.stream_ack, stream::PacketSpace::Stream),
-            (&self.recovery_ack, stream::PacketSpace::Recovery),
-        ] {
-            let metrics = (
-                ack.packets.min_value(),
-                ack.packets.max_value(),
-                ack.packets.interval_len().checked_sub(1),
-            );
-            if let (Some(min), Some(max), Some(gaps)) = metrics {
-                probes::on_transmit_control(
-                    credentials.id,
-                    stream_id,
-                    space,
-                    packet_number,
-                    min,
-                    max,
-                    gaps,
-                );
-            };
-        }
-
         // make sure we sent a packet
         ensure!(!output.is_empty());
+
+        publisher.on_stream_control_packet_transmitted(
+            event::builder::StreamControlPacketTransmitted {
+                packet_len: result,
+                control_data_len: encoding_size.as_u64() as usize,
+                packet_number: packet_number.as_u64(),
+            },
+        );
 
         // record the max value we've seen for removing old packet numbers
         self.stream_ack.on_transmit(packet_number);
@@ -929,7 +931,7 @@ impl State {
     }
 
     #[inline]
-    fn on_transmit_error<K, A, Clk>(
+    fn on_transmit_error<K, A, Clk, Pub>(
         &mut self,
         control_key: &K,
         credentials: &Credentials,
@@ -937,10 +939,12 @@ impl State {
         source_queue_id: Option<VarInt>,
         output: &mut A,
         _clock: &Clk,
+        publisher: &Pub,
     ) where
         K: crypto::seal::control::Stream,
         A: Allocator,
         Clk: Clock + ?Sized,
+        Pub: event::ConnectionPublisher,
     {
         ensure!(self.should_transmit());
         let Some(error) = self.error else {
@@ -995,11 +999,17 @@ impl State {
 
         tracing::debug!(connection_close = ?frame);
 
+        publisher.on_stream_control_packet_transmitted(
+            event::builder::StreamControlPacketTransmitted {
+                packet_len: result,
+                control_data_len: encoding_size.as_u64() as usize,
+                packet_number: packet_number.as_u64(),
+            },
+        );
+
         // clean things up
         self.stream_ack.clear();
         self.recovery_ack.clear();
-
-        probes::on_transmit_close(credentials.id, stream_id, packet_number, frame.error_code);
 
         self.on_packet_sent(packet_number);
     }

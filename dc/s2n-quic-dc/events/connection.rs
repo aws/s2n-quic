@@ -341,6 +341,214 @@ pub enum StreamTcpConnectErrorReason {
     Aborted,
 }
 
+#[event("stream:packet_transmitted")]
+pub struct StreamPacketTransmitted {
+    /// The total size of the packet
+    #[measure("packet_len", Bytes)]
+    packet_len: usize,
+
+    /// The size of the application data in the packet
+    #[measure("payload_len", Bytes)]
+    #[counter("payload_len.total", Bytes)]
+    #[measure_counter("payload_len.conn", Bytes)]
+    payload_len: usize,
+
+    /// The packet number of the transmitted packet
+    packet_number: u64,
+
+    /// The offset in the stream of the first byte in the packet
+    stream_offset: u64,
+
+    /// Whether the packet contained the final bytes of the stream
+    is_fin: bool,
+
+    #[bool_counter("retransmission")]
+    is_retransmission: bool,
+}
+
+#[event("stream:probe_transmitted")]
+pub struct StreamProbeTransmitted {
+    /// The total size of the packet
+    #[measure("packet_len", Bytes)]
+    packet_len: usize,
+
+    /// The packet number of the transmitted packet
+    packet_number: u64,
+}
+
+#[event("stream:packet_received")]
+pub struct StreamPacketReceived {
+    /// The total size of the packet
+    #[measure("packet_len", Bytes)]
+    packet_len: usize,
+
+    /// The size of the application data in the packet
+    #[measure("payload_len", Bytes)]
+    #[counter("payload_len.total", Bytes)]
+    #[measure_counter("payload_len.conn", Bytes)]
+    payload_len: usize,
+
+    /// The packet number of the received packet
+    packet_number: u64,
+
+    /// The offset in the stream of the first byte in the packet
+    stream_offset: u64,
+
+    /// Whether the packet contained the final bytes of the stream
+    is_fin: bool,
+
+    #[bool_counter("retransmission")]
+    is_retransmission: bool,
+}
+
+/// Indicates that a packet was lost on a stream
+#[event("stream:packet_lost")]
+pub struct StreamPacketLost {
+    /// The total size of the packet
+    #[measure("packet_len", Bytes)]
+    packet_len: usize,
+
+    /// The size of the application data in the packet
+    #[measure("payload_len", Bytes)]
+    #[counter("payload_len.total", Bytes)]
+    #[measure_counter("payload_len.conn", Bytes)]
+    payload_len: usize,
+
+    /// The packet number of the lost packet
+    packet_number: u64,
+
+    /// The offset in the stream of the first byte in the packet
+    stream_offset: u64,
+
+    /// The time the packet was originally sent
+    time_sent: Timestamp,
+
+    /// The amount of time between when the packet was sent and when it was detected as lost
+    #[measure("lifetime", Duration)]
+    lifetime: core::time::Duration,
+
+    #[bool_counter("retransmission")]
+    is_retransmission: bool,
+}
+
+/// Indicates that a packet was acknowledged on a stream
+#[event("stream:packet_acked")]
+pub struct StreamPacketAcked {
+    /// The total size of the packet
+    #[measure("packet_len", Bytes)]
+    packet_len: usize,
+
+    /// The size of the application data in the packet
+    #[measure("payload_len", Bytes)]
+    #[counter("payload_len.total", Bytes)]
+    #[measure_counter("payload_len.conn", Bytes)]
+    payload_len: usize,
+
+    /// The packet number of the acknowledged packet
+    packet_number: u64,
+
+    /// The offset in the stream of the first byte in the packet
+    stream_offset: u64,
+
+    /// The time the packet was originally sent
+    time_sent: Timestamp,
+
+    /// The amount of time between when the packet was sent and when it was detected as lost
+    #[measure("lifetime", Duration)]
+    lifetime: core::time::Duration,
+
+    #[bool_counter("retransmission")]
+    is_retransmission: bool,
+}
+
+/// Indicates that a packet was retransmitted on a stream but was not actually lost
+#[event("stream:packet_spuriously_retransmitted")]
+pub struct StreamPacketSpuriouslyRetransmitted {
+    /// The total size of the packet
+    #[measure("packet_len", Bytes)]
+    packet_len: usize,
+
+    /// The size of the application data in the packet
+    #[measure("payload_len", Bytes)]
+    #[counter("payload_len.total", Bytes)]
+    #[measure_counter("payload_len.conn", Bytes)]
+    payload_len: usize,
+
+    /// The packet number of the packet
+    packet_number: u64,
+
+    /// The offset in the stream of the first byte in the packet
+    stream_offset: u64,
+
+    /// Whether the packet contained the final bytes of the stream
+    is_fin: bool,
+
+    #[bool_counter("retransmission")]
+    is_retransmission: bool,
+}
+
+/// Indicates that the stream received additional flow control credits
+#[event("stream:max_data_received")]
+pub struct StreamMaxDataReceived {
+    /// The number of bytes of flow control credits received
+    #[measure("increase", Bytes)]
+    #[counter("increase.total", Bytes)]
+    increase: u64,
+
+    /// The new offset of the stream
+    new_max_data: u64,
+}
+
+#[event("stream:control_packet_transmitted")]
+pub struct StreamControlPacketTransmitted {
+    /// The total size of the packet
+    #[measure("packet_len", Bytes)]
+    packet_len: usize,
+
+    /// The size of the control data in the packet
+    #[measure("control_data_len", Bytes)]
+    control_data_len: usize,
+
+    /// The packet number of the received control packet
+    packet_number: u64,
+}
+
+#[event("stream:control_packet_received")]
+pub struct StreamControlPacketReceived {
+    /// The total size of the packet
+    #[measure("packet_len", Bytes)]
+    packet_len: usize,
+
+    /// The size of the control data in the packet
+    #[measure("control_data_len", Bytes)]
+    control_data_len: usize,
+
+    /// The packet number of the received control packet
+    packet_number: u64,
+
+    /// Whether the packet was successfully authenticated
+    #[bool_counter("authenticated")]
+    is_authenticated: bool,
+}
+
+#[event("stream:receiver_errored")]
+pub struct StreamReceiverErrored {
+    #[builder(crate::stream::recv::Error)]
+    error: crate::stream::recv::Error,
+
+    /// The location where the error originated
+    source: s2n_quic_core::endpoint::Location,
+}
+
+#[event("stream:sender_errored")]
+pub struct StreamSenderErrored {
+    #[builder(crate::stream::send::Error)]
+    error: crate::stream::send::Error,
+
+    /// The location where the error originated
+    source: s2n_quic_core::endpoint::Location,
+}
+
 // NOTE - This event MUST come last, since connection-level aggregation depends on it
 #[event("connection:closed")]
 // #[checkpoint("latency")]

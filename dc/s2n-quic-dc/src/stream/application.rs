@@ -99,7 +99,9 @@ where
                 reason,
             });
 
-        self.shared.receiver.on_prune();
+        let publisher = self.shared.publisher_with_timestamp(now);
+
+        self.shared.receiver.on_prune(&publisher);
         self.shared.sender.on_prune();
     }
 }

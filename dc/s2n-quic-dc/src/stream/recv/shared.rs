@@ -188,21 +188,28 @@ impl State {
         self.worker_waker.wake();
     }
 
-    pub fn on_prune(&self) {
+    pub fn on_prune<Pub>(&self, publisher: &Pub)
+    where
+        Pub: event::ConnectionPublisher,
+    {
         self.notify_error(
             recv::error::Kind::ApplicationError {
                 error: ShutdownKind::PRUNED_CODE.into(),
             }
             .err(),
             Location::Local,
+            publisher,
         );
     }
 
     #[inline]
-    pub fn notify_error(&self, error: recv::Error, source: Location) {
+    pub fn notify_error<Pub>(&self, error: recv::Error, source: Location, publisher: &Pub)
+    where
+        Pub: event::ConnectionPublisher,
+    {
         let waker = {
             let mut inner = self.inner.lock().unwrap();
-            inner.receiver.on_error(error, source);
+            inner.receiver.on_error(error, source, publisher);
             inner.application_waker.take()
         };
         self.worker_waker.wake();
@@ -397,6 +404,7 @@ impl Inner {
             source_queue_id,
             send_buffer,
             &shared.clock,
+            &shared.publisher(),
         );
 
         ensure!(!send_buffer.is_empty());
@@ -451,6 +459,7 @@ impl Inner {
     {
         let clock = clock::Cached::new(&shared.clock);
         let clock = &clock;
+        let publisher = shared.publisher_with_timestamp(clock.get_time());
 
         // try copying data out of the reassembler into the application buffer
         self.receiver
@@ -498,7 +507,7 @@ impl Inner {
             };
 
             if let Err(err) = res {
-                self.receiver.on_error(err, Location::Local);
+                self.receiver.on_error(err, Location::Local, &publisher);
             }
 
             // if we processed packets then we may have data to copy out
@@ -509,7 +518,7 @@ impl Inner {
         // we only check for timeouts on unreliable transports
         if !features.is_reliable() {
             self.receiver
-                .on_timeout(clock, || shared.last_peer_activity());
+                .on_timeout(clock, || shared.last_peer_activity(), &publisher);
         }
 
         // indicate to the caller if we need to transmit an ACK
@@ -534,6 +543,7 @@ where
     shared: &'a ArcShared<Sub>,
     clock: &'a Clk,
     accept_state: AcceptState,
+    publisher: event::ConnectionPublisherSubscriber<'a, Sub>,
 }
 
 impl<'a, Buf, Crypt, Clk, Sub> PacketDispatch<'a, Buf, Crypt, Clk, Sub, true>
@@ -554,6 +564,7 @@ where
         shared: &'a ArcShared<Sub>,
         accept_state: AcceptState,
     ) -> Self {
+        let publisher = shared.publisher();
         Self {
             any_valid_packets: false,
             remote_addr: Default::default(),
@@ -565,6 +576,7 @@ where
             clock,
             handshake,
             accept_state,
+            publisher,
         }
     }
 }
@@ -587,6 +599,7 @@ where
         shared: &'a ArcShared<Sub>,
         accept_state: AcceptState,
     ) -> Self {
+        let publisher = shared.publisher();
         Self {
             any_valid_packets: false,
             remote_addr: Default::default(),
@@ -598,6 +611,7 @@ where
             clock,
             handshake,
             accept_state,
+            publisher,
         }
     }
 }
@@ -620,9 +634,11 @@ where
         match packet {
             Packet::Stream(mut packet) => {
                 // make sure the packet looks OK before deriving openers from it
-                let precheck = self
-                    .receiver
-                    .precheck_stream_packet(self.shared.credentials(), &packet);
+                let precheck = self.receiver.precheck_stream_packet(
+                    self.shared.credentials(),
+                    &packet,
+                    &self.publisher,
+                );
 
                 if IS_STREAM {
                     // datagrams drop invalid packets - streams error out since the stream can't recover
@@ -649,7 +665,7 @@ where
                             accept_state,
                             self.clock,
                             self.out_buf,
-                            &self.shared.subscriber,
+                            &self.publisher,
                         )?;
 
                         self.any_valid_packets = true;

@@ -146,6 +146,11 @@ impl Packet<'_> {
         self.auth_tag
     }
 
+    #[inline]
+    pub fn total_len(&self) -> usize {
+        self.header.len() + self.auth_tag.len()
+    }
+
     #[inline(always)]
     pub fn decode<V: Validator>(
         buffer: DecoderBufferMut,
