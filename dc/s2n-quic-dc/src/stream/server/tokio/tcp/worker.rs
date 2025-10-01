@@ -354,7 +354,7 @@ impl WorkerState {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct DefaultBehavior;
 
 impl<Sub> PollBehavior<Sub> for DefaultBehavior

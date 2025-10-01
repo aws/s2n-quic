@@ -523,7 +523,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             self.backlog,
             self.accept_flavor,
             self.linger,
-            tcp::worker::DefaultBehavior::default(),
+            tcp::worker::DefaultBehavior,
         )?
         .run();
 
