@@ -11,11 +11,10 @@ index f7c19f5..4b5eccc 100755
  done
  rm -f "$CERTDIR"/*.srl "$CERTDIR"/ca_0.key "$CERTDIR"/cert.csr
 diff --git a/docker-compose.yml b/docker-compose.yml
-index 93664f0..f0fa93e 100644
+index 8646582..cd151ea 100644
 --- a/docker-compose.yml
 +++ b/docker-compose.yml
-@@ -2,7 +2,7 @@ version: "2.4"
-
+@@ -1,6 +1,6 @@
  services:
    sim:
 -    image: martenseemann/quic-network-simulator
@@ -30,8 +29,8 @@ index 93664f0..f0fa93e 100644
 +      - TEST_TYPE=$TEST_TYPE
      depends_on:
        - sim
-     cap_add: 
-@@ -68,6 +69,7 @@ services:
+     cap_add:
+@@ -72,6 +73,7 @@ services:
        - SSLKEYLOGFILE=/logs/keys.log
        - QLOGDIR=/logs/qlog/
        - TESTCASE=$TESTCASE_CLIENT
@@ -40,7 +39,7 @@ index 93664f0..f0fa93e 100644
      depends_on:
        - sim
 diff --git a/implementations.json b/implementations.json
-index 09e2fdd..72513c8 100644
+index 7df33f8..527d7ee 100644
 --- a/implementations.json
 +++ b/implementations.json
 @@ -74,8 +74,13 @@
@@ -59,7 +58,7 @@ index 09e2fdd..72513c8 100644
      "role": "both"
    },
 diff --git a/interop.py b/interop.py
-index d6b27ce..ac7a7b7 100644
+index d6b27ce..a17ab66 100644
 --- a/interop.py
 +++ b/interop.py
 @@ -126,6 +126,7 @@ class InteropRunner:
@@ -102,7 +101,7 @@ index d6b27ce..ac7a7b7 100644
 +                statistics.mean(values), statistics.stdev(values), test.unit()
 +            )
          return res
-
+ 
      def run(self):
 @@ -541,23 +549,26 @@ class InteropRunner:
                  client,
@@ -114,7 +113,7 @@ index d6b27ce..ac7a7b7 100644
 -            ):
 -                logging.info("Not compliant, skipping")
 -                continue
-
+ 
 +            transfer_succeeded = True
              # run the test cases
              for testcase in self._tests:
@@ -124,7 +123,7 @@ index d6b27ce..ac7a7b7 100644
                      nr_failed += 1
 +                    if testcase == testcases.TestCaseTransfer:
 +                        transfer_succeeded = False
-
+ 
              # run the measurements
              for measurement in self._measurements:
 -                res = self._run_measurement(server, client, measurement)
@@ -136,7 +135,7 @@ index d6b27ce..ac7a7b7 100644
 +                    res.result = TestResult.UNSUPPORTED
 +                    res.details = "Skipping measurements as Transfer testcase was unsuccessful"
                  self.measurement_results[server][client][measurement] = res
-
+ 
          self._postprocess_results()
 diff --git a/pull.py b/pull.py
 index c2d6d1f..844bbd5 100644
@@ -164,23 +163,23 @@ index 131cf94..ce5960d 100644
 +pyshark==0.5.2
 \ No newline at end of file
 diff --git a/run.py b/run.py
-index 4564681..3a28eec 100755
+index 462f8df..5eb0cbb 100755
 --- a/run.py
 +++ b/run.py
-@@ -165,4 +165,4 @@ def main():
+@@ -180,4 +180,4 @@ def main():
  
  
  if __name__ == "__main__":
 -    sys.exit(main())
 +    main()
 diff --git a/testcases.py b/testcases.py
-index fc69e11..7dafb07 100644
+index bda5690..7667152 100644
 --- a/testcases.py
 +++ b/testcases.py
 @@ -98,6 +98,10 @@ class TestCase(abc.ABC):
          """The name of testcase presented to the endpoint Docker images"""
          return self.name()
-
+ 
 +    @staticmethod
 +    def test_type() -> str:
 +        return "TEST"
@@ -191,7 +190,7 @@ index fc69e11..7dafb07 100644
 @@ -1239,10 +1243,14 @@ class TestCasePortRebinding(TestCaseTransfer):
          ]
          return self._files
-
+ 
 +    @staticmethod
 +    def test_type() -> str:
 +        return "TEST"
@@ -201,66 +200,64 @@ index fc69e11..7dafb07 100644
          """Scenario for the ns3 simulator"""
 -        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=1s --rebind-freq=5s"
 +        return "rebind --delay=15ms --bandwidth=10Mbps --queue=25 --first-rebind=2s --rebind-freq=5s"
-
-     def check(self) -> TestResult:
-         super().check()
-@@ -1265,56 +1273,26 @@ class TestCasePortRebinding(TestCaseTransfer):
-             logging.info("Server saw only a single client port in use; test broken?")
-             return TestResult.FAILED
-
+ 
+     @staticmethod
+     def _addr(p: List, which: str) -> str:
+@@ -1273,44 +1281,33 @@ class TestCasePortRebinding(TestCaseTransfer):
+             self._server_trace()._get_direction_filter(Direction.FROM_SERVER) + " quic"
+         )
+ 
+-        cur = None
 -        last = None
--        num_migrations = 0
+-        paths = set()
+-        challenges = set()
 -        for p in tr_server:
--            cur = (
--                (
--                    getattr(p["ipv6"], "dst")
--                    if "IPV6" in str(p.layers)
--                    else getattr(p["ip"], "dst")
--                ),
--                int(getattr(p["udp"], "dstport")),
--            )
+-            cur = self._path(p)
 -            if last is None:
 -                last = cur
 -                continue
 -
--            if last != cur:
+-            if last != cur and cur not in paths:
+-                paths.add(last)
 -                last = cur
--                num_migrations += 1
--                # packet to different IP/port, should have a PATH_CHALLENGE frame
+-                # Packet on new path, should have a PATH_CHALLENGE frame
 -                if hasattr(p["quic"], "path_challenge.data") is False:
 -                    logging.info(
--                        "First server packet to new client destination %s did not contain a PATH_CHALLENGE frame",
+-                        "First server packet on new path %s did not contain a PATH_CHALLENGE frame",
 -                        cur,
 -                    )
 -                    logging.info(p["quic"])
 -                    return TestResult.FAILED
--
+-                else:
+-                    challenges.add(getattr(p["quic"], "path_challenge.data"))
+-        paths.add(cur)
++        ports = list(set(getattr(p["udp"], "dstport") for p in tr_server))
+ 
+-        logging.info("Server saw these paths used: %s", paths)
+-        if len(paths) <= 1:
+-            logging.info("Server saw only a single path in use; test broken?")
++        logging.info("Server saw these client ports: %s", ports)
++        if len(ports) <= 1:
++            logging.info("Server saw only a single client port in use; test broken?")
+             return TestResult.FAILED
+ 
 -        tr_client = self._client_trace()._get_packets(
--            self._client_trace()._get_direction_filter(Direction.FROM_CLIENT) + " quic"
 +        tr_server2client = self._client_trace()._get_packets(
 +            self._client_trace()._get_direction_filter(Direction.FROM_SERVER) + " quic"
-         )
-
-         challenges = list(
-             set(
-                 getattr(p["quic"], "path_challenge.data")
--                for p in tr_server
++        )
++
++        challenges = list(
++            set(
++                getattr(p["quic"], "path_challenge.data")
 +                for p in tr_server2client
-                 if hasattr(p["quic"], "path_challenge.data")
-             )
-         )
--        if len(challenges) < num_migrations:
--            logging.info(
--                "Saw %d migrations, but only %d unique PATH_CHALLENGE frames",
--                len(challenges),
--                num_migrations,
--            )
--            return TestResult.FAILED
++                if hasattr(p["quic"], "path_challenge.data")
++            )
++        )
 +
 +        tr_client2server = self._client_trace()._get_packets(
-+            self._client_trace()._get_direction_filter(Direction.FROM_CLIENT) + " quic"
-+        )
-
+             self._client_trace()._get_direction_filter(Direction.FROM_CLIENT) + " quic"
+         )
+ 
          responses = list(
              set(
                  getattr(p["quic"], "path_response.data")
@@ -269,10 +266,10 @@ index fc69e11..7dafb07 100644
                  if hasattr(p["quic"], "path_response.data")
              )
          )
-@@ -1332,6 +1310,10 @@ class TestCaseAddressRebinding(TestCasePortRebinding):
+@@ -1328,6 +1325,10 @@ class TestCaseAddressRebinding(TestCasePortRebinding):
      def name():
          return "rebind-addr"
-
+ 
 +    @staticmethod
 +    def test_type() -> str:
 +        return "MEASUREMENT"
@@ -280,16 +277,16 @@ index fc69e11..7dafb07 100644
      @staticmethod
      def abbreviation():
          return "BA"
-@@ -1615,7 +1597,7 @@ class MeasurementGoodput(Measurement):
-
+@@ -1616,7 +1617,7 @@ class MeasurementGoodput(Measurement):
+ 
      @staticmethod
      def repetitions() -> int:
 -        return 5
 +        return 1
-
+ 
      def get_paths(self):
          self._files = [self._generate_random_file(self.FILESIZE)]
-@@ -1687,7 +1669,7 @@ TESTCASES = [
+@@ -1688,7 +1689,7 @@ TESTCASES = [
      TestCaseMultiplexing,
      TestCaseRetry,
      TestCaseResumption,
@@ -298,21 +295,13 @@ index fc69e11..7dafb07 100644
      TestCaseHTTP3,
      TestCaseBlackhole,
      TestCaseKeyUpdate,
-@@ -1698,12 +1680,11 @@ TESTCASES = [
+@@ -1699,7 +1700,8 @@ TESTCASES = [
      TestCaseHandshakeCorruption,
      TestCaseTransferCorruption,
      TestCaseIPv6,
 -    TestCaseV2,
--    # The next three tests are disabled due to Wireshark not being able
--    # to decrypt packets sent on the new path.
--    # TestCasePortRebinding,
--    # TestCaseAddressRebinding,
--    # TestCaseConnectionMigration,
 +    # s2n-quic doesn't currently support v2
 +    # TestCaseV2,
-+    TestCasePortRebinding,
-+    TestCaseAddressRebinding,
-+    TestCaseConnectionMigration,
- ]
- 
- MEASUREMENTS = [
+     TestCasePortRebinding,
+     TestCaseAddressRebinding,
+     TestCaseConnectionMigration,
