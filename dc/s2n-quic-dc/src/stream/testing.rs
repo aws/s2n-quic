@@ -839,7 +839,15 @@ pub mod server {
                         let socket = ::tokio::io::unix::AsyncFd::new(socket).unwrap();
 
                         let acceptor = stream_server::tokio::tcp::Acceptor::new(
-                            0, socket, &sender, &env, &map, backlog, flavor, linger,
+                            0,
+                            socket,
+                            &sender,
+                            &env,
+                            &map,
+                            backlog,
+                            flavor,
+                            linger,
+                            stream_server::tokio::tcp::worker::DefaultBehavior,
                         )
                         .unwrap();
                         let acceptor = drop_handle_receiver.wrap(acceptor.run());

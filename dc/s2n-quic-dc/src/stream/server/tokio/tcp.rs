@@ -6,7 +6,7 @@ use crate::{
     path::secret,
     stream::{
         environment::{tokio::Environment, Environment as _},
-        server::accept,
+        server::{accept, tokio::tcp::worker::PollBehavior},
     },
 };
 use core::{future::poll_fn, task::Poll};
@@ -18,13 +18,14 @@ use tracing::debug;
 mod fresh;
 mod lazy;
 mod manager;
-mod worker;
+pub mod worker;
 
 pub(crate) use lazy::LazyBoundStream;
 
-pub struct Acceptor<Sub>
+pub struct Acceptor<Sub, B>
 where
     Sub: Subscriber + Clone,
+    B: PollBehavior<Sub> + Clone,
 {
     sender: accept::Sender<Sub>,
     socket: AsyncFd<TcpListener>,
@@ -33,11 +34,13 @@ where
     backlog: usize,
     accept_flavor: accept::Flavor,
     linger: Option<Duration>,
+    poll_behavior: B,
 }
 
-impl<Sub> Acceptor<Sub>
+impl<Sub, B> Acceptor<Sub, B>
 where
     Sub: event::Subscriber + Clone,
+    B: PollBehavior<Sub> + Clone,
 {
     #[inline]
     pub fn new(
@@ -49,6 +52,7 @@ where
         backlog: usize,
         accept_flavor: accept::Flavor,
         linger: Option<Duration>,
+        poll_behavior: B,
     ) -> std::io::Result<Self> {
         let acceptor = Self {
             sender: sender.clone(),
@@ -58,6 +62,7 @@ where
             backlog,
             accept_flavor,
             linger,
+            poll_behavior,
         };
 
         #[cfg(target_os = "linux")]
@@ -100,8 +105,12 @@ where
         let drop_guard = DropLog;
         let mut fresh = fresh::Queue::new(self.backlog);
         let mut workers = {
-            let workers =
-                (0..self.backlog).map(|_| worker::Worker::new(self.env.clock().get_time()));
+            let workers = (0..self.backlog).map(|_| {
+                worker::Worker::<Sub, B>::new(
+                    self.env.clock().get_time(),
+                    self.poll_behavior.clone(),
+                )
+            });
             manager::Manager::new(workers)
         };
         let mut context = worker::Context::new(&self);
