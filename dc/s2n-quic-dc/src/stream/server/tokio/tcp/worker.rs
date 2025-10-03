@@ -283,75 +283,6 @@ impl WorkerState {
             publisher,
         )
     }
-
-    #[inline]
-    fn poll_initial_packet<Pub>(
-        cx: &mut task::Context,
-        stream: &mut LazyBoundStream,
-        remote_address: &SocketAddress,
-        recv_buffer: &mut msg::recv::Message,
-        sojourn_time: Duration,
-        publisher: &Pub,
-    ) -> Poll<Result<server::InitialPacket, Option<io::Error>>>
-    where
-        Pub: EndpointPublisher,
-    {
-        loop {
-            if recv_buffer.payload_len() > 10_000 {
-                publisher.on_acceptor_tcp_packet_dropped(
-                    event::builder::AcceptorTcpPacketDropped {
-                        remote_address,
-                        reason: DecoderError::UnexpectedBytes(recv_buffer.payload_len())
-                            .into_event(),
-                        sojourn_time,
-                    },
-                );
-
-                // close the stream immediately and send a reset to the client
-                let _ = stream.set_linger(Some(Duration::ZERO));
-
-                return Err(None).into();
-            }
-
-            let res = ready!(stream.poll_recv_buffer(cx, recv_buffer)).map_err(Some)?;
-
-            match server::InitialPacket::peek(recv_buffer, 16) {
-                Ok(packet) => {
-                    publisher.on_acceptor_tcp_packet_received(
-                        event::builder::AcceptorTcpPacketReceived {
-                            remote_address,
-                            credential_id: &*packet.credentials.id,
-                            stream_id: packet.stream_id.into_varint().as_u64(),
-                            payload_len: packet.payload_len,
-                            is_fin: packet.is_fin,
-                            is_fin_known: packet.is_fin_known,
-                            sojourn_time,
-                        },
-                    );
-                    return Ok(packet).into();
-                }
-                Err(err) => {
-                    if matches!(err, DecoderError::UnexpectedEof(_)) && res > 0 {
-                        // we don't have enough bytes buffered so try reading more
-                        continue;
-                    }
-
-                    publisher.on_acceptor_tcp_packet_dropped(
-                        event::builder::AcceptorTcpPacketDropped {
-                            remote_address,
-                            reason: err.into_event(),
-                            sojourn_time,
-                        },
-                    );
-
-                    // close the stream immediately and send a reset to the client
-                    let _ = stream.set_linger(Some(Duration::ZERO));
-
-                    return Err(None).into();
-                }
-            }
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -554,6 +485,77 @@ where
                     ControlFlow::Break(())
                 }
             }));
+        }
+    }
+}
+
+impl WorkerState {
+    #[inline]
+    fn poll_initial_packet<Pub>(
+        cx: &mut task::Context,
+        stream: &mut LazyBoundStream,
+        remote_address: &SocketAddress,
+        recv_buffer: &mut msg::recv::Message,
+        sojourn_time: Duration,
+        publisher: &Pub,
+    ) -> Poll<Result<server::InitialPacket, Option<io::Error>>>
+    where
+        Pub: EndpointPublisher,
+    {
+        loop {
+            if recv_buffer.payload_len() > 10_000 {
+                publisher.on_acceptor_tcp_packet_dropped(
+                    event::builder::AcceptorTcpPacketDropped {
+                        remote_address,
+                        reason: DecoderError::UnexpectedBytes(recv_buffer.payload_len())
+                            .into_event(),
+                        sojourn_time,
+                    },
+                );
+
+                // close the stream immediately and send a reset to the client
+                let _ = stream.set_linger(Some(Duration::ZERO));
+
+                return Err(None).into();
+            }
+
+            let res = ready!(stream.poll_recv_buffer(cx, recv_buffer)).map_err(Some)?;
+
+            match server::InitialPacket::peek(recv_buffer, 16) {
+                Ok(packet) => {
+                    publisher.on_acceptor_tcp_packet_received(
+                        event::builder::AcceptorTcpPacketReceived {
+                            remote_address,
+                            credential_id: &*packet.credentials.id,
+                            stream_id: packet.stream_id.into_varint().as_u64(),
+                            payload_len: packet.payload_len,
+                            is_fin: packet.is_fin,
+                            is_fin_known: packet.is_fin_known,
+                            sojourn_time,
+                        },
+                    );
+                    return Ok(packet).into();
+                }
+                Err(err) => {
+                    if matches!(err, DecoderError::UnexpectedEof(_)) && res > 0 {
+                        // we don't have enough bytes buffered so try reading more
+                        continue;
+                    }
+
+                    publisher.on_acceptor_tcp_packet_dropped(
+                        event::builder::AcceptorTcpPacketDropped {
+                            remote_address,
+                            reason: err.into_event(),
+                            sojourn_time,
+                        },
+                    );
+
+                    // close the stream immediately and send a reset to the client
+                    let _ = stream.set_linger(Some(Duration::ZERO));
+
+                    return Err(None).into();
+                }
+            }
         }
     }
 }
