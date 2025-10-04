@@ -98,7 +98,7 @@ impl Harness {
     }
 
     async fn run_one(&self, bidirectional: bool, sleep_before_shutdown: bool) {
-        tracing::info!(bidirectional, sleep_before_shutdown);
+        tracing::debug!(bidirectional, sleep_before_shutdown);
         let context = Context::bind(self.protocol, "127.0.0.1:0".parse().unwrap()).await;
 
         check_stream(&context, bidirectional, sleep_before_shutdown)
@@ -117,7 +117,7 @@ impl Harness {
 
         // This might fail, we don't care. At least two streams should fail before we
         // manage to successfully establish after dropping state.
-        tracing::info!(
+        tracing::debug!(
             "initial: {:?}",
             tokio::time::timeout(
                 Duration::from_secs(2),
@@ -132,7 +132,7 @@ impl Harness {
 
         // This should enqueue a recovery handshake. This used to be something we'd *wait* for, but
         // now we just do that in the background; this should still fail.
-        tracing::info!(
+        tracing::debug!(
             "recovery handshake: {:?}",
             tokio::time::timeout(
                 Duration::from_secs(2),
