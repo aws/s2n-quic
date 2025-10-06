@@ -16,6 +16,7 @@ pub mod control;
 pub mod datagram;
 pub mod secret_control;
 pub mod stream;
+pub mod uds;
 
 pub use tag::Tag;
 pub use wire_version::WireVersion;

@@ -19,6 +19,7 @@ pub const MAX_KEY_LEN: usize = 32;
 const MAX_HMAC_KEY_LEN: usize = 1024 / 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
 #[cfg_attr(test, derive(bolero_generator::TypeGenerator))]
 #[allow(non_camel_case_types)]
 pub enum Ciphersuite {
@@ -58,6 +59,24 @@ impl hkdf::KeyType for Ciphersuite {
         match self {
             Self::AES_GCM_128_SHA256 => 16,
             Self::AES_GCM_256_SHA384 => 32,
+        }
+    }
+}
+
+impl From<Ciphersuite> for u8 {
+    fn from(c: Ciphersuite) -> u8 {
+        c as u8
+    }
+}
+
+impl TryFrom<u8> for Ciphersuite {
+    type Error = &'static str;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Ciphersuite::AES_GCM_128_SHA256),
+            1 => Ok(Ciphersuite::AES_GCM_256_SHA384),
+            _ => Err("Invalid Ciphersuite value"),
         }
     }
 }
