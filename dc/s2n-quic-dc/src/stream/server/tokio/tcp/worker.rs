@@ -28,10 +28,9 @@ use s2n_quic_core::{
 use std::io;
 use tracing::debug;
 
-pub struct Context<Sub, B>
+pub struct Context<Sub>
 where
     Sub: event::Subscriber + Clone,
-    B: PollBehavior<Sub>,
 {
     recv_buffer: msg::recv::Message,
     sender: accept::Sender<Sub>,
@@ -39,16 +38,14 @@ where
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
     local_port: u16,
-    _phantom: std::marker::PhantomData<B>,
 }
 
-impl<Sub, B> Context<Sub, B>
+impl<Sub> Context<Sub>
 where
     Sub: event::Subscriber + Clone,
-    B: PollBehavior<Sub> + Clone,
 {
     #[inline]
-    pub fn new(acceptor: &super::Acceptor<Sub, B>) -> Self {
+    pub fn new<B: PollBehavior<Sub> + Clone>(acceptor: &super::Acceptor<Sub, B>) -> Self {
         Self {
             recv_buffer: msg::recv::Message::new(u16::MAX),
             sender: acceptor.sender.clone(),
@@ -56,7 +53,6 @@ where
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
             local_port: acceptor.socket.get_ref().local_addr().unwrap().port(),
-            _phantom: std::marker::PhantomData::<B>,
         }
     }
 }
@@ -97,7 +93,7 @@ where
 {
     type ConnectionContext = Sub::ConnectionContext;
     type Stream = LazyBoundStream;
-    type Context = Context<Sub, B>;
+    type Context = Context<Sub>;
 
     #[inline]
     fn replace<Pub, C>(
@@ -157,7 +153,7 @@ where
     fn poll<Pub, C>(
         &mut self,
         task_cx: &mut task::Context,
-        context: &mut Context<Sub, B>,
+        context: &mut Context<Sub>,
         publisher: &Pub,
         clock: &C,
     ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
@@ -225,7 +221,7 @@ where
         &self,
         state: &mut WorkerState,
         cx: &mut task::Context,
-        context: &mut Context<Sub, Self>,
+        context: &mut Context<Sub>,
         stream: &mut Option<(LazyBoundStream, SocketAddress)>,
         subscriber_ctx: &mut Option<Sub::ConnectionContext>,
         queue_time: Timestamp,
@@ -259,7 +255,7 @@ impl WorkerState {
     fn poll<Sub, Pub, B>(
         &mut self,
         cx: &mut task::Context,
-        context: &mut Context<Sub, B>,
+        context: &mut Context<Sub>,
         stream: &mut Option<(LazyBoundStream, SocketAddress)>,
         subscriber_ctx: &mut Option<Sub::ConnectionContext>,
         queue_time: Timestamp,
@@ -296,7 +292,7 @@ where
         &self,
         state: &mut WorkerState,
         cx: &mut task::Context,
-        context: &mut Context<Sub, Self>,
+        context: &mut Context<Sub>,
         stream: &mut Option<(LazyBoundStream, SocketAddress)>,
         subscriber_ctx: &mut Option<Sub::ConnectionContext>,
         queue_time: Timestamp,
@@ -428,23 +424,6 @@ where
             ) {
                 Ok(stream) => stream,
                 Err(error) => {
-                    if let Some(env::tcp::Reregistered { socket, .. }) = error.peer {
-                        if !error.secret_control.is_empty() {
-                            // if we need to send an error then update the state and loop back
-                            // around
-                            *stream = Some((socket, remote_address));
-                            *state = WorkerState::Erroring {
-                                offset: 0,
-                                buffer: error.secret_control,
-                                error: error.error,
-                            };
-                            continue;
-                        } else {
-                            // close the stream immediately and send a reset to the client
-                            let _ = socket.set_linger(Some(Duration::ZERO));
-                            drop(socket);
-                        }
-                    }
                     return Err(Some(error.error)).into();
                 }
             };

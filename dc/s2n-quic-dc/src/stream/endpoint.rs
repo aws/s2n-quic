@@ -28,9 +28,8 @@ use super::environment::{ReadWorkerSocket as _, WriteWorkerSocket as _};
 
 type Result<T = (), E = io::Error> = core::result::Result<T, E>;
 
-pub struct AcceptError<Peer> {
+pub struct AcceptError {
     pub secret_control: Vec<u8>,
-    pub peer: Option<Peer>,
     pub error: io::Error,
 }
 
@@ -120,7 +119,7 @@ pub fn accept_stream<Env, P>(
     crypto: secret::map::Bidirectional,
     mut parameters: dc::ApplicationParams,
     secret_control: Vec<u8>,
-) -> Result<application::Builder<Env::Subscriber>, AcceptError<P>>
+) -> Result<application::Builder<Env::Subscriber>, AcceptError>
 where
     Env: Environment,
     P: Peer<Env>,
@@ -156,7 +155,6 @@ where
         Err(error) => {
             let error = AcceptError {
                 secret_control,
-                peer: None,
                 error,
             };
             Err(error)
