@@ -1,0 +1,61 @@
+target = "https://www.rfc-editor.org/rfc/rfc9001#section-4.9.3"
+
+# Discarding 0-RTT Keys
+#
+#    0-RTT and 1-RTT packets share the same packet number space, and
+#    clients do not send 0-RTT packets after sending a 1-RTT packet
+#    (Section 5.6).
+# 
+#    Therefore, a client SHOULD discard 0-RTT keys as soon as it installs
+#    1-RTT keys as they have no use after that moment.
+# 
+#    Additionally, a server MAY discard 0-RTT keys as soon as it receives
+#    a 1-RTT packet.  However, due to packet reordering, a 0-RTT packet
+#    could arrive after a 1-RTT packet.  Servers MAY temporarily retain
+#    0-RTT keys to allow decrypting reordered packets without requiring
+#    their contents to be retransmitted with 1-RTT keys.  After receiving
+#    a 1-RTT packet, servers MUST discard 0-RTT keys within a short time;
+#    the RECOMMENDED time period is three times the Probe Timeout (PTO,
+#    see [QUIC-RECOVERY]).  A server MAY discard 0-RTT keys earlier if it
+#    determines that it has received all 0-RTT packets, which can be done
+#    by keeping track of missing packet numbers.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Therefore, a client SHOULD discard 0-RTT keys as soon as it installs
+1-RTT keys as they have no use after that moment.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Additionally, a server MAY discard 0-RTT keys as soon as it receives
+a 1-RTT packet.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Servers MAY temporarily retain
+0-RTT keys to allow decrypting reordered packets without requiring
+their contents to be retransmitted with 1-RTT keys.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+After receiving
+a 1-RTT packet, servers MUST discard 0-RTT keys within a short time;
+the RECOMMENDED time period is three times the Probe Timeout (PTO,
+see [QUIC-RECOVERY]).
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY discard 0-RTT keys earlier if it
+determines that it has received all 0-RTT packets, which can be done
+by keeping track of missing packet numbers.
+'''
+

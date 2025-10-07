@@ -1,0 +1,114 @@
+target = "https://www.rfc-editor.org/rfc/rfc9000#section-8.1.4"
+
+# Address Validation Token Integrity
+#
+#    An address validation token MUST be difficult to guess.  Including a
+#    random value with at least 128 bits of entropy in the token would be
+#    sufficient, but this depends on the server remembering the value it
+#    sends to clients.
+# 
+#    A token-based scheme allows the server to offload any state
+#    associated with validation to the client.  For this design to work,
+#    the token MUST be covered by integrity protection against
+#    modification or falsification by clients.  Without integrity
+#    protection, malicious clients could generate or guess values for
+#    tokens that would be accepted by the server.  Only the server
+#    requires access to the integrity protection key for tokens.
+# 
+#    There is no need for a single well-defined format for the token
+#    because the server that generates the token also consumes it.  Tokens
+#    sent in Retry packets SHOULD include information that allows the
+#    server to verify that the source IP address and port in client
+#    packets remain constant.
+# 
+#    Tokens sent in NEW_TOKEN frames MUST include information that allows
+#    the server to verify that the client IP address has not changed from
+#    when the token was issued.  Servers can use tokens from NEW_TOKEN
+#    frames in deciding not to send a Retry packet, even if the client
+#    address has changed.  If the client IP address has changed, the
+#    server MUST adhere to the anti-amplification limit; see Section 8.
+#    Note that in the presence of NAT, this requirement might be
+#    insufficient to protect other hosts that share the NAT from
+#    amplification attacks.
+# 
+#    Attackers could replay tokens to use servers as amplifiers in DDoS
+#    attacks.  To protect against such attacks, servers MUST ensure that
+#    replay of tokens is prevented or limited.  Servers SHOULD ensure that
+#    tokens sent in Retry packets are only accepted for a short time, as
+#    they are returned immediately by clients.  Tokens that are provided
+#    in NEW_TOKEN frames (Section 19.7) need to be valid for longer but
+#    SHOULD NOT be accepted multiple times.  Servers are encouraged to
+#    allow tokens to be used only once, if possible; tokens MAY include
+#    additional information about clients to further narrow applicability
+#    or reuse.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An address validation token MUST be difficult to guess.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+For this design to work,
+the token MUST be covered by integrity protection against
+modification or falsification by clients.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Tokens
+sent in Retry packets SHOULD include information that allows the
+server to verify that the source IP address and port in client
+packets remain constant.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Tokens sent in NEW_TOKEN frames MUST include information that allows
+the server to verify that the client IP address has not changed from
+when the token was issued.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the client IP address has changed, the
+server MUST adhere to the anti-amplification limit; see Section 8.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+To protect against such attacks, servers MUST ensure that
+replay of tokens is prevented or limited.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Servers SHOULD ensure that
+tokens sent in Retry packets are only accepted for a short time, as
+they are returned immediately by clients.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Tokens that are provided
+in NEW_TOKEN frames (Section 19.7) need to be valid for longer but
+SHOULD NOT be accepted multiple times.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Servers are encouraged to
+allow tokens to be used only once, if possible; tokens MAY include
+additional information about clients to further narrow applicability
+or reuse.
+'''
+
