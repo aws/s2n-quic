@@ -10,7 +10,7 @@ use crate::{
     stream::{
         endpoint,
         environment::tokio::{self as env, Environment},
-        recv, server,
+        recv, server, TransportFeatures,
     },
 };
 use core::{
@@ -45,7 +45,7 @@ where
     Sub: event::Subscriber + Clone,
 {
     #[inline]
-    pub fn new(acceptor: &super::Acceptor<Sub>) -> Self {
+    pub fn new<B: PollBehavior<Sub> + Clone>(acceptor: &super::Acceptor<Sub, B>) -> Self {
         Self {
             recv_buffer: msg::recv::Message::new(u16::MAX),
             sender: acceptor.sender.clone(),
@@ -57,34 +57,39 @@ where
     }
 }
 
-pub struct Worker<Sub>
+pub struct Worker<Sub, B>
 where
     Sub: event::Subscriber + Clone,
+    B: PollBehavior<Sub>,
 {
     queue_time: Timestamp,
     stream: Option<(LazyBoundStream, SocketAddress)>,
     subscriber_ctx: Option<Sub::ConnectionContext>,
     state: WorkerState,
+    poll_behavior: B,
 }
 
-impl<Sub> Worker<Sub>
+impl<Sub, B> Worker<Sub, B>
 where
     Sub: event::Subscriber + Clone,
+    B: PollBehavior<Sub>,
 {
     #[inline]
-    pub fn new(now: Timestamp) -> Self {
+    pub fn new(now: Timestamp, poll_behavior: B) -> Self {
         Self {
             queue_time: now,
             stream: None,
             subscriber_ctx: None,
             state: WorkerState::Init,
+            poll_behavior,
         }
     }
 }
 
-impl<Sub> super::manager::Worker for Worker<Sub>
+impl<Sub, B> super::manager::Worker for Worker<Sub, B>
 where
     Sub: event::Subscriber + Clone,
+    B: PollBehavior<Sub>,
 {
     type ConnectionContext = Sub::ConnectionContext;
     type Stream = LazyBoundStream;
@@ -169,7 +174,7 @@ where
         // make sure another worker didn't leave around a buffer
         context.recv_buffer.clear();
 
-        let res = ready!(self.state.poll(
+        let res = ready!(self.state.poll::<Sub, Pub, B>(
             task_cx,
             context,
             &mut self.stream,
@@ -177,6 +182,7 @@ where
             self.queue_time,
             clock.get_time(),
             publisher,
+            &self.poll_behavior
         ));
 
         // if we're ready then reset the worker
@@ -207,8 +213,28 @@ where
     }
 }
 
+pub trait PollBehavior<Sub>
+where
+    Sub: event::Subscriber + Clone,
+{
+    fn poll<Pub>(
+        &self,
+        state: &mut WorkerState,
+        cx: &mut task::Context,
+        context: &mut Context<Sub>,
+        stream: &mut Option<(LazyBoundStream, SocketAddress)>,
+        subscriber_ctx: &mut Option<Sub::ConnectionContext>,
+        queue_time: Timestamp,
+        now: Timestamp,
+        publisher: &Pub,
+    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    where
+        Pub: EndpointPublisher,
+        Self: Sized;
+}
+
 #[derive(Debug)]
-enum WorkerState {
+pub enum WorkerState {
     /// Worker is waiting for a packet
     Init,
     /// Worker received a partial packet and is waiting on more data
@@ -226,8 +252,45 @@ enum WorkerState {
 }
 
 impl WorkerState {
-    fn poll<Sub, Pub>(
+    fn poll<Sub, Pub, B>(
         &mut self,
+        cx: &mut task::Context,
+        context: &mut Context<Sub>,
+        stream: &mut Option<(LazyBoundStream, SocketAddress)>,
+        subscriber_ctx: &mut Option<Sub::ConnectionContext>,
+        queue_time: Timestamp,
+        now: Timestamp,
+        publisher: &Pub,
+        poll_behavior: &B,
+    ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
+    where
+        Sub: event::Subscriber + Clone,
+        Pub: EndpointPublisher,
+        B: PollBehavior<Sub>,
+    {
+        poll_behavior.poll(
+            self,
+            cx,
+            context,
+            stream,
+            subscriber_ctx,
+            queue_time,
+            now,
+            publisher,
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct DefaultBehavior;
+
+impl<Sub> PollBehavior<Sub> for DefaultBehavior
+where
+    Sub: event::Subscriber + Clone,
+{
+    fn poll<Pub>(
+        &self,
+        state: &mut WorkerState,
         cx: &mut task::Context,
         context: &mut Context<Sub>,
         stream: &mut Option<(LazyBoundStream, SocketAddress)>,
@@ -237,14 +300,13 @@ impl WorkerState {
         publisher: &Pub,
     ) -> Poll<Result<ControlFlow<()>, Option<io::Error>>>
     where
-        Sub: event::Subscriber + Clone,
         Pub: EndpointPublisher,
     {
         let sojourn_time = now.saturating_duration_since(queue_time);
 
         loop {
             // figure out where to put the received bytes
-            let (recv_buffer, blocked_count) = match self {
+            let (recv_buffer, blocked_count) = match state {
                 // borrow the context's recv buffer initially
                 WorkerState::Init => (&mut context.recv_buffer, 0),
                 // we have our own recv buffer to use
@@ -265,7 +327,8 @@ impl WorkerState {
                     }
 
                     // io::Error doesn't implement clone so we have to take the error to return it
-                    let WorkerState::Erroring { error, .. } = core::mem::replace(self, Self::Init)
+                    let WorkerState::Erroring { error, .. } =
+                        core::mem::replace(state, WorkerState::Init)
                     else {
                         unreachable!()
                     };
@@ -277,7 +340,7 @@ impl WorkerState {
             // try to read an initial packet from the socket
             let res = {
                 let (stream, remote_address) = stream.as_mut().unwrap();
-                Self::poll_initial_packet(
+                WorkerState::poll_initial_packet(
                     cx,
                     stream,
                     remote_address,
@@ -292,13 +355,13 @@ impl WorkerState {
                 // into the worker so we can resume where we left off last time
                 if blocked_count == 0 {
                     let buffer = recv_buffer.take();
-                    *self = Self::Buffering {
+                    *state = WorkerState::Buffering {
                         buffer,
                         blocked_count,
                     };
                 }
 
-                if let Self::Buffering { blocked_count, .. } = self {
+                if let WorkerState::Buffering { blocked_count, .. } = state {
                     *blocked_count += 1;
                 }
 
@@ -312,6 +375,33 @@ impl WorkerState {
 
             let recv_buffer = recv::buffer::Local::new(recv_buffer.take(), None);
             let recv_buffer = Either::A(recv_buffer);
+
+            let mut secret_control = vec![];
+
+            let (crypto, parameters) = match endpoint::derive_stream_credentials(
+                &initial_packet,
+                &context.secrets,
+                &TransportFeatures::TCP,
+                &mut secret_control,
+            ) {
+                Ok(result) => result,
+                Err(error) => {
+                    if !secret_control.is_empty() {
+                        *stream = Some((socket, remote_address));
+                        *state = WorkerState::Erroring {
+                            offset: 0,
+                            buffer: secret_control,
+                            error,
+                        };
+                        continue;
+                    } else {
+                        // Close socket immediately
+                        let _ = socket.set_linger(Some(Duration::ZERO));
+                        drop(socket);
+                    }
+                    return Err(Some(error)).into();
+                }
+            };
 
             let peer = env::tcp::Reregistered {
                 socket,
@@ -328,26 +418,12 @@ impl WorkerState {
                 &context.secrets,
                 subscriber_ctx,
                 None,
+                crypto,
+                parameters,
+                secret_control,
             ) {
                 Ok(stream) => stream,
                 Err(error) => {
-                    if let Some(env::tcp::Reregistered { socket, .. }) = error.peer {
-                        if !error.secret_control.is_empty() {
-                            // if we need to send an error then update the state and loop back
-                            // around
-                            *stream = Some((socket, remote_address));
-                            *self = WorkerState::Erroring {
-                                offset: 0,
-                                buffer: error.secret_control,
-                                error: error.error,
-                            };
-                            continue;
-                        } else {
-                            // close the stream immediately and send a reset to the client
-                            let _ = socket.set_linger(Some(Duration::ZERO));
-                            drop(socket);
-                        }
-                    }
                     return Err(Some(error.error)).into();
                 }
             };
@@ -390,7 +466,9 @@ impl WorkerState {
             }));
         }
     }
+}
 
+impl WorkerState {
     #[inline]
     fn poll_initial_packet<Pub>(
         cx: &mut task::Context,

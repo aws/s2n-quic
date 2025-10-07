@@ -13,7 +13,7 @@ use crate::{
         endpoint,
         environment::{udp, Environment},
         recv::dispatch::{Allocator, Dispatch},
-        socket,
+        socket, TransportFeatures,
     },
 };
 use s2n_quic_core::{
@@ -139,6 +139,25 @@ where
             worker_socket,
         };
 
+        let mut secret_control = vec![];
+        let (crypto, parameters) = match endpoint::derive_stream_credentials(
+            &self.packet,
+            &self.secrets,
+            &TransportFeatures::UDP,
+            &mut secret_control,
+        ) {
+            Ok(result) => result,
+            Err(_error) => {
+                if !secret_control.is_empty() {
+                    let addr = msg::addr::Addr::new(peer_addr);
+                    let ecn = Default::default();
+                    let buffer = &[io::IoSlice::new(&secret_control)];
+                    let _ = self.worker_socket.try_send(&addr, ecn, buffer);
+                }
+                return;
+            }
+        };
+
         // TODO is it better to accept this inline or send it off to another queue?
         //      maybe only delegate to another task when the receiver becomes overloaded?
 
@@ -150,6 +169,9 @@ where
             &self.secrets,
             subscriber_ctx,
             None,
+            crypto,
+            parameters,
+            secret_control,
         ) {
             Ok(stream) => stream,
             Err(error) => {
