@@ -208,7 +208,7 @@ jobs:
         env:
           RUSTDOCFLAGS: --cfg docsrs
 
-      - uses: aws-actions/configure-aws-credentials@v5.0.0
+      - uses: aws-actions/configure-aws-credentials@v5.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -472,7 +472,7 @@ jobs:
       - name: Run cargo llvm-cov
         run: cargo llvm-cov --html --no-fail-fast --workspace --exclude s2n-quic-qns --all-features
 
-      - uses: aws-actions/configure-aws-credentials@v5.0.0
+      - uses: aws-actions/configure-aws-credentials@v5.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -586,7 +586,7 @@ jobs:
         run: |
           ./scripts/recovery-sim
 
-      - uses: aws-actions/configure-aws-credentials@v5.0.0
+      - uses: aws-actions/configure-aws-credentials@v5.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -637,7 +637,7 @@ jobs:
         run: |
           ./scripts/sim
 
-      - uses: aws-actions/configure-aws-credentials@v5.0.0
+      - uses: aws-actions/configure-aws-credentials@v5.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -782,7 +782,7 @@ jobs:
           cd examples/echo
           cargo build --timings --release --workspace
 
-      - uses: aws-actions/configure-aws-credentials@v5.0.0
+      - uses: aws-actions/configure-aws-credentials@v5.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -883,7 +883,7 @@ jobs:
           mv report.tsv target/report/
           mv dhat-heap.json target/report/
 
-      - uses: aws-actions/configure-aws-credentials@v5.0.0
+      - uses: aws-actions/configure-aws-credentials@v5.1.0
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole
@@ -1009,7 +1009,7 @@ jobs:
     if: ${{ always() }}
     needs: [env, rustfmt, clippy, udeps, doc, test, asan, fips, miri, no_std, compliance, coverage, crates, examples, recovery-simulations, sims, copyright, s2n-events, generate-events, snapshots, timing, typos, kani, dhat, loom, xdp, dc-wireshark]
     steps:
-      - uses: aws-actions/configure-aws-credentials@v5.0.0
+      - uses: aws-actions/configure-aws-credentials@v5.1.0
         if: github.event_name != 'pull_request'
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
