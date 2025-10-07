@@ -57,7 +57,7 @@ fn zero_length_cid_client_connection_migration_test() {
             .with_io(handle.builder().build()?)?
             .with_tls(server)?
             .with_event((
-                tracing_events(),
+                tracing_events(false),
                 (active_path_update_subscriber, connection_close_subscriber),
             ))?
             .with_random(Random::with_seed(456))?

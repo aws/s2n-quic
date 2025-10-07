@@ -58,14 +58,14 @@ fn tls() {
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .with_tls(server_endpoint)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client_endpoint)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;
@@ -112,14 +112,14 @@ fn failed_tls_handshake() {
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event((tracing_events(), connection_closed_subscriber))?
+            .with_event((tracing_events(true), connection_closed_subscriber))?
             .with_tls(server_endpoint)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client_endpoint)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .start()?;
         let addr = start_server(server)?;
         primary::spawn(async move {
@@ -160,14 +160,14 @@ fn mtls() {
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .with_tls(server_endpoint)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client_endpoint)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;
@@ -251,14 +251,14 @@ fn async_client_hello() {
 
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .with_tls(server_endpoint)?
             .start()?;
 
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client_endpoint)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .start()?;
         let addr = start_server(server)?;
         start_client(client, addr, Data::new(1000))?;

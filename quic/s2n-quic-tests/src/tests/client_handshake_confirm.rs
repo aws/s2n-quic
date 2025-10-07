@@ -142,7 +142,7 @@ where
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -152,7 +152,7 @@ where
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
-            .with_event((ClientConfirm, tracing_events()))?
+            .with_event((ClientConfirm, tracing_events(true)))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

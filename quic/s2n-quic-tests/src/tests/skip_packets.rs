@@ -28,7 +28,7 @@ fn optimistic_ack_mitigation() {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), server_subscriber))?
+            .with_event((tracing_events(true), server_subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -43,7 +43,7 @@ fn optimistic_ack_mitigation() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(), client_subscriber))?
+            .with_event((tracing_events(true), client_subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -117,7 +117,7 @@ fn detect_optimistic_ack() {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), skip_subscriber))?
+            .with_event((tracing_events(true), skip_subscriber))?
             .with_random(Random::with_seed(456))?
             .with_packet_interceptor(skip_interceptor)?
             .start()?;
@@ -144,7 +144,7 @@ fn detect_optimistic_ack() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

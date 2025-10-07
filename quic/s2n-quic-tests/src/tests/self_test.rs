@@ -24,7 +24,7 @@ fn packet_sent_event_test() {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), subscriber))?
+            .with_event((tracing_events(true), subscriber))?
             .start()?;
         let addr = start_server(server)?;
         // store addr in exterior scope so we can use it to filter packets

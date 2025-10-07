@@ -325,7 +325,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                 (dc::ConfirmComplete, dc::MtuConfirmComplete),
                 metrics.subscriber("server"),
             ),
-            (tracing_events(), server_subscriber),
+            (tracing_events(true), server_subscriber),
         );
 
         let mut server = server
@@ -361,7 +361,7 @@ fn self_test<S: ServerProviders, C: ClientProviders>(
                 (dc::ConfirmComplete, dc::MtuConfirmComplete),
                 metrics.subscriber("client"),
             ),
-            (tracing_events(), client_subscriber),
+            (tracing_events(true), client_subscriber),
         );
 
         let client = client

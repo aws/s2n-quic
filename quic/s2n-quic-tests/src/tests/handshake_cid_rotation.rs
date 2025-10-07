@@ -30,14 +30,14 @@ fn rotate_handshake_test(
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
-            .with_event((tracing_events(), server_subscriber))?
+            .with_event((tracing_events(true), server_subscriber))?
             .with_random(Random::with_seed(456))?
             .with_connection_id(server_cid_generator)?
             .start()?;
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(), client_subscriber))?
+            .with_event((tracing_events(true), client_subscriber))?
             .with_random(Random::with_seed(456))?
             .with_connection_id(client_cid_generator)?
             .start()?;

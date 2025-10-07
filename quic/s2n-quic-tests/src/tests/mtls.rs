@@ -21,7 +21,7 @@ fn mtls_happy_case() {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
-            .with_event((tracing_events(), server_subscriber))?
+            .with_event((tracing_events(true), server_subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -37,7 +37,7 @@ fn mtls_happy_case() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
-            .with_event((tracing_events(), client_subscriber))?
+            .with_event((tracing_events(true), client_subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -92,7 +92,7 @@ fn mtls_auth_failure() {
         let mut server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server_tls)?
-            .with_event((tracing_events(), server_subscriber))?
+            .with_event((tracing_events(true), server_subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -115,7 +115,7 @@ fn mtls_auth_failure() {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(client_tls)?
-            .with_event((tracing_events(), client_subscriber))?
+            .with_event((tracing_events(true), client_subscriber))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

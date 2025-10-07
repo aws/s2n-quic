@@ -22,8 +22,15 @@ mod tests;
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
 
 /// A subscriber that panics when a blocklisted event is encountered
-#[derive(Clone, Default)]
-pub struct BlocklistSubscriber;
+pub struct BlocklistSubscriber {
+    blocklist_enabled: bool,
+}
+
+impl BlocklistSubscriber {
+    pub fn new(blocklist_enabled: bool) -> Self {
+        Self { blocklist_enabled }
+    }
+}
 
 impl event::Subscriber for BlocklistSubscriber {
     type ConnectionContext = ();
@@ -42,10 +49,12 @@ impl event::Subscriber for BlocklistSubscriber {
         _meta: &events::ConnectionMeta,
         event: &events::DatagramDropped,
     ) {
-        panic!(
-            "Blacklisted datagram dropped event encountered: {:?}",
-            event
-        );
+        if self.blocklist_enabled {
+            panic!(
+                "Blacklisted datagram dropped event encountered: {:?}",
+                event
+            );
+        }
     }
 
     fn on_packet_dropped(
@@ -65,7 +74,8 @@ impl event::Subscriber for BlocklistSubscriber {
                     | events::PacketDropReason::InitialConnectionIdInvalidSpace { .. },
                 ..
             }
-        ) {
+        ) && self.blocklist_enabled
+        {
             panic!("Blocklisted packet dropped event encountered: {:?}", event);
         }
     }
@@ -79,7 +89,7 @@ impl event::Subscriber for BlocklistSubscriber {
     // }
 }
 
-pub fn tracing_events() -> event::tracing::Subscriber {
+pub fn tracing_events(with_blocklist: bool) -> impl event::Subscriber {
     use std::sync::Once;
 
     static TRACING: Once = Once::new();
@@ -117,7 +127,10 @@ pub fn tracing_events() -> event::tracing::Subscriber {
             .init();
     });
 
-    event::tracing::Subscriber::default()
+    (
+        event::tracing::Subscriber::default(),
+        BlocklistSubscriber::new(with_blocklist),
+    )
 }
 
 pub fn start_server(mut server: Server) -> Result<SocketAddr> {
@@ -163,7 +176,7 @@ pub fn build_server(handle: &Handle) -> Result<Server> {
     Ok(Server::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(SERVER_CERTS)?
-        .with_event(tracing_events())?
+        .with_event(tracing_events(true))?
         .with_random(Random::with_seed(123))?
         .start()?)
 }
@@ -208,7 +221,7 @@ pub fn build_client(handle: &Handle) -> Result<Client> {
     Ok(Client::builder()
         .with_io(handle.builder().build().unwrap())?
         .with_tls(certificates::CERT_PEM)?
-        .with_event(tracing_events())?
+        .with_event(tracing_events(true))?
         .with_random(Random::with_seed(123))?
         .start()?)
 }

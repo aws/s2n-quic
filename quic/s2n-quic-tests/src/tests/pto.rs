@@ -35,7 +35,7 @@ fn handshake_pto_timer_is_armed() {
             .with_io(handle.builder().build()?)?
             .with_tls(SERVER_CERTS)?
             .with_packet_interceptor(DropHandshakeTx)?
-            .with_event((tracing_events(), metrics.subscriber("server")))?
+            .with_event((tracing_events(true), metrics.subscriber("server")))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -50,7 +50,7 @@ fn handshake_pto_timer_is_armed() {
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
             .with_event((
-                (tracing_events(), pto_subscriber),
+                (tracing_events(true), pto_subscriber),
                 (packet_sent_subscriber, metrics.subscriber("client")),
             ))?
             .with_random(Random::with_seed(456))?
@@ -118,7 +118,10 @@ fn pto_jitter() {
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
             .with_limits(limits)?
-            .with_event(((tracing_events(), pto_subscriber), datagram_sent_subscriber))?
+            .with_event((
+                (tracing_events(true), pto_subscriber),
+                datagram_sent_subscriber,
+            ))?
             .start()?;
 
         primary::spawn(async move {
@@ -135,7 +138,7 @@ fn pto_jitter() {
             .with_tls(certificates::CERT_PEM)?
             .with_limits(limits)?
             .with_event((
-                (tracing_events(), pto_subscriber_jitter),
+                (tracing_events(true), pto_subscriber_jitter),
                 datagram_sent_subscriber_jitter,
             ))?
             .with_random(Random::with_seed(123))?

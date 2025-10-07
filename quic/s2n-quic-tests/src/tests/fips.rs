@@ -25,7 +25,7 @@ fn test_policy(policy: &security::Policy) {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(server)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
@@ -43,7 +43,7 @@ fn test_policy(policy: &security::Policy) {
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .with_random(Random::with_seed(456))?
             .start()?;
 

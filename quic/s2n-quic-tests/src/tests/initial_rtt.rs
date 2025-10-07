@@ -36,7 +36,7 @@ fn test_with_initial_rtt(initial_rtt: Duration) -> usize {
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(certificates::CERT_PEM)?
-            .with_event((tracing_events(), pto_subscriber))?
+            .with_event((tracing_events(true), pto_subscriber))?
             .with_random(Random::with_seed(456))?
             .with_limits(
                 provider::limits::Limits::default()

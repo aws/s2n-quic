@@ -82,7 +82,7 @@ where
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(build_server_mtls_provider(certificates::MTLS_CA_CERT)?)?
-            .with_event((Chain, tracing_events()))?
+            .with_event((Chain, tracing_events(true)))?
             .start()?;
         let (send, server_chain) = tokio::sync::mpsc::channel(1);
         let server_chain = Arc::new(tokio::sync::Mutex::new(server_chain));
@@ -92,7 +92,7 @@ where
         let client = Client::builder()
             .with_io(handle.builder().build().unwrap())?
             .with_tls(build_client_mtls_provider(certificates::MTLS_CA_CERT)?)?
-            .with_event((Chain, tracing_events()))?
+            .with_event((Chain, tracing_events(true)))?
             .start()?;
 
         // show it working for several connections

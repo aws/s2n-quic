@@ -43,7 +43,7 @@ fn buffer_limit_test() {
             .with_io(handle.builder().build()?)?
             .with_tls(server)?
             .with_event((
-                tracing_events(),
+                tracing_events(true),
                 (client_hello_subscriber, connection_closed_subscriber),
             ))?
             .with_random(Random::with_seed(456))?
@@ -66,7 +66,7 @@ fn buffer_limit_test() {
         let client = Client::builder()
             .with_io(handle.builder().build()?)?
             .with_tls(client)?
-            .with_event(tracing_events())?
+            .with_event(tracing_events(true))?
             .with_random(Random::with_seed(456))?
             .start()?;
 
