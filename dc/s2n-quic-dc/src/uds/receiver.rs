@@ -7,7 +7,7 @@ use nix::{
         bind, recvmsg, socket, AddressFamily, ControlMessageOwned, MsgFlags, SockFlag, SockType,
         UnixAddr,
     },
-    unistd::unlink,
+    unistd::{close, unlink},
 };
 use std::{
     os::{
@@ -98,16 +98,15 @@ impl Receiver {
         for cmsg in msg.cmsgs()? {
             if let ControlMessageOwned::ScmRights(fds) = cmsg {
                 if let Some(&fd) = fds.first() {
+                    for &extra_fd in fds.iter().skip(1) {
+                        let _ = close(extra_fd);
+                    }
                     return Ok((packet_data, fd));
                 }
             }
         }
 
         Err(nix::Error::EINVAL) // No file descriptor found
-    }
-
-    pub fn socket_fd(&self) -> RawFd {
-        self.async_fd.as_raw_fd()
     }
 }
 
