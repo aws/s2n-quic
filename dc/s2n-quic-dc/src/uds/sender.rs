@@ -4,8 +4,7 @@
 use nix::{
     fcntl::{fcntl, FcntlArg, OFlag},
     sys::socket::{
-        bind, sendmsg, socket, AddressFamily, ControlMessage, MsgFlags, SockFlag, SockType,
-        UnixAddr,
+        sendmsg, socket, AddressFamily, ControlMessage, MsgFlags, SockFlag, SockType, UnixAddr,
     },
 };
 use std::{
@@ -22,7 +21,7 @@ pub struct Sender {
 }
 
 impl Sender {
-    pub fn new(socket_path: &Path) -> Result<Self, std::io::Error> {
+    pub fn new() -> Result<Self, std::io::Error> {
         let socket_owned = socket(
             AddressFamily::Unix,
             SockType::Datagram,
@@ -33,10 +32,6 @@ impl Sender {
         let flags = fcntl(socket_owned.as_fd(), FcntlArg::F_GETFL)?;
         let new_flags = OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK;
         fcntl(socket_owned.as_fd(), FcntlArg::F_SETFL(new_flags))?;
-
-        let socket_fd = socket_owned.as_raw_fd();
-        let unix_addr = UnixAddr::new(socket_path)?;
-        bind(socket_fd, &unix_addr)?;
 
         let async_fd = AsyncFd::new(socket_owned)?;
 

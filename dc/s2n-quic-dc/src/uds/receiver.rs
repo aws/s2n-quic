@@ -134,15 +134,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_receive() {
-        let sender_path = Path::new("/tmp/sender.sock");
         let receiver_path = Path::new("/tmp/receiver.sock");
 
         let receiver = Receiver::new(receiver_path).unwrap();
-        let sender = Sender::new(sender_path).unwrap();
-
-        if !receiver_path.exists() {
-            panic!("Socket file not created after bind");
-        }
+        let sender = Sender::new().unwrap();
 
         let file_path = "/tmp/test.txt";
         let mut file = File::create(file_path).await.unwrap();
