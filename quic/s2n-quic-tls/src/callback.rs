@@ -360,6 +360,16 @@ where
     fn on_read(&mut self, data: &mut [u8]) -> usize {
         let max_len = Some(data.len());
 
+        // This is a semi-random number. However, it happens to work out OK to approximate
+        // spend during handshakes. On one side of a connection a handshake typically costs about
+        // 0.5-1ms of CPU. Most of that is driven by the peer sending information that the local
+        // endpoint acts on (e.g., verifying signatures).
+        //
+        // In practice this was chosen to make s2n-quic-sim simulate an uncontended mTLS handshake
+        // as taking 2ms (in combination with the transition edge adding some extra cost), which is
+        // fairly close to what we see in one scenario with real handshakes.
+        s2n_quic_core::io::event_loop::attribute_cpu(core::time::Duration::from_micros(100));
+
         let chunk = match self.state.rx_phase {
             HandshakePhase::Initial => self.context.receive_initial(max_len),
             HandshakePhase::Handshake => self.context.receive_handshake(max_len),
@@ -407,6 +417,9 @@ enum HandshakePhase {
 
 impl HandshakePhase {
     fn transition(&mut self) {
+        // See comment in `on_read` for value and why this exists.
+        s2n_quic_core::io::event_loop::attribute_cpu(core::time::Duration::from_micros(100));
+
         *self = match self {
             Self::Initial => Self::Handshake,
             _ => Self::Application,
