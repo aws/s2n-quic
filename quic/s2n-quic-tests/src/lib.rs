@@ -68,7 +68,6 @@ impl event::Subscriber for BlocklistSubscriber {
             events::PacketDropped {
                 reason: events::PacketDropReason::DecryptionFailed { .. }
                     | events::PacketDropReason::UnprotectFailed { .. }
-                    | events::PacketDropReason::DecodingFailed { .. }
                     | events::PacketDropReason::VersionMismatch { .. }
                     | events::PacketDropReason::UndersizedInitialPacket { .. }
                     | events::PacketDropReason::InitialConnectionIdInvalidSpace { .. },

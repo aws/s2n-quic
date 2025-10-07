@@ -131,6 +131,25 @@ let client = Client::builder()
     .start()?;
 ```
 
+### Blocklist Event Subscriber
+
+The test suite includes a `BlocklistSubscriber` utility that can be used to detect and fail tests when specific unwanted events occur. This subscriber works by panicking when it encounters events that have been added to the blocklist, such as certain types of packet drops or datagram drops.
+
+To use the blocklist subscriber in tests:
+
+```rust
+// Use with a client or server
+let client = Client::builder()
+    .with_io(handle.builder().build().unwrap())?
+    .with_tls(certificates::CERT_PEM)?
+    .with_event(tracing_events(true))?
+    .start()?;
+```
+
+When the `with_blocklist` parameter is set to `true`, the `tracing_events` function returns both the standard tracing subscriber and the blocklist subscriber. The standard subscriber logs events as usual, while the blocklist subscriber will cause a test to fail immediately if a blocklisted event is encountered.
+
+This is particularly useful for tests that need to verify that certain error conditions don't occur, as the test will fail early with a clear error message rather than continuing with potentially incorrect behavior.
+
 ### Common Setup
 
 `src/lib.rs` provides common utilities for setting up test clients and servers with various configurations.
