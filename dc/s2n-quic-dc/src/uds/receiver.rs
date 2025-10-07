@@ -44,13 +44,6 @@ impl Receiver {
         let unix_addr = UnixAddr::new(socket_path)?;
         bind(socket_fd, &unix_addr)?;
 
-        if !socket_path.exists() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Socket file not created after bind",
-            ));
-        }
-
         let async_fd = AsyncFd::new(socket_owned)?;
 
         Ok(Self {
