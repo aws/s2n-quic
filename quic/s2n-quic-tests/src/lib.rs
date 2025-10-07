@@ -4,7 +4,7 @@
 use s2n_quic::{
     client::Connect,
     provider::{
-        event,
+        event::{self, events},
         io::testing::{primary, spawn, Handle, Result},
     },
     stream::PeerStream,
@@ -20,6 +20,64 @@ pub mod recorder;
 mod tests;
 
 pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::KEY_PEM);
+
+/// A subscriber that panics when a blocklisted event is encountered
+#[derive(Clone, Default)]
+pub struct BlocklistSubscriber;
+
+impl event::Subscriber for BlocklistSubscriber {
+    type ConnectionContext = ();
+
+    fn create_connection_context(
+        &mut self,
+        _meta: &events::ConnectionMeta,
+        _info: &events::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+        ()
+    }
+
+    fn on_datagram_dropped(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::DatagramDropped,
+    ) {
+        panic!(
+            "Blacklisted datagram dropped event encountered: {:?}",
+            event
+        );
+    }
+
+    fn on_packet_dropped(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::PacketDropped,
+    ) {
+        if matches!(
+            event,
+            events::PacketDropped {
+                reason: events::PacketDropReason::DecryptionFailed { .. }
+                    | events::PacketDropReason::UnprotectFailed { .. }
+                    | events::PacketDropReason::DecodingFailed { .. }
+                    | events::PacketDropReason::VersionMismatch { .. }
+                    | events::PacketDropReason::UndersizedInitialPacket { .. }
+                    | events::PacketDropReason::InitialConnectionIdInvalidSpace { .. },
+                ..
+            }
+        ) {
+            panic!("Blocklisted packet dropped event encountered: {:?}", event);
+        }
+    }
+
+    // fn on_packet_lost(
+    //     &mut self,
+    //     context: &mut Self::ConnectionContext,
+    //     meta: &events::ConnectionMeta,
+    //     event: &events::PacketLost,
+    // ) {
+    // }
+}
 
 pub fn tracing_events() -> event::tracing::Subscriber {
     use std::sync::Once;
