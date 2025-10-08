@@ -241,6 +241,14 @@ impl Pair {
             client = client.with_mtu(mtu);
         }
 
+        // Don't wait after previous handshake before trying another one.
+        //
+        // Primarily this is needed for restart tests, which expect to recover immediately. In
+        // production we don't expect to have *just* handshaked with a peer that's restarting (or
+        // at least that's uncommon) and peers rarely undergo e.g. deployment in less than 1
+        // minute. So not generally an issue there.
+        client = client.with_success_jitter(Duration::ZERO);
+
         client
     }
 

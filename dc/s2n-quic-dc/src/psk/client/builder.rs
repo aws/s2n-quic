@@ -25,6 +25,7 @@ pub struct Builder<
     pub(crate) mtu: u16,
     pub(crate) max_idle_timeout: Duration,
     pub(crate) pto_jitter_percentage: u8,
+    pub(crate) success_jitter: Duration,
 }
 
 impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
@@ -35,6 +36,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             mtu: DEFAULT_MTU,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
+            success_jitter: Duration::from_secs(60),
         }
     }
 }
@@ -51,6 +53,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             mtu: self.mtu,
             max_idle_timeout: self.max_idle_timeout,
             pto_jitter_percentage: self.pto_jitter_percentage,
+            success_jitter: self.success_jitter,
         }
     }
 
@@ -87,6 +90,17 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     /// - 1-50%: Applies random jitter within ±percentage of base PTO
     pub fn with_pto_jitter_percentage(mut self, pto_jitter_percentage: u8) -> Self {
         self.pto_jitter_percentage = pto_jitter_percentage;
+        self
+    }
+
+    /// Sets the period we wait before attempting new handshakes with the same peer (by IP:port),
+    /// after a successfully completed handshake.
+    ///
+    /// This is the upper bound, the jitter is randomized between 1 second and the upper bound.
+    ///
+    /// This defaults to 1 minute.
+    pub fn with_success_jitter(mut self, period: Duration) -> Self {
+        self.success_jitter = period;
         self
     }
 
