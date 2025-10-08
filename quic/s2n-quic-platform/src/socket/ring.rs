@@ -506,6 +506,7 @@ mod tests {
     }
 
     replication_test!(simple_replication, crate::message::simple::Message);
+    replication_test!(testing_replication, crate::io::testing::message::Message);
     #[cfg(s2n_quic_platform_socket_msg)]
     replication_test!(msg_replication, crate::message::msg::Message);
     #[cfg(s2n_quic_platform_socket_mmsg)]
@@ -572,6 +573,7 @@ mod tests {
     }
 
     send_recv_test!(simple_send_recv, crate::message::simple::Message);
+    send_recv_test!(testing_send_recv, crate::io::testing::message::Message);
     #[cfg(s2n_quic_platform_socket_msg)]
     send_recv_test!(msg_send_recv, crate::message::msg::Message);
     #[cfg(s2n_quic_platform_socket_mmsg)]
@@ -618,6 +620,10 @@ mod tests {
     }
 
     consumer_modifications_test!(simple_rx_modifications, crate::message::simple::Message);
+    consumer_modifications_test!(
+        testing_rx_modifications,
+        crate::io::testing::message::Message
+    );
     #[cfg(s2n_quic_platform_socket_msg)]
     consumer_modifications_test!(msg_rx_modifications, crate::message::msg::Message);
     #[cfg(s2n_quic_platform_socket_mmsg)]
